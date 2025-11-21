@@ -2,1181 +2,1377 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Emergency Medicine Scenario Generator</title>
-    <!-- Tailwind CSS for styling -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WMEBEM Scenario Generator v6.0</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React Libraries -->
+    <!-- React & ReactDOM -->
     <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Chart.js for Graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- jsPDF for Exports -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <style>
-        /* A simple fade-in animation for the generated scenario */
-        .animate-fadeIn {
-          animation: fadeIn 0.5s ease-in-out;
-        }
+        .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Flash animation for deterioration */
+        .flash-red {
+            animation: flashRed 1.5s ease-in-out;
+        }
+        @keyframes flashRed {
+            0%, 100% { background-color: rgba(30, 41, 59, 1); } /* slate-800 */
+            50% { background-color: rgba(127, 29, 29, 0.5); } /* red-900/50 */
+        }
+        
+        /* Success flash */
+        .flash-green {
+            animation: flashGreen 1s ease-in-out;
+        }
+        @keyframes flashGreen {
+            0%, 100% { border-color: #334155; }
+            50% { border-color: #10b981; }
+        }
+        
+        /* Prevent layout shift on scrollbar appearance */
+        html {
+            overflow-y: scroll;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+        }
+
+        /* Progress bar animation for buttons */
+        @keyframes loadProgress {
+            from { width: 0%; }
+            to { width: 100%; }
+        }
+        .loading-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 100%;
+            background-color: rgba(16, 185, 129, 0.2); /* emerald-500 with opacity */
+            animation: loadProgress 2s linear forwards; /* 2s duration matches logic */
+            z-index: 0;
+        }
     </style>
 </head>
-<body class="bg-slate-900">
+<body class="bg-slate-900 text-slate-100 antialiased selection:bg-sky-500 selection:text-white">
     <div id="root"></div>
 
-    <script type="text/javascript">
-    // This script now contains standard JavaScript (no JSX)
+    <script type="text/babel">
     
-    // --- Helper functions for procedural generation ---
+    // --- 1. HELPER FUNCTIONS & DATA ---
+
     const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
 
     const AGE_BRACKETS = {
-        INFANT: { maxAge: 1, label: "Infant" }, 
-        TODDLER_PRESCHOOL: { maxAge: 5, label: "Toddler/Preschool" }, 
-        SCHOOL_AGE: { maxAge: 12, label: "School-Age" }, 
-        ADOLESCENT: { maxAge: 17, label: "Adolescent" }, 
-        YOUNG_ADULT: { maxAge: 39, label: "Young Adult" }, 
-        MIDDLE_ADULT: { maxAge: 64, label: "Middle-Aged Adult" }, 
-        ELDERLY: { maxAge: 120, label: "Elderly" } 
+        INFANT: { maxAge: 1 }, TODDLER: { maxAge: 5 }, SCHOOL: { maxAge: 12 }, 
+        ADOLESCENT: { maxAge: 17 }, ADULT: { maxAge: 64 }, ELDERLY: { maxAge: 120 } 
     };
-
-    const getAgeBracket = (age, isMonths = false) => {
-        if (isMonths && age <= 12) return AGE_BRACKETS.INFANT; 
-        if (!isMonths && age <= AGE_BRACKETS.INFANT.maxAge) return AGE_BRACKETS.INFANT;
-        if (age <= AGE_BRACKETS.TODDLER_PRESCHOOL.maxAge) return AGE_BRACKETS.TODDLER_PRESCHOOL;
-        if (age <= AGE_BRACKETS.SCHOOL_AGE.maxAge) return AGE_BRACKETS.SCHOOL_AGE;
-        if (age <= AGE_BRACKETS.ADOLESCENT.maxAge) return AGE_BRACKETS.ADOLESCENT;
-        if (age <= AGE_BRACKETS.YOUNG_ADULT.maxAge) return AGE_BRACKETS.YOUNG_ADULT;
-        if (age <= AGE_BRACKETS.MIDDLE_ADULT.maxAge) return AGE_BRACKETS.MIDDLE_ADULT;
-        return AGE_BRACKETS.ELDERLY;
-    };
-
 
     const getBaseVitals = (age, isMonths = false) => {
-        const bracket = getAgeBracket(age, isMonths);
-        switch (bracket) {
-            case AGE_BRACKETS.INFANT:
-                return { hr: [100, 180], rr: [30, 60], bpSys: [70, 100], bpDia: [40, 60], temp: [36.5, 37.5], bm: [3.0, 6.0] };
-            case AGE_BRACKETS.TODDLER_PRESCHOOL:
-                return { hr: [80, 140], rr: [20, 30], bpSys: [80, 110], bpDia: [50, 70], temp: [36.5, 37.5], bm: [3.5, 7.0] };
-            case AGE_BRACKETS.SCHOOL_AGE:
-                return { hr: [70, 120], rr: [18, 25], bpSys: [90, 120], bpDia: [55, 80], temp: [36.5, 37.5], bm: [4.0, 7.8] };
-            case AGE_BRACKETS.ADOLESCENT:
-                 return { hr: [60, 100], rr: [12, 20], bpSys: [100, 130], bpDia: [60, 85], temp: [36.1, 37.2], bm: [4.0, 7.8] };
-            case AGE_BRACKETS.YOUNG_ADULT:
-            case AGE_BRACKETS.MIDDLE_ADULT:
-                return { hr: [60, 100], rr: [12, 20], bpSys: [100, 140], bpDia: [60, 90], temp: [36.1, 37.2], bm: [4.0, 7.8] };
-            case AGE_BRACKETS.ELDERLY:
-                return { hr: [55, 95], rr: [12, 22], bpSys: [110, 160], bpDia: [60, 90], temp: [35.8, 37.0], bm: [4.0, 8.5] };
-            default: 
-                return { hr: [60, 100], rr: [12, 20], bpSys: [100, 140], bpDia: [60,90], temp: [36.1, 37.2], bm: [4.0, 7.8] };
-        }
+        if (isMonths || age <= 1) return { hr: 140, rr: 40, bpSys: 80, bpDia: 50, temp: 37.0, bm: 4.5 }; // Infant
+        if (age <= 5) return { hr: 110, rr: 30, bpSys: 90, bpDia: 60, temp: 37.0, bm: 5.0 }; // Toddler
+        if (age <= 12) return { hr: 90, rr: 22, bpSys: 100, bpDia: 65, temp: 36.8, bm: 5.5 }; // School
+        return { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8 }; // Adult/Adolescent
     };
 
-    const generateVbg = (clinicalState = "normal", baseGlucose = 6.0, baseK = 4.0) => {
-        let vbg = {
-            pH: getRandomFloat(7.32, 7.42, 2),
-            pCO2: getRandomFloat(5.5, 6.5, 1), 
-            HCO3: getRandomFloat(22, 28, 0), 
-            BE: getRandomFloat(-2, 2, 0),
-            Lactate: getRandomFloat(0.5, 2.0, 1), 
-            Glucose: getRandomFloat(Math.max(2.0, baseGlucose -1), baseGlucose + 1, 1), 
-            K: getRandomFloat(Math.max(2.5, baseK - 0.5), baseK + 0.5, 1) 
-        };
+    // Paediatric Weight Estimation (APLS Formula)
+    const estimateWeight = (age) => {
+        if (age < 1) return "4-10"; // Range for <1yr
+        if (age >= 1 && age <= 5) return (2 * age + 8).toFixed(1);
+        if (age >= 6 && age <= 12) return (3 * age + 7).toFixed(1);
+        return null; // Adult/Older child
+    };
 
+    // VBG Generator
+    const generateVbg = (clinicalState = "normal") => {
+        let vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5 };
+        vbg.pH += getRandomFloat(-0.03, 0.03, 2);
+        
         switch (clinicalState) {
-            case "dka_severe":
-                vbg.pH = getRandomFloat(6.9, 7.15, 2); vbg.pCO2 = getRandomFloat(2.0, 3.5, 1); 
-                vbg.HCO3 = getRandomFloat(5, 10, 0); vbg.BE = getRandomFloat(-25, -15, 0);
-                vbg.Lactate = getRandomFloat(1.5, 3.0, 1); vbg.Glucose = getRandomFloat(20, 35, 1);
-                vbg.K = getRandomFloat(3.0, 5.5, 1); 
-                break;
-            case "septic_shock":
-                vbg.pH = getRandomFloat(7.15, 7.30, 2); vbg.pCO2 = getRandomFloat(4.0, 5.5, 1); 
-                vbg.HCO3 = getRandomFloat(12, 18, 0); vbg.BE = getRandomFloat(-15, -5, 0);
-                vbg.Lactate = getRandomFloat(4.0, 10.0, 1);
-                break;
-            case "haemorrhagic_shock":
-                vbg.pH = getRandomFloat(7.10, 7.25, 2); vbg.pCO2 = getRandomFloat(4.5, 6.0, 1); 
-                vbg.HCO3 = getRandomFloat(10, 16, 0); vbg.BE = getRandomFloat(-18, -8, 0);
-                vbg.Lactate = getRandomFloat(5.0, 12.0, 1);
-                break;
-            case "asthma_severe_tiring": 
-                vbg.pH = getRandomFloat(7.20, 7.30, 2); vbg.pCO2 = getRandomFloat(6.5, 9.0, 1); 
-                vbg.HCO3 = getRandomFloat(22, 26, 0); vbg.BE = getRandomFloat(-4, 0, 0);
-                vbg.Lactate = getRandomFloat(1.0, 2.5, 1);
-                break;
-             case "anaphylaxis_shock":
-                vbg.pH = getRandomFloat(7.15, 7.30, 2); vbg.pCO2 = getRandomFloat(5.0, 6.5, 1); 
-                vbg.HCO3 = getRandomFloat(15, 20, 0); vbg.BE = getRandomFloat(-12, -5, 0);
-                vbg.Lactate = getRandomFloat(3.0, 7.0, 1);
-                break;
+            case "dka_severe": vbg = { pH: 7.05, pCO2: 3.0, HCO3: 8, BE: -18, Lac: 2.5, K: 5.2, Glu: 28.0 }; break;
+            case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 7.0 }; break;
+            case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0 }; break;
+            case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0 }; break;
+            case "respiratory_acidosis_acute": vbg = { pH: 7.20, pCO2: 9.0, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2 }; break;
             default: break;
         }
         return vbg;
     };
 
+    const HUMAN_FACTOR_CHALLENGES = [
+      { id: 'hf0', type: 'Standard Simulation', description: 'Manage effectively.' },
+      { id: 'hf1', type: 'Blindfolded Lead', description: 'Leader blindfolded. Tests closed-loop comms.' },
+      { id: 'hf2', type: 'Silent Team', description: 'Only leader speaks.' },
+      { id: 'hf3', type: 'New Junior', description: 'Junior member needs explicit instructions.' },
+      { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
+      { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
+    ];
+
+    // Comprehensive Interventions Database
+    const INTERVENTIONS = {
+        // AIRWAY & BREATHING
+        'Oxygen': { label: 'High Flow O2', effect: { SpO2: 5 }, category: 'Airway', log: 'High flow oxygen applied.' },
+        'Nebs': { label: 'Nebulisers', effect: { HR: 10, RR: -2, SpO2: 2 }, category: 'Airway', log: 'Salbutamol/Ipratropium nebulisers administered.' },
+        'Needle': { label: 'Needle Decompression', effect: { SpO2: 10, BP: 10, RR: -5 }, category: 'Airway', log: 'Needle thoracocentesis performed.' },
+        
+        // CIRCULATION & ACCESS
+        'Obs': { label: 'Apply Monitoring', effect: {}, category: 'Circulation', log: 'Full monitoring applied (ECG, SpO2, BP).' },
+        'IV Access': { label: 'IV Access (Peripheral)', effect: {}, category: 'Circulation', log: 'Peripheral IV access secured.' },
+        'Central Line': { label: 'Central Line', effect: {}, category: 'Circulation', log: 'Central Venous Catheter inserted.' },
+        'Art Line': { label: 'Arterial Line', effect: {}, category: 'Circulation', log: 'Arterial Line inserted.' },
+        'Fluids': { label: 'IV Fluids (500ml)', effect: { BP: 5, HR: -2 }, category: 'Circulation', log: '500ml Crystalloid bolus given.' },
+        'Blood': { label: 'pRBC (1 Unit)', effect: { BP: 10, HR: -5 }, category: 'Circulation', log: '1 Unit Packed Red Blood Cells transfused.' },
+        'FFP': { label: 'FFP', effect: { BP: 5 }, category: 'Circulation', log: 'Fresh Frozen Plasma transfused.' },
+        'Platelets': { label: 'Platelets', effect: {}, category: 'Circulation', log: 'Platelets transfused.' },
+        'MHP': { label: 'Activate MHP', effect: {}, category: 'Circulation', log: 'Major Haemorrhage Protocol activated.' },
+
+        // DRUGS
+        'Analgesia': { label: 'Analgesia (Morphine)', effect: { HR: -5, RR: -2 }, category: 'Drugs', log: 'Morphine administered.' },
+        'Paracetamol': { label: 'IV Paracetamol', effect: {}, category: 'Drugs', log: 'IV Paracetamol administered.' },
+        'Antibiotics': { label: 'Antibiotics', effect: {}, category: 'Drugs', log: 'IV Antibiotics administered.' },
+        'Ondansetron': { label: 'Ondansetron', effect: {}, category: 'Drugs', log: 'Ondansetron administered.' },
+        'TXA': { label: 'TXA 1g', effect: {}, category: 'Drugs', log: 'Tranexamic Acid 1g administered.' },
+        'Adrenaline': { label: 'IM Adrenaline', effect: { HR: 20, BP: 10, RR: -2 }, category: 'Drugs', log: 'IM Adrenaline 1:1000 administered.' },
+        'Atropine': { label: 'Atropine', effect: { HR: 20 }, category: 'Drugs', log: 'Atropine 500mcg administered.' },
+        'Amiodarone': { label: 'Amiodarone', effect: { HR: -10 }, category: 'Drugs', log: 'Amiodarone 300mg administered.' },
+        'Adenosine': { label: 'Adenosine', effect: { HR: -80 }, category: 'Drugs', log: 'Adenosine rapid bolus administered.' },
+        'Benzos': { label: 'Benzodiazepines', effect: { HR: -10, RR: -2, gcs: -1 }, category: 'Drugs', log: 'Lorazepam/Midazolam administered.' },
+        'Dexamethasone': { label: 'Dexamethasone', effect: {}, category: 'Drugs', log: 'Dexamethasone administered.' },
+        'Calcium': { label: 'Calcium Gluconate', effect: {}, category: 'Drugs', log: 'Calcium Gluconate administered.' },
+        'Insulin': { label: 'Actrapid Insulin', effect: {}, category: 'Drugs', log: 'Insulin/Dextrose infusion started.' },
+        'Magnesium': { label: 'Magnesium', effect: { BP: -5 }, category: 'Drugs', log: 'IV Magnesium administered.' },
+        'Naloxone': { label: 'Naloxone', effect: { RR: 10, gcs: 3 }, category: 'Drugs', log: 'Naloxone administered.' },
+
+        // PROCEDURES
+        'Cardioversion': { label: 'Cardioversion', effect: { HR: -50, BP: 10 }, category: 'Procedures', log: 'Synchronised DC Cardioversion delivered.' },
+        'Pacing': { label: 'External Pacing', effect: { HR: 40, BP: 20 }, category: 'Procedures', log: 'External Pacing initiated.' },
+        'Intubation': { label: 'RSI / Intubation', effect: { SpO2: 100, RR: -10 }, category: 'Procedures', log: 'Patient Intubated and Ventilated.' },
+        'CPR': { label: 'CPR', effect: {}, category: 'Procedures', log: 'CPR in progress.' }
+    };
 
     const ALL_SCENARIOS = [
-      // --- PAEDIATRIC MEDICAL ---
+      // === CARDIAC ===
       {
-        id: 'PM001', title: 'Paediatric Anaphylaxis', category: 'Medical', ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(1, 17), 
-        patientProfileTemplate: "A {age}-year-old {sex} known to have a peanut allergy, accidentally ingested a biscuit containing peanuts at a birthday party {timeSinceExposure} minutes ago.",
-        presentingComplaint: 'Sudden onset of rash, facial swelling, and difficulty breathing.',
-        scenarioDetails: [ 
-          'Child is visibly distressed, with widespread urticaria and angioedema of the lips and eyelids.',
-          'Audible wheeze and stridor are present. Work of breathing is significantly increased.',
-          'Mother is extremely anxious and is providing conflicting information due to panic.',
-          'Key interventions: Immediate IM adrenaline (1:1000), high-flow oxygen, IV/IO access, corticosteroids (oral prednisolone or IV hydrocortisone), antihistamines. Prepare for airway management.',
-          'Consider fluid bolus for hypotension (20ml/kg 0.9% saline).',
-          'Potential complications: Cardiovascular collapse, refractory bronchospasm, airway obstruction requiring intubation.'
-         ],
-        learningObjectives: [ 
-          'Rapid recognition and management of anaphylaxis in a child, adhering to UK guidelines.',
-          'Correct dosing and administration of IM adrenaline for age/weight.',
-          'Effective communication with a distressed parent while managing a critical patient.',
-          'Anticipation of airway compromise and escalation pathway.'
-         ],
-        defaultHumanFactor: { type: 'Distracting Element', description: 'Mother is extremely anxious and is providing conflicting information due to panic.', specifics: 'Mother panicking and giving conflicting history.' },
-        debriefPoints: ['Timeliness of adrenaline administration.', 'Airway assessment and management plan.', 'Communication strategies with the parent.', 'Team roles and coordination. Adherence to Resus Council UK guidelines.'],
-        equipmentNeeded: ['Paediatric resus kit', 'Adrenaline (1:1000)', 'Oxygen', 'Nebulisers (Salbutamol)', 'IV/IO access kit', 'Corticosteroids', 'Antihistamines'],
-        guidelineLinks: [{ name: "Resuscitation Council UK: Anaphylaxis Guidelines", url: "https://www.resus.org.uk/library/additional-guidance/guidance-anaphylaxis" }],
-        ecg: { type: "Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm, normal axis for age. No acute ischaemic changes. Consistent with physiological stress/hypotension.", link: "https://litfl.com/sinus-tachycardia-ecg-library/" },
-        chestXray: { findings: "Usually normal unless significant bronchospasm causes hyperinflation, or aspiration occurs.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "anaphylaxis_shock" 
+        id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(40, 70), 
+        patientProfileTemplate: "A {age}-year-old {sex}, smoker. {durationPain} hour(s) of crushing chest pain.",
+        presentingComplaint: 'Chest pain, diaphoresis.',
+        scenarioDetails: ['Pale, clammy.', 'ECG: Anterior STE (V1-V4).', 'Pain 10/10.'], 
+        vitalsMod: { hr: 100, bpSys: 130, spO2: 94, rr: 20 },
+        deterioration: { active: true, rate: 0.05, type: 'cardiac' },
+        stabilisers: ['Analgesia', 'Oxygen', 'Fluids', 'MHP', 'Cardioversion'], 
+        vbgClinicalState: "normal",
+        ecg: { type: "Anterior STEMI", findings: "STE V1-V4." },
+        chestXray: { findings: "Clear." },
+        ultrasound: { type: "Echo", findings: "Anterior wall motion abnormality." },
+        ct: { findings: "Not indicated." }
       },
       {
-        id: 'PM002', title: 'Status Epilepticus in a Toddler', category: 'Medical', ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(1, 5), 
-        patientProfileTemplate: "A {age}-year-old {sex} brought in by ambulance, actively seizing for {seizureDuration} minutes. Pre-hospital buccal midazolam given {prehospitalMedsTime} mins ago with no effect.",
-        presentingComplaint: 'Generalised tonic-clonic seizure.',
-         scenarioDetails: [ 
-          'Child is actively fitting on arrival. Airway is partially obstructed by secretions.',
-          'Initial assessment: A - noisy, secretions, B - irregular breathing pattern, C - tachycardic, D - GCS 3, E - febrile.',
-          'Key interventions: Secure airway (positioning, suction), maintain oxygenation, IV/IO access, administer second-line anticonvulsant (e.g., Lorazepam IV/IO).',
-          'If seizure continues, escalate to third-line (e.g., Phenytoin/Levetiracetam). Consider underlying cause (e.g., febrile, meningitis, metabolic). Consider imaging (CT/MRI head) if focal seizure, new onset, or other concerns after stabilisation.',
-          'Potential complications: Respiratory depression, aspiration, hypotension from medications, cerebral hypoxia.'
-        ],
-        learningObjectives: [ 
-          'Algorithm-based management of status epilepticus in children, referencing NICE guidelines.', 
-          'Rapid establishment of IV/IO access in a seizing child.', 
-          'Correct drug dosages and administration for paediatric seizures.', 
-          'Early consideration of underlying causes and investigations, including indications for neuroimaging.'
-        ],
-        defaultHumanFactor: { type: 'Missing Equipment', description: 'The paediatric IO gun is found to be missing its needle set. The team must rapidly find an alternative method for vascular access or an alternative IO device.', specifics: 'Paediatric IO needle set missing.' },
-        debriefPoints: [ 
-          'Speed and effectiveness of airway management and oxygenation.', 
-          'Timeliness of vascular access and anticonvulsant administration.', 
-          'Problem-solving around the missing equipment.', 
-          'Adherence to seizure management guidelines (NICE).'
-        ],
-        equipmentNeeded: [ 
-          'Airway equipment (paediatric sizes)', 
-          'Suction', 
-          'Oxygen', 
-          'IV/IO kits (various sizes)', 
-          'Anticonvulsants (Lorazepam, Phenytoin, Levetiracetam)', 
-          'Antipyretics'
-        ],
-        suggestedImagingReview: { description: "Review CT/MRI head imaging for potential underlying causes...", url: "https://radiopaedia.org/search?utf8=✓&q=paediatric+seizure+imaging" },
-        guidelineLinks: [{ name: "NICE NG217: Epilepsies in children, young people and adults", url: "https://www.nice.org.uk/guidance/ng217" } ],
-        ecg: { type: "Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm. May show some artefact due to seizure activity...", link: "https://litfl.com/sinus-tachycardia-ecg-library/" },
-        chestXray: { findings: "Normal for age. Clear lung fields. Important to exclude aspiration...", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "septic_shock" 
+        id: 'AM008', title: 'SVT (Supraventricular Tachycardia)', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 50),
+        patientProfileTemplate: "A {age}-year-old {sex} with sudden onset palpitations. Feeling lightheaded.",
+        presentingComplaint: 'Palpitations, pre-syncope.',
+        scenarioDetails: ['Alert but anxious.', ' HR > 180bpm narrow complex.', 'BP stable initially.'],
+        vitalsMod: { hr: 190, bpSys: 110, spO2: 98, rr: 20 },
+        deterioration: { active: true, rate: 0.05, type: 'shock' },
+        stabilisers: ['Adenosine', 'Cardioversion'],
+        vbgClinicalState: "normal",
+        ecg: { type: "SVT", findings: "Narrow complex tachycardia, rate 190, no P waves." },
+        chestXray: { findings: "Clear." },
+        ultrasound: { type: "Echo", findings: "Hyperdynamic LV, normal structure." },
+        ct: { findings: "Not indicated." }
       },
       {
-        id: 'PM003', title: 'Paediatric DKA Management', category: 'Medical', ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(6, 17),
-        patientProfileTemplate: "A {age}-year-old {sex}, known type 1 diabetic, presents with {durationSymptoms} days of vomiting, abdominal pain, and increased thirst.",
-        presentingComplaint: 'Vomiting, abdominal pain, lethargy.',
-        scenarioDetails: [ 
-          'Child appears dehydrated with deep, sighing respirations. Smells of ketones.',
-          'VBG confirms severe acidosis.', 
-          'Key interventions: Careful IV fluid resuscitation (initial bolus if shocked, then calculated replacement + maintenance, avoiding rapid correction of osmolality), IV insulin infusion (0.05-0.1 units/kg/hr, after initial fluid loading), potassium replacement, frequent neurological observations.',
-          'Monitor for signs of cerebral oedema (headache, irritability, decreased GCS, bradycardia, hypertension). If suspected, manage urgently (e.g. mannitol/hypertonic saline, reduce IV fluid rate, senior review/PICU).',
-          'Potential complications: Cerebral oedema, hypokalaemia, hypoglycaemia (later).'
-        ],
-        learningObjectives: [ 
-          'Recognition and management of paediatric Diabetic Ketoacidosis (DKA) according to UK (BSPED) guidelines.', 
-          'Correct fluid and insulin therapy.', 
-          'Interpretation of VBG in DKA.', 
-          'Monitoring for and management of DKA complications, especially cerebral oedema.'
-        ],
-        defaultHumanFactor: { type: 'Information Withheld', description: 'The facilitator knows the child missed insulin...', specifics: 'Information about missed insulin doses.' },
-        debriefPoints: [ 
-          'Thoroughness of history taking.', 
-          'Adherence to DKA management protocol (BSPED).', 
-          'Fluid balance calculation and management.', 
-          'Recognition of Kussmaul breathing and its significance. Management of cerebral oedema if it occurs.'
-        ],
-        equipmentNeeded: [ 
-          'DKA management kit/protocol', 
-          'IV fluids (0.9% Saline, fluids with Dextrose and KCL)', 
-          'Insulin infusion pump', 
-          'Blood gas analyser', 
-          'Electrolyte monitoring', 
-          'Flow charts for DKA management', 
-          'Mannitol/Hypertonic saline'
-        ],
-        suggestedImagingReview: { description: "Review CT head imaging for signs of cerebral oedema...", url: "https://radiopaedia.org/search?utf8=✓&q=cerebral+edema+DKA" },
-        guidelineLinks: [{ name: "BSPED DKA Guidelines", url: "https://www.bsped.org.uk/guidance/managing-dka/" }],
-        ecg: { type: "Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm. May show T wave changes related to potassium levels...", link: "https://litfl.com/hyperkalaemia-ecg-library/" },
-        chestXray: { findings: "Usually normal. May show signs of aspiration...", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "dka_severe"
+        id: 'AM009', title: 'Pulsed VT', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(50, 75),
+        patientProfileTemplate: "A {age}-year-old {sex} with history of IHD. Palpitations and chest tightness.",
+        presentingComplaint: 'Palpitations, Chest Pain.',
+        scenarioDetails: ['Pale, diaphoretic.', 'Broad complex tachycardia on monitor.', 'Conscious.'],
+        vitalsMod: { hr: 160, bpSys: 90, spO2: 94, rr: 22 },
+        deterioration: { active: true, rate: 0.1, type: 'shock' },
+        stabilisers: ['Amiodarone', 'Cardioversion'],
+        vbgClinicalState: "normal",
+        ecg: { type: "VT", findings: "Broad complex tachycardia, rate 160, AV dissociation." },
+        chestXray: { findings: "Mild pulmonary congestion." },
+        ultrasound: { type: "Echo", findings: "Reduced EF, global hypokinesis." },
+        ct: { findings: "Not indicated." }
       },
       {
-        id: 'PM004', title: 'Infant with Bronchiolitis', category: 'Medical', ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(1, 12), 
-        isInfantInMonths: true, 
-        patientProfileTemplate: "A {age}-month-old infant, ex-premature (born at {gestation} weeks), presents with {durationSymptoms} days of cough, worsening breathing difficulty, and poor feeding.",
-        presentingComplaint: 'Increased work of breathing, audible wheeze, poor feeding.',
-        scenarioDetails: [ 
-          'Infant shows significant subcostal and intercostal recession, nasal flaring, and tracheal tug.',
-          'Fine inspiratory crackles and expiratory wheeze heard bilaterally.',
-          'Capillary refill is 3 seconds. Looks tired.', 
-          'Key interventions: Supplemental oxygen to maintain sats >92% (or per local guideline). Nasal suctioning if secretions are problematic. NG tube for feeding if oral intake inadequate. Monitor for apnoeas.',
-          'Consider CPAP/HFNO if worsening respiratory distress despite initial measures. Chest X-ray generally not routine unless atypical features, severe disease, or to exclude other pathology.',
-          'No routine role for bronchodilators, steroids, or antibiotics unless specific indications.',
-          'Potential complications: Apnoea, respiratory failure requiring ventilatory support, dehydration.'
-        ],
-        learningObjectives: [ 
-          'Recognition of severe bronchiolitis in an infant.', 
-          'Appropriate supportive management (oxygen, hydration) as per NICE guidelines.', 
-          'Understanding indications for escalation of respiratory support (CPAP/HFNO).', 
-          'Knowing what treatments are NOT routinely indicated. Indications for CXR.'
-        ],
-        defaultHumanFactor: { type: 'Standard Simulation', description: 'Manage the clinical scenario effectively.' },
-        debriefPoints: [ 
-          'Assessment of respiratory distress severity.', 
-          'Oxygen therapy titration.', 
-          'Feeding strategies.', 
-          'Escalation criteria. Adherence to NICE bronchiolitis guideline.'
-        ],
-        equipmentNeeded: [ 
-          'Paediatric observation monitor', 
-          'Oxygen delivery devices (nasal cannulae, masks)', 
-          'Suction equipment', 
-          'NG feeding equipment', 
-          'Access to CPAP/HFNO if available'
-        ],
-        suggestedImagingReview: { description: "Review chest X-rays in bronchiolitis for typical findings...", url: "https://radiopaedia.org/search?utf8=✓&q=bronchiolitis+chest+x-ray" },
-        guidelineLinks: [{ name: "NICE NG9: Bronchiolitis in children", url: "https://www.nice.org.uk/guidance/ng9" }],
-        ecg: { type: "Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm. Usually normal for age other than tachycardia...", link: "https://litfl.com/sinus-tachycardia-ecg-library/" },
-        chestXray: { findings: "May show hyperinflation, peribronchial cuffing...", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "asthma_severe_tiring" 
+        id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(50, 80),
+        patientProfileTemplate: "A {age}-year-old {sex} collapsed in waiting room. No output.",
+        presentingComplaint: 'Cardiac Arrest.',
+        scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'Rhythm check: VF.'],
+        vitalsMod: { hr: 0, bpSys: 0, spO2: 0, rr: 0, gcs: 3 },
+        deterioration: { active: false, rate: 0, type: 'arrest' },
+        stabilisers: ['CPR', 'Cardioversion', 'Adrenaline', 'Amiodarone'],
+        vbgClinicalState: "metabolic_acidosis_severe",
+        ecg: { type: "VF", findings: "Ventricular Fibrillation." },
+        chestXray: { findings: "Not indicated during CPR." },
+        ultrasound: { type: "Echo (During Pulse Check)", findings: "Quivering myocardium, no coordinated squeeze." },
+        ct: { findings: "Not indicated." }
       },
       {
-        id: 'PM005', title: 'Paediatric Isolated Head Injury - Fall', category: 'Medical', ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(1, 17), 
-        patientProfileTemplate: "A {age}-year-old {sex} fell off a climbing frame (approx {fallHeight}m height) {timeSinceFall} minutes ago. No reported loss of consciousness, but vomited {numVomits} time(s) since the fall. Crying, but consolable.",
-        presentingComplaint: 'Head injury, vomiting.',
-        scenarioDetails: [ 
-          'Small haematoma on forehead. No other obvious injuries. Moves all limbs. Neurologically intact on initial assessment.',
-          'Parents are anxious.', 
-          'Key interventions: ABCDE assessment. Detailed history of event. Assess for NICE criteria for CT head scan (e.g., GCS <14, suspected open/depressed skull fracture, signs of basal skull fracture, post-traumatic seizure, focal neurological deficit, >1 vomit, dangerous mechanism for <1yr old).',
-          'Observation period may be appropriate if CT not immediately indicated. Provide head injury advice leaflet.',
-          'Consider safeguarding if mechanism or history is unclear/concerning (Non-Accidental Injury).',
-          'Potential complications: Intracranial haemorrhage, skull fracture.'
-        ],
-        learningObjectives: [ 
-          'Application of NICE head injury guidelines in children.', 
-          'Assessing indications for CT head scan in paediatric head injury.', 
-          'Appropriate observation and discharge planning.', 
-          'Recognising safeguarding concerns in paediatric injuries.'
-        ],
-        defaultHumanFactor: { type: 'Distracting Element', description: 'One parent is very anxious and repeatedly demands a CT scan...', specifics: 'Anxious parent demanding CT.'},
-        debriefPoints: [ 
-          'Adherence to NICE head injury guidelines.', 
-          'Communication with anxious parents.', 
-          'Documentation of assessment and decision-making.', 
-          'Safeguarding considerations if applicable.'
-        ],
-        equipmentNeeded: [ 
-          'Basic assessment tools', 
-          'Head injury advice leaflets', 
-          'Access to CT scanner if indicated'
-        ],
-        suggestedImagingReview: { description: "Review CT head scans for paediatric head trauma...", url: "https://radiopaedia.org/search?utf8=✓&q=paediatric+head+trauma+CT" },
-        guidelineLinks: [
-            { name: "NICE CG176: Head injury - assessment and early management", url: "https://www.nice.org.uk/guidance/cg176" },
-            { name: "NICE NG76: Child maltreatment", url: "https://www.nice.org.uk/guidance/ng76"}
-        ],
-        ecg: { type: "Normal Sinus Rhythm", findingsTemplate: "Rate {hr}bpm (age appropriate). No acute changes expected...", link: "https://litfl.com/ecg-basics-interpretation/" },
-        chestXray: { findings: "Normal for age. Not routinely indicated in isolated head injury.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "normal"
+        id: 'AM005', title: 'Acute Heart Failure', category: 'Medical', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(70, 90),
+        patientProfileTemplate: "A {age}-year-old {sex} with IHD. Severe respiratory distress.",
+        presentingComplaint: 'Severe breathlessness, frothy sputum.',
+        scenarioDetails: ['Sat upright, sweating.', 'Bibasal crackles.', 'BP Hypertensive.'],
+        vitalsMod: { hr: 110, bpSys: 180, bpDia: 100, spO2: 85, rr: 32 },
+        deterioration: { active: true, rate: 0.1, type: 'respiratory' }, 
+        stabilisers: ['Oxygen', 'Analgesia'], // Fluids worsen logic handles this
+        vbgClinicalState: "normal",
+        ecg: { type: "AF RVR", findings: "AF rate 110." },
+        chestXray: { findings: "Pulmonary oedema." },
+        ultrasound: { type: "Lung", findings: "B-lines everywhere." },
+        ct: { findings: "Not immediately indicated." }
       },
-      { 
-        id: 'PT001',
-        title: 'Paediatric Limb Fracture - Fall from Height',
-        category: 'Trauma',
-        ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(5, 12),
-        patientProfileTemplate: "A {age}-year-old {sex} fell from a tree (approx {fallHeight}m) {timeSinceFall} minutes ago, landing on their outstretched arm. Complaining of severe arm pain.",
-        presentingComplaint: 'Right forearm pain and deformity.',
-        scenarioDetails: [
-            'Child is crying and cradling their right arm. Obvious deformity and swelling to the right forearm.',
-            'Distal neurovascular status needs careful assessment (cap refill, sensation, movement of fingers).',
-            'Key interventions: <C>ABCDE (ETC principles for trauma). Assess for other injuries (head, neck, chest, abdomen, pelvis, other limbs). Analgesia (e.g., intranasal fentanyl/diamorphine, paracetamol, ibuprofen). Splinting of the affected limb.',
-            'X-ray of the forearm (AP and lateral) including elbow and wrist joints.',
-            'Orthopaedic referral for management (e.g., manipulation under anaesthesia, casting).',
-            'Consider safeguarding if history is inconsistent or concerning, though this scenario implies accidental.'
-        ],
-        learningObjectives: [
-            'Assessment of paediatric limb trauma.',
-            'Effective pain management in children.',
-            'Principles of splinting.',
-            'Recognising indications for orthopaedic referral.',
-            'Neurovascular assessment of injured limbs.'
-        ],
-        defaultHumanFactor: { type: 'Distracting Element', description: 'Parent is very anxious and repeatedly asking if the arm is broken and if the child will need an operation.', specifics: 'Anxious parent about fracture severity.' },
-        debriefPoints: ['Pain management.', 'Splinting technique.', 'Neurovascular checks.', 'Communication with child and parent.'],
-        equipmentNeeded: ['Analgesia', 'Splinting materials (e.g., backslab, slings)', 'Access to X-ray'],
-        guidelineLinks: [{ name: "NICE NG38: Fractures (non-complex) - assessment and management", url: "https://www.nice.org.uk/guidance/ng38" }],
-        ecg: { type: "Normal Sinus Rhythm for age", findingsTemplate: "Rate {hr}bpm. Normal for age. No acute changes.", link: "https://litfl.com/ecg-basics-interpretation/" },
-        chestXray: { findings: "Normal for age. Not routinely indicated for isolated limb injury unless other concerns.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        pelvicXray: { findings: "Normal for age. Not indicated for isolated forearm injury unless wider trauma suspected from mechanism.", link: "https://radiopaedia.org/articles/pelvis-radiograph-an-approach?lang=gb" },
-        vbgClinicalState: "normal"
-      },
-    
-      // --- ADULT MEDICAL ---
+
+      // === TRAUMA ===
       {
-        id: 'AM001', title: 'Acute STEMI Management', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(40, 64), 
-        patientProfileTemplate: "A {age}-year-old {sex} with a history of hypertension and smoking, presents with {durationPain} hour(s) of central crushing chest pain.",
-        presentingComplaint: 'Severe chest pain, radiating to left arm, associated with nausea and sweating.',
-        scenarioDetails: [ 
-          'Patient is pale, sweaty, and clearly in distress. ECG shows ST elevation in anterior leads (V1-V4).',
-          'Aspirin and GTN spray given by paramedics with minimal relief.', 
-          'Key interventions: High-flow oxygen if sats <94%, Morphine for pain, Aspirin (300mg loading dose if not already given full dose), Ticagrelor/Clopidogrel (loading dose), Fondaparinux/Heparin. Urgent cardiology consultation for Primary PCI.',
-          'Monitor for arrhythmias, hypotension, or heart failure. Chest X-ray if signs of heart failure (e.g. pulmonary oedema).',
-          'Potential complications: Ventricular fibrillation, cardiogenic shock, acute pulmonary oedema.'
-        ], 
-        learningObjectives: [ 
-          'Rapid recognition and management of ST-elevation myocardial infarction (STEMI) as per UK guidelines.', 
-          'Correct administration of ACS medications.', 
-          'Effective communication and coordination for timely PPCI.', 
-          'Management of STEMI complications. Indications for CXR in ACS.'
-        ],
-        defaultHumanFactor: { type: 'Blindfolded Lead', description: 'The team leader will wear a blindfold...' },
-        debriefPoints: [ 
-          'Clarity and accuracy of information relayed to the team leader.', 
-          'Team leader\'s ability to direct care effectively without visual cues.', 
-          'Timeliness of interventions based on verbal reports.', 
-          'Team adaptation to the communication challenge.'
-        ], 
-        equipmentNeeded: [ 
-          'ECG machine', 
-          'Resuscitation trolley', 
-          'Defibrillator', 
-          'Oxygen', 
-          'ACS medications (Aspirin, GTN, Morphine, Ticagrelor/Clopidogrel, Anticoagulant)'
-        ],
-        suggestedImagingReview: { description: "Review chest X-rays for signs of pulmonary oedema...", url: "https://radiopaedia.org/search?utf8=✓&q=pulmonary+edema+myocardial+infarction" },
-        suggestedEcgReview: { description: "Identify anterior STEMI features...", url: "https://litfl.com/anterior-myocardial-infarction-ecg-library/" },
-        guidelineLinks: [{ name: "NICE NG185: Acute coronary syndromes", url: "https://www.nice.org.uk/guidance/ng185" }],
-        ecg: { type: "Anterior STEMI", findingsTemplate: "Sinus rhythm at {hr}bpm. ST elevation in leads V1-V4...", link: "https://litfl.com/anterior-myocardial-infarction-ecg-library/" },
-        chestXray: { findings: "Initially clear lung fields. Monitor for developing pulmonary oedema.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "normal" 
+        id: 'AT003', title: 'Traumatic Arrest (Penetrating)', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
+        patientProfileTemplate: "A {age}-year-old {sex} stabbed in left chest. Lost output en route.",
+        presentingComplaint: 'Traumatic Arrest.',
+        scenarioDetails: ['CPR in progress.', 'Single stab wound L parasternal.', 'Distended neck veins.'],
+        vitalsMod: { hr: 0, bpSys: 0, spO2: 0, rr: 0, gcs: 3 },
+        deterioration: { active: false, rate: 0, type: 'arrest' },
+        stabilisers: ['Thoracotomy' /* Not in list but Needle is proxy */, 'Needle', 'Blood', 'MHP'],
+        vbgClinicalState: "haemorrhagic_shock",
+        ecg: { type: "PEA", findings: "Narrow complex PEA." },
+        chestXray: { findings: "Usually straight to theatre/thoracotomy." },
+        ultrasound: { type: "EFAST", findings: "Pericardial fluid (Tamponade)." },
+        ct: { findings: "Not indicated." }
       },
       {
-        id: 'AM002', title: 'Severe Sepsis Management', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 64),
-        patientProfileTemplate: "A {age}-year-old {sex} with type 2 diabetes and a recent UTI, presents with fever, confusion, and lethargy for {durationSymptoms} hours.",
-        presentingComplaint: 'Feeling generally unwell, confused, shivery.',
-        scenarioDetails: [ 
-          'Patient appears unwell, flushed, and peripherally cool. Urine dipstick positive for nitrites and leucocytes.',
-          'NEWS2 score is high (e.g. 7+). Suspected septic shock. VBG shows metabolic acidosis with raised lactate.', 
-          'Key interventions: Sepsis Six within 1 hour: High-flow oxygen, IV fluid resuscitation (30ml/kg crystalloid stat), IV antibiotics (broad spectrum, after cultures, as per local formulary), blood cultures, lactate measurement (repeat within 2-4 hours), monitor urine output (catheterise).',
-          'Chest X-ray to look for source if respiratory symptoms or signs present. Consider other imaging (e.g. CT abdomen/pelvis) if source unclear and patient not responding.',
-          'Potential complications: Refractory shock, multi-organ dysfunction, ARDS.'
-        ], 
-        learningObjectives: [ 
-          'Early recognition and management of sepsis and septic shock, applying the Sepsis Six.', 
-          'Prompt implementation of time-critical interventions.', 
-          'Appropriate antibiotic choice and fluid resuscitation.', 
-          'Understanding of escalation pathways for refractory shock. Role of imaging in identifying sepsis source.'
-        ],
-        defaultHumanFactor: { type: 'Leader Only Speaks', description: 'Only the team leader is allowed to speak...' },
-        debriefPoints: [ 
-          'Effectiveness of the leader\'s verbal directions.', 
-          'Team\'s ability to understand and execute tasks with limited direct communication.', 
-          'Strategies used for non-verbal communication.', 
-          'Impact on time-critical interventions (e.g., antibiotic administration).'
-        ], 
-        equipmentNeeded: [ 
-          'Sepsis trolley/kit', 'IV fluids', 'IV antibiotics', 'Blood culture bottles', 'Lactate monitor', 'Oxygen', 'Catheterisation kit'
-        ],
-        suggestedImagingReview: { description: "Review imaging (CXR, CT) for potential sources of sepsis...", url: "https://radiopaedia.org/search?utf8=✓&q=sepsis+source+imaging" },
-        guidelineLinks: [
-            { name: "Sepsis Trust: Sepsis Six Pathway", url: "https://sepsistrust.org/professional-resources/clinical-tools/" },
-            { name: "NICE NG51: Sepsis - recognition, diagnosis and early management", url: "https://www.nice.org.uk/guidance/ng51"}
-        ],
-        ecg: { type: "Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm. May show non-specific ST-T changes...", link: "https://litfl.com/sinus-tachycardia-ecg-library/" },
-        chestXray: { findings: "May be clear, or show signs of pneumonia...", link: "https://radiopaedia.org/search?q=pneumonia+chest+xray" },
-        vbgClinicalState: "septic_shock"
+        id: 'AT004', title: 'Traumatic Arrest (Blunt)', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 60),
+        patientProfileTemplate: "A {age}-year-old {sex} pedestrian vs car. Agonal breathing.",
+        presentingComplaint: 'Traumatic Arrest.',
+        scenarioDetails: ['Loss of output on transfer.', 'Chest injury right.', 'Pelvis unstable.'],
+        vitalsMod: { hr: 0, bpSys: 0, spO2: 0, rr: 4, gcs: 3 },
+        deterioration: { active: false, rate: 0, type: 'arrest' },
+        stabilisers: ['Blood', 'Needle', 'MHP'],
+        vbgClinicalState: "haemorrhagic_shock",
+        ecg: { type: "PEA", findings: "Slow PEA." },
+        chestXray: { findings: "Massive Haemothorax." },
+        ultrasound: { type: "EFAST", findings: "Positive free fluid + pneumothorax." },
+        ct: { findings: "Not indicated." }
+      },
+      {
+        id: 'AT005', title: 'Severe Head Injury', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 60),
+        patientProfileTemplate: "A {age}-year-old {sex} fell from 3m ladder. GCS 7.",
+        presentingComplaint: 'Head Injury, Reduced GCS.',
+        scenarioDetails: ['GCS E2 V2 M3.', 'Right pupil dilated.', 'Cushing\'s Reflex?'],
+        vitalsMod: { hr: 50, bpSys: 170, bpDia: 90, spO2: 94, rr: 10, gcs: 7 },
+        deterioration: { active: true, rate: 0.1, type: 'neuro' },
+        stabilisers: ['Intubation'], // Needs airway protection
+        vbgClinicalState: "normal",
+        ecg: { type: "Sinus Bradycardia", findings: "Sinus Bradycardia." },
+        chestXray: { findings: "Clear." },
+        ultrasound: { type: "Optic Nerve Sheath", findings: "Increased ONSD (>5mm) suggesting raised ICP." },
+        ct: { findings: "CT Head: Large Extradural Haematoma with midline shift." }
+      },
+      
+      // === RESPIRATORY ===
+      {
+        id: 'AM002', title: 'Severe COPD', category: 'Medical', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(65, 90),
+        patientProfileTemplate: "A {age}-year-old {sex}, severe COPD. Drowsy on arrival.",
+        presentingComplaint: 'Dyspnoea, reduced GCS.',
+        scenarioDetails: ['GCS 13. Wheezy.', 'Asterixis positive.', 'On 15L O2 from crew.'], 
+        vitalsMod: { hr: 110, bpSys: 140, spO2: 98, rr: 10, gcs: 12 }, 
+        deterioration: { active: true, rate: 0.08, type: 'respiratory' },
+        stabilisers: ['Nebs', 'Dexamethasone'], 
+        vbgClinicalState: "copd_retainer",
+        ecg: { type: "MAT", findings: "Multifocal Atrial Tachycardia." },
+        chestXray: { findings: "Hyperinflation." },
+        ultrasound: { type: "Lung", findings: "Lung sliding present." },
+        ct: { findings: "CTPA: Negative for PE. Emphysematous changes." }
+      },
+      {
+        id: 'AM011', title: 'Life Threatening Asthma', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
+        patientProfileTemplate: "A {age}-year-old {sex}, brittle asthma. Becoming exhausted.",
+        presentingComplaint: 'Severe dyspnoea, silent chest.',
+        scenarioDetails: ['Silent chest on auscultation.', 'Exhausted, dropping GCS.', 'Sats falling.'],
+        vitalsMod: { hr: 140, bpSys: 110, spO2: 88, rr: 8, gcs: 13 },
+        deterioration: { active: true, rate: 0.15, type: 'respiratory' },
+        stabilisers: ['Adrenaline', 'Magnesium', 'Nebs', 'Dexamethasone'],
+        vbgClinicalState: "respiratory_acidosis_acute", // CO2 rising = bad
+        ecg: { type: "Sinus Tach", findings: "Rate 140, P pulmonale." },
+        chestXray: { findings: "Hyperinflation." },
+        ultrasound: { type: "Lung", findings: "Sliding present." },
+        ct: { findings: "Not indicated." }
+      },
+
+      // === OTHER MEDICAL ===
+      {
+        id: 'AM012', title: 'Anaphylaxis', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 50),
+        patientProfileTemplate: "A {age}-year-old {sex} stung by wasp. Lip swelling and wheeze.",
+        presentingComplaint: 'Angioedema, Stridor, Shock.',
+        scenarioDetails: ['Swollen lips/tongue.', 'Widespread urticaria.', 'Audible stridor.'],
+        vitalsMod: { hr: 130, bpSys: 80, bpDia: 40, spO2: 91, rr: 28 },
+        deterioration: { active: true, rate: 0.1, type: 'shock' },
+        stabilisers: ['Adrenaline', 'Fluids', 'Dexamethasone'],
+        vbgClinicalState: "normal",
+        ecg: { type: "Sinus Tach", findings: "Rate 130." },
+        chestXray: { findings: "Normal." },
+        ultrasound: { type: "Echo", findings: "Hyperdynamic, empty IVC." },
+        ct: { findings: "Not indicated." }
+      },
+      {
+        id: 'AM013', title: 'Severe Sepsis', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(40, 80),
+        patientProfileTemplate: "A {age}-year-old {sex} with fever and confusion. History of UTI.",
+        presentingComplaint: 'Fever, Rigors, Hypotension.',
+        scenarioDetails: ['Hot to touch.', 'Mottled skin.', 'Lactate 6.0.'],
+        vitalsMod: { hr: 125, bpSys: 85, bpDia: 45, spO2: 94, rr: 26, temp: 39.2 },
+        deterioration: { active: true, rate: 0.05, type: 'shock' },
+        stabilisers: ['Fluids', 'Antibiotics', 'Oxygen'],
+        vbgClinicalState: "septic_shock",
+        ecg: { type: "Sinus Tach", findings: "Rate 125." },
+        chestXray: { findings: "Clear (if UTI source)." },
+        ultrasound: { type: "IVC", findings: "Collapsing IVC." },
+        ct: { findings: "CT AP: Pyelonephritis/Obstructed ureter." }
+      },
+      {
+        id: 'AM014', title: 'Status Epilepticus', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 50),
+        patientProfileTemplate: "A {age}-year-old {sex}, known epilepsy. Seizing for 20 mins.",
+        presentingComplaint: 'Continuous Seizure.',
+        scenarioDetails: ['Tonic-clonic activity.', 'Airway compromised.', 'Hypoxic.'],
+        vitalsMod: { hr: 140, bpSys: 130, spO2: 88, rr: 30, gcs: 3 },
+        deterioration: { active: true, rate: 0.05, type: 'respiratory' },
+        stabilisers: ['Benzos', 'Oxygen'],
+        vbgClinicalState: "respiratory_acidosis_acute", // & lactic acidosis
+        ecg: { type: "Sinus Tach", findings: "Artefact from seizure." },
+        chestXray: { findings: "Aspiration?" },
+        ultrasound: { type: "N/A", findings: "N/A" },
+        ct: { findings: "CT Head: Normal/Previous changes." }
+      },
+      {
+        id: 'AM015', title: 'Severe Overdose (Opiate)', category: 'Toxicology', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 40),
+        patientProfileTemplate: "A {age}-year-old {sex} found unresponsive with needle.",
+        presentingComplaint: 'Unconscious, Apnoea.',
+        scenarioDetails: ['Pinpoint pupils.', 'Resp rate 4.', 'Skin cool.'],
+        vitalsMod: { hr: 60, bpSys: 100, spO2: 80, rr: 4, gcs: 3 },
+        deterioration: { active: true, rate: 0.1, type: 'respiratory' },
+        stabilisers: ['Naloxone', 'Oxygen'],
+        vbgClinicalState: "respiratory_acidosis_acute",
+        ecg: { type: "Sinus Brady", findings: "Normal intervals." },
+        chestXray: { findings: "Aspiration?" },
+        ultrasound: { type: "N/A", findings: "N/A" },
+        ct: { findings: "CT Head: Normal." }
+      },
+      {
+        id: 'AM016', title: 'Acute Behavioural Disturbance', category: 'Psychiatry', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 40),
+        patientProfileTemplate: "A {age}-year-old {sex}, extremely agitated and aggressive. Restrained by police.",
+        presentingComplaint: 'Agitation, Delirium.',
+        scenarioDetails: ['Sweating profusely.', 'Shouting incoherent.', 'High risk of hyperthermia/rhabdo.'],
+        vitalsMod: { hr: 140, bpSys: 160, spO2: 96, rr: 30, temp: 38.5 },
+        deterioration: { active: true, rate: 0.05, type: 'metabolic' },
+        stabilisers: ['Benzos', 'Fluids'],
+        vbgClinicalState: "metabolic_acidosis_severe", // Lactate high
+        ecg: { type: "Sinus Tach", findings: "Rate 140." },
+        chestXray: { findings: "Normal." },
+        ultrasound: { type: "N/A", findings: "N/A" },
+        ct: { findings: "CT Head: Normal." }
+      },
+
+      // === OBSTETRIC ===
+      {
+        id: 'OB001', title: 'Maternal Collapse (Eclampsia)', category: 'Obstetric & Gynae Emergencies', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 40),
+        patientProfileTemplate: "A {age}-year-old female, 36 weeks pregnant. Seizing.",
+        presentingComplaint: 'Seizure in pregnancy.',
+        scenarioDetails: ['Tonic-clonic seizure.', 'Hypertensive prior to seizure.', 'Proteinuria +++.'],
+        vitalsMod: { hr: 130, bpSys: 180, bpDia: 110, spO2: 90, rr: 24, gcs: 3 },
+        deterioration: { active: true, rate: 0.1, type: 'neuro' },
+        stabilisers: ['Magnesium', 'Oxygen', 'Benzos'],
+        vbgClinicalState: "normal",
+        ecg: { type: "Sinus Tach", findings: "Rate 130." },
+        chestXray: { findings: "Shield gravid uterus." },
+        ultrasound: { type: "Fetal Heart", findings: "Fetal bradycardia." },
+        ct: { findings: "CT Head: Posterior Reversible Encephalopathy Syndrome (PRES)." }
       },
        {
-        id: 'AM003', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 50),
-        patientProfileTemplate: "A {age}-year-old {sex} known asthmatic presents with acute shortness of breath, unable to complete sentences. Used own salbutamol inhaler multiple times with no relief.",
-        presentingComplaint: 'Severe difficulty breathing, wheezing, tight chest.',
-        scenarioDetails: [ 
-          'Patient is sitting upright, using accessory muscles of respiration. Audible wheeze throughout chest.',
-          'Initial ABG shows respiratory alkalosis with mild hypoxaemia.', 
-          'Key interventions: High-flow oxygen. Nebulised salbutamol (5mg) and ipratropium (0.5mg). Oral prednisolone (40-50mg) or IV hydrocortisone (100mg). IV magnesium sulphate (1.2-2g over 20 mins). Consider IV salbutamol or aminophylline if poor response and discuss with seniors/ITU.',
-          'Chest X-ray if life-threatening features, suspicion of pneumothorax, failure to respond to treatment, or diagnostic doubt.',
-          'Monitor closely for signs of deterioration (silent chest, rising pCO2, exhaustion, altered mental status) - may require anaesthetic input for potential intubation.',
-          'Potential complications: Respiratory arrest, pneumothorax, life-threatening asthma.'
-        ], 
-        learningObjectives: [ 
-          'Recognition and severity assessment of acute asthma, as per BTS/SIGN guidelines.', 
-          'Stepwise management according to national guidelines.', 
-          'Interpretation of PEFR and ABG in asthma.', 
-          'Identifying features of life-threatening asthma and indications for escalation. Indications for CXR in asthma.'
-        ],
-        defaultHumanFactor: { type: 'Information Withheld', description: 'Patient is usually on a preventer inhaler...', specifics: 'Non-compliance with preventer inhaler.'},
-        debriefPoints: [
-          'Timeliness of treatments.', 
-          'Correct drug dosages.', 
-          'Reassessment after interventions.', 
-          'Decision-making regarding escalation of care.'
-        ], 
-        equipmentNeeded: [
-          'Oxygen', 'Nebulisers', 'Salbutamol, Ipratropium, Corticosteroids, Magnesium Sulphate', 'IV access kit', 'Peak flow meter', 'Blood gas analyser', 'Resuscitation equipment'
-        ],
-        suggestedImagingReview: { description: "Review chest X-rays for complications of asthma...", url: "https://radiopaedia.org/search?utf8=✓&q=asthma+pneumothorax+CXR" },
-        guidelineLinks: [{ name: "BTS/SIGN Asthma Guidelines", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/asthma/" }],
-        ecg: { type: "Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm. May show signs of right heart strain in severe cases (P pulmonale, RAD), but often just tachycardia.", link: "https://litfl.com/sinus-tachycardia-ecg-library/" },
-        chestXray: { findings: "Usually hyperinflated lung fields. Check for pneumothorax.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "asthma_severe_tiring"
-      },
-      {
-        id: 'AM004', title: 'Paracetamol Overdose - Late Presentation', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 45),
-        patientProfileTemplate: "A {age}-year-old {sex} presents feeling unwell with nausea and right upper quadrant pain. Reports taking \"a handful of paracetamol\" {timeSinceIngestion} hours ago after an argument.",
-        presentingComplaint: 'Nausea, vomiting, abdominal pain.',
-        scenarioDetails: [ 
-          'Patient appears jaundiced. Tender in RUQ. Admits to taking approximately 20 x 500mg paracetamol tablets.',
-          'Bloods requested: Paracetamol level, LFTs, U&Es, Coagulation screen (INR), FBC, VBG.',
-          'Results (simulated): Paracetamol level <5mg/L. ALT 2500 IU/L, Bilirubin 60 µmol/L, INR 2.5.',
-          'Key interventions: Commence N-acetylcysteine (NAC) infusion immediately based on LFTs and INR (King\'s College Criteria for liver transplant consideration), regardless of paracetamol level due to late presentation and evidence of liver injury. Consult National Poisons Information Service (NPIS) / TOXBASE.', 
-          'Monitor for signs of hepatic encephalopathy, renal failure, hypoglycaemia. Consider ultrasound abdomen if RUQ pain persists or concern for other pathology.',
-          'Potential complications: Acute liver failure, hepatorenal syndrome, cerebral oedema, death.'
-        ], 
-        learningObjectives: [ 
-          'Management of paracetamol overdose, particularly late presentations, referencing TOXBASE/NPIS and NICE guidelines.', 
-          'Understanding the role of NAC and treatment nomograms (and when they are less useful).', 
-          'Recognition of liver injury and criteria for referral to liver unit (King\'s College Criteria).', 
-          'Importance of involving toxicology services.'
-        ],
-        defaultHumanFactor: { type: 'Language Barrier', description: 'Patient\'s friend has accompanied them and speaks limited English...' },
-        debriefPoints: [
-          'Risk assessment in paracetamol overdose.', 
-          'Timeliness of NAC administration.', 
-          'Interpretation of blood results and application of King\'s College Criteria.', 
-          'Communication challenges.'
-        ], 
-        equipmentNeeded: [
-          'N-acetylcysteine infusion', 'IV access kit', 'Blood collection tubes', 'Access to NPIS/TOXBASE', 'Liver unit referral pathway'
-        ],
-        suggestedImagingReview: { description: "Review ultrasound or CT abdomen for findings related to acute liver failure...", url: "https://radiopaedia.org/search?utf8=✓&q=acute+liver+failure+imaging" },
-        guidelineLinks: [
-            { name: "NICE NG225: Self-harm - assessment, management and preventing recurrence", url: "https://www.nice.org.uk/guidance/ng225" },
-            { name: "TOXBASE/NPIS", url: "https://www.npis.org/" }
-        ],
-        ecg: { type: "Normal Sinus Rhythm", findingsTemplate: "Rate {hr}bpm. Generally unremarkable unless co-ingestants or severe metabolic derangement.", link: "https://litfl.com/ecg-basics-interpretation/" },
-        chestXray: { findings: "Usually normal. Not primary investigation.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "normal" 
-      },
-      {
-        id: 'AM005', title: 'Adult Isolated Head Injury - Assault', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 50),
-        patientProfileTemplate: "A {age}-year-old {sex} presents after being punched in the head during a pub fight {timeSinceInjury} hour(s) ago. Reports brief LOC (<1 min), now complaining of headache and feeling \"groggy\". Smells of alcohol.",
-        presentingComplaint: 'Headache, dizziness, history of LOC.',
-        scenarioDetails: [ 
-          'Small laceration to scalp, no active bleeding. Pupils equal and reactive. Moves all limbs. Mildly disorientated to time.',
-          'Key interventions: ABCDE assessment. Detailed history (AMPLE, mechanism, LOC duration, amnesia, seizures, vomiting). Assess for NICE criteria for CT head scan (e.g., GCS <13 on initial assessment, GCS <15 at 2 hours post-injury, suspected open/depressed skull fracture, sign of basal skull fracture, post-traumatic seizure, focal neurological deficit, >1 episode of vomiting, amnesia >30 mins, dangerous mechanism).',
-          'Consider C-spine assessment if mechanism or symptoms suggest (NEXUS/Canadian C-Spine rules).',
-          'Provide head injury advice. Manage alcohol intoxication if present. Document clearly.',
-          'Potential complications: Intracranial haemorrhage (extradural, subdural, subarachnoid, intracerebral), skull fracture, post-concussion syndrome.'
-        ], 
-        learningObjectives: [ 
-          'Application of NICE head injury guidelines in adults.', 
-          'Assessing indications for CT head scan.', 
-          'Recognising confounding factors like alcohol intoxication.', 
-          'Appropriate discharge advice and safety netting.'
-        ],
-        defaultHumanFactor: { type: 'Information Withheld', description: 'Patient initially denies taking any anticoagulants...', specifics: 'Patient on DOAC (apixaban).'},
-        debriefPoints: [
-          'Adherence to NICE head injury guidelines.', 
-          'Thoroughness of history, including medication history.', 
-          'Management of intoxicated patient.', 
-          'Documentation and safety netting.'
-        ], 
-        equipmentNeeded: [
-          'Basic assessment tools', 'Suturing kit (if laceration needs repair)', 'Head injury advice leaflets', 'Access to CT scanner if indicated'
-        ],
-        suggestedImagingReview: { description: "Review CT head scans for traumatic brain injury...", url: "https://radiopaedia.org/search?utf8=✓&q=adult+head+trauma+CT" },
-        guidelineLinks: [{ name: "NICE CG176: Head injury - assessment and early management", url: "https://www.nice.org.uk/guidance/cg176" }],
-        ecg: { type: "Normal Sinus Rhythm", findingsTemplate: "Rate {hr}bpm. Usually normal unless significant intracranial pressure rise affecting cardiac function (late).", link: "https://litfl.com/ecg-basics-interpretation/" },
-        chestXray: { findings: "Normal. Not routinely indicated in isolated head injury without chest trauma.", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "normal"
-      },
-      // --- ELDERLY MEDICAL ---
-      { 
-        id: 'EM001', title: 'Elderly Patient with Acute Confusion - UTI', category: 'Medical', ageRange: 'Elderly',
-        ageGenerator: () => getRandomInt(75, 95),
-        patientProfileTemplate: "An {age}-year-old {sex} from a nursing home, brought in due to new onset confusion over the past 24 hours. History of mild dementia, hypertension, and recurrent UTIs.",
-        presentingComplaint: 'Acute confusion, agitation, not her usual self.',
-        scenarioDetails: [ 
-          'Patient is disoriented to time and place, picking at her clothes. Nursing home staff report she has been more sleepy and less interactive.',
-          'No obvious focal neurology. Urine dipstick positive for nitrites and leucocytes. Bloods sent including FBC, U&Es, CRP, cultures.',
-          'Key interventions: ABCDE. Assess for other causes of delirium (hypoxia, hypoglycaemia, electrolyte imbalance, pain, constipation, medication review - 4AT score).',
-          'If UTI strongly suspected and patient symptomatic (fever, loin pain, dysuria - though may be absent in elderly), commence empirical antibiotics as per local trust guidelines, after obtaining urine MSU.',
-          'Fluid management. Consider analgesia if pain suspected. Reassurance and appropriate environment for confused patient.',
-          'Potential complications: Sepsis, worsening delirium, falls, dehydration, electrolyte abnormalities.'
-        ], 
-        learningObjectives: [ 
-          'Recognition and assessment of delirium in the elderly.', 
-          'Identifying common precipitants of delirium (e.g., infection, dehydration, medication).', 
-          'Appropriate investigation for suspected UTI and other causes of delirium.', 
-          'Principles of managing delirium in the ED, including non-pharmacological measures. Judicious use of antibiotics for UTI in elderly.'
-        ],
-        defaultHumanFactor: { type: 'Standard Simulation', description: 'Manage the clinical scenario effectively.' },
-        debriefPoints: [ 
-          'Systematic approach to delirium.', 
-          'Differential diagnosis of confusion in elderly.', 
-          'Appropriateness of investigations and antibiotic stewardship.', 
-          'Communication with nursing home/family.', 
-          'Management of agitation.'
-        ], 
-        equipmentNeeded: [ 
-          'Observation monitor', 
-          'Urine collection kit (MSU)', 
-          'Blood collection tubes', 
-          'IV access kit (if needed for fluids/meds)', 
-          'Delirium assessment tools (e.g. 4AT)'
-        ],
-        suggestedImagingReview: { description: "Chest X-ray may be considered to exclude pneumonia...", url: "https://radiopaedia.org/search?utf8=✓&q=delirium+elderly+imaging" },
-        guidelineLinks: [
-            { name: "NICE CG103: Delirium - prevention, diagnosis and management", url: "https://www.nice.org.uk/guidance/cg103" },
-            { name: "NICE NG109: Urinary tract infection (lower) - antimicrobial prescribing", url: "https://www.nice.org.uk/guidance/ng109"}
-        ],
-        ecg: { type: "Normal Sinus Rhythm / Sinus Tachycardia", findingsTemplate: "Rate {hr}bpm. May show non-specific age-related changes...", link: "https://litfl.com/ecg-basics-interpretation/" },
-        chestXray: { findings: "Often normal in uncomplicated UTI. Important to exclude co-existing pneumonia...", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        vbgClinicalState: "normal" 
-      },
-      { 
-        id: 'EM002', title: 'Elderly Patient with Acute Heart Failure Exacerbation', category: 'Medical', ageRange: 'Elderly',
-        ageGenerator: () => getRandomInt(70, 90),
-        patientProfileTemplate: "A {age}-year-old {sex} with known ischaemic heart disease and previous MI, presents with {durationSymptoms} days of worsening shortness of breath, orthopnoea, and bilateral leg swelling.",
-        presentingComplaint: 'Worsening dyspnoea, PND, leg swelling.',
-        scenarioDetails: [ 
-          'Patient is sitting upright, using accessory muscles. Bibasal fine crackles on chest auscultation up to mid-zones. Pitting oedema to mid-shins bilaterally. JVP elevated.',
-          'ECG shows atrial fibrillation with a rapid ventricular response (approx 110-120bpm), no acute ST changes. Chest X-ray shows cardiomegaly, upper lobe diversion, and small bilateral pleural effusions.',
-          'Key interventions: ABCDE. Sit patient upright. Oxygen to maintain sats 94-98% (or 88-92% if known COPD). IV access. IV furosemide (e.g., 40-80mg). Consider GTN infusion/spray if SBP >100mmHg and no contraindications. Monitor urine output.',
-          'Bloods including U&Es, BNP (if diagnosis uncertain, though likely exacerbation here), troponin (if ischaemic trigger suspected).',
-          'Consider rate control for AF if contributing to decompensation. Non-invasive ventilation (CPAP/BiPAP) if severe respiratory distress/pulmonary oedema not responding to initial medical therapy.',
-          'Potential complications: Respiratory failure, cardiogenic shock, arrhythmias, renal impairment secondary to diuretics/poor perfusion.'
-        ], 
-        learningObjectives: [ 
-          'Recognition and management of acute heart failure exacerbation in an elderly patient.', 
-          'Appropriate use of oxygen, diuretics, and vasodilators.', 
-          'Understanding indications for NIV.', 
-          'Identifying potential precipitants (e.g., AF, ischaemia, infection, non-compliance).', 
-          'ECG and CXR interpretation in heart failure.'
-        ],
-        defaultHumanFactor: { type: 'Standard Simulation', description: 'Manage the clinical scenario effectively.' },
-        debriefPoints: [ 
-          'Timeliness and appropriateness of interventions.', 
-          'Monitoring response to treatment.', 
-          'Decision-making regarding NIV.', 
-          'Communication with patient and family regarding condition and plan.'
-        ], 
-        equipmentNeeded: [ 
-          'Observation monitor', 
-          'ECG machine', 
-          'Oxygen delivery devices', 
-          'IV access kit', 
-          'Furosemide, GTN', 
-          'Access to NIV (CPAP/BiPAP)', 
-          'Urinary catheter'
-        ],
-        suggestedImagingReview: { description: "Review chest X-rays for signs of acute pulmonary oedema...", url: "https://radiopaedia.org/search?utf8=✓&q=acute+pulmonary+edema+chest+x-ray" },
-        suggestedEcgReview: { description: "Identify atrial fibrillation with rapid ventricular response...", url: "https://litfl.com/atrial-fibrillation-ecg-library/" },
-        guidelineLinks: [
-            { name: "NICE NG106: Chronic heart failure in adults - diagnosis and management", url: "https://www.nice.org.uk/guidance/ng106" },
-            { name: "Resuscitation Council UK: Acute Heart Failure Guidelines", url: "https://www.resus.org.uk/library/additional-guidance/guidance-acute-heart-failure" }
-        ],
-        ecg: { type: "Atrial Fibrillation with Rapid Ventricular Response", findingsTemplate: "Irregularly irregular rhythm, rate ~{hr}bpm. No P waves...", link: "https://litfl.com/atrial-fibrillation-ecg-library/" },
-        chestXray: { findings: "Cardiomegaly, upper lobe venous diversion...", link: "https://radiopaedia.org/articles/pulmonary-oedema" },
-        vbgClinicalState: "asthma_severe_tiring" 
-      },
-      { 
-        id: 'EM003', title: 'Elderly Patient with Fall and Long Lie', category: 'Medical', ageRange: 'Elderly',
-        ageGenerator: () => getRandomInt(80, 98),
-        patientProfileTemplate: "An {age}-year-old {sex} found on the floor at home by a neighbour. Last seen well approximately {timeOnFloor} hours ago. Complaining of hip pain and unable to get up.",
-        presentingComplaint: 'Fall, long lie, hip pain, dehydration.',
-        scenarioDetails: [
-          'Patient is alert but disoriented (AMTS {amtsScore}/10). Skin is dry with reduced turgor. Bruising to right hip area, which is tender on palpation. Shortened and externally rotated right leg.',
-          'Initial bloods show: Na+ 155 mmol/L, K+ 3.0 mmol/L, Urea 25 mmol/L, Creatinine 180 µmol/L, CK 5000 IU/L.',
-          'Key interventions: ABCDE approach. Assess for injuries (hip fracture, head injury, other fractures). IV access and fluid resuscitation for dehydration and rhabdomyolysis (aim for good urine output). Analgesia.',
-          'Correct electrolyte abnormalities cautiously. Investigate cause of fall (infection, arrhythmia, stroke, postural hypotension etc.). X-ray hip/pelvis. Consider CT head if any suspicion of head injury.',
-          'Monitor for complications of long lie: rhabdomyolysis, kidney injury, pressure sores, hypothermia.',
-          'Potential complications: Acute kidney injury, hyperkalaemia (later from rhabdo), compartment syndrome, pressure sores, DVT/PE.'
-        ], 
-        learningObjectives: [
-          'Comprehensive assessment of an elderly patient with a fall and long lie.',
-          'Recognition and management of dehydration, electrolyte imbalance, and rhabdomyolysis.',
-          'Identifying potential causes of fall in the elderly.',
-          'Multifactorial approach to care, including pain management and injury assessment.'
-        ],
-        defaultHumanFactor: { type: 'Standard Simulation', description: 'Manage the clinical scenario effectively.' },
-        debriefPoints: [
-          'Prioritisation in managing a patient with multiple issues (trauma and medical).',
-          'Fluid and electrolyte management.',
-          'Investigation into the cause of the fall.',
-          'Prevention of further complications from long lie.'
-        ], 
-        equipmentNeeded: [
-            'Observation monitor', 'IV access kit', 'IV fluids (0.9% Saline)', 'Analgesia', 'Blood collection tubes', 'Access to X-ray and CT'
-        ],
-        suggestedImagingReview: { description: "Review X-ray for hip fracture. Consider CT head if indicated...", url: "https://radiopaedia.org/search?q=hip+fracture+long+lie" },
-        guidelineLinks: [
-            { name: "NICE CG161: Falls in older people - assessment and prevention", url: "https://www.nice.org.uk/guidance/cg161" },
-            { name: "RCEM Safer Care: Falls in Older People", url: "https://rcem.ac.uk/safer-care/"}
-        ],
-        ecg: { type: "Sinus Rhythm or Tachycardia", findingsTemplate: "Rate {hr}bpm. May show signs of hypokalaemia...", link: "https://litfl.com/hypokalaemia-ecg-library/" },
-        chestXray: { findings: "Usually clear unless aspiration or underlying chest infection...", link: "https://radiopaedia.org/articles/chest-radiograph?lang=gb" },
-        pelvicXray: { findings: "May show hip fracture (e.g., intracapsular or extracapsular). Otherwise, normal pelvic bony anatomy for age.", link: "https://radiopaedia.org/search?q=hip+fracture+x-ray" },
-        vbgClinicalState: "haemorrhagic_shock" 
+        id: 'OB002', title: 'Maternal Collapse (PPH)', category: 'Obstetric & Gynae Emergencies', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 40),
+        patientProfileTemplate: "A {age}-year-old female, 1 hour post-partum (home birth). Massive PV bleeding.",
+        presentingComplaint: 'Post-Partum Haemorrhage.',
+        scenarioDetails: ['Pale, shut down.', 'Uterus boggy.', 'Est blood loss > 1500ml.'],
+        vitalsMod: { hr: 140, bpSys: 70, bpDia: 30, spO2: 94, rr: 28 },
+        deterioration: { active: true, rate: 0.2, type: 'shock' },
+        stabilisers: ['MHP', 'TXA', 'Fluids'],
+        vbgClinicalState: "haemorrhagic_shock",
+        ecg: { type: "Sinus Tach", findings: "Rate 140." },
+        chestXray: { findings: "Normal." },
+        ultrasound: { type: "FAST", findings: "Free fluid abdomen." },
+        ct: { findings: "Not indicated - theatre." }
       }
     ];
 
-    // Updated Human Factor Challenges (No change from previous correct version)
-    const HUMAN_FACTOR_CHALLENGES = [
-      { id: 'hf0', type: 'Standard Simulation', description: 'Manage the clinical scenario effectively following best practice.' },
-      { id: 'hf1', type: 'Blindfolded Lead', description: 'The team leader will wear a blindfold and must rely solely on verbal reports from the team to make decisions and guide management. Focus on clear, concise communication from team members and effective auditory processing and delegation by the leader.' },
-      { id: 'hf2', type: 'Leader Only Speaks', description: 'Only the team leader is allowed to speak. All other team members must communicate non-verbally (gestures, writing on whiteboards) or write things down for the leader to relay if absolutely necessary for clarification of tasks. This tests the leader\'s ability to give clear instructions and the team\'s ability to interpret and act.' },
-      { id: 'hf4', type: 'Missing Equipment', description: 'A crucial piece of equipment (e.g., specific drug, IO gun, a monitor lead) is declared missing or malfunctioning at a critical juncture. The team must rapidly problem-solve and find an alternative strategy or device. Specify the missing item when setting up.' },
-      { id: 'hf5', type: 'Distracting Element', description: 'An actor/confederate plays a role designed to distract the team (e.g., overly anxious/angry relative, IT system failure announcement, conflicting advice from a "senior" colleague who is actually incorrect). Team must maintain focus on patient care while managing the distraction professionally.' },
-      { id: 'hf6', type: 'Information Withheld', description: 'The facilitator withholds a key piece of clinical information (e.g., a critical allergy, a recent medication change, a social factor impacting disposition) unless specifically and precisely asked. Tests thoroughness in history taking and investigation.' },
-      { id: 'hf7', type: 'Language Barrier', description: 'The "patient" (if an actor or advanced manikin) or a key informant (e.g., family member providing history) speaks only a language not commonly understood by the team. The team must utilize available translation services (phone, in-person if available) or adapt communication strategies.' },
-    ];
+    // --- 2. COMPONENTS ---
 
+    const { useState, useEffect, useRef } = React;
+    
+    const Lucide = ({ icon, className }) => <i data-lucide={icon} className={className}></i>;
+
+    // --- REUSABLE UI COMPONENTS ---
+    const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
+        // Increased touch target sizes and font size slightly for mobile
+        const base = "px-4 py-3 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm touch-manipulation relative overflow-hidden";
+        const variants = {
+            primary: "bg-sky-600 hover:bg-sky-500 text-white",
+            secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200",
+            danger: "bg-red-600 hover:bg-red-500 text-white",
+            success: "bg-emerald-600 hover:bg-emerald-500 text-white",
+            outline: "border border-slate-600 text-slate-300 hover:bg-slate-800"
+        };
+        return <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>{children}</button>;
+    };
+
+    const Card = ({ title, icon, children, className = "" }) => (
+        <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg ${className}`}>
+            {title && (
+                <div className="bg-slate-800/50 p-3 border-b border-slate-700 flex items-center gap-2">
+                    {icon && <Lucide icon={icon} className="w-5 h-5 text-sky-400" />}
+                    <h3 className="font-bold text-slate-200">{title}</h3>
+                </div>
+            )}
+            <div className="p-4">{children}</div>
+        </div>
+    );
+
+    // --- SIMULATION ENGINE ---
+    const useSimulation = (initialScenario) => {
+        const [scenario, setScenario] = useState(initialScenario);
+        const [time, setTime] = useState(0);
+        const [isRunning, setIsRunning] = useState(false);
+        const [vitals, setVitals] = useState({ ...initialScenario.vitals });
+        const [prevVitals, setPrevVitals] = useState({ ...initialScenario.vitals });
+        const [log, setLog] = useState([]);
+        const [flash, setFlash] = useState(null); 
+        const [investigationsRevealed, setInvestigationsRevealed] = useState({}); // Track revealed investigations
+        const [loadingInvestigations, setLoadingInvestigations] = useState({}); // NEW: Track loading state for buttons
+
+        // NEW: History state for graph
+        const [history, setHistory] = useState([]);
+
+        const timerRef = useRef(null);
+        const tickRef = useRef(null);
+
+        const addLogEntry = (msg, type = 'info') => {
+            const timestamp = new Date().toLocaleTimeString('en-GB');
+            const simTime = `${Math.floor(time/60).toString().padStart(2,'0')}:${(time%60).toString().padStart(2,'0')}`;
+            const logEntry = { time: timestamp, simTime, msg, type, timeSeconds: time };
+            setLog(prev => [...prev, logEntry]);
+            
+            // If it's an action/intervention, mark it in history for graph
+            if (type === 'action' || type === 'success') {
+                setHistory(prev => {
+                    if (prev.length === 0) return prev;
+                    const lastIdx = prev.length - 1;
+                    const newHist = [...prev];
+                    // Add annotation to last history point
+                    if (!newHist[lastIdx].actions) newHist[lastIdx].actions = [];
+                    newHist[lastIdx].actions.push(msg.split(' ')[0]); // Short label
+                    return newHist;
+                });
+            }
+        };
+
+        const applyIntervention = (key) => {
+            const action = INTERVENTIONS[key];
+            if (!action) return;
+
+            setPrevVitals({ ...vitals });
+            const newVitals = { ...vitals };
+            
+            // Branching Logic
+            if (key === 'Fluids' && scenario.id === 'AM005') { // Acute HF
+                 newVitals.spO2 = Math.max(70, newVitals.spO2 - 5); // Worsens
+                 newVitals.rr += 4;
+                 addLogEntry("Warning: Fluids caused respiratory deterioration!", 'danger');
+                 setFlash('red');
+            } else {
+                // Standard Effects
+                if (action.effect.SpO2) newVitals.spO2 = Math.min(100, newVitals.spO2 + action.effect.SpO2);
+                if (action.effect.BP) newVitals.bpSys += action.effect.BP;
+                if (action.effect.HR) newVitals.hr += action.effect.HR;
+                if (action.effect.RR) newVitals.rr += action.effect.RR;
+                if (action.effect.gcs) newVitals.gcs = Math.max(3, Math.min(15, newVitals.gcs + action.effect.gcs));
+
+                if (scenario.stabilisers && scenario.stabilisers.includes(key)) {
+                    setScenario(prev => ({
+                        ...prev,
+                        deterioration: { ...prev.deterioration, rate: Math.max(0, prev.deterioration.rate - 0.05) } // Slower reduction
+                    }));
+                    addLogEntry(`${action.log} (Effective)`, 'success');
+                    setFlash('green');
+                } else {
+                    addLogEntry(action.log, 'action');
+                }
+            }
+
+            setVitals(newVitals);
+            setTimeout(() => setFlash(null), 1000);
+        };
+
+        // Manual Update Function
+        const manualUpdateVital = (key, value) => {
+            setPrevVitals({...vitals});
+            setVitals(prev => ({ ...prev, [key]: value }));
+            addLogEntry(`Manual override: ${key} set to ${value}`, 'manual');
+        };
+
+        const toggleDeterioration = () => {
+            setScenario(prev => {
+                const newState = !prev.deterioration.active;
+                addLogEntry(`Deterioration ${newState ? 'Resumed' : 'Paused'}`, 'manual');
+                return { ...prev, deterioration: { ...prev.deterioration, active: newState } };
+            });
+        };
+
+        const triggerArrest = () => {
+            setPrevVitals({...vitals});
+            setVitals(prev => ({ ...prev, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }));
+            addLogEntry('CARDIAC ARREST', 'manual');
+            setFlash('red');
+        };
+
+        const revealInvestigation = (type) => {
+             if (investigationsRevealed[type] || loadingInvestigations[type]) return;
+             
+             setLoadingInvestigations(prev => ({ ...prev, [type]: true }));
+             
+             // Simulate delay (2 seconds)
+             setTimeout(() => {
+                 setLoadingInvestigations(prev => ({ ...prev, [type]: false }));
+                 setInvestigationsRevealed(prev => ({ ...prev, [type]: true }));
+                 addLogEntry(`${type} Result Available`, 'success');
+             }, 2000);
+        };
+
+        const tick = () => {
+            setVitals(current => {
+                const next = { ...current };
+                next.hr += getRandomInt(-1, 1);
+                next.bpSys += getRandomInt(-2, 2);
+                next.bpDia = Math.floor(next.bpSys * 0.65) + getRandomInt(-2, 2); // Update diastolic relative to systolic
+                next.spO2 += Math.random() > 0.9 ? getRandomInt(-1, 1) : 0;
+
+                if (scenario.deterioration?.active && scenario.deterioration.rate > 0) {
+                    const rate = scenario.deterioration.rate;
+                    // Slower tick rate check (every 3s)
+                    if (Math.random() < rate) {
+                        if (scenario.deterioration.type === 'shock') {
+                            next.bpSys -= 1;
+                            next.hr += 1;
+                        } else if (scenario.deterioration.type === 'respiratory') {
+                            next.spO2 -= 1;
+                            next.rr += (Math.random() > 0.8 ? 1 : 0);
+                        } else if (scenario.deterioration.type === 'cardiac') {
+                            next.bpSys -= 1;
+                        } else if (scenario.deterioration.type === 'neuro') {
+                            next.hr -= 1; // Cushing's (brady)
+                            next.bpSys += 1; // Cushing's (HTN)
+                        } else if (scenario.deterioration.type === 'metabolic') {
+                            next.hr += 1;
+                            next.temp = parseFloat((next.temp + 0.1).toFixed(1));
+                        }
+                    }
+                }
+                next.spO2 = Math.min(100, Math.max(0, next.spO2));
+                next.hr = Math.max(0, next.hr);
+                
+                // Record History
+                setHistory(h => [...h, {
+                    time: time,
+                    hr: next.hr,
+                    bp: next.bpSys,
+                    spo2: next.spO2,
+                    rr: next.rr,
+                    actions: [] 
+                }]);
+
+                return next;
+            });
+        };
+        
+        // Dynamic Investigation Evolution
+        useEffect(() => {
+            if (time > 300 && scenario.id === 'AM001' && !scenario.ecg.findings.includes('Evolving')) {
+                 // Evolve STEMI ECG after 5 mins if not sorted
+                 setScenario(prev => ({
+                     ...prev,
+                     ecg: { ...prev.ecg, findings: "Massive Anterior STE. Tombstoning. (Evolving)" }
+                 }));
+                 addLogEntry("ECG Changes noted on monitor", "info");
+            }
+        }, [time, scenario.id]);
+
+        useEffect(() => {
+            if (vitals.spO2 < 85 || vitals.bpSys < 80 || vitals.hr > 160 || (vitals.hr < 40 && vitals.hr > 0)) {
+                if (time % 5 === 0 && isRunning) setFlash('red');
+                else setFlash(null);
+            }
+        }, [vitals, time, isRunning]);
+
+        const start = () => {
+            if (isRunning) return;
+            setIsRunning(true);
+            addLogEntry("Simulation Started", 'system');
+            timerRef.current = setInterval(() => setTime(t => t + 1), 1000);
+            tickRef.current = setInterval(tick, 3000);
+        };
+
+        const pause = () => {
+            setIsRunning(false);
+            addLogEntry("Simulation Paused", 'system');
+            clearInterval(timerRef.current);
+            clearInterval(tickRef.current);
+        };
+
+        const stop = () => {
+            pause();
+            addLogEntry("Simulation Ended", 'system');
+        };
+
+        return {
+            scenario, time, isRunning, vitals, prevVitals, log, flash, history, investigationsRevealed, loadingInvestigations,
+            start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, toggleDeterioration, triggerArrest, revealInvestigation
+        };
+    };
+
+    // --- SUB-SCREENS ---
+
+    const SetupScreen = ({ onGenerate, initialParams }) => {
+        const [category, setCategory] = useState(initialParams?.category || 'Any');
+        const [age, setAge] = useState(initialParams?.age || 'Any');
+        const [hf, setHf] = useState(initialParams?.hf || 'hf0');
+        const [loading, setLoading] = useState(false);
+        const [customMode, setCustomMode] = useState(initialParams?.customMode || false);
+        
+        const [customScenario, setCustomScenario] = useState({
+            title: "Custom Scenario",
+            age: 40,
+            sex: "male",
+            complaint: "Shortness of breath",
+            profile: "A 40-year-old male with no past medical history.",
+            hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37.0, gcs: 15, bm: 5.5,
+            ecgType: "Sinus Rhythm", ecgFindings: "Normal",
+            cxrFindings: "Clear",
+            vbgState: "normal"
+        });
+
+        const handleGenerate = () => {
+            setLoading(true);
+            setTimeout(() => {
+                let generatedScenario;
+                const currentParams = { category, age, hf, customMode };
+
+                if (customMode) {
+                    generatedScenario = {
+                        id: 'CUSTOM',
+                        title: customScenario.title,
+                        category: 'Custom',
+                        ageRange: 'Custom',
+                        patientAge: customScenario.age,
+                        profile: customScenario.profile,
+                        presentingComplaint: customScenario.complaint,
+                        scenarioDetails: ['Custom scenario generated by user.'],
+                        vitals: {
+                            hr: parseInt(customScenario.hr),
+                            bpSys: parseInt(customScenario.bpSys),
+                            bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65),
+                            rr: parseInt(customScenario.rr),
+                            spO2: parseInt(customScenario.spO2),
+                            temp: parseFloat(customScenario.temp),
+                            gcs: parseInt(customScenario.gcs),
+                            bm: parseFloat(customScenario.bm)
+                        },
+                        vbg: generateVbg(customScenario.vbgState),
+                        hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf),
+                        ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings },
+                        chestXray: { findings: customScenario.cxrFindings },
+                        deterioration: { active: false, rate: 0 },
+                        stabilisers: [],
+                        interventions: ['Oxygen', 'Fluids', 'Analgesia']
+                    };
+                } else {
+                    let pool = ALL_SCENARIOS.filter(s => 
+                        (category === 'Any' || s.category === category) &&
+                        (age === 'Any' || s.ageRange === age)
+                    );
+                    if (pool.length === 0) pool = ALL_SCENARIOS;
+
+                    const base = pool[Math.floor(Math.random() * pool.length)];
+                    const patientAge = base.ageGenerator();
+                    const ranges = getBaseVitals(patientAge);
+                    
+                    let startVitals = {
+                        hr: base.vitalsMod?.hr || ranges.hr,
+                        bpSys: base.vitalsMod?.bpSys || ranges.bpSys,
+                        bpDia: base.vitalsMod?.bpDia || ranges.bpDia || Math.floor((base.vitalsMod?.bpSys || ranges.bpSys) * 0.65),
+                        rr: base.vitalsMod?.rr || ranges.rr,
+                        spO2: base.vitalsMod?.spO2 || 98,
+                        temp: base.vitalsMod?.temp || ranges.temp,
+                        gcs: base.vitalsMod?.gcs || 15,
+                        bm: ranges.bm
+                    };
+
+                    const profile = base.patientProfileTemplate
+                        .replace(/{age}/g, patientAge)
+                        .replace(/{sex}/g, Math.random() > 0.5 ? 'male' : 'female')
+                        .replace(/{durationPain}/g, getRandomInt(1,4));
+
+                    generatedScenario = {
+                        ...base,
+                        patientAge,
+                        profile,
+                        vitals: startVitals,
+                        vbg: generateVbg(base.vbgClinicalState),
+                        hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf)
+                    };
+                }
+                
+                // Calculate Weight if Paediatric (UK Practice: APLS/WETFLAG style estimations)
+                if (generatedScenario.ageRange === 'Paediatric' || generatedScenario.patientAge < 18) {
+                     generatedScenario.weight = estimateWeight(generatedScenario.patientAge);
+                }
+
+                setLoading(false);
+                onGenerate(generatedScenario, currentParams);
+            }, 600);
+        };
+
+        useEffect(() => {
+            if (initialParams && initialParams.autoGenerate) {
+                handleGenerate();
+            }
+        }, []);
+
+        return (
+            <div className="max-w-2xl mx-auto space-y-6 p-2">
+                <div className="bg-slate-800 p-4 md:p-6 rounded-lg border border-slate-700 shadow-xl">
+                    <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings" className="w-5 h-5"/> Simulation Parameters</h2>
+                    
+                    <div className="flex gap-4 mb-6 border-b border-slate-700 pb-2 overflow-x-auto">
+                        <button onClick={() => setCustomMode(false)} className={`text-sm font-bold uppercase pb-1 whitespace-nowrap ${!customMode ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Random Scenario</button>
+                        <button onClick={() => setCustomMode(true)} className={`text-sm font-bold uppercase pb-1 whitespace-nowrap ${customMode ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Custom Scenario</button>
+                    </div>
+
+                    {!customMode ? (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div>
+                                <label className="text-xs uppercase text-slate-500 font-bold">Category</label>
+                                <select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">
+                                    <option value="Any">Any</option>
+                                    <option value="Medical">Medical</option>
+                                    <option value="Trauma">Trauma</option>
+                                    <option value="Toxicology">Toxicology</option>
+                                    <option value="Psychiatry">Psychiatry</option>
+                                    <option value="Obstetric & Gynae Emergencies">Obs & Gynae</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs uppercase text-slate-500 font-bold">Age</label>
+                                <select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">
+                                    <option value="Any">Any</option>
+                                    <option value="Adult">Adult</option>
+                                    <option value="Elderly">Elderly</option>
+                                    <option value="Paediatric">Paediatric</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label>
+                                <select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">
+                                    {HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}
+                                </select>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="space-y-4 mb-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs text-slate-500 font-bold">Title</label>
+                                    <input type="text" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-sm"/>
+                                </div>
+                                {/* ... other inputs ... */}
+                            </div>
+                        </div>
+                    )}
+
+                    <Button onClick={handleGenerate} disabled={loading} className="w-full py-4 text-lg">
+                        {loading ? <Lucide icon="loader-2" className="animate-spin"/> : <Lucide icon="play"/>}
+                        {loading ? "Building Scenario..." : "Generate Scenario"}
+                    </Button>
+                </div>
+            </div>
+        );
+    };
+
+    const BriefingScreen = ({ scenario, onStart, onBack, onNewScenario }) => (
+        <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-2">
+            <div className="bg-slate-800 p-4 md:p-6 rounded-lg border-l-4 border-sky-500 shadow-lg">
+                <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                    <div>
+                        <h2 className="text-2xl md:text-3xl font-bold text-white">{scenario.title}</h2>
+                        <span className="inline-block bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded mt-2">{scenario.category}</span>
+                    </div>
+                    <div className="text-left md:text-right">
+                        <p className="text-2xl font-mono font-bold text-emerald-400">GCS {scenario.vitals.gcs}</p>
+                        <p className="text-sm text-slate-400">Initial Status</p>
+                    </div>
+                </div>
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Patient Profile</h3>
+                        <p className="text-lg leading-relaxed">{scenario.profile}</p>
+                        {scenario.weight && <div className="mt-2 p-2 bg-sky-900/30 border border-sky-700/50 rounded inline-block">
+                            <p className="text-xs text-sky-400 font-bold uppercase">Est. Weight (APLS)</p>
+                            <p className="text-lg font-mono text-white">{scenario.weight} kg</p>
+                        </div>}
+                        <div className="mt-4 p-3 bg-slate-700/50 rounded border border-slate-600">
+                            <p className="font-bold text-sky-300"><Lucide icon="alert-circle" className="inline w-4 h-4 mr-1"/> PC: {scenario.presentingComplaint}</p>
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        {scenario.scenarioDetails.map((d, i) => (
+                            <div key={i} className="flex items-start gap-2 text-slate-300">
+                                <Lucide icon="chevron-right" className="w-4 h-4 mt-1 text-slate-500 flex-shrink-0"/>
+                                <p>{d}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {scenario.hf.id !== 'hf0' && (
+                <div className="bg-purple-900/20 border border-purple-500/50 p-4 rounded flex items-center gap-3">
+                    <Lucide icon="users" className="text-purple-400 w-6 h-6"/>
+                    <div>
+                        <h4 className="font-bold text-purple-200">{scenario.hf.type}</h4>
+                        <p className="text-sm text-purple-300">{scenario.hf.description}</p>
+                    </div>
+                </div>
+            )}
+
+            <div className="flex flex-col md:flex-row justify-center gap-4 pt-4">
+                <Button onClick={onBack} variant="secondary" className="w-full md:w-1/3 py-4 text-lg">
+                    <Lucide icon="arrow-left"/> Back
+                </Button>
+                <Button onClick={onNewScenario} variant="secondary" className="w-full md:w-1/3 py-4 text-lg">
+                    <Lucide icon="refresh-cw"/> New Scenario
+                </Button>
+                <Button onClick={onStart} className="w-full md:w-1/3 py-4 text-lg shadow-sky-900/20 shadow-xl">
+                    <Lucide icon="activity"/> Start Live Simulation
+                </Button>
+            </div>
+        </div>
+    );
+
+    const LiveSimScreen = ({ sim, onFinish, onBack }) => {
+        const { scenario, time, isRunning, vitals, prevVitals, log, flash, start, pause, applyIntervention, addLogEntry, manualUpdateVital, toggleDeterioration, triggerArrest, revealInvestigation, investigationsRevealed, loadingInvestigations } = sim;
+        const logEndRef = useRef(null);
+        const [manualLog, setManualLog] = useState("");
+        const [manualNotes, setManualNotes] = useState("");
+        const [activeTab, setActiveTab] = useState("Airway"); 
+
+        useEffect(() => {
+            if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }, [log]);
+
+        const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+        const getTrend = (curr, prev) => curr > prev ? '▲' : curr < prev ? '▼' : '▬';
+        const getTrendColor = (curr, prev, lowIsBad = true) => {
+            if (curr === prev) return 'text-slate-500';
+            if (lowIsBad) return curr > prev ? 'text-emerald-400' : 'text-red-400';
+            return curr > prev ? 'text-red-400' : 'text-emerald-400';
+        };
+
+        // Updated VitalDisplay with Manual Override Input (now handles internal edit state correctly)
+        const VitalDisplay = ({ label, value, prev, unit, lowIsBad = true, onUpdate }) => {
+            const [isEditing, setIsEditing] = useState(false);
+            const [editVal, setEditVal] = useState(value);
+
+            // Sync editVal only when NOT editing to prevent overwrites
+            useEffect(() => {
+                if (!isEditing) setEditVal(value);
+            }, [value, isEditing]);
+
+            const handleBlur = () => {
+                setIsEditing(false);
+                if (editVal !== value) onUpdate(parseInt(editVal));
+            };
+
+            return (
+                <div className="bg-slate-900/50 p-3 rounded border border-slate-700 flex flex-col items-center justify-center h-28 relative touch-manipulation">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
+                    {isEditing ? (
+                        <input 
+                            type="number" 
+                            value={editVal} 
+                            onChange={(e) => setEditVal(e.target.value)}
+                            onBlur={handleBlur}
+                            onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
+                            className="text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-20 text-center"
+                            autoFocus
+                        />
+                    ) : (
+                        <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-2" onClick={() => { setEditVal(value); setIsEditing(true); }}>
+                            <span className="text-3xl font-mono font-bold text-white">{Math.round(value)}</span>
+                            <span className={`text-sm font-bold ${getTrendColor(value, prev, lowIsBad)}`}>
+                                {getTrend(value, prev)}
+                            </span>
+                        </div>
+                    )}
+                    <span className="text-[10px] text-slate-600 mt-1">{unit}</span>
+                </div>
+            );
+        };
+
+        const getInterventionsByCat = (cat) => {
+            return Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
+        };
+
+        // Helper for investigation buttons
+        const InvestigationButton = ({ type, icon, label }) => {
+            const isRevealed = investigationsRevealed[type];
+            const isLoading = loadingInvestigations[type];
+            const hasData = (type === 'ECG' && scenario.ecg) || (type === 'CXR' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct);
+            
+            return (
+                <div className="flex flex-col gap-2">
+                    <Button 
+                        variant={isRevealed ? "secondary" : "outline"} 
+                        onClick={() => revealInvestigation(type)} 
+                        disabled={!isRunning || isRevealed || isLoading}
+                        className="h-10 text-xs relative overflow-hidden"
+                    >
+                        {isLoading && <div className="loading-bar"></div>}
+                        <div className="relative z-10 flex items-center gap-2">
+                            <Lucide icon={icon} className="w-3 h-3"/> {isLoading ? `Requesting...` : (isRevealed ? `View ${type}` : `Request ${type}`)}
+                        </div>
+                    </Button>
+                    {isRevealed && (
+                        <div className="p-3 bg-slate-700/30 rounded text-xs border-l-2 border-sky-500 animate-fadeIn">
+                            {hasData ? (
+                                type === 'VBG' ? 
+                                    `pH ${scenario.vbg.pH.toFixed(2)} | pCO2 ${scenario.vbg.pCO2} | Lac ${scenario.vbg.Lac} | K ${scenario.vbg.K}` :
+                                type === 'ECG' ? `${scenario.ecg.type} - ${scenario.ecg.findings}` :
+                                type === 'CXR' ? scenario.chestXray.findings :
+                                type === 'POCUS' ? scenario.ultrasound.findings : 
+                                type === 'CT' ? scenario.ct.findings : 'Normal / Not Indicated'
+                            ) : 'Normal / Not Indicated'}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        return (
+            <div className={`max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                
+                <div className="lg:col-span-2 space-y-6 order-1">
+                    {/* Patient Summary Card */}
+                    <Card className="bg-slate-800 border-slate-700">
+                        <div className="flex justify-between items-start flex-wrap gap-2">
+                            <div>
+                                <h3 className="font-bold text-lg text-white mb-1">{scenario.title} ({scenario.patientAge})</h3>
+                                <p className="text-sm text-slate-300">{scenario.profile}</p>
+                                {scenario.weight && <p className="text-xs text-sky-400 mt-1 font-bold">Est. Weight: {scenario.weight}kg</p>}
+                            </div>
+                            <div className="bg-sky-900/50 border border-sky-700 px-3 py-1 rounded">
+                                <p className="text-xs font-bold text-sky-300 uppercase">Presenting Complaint</p>
+                                <p className="text-sm text-white">{scenario.presentingComplaint}</p>
+                            </div>
+                        </div>
+                    </Card>
+
+                    <Card className="bg-slate-900 border-slate-800">
+                        {/* MOVED CONTROLS TO TOP OF MONITOR - Stack on mobile */}
+                        <div className="flex flex-col md:flex-row justify-between items-center mb-4 border-b border-slate-800 pb-2 gap-3">
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <Button variant="secondary" onClick={onBack} disabled={isRunning} className="h-10 md:h-8 text-xs px-3 flex-1 md:flex-none"><Lucide icon="arrow-left" className="w-3 h-3"/> Back</Button>
+                                {!isRunning ? (
+                                    // Changed height to h-12, text to base, and px-6 to make it bigger
+                                    <Button variant="success" onClick={start} className="h-12 text-base px-6 font-bold shadow-lg flex-grow md:flex-none"><Lucide icon="play" className="w-5 h-5"/> START</Button>
+                                ) : (
+                                    <Button variant="danger" onClick={pause} className="h-10 md:h-8 text-xs px-3 flex-1 md:flex-none"><Lucide icon="pause" className="w-3 h-3"/> Pause</Button>
+                                )}
+                                <Button variant="primary" onClick={onFinish} className="h-10 md:h-8 text-xs px-3 flex-1 md:flex-none"><Lucide icon="square" className="w-3 h-3"/> Finish</Button>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-3 h-3 rounded-full ${isRunning ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></div>
+                                <div className="font-mono text-2xl font-bold text-emerald-400 bg-black/40 px-4 py-1 rounded">
+                                    {formatTime(time)}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Updated Vitals Grid with BP fix and Manual Input - 2 cols on mobile */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                            <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)}/>
+                            <div className="bg-slate-900/50 p-3 rounded border border-slate-700 flex flex-col items-center justify-center h-28">
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">BP</span>
+                                <span className="text-2xl font-mono font-bold text-white">{Math.round(vitals.bpSys)}/{Math.round(vitals.bpDia)}</span>
+                                <span className="text-[10px] text-slate-600 mt-1">mmHg</span>
+                            </div>
+                            <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)}/>
+                            <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)}/>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-slate-900/30 p-2 rounded text-center border border-slate-700">
+                                <span className="text-xs text-slate-500 block">GCS</span>
+                                <span className="font-mono font-bold text-lg">{vitals.gcs}</span>
+                            </div>
+                            <div className="bg-slate-900/30 p-2 rounded text-center border border-slate-700">
+                                <span className="text-xs text-slate-500 block">Temp</span>
+                                <span className="font-mono font-bold text-lg">{vitals.temp}°C</span>
+                            </div>
+                            <div className="bg-slate-900/30 p-2 rounded text-center border border-slate-700">
+                                <span className="text-xs text-slate-500 block">Glucose</span>
+                                <span className="font-mono font-bold text-lg">{vitals.bm}</span>
+                            </div>
+                        </div>
+                    </Card>
+
+                    <Card title="Clinical Actions" icon="activity">
+                        {/* New Instructor Override Controls */}
+                        <div className="flex justify-end gap-2 mb-4 border-b border-slate-700 pb-2">
+                            <Button variant="secondary" onClick={toggleDeterioration} className="text-xs h-10 border border-slate-600">
+                                <Lucide icon={scenario.deterioration.active ? "pause-circle" : "play-circle"} className="w-3 h-3"/> 
+                                {scenario.deterioration.active ? "Pause Det" : "Resume Det"}
+                            </Button>
+                            <Button variant="danger" onClick={triggerArrest} className="text-xs h-10">
+                                <Lucide icon="alert-triangle" className="w-3 h-3"/> Arrest
+                            </Button>
+                        </div>
+
+                        <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 border-b border-slate-700 no-scrollbar">
+                            {['Airway', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
+                                <button 
+                                    key={cat} 
+                                    onClick={() => setActiveTab(cat)}
+                                    className={`px-4 py-2 text-sm font-bold rounded transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                                >
+                                    {cat}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                            {getInterventionsByCat(activeTab).map(key => (
+                                <Button key={key} variant="secondary" onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-12 touch-manipulation">
+                                    {INTERVENTIONS[key]?.label || key}
+                                </Button>
+                            ))}
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-slate-700">
+                            <form onSubmit={(e) => { e.preventDefault(); if(manualLog.trim()){ addLogEntry(manualLog, 'manual'); setManualLog(""); } }} className="flex gap-2">
+                                <input 
+                                    type="text" 
+                                    value={manualLog}
+                                    onChange={(e) => setManualLog(e.target.value)}
+                                    placeholder="Log action..." 
+                                    className="flex-grow bg-slate-900 border border-slate-600 rounded px-3 py-3 text-sm focus:outline-none focus:border-sky-500"
+                                    disabled={!isRunning}
+                                />
+                                <Button type="submit" variant="outline" disabled={!isRunning || !manualLog.trim()} className="h-12">Log</Button>
+                            </form>
+                        </div>
+                    </Card>
+
+                    {/* New Dynamic Investigations Section */}
+                    <Card title="Investigations" icon="file-search">
+                         <div className="grid grid-cols-2 gap-3">
+                             <InvestigationButton type="ECG" icon="activity" />
+                             <InvestigationButton type="VBG" icon="droplet" />
+                             <InvestigationButton type="CXR" icon="image" />
+                             <InvestigationButton type="POCUS" icon="wifi" />
+                             <InvestigationButton type="CT" icon="layers" />
+                         </div>
+                    </Card>
+
+                    <Card title="Instructor Notes" icon="clipboard">
+                        <form onSubmit={(e) => { e.preventDefault(); if(manualNotes.trim()){ addLogEntry(`Note: ${manualNotes}`, 'note'); setManualNotes(""); } }} className="flex gap-2">
+                            <input 
+                                type="text" 
+                                value={manualNotes}
+                                onChange={(e) => setManualNotes(e.target.value)}
+                                placeholder="Add note..." 
+                                className="flex-grow bg-slate-900 border border-slate-600 rounded px-3 py-3 text-sm focus:outline-none focus:border-purple-500"
+                                disabled={!isRunning}
+                            />
+                            <Button type="submit" variant="secondary" disabled={!isRunning || !manualNotes.trim()} className="h-12">Add</Button>
+                        </form>
+                    </Card>
+                </div>
+
+                <div className="space-y-6 flex flex-col h-full order-2 lg:order-2">
+                    
+                    <Card className="flex-grow flex flex-col bg-slate-800 h-96 lg:h-auto">
+                        <div className="flex items-center gap-2 mb-3 border-b border-slate-700 pb-2">
+                            <Lucide icon="list" className="w-5 h-5 text-sky-400" />
+                            <h3 className="font-bold text-slate-200">Incident Log</h3>
+                        </div>
+
+                        <div className="flex-grow overflow-y-auto space-y-2 pr-2 text-sm font-mono">
+                            {log.length === 0 && <p className="text-slate-500 italic text-center mt-10">Simulation ready...</p>}
+                            {log.map((l, i) => (
+                                <div key={i} className={`p-2 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'note' ? 'bg-yellow-900/20 border-yellow-500' : 'bg-slate-700/30 border-slate-500'}`}>
+                                    <span className="text-xs text-slate-500 block">{l.simTime}</span>
+                                    <p className="text-slate-200">{l.msg}</p>
+                                </div>
+                            ))}
+                            <div ref={logEndRef} />
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        );
+    };
+
+    const DebriefScreen = ({ sim, onRestart }) => {
+        const { log, scenario, history } = sim; 
+        const chartRef = useRef(null);
+
+        useEffect(() => {
+            if (!chartRef.current || !history.length) return;
+
+            const labels = history.map(h => h.time); 
+            
+            const hrData = history.map(h => h.hr);
+            const bpData = history.map(h => h.bp);
+            const spo2Data = history.map(h => h.spo2);
+            const rrData = history.map(h => h.rr);
+
+            const chart = new window.Chart(chartRef.current, {
+                type: 'line',
+                data: {
+                    labels: labels.map(t => `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`),
+                    datasets: [
+                        { label: 'HR', data: hrData, borderColor: '#ef4444', tension: 0.4 },
+                        { label: 'Sys BP', data: bpData, borderColor: '#3b82f6', tension: 0.4 },
+                        { label: 'SpO2', data: spo2Data, borderColor: '#10b981', tension: 0.4, yAxisID: 'y1' },
+                        { label: 'RR', data: rrData, borderColor: '#a855f7', tension: 0.4, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        title: { display: true, text: 'Vital Signs Trend' },
+                        tooltip: {
+                            callbacks: {
+                                afterBody: (items) => {
+                                    const idx = items[0].dataIndex;
+                                    const acts = history[idx].actions;
+                                    return acts && acts.length ? `Actions: ${acts.join(', ')}` : '';
+                                }
+                            }
+                        },
+                        annotation: {
+                            annotations: history.reduce((acc, h, i) => {
+                                if (h.actions && h.actions.length) {
+                                    acc[`act_${i}`] = {
+                                        type: 'line',
+                                        xMin: i,
+                                        xMax: i,
+                                        borderColor: 'rgba(255, 165, 0, 0.7)', // Orange color for visibility
+                                        borderWidth: 2,
+                                        label: {
+                                            display: true,
+                                            content: h.actions[0], 
+                                            position: 'start',
+                                            backgroundColor: 'rgba(255, 165, 0, 0.7)',
+                                            color: 'white',
+                                            font: { size: 10 }
+                                        }
+                                    };
+                                }
+                                return acc;
+                            }, {})
+                        }
+                    },
+                    scales: {
+                        y: { position: 'left', min: 0, title: {display:true, text:'HR / BP', color: '#cbd5e1'} },
+                        y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false}, title: {display:true, text:'SpO2 / RR', color: '#cbd5e1'} },
+                        x: { ticks: { color: '#cbd5e1' } }
+                    }
+                }
+            });
+
+            return () => chart.destroy();
+        }, [history]);
+
+        const handleExport = () => {
+            const doc = new window.jspdf.jsPDF();
+            doc.setFontSize(18);
+            doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10);
+            doc.setFontSize(12);
+            doc.text(`Scenario ID: ${scenario.id} | Category: ${scenario.category}`, 10, 20);
+            
+            let y = 30;
+            log.forEach(l => {
+                if (y > 280) { doc.addPage(); y = 10; }
+                doc.text(`[${l.simTime}] ${l.msg}`, 10, y);
+                y += 7;
+            });
+            doc.save("sim-debrief.pdf");
+        };
+
+        return (
+            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-2">
+                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
+                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
+                    <div className="flex gap-2 w-full md:w-auto">
+                        <Button onClick={handleExport} variant="secondary" className="flex-1 md:flex-none h-12"><Lucide icon="download"/> Export PDF</Button>
+                        <Button onClick={onRestart} variant="primary" className="flex-1 md:flex-none h-12"><Lucide icon="rotate-ccw"/> New Scenario</Button>
+                    </div>
+                </div>
+
+                {/* New Graph Section */}
+                <Card title="Physiological Trends" icon="activity">
+                    <div className="bg-slate-900 p-4 rounded h-80 relative">
+                        <canvas ref={chartRef}></canvas>
+                    </div>
+                </Card>
+
+                <Card title="Learning Objectives" icon="book-open">
+                    <ul className="list-disc pl-5 space-y-1 text-slate-300">
+                        {scenario.learningObjectives && scenario.learningObjectives.map((o,i) => <li key={i}>{o}</li>)}
+                    </ul>
+                </Card>
+
+                <Card title="Action Timeline" icon="clock">
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                        {log.map((l, i) => (
+                            <div key={i} className="flex gap-4 border-b border-slate-700 pb-2">
+                                <span className="font-mono text-sky-400 w-16 flex-shrink-0">{l.simTime}</span>
+                                <span className="text-slate-300">{l.msg}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
+            </div>
+        );
+    };
 
     const App = () => {
-      // --- Icon Components (now inside App) ---
-      const FilterIcon = ({ className = "w-5 h-5" }) => (
-        React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-          React.createElement('polygon', { points: "22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" })
-        )
-      );
+        const [view, setView] = useState('setup'); 
+        const [currentScenario, setCurrentScenario] = useState(null);
+        const [lastSetupParams, setLastSetupParams] = useState(null);
 
-      const ZapIcon = ({ className = "w-5 h-5" }) => (
-        React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-          React.createElement('polygon', { points: "13 2 3 14 12 14 11 22 21 10 12 10 13 2" })
-        )
-      );
+        useEffect(() => {
+            if (window.lucide) window.lucide.createIcons();
+        }); 
 
-      const UsersIcon = ({ className = "w-5 h-5" }) => (
-        React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-          React.createElement('path', { d: "M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" }),
-          React.createElement('circle', { cx: "8.5", cy: "7", r: "4" }),
-          React.createElement('polyline', { points: "17 11 19 13 23 9" })
-        )
-      );
+        const regenerateScenario = () => {
+            if (!lastSetupParams) return;
+            setView('setup_regen'); 
+        };
 
-      const AlertTriangleIcon = ({ className = "w-5 h-5" }) => (
-        React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-          React.createElement('path', { d: "m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" }),
-          React.createElement('path', { d: "M12 9v4" }),
-          React.createElement('path', { d: "M12 17h.01" })
-        )
-      );
+        return (
+            <div className="min-h-screen flex flex-col p-2 md:p-6 max-w-7xl mx-auto">
+                <header className="flex items-center justify-between mb-8 pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-4">
+                        <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" />
+                        <div>
+                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v6.0</h1>
+                            <p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p>
+                        </div>
+                    </div>
+                    <div className="hidden md:block text-right">
+                        <p className="text-xs text-slate-600">In-situ Simulation Tool</p>
+                        <p className="text-xs text-slate-600">UK Clinical Guidelines</p>
+                    </div>
+                </header>
 
-      const ChevronDownIcon = ({ className = "w-4 h-4" }) => (
-        React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-          React.createElement('polyline', { points: "6 9 12 15 18 9" })
-        )
-      );
+                <main className="flex-grow">
+                    {view === 'setup' && (
+                        <SetupScreen onGenerate={(s, params) => { 
+                            setCurrentScenario(s); 
+                            setLastSetupParams(params); 
+                            setView('briefing'); 
+                        }} />
+                    )}
 
-      const ExternalLinkIcon = ({ className = "w-4 h-4 ml-1.5" }) => (
-          React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-              React.createElement('path', { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" }),
-              React.createElement('polyline', { points: "15 3 21 3 21 9" }),
-              React.createElement('line', { x1: "10", y1: "14", x2: "21", y2: "3" })
-          )
-      );
+                    {view === 'setup_regen' && (
+                        <SetupScreen 
+                            initialParams={{ ...lastSetupParams, autoGenerate: true }}
+                            onGenerate={(s, params) => { 
+                                setCurrentScenario(s); 
+                                setLastSetupParams(params); 
+                                setView('briefing'); 
+                            }} 
+                        />
+                    )}
+                    
+                    {view === 'briefing' && currentScenario && (
+                        <BriefingScreen 
+                            scenario={currentScenario} 
+                            onStart={() => setView('live')} 
+                            onBack={() => setView('setup')}
+                            onNewScenario={regenerateScenario}
+                        />
+                    )}
 
-      const FileTextIcon = ({ className = "w-5 h-5" }) => (
-        React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", className: className },
-          React.createElement('path', { d: "M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" }),
-          React.createElement('polyline', { points: "14 2 14 8 20 8" }),
-          React.createElement('line', { x1: "16", y1: "13", x2: "8", y2: "13" }),
-          React.createElement('line', { x1: "16", y1: "17", x2: "8", y2: "17" }),
-          React.createElement('line', { x1: "10", y1: "9", x2: "8", y2: "9" })
-        )
-      );
+                    {(view === 'live' || view === 'debrief') && currentScenario && (
+                        <LiveSimContainer 
+                            scenario={currentScenario} 
+                            view={view} 
+                            setView={setView} 
+                            onRestart={() => { setCurrentScenario(null); setView('setup'); }}
+                        />
+                    )}
+                </main>
 
-      const [filters, setFilters] = React.useState({
-        category: 'Any',
-        ageRange: 'Any',
-        humanFactorId: 'hf0', 
-      });
-      const [currentScenario, setCurrentScenario] = React.useState(null);
-      const [isLoading, setIsLoading] = React.useState(false);
-      const [error, setError] = React.useState('');
-      const [showResults, setShowResults] = React.useState({
-        ecg: false,
-        cxr: false,
-        pelvicXray: false,
-        vbg: false,
-      });
-
-      const toggleResult = (resultType) => {
-        setShowResults(prev => ({ ...prev, [resultType]: !prev[resultType] }));
-      };
-
-      const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFilters(prev => ({ ...prev, [name]: value }));
-        setShowResults({ ecg: false, cxr: false, pelvicXray: false, vbg: false }); 
-      };
-
-      const generateScenario = () => {
-        setIsLoading(true);
-        setError('');
-        setCurrentScenario(null);
-        setShowResults({ ecg: false, cxr: false, pelvicXray: false, vbg: false }); 
-
-        setTimeout(() => {
-          let availableScenarios = ALL_SCENARIOS;
-
-          if (filters.category !== 'Any') {
-            availableScenarios = availableScenarios.filter(s => s.category === filters.category);
-          }
-          if (filters.ageRange !== 'Any') {
-            availableScenarios = availableScenarios.filter(s => s.ageRange === filters.ageRange);
-          }
-
-          if (availableScenarios.length === 0) {
-            setError('No scenarios match the current filter combination. Please broaden your criteria.');
-            setIsLoading(false);
-            return;
-          }
-
-          const randomIndex = Math.floor(Math.random() * availableScenarios.length);
-          let baseTemplate = JSON.parse(JSON.stringify(availableScenarios[randomIndex]));
-          
-          let scenarioData = { ...baseTemplate }; 
-
-          let age;
-          let isInfantMonths = scenarioData.isInfantInMonths || false;
-
-          if (typeof scenarioData.ageGenerator === 'function') {
-              age = scenarioData.ageGenerator();
-          } else {
-              console.warn(`Scenario ${scenarioData.id || 'Unknown'} is missing an ageGenerator. Using default for ageRange: ${scenarioData.ageRange}`);
-              if (scenarioData.ageRange === 'Paediatric') {
-                  age = getRandomInt(1, 17); 
-                  if (age <=1 && !isInfantMonths) { 
-                     isInfantMonths = Math.random() < 0.5; 
-                     if(isInfantMonths) age = getRandomInt(1,12); 
-                  } else if (age <=12 && isInfantMonths) {
-                    // Age is already in months
-                  }
-              } else if (scenarioData.ageRange === 'Adult') {
-                  age = getRandomInt(18, 64);
-              } else if (scenarioData.ageRange === 'Elderly') {
-                  age = getRandomInt(65, 95);
-              } else {
-                  age = 30; 
-              }
-          }
-          scenarioData.generatedAge = age;
-          scenarioData.ageUnits = isInfantMonths ? 'months' : 'years';
-
-
-          if (scenarioData.patientProfileTemplate) {
-            scenarioData.patientProfile = scenarioData.patientProfileTemplate
-                .replace(/{age}/g, age.toString())
-                .replace(/{sex}/g, Math.random() < 0.5 ? 'male' : 'female') 
-                .replace(/{timeSinceExposure}/g, getRandomInt(10, 60).toString()) 
-                .replace(/{seizureDuration}/g, getRandomInt(10, 30).toString())
-                .replace(/{prehospitalMedsTime}/g, getRandomInt(5, 20).toString())
-                .replace(/{durationPain}/g, getRandomInt(1, 4).toString())
-                .replace(/{durationSymptoms}/g, getRandomInt(1,3).toString())
-                .replace(/{gestation}/g, getRandomInt(32, 36).toString()) 
-                .replace(/{fallHeight}/g, getRandomFloat(1.0, 2.5, 1).toString()) 
-                .replace(/{numVomits}/g, getRandomInt(1,3).toString()) 
-                .replace(/{timeOnFloor}/g, getRandomInt(2, 12).toString()) 
-                .replace(/{amtsScore}/g, getRandomInt(4, 8).toString()) 
-                .replace(/{timeSinceFall}/g, getRandomInt(15, 120).toString())
-                .replace(/{timeSinceBurn}/g, getRandomInt(15, 120).toString())
-                .replace(/{timeSinceIngestion}/g, getRandomInt(12, 48).toString())
-                .replace(/{timeSinceInjury}/g, getRandomInt(1, 6).toString())
-                .replace(/{weeksLMP}/g, getRandomInt(6, 10).toString())
-                .replace(/{numStairs}/g, getRandomInt(2, 10).toString()); 
-          }
-          
-          const baseVitalsRanges = getBaseVitals(age, isInfantMonths);
-          let generatedVitals = {};
-          let hr_val = getRandomInt(baseVitalsRanges.hr[0], baseVitalsRanges.hr[1]);
-          let rr_val = getRandomInt(baseVitalsRanges.rr[0], baseVitalsRanges.rr[1]);
-          let bpSys_val = getRandomInt(baseVitalsRanges.bpSys[0], baseVitalsRanges.bpSys[1]);
-          let bpDia_val = getRandomInt(baseVitalsRanges.bpDia[0], baseVitalsRanges.bpDia[1]);
-          let temp_val = getRandomFloat(baseVitalsRanges.temp[0], baseVitalsRanges.temp[1], 1);
-          let bm_val = getRandomFloat(baseVitalsRanges.bm[0], baseVitalsRanges.bm[1], 1);
-          let sats_val = getRandomInt(94,99); 
-
-          if (scenarioData.vitalsModifier) {
-              const modified = scenarioData.vitalsModifier({hr_val, rr_val, bpSys_val, bpDia_val, temp_val, bm_val, sats_val}, age, isInfantMonths);
-              hr_val = modified.hr_val;
-              rr_val = modified.rr_val;
-              bpSys_val = modified.bpSys_val;
-              bpDia_val = modified.bpDia_val;
-              temp_val = modified.temp_val;
-              bm_val = modified.bm_val;
-              sats_val = modified.sats_val;
-          } else { 
-              if (scenarioData.id === 'PM001') { 
-                  hr_val = getRandomInt(Math.max(hr_val, 130), 180);
-                  rr_val = getRandomInt(Math.max(rr_val, 30), 50);
-                  bpSys_val = getRandomInt(60, Math.min(bpSys_val, 90));
-                  bpDia_val = getRandomInt(30, Math.min(bpDia_val, 50));
-                  sats_val = getRandomInt(85,90);
-              } else if (scenarioData.id === 'AM001') { 
-                  hr_val = getRandomInt(40, Math.min(hr_val, 60)); 
-              } else if (scenarioData.id === 'AT001') { 
-                  hr_val = getRandomInt(Math.max(hr_val, 120), 160);
-                  rr_val = getRandomInt(Math.max(rr_val, 28), 40);
-                  bpSys_val = getRandomInt(70, Math.min(bpSys_val, 95));
-                  bpDia_val = getRandomInt(40, Math.min(bpDia_val, 60));
-                  sats_val = getRandomInt(88,92);
-                  temp_val = getRandomFloat(35.0, 36.0, 1);
-              } else if (scenarioData.id === 'EM002') { 
-                  hr_val = getRandomInt(Math.max(hr_val, 100), 140); 
-                  sats_val = getRandomInt(86,90);
-              } else if (scenarioData.id === 'PM002') { 
-                  hr_val = getRandomInt(Math.max(hr_val, 150), 190);
-                  rr_val = getRandomInt(Math.max(rr_val, 35), 55);
-                  sats_val = getRandomInt(88, 92);
-              } else if (scenarioData.id === 'EM001') { 
-                  hr_val = getRandomInt(Math.max(hr_val, 90), 110);
-                  temp_val = getRandomFloat(37.5, 38.5, 1);
-              } else if (scenarioData.id === 'EM003') { 
-                  hr_val = getRandomInt(Math.max(hr_val, 90), 115);
-                  bpSys_val = getRandomInt(Math.min(bpSys_val, 110), Math.min(bpSys_val, 130)); 
-                  sats_val = getRandomInt(90, 95);
-                  temp_val = getRandomFloat(35.0, 36.5, 1); 
-              }
-          }
-
-
-          generatedVitals = {
-              hr: `${hr_val}${scenarioData.id === 'EM002' ? ' bpm (irregularly irregular)' : ' bpm'}`,
-              rr: `${rr_val}/min` + (scenarioData.id === 'PM001' ? ', wheezy' : (scenarioData.id === 'AT001' ? ' (shallow)' : '')),
-              bp: `${bpSys_val}/${bpDia_val} mmHg`,
-              sats: `${sats_val}% on air`,
-              temp: `${temp_val}°C`,
-              gcs: baseTemplate.initialVitals?.gcs || '15/15', 
-              bm: `${bm_val.toFixed(1)} mmol/L`
-          };
-          
-          generatedVitals.vbg = generateVbg(scenarioData.vbgClinicalState, bm_val, baseTemplate.initialVitals?.vbg?.K ? parseFloat(baseTemplate.initialVitals.vbg.K.split(' ')[0]) : 4.0);
-          if(baseTemplate.initialVitals?.abgOn15LO2) generatedVitals.abgOn15LO2 = generateVbg(scenarioData.vbgClinicalState, bm_val, 4.0); 
-          if(baseTemplate.initialVitals?.abgOnAir) generatedVitals.abgOnAir = generateVbg(scenarioData.vbgClinicalState, bm_val, 4.0);
-
-
-          scenarioData.initialVitals = generatedVitals; 
-
-          if (scenarioData.ecg && scenarioData.ecg.findingsTemplate) {
-            scenarioData.ecg.findings = scenarioData.ecg.findingsTemplate.replace(/{hr}/g, hr_val.toString()); 
-          }
-           if (scenarioData.chestXray && scenarioData.chestXray.linkTemplate) {
-            let ageForBonexrayLink = age;
-            if (isInfantMonths) ageForBonexrayLink = 'infant'; 
-            else if (age > 12) ageForBonexrayLink = 'adult'; 
-            else if (age > 6) ageForBonexrayLink = '6'; 
-            else ageForBonexrayLink = age.toString();
-            
-            if (scenarioData.chestXray.linkTemplate.includes("bonexray")) {
-                scenarioData.chestXray.link = scenarioData.chestXray.linkTemplate.replace('{age}', ageForBonexrayLink);
-            } 
-          }
-          if (scenarioData.pelvicXray && scenarioData.pelvicXray.linkTemplate) {
-             let ageForBonexrayLink = age;
-            if (isInfantMonths) ageForBonexrayLink = 'infant';
-            else if (age > 12) ageForBonexrayLink = 'adult';
-            else if (age > 6) ageForBonexrayLink = '6';
-            else ageForBonexrayLink = age.toString();
-
-             if (scenarioData.pelvicXray.linkTemplate.includes("bonexray")) {
-                scenarioData.pelvicXray.link = scenarioData.pelvicXray.linkTemplate.replace('{age}', ageForBonexrayLink);
-            }
-          }
-
-
-          const selectedHfFromList = HUMAN_FACTOR_CHALLENGES.find(hf => hf.id === filters.humanFactorId);
-          let finalHumanFactorChallenge;
-          let displayTitle = scenarioData.title; 
-
-          if (selectedHfFromList) {
-            if (selectedHfFromList.id === 'hf0') { 
-              finalHumanFactorChallenge = {
-                type: selectedHfFromList.type,
-                description: selectedHfFromList.description,
-                specifics: selectedHfFromList.specifics || '' 
-              };
-            } else { 
-              finalHumanFactorChallenge = {
-                type: selectedHfFromList.type,
-                description: selectedHfFromList.description,
-                specifics: selectedHfFromList.specifics || '' 
-              };
-              if (scenarioData.defaultHumanFactor &&
-                  scenarioData.defaultHumanFactor.type === selectedHfFromList.type &&
-                  scenarioData.defaultHumanFactor.specifics) {
-                finalHumanFactorChallenge.specifics = scenarioData.defaultHumanFactor.specifics;
-              }
-              displayTitle = `${scenarioData.title} - ${selectedHfFromList.type}`;
-            }
-          } else {
-            finalHumanFactorChallenge = scenarioData.defaultHumanFactor || HUMAN_FACTOR_CHALLENGES.find(hf => hf.id === 'hf0');
-            if (finalHumanFactorChallenge.type !== 'Standard Simulation') {
-                displayTitle = `${scenarioData.title} - ${finalHumanFactorChallenge.type}`;
-            }
-          }
-          
-          const scenarioToDisplay = {
-            ...scenarioData, 
-            displayTitle: displayTitle, 
-            humanFactorChallenge: finalHumanFactorChallenge 
-          };
-          
-          delete scenarioToDisplay.title; 
-          delete scenarioToDisplay.defaultHumanFactor;
-          delete scenarioToDisplay.ageGenerator;
-          delete scenarioToDisplay.patientProfileTemplate;
-          delete scenarioToDisplay.vbgClinicalState;
-          if (scenarioToDisplay.ecg) delete scenarioToDisplay.ecg.findingsTemplate;
-          if (scenarioToDisplay.chestXray) delete scenarioToDisplay.chestXray.linkTemplate;
-          if (scenarioToDisplay.pelvicXray) delete scenarioToDisplay.pelvicXray.linkTemplate;
-          delete scenarioToDisplay.vitalsModifier;
-          delete scenarioToDisplay.isInfantInMonths;
-
-
-          setCurrentScenario(scenarioToDisplay);
-          setIsLoading(false);
-        }, 500);
-      };
-      
-      React.useEffect(() => {
-        generateScenario();
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, []); 
-
-      const formatVbg = (vbgData) => {
-        if (!vbgData) return "N/A";
-        return Object.entries(vbgData)
-          .map(([key, value]) => `${key.toUpperCase()}: ${value}`)
-          .join(' | ');
-      };
-
-      const e = React.createElement;
-
-      const ScenarioDetail = ({ title, content, isList = false }) => {
-        if (!content) {
-            return null; // Don't render if there's no content
-        }
-        return e(
-            'div',
-            { className: 'mb-5' },
-            e('h4', { className: 'text-lg font-semibold text-slate-200 mb-1' }, `${title}:`),
-            isList && Array.isArray(content)
-                ? e(
-                    'ul',
-                    { className: 'list-disc list-inside text-slate-300 pl-2 space-y-1' },
-                    content.map((item, index) => e('li', { key: index }, item))
-                  )
-                : e(
-                    'p',
-                    { className: 'text-slate-300 whitespace-pre-wrap' },
-                    typeof content === 'string' ? content : JSON.stringify(content)
-                  )
+                <footer className="mt-12 text-center text-slate-600 text-xs py-4 border-t border-slate-800">
+                    <p>© {new Date().getFullYear()} WMEBEM (West Midlands Evidence Based Emergency Medicine). All rights reserved.</p>
+                    <p className="mt-1">This tool is for educational simulation purposes only and should not be used for live clinical decision making. Content can be used or modified with permission.</p>
+                </footer>
+            </div>
         );
     };
 
-      return e(
-        'div',
-        { className: "min-h-screen bg-slate-900 text-slate-100 font-sans flex flex-col items-center p-4 sm:p-6 md:p-8" },
-        e('div', { className: 'w-full max-w-4xl' },
-          e('header', { className: 'mb-8 text-center' },
-            e('h1', { className: 'text-4xl sm:text-5xl font-bold text-sky-400' }, 'Emergency Medicine Scenario Generator'),
-            e('p', { className: 'text-slate-400 mt-2 text-lg' }, 'Craft challenging simulations for your trainees. Scenarios align with UK practice.')
-          ),
-          e('div', { className: 'bg-slate-800 p-6 rounded-xl shadow-2xl mb-8' },
-            e('h2', { className: 'text-2xl font-semibold text-sky-300 mb-6 flex items-center' }, e(FilterIcon, { className: 'w-7 h-7 mr-3 text-sky-400' }), 'Scenario Parameters'),
-            e('div', { className: 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6' },
-              e('div', null,
-                e('label', { htmlFor: 'category', className: 'block text-sm font-medium text-slate-300 mb-1' }, 'Category'),
-                e('div', { className: 'relative' },
-                  e('select', { id: 'category', name: 'category', value: filters.category, onChange: handleFilterChange, className: 'w-full bg-slate-700 border border-slate-600 text-slate-100 rounded-lg shadow-sm py-2.5 px-3 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 appearance-none' },
-                    e('option', { value: 'Any' }, 'Any Category'),
-                    e('option', { value: 'Medical' }, 'Medical'),
-                    e('option', { value: 'Trauma' }, 'Trauma'),
-                    e('option', { value: 'Burns' }, 'Burns'),
-                    e('option', { value: 'Obstetric & Gynae Emergencies' }, 'Obstetric & Gynae Emergencies')
-                  ),
-                  e(ChevronDownIcon, { className: 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none' })
-                )
-              ),
-              e('div', null,
-                e('label', { htmlFor: 'ageRange', className: 'block text-sm font-medium text-slate-300 mb-1' }, 'Age Range'),
-                e('div', { className: 'relative' },
-                  e('select', { id: 'ageRange', name: 'ageRange', value: filters.ageRange, onChange: handleFilterChange, className: 'w-full bg-slate-700 border border-slate-600 text-slate-100 rounded-lg shadow-sm py-2.5 px-3 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 appearance-none' },
-                    e('option', { value: 'Any' }, 'Any Age'),
-                    e('option', { value: 'Paediatric' }, 'Paediatric'),
-                    e('option', { value: 'Adult' }, 'Adult'),
-                    e('option', { value: 'Elderly' }, 'Elderly')
-                  ),
-                  e(ChevronDownIcon, { className: 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none' })
-                )
-              ),
-              e('div', { className: 'sm:col-span-2 lg:col-span-1' },
-                e('label', { htmlFor: 'humanFactorId', className: 'block text-sm font-medium text-slate-300 mb-1' }, 'Human Factor Challenge'),
-                e('div', { className: 'relative' },
-                  e('select', { id: 'humanFactorId', name: 'humanFactorId', value: filters.humanFactorId, onChange: handleFilterChange, className: 'w-full bg-slate-700 border border-slate-600 text-slate-100 rounded-lg shadow-sm py-2.5 px-3 focus:ring-2 focus:ring-sky-500 focus:border-sky-500 appearance-none' },
-                    HUMAN_FACTOR_CHALLENGES.map(hf => e('option', { key: hf.id, value: hf.id }, hf.type))
-                  ),
-                  e(ChevronDownIcon, { className: 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none' })
-                )
-              )
-            ),
-            e('button', { onClick: generateScenario, disabled: isLoading, className: 'mt-8 w-full flex items-center justify-center bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 focus:ring-offset-slate-800' },
-              e(ZapIcon, { className: 'w-6 h-6 mr-2' }),
-              isLoading ? 'Generating...' : 'Generate New Scenario'
-            )
-          ),
-          error && e('div', { className: 'bg-red-700 border border-red-900 text-white p-4 rounded-lg shadow-lg mb-6 flex items-center' },
-            e(AlertTriangleIcon, { className: 'w-6 h-6 mr-3 text-red-100' }),
-            e('p', null, error)
-          ),
-          isLoading && !currentScenario && e('div', { className: 'text-center py-10' },
-            e('div', { className: 'animate-spin rounded-full h-12 w-12 border-b-2 border-sky-400 mx-auto' }),
-            e('p', { className: 'mt-4 text-slate-400' }, 'Generating your scenario...')
-          ),
-          currentScenario && e('div', { className: 'bg-slate-800 p-6 sm:p-8 rounded-xl shadow-2xl animate-fadeIn' },
-            e('h2', { className: 'text-3xl font-bold text-sky-400 mb-2' }, currentScenario.displayTitle),
-            e('div', { className: 'flex flex-wrap gap-x-4 gap-y-2 text-sm text-slate-400 mb-6' },
-              e('span', { className: 'bg-slate-700 px-3 py-1 rounded-full' }, currentScenario.category),
-              e('span', { className: 'bg-slate-700 px-3 py-1 rounded-full' }, currentScenario.ageRange),
-              currentScenario.generatedAge !== undefined && e('span', { className: 'bg-slate-700 px-3 py-1 rounded-full' }, `Age: ${currentScenario.generatedAge} ${currentScenario.ageUnits || 'years'}`)
-            ),
-            currentScenario.humanFactorChallenge && e('div', { className: 'mb-6 p-4 bg-slate-700/50 border border-sky-700 rounded-lg' },
-              e('h3', { className: 'text-xl font-semibold text-sky-300 mb-2 flex items-center' },
-                e(UsersIcon, { className: 'w-6 h-6 mr-2 text-sky-400' }),
-                `Human Factor Challenge: ${currentScenario.humanFactorChallenge.type}`
-              ),
-              e('p', { className: 'text-slate-300' }, currentScenario.humanFactorChallenge.description),
-              currentScenario.humanFactorChallenge.specifics && e('p', { className: 'text-sm text-sky-400 mt-1 italic' }, `Specifics: ${currentScenario.humanFactorChallenge.specifics}`)
-            ),
-            e(ScenarioDetail, { title: 'Patient Profile', content: currentScenario.patientProfile }),
-            e(ScenarioDetail, { title: 'Presenting Complaint', content: currentScenario.presentingComplaint }),
-            e('div', { className: 'mb-4' },
-              e('h4', { className: 'text-lg font-semibold text-slate-200 mb-1' }, 'Initial Vital Signs:'),
-              e('ul', { className: 'list-disc list-inside text-slate-300 pl-2 space-y-0.5' },
-                Object.entries(currentScenario.initialVitals)
-                  .filter(([key]) => !key.toLowerCase().includes('vbg') && !key.toLowerCase().includes('abg')) 
-                  .map(([key, value]) => e('li', { key: key }, e('strong', { className: 'uppercase text-slate-400' }, `${key.toUpperCase()}:`), ` ${value}`))
-              )
-            ),
-            e('div', { className: 'mb-6 p-4 bg-slate-700/30 border border-slate-600 rounded-lg' },
-              e('h3', { className: 'text-xl font-semibold text-sky-300 mb-3 flex items-center' }, e(FileTextIcon, { className: 'w-6 h-6 mr-2 text-sky-400' }), 'Clinical Investigations'),
-              e('div', { className: 'space-y-3' },
-                e('div', null,
-                  e('button', { onClick: () => toggleResult('vbg'), className: 'text-sky-400 hover:underline font-medium' }, `Venous Blood Gas (VBG) ${showResults.vbg ? '▼' : '▶'}`),
-                  showResults.vbg && currentScenario.initialVitals.vbg && e('div', { className: 'mt-1 p-3 bg-slate-700/50 rounded-md text-sm text-slate-300' }, 
-                    formatVbg(currentScenario.initialVitals.vbg),
-                    currentScenario.initialVitals.abgOn15LO2 && e('p', { className: 'mt-1 pt-1 border-t border-slate-600' }, 'Also ABG (on 15L O2): ' + formatVbg(currentScenario.initialVitals.abgOn15LO2)),
-                    currentScenario.initialVitals.abgOnAir && e('p', { className: 'mt-1 pt-1 border-t border-slate-600' }, 'Also ABG (on Air): ' + formatVbg(currentScenario.initialVitals.abgOnAir))
-                  )
-                ),
-                currentScenario.ecg && e('div', null,
-                  e('button', { onClick: () => toggleResult('ecg'), className: 'text-sky-400 hover:underline font-medium' }, `ECG ${showResults.ecg ? '▼' : '▶'}`),
-                  showResults.ecg && e('div', { className: 'mt-1 p-3 bg-slate-700/50 rounded-md text-sm' },
-                    e('p', { className: 'text-slate-300' }, e('strong', { className: 'text-slate-200' }, 'Type: '), currentScenario.ecg.type),
-                    e('p', { className: 'text-slate-300' }, e('strong', { className: 'text-slate-200' }, 'Findings: '), currentScenario.ecg.findings),
-                    currentScenario.ecg.link && e('a', { href: currentScenario.ecg.link, target: '_blank', rel: 'noopener noreferrer', className: 'inline-flex items-center text-sky-500 hover:text-sky-400 mt-1' }, 'View Example (LITFL/ECGpedia)', e(ExternalLinkIcon, {className: "w-4 h-4 ml-1.5"}))
-                  )
-                ),
-                currentScenario.chestXray && e('div', null,
-                  e('button', { onClick: () => toggleResult('cxr'), className: 'text-sky-400 hover:underline font-medium' }, `Chest X-ray ${showResults.cxr ? '▼' : '▶'}`),
-                  showResults.cxr && e('div', { className: 'mt-1 p-3 bg-slate-700/50 rounded-md text-sm' },
-                    e('p', { className: 'text-slate-300' }, e('strong', { className: 'text-slate-200' }, 'Findings: '), currentScenario.chestXray.findings),
-                    currentScenario.chestXray.link && e('a', { href: currentScenario.chestXray.link, target: '_blank', rel: 'noopener noreferrer', className: 'inline-flex items-center text-sky-500 hover:text-sky-400 mt-1' }, 'View Example (Radiopaedia/Bonexray)', e(ExternalLinkIcon, {className: "w-4 h-4 ml-1.5"}))
-                  )
-                ),
-                currentScenario.category === 'Trauma' && currentScenario.pelvicXray && e('div', null,
-                  e('button', { onClick: () => toggleResult('pelvicXray'), className: 'text-sky-400 hover:underline font-medium' }, `Pelvic X-ray ${showResults.pelvicXray ? '▼' : '▶'}`),
-                  showResults.pelvicXray && e('div', { className: 'mt-1 p-3 bg-slate-700/50 rounded-md text-sm' },
-                    e('p', { className: 'text-slate-300' }, e('strong', { className: 'text-slate-200' }, 'Findings: '), currentScenario.pelvicXray.findings),
-                    currentScenario.pelvicXray.link && e('a', { href: currentScenario.pelvicXray.link, target: '_blank', rel: 'noopener noreferrer', className: 'inline-flex items-center text-sky-500 hover:text-sky-400 mt-1' }, 'View Example (Radiopaedia/Bonexray)', e(ExternalLinkIcon, {className: "w-4 h-4 ml-1.5"}))
-                  )
-                )
-              )
-            ),
-            e(ScenarioDetail, { title: 'Scenario Details & Progression', content: currentScenario.scenarioDetails, isList: true }),
-            e(ScenarioDetail, { title: 'Learning Objectives', content: currentScenario.learningObjectives, isList: true }),
-            currentScenario.suggestedImagingReview && e('div', { className: 'mb-5' },
-              e('h4', { className: 'text-lg font-semibold text-slate-200 mb-1' }, 'Suggested Imaging Review:'),
-              e('p', { className: 'text-slate-300 mb-1' }, currentScenario.suggestedImagingReview.description),
-              e('a', { href: currentScenario.suggestedImagingReview.url, target: '_blank', rel: 'noopener noreferrer', className: 'inline-flex items-center text-sky-400 hover:text-sky-300 hover:underline' }, 'View on Radiopaedia', e(ExternalLinkIcon, {className: "w-4 h-4 ml-1.5"}))
-            ),
-            currentScenario.guidelineLinks && currentScenario.guidelineLinks.length > 0 && e('div', { className: 'mb-5' },
-              e('h4', { className: 'text-lg font-semibold text-slate-200 mb-1' }, 'Referenced Guidelines:'),
-              e('ul', { className: 'list-disc list-inside text-slate-300 pl-2 space-y-1' },
-                currentScenario.guidelineLinks.map((link, index) => e('li', { key: index }, e('a', { href: link.url, target: '_blank', rel: 'noopener noreferrer', className: 'inline-flex items-center text-sky-400 hover:text-sky-300 hover:underline' }, link.name, e(ExternalLinkIcon, {className: "w-4 h-4 ml-1.5"}))))
-              )
-            ),
-            e(ScenarioDetail, { title: 'Key Debrief Points', content: currentScenario.debriefPoints, isList: true }),
-            currentScenario.equipmentNeeded && e(ScenarioDetail, { title: 'Suggested Equipment', content: currentScenario.equipmentNeeded, isList: true })
-          ),
-          e('footer', { className: 'text-center mt-12 py-6 border-t border-slate-700' },
-            e('p', { className: 'text-sm text-slate-500' }, 'Emergency Medicine Scenario Generator v2.0 (UK Focused with Procedural Elements)'),
-            e('p', { className: 'text-xs text-slate-600' }, 'Designed to challenge and educate. Scenarios aim to cover a broad range of emergency presentations, implicitly supporting RCEM learning outcomes and aligning with UK clinical guidelines. Trauma scenarios prioritise European Trauma Course (ETC) principles where specified.')
-          )
-        )
-      );
+    const LiveSimContainer = ({ scenario, view, setView, onRestart }) => {
+        const sim = useSimulation(scenario);
+
+        if (view === 'live') return <LiveSimScreen sim={sim} onFinish={() => { sim.stop(); setView('debrief'); }} onBack={() => setView('briefing')} />;
+        if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />;
+        return null;
     };
 
-    const ScenarioDetail = ({ title, content, isList = false }) => {
-        if (!content) {
-            return null; // Don't render if there's no content
-        }
-        return React.createElement(
-            'div',
-            { className: 'mb-5' },
-            React.createElement('h4', { className: 'text-lg font-semibold text-slate-200 mb-1' }, `${title}:`),
-            isList && Array.isArray(content)
-                ? React.createElement(
-                    'ul',
-                    { className: 'list-disc list-inside text-slate-300 pl-2 space-y-1' },
-                    content.map((item, index) => React.createElement('li', { key: index }, item))
-                  )
-                : React.createElement(
-                    'p',
-                    { className: 'text-slate-300 whitespace-pre-wrap' },
-                    typeof content === 'string' ? content : JSON.stringify(content)
-                  )
-        );
-    };
-
-    ReactDOM.render(React.createElement(App), document.getElementById('root'));
-
+    ReactDOM.render(<App />, document.getElementById('root'));
     </script>
 </body>
 </html>
