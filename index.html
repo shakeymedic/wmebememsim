@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Scenario Generator v6.2</title>
+    <title>WMEBEM Scenario Generator v6.3</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -469,6 +469,89 @@
             <div className="p-4">{children}</div>
         </div>
     );
+    
+    // Moved Component OUTSIDE to prevent re-renders causing scroll jumps/focus loss
+    // Updated VitalDisplay with Manual Override Input
+    const VitalDisplay = ({ label, value, prev, unit, lowIsBad = true, onUpdate }) => {
+        const [isEditing, setIsEditing] = useState(false);
+        const [editVal, setEditVal] = useState(value);
+
+        const getTrend = (curr, prev) => curr > prev ? '▲' : curr < prev ? '▼' : '▬';
+        const getTrendColor = (curr, prev, lowIsBad = true) => {
+            if (curr === prev) return 'text-slate-500';
+            if (lowIsBad) return curr > prev ? 'text-emerald-400' : 'text-red-400';
+            return curr > prev ? 'text-red-400' : 'text-emerald-400';
+        };
+
+        // Sync editVal only when NOT editing to prevent overwrites
+        useEffect(() => {
+            if (!isEditing) setEditVal(value);
+        }, [value, isEditing]);
+
+        const handleBlur = () => {
+            setIsEditing(false);
+            if (editVal !== value) onUpdate(parseInt(editVal));
+        };
+
+        return (
+            <div className="bg-slate-900/50 p-3 rounded border border-slate-700 flex flex-col items-center justify-center h-28 relative touch-manipulation">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
+                {isEditing ? (
+                    <input 
+                        type="number" 
+                        value={editVal} 
+                        onChange={(e) => setEditVal(e.target.value)}
+                        onBlur={handleBlur}
+                        onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
+                        className="text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-20 text-center"
+                        autoFocus
+                    />
+                ) : (
+                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-2" onClick={() => { setEditVal(value); setIsEditing(true); }}>
+                        <span className="text-3xl font-mono font-bold text-white">{Math.round(value)}</span>
+                        <span className={`text-sm font-bold ${getTrendColor(value, prev, lowIsBad)}`}>
+                            {getTrend(value, prev)}
+                        </span>
+                    </div>
+                )}
+                <span className="text-[10px] text-slate-600 mt-1">{unit}</span>
+            </div>
+        );
+    };
+
+    // Moved Component OUTSIDE to prevent animation resets (jerky progress bars)
+    const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
+        const hasData = (type === 'ECG' && scenario.ecg) || (type === 'CXR' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct);
+        
+        return (
+            <div className="flex flex-col gap-2">
+                <Button 
+                    variant={isRevealed ? "secondary" : "outline"} 
+                    onClick={() => revealInvestigation(type)} 
+                    disabled={!isRunning || isRevealed || isLoading}
+                    className="h-10 text-xs relative overflow-hidden"
+                >
+                    {isLoading && <div className="loading-bar"></div>}
+                    <div className="relative z-10 flex items-center gap-2">
+                        <Lucide icon={icon} className="w-3 h-3"/> {isLoading ? `Requesting...` : (isRevealed ? `View ${type}` : `Request ${type}`)}
+                    </div>
+                </Button>
+                {isRevealed && (
+                    <div className="p-3 bg-slate-700/30 rounded text-xs border-l-2 border-sky-500 animate-fadeIn">
+                        {hasData ? (
+                            type === 'VBG' ? 
+                                `pH ${scenario.vbg.pH.toFixed(2)} | pCO2 ${scenario.vbg.pCO2} | Lac ${scenario.vbg.Lac} | K ${scenario.vbg.K}` :
+                            type === 'ECG' ? `${scenario.ecg.type} - ${scenario.ecg.findings}` :
+                            type === 'CXR' ? scenario.chestXray.findings :
+                            type === 'POCUS' ? scenario.ultrasound.findings : 
+                            type === 'CT' ? scenario.ct.findings : 'Normal / Not Indicated'
+                        ) : 'Normal / Not Indicated'}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
 
     // --- SIMULATION ENGINE ---
     const useSimulation = (initialScenario) => {
@@ -918,102 +1001,24 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
         const { scenario, time, isRunning, vitals, prevVitals, log, flash, start, pause, applyIntervention, addLogEntry, manualUpdateVital, toggleDeterioration, triggerArrest, revealInvestigation, investigationsRevealed, loadingInvestigations } = sim;
-        const logEndRef = useRef(null);
+        // FIXED: Use a dedicated Ref for the container to prevent full window scroll jumping
+        const logContainerRef = useRef(null);
         const [manualLog, setManualLog] = useState("");
         const [manualNotes, setManualNotes] = useState("");
         const [activeTab, setActiveTab] = useState("Airway"); 
 
+        // FIXED: Scroll the CONTAINER, not the window
         useEffect(() => {
-            if (logEndRef.current) logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+            if (logContainerRef.current) {
+                logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+            }
         }, [log]);
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-        const getTrend = (curr, prev) => curr > prev ? '▲' : curr < prev ? '▼' : '▬';
-        const getTrendColor = (curr, prev, lowIsBad = true) => {
-            if (curr === prev) return 'text-slate-500';
-            if (lowIsBad) return curr > prev ? 'text-emerald-400' : 'text-red-400';
-            return curr > prev ? 'text-red-400' : 'text-emerald-400';
-        };
-
-        // Updated VitalDisplay with Manual Override Input (now handles internal edit state correctly)
-        const VitalDisplay = ({ label, value, prev, unit, lowIsBad = true, onUpdate }) => {
-            const [isEditing, setIsEditing] = useState(false);
-            const [editVal, setEditVal] = useState(value);
-
-            // Sync editVal only when NOT editing to prevent overwrites
-            useEffect(() => {
-                if (!isEditing) setEditVal(value);
-            }, [value, isEditing]);
-
-            const handleBlur = () => {
-                setIsEditing(false);
-                if (editVal !== value) onUpdate(parseInt(editVal));
-            };
-
-            return (
-                <div className="bg-slate-900/50 p-3 rounded border border-slate-700 flex flex-col items-center justify-center h-28 relative touch-manipulation">
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
-                    {isEditing ? (
-                        <input 
-                            type="number" 
-                            value={editVal} 
-                            onChange={(e) => setEditVal(e.target.value)}
-                            onBlur={handleBlur}
-                            onKeyDown={(e) => e.key === 'Enter' && handleBlur()}
-                            className="text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-20 text-center"
-                            autoFocus
-                        />
-                    ) : (
-                        <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-2" onClick={() => { setEditVal(value); setIsEditing(true); }}>
-                            <span className="text-3xl font-mono font-bold text-white">{Math.round(value)}</span>
-                            <span className={`text-sm font-bold ${getTrendColor(value, prev, lowIsBad)}`}>
-                                {getTrend(value, prev)}
-                            </span>
-                        </div>
-                    )}
-                    <span className="text-[10px] text-slate-600 mt-1">{unit}</span>
-                </div>
-            );
-        };
-
+        
         const getInterventionsByCat = (cat) => {
             return Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
         };
-
-        // Helper for investigation buttons
-        const InvestigationButton = ({ type, icon, label }) => {
-            const isRevealed = investigationsRevealed[type];
-            const isLoading = loadingInvestigations[type];
-            const hasData = (type === 'ECG' && scenario.ecg) || (type === 'CXR' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct);
-            
-            return (
-                <div className="flex flex-col gap-2">
-                    <Button 
-                        variant={isRevealed ? "secondary" : "outline"} 
-                        onClick={() => revealInvestigation(type)} 
-                        disabled={!isRunning || isRevealed || isLoading}
-                        className="h-10 text-xs relative overflow-hidden"
-                    >
-                        {isLoading && <div className="loading-bar"></div>}
-                        <div className="relative z-10 flex items-center gap-2">
-                            <Lucide icon={icon} className="w-3 h-3"/> {isLoading ? `Requesting...` : (isRevealed ? `View ${type}` : `Request ${type}`)}
-                        </div>
-                    </Button>
-                    {isRevealed && (
-                        <div className="p-3 bg-slate-700/30 rounded text-xs border-l-2 border-sky-500 animate-fadeIn">
-                            {hasData ? (
-                                type === 'VBG' ? 
-                                    `pH ${scenario.vbg.pH.toFixed(2)} | pCO2 ${scenario.vbg.pCO2} | Lac ${scenario.vbg.Lac} | K ${scenario.vbg.K}` :
-                                type === 'ECG' ? `${scenario.ecg.type} - ${scenario.ecg.findings}` :
-                                type === 'CXR' ? scenario.chestXray.findings :
-                                type === 'POCUS' ? scenario.ultrasound.findings : 
-                                type === 'CT' ? scenario.ct.findings : 'Normal / Not Indicated'
-                            ) : 'Normal / Not Indicated'}
-                        </div>
-                    )}
-                </div>
-            );
-        }
 
         return (
             <div className={`max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -1132,11 +1137,11 @@
                     {/* New Dynamic Investigations Section */}
                     <Card title="Investigations" icon="file-search">
                          <div className="grid grid-cols-2 gap-3">
-                             <InvestigationButton type="ECG" icon="activity" />
-                             <InvestigationButton type="VBG" icon="droplet" />
-                             <InvestigationButton type="CXR" icon="image" />
-                             <InvestigationButton type="POCUS" icon="wifi" />
-                             <InvestigationButton type="CT" icon="layers" />
+                             <InvestigationButton type="ECG" icon="activity" label="ECG" isRevealed={investigationsRevealed['ECG']} isLoading={loadingInvestigations['ECG']} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
+                             <InvestigationButton type="VBG" icon="droplet" label="VBG" isRevealed={investigationsRevealed['VBG']} isLoading={loadingInvestigations['VBG']} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
+                             <InvestigationButton type="CXR" icon="image" label="CXR" isRevealed={investigationsRevealed['CXR']} isLoading={loadingInvestigations['CXR']} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
+                             <InvestigationButton type="POCUS" icon="wifi" label="POCUS" isRevealed={investigationsRevealed['POCUS']} isLoading={loadingInvestigations['POCUS']} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
+                             <InvestigationButton type="CT" icon="layers" label="CT" isRevealed={investigationsRevealed['CT']} isLoading={loadingInvestigations['CT']} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
                          </div>
                     </Card>
 
@@ -1163,7 +1168,8 @@
                             <h3 className="font-bold text-slate-200">Incident Log</h3>
                         </div>
 
-                        <div className="flex-grow overflow-y-auto space-y-2 pr-2 text-sm font-mono">
+                        {/* FIXED: Added ref here to control internal scrolling */}
+                        <div ref={logContainerRef} className="flex-grow overflow-y-auto space-y-2 pr-2 text-sm font-mono">
                             {log.length === 0 && <p className="text-slate-500 italic text-center mt-10">Simulation ready...</p>}
                             {log.map((l, i) => (
                                 <div key={i} className={`p-2 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'note' ? 'bg-yellow-900/20 border-yellow-500' : 'bg-slate-700/30 border-slate-500'}`}>
@@ -1171,7 +1177,6 @@
                                     <p className="text-slate-200">{l.msg}</p>
                                 </div>
                             ))}
-                            <div ref={logEndRef} />
                         </div>
                     </Card>
                 </div>
@@ -1325,7 +1330,7 @@
                     <div className="flex items-center gap-4">
                         <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" />
                         <div>
-                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v6.2</h1>
+                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v6.3</h1>
                             <p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p>
                         </div>
                     </div>
