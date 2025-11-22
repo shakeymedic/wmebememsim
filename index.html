@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Scenario Generator v6.3</title>
+    <title>WMEBEM Scenario Generator v6.4</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -186,7 +186,11 @@
         ecg: { type: "Anterior STEMI", findings: "STE V1-V4." },
         chestXray: { findings: "Clear." },
         ultrasound: { type: "Echo", findings: "Anterior wall motion abnormality." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "NICE NG185: Acute Coronary Syndromes", url: "https://www.nice.org.uk/guidance/ng185" },
+            { label: "RCEM Learning: STEMI", url: "https://www.rcemlearning.co.uk/" }
+        ]
       },
       {
         id: 'AM008', title: 'SVT (Supraventricular Tachycardia)', category: 'Medical', ageRange: 'Adult',
@@ -201,7 +205,10 @@
         ecg: { type: "SVT", findings: "Narrow complex tachycardia, rate 190, no P waves." },
         chestXray: { findings: "Clear." },
         ultrasound: { type: "Echo", findings: "Hyperdynamic LV, normal structure." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "Resus Council UK: Tachycardia Algorithms", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines#tachycardia" }
+        ]
       },
       {
         id: 'AM009', title: 'Pulsed VT', category: 'Medical', ageRange: 'Adult',
@@ -216,7 +223,10 @@
         ecg: { type: "VT", findings: "Broad complex tachycardia, rate 160, AV dissociation." },
         chestXray: { findings: "Mild pulmonary congestion." },
         ultrasound: { type: "Echo", findings: "Reduced EF, global hypokinesis." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "Resus Council UK: Tachycardia Algorithms", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines#tachycardia" }
+        ]
       },
       {
         id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult',
@@ -231,7 +241,10 @@
         ecg: { type: "VF", findings: "Ventricular Fibrillation." },
         chestXray: { findings: "Not indicated during CPR." },
         ultrasound: { type: "Echo (During Pulse Check)", findings: "Quivering myocardium, no coordinated squeeze." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "Resus Council UK: ALS Guidelines", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" }
+        ]
       },
       {
         id: 'AM005', title: 'Acute Heart Failure', category: 'Medical', ageRange: 'Elderly',
@@ -246,7 +259,10 @@
         ecg: { type: "AF RVR", findings: "AF rate 110." },
         chestXray: { findings: "Pulmonary oedema." },
         ultrasound: { type: "Lung", findings: "B-lines everywhere." },
-        ct: { findings: "Not immediately indicated." }
+        ct: { findings: "Not immediately indicated." },
+        learningLinks: [
+            { label: "NICE CG187: Acute Heart Failure", url: "https://www.nice.org.uk/guidance/cg187" }
+        ]
       },
 
       // === TRAUMA ===
@@ -263,7 +279,11 @@
         ecg: { type: "PEA", findings: "Narrow complex PEA." },
         chestXray: { findings: "Usually straight to theatre/thoracotomy." },
         ultrasound: { type: "EFAST", findings: "Pericardial fluid (Tamponade)." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "ERC Guidelines: Traumatic Cardiac Arrest", url: "https://cprguidelines.eu/" },
+            { label: "RCEM: Trauma Guidelines", url: "https://www.rcem.ac.uk/" }
+        ]
       },
       {
         id: 'AT004', title: 'Traumatic Arrest (Blunt)', category: 'Trauma', ageRange: 'Adult',
@@ -278,7 +298,10 @@
         ecg: { type: "PEA", findings: "Slow PEA." },
         chestXray: { findings: "Massive Haemothorax." },
         ultrasound: { type: "EFAST", findings: "Positive free fluid + pneumothorax." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+             { label: "ERC Guidelines: Traumatic Cardiac Arrest", url: "https://cprguidelines.eu/" }
+        ]
       },
       {
         id: 'AT005', title: 'Severe Head Injury', category: 'Trauma', ageRange: 'Adult',
@@ -293,7 +316,10 @@
         ecg: { type: "Sinus Bradycardia", findings: "Sinus Bradycardia." },
         chestXray: { findings: "Clear." },
         ultrasound: { type: "Optic Nerve Sheath", findings: "Increased ONSD (>5mm) suggesting raised ICP." },
-        ct: { findings: "CT Head: Large Extradural Haematoma with midline shift." }
+        ct: { findings: "CT Head: Large Extradural Haematoma with midline shift." },
+        learningLinks: [
+            { label: "NICE CG176: Head Injury", url: "https://www.nice.org.uk/guidance/cg176" }
+        ]
       },
       
       // === RESPIRATORY ===
@@ -310,7 +336,10 @@
         ecg: { type: "MAT", findings: "Multifocal Atrial Tachycardia." },
         chestXray: { findings: "Hyperinflation." },
         ultrasound: { type: "Lung", findings: "Lung sliding present." },
-        ct: { findings: "CTPA: Negative for PE. Emphysematous changes." }
+        ct: { findings: "CTPA: Negative for PE. Emphysematous changes." },
+        learningLinks: [
+            { label: "NICE NG115: COPD", url: "https://www.nice.org.uk/guidance/ng115" }
+        ]
       },
       {
         id: 'AM011', title: 'Life Threatening Asthma', category: 'Medical', ageRange: 'Adult',
@@ -325,7 +354,10 @@
         ecg: { type: "Sinus Tach", findings: "Rate 140, P pulmonale." },
         chestXray: { findings: "Hyperinflation." },
         ultrasound: { type: "Lung", findings: "Sliding present." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "BTS/SIGN British Guideline on the Management of Asthma", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/asthma/" }
+        ]
       },
 
       // === OTHER MEDICAL ===
@@ -342,7 +374,11 @@
         ecg: { type: "Sinus Tach", findings: "Rate 130." },
         chestXray: { findings: "Normal." },
         ultrasound: { type: "Echo", findings: "Hyperdynamic, empty IVC." },
-        ct: { findings: "Not indicated." }
+        ct: { findings: "Not indicated." },
+        learningLinks: [
+            { label: "Resus Council UK: Anaphylaxis", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/anaphylaxis-guidelines" },
+            { label: "NICE CG183: Anaphylaxis", url: "https://www.nice.org.uk/guidance/cg183" }
+        ]
       },
       {
         id: 'AM013', title: 'Severe Sepsis', category: 'Medical', ageRange: 'Adult',
@@ -357,7 +393,11 @@
         ecg: { type: "Sinus Tach", findings: "Rate 125." },
         chestXray: { findings: "Clear (if UTI source)." },
         ultrasound: { type: "IVC", findings: "Collapsing IVC." },
-        ct: { findings: "CT AP: Pyelonephritis/Obstructed ureter." }
+        ct: { findings: "CT AP: Pyelonephritis/Obstructed ureter." },
+        learningLinks: [
+            { label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/guidance/ng51" },
+            { label: "RCEM: Sepsis Toolkit", url: "https://www.rcem.ac.uk/" }
+        ]
       },
       {
         id: 'AM014', title: 'Status Epilepticus', category: 'Medical', ageRange: 'Adult',
@@ -372,7 +412,10 @@
         ecg: { type: "Sinus Tach", findings: "Artefact from seizure." },
         chestXray: { findings: "Aspiration?" },
         ultrasound: { type: "N/A", findings: "N/A" },
-        ct: { findings: "CT Head: Normal/Previous changes." }
+        ct: { findings: "CT Head: Normal/Previous changes." },
+        learningLinks: [
+            { label: "NICE NG217: Epilepsies", url: "https://www.nice.org.uk/guidance/ng217" }
+        ]
       },
       {
         id: 'AM015', title: 'Severe Overdose (Opiate)', category: 'Toxicology', ageRange: 'Adult',
@@ -387,7 +430,10 @@
         ecg: { type: "Sinus Brady", findings: "Normal intervals." },
         chestXray: { findings: "Aspiration?" },
         ultrasound: { type: "N/A", findings: "N/A" },
-        ct: { findings: "CT Head: Normal." }
+        ct: { findings: "CT Head: Normal." },
+        learningLinks: [
+            { label: "TOXBASE (Login Required)", url: "https://www.toxbase.org/" }
+        ]
       },
       {
         id: 'AM016', title: 'Acute Behavioural Disturbance', category: 'Psychiatry', ageRange: 'Adult',
@@ -402,7 +448,10 @@
         ecg: { type: "Sinus Tach", findings: "Rate 140." },
         chestXray: { findings: "Normal." },
         ultrasound: { type: "N/A", findings: "N/A" },
-        ct: { findings: "CT Head: Normal." }
+        ct: { findings: "CT Head: Normal." },
+        learningLinks: [
+            { label: "RCEM Guideline: Acute Behavioural Disturbance", url: "https://www.rcem.ac.uk/" }
+        ]
       },
 
       // === OBSTETRIC ===
@@ -419,7 +468,10 @@
         ecg: { type: "Sinus Tach", findings: "Rate 130." },
         chestXray: { findings: "Shield gravid uterus." },
         ultrasound: { type: "Fetal Heart", findings: "Fetal bradycardia." },
-        ct: { findings: "CT Head: Posterior Reversible Encephalopathy Syndrome (PRES)." }
+        ct: { findings: "CT Head: Posterior Reversible Encephalopathy Syndrome (PRES)." },
+        learningLinks: [
+            { label: "RCOG Green-top Guideline No. 10a: Eclampsia", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/the-management-of-severe-preeclampsia-and-eclampsia-green-top-guideline-no-10a/" }
+        ]
       },
        {
         id: 'OB002', title: 'Maternal Collapse (PPH)', category: 'Obstetric & Gynae Emergencies', ageRange: 'Adult',
@@ -434,7 +486,10 @@
         ecg: { type: "Sinus Tach", findings: "Rate 140." },
         chestXray: { findings: "Normal." },
         ultrasound: { type: "FAST", findings: "Free fluid abdomen." },
-        ct: { findings: "Not indicated - theatre." }
+        ct: { findings: "Not indicated - theatre." },
+        learningLinks: [
+            { label: "RCOG Green-top Guideline No. 52: PPH", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/postpartum-haemorrhage-prevention-and-management-green-top-guideline-no-52/" }
+        ]
       }
     ];
 
@@ -1290,9 +1345,33 @@
                     </div>
                 </Card>
 
+                {/* Updated Guidelines Section */}
+                {scenario.learningLinks && scenario.learningLinks.length > 0 && (
+                    <Card title="Guidelines & Evidence" icon="book">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {scenario.learningLinks.map((link, i) => (
+                                <a 
+                                    key={i} 
+                                    href={link.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 rounded transition-colors group"
+                                >
+                                    <div className="bg-sky-900/50 p-2 rounded text-sky-400 group-hover:text-white group-hover:bg-sky-600 transition-colors">
+                                        <Lucide icon="external-link" className="w-5 h-5"/>
+                                    </div>
+                                    <span className="font-bold text-slate-200 group-hover:text-white text-sm">{link.label}</span>
+                                </a>
+                            ))}
+                        </div>
+                    </Card>
+                )}
+
                 <Card title="Learning Objectives" icon="book-open">
                     <ul className="list-disc pl-5 space-y-1 text-slate-300">
                         {scenario.learningObjectives && scenario.learningObjectives.map((o,i) => <li key={i}>{o}</li>)}
+                        {!scenario.learningObjectives && <li>Manage the acute presentation systematically (ABCDE).</li>}
+                        {!scenario.learningObjectives && <li>Recognise and treat life-threatening features.</li>}
                     </ul>
                 </Card>
 
@@ -1330,7 +1409,7 @@
                     <div className="flex items-center gap-4">
                         <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" />
                         <div>
-                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v6.3</h1>
+                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v6.4</h1>
                             <p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p>
                         </div>
                     </div>
