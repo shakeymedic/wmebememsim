@@ -87,7 +87,7 @@
         if (age === 0) return "3.5"; 
         if (age < 1) return "4-9"; 
         if (age >= 1 && age <= 10) return ((age + 4) * 2).toFixed(1); 
-        if (age > 10) return (age * 3 + 7).toFixed(1); // Improved estimation for older kids
+        if (age > 10) return (age * 3 + 7).toFixed(1); 
         return null; 
     };
 
@@ -101,7 +101,7 @@
             { label: "Amiodarone (5mg/kg)", dose: `${(5 * w).toFixed(0)} mg`, type: "IV/IO" },
             { label: "Lorazepam (0.1mg/kg)", dose: `${(0.1 * w).toFixed(2)} mg`, type: "IV/IO" },
             { label: "Glucose 10% (2ml/kg)", dose: `${(2 * w).toFixed(0)} ml`, type: "IV/IO" },
-            { label: "Tube Size (Age/4 + 4)", dose: `Size 4-5`, type: "ET" }, // Simplified
+            { label: "Tube Size (Age/4 + 4)", dose: `Size 4-5`, type: "ET" }, 
             { label: "DC Shock (4J/kg)", dose: `${(4 * w).toFixed(0)} J`, type: "Defib" },
         ];
     };
@@ -244,7 +244,13 @@
 
     const { useState, useEffect, useRef, useReducer } = React;
     
-    const Lucide = ({ icon, className }) => <i data-lucide={icon} className={className}></i>;
+    const Lucide = ({ icon, className }) => {
+        // IMPORTANT: Trigger Lucide to scan for this new icon when it renders
+        useEffect(() => {
+            if (window.lucide) window.lucide.createIcons();
+        }); 
+        return <i data-lucide={icon} className={className}></i>;
+    };
 
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
         let variants = {
@@ -913,20 +919,18 @@
         const [lastSetupParams, setLastSetupParams] = useState(null);
         const [resumeState, setResumeState] = useState(null);
 
+        // --- FIX: One-time persistence check ---
         useEffect(() => { 
-            if (window.lucide) window.lucide.createIcons();
-            // Check persistence
             const saved = localStorage.getItem('wmebem_sim_state');
             if (saved) {
                 try {
                     const parsed = JSON.parse(saved);
-                    // Basic validity check
                     if (parsed.scenario && parsed.vitals) {
                         setResumeState(parsed);
                     }
                 } catch(e) { console.error("Save state corrupt", e); }
             }
-        }); 
+        }, []); 
 
         const regenerateScenario = () => { setView('setup_regen'); };
         
@@ -965,6 +969,16 @@
                  sim.dispatch({ type: 'LOAD_SCENARIO', payload: scenario });
             }
         }, []);
+        
+        // Guard clause: Don't render screens until scenario is loaded
+        if (!sim.state.scenario) {
+            return (
+                <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400 animate-pulse">
+                    <Lucide icon="loader-2" className="w-10 h-10 mb-4 animate-spin text-sky-500" />
+                    <p className="text-lg font-mono">Initializing Simulation Engine...</p>
+                </div>
+            );
+        }
 
         if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { sim.stop(); setView('debrief'); }} onBack={() => setView('briefing')} />;
         if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />;
