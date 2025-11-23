@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Scenario Generator v6.4</title>
+    <title>WMEBEM Scenario Generator v7.0</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -83,38 +83,37 @@
     const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
 
-    const AGE_BRACKETS = {
-        INFANT: { maxAge: 1 }, TODDLER: { maxAge: 5 }, SCHOOL: { maxAge: 12 }, 
-        ADOLESCENT: { maxAge: 17 }, ADULT: { maxAge: 64 }, ELDERLY: { maxAge: 120 } 
+    // Vital Signs Ranges
+    const getBaseVitals = (age) => {
+        if (age < 1) return { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5 }; // Neonate/Infant
+        if (age <= 2) return { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0 }; // Toddler
+        if (age <= 5) return { hr: 110, rr: 25, bpSys: 95, bpDia: 60, temp: 37.0, bm: 5.0 }; // Pre-school
+        if (age <= 12) return { hr: 90, rr: 20, bpSys: 105, bpDia: 65, temp: 36.8, bm: 5.5 }; // School
+        if (age > 65) return { hr: 70, rr: 18, bpSys: 135, bpDia: 80, temp: 36.5, bm: 6.0 }; // Elderly (higher baseline BP)
+        return { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8 }; // Adult
     };
 
-    const getBaseVitals = (age, isMonths = false) => {
-        if (isMonths || age <= 1) return { hr: 140, rr: 40, bpSys: 80, bpDia: 50, temp: 37.0, bm: 4.5 }; // Infant
-        if (age <= 5) return { hr: 110, rr: 30, bpSys: 90, bpDia: 60, temp: 37.0, bm: 5.0 }; // Toddler
-        if (age <= 12) return { hr: 90, rr: 22, bpSys: 100, bpDia: 65, temp: 36.8, bm: 5.5 }; // School
-        return { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8 }; // Adult/Adolescent
-    };
-
-    // Paediatric Weight Estimation (APLS Formula)
     const estimateWeight = (age) => {
-        if (age < 1) return "4-10"; // Range for <1yr
-        if (age >= 1 && age <= 5) return (2 * age + 8).toFixed(1);
-        if (age >= 6 && age <= 12) return (3 * age + 7).toFixed(1);
-        return null; // Adult/Older child
+        if (age === 0) return "3.5"; 
+        if (age < 1) return "4-9"; 
+        if (age >= 1 && age <= 10) return ((age + 4) * 2).toFixed(1); 
+        if (age > 10) return (age * 3).toFixed(1); 
+        return null; 
     };
 
-    // VBG Generator
     const generateVbg = (clinicalState = "normal") => {
         let vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5 };
         vbg.pH += getRandomFloat(-0.03, 0.03, 2);
         
         switch (clinicalState) {
-            case "dka_severe": vbg = { pH: 7.05, pCO2: 3.0, HCO3: 8, BE: -18, Lac: 2.5, K: 5.2, Glu: 28.0 }; break;
-            case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 7.0 }; break;
+            case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0 }; break;
+            case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0 }; break;
             case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0 }; break;
             case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0 }; break;
-            case "respiratory_acidosis_acute": vbg = { pH: 7.20, pCO2: 9.0, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2 }; break;
+            case "respiratory_acidosis_acute": vbg = { pH: 7.15, pCO2: 9.5, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2 }; break;
             case "metabolic_acidosis_severe": vbg = { pH: 6.90, pCO2: 6.0, HCO3: 10, BE: -22, Lac: 12.0, K: 6.5, Glu: 6.0 }; break;
+            case "metabolic_alkalosis": vbg = { pH: 7.50, pCO2: 5.8, HCO3: 30, BE: 6, Lac: 1.0, K: 3.0, Glu: 5.5 }; break;
+            case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0 }; break;
             default: break;
         }
         return vbg;
@@ -129,367 +128,518 @@
       { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
     ];
 
-    // Comprehensive Interventions Database
     const INTERVENTIONS = {
-        // AIRWAY & BREATHING
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 5 }, category: 'Airway', log: 'High flow oxygen applied.' },
-        'Nebs': { label: 'Nebulisers', effect: { HR: 10, RR: -2, SpO2: 2 }, category: 'Airway', log: 'Salbutamol/Ipratropium nebulisers administered.' },
+        'Nebs': { label: 'Nebulisers', effect: { HR: 10, RR: -2, SpO2: 2 }, category: 'Airway', log: 'Nebulisers administered.' },
         'Needle': { label: 'Needle Decompression', effect: { SpO2: 10, BP: 10, RR: -5 }, category: 'Airway', log: 'Needle thoracocentesis performed.' },
-        
-        // CIRCULATION & ACCESS
         'Obs': { label: 'Apply Monitoring', effect: {}, category: 'Circulation', log: 'Full monitoring applied (ECG, SpO2, BP).' },
-        'IV Access': { label: 'IV Access (Peripheral)', effect: {}, category: 'Circulation', log: 'Peripheral IV access secured.' },
-        'Central Line': { label: 'Central Line', effect: {}, category: 'Circulation', log: 'Central Venous Catheter inserted.' },
-        'Art Line': { label: 'Arterial Line', effect: {}, category: 'Circulation', log: 'Arterial Line inserted.' },
-        'Fluids': { label: 'IV Fluids (500ml)', effect: { BP: 5, HR: -2 }, category: 'Circulation', log: '500ml Crystalloid bolus given.' },
-        'Blood': { label: 'pRBC (1 Unit)', effect: { BP: 10, HR: -5 }, category: 'Circulation', log: '1 Unit Packed Red Blood Cells transfused.' },
-        'FFP': { label: 'FFP', effect: { BP: 5 }, category: 'Circulation', log: 'Fresh Frozen Plasma transfused.' },
-        'Platelets': { label: 'Platelets', effect: {}, category: 'Circulation', log: 'Platelets transfused.' },
-        'MHP': { label: 'Activate MHP', effect: {}, category: 'Circulation', log: 'Major Haemorrhage Protocol activated.' },
-
-        // DRUGS
-        'Analgesia': { label: 'Analgesia (Morphine)', effect: { HR: -5, RR: -2 }, category: 'Drugs', log: 'Morphine administered.' },
-        'Paracetamol': { label: 'IV Paracetamol', effect: {}, category: 'Drugs', log: 'IV Paracetamol administered.' },
+        'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.' },
+        'Fluids': { label: 'Fluid Bolus', effect: { BP: 5, HR: -2 }, category: 'Circulation', log: 'Fluid bolus given.' },
+        'Blood': { label: 'Blood Tx', effect: { BP: 10, HR: -5 }, category: 'Circulation', log: 'Blood products transfused.' },
+        'Analgesia': { label: 'Analgesia', effect: { HR: -5, RR: -2 }, category: 'Drugs', log: 'Analgesia administered.' },
         'Antibiotics': { label: 'Antibiotics', effect: {}, category: 'Drugs', log: 'IV Antibiotics administered.' },
-        'Ondansetron': { label: 'Ondansetron', effect: {}, category: 'Drugs', log: 'Ondansetron administered.' },
-        'TXA': { label: 'TXA 1g', effect: {}, category: 'Drugs', log: 'Tranexamic Acid 1g administered.' },
-        'Adrenaline': { label: 'IM Adrenaline', effect: { HR: 20, BP: 10, RR: -2 }, category: 'Drugs', log: 'IM Adrenaline 1:1000 administered.' },
-        'Atropine': { label: 'Atropine', effect: { HR: 20 }, category: 'Drugs', log: 'Atropine 500mcg administered.' },
-        'Amiodarone': { label: 'Amiodarone', effect: { HR: -10 }, category: 'Drugs', log: 'Amiodarone 300mg administered.' },
-        'Adenosine': { label: 'Adenosine', effect: { HR: -80 }, category: 'Drugs', log: 'Adenosine rapid bolus administered.' },
-        'Benzos': { label: 'Benzodiazepines', effect: { HR: -10, RR: -2, gcs: -1 }, category: 'Drugs', log: 'Lorazepam/Midazolam administered.' },
-        'Dexamethasone': { label: 'Dexamethasone', effect: {}, category: 'Drugs', log: 'Dexamethasone administered.' },
-        'Calcium': { label: 'Calcium Gluconate', effect: {}, category: 'Drugs', log: 'Calcium Gluconate administered.' },
-        'Insulin': { label: 'Actrapid Insulin', effect: {}, category: 'Drugs', log: 'Insulin/Dextrose infusion started.' },
+        'Adrenaline': { label: 'Adrenaline', effect: { HR: 20, BP: 10, RR: -2 }, category: 'Drugs', log: 'Adrenaline administered.' },
+        'Benzos': { label: 'Benzodiazepines', effect: { HR: -10, RR: -2, gcs: -1 }, category: 'Drugs', log: 'Benzodiazepines administered.' },
+        'Dexamethasone': { label: 'Steroids', effect: {}, category: 'Drugs', log: 'Steroids administered.' },
         'Magnesium': { label: 'Magnesium', effect: { BP: -5 }, category: 'Drugs', log: 'IV Magnesium administered.' },
-        'Naloxone': { label: 'Naloxone', effect: { RR: 10, gcs: 3 }, category: 'Drugs', log: 'Naloxone administered.' },
-
-        // PROCEDURES
-        'Cardioversion': { label: 'Cardioversion', effect: { HR: -50, BP: 10 }, category: 'Procedures', log: 'Synchronised DC Cardioversion delivered.' },
-        'Pacing': { label: 'External Pacing', effect: { HR: 40, BP: 20 }, category: 'Procedures', log: 'External Pacing initiated.' },
+        'Glucose': { label: 'Glucose', effect: { gcs: 2 }, category: 'Drugs', log: 'IV Glucose administered.' },
         'Intubation': { label: 'RSI / Intubation', effect: { SpO2: 100, RR: -10 }, category: 'Procedures', log: 'Patient Intubated and Ventilated.' },
-        'CPR': { label: 'CPR', effect: {}, category: 'Procedures', log: 'CPR in progress.' }
+        'CPR': { label: 'CPR', effect: {}, category: 'Procedures', log: 'CPR in progress.' },
+        'Naloxone': { label: 'Naloxone', effect: { RR: 5, gcs: 3 }, category: 'Drugs', log: 'Naloxone administered.' },
+        'Calcium': { label: 'Calcium', effect: { BP: 2 }, category: 'Drugs', log: 'Calcium Gluconate given.' },
+        'Insulin': { label: 'Insulin/Dextrose', effect: {}, category: 'Drugs', log: 'Insulin/Dextrose infusion started.' },
+        'TXA': { label: 'TXA', effect: {}, category: 'Drugs', log: 'TXA administered.' },
+        'Surgery': { label: 'Surgical Consult', effect: {}, category: 'Procedures', log: 'Surgeons contacted urgently.' }
     };
 
+    // === SCENARIO DATABASE ===
+    // Categories: Medical, Trauma, Toxicology, Psychiatry, Obstetrics
+    // Ages: Paediatric, Adult, Elderly
+    
     const ALL_SCENARIOS = [
-      // === CARDIAC ===
+      // ============================================================
+      // OBSTETRICS (16-40 yrs)
+      // ============================================================
       {
-        id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(40, 70), 
-        patientProfileTemplate: "A {age}-year-old {sex}, smoker. {durationPain} hour(s) of crushing chest pain.",
-        presentingComplaint: 'Chest pain, diaphoresis.',
-        scenarioDetails: ['Pale, clammy.', 'ECG: Anterior STE (V1-V4).', 'Pain 10/10.'], 
-        vitalsMod: { hr: 100, bpSys: 130, bpDia: 85, spO2: 94, rr: 20 },
-        deterioration: { active: true, rate: 0.05, type: 'cardiac' },
-        stabilisers: ['Analgesia', 'Oxygen', 'Fluids', 'MHP', 'Cardioversion'], 
+        id: 'OB001', title: 'Severe Pre-Eclampsia', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female, 34 weeks pregnant. Headache and visual disturbance.",
+        presentingComplaint: 'Headache, Hypertension.',
+        scenarioDetails: ['Brisk reflexes.', 'Clonus present.', 'Proteinuria +++.'],
+        vitalsMod: { hr: 90, bpSys: 170, bpDia: 115, spO2: 98, rr: 18, gcs: 15 },
+        deterioration: { active: true, rate: 0.05, type: 'neuro' }, // Risk of seizure
+        stabilisers: ['Magnesium', 'Labetalol' /* Not in list but generic anti-HTN */],
         vbgClinicalState: "normal",
-        ecg: { type: "Anterior STEMI", findings: "STE V1-V4." },
-        chestXray: { findings: "Clear." },
-        ultrasound: { type: "Echo", findings: "Anterior wall motion abnormality." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "NICE NG185: Acute Coronary Syndromes", url: "https://www.nice.org.uk/guidance/ng185" },
-            { label: "RCEM Learning: STEMI", url: "https://www.rcemlearning.co.uk/" }
-        ]
+        learningLinks: [{ label: "RCOG: Pre-eclampsia", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'AM008', title: 'SVT (Supraventricular Tachycardia)', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 50),
-        patientProfileTemplate: "A {age}-year-old {sex} with sudden onset palpitations. Feeling lightheaded.",
-        presentingComplaint: 'Palpitations, pre-syncope.',
-        scenarioDetails: ['Alert but anxious.', ' HR > 180bpm narrow complex.', 'BP stable initially.'],
-        vitalsMod: { hr: 190, bpSys: 110, bpDia: 75, spO2: 98, rr: 20 },
-        deterioration: { active: true, rate: 0.05, type: 'shock' },
-        stabilisers: ['Adenosine', 'Cardioversion'],
-        vbgClinicalState: "normal",
-        ecg: { type: "SVT", findings: "Narrow complex tachycardia, rate 190, no P waves." },
-        chestXray: { findings: "Clear." },
-        ultrasound: { type: "Echo", findings: "Hyperdynamic LV, normal structure." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "Resus Council UK: Tachycardia Algorithms", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines#tachycardia" }
-        ]
-      },
-      {
-        id: 'AM009', title: 'Pulsed VT', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(50, 75),
-        patientProfileTemplate: "A {age}-year-old {sex} with history of IHD. Palpitations and chest tightness.",
-        presentingComplaint: 'Palpitations, Chest Pain.',
-        scenarioDetails: ['Pale, diaphoretic.', 'Broad complex tachycardia on monitor.', 'Conscious.'],
-        vitalsMod: { hr: 160, bpSys: 90, bpDia: 55, spO2: 94, rr: 22 },
-        deterioration: { active: true, rate: 0.1, type: 'shock' },
-        stabilisers: ['Amiodarone', 'Cardioversion'],
-        vbgClinicalState: "normal",
-        ecg: { type: "VT", findings: "Broad complex tachycardia, rate 160, AV dissociation." },
-        chestXray: { findings: "Mild pulmonary congestion." },
-        ultrasound: { type: "Echo", findings: "Reduced EF, global hypokinesis." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "Resus Council UK: Tachycardia Algorithms", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines#tachycardia" }
-        ]
-      },
-      {
-        id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(50, 80),
-        patientProfileTemplate: "A {age}-year-old {sex} collapsed in waiting room. No output.",
-        presentingComplaint: 'Cardiac Arrest.',
-        scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'Rhythm check: VF.'],
-        vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 },
-        deterioration: { active: false, rate: 0, type: 'arrest' },
-        stabilisers: ['CPR', 'Cardioversion', 'Adrenaline', 'Amiodarone'],
-        vbgClinicalState: "metabolic_acidosis_severe",
-        ecg: { type: "VF", findings: "Ventricular Fibrillation." },
-        chestXray: { findings: "Not indicated during CPR." },
-        ultrasound: { type: "Echo (During Pulse Check)", findings: "Quivering myocardium, no coordinated squeeze." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "Resus Council UK: ALS Guidelines", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" }
-        ]
-      },
-      {
-        id: 'AM005', title: 'Acute Heart Failure', category: 'Medical', ageRange: 'Elderly',
-        ageGenerator: () => getRandomInt(70, 90),
-        patientProfileTemplate: "A {age}-year-old {sex} with IHD. Severe respiratory distress.",
-        presentingComplaint: 'Severe breathlessness, frothy sputum.',
-        scenarioDetails: ['Sat upright, sweating.', 'Bibasal crackles.', 'BP Hypertensive.'],
-        vitalsMod: { hr: 110, bpSys: 180, bpDia: 100, spO2: 85, rr: 32 },
-        deterioration: { active: true, rate: 0.1, type: 'respiratory' }, 
-        stabilisers: ['Oxygen', 'Analgesia'], // Fluids worsen logic handles this
-        vbgClinicalState: "normal",
-        ecg: { type: "AF RVR", findings: "AF rate 110." },
-        chestXray: { findings: "Pulmonary oedema." },
-        ultrasound: { type: "Lung", findings: "B-lines everywhere." },
-        ct: { findings: "Not immediately indicated." },
-        learningLinks: [
-            { label: "NICE CG187: Acute Heart Failure", url: "https://www.nice.org.uk/guidance/cg187" }
-        ]
-      },
-
-      // === TRAUMA ===
-      {
-        id: 'AT003', title: 'Traumatic Arrest (Penetrating)', category: 'Trauma', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 40),
-        patientProfileTemplate: "A {age}-year-old {sex} stabbed in left chest. Lost output en route.",
-        presentingComplaint: 'Traumatic Arrest.',
-        scenarioDetails: ['CPR in progress.', 'Single stab wound L parasternal.', 'Distended neck veins.'],
-        vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 },
-        deterioration: { active: false, rate: 0, type: 'arrest' },
-        stabilisers: ['Thoracotomy' /* Not in list but Needle is proxy */, 'Needle', 'Blood', 'MHP'],
-        vbgClinicalState: "haemorrhagic_shock",
-        ecg: { type: "PEA", findings: "Narrow complex PEA." },
-        chestXray: { findings: "Usually straight to theatre/thoracotomy." },
-        ultrasound: { type: "EFAST", findings: "Pericardial fluid (Tamponade)." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "ERC Guidelines: Traumatic Cardiac Arrest", url: "https://cprguidelines.eu/" },
-            { label: "RCEM: Trauma Guidelines", url: "https://www.rcem.ac.uk/" }
-        ]
-      },
-      {
-        id: 'AT004', title: 'Traumatic Arrest (Blunt)', category: 'Trauma', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 60),
-        patientProfileTemplate: "A {age}-year-old {sex} pedestrian vs car. Agonal breathing.",
-        presentingComplaint: 'Traumatic Arrest.',
-        scenarioDetails: ['Loss of output on transfer.', 'Chest injury right.', 'Pelvis unstable.'],
-        vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 4, gcs: 3 },
-        deterioration: { active: false, rate: 0, type: 'arrest' },
-        stabilisers: ['Blood', 'Needle', 'MHP'],
-        vbgClinicalState: "haemorrhagic_shock",
-        ecg: { type: "PEA", findings: "Slow PEA." },
-        chestXray: { findings: "Massive Haemothorax." },
-        ultrasound: { type: "EFAST", findings: "Positive free fluid + pneumothorax." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-             { label: "ERC Guidelines: Traumatic Cardiac Arrest", url: "https://cprguidelines.eu/" }
-        ]
-      },
-      {
-        id: 'AT005', title: 'Severe Head Injury', category: 'Trauma', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 60),
-        patientProfileTemplate: "A {age}-year-old {sex} fell from 3m ladder. GCS 7.",
-        presentingComplaint: 'Head Injury, Reduced GCS.',
-        scenarioDetails: ['GCS E2 V2 M3.', 'Right pupil dilated.', 'Cushing\'s Reflex?'],
-        vitalsMod: { hr: 50, bpSys: 170, bpDia: 90, spO2: 94, rr: 10, gcs: 7 },
+        id: 'OB002', title: 'Eclampsia', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female, 38 weeks pregnant. Seizing in waiting room.",
+        presentingComplaint: 'Seizure.',
+        scenarioDetails: ['Tonic-clonic activity.', 'Airway compromised.', 'Hypertensive.'],
+        vitalsMod: { hr: 130, bpSys: 180, bpDia: 110, spO2: 88, rr: 24, gcs: 3 },
         deterioration: { active: true, rate: 0.1, type: 'neuro' },
-        stabilisers: ['Intubation'], // Needs airway protection
+        stabilisers: ['Magnesium', 'Oxygen', 'Intubation'],
         vbgClinicalState: "normal",
-        ecg: { type: "Sinus Bradycardia", findings: "Sinus Bradycardia." },
-        chestXray: { findings: "Clear." },
-        ultrasound: { type: "Optic Nerve Sheath", findings: "Increased ONSD (>5mm) suggesting raised ICP." },
-        ct: { findings: "CT Head: Large Extradural Haematoma with midline shift." },
-        learningLinks: [
-            { label: "NICE CG176: Head Injury", url: "https://www.nice.org.uk/guidance/cg176" }
-        ]
-      },
-      
-      // === RESPIRATORY ===
-      {
-        id: 'AM002', title: 'Severe COPD', category: 'Medical', ageRange: 'Elderly',
-        ageGenerator: () => getRandomInt(65, 90),
-        patientProfileTemplate: "A {age}-year-old {sex}, severe COPD. Drowsy on arrival.",
-        presentingComplaint: 'Dyspnoea, reduced GCS.',
-        scenarioDetails: ['GCS 13. Wheezy.', 'Asterixis positive.', 'On 15L O2 from crew.'], 
-        vitalsMod: { hr: 110, bpSys: 140, bpDia: 85, spO2: 98, rr: 10, gcs: 12 }, 
-        deterioration: { active: true, rate: 0.08, type: 'respiratory' },
-        stabilisers: ['Nebs', 'Dexamethasone'], 
-        vbgClinicalState: "copd_retainer",
-        ecg: { type: "MAT", findings: "Multifocal Atrial Tachycardia." },
-        chestXray: { findings: "Hyperinflation." },
-        ultrasound: { type: "Lung", findings: "Lung sliding present." },
-        ct: { findings: "CTPA: Negative for PE. Emphysematous changes." },
-        learningLinks: [
-            { label: "NICE NG115: COPD", url: "https://www.nice.org.uk/guidance/ng115" }
-        ]
+        learningLinks: [{ label: "RCOG: Eclampsia", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'AM011', title: 'Life Threatening Asthma', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 40),
-        patientProfileTemplate: "A {age}-year-old {sex}, brittle asthma. Becoming exhausted.",
-        presentingComplaint: 'Severe dyspnoea, silent chest.',
-        scenarioDetails: ['Silent chest on auscultation.', 'Exhausted, dropping GCS.', 'Sats falling.'],
-        vitalsMod: { hr: 140, bpSys: 110, bpDia: 70, spO2: 88, rr: 8, gcs: 13 },
-        deterioration: { active: true, rate: 0.15, type: 'respiratory' },
-        stabilisers: ['Adrenaline', 'Magnesium', 'Nebs', 'Dexamethasone'],
-        vbgClinicalState: "respiratory_acidosis_acute", // CO2 rising = bad
-        ecg: { type: "Sinus Tach", findings: "Rate 140, P pulmonale." },
-        chestXray: { findings: "Hyperinflation." },
-        ultrasound: { type: "Lung", findings: "Sliding present." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "BTS/SIGN British Guideline on the Management of Asthma", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/asthma/" }
-        ]
+        id: 'OB003', title: 'Post-Partum Haemorrhage', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female. Home birth 2 hours ago. Continuous bleeding.",
+        presentingComplaint: 'PV Bleeding, Collapse.',
+        scenarioDetails: ['Uterus boggy.', 'Pale and clammy.', 'EBL > 1500ml.'],
+        vitalsMod: { hr: 140, bpSys: 70, bpDia: 30, spO2: 94, rr: 28, gcs: 13 },
+        deterioration: { active: true, rate: 0.2, type: 'shock' },
+        stabilisers: ['Blood', 'TXA', 'Fluids', 'Surgery'],
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "RCOG: PPH", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB004', title: 'Cord Prolapse', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female, 39 weeks. Waters broke, 'something came down'.",
+        presentingComplaint: 'Cord visible.',
+        scenarioDetails: ['Cord palpable/visible at introitus.', 'Pulsating cord.', 'Fetal bradycardia on Doppler.'],
+        vitalsMod: { hr: 110, bpSys: 120, bpDia: 70, spO2: 99, rr: 20, gcs: 15 },
+        deterioration: { active: false, rate: 0 },
+        stabilisers: ['Surgery'], // C-Section
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "RCOG: Cord Prolapse", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB005', title: 'Maternal Sepsis (Chorio)', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female, 30 weeks. PROM 2 days ago. Fever.",
+        presentingComplaint: 'Fever, Abdominal pain.',
+        scenarioDetails: ['Uterine tenderness.', 'Foul smelling liquor.', 'Fetal tachycardia.'],
+        vitalsMod: { hr: 125, bpSys: 90, bpDia: 50, spO2: 95, rr: 24, temp: 39.2 },
+        deterioration: { active: true, rate: 0.1, type: 'sepsis' },
+        stabilisers: ['Antibiotics', 'Fluids', 'Surgery'],
+        vbgClinicalState: "septic_shock",
+        learningLinks: [{ label: "RCOG: Sepsis in Pregnancy", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB006', title: 'Amniotic Fluid Embolus', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female. Active labour. Sudden collapse and hypoxia.",
+        presentingComplaint: 'Cardiac Arrest/Peri-arrest.',
+        scenarioDetails: ['Profound hypoxia.', 'Cardiovascular collapse.', 'Coagulopathy developing.'],
+        vitalsMod: { hr: 150, bpSys: 60, bpDia: 30, spO2: 70, rr: 40, gcs: 8 },
+        deterioration: { active: true, rate: 0.2, type: 'arrest' },
+        stabilisers: ['CPR', 'Intubation', 'Blood'],
+        vbgClinicalState: "metabolic_acidosis_severe",
+        learningLinks: [{ label: "RCOG: AFE", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB007', title: 'Placental Abruption', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female, 32 weeks. Severe constant abdominal pain.",
+        presentingComplaint: 'Abdominal pain, Woody uterus.',
+        scenarioDetails: ['Uterus hard (woody).', 'Dark PV blood.', 'Mother shocked out of proportion to visible loss.'],
+        vitalsMod: { hr: 130, bpSys: 85, bpDia: 45, spO2: 96, rr: 22, gcs: 15 },
+        deterioration: { active: true, rate: 0.1, type: 'shock' },
+        stabilisers: ['Blood', 'Surgery'],
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "RCOG: Antepartum Haemorrhage", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB008', title: 'Ruptured Ectopic', category: 'Obstetrics', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(16, 40),
+        patientProfileTemplate: "A {age}-year-old female. Unknown pregnancy. Sudden RIF pain and collapse.",
+        presentingComplaint: 'Collapse, Abdominal pain.',
+        scenarioDetails: ['Positive pregnancy test.', 'Shoulder tip pain.', 'Peritonitic.'],
+        vitalsMod: { hr: 140, bpSys: 70, bpDia: 40, spO2: 94, rr: 26, gcs: 12 },
+        deterioration: { active: true, rate: 0.2, type: 'shock' },
+        stabilisers: ['Blood', 'Fluids', 'Surgery'],
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/" }]
       },
 
-      // === OTHER MEDICAL ===
+      // ============================================================
+      // ELDERLY / GEM (Age > 65)
+      // ============================================================
       {
-        id: 'AM012', title: 'Anaphylaxis', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 50),
-        patientProfileTemplate: "A {age}-year-old {sex} stung by wasp. Lip swelling and wheeze.",
-        presentingComplaint: 'Angioedema, Stridor, Shock.',
-        scenarioDetails: ['Swollen lips/tongue.', 'Widespread urticaria.', 'Audible stridor.'],
-        vitalsMod: { hr: 130, bpSys: 80, bpDia: 40, spO2: 91, rr: 28 },
-        deterioration: { active: true, rate: 0.1, type: 'shock' },
-        stabilisers: ['Adrenaline', 'Fluids', 'Dexamethasone'],
-        vbgClinicalState: "normal",
-        ecg: { type: "Sinus Tach", findings: "Rate 130." },
-        chestXray: { findings: "Normal." },
-        ultrasound: { type: "Echo", findings: "Hyperdynamic, empty IVC." },
-        ct: { findings: "Not indicated." },
-        learningLinks: [
-            { label: "Resus Council UK: Anaphylaxis", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/anaphylaxis-guidelines" },
-            { label: "NICE CG183: Anaphylaxis", url: "https://www.nice.org.uk/guidance/cg183" }
-        ]
+        id: 'EL001', title: 'Ruptured AAA', category: 'Medical', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(65, 90),
+        patientProfileTemplate: "A {age}-year-old male. Sudden onset tearing back pain and collapse.",
+        presentingComplaint: 'Back pain, Syncope.',
+        scenarioDetails: ['Pulsatile abdominal mass.', 'Mottled legs.', 'Hypotensive.'],
+        vitalsMod: { hr: 110, bpSys: 70, bpDia: 40, spO2: 94, rr: 24, gcs: 13 }, // Beta blocked HR?
+        deterioration: { active: true, rate: 0.2, type: 'shock' },
+        stabilisers: ['Blood', 'Surgery'], // Permissive hypotension
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "NICE NG156: AAA", url: "https://www.nice.org.uk/" }]
       },
       {
-        id: 'AM013', title: 'Severe Sepsis', category: 'Medical', ageRange: 'Adult',
+        id: 'EL002', title: 'Severe Hypothermia', category: 'Medical', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(75, 95),
+        patientProfileTemplate: "A {age}-year-old found on floor by carers. Down for >12 hours.",
+        presentingComplaint: 'Confusion, Cold to touch.',
+        scenarioDetails: ['Core temp unrecordable initially.', 'Bradycardia (Osborn waves).', 'Confusion.'],
+        vitalsMod: { hr: 40, bpSys: 80, bpDia: 40, spO2: 90, rr: 8, temp: 29.0, gcs: 10 },
+        deterioration: { active: true, rate: 0.05, type: 'cardiac' }, // VF risk
+        stabilisers: ['Fluids' /* Warmed */, 'Oxygen'],
+        vbgClinicalState: "metabolic_acidosis_severe",
+        ecg: { type: "Bradycardia", findings: "Rate 40. J waves present." },
+        learningLinks: [{ label: "RCEM: Hypothermia", url: "https://www.rcem.ac.uk/" }]
+      },
+      {
+        id: 'EL003', title: 'NOF Fracture & Delirium', category: 'Trauma', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(75, 95),
+        patientProfileTemplate: "A {age}-year-old. Fall in care home. Confused and aggressive.",
+        presentingComplaint: 'Hip pain, Confusion.',
+        scenarioDetails: ['Shortened rotated leg.', 'PINCH ME causes of delirium.', 'Dehydrated.'],
+        vitalsMod: { hr: 110, bpSys: 100, bpDia: 60, spO2: 94, rr: 20, temp: 37.8, gcs: 13 },
+        deterioration: { active: true, rate: 0.02, type: 'sepsis' }, // Aspiration/UTI underlying
+        stabilisers: ['Analgesia', 'Fluids'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "NICE CG124: Hip Fracture", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'EL004', title: 'Ischaemic Bowel', category: 'Medical', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(70, 90),
+        patientProfileTemplate: "A {age}-year-old with AF. Severe generalised abdo pain.",
+        presentingComplaint: 'Pain out of proportion to exam.',
+        scenarioDetails: ['Soft abdomen initially.', 'Lactate rising fast.', 'History of AF.'],
+        vitalsMod: { hr: 130, bpSys: 95, bpDia: 60, spO2: 94, rr: 26, gcs: 15 },
+        deterioration: { active: true, rate: 0.1, type: 'metabolic' },
+        stabilisers: ['Fluids', 'Antibiotics', 'Surgery'],
+        vbgClinicalState: "metabolic_acidosis_severe", // High lactate
+        learningLinks: [{ label: "RCEM: Acute Mesenteric Ischaemia", url: "https://www.rcem.ac.uk/" }]
+      },
+      {
+        id: 'EL005', title: 'Digoxin Toxicity', category: 'Toxicology', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(70, 90),
+        patientProfileTemplate: "A {age}-year-old. Confusion, vomiting and 'yellow vision'.",
+        presentingComplaint: 'Nausea, Palpitations.',
+        scenarioDetails: ['Bradycardia.', 'Renal failure (AKI).', 'Reverse tick ECG.'],
+        vitalsMod: { hr: 45, bpSys: 90, bpDia: 50, spO2: 96, rr: 18, gcs: 14 },
+        deterioration: { active: true, rate: 0.1, type: 'cardiac' },
+        stabilisers: ['Atropine', 'Fab fragments' /* Digibind */],
+        vbgClinicalState: "hyperkalemia",
+        ecg: { type: "Bradycardia", findings: "Reverse tick signs. Rate 45." },
+        learningLinks: [{ label: "Toxbase: Digoxin", url: "https://www.toxbase.org/" }]
+      },
+      {
+        id: 'EL006', title: 'Chronic Subdural Haematoma', category: 'Trauma', ageRange: 'Elderly',
+        ageGenerator: () => getRandomInt(75, 95),
+        patientProfileTemplate: "A {age}-year-old. Gradual confusion and ataxia over 2 weeks.",
+        presentingComplaint: 'Falls, Confusion.',
+        scenarioDetails: ['History of fall 3 weeks ago.', 'On Warfarin/DOAC.', 'Fluctuating GCS.'],
+        vitalsMod: { hr: 70, bpSys: 150, bpDia: 80, spO2: 96, rr: 16, gcs: 12 },
+        deterioration: { active: true, rate: 0.05, type: 'neuro' },
+        stabilisers: ['Reversal (Beriplex)', 'Surgery'],
+        vbgClinicalState: "normal",
+        ct: { findings: "Large crescentic hypodense collection with midline shift." },
+        learningLinks: [{ label: "NICE CG176: Head Injury", url: "https://www.nice.org.uk/" }]
+      },
+
+      // ============================================================
+      // ADULT MEDICAL (Expanded)
+      // ============================================================
+      {
+        id: 'AM017', title: 'Massive PE', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(30, 70),
+        patientProfileTemplate: "A {age}-year-old female. Recent surgery. Sudden collapse.",
+        presentingComplaint: 'Collapse, SOB.',
+        scenarioDetails: ['Cyanosed.', 'Engorged neck veins.', 'Hypotensive.'],
+        vitalsMod: { hr: 140, bpSys: 70, bpDia: 40, spO2: 80, rr: 40, gcs: 10 },
+        deterioration: { active: true, rate: 0.15, type: 'cardiac' }, // Obstructive shock
+        stabilisers: ['Thrombolysis', 'Oxygen', 'Fluids'],
+        vbgClinicalState: "normal", // Or respiratory alkalosis
+        ecg: { type: "Sinus Tach", findings: "S1Q3T3. RBBB." },
+        learningLinks: [{ label: "NICE NG158: VTE", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AM018', title: 'Severe Hyperkalemia', category: 'Medical', ageRange: 'Adult',
         ageGenerator: () => getRandomInt(40, 80),
-        patientProfileTemplate: "A {age}-year-old {sex} with fever and confusion. History of UTI.",
-        presentingComplaint: 'Fever, Rigors, Hypotension.',
-        scenarioDetails: ['Hot to touch.', 'Mottled skin.', 'Lactate 6.0.'],
-        vitalsMod: { hr: 125, bpSys: 85, bpDia: 45, spO2: 94, rr: 26, temp: 39.2 },
+        patientProfileTemplate: "A {age}-year-old with CKD. Missed dialysis.",
+        presentingComplaint: 'Weakness, Palpitations.',
+        scenarioDetails: ['Bradycardia or Bizarre tachycardia.', 'Muscle weakness.', 'K+ 8.5.'],
+        vitalsMod: { hr: 40, bpSys: 100, bpDia: 60, spO2: 96, rr: 18, gcs: 15 },
+        deterioration: { active: true, rate: 0.1, type: 'cardiac' },
+        stabilisers: ['Calcium', 'Insulin', 'Salbutamol'],
+        vbgClinicalState: "hyperkalemia",
+        ecg: { type: "Sine Wave", findings: "Broad QRS. Absent P waves. Sine wave pattern." },
+        learningLinks: [{ label: "RCEM: Hyperkalaemia", url: "https://www.rcem.ac.uk/" }]
+      },
+      {
+        id: 'AM019', title: 'Thyroid Storm', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 50),
+        patientProfileTemplate: "A {age}-year-old female. Graves disease. Agitated and delirious.",
+        presentingComplaint: 'Confusion, Palpitations.',
+        scenarioDetails: ['Hyperpyrexia.', 'Fast AF.', 'Tremor.', 'Goitre.'],
+        vitalsMod: { hr: 160, bpSys: 160, bpDia: 80, spO2: 96, rr: 30, temp: 40.0, gcs: 11 },
+        deterioration: { active: true, rate: 0.1, type: 'cardiac' },
+        stabilisers: ['Beta Blockers', 'Fluids', 'Cooling'],
+        vbgClinicalState: "normal",
+        ecg: { type: "AF Fast", findings: "AF rate 160." },
+        learningLinks: [{ label: "Society for Endocrinology: Thyroid Storm", url: "https://www.endocrinology.org/" }]
+      },
+      {
+        id: 'AM020', title: 'Addisonian Crisis', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(30, 60),
+        patientProfileTemplate: "A {age}-year-old. Known Addison's. Vomiting for 2 days.",
+        presentingComplaint: 'Collapse, Vomiting.',
+        scenarioDetails: ['Hyperpigmentation.', 'Profound hypotension.', 'Hypoglycaemia.'],
+        vitalsMod: { hr: 120, bpSys: 70, bpDia: 40, spO2: 96, rr: 22, gcs: 13, bm: 2.8 },
+        deterioration: { active: true, rate: 0.1, type: 'shock' },
+        stabilisers: ['Dexamethasone' /* Hydrocortisone */, 'Fluids', 'Glucose'],
+        vbgClinicalState: "hyperkalemia", // Hyponatremia + Hyperkalemia
+        learningLinks: [{ label: "Society for Endocrinology: Adrenal Crisis", url: "https://www.endocrinology.org/" }]
+      },
+      {
+        id: 'AM021', title: 'Upper GI Bleed (Variceal)', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(40, 65),
+        patientProfileTemplate: "A {age}-year-old alcoholic. Vomiting large amounts of fresh blood.",
+        presentingComplaint: 'Haematemesis.',
+        scenarioDetails: ['Stigmata of liver disease.', 'Ascites.', 'Haemodynamically unstable.'],
+        vitalsMod: { hr: 130, bpSys: 80, bpDia: 40, spO2: 94, rr: 24, gcs: 14 },
+        deterioration: { active: true, rate: 0.15, type: 'shock' },
+        stabilisers: ['Blood', 'TXA', 'Terlipressin' /* Not in list */],
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "NICE CG141: Acute Upper GI Bleed", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AM022', title: 'Acute Ischaemic Stroke', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(50, 80),
+        patientProfileTemplate: "A {age}-year-old. Sudden onset R sided weakness 45 mins ago.",
+        presentingComplaint: 'Stroke symptoms.',
+        scenarioDetails: ['FAST positive.', 'AF on ECG.', 'Thrombolysis candidate (<4.5hr).'],
+        vitalsMod: { hr: 90, bpSys: 160, bpDia: 95, spO2: 96, rr: 16, gcs: 14 },
+        deterioration: { active: true, rate: 0.02, type: 'neuro' },
+        stabilisers: ['Thrombolysis'], // If available
+        vbgClinicalState: "normal",
+        ct: { findings: "No bleed. Dense MCA sign." },
+        learningLinks: [{ label: "NICE NG128: Stroke", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AM023', title: 'Meningococcal Sepsis', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 30),
+        patientProfileTemplate: "A {age}-year-old student. Headache, fever, rapid deterioration.",
+        presentingComplaint: 'Fever, Rash.',
+        scenarioDetails: ['Non-blanching purpuric rash.', 'Neck stiffness.', 'Septic shock.'],
+        vitalsMod: { hr: 140, bpSys: 80, bpDia: 40, spO2: 92, rr: 35, temp: 40.1, gcs: 12 },
+        deterioration: { active: true, rate: 0.2, type: 'sepsis' },
+        stabilisers: ['Antibiotics', 'Fluids', 'Oxygen'],
+        vbgClinicalState: "septic_shock",
+        learningLinks: [{ label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AM024', title: 'Boerhaave\'s Syndrome', category: 'Medical', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(30, 60),
+        patientProfileTemplate: "A {age}-year-old. Severe chest pain after forceful vomiting.",
+        presentingComplaint: 'Chest pain.',
+        scenarioDetails: ['Surgical emphysema (neck crepitus).', 'Shocked.', 'Rigid abdomen.'],
+        vitalsMod: { hr: 130, bpSys: 90, bpDia: 50, spO2: 92, rr: 30, temp: 38.5 },
+        deterioration: { active: true, rate: 0.1, type: 'sepsis' }, // Mediastinitis
+        stabilisers: ['Fluids', 'Antibiotics', 'Surgery'],
+        vbgClinicalState: "septic_shock",
+        chestXray: { findings: "Pneumomediastinum. Pleural effusion." },
+        learningLinks: [{ label: "RCEM: Oesophageal Rupture", url: "https://www.rcem.ac.uk/" }]
+      },
+
+      // ============================================================
+      // ADULT TRAUMA (Expanded)
+      // ============================================================
+      {
+        id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 50),
+        patientProfileTemplate: "A {age}-year-old male. Stabbed in chest.",
+        presentingComplaint: 'Respiratory Distress.',
+        scenarioDetails: ['Tracheal deviation.', 'Absent breath sounds.', 'Distended neck veins.'],
+        vitalsMod: { hr: 140, bpSys: 70, bpDia: 40, spO2: 80, rr: 35, gcs: 12 },
+        deterioration: { active: true, rate: 0.2, type: 'arrest' },
+        stabilisers: ['Needle', 'Oxygen'],
+        vbgClinicalState: "normal",
+        chestXray: { findings: "Large pneumothorax. Mediastinal shift." },
+        learningLinks: [{ label: "ATLS Guidelines", url: "https://www.facs.org/quality-programs/trauma/atls" }]
+      },
+      {
+        id: 'AT007', title: 'Neurogenic Shock', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 60),
+        patientProfileTemplate: "A {age}-year-old rugby player. Collapsed scrum. Cannot feel legs.",
+        presentingComplaint: 'Paralysis.',
+        scenarioDetails: ['Hypotensive AND Bradycardic (Classic sign).', 'Warm peripheries (Vasodilation).'],
+        vitalsMod: { hr: 50, bpSys: 75, bpDia: 40, spO2: 96, rr: 14, gcs: 15 },
         deterioration: { active: true, rate: 0.05, type: 'shock' },
+        stabilisers: ['Fluids', 'Atropine', 'C-Spine'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "NICE NG39: Spinal Injury", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AT008', title: 'Flail Chest', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(30, 70),
+        patientProfileTemplate: "A {age}-year-old. Fall from ladder onto side.",
+        presentingComplaint: 'Chest pain, SOB.',
+        scenarioDetails: ['Paradoxical chest movement.', 'Severe pain.', 'Hypoxia from contusion.'],
+        vitalsMod: { hr: 110, bpSys: 130, bpDia: 80, spO2: 88, rr: 30, gcs: 15 },
+        deterioration: { active: true, rate: 0.1, type: 'respiratory' },
+        stabilisers: ['Analgesia', 'Oxygen', 'Intubation'],
+        vbgClinicalState: "respiratory_acidosis_acute",
+        chestXray: { findings: "Multiple rib fractures (segments)." },
+        learningLinks: [{ label: "NICE NG39: Thoracic Trauma", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AT009', title: 'Traumatic Amputation', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 50),
+        patientProfileTemplate: "A {age}-year-old industrial worker. Arm trapped in machinery.",
+        presentingComplaint: 'Amputation.',
+        scenarioDetails: ['Arm amputated above elbow.', 'Catastrophic haemorrhage.', 'Tourniquet applied?'],
+        vitalsMod: { hr: 150, bpSys: 60, bpDia: 30, spO2: 90, rr: 30, gcs: 10 },
+        deterioration: { active: true, rate: 0.2, type: 'shock' },
+        stabilisers: ['MHP', 'TXA', 'Surgery'],
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/" }]
+      },
+      {
+        id: 'AT010', title: 'Open Book Pelvic Fracture', category: 'Trauma', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(20, 60),
+        patientProfileTemplate: "A {age}-year-old motorcyclist. Hit barrier at speed.",
+        presentingComplaint: 'Pelvic pain.',
+        scenarioDetails: ['Pelvis sprung open.', 'Haemodynamically unstable.', 'Perineal bruising.'],
+        vitalsMod: { hr: 140, bpSys: 70, bpDia: 40, spO2: 95, rr: 28, gcs: 13 },
+        deterioration: { active: true, rate: 0.15, type: 'shock' },
+        stabilisers: ['Binder', 'Blood', 'TXA'],
+        vbgClinicalState: "haemorrhagic_shock",
+        ct: { findings: "Diastasis of symphysis pubis >5cm." },
+        learningLinks: [{ label: "BOAST: Pelvic Fractures", url: "https://www.boa.ac.uk/" }]
+      },
+
+      // === PAEDIATRIC SCENARIOS (Retained and expanded) ===
+      {
+        id: 'PT001', title: 'Paracetamol Overdose (Intentional)', category: 'Toxicology', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(12, 17),
+        patientProfileTemplate: "A {age}-year-old. Took 20x 500mg Paracetamol 4 hours ago.",
+        presentingComplaint: 'Overdose, Nausea.',
+        scenarioDetails: ['Nausea and vomiting.', 'Abdominal pain.', 'Regrets action.'],
+        vitalsMod: { hr: 100, bpSys: 110, bpDia: 70, spO2: 98, rr: 18, gcs: 15 },
+        deterioration: { active: false, rate: 0 },
+        stabilisers: ['Fluids', 'NAC'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "Toxbase: Paracetamol", url: "https://www.toxbase.org/" }]
+      },
+      {
+        id: 'PT002', title: 'Iron Overdose (Accidental)', category: 'Toxicology', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(1, 4),
+        patientProfileTemplate: "A {age}-year-old. Found with empty bottle of mother\'s iron tablets.",
+        presentingComplaint: 'Vomiting (Haematemesis).',
+        scenarioDetails: ['Vomiting blood.', 'Lethargic.', 'Abdominal tenderness.'],
+        vitalsMod: { hr: 140, bpSys: 85, bpDia: 50, spO2: 96, rr: 30, gcs: 14 }, 
+        deterioration: { active: true, rate: 0.1, type: 'shock' },
+        stabilisers: ['Fluids'],
+        vbgClinicalState: "metabolic_acidosis_severe",
+        learningLinks: [{ label: "Toxbase: Iron", url: "https://www.toxbase.org/" }]
+      },
+      {
+        id: 'PT003', title: 'Laundry Pod Ingestion', category: 'Toxicology', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(1, 3),
+        patientProfileTemplate: "A {age}-year-old. Bit into a liquid laundry detergent pod.",
+        presentingComplaint: 'Drooling, Stridor, Vomiting.',
+        scenarioDetails: ['Profuse drooling.', 'Lip swelling.', 'Respiratory distress.'],
+        vitalsMod: { hr: 130, bpSys: 95, bpDia: 60, spO2: 92, rr: 35, gcs: 15 },
+        deterioration: { active: true, rate: 0.1, type: 'respiratory' },
+        stabilisers: ['Oxygen', 'Nebs'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "RCEM: Caustic Ingestion", url: "https://www.rcem.ac.uk/" }]
+      },
+      {
+        id: 'PT004', title: 'Cannabis Edible', category: 'Toxicology', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(3, 8),
+        patientProfileTemplate: "A {age}-year-old. Ate 'gummy bears' found in older sibling's room.",
+        presentingComplaint: 'Drowsiness, Ataxia.',
+        scenarioDetails: ['Very drowsy.', 'GCS 10.', 'Tachycardic.', 'Dilated pupils.'],
+        vitalsMod: { hr: 130, bpSys: 100, bpDia: 60, spO2: 96, rr: 14, gcs: 10 },
+        deterioration: { active: true, rate: 0.05, type: 'neuro' },
+        stabilisers: ['Observation'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "Toxbase: Cannabis", url: "https://www.toxbase.org/" }]
+      },
+      {
+        id: 'PT005', title: 'Alcohol Intoxication', category: 'Toxicology', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(11, 16),
+        patientProfileTemplate: "A {age}-year-old found unresponsive in park with Vodka bottle.",
+        presentingComplaint: 'Unconscious.',
+        scenarioDetails: ['Strong smell of ethanol.', 'Risk of hypothermia.', 'Vomiting risk.'],
+        vitalsMod: { hr: 90, bpSys: 100, bpDia: 60, spO2: 95, rr: 10, temp: 35.5, gcs: 9, bm: 3.2 }, 
+        deterioration: { active: true, rate: 0.05, type: 'metabolic' },
+        stabilisers: ['Glucose', 'Fluids'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "Toxbase: Ethanol", url: "https://www.toxbase.org/" }]
+      },
+      {
+        id: 'PT006', title: 'MDMA/Ecstasy', category: 'Toxicology', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(14, 17),
+        patientProfileTemplate: "A {age}-year-old taken pill at a party. Agitated and hot.",
+        presentingComplaint: 'Agitation, Hyperthermia.',
+        scenarioDetails: ['Sweating profusely.', 'Jaw clenching.', 'Hyper-reflexic.'],
+        vitalsMod: { hr: 150, bpSys: 160, bpDia: 90, spO2: 98, rr: 28, temp: 39.5, gcs: 14 },
+        deterioration: { active: true, rate: 0.1, type: 'metabolic' },
+        stabilisers: ['Benzos', 'Fluids'],
+        vbgClinicalState: "metabolic_acidosis_severe",
+        learningLinks: [{ label: "Toxbase: MDMA", url: "https://www.toxbase.org/" }]
+      },
+      {
+        id: 'PED001', title: 'Bronchiolitis (Severe)', category: 'Medical', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(0, 1), 
+        patientProfileTemplate: "A {age}-month-old infant. 3 days of coryza, now working hard.",
+        presentingComplaint: 'Respiratory Distress, poor feeding.',
+        scenarioDetails: ['Subcostal/Intercostal recession.', 'Tracheal tug.', 'Head bobbing.', 'Dry nappies.'],
+        vitalsMod: { hr: 170, bpSys: 85, bpDia: 50, spO2: 88, rr: 65, temp: 37.8, gcs: 13 },
+        deterioration: { active: true, rate: 0.08, type: 'respiratory' },
+        stabilisers: ['Oxygen', 'Fluids'], 
+        vbgClinicalState: "respiratory_acidosis_acute",
+        learningLinks: [{ label: "NICE NG9: Bronchiolitis in children", url: "https://www.nice.org.uk/guidance/ng9" }]
+      },
+      {
+        id: 'PED003', title: 'Paediatric Sepsis', category: 'Medical', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(0, 10),
+        patientProfileTemplate: "A {age}-year-old child. Lethargic, high fever, rash.",
+        presentingComplaint: 'Fever, Non-blanching rash.',
+        scenarioDetails: ['Purpuric rash on legs.', 'Cold peripheries.', 'Cap refill 4s.', 'Parents very worried.'],
+        vitalsMod: { hr: 160, bpSys: 75, bpDia: 40, spO2: 93, rr: 45, temp: 39.5, gcs: 13 }, 
+        deterioration: { active: true, rate: 0.1, type: 'shock' },
         stabilisers: ['Fluids', 'Antibiotics', 'Oxygen'],
         vbgClinicalState: "septic_shock",
-        ecg: { type: "Sinus Tach", findings: "Rate 125." },
-        chestXray: { findings: "Clear (if UTI source)." },
-        ultrasound: { type: "IVC", findings: "Collapsing IVC." },
-        ct: { findings: "CT AP: Pyelonephritis/Obstructed ureter." },
-        learningLinks: [
-            { label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/guidance/ng51" },
-            { label: "RCEM: Sepsis Toolkit", url: "https://www.rcem.ac.uk/" }
-        ]
+        learningLinks: [{ label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/guidance/ng51" }]
       },
       {
-        id: 'AM014', title: 'Status Epilepticus', category: 'Medical', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 50),
-        patientProfileTemplate: "A {age}-year-old {sex}, known epilepsy. Seizing for 20 mins.",
-        presentingComplaint: 'Continuous Seizure.',
-        scenarioDetails: ['Tonic-clonic activity.', 'Airway compromised.', 'Hypoxic.'],
-        vitalsMod: { hr: 140, bpSys: 130, bpDia: 80, spO2: 88, rr: 30, gcs: 3 },
-        deterioration: { active: true, rate: 0.05, type: 'respiratory' },
-        stabilisers: ['Benzos', 'Oxygen'],
-        vbgClinicalState: "respiratory_acidosis_acute", // & lactic acidosis
-        ecg: { type: "Sinus Tach", findings: "Artefact from seizure." },
-        chestXray: { findings: "Aspiration?" },
-        ultrasound: { type: "N/A", findings: "N/A" },
-        ct: { findings: "CT Head: Normal/Previous changes." },
-        learningLinks: [
-            { label: "NICE NG217: Epilepsies", url: "https://www.nice.org.uk/guidance/ng217" }
-        ]
-      },
-      {
-        id: 'AM015', title: 'Severe Overdose (Opiate)', category: 'Toxicology', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 40),
-        patientProfileTemplate: "A {age}-year-old {sex} found unresponsive with needle.",
-        presentingComplaint: 'Unconscious, Apnoea.',
-        scenarioDetails: ['Pinpoint pupils.', 'Resp rate 4.', 'Skin cool.'],
-        vitalsMod: { hr: 60, bpSys: 100, bpDia: 60, spO2: 80, rr: 4, gcs: 3 },
-        deterioration: { active: true, rate: 0.1, type: 'respiratory' },
-        stabilisers: ['Naloxone', 'Oxygen'],
+        id: 'PED006', title: 'Life Threatening Asthma (Paeds)', category: 'Medical', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(4, 14),
+        patientProfileTemplate: "A {age}-year-old known asthmatic. Inhalers not helping.",
+        presentingComplaint: 'Severe difficulty breathing.',
+        scenarioDetails: ['Silent chest.', 'Too breathless to talk.', 'Agitated -> Drowsy.'],
+        vitalsMod: { hr: 160, bpSys: 110, bpDia: 70, spO2: 85, rr: 50, gcs: 13 },
+        deterioration: { active: true, rate: 0.15, type: 'respiratory' },
+        stabilisers: ['Adrenaline', 'Magnesium', 'Nebs', 'Dexamethasone'],
         vbgClinicalState: "respiratory_acidosis_acute",
-        ecg: { type: "Sinus Brady", findings: "Normal intervals." },
-        chestXray: { findings: "Aspiration?" },
-        ultrasound: { type: "N/A", findings: "N/A" },
-        ct: { findings: "CT Head: Normal." },
-        learningLinks: [
-            { label: "TOXBASE (Login Required)", url: "https://www.toxbase.org/" }
-        ]
+        learningLinks: [{ label: "BTS/SIGN Asthma Guidelines", url: "https://www.brit-thoracic.org.uk/" }]
       },
       {
-        id: 'AM016', title: 'Acute Behavioural Disturbance', category: 'Psychiatry', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 40),
-        patientProfileTemplate: "A {age}-year-old {sex}, extremely agitated and aggressive. Restrained by police.",
-        presentingComplaint: 'Agitation, Delirium.',
-        scenarioDetails: ['Sweating profusely.', 'Shouting incoherent.', 'High risk of hyperthermia/rhabdo.'],
-        vitalsMod: { hr: 140, bpSys: 160, bpDia: 90, spO2: 96, rr: 30, temp: 38.5 },
-        deterioration: { active: true, rate: 0.05, type: 'metabolic' },
-        stabilisers: ['Benzos', 'Fluids'],
-        vbgClinicalState: "metabolic_acidosis_severe", // Lactate high
-        ecg: { type: "Sinus Tach", findings: "Rate 140." },
-        chestXray: { findings: "Normal." },
-        ultrasound: { type: "N/A", findings: "N/A" },
-        ct: { findings: "CT Head: Normal." },
-        learningLinks: [
-            { label: "RCEM Guideline: Acute Behavioural Disturbance", url: "https://www.rcem.ac.uk/" }
-        ]
+        id: 'PM006', title: 'Neonatal Sepsis (GBS)', category: 'Medical', ageRange: 'Paediatric',
+        ageGenerator: () => 0, 
+        patientProfileTemplate: "A 5-day-old neonate. Poor feeding and grunt.",
+        presentingComplaint: 'Lethargy, Poor Feeding.',
+        scenarioDetails: ['Grunting.', 'Mottled skin.', 'Hypothermic.'],
+        vitalsMod: { hr: 180, bpSys: 60, bpDia: 30, spO2: 90, rr: 70, temp: 35.8, gcs: 10 },
+        deterioration: { active: true, rate: 0.1, type: 'sepsis' },
+        stabilisers: ['Antibiotics', 'Fluids', 'Warmth'],
+        vbgClinicalState: "septic_shock",
+        learningLinks: [{ label: "NICE NG195: Neonatal Infection", url: "https://www.nice.org.uk/" }]
       },
-
-      // === OBSTETRIC ===
       {
-        id: 'OB001', title: 'Maternal Collapse (Eclampsia)', category: 'Obstetric & Gynae Emergencies', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 40),
-        patientProfileTemplate: "A {age}-year-old female, 36 weeks pregnant. Seizing.",
-        presentingComplaint: 'Seizure in pregnancy.',
-        scenarioDetails: ['Tonic-clonic seizure.', 'Hypertensive prior to seizure.', 'Proteinuria +++.'],
-        vitalsMod: { hr: 130, bpSys: 180, bpDia: 110, spO2: 90, rr: 24, gcs: 3 },
-        deterioration: { active: true, rate: 0.1, type: 'neuro' },
-        stabilisers: ['Magnesium', 'Oxygen', 'Benzos'],
-        vbgClinicalState: "normal",
-        ecg: { type: "Sinus Tach", findings: "Rate 130." },
-        chestXray: { findings: "Shield gravid uterus." },
-        ultrasound: { type: "Fetal Heart", findings: "Fetal bradycardia." },
-        ct: { findings: "CT Head: Posterior Reversible Encephalopathy Syndrome (PRES)." },
-        learningLinks: [
-            { label: "RCOG Green-top Guideline No. 10a: Eclampsia", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/the-management-of-severe-preeclampsia-and-eclampsia-green-top-guideline-no-10a/" }
-        ]
-      },
-       {
-        id: 'OB002', title: 'Maternal Collapse (PPH)', category: 'Obstetric & Gynae Emergencies', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(20, 40),
-        patientProfileTemplate: "A {age}-year-old female, 1 hour post-partum (home birth). Massive PV bleeding.",
-        presentingComplaint: 'Post-Partum Haemorrhage.',
-        scenarioDetails: ['Pale, shut down.', 'Uterus boggy.', 'Est blood loss > 1500ml.'],
-        vitalsMod: { hr: 140, bpSys: 70, bpDia: 30, spO2: 94, rr: 28 },
-        deterioration: { active: true, rate: 0.2, type: 'shock' },
-        stabilisers: ['MHP', 'TXA', 'Fluids'],
-        vbgClinicalState: "haemorrhagic_shock",
-        ecg: { type: "Sinus Tach", findings: "Rate 140." },
-        chestXray: { findings: "Normal." },
-        ultrasound: { type: "FAST", findings: "Free fluid abdomen." },
-        ct: { findings: "Not indicated - theatre." },
-        learningLinks: [
-            { label: "RCOG Green-top Guideline No. 52: PPH", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/postpartum-haemorrhage-prevention-and-management-green-top-guideline-no-52/" }
-        ]
+        id: 'PM007', title: 'Duct-Dependent Collapse', category: 'Medical', ageRange: 'Paediatric',
+        ageGenerator: () => 0, 
+        patientProfileTemplate: "A 10-day-old. Sudden collapse at home. 'Grey' colour.",
+        presentingComplaint: 'Collapse, Cyanosis.',
+        scenarioDetails: ['Severe shock.', 'Femoral pulses absent.', 'Hepatomegaly (Heart Failure).'],
+        vitalsMod: { hr: 190, bpSys: 50, bpDia: 30, spO2: 75, rr: 80, gcs: 8 },
+        deterioration: { active: true, rate: 0.15, type: 'cardiac' },
+        stabilisers: ['Prostin' /* PGE1 */, 'Intubation'],
+        vbgClinicalState: "metabolic_acidosis_severe",
+        learningLinks: [{ label: "APLS: Cardiac", url: "https://www.alsg.org/" }]
       }
     ];
 
@@ -501,7 +651,6 @@
 
     // --- REUSABLE UI COMPONENTS ---
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false }) => {
-        // Increased touch target sizes and font size slightly for mobile
         const base = "px-4 py-3 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm text-sm touch-manipulation relative overflow-hidden";
         const variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white",
@@ -525,8 +674,6 @@
         </div>
     );
     
-    // Moved Component OUTSIDE to prevent re-renders causing scroll jumps/focus loss
-    // Updated VitalDisplay with Manual Override Input
     const VitalDisplay = ({ label, value, prev, unit, lowIsBad = true, onUpdate }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
@@ -538,7 +685,6 @@
             return curr > prev ? 'text-red-400' : 'text-emerald-400';
         };
 
-        // Sync editVal only when NOT editing to prevent overwrites
         useEffect(() => {
             if (!isEditing) setEditVal(value);
         }, [value, isEditing]);
@@ -574,7 +720,6 @@
         );
     };
 
-    // Moved Component OUTSIDE to prevent animation resets (jerky progress bars)
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const hasData = (type === 'ECG' && scenario.ecg) || (type === 'CXR' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct);
         
@@ -617,10 +762,8 @@
         const [prevVitals, setPrevVitals] = useState({ ...initialScenario.vitals });
         const [log, setLog] = useState([]);
         const [flash, setFlash] = useState(null); 
-        const [investigationsRevealed, setInvestigationsRevealed] = useState({}); // Track revealed investigations
-        const [loadingInvestigations, setLoadingInvestigations] = useState({}); // NEW: Track loading state for buttons
-
-        // NEW: History state for graph
+        const [investigationsRevealed, setInvestigationsRevealed] = useState({}); 
+        const [loadingInvestigations, setLoadingInvestigations] = useState({}); 
         const [history, setHistory] = useState([]);
 
         const timerRef = useRef(null);
@@ -632,15 +775,13 @@
             const logEntry = { time: timestamp, simTime, msg, type, timeSeconds: time };
             setLog(prev => [...prev, logEntry]);
             
-            // If it's an action/intervention, mark it in history for graph
             if (type === 'action' || type === 'success') {
                 setHistory(prev => {
                     if (prev.length === 0) return prev;
                     const lastIdx = prev.length - 1;
                     const newHist = [...prev];
-                    // Add annotation to last history point
                     if (!newHist[lastIdx].actions) newHist[lastIdx].actions = [];
-                    newHist[lastIdx].actions.push(msg.split(' ')[0]); // Short label
+                    newHist[lastIdx].actions.push(msg.split(' ')[0]); 
                     return newHist;
                 });
             }
@@ -655,7 +796,7 @@
             
             // Branching Logic
             if (key === 'Fluids' && scenario.id === 'AM005') { // Acute HF
-                 newVitals.spO2 = Math.max(70, newVitals.spO2 - 5); // Worsens
+                 newVitals.spO2 = Math.max(70, newVitals.spO2 - 5); 
                  newVitals.rr += 4;
                  addLogEntry("Warning: Fluids caused respiratory deterioration!", 'danger');
                  setFlash('red');
@@ -663,7 +804,7 @@
                 // Standard Effects
                 if (action.effect.SpO2) newVitals.spO2 = Math.min(100, newVitals.spO2 + action.effect.SpO2);
                 if (action.effect.BP) newVitals.bpSys += action.effect.BP;
-                if (action.effect.BP) newVitals.bpDia += Math.floor(action.effect.BP * 0.65); // Approximate increase for Diastolic
+                if (action.effect.BP) newVitals.bpDia += Math.floor(action.effect.BP * 0.65); 
                 if (action.effect.HR) newVitals.hr += action.effect.HR;
                 if (action.effect.RR) newVitals.rr += action.effect.RR;
                 if (action.effect.gcs) newVitals.gcs = Math.max(3, Math.min(15, newVitals.gcs + action.effect.gcs));
@@ -671,7 +812,7 @@
                 if (scenario.stabilisers && scenario.stabilisers.includes(key)) {
                     setScenario(prev => ({
                         ...prev,
-                        deterioration: { ...prev.deterioration, rate: Math.max(0, prev.deterioration.rate - 0.05) } // Slower reduction
+                        deterioration: { ...prev.deterioration, rate: Math.max(0, prev.deterioration.rate - 0.05) }
                     }));
                     addLogEntry(`${action.log} (Effective)`, 'success');
                     setFlash('green');
@@ -684,7 +825,6 @@
             setTimeout(() => setFlash(null), 1000);
         };
 
-        // Manual Update Function
         const manualUpdateVital = (key, value) => {
             setPrevVitals({...vitals});
             setVitals(prev => ({ ...prev, [key]: value }));
@@ -711,7 +851,6 @@
              
              setLoadingInvestigations(prev => ({ ...prev, [type]: true }));
              
-             // Simulate delay (2 seconds)
              setTimeout(() => {
                  setLoadingInvestigations(prev => ({ ...prev, [type]: false }));
                  setInvestigationsRevealed(prev => ({ ...prev, [type]: true }));
@@ -723,25 +862,15 @@
             setVitals(current => {
                 const next = { ...current };
                 
-                // Guard: If Patient is in Arrest (HR 0, BP 0), don't add noise or "ghost beats"
-                if (current.hr === 0 && current.bpSys === 0) {
-                    // Keep them dead unless intervened
-                    return next; 
-                }
+                if (current.hr === 0 && current.bpSys === 0) return next; 
 
-                // Add noise to vitals (Alive patients only)
                 next.hr += getRandomInt(-1, 1);
                 next.bpSys += getRandomInt(-2, 2);
-                
-                // FIX: Independent noise for diastolic to preserve pulse pressure (Shock vs Cushing's)
-                // Previous logic: next.bpDia = Math.floor(next.bpSys * 0.65) ... destroyed clinical scenarios
                 next.bpDia += getRandomInt(-2, 2); 
-                
                 next.spO2 += Math.random() > 0.9 ? getRandomInt(-1, 1) : 0;
 
                 if (scenario.deterioration?.active && scenario.deterioration.rate > 0) {
                     const rate = scenario.deterioration.rate;
-                    // Slower tick rate check (every 3s)
                     if (Math.random() < rate) {
                         if (scenario.deterioration.type === 'shock') {
                             next.bpSys -= 1;
@@ -754,8 +883,8 @@
                             next.bpSys -= 1;
                             next.bpDia -= 1;
                         } else if (scenario.deterioration.type === 'neuro') {
-                            next.hr -= 1; // Cushing's (brady)
-                            next.bpSys += 1; // Cushing's (HTN)
+                            next.hr -= 1; 
+                            next.bpSys += 1; 
                         } else if (scenario.deterioration.type === 'metabolic') {
                             next.hr += 1;
                             next.temp = parseFloat((next.temp + 0.1).toFixed(1));
@@ -765,7 +894,6 @@
                 next.spO2 = Math.min(100, Math.max(0, next.spO2));
                 next.hr = Math.max(0, next.hr);
                 
-                // Record History
                 setHistory(h => [...h, {
                     time: time,
                     hr: next.hr,
@@ -779,10 +907,8 @@
             });
         };
         
-        // Dynamic Investigation Evolution
         useEffect(() => {
             if (time > 300 && scenario.id === 'AM001' && !scenario.ecg.findings.includes('Evolving')) {
-                 // Evolve STEMI ECG after 5 mins if not sorted
                  setScenario(prev => ({
                      ...prev,
                      ecg: { ...prev.ecg, findings: "Massive Anterior STE. Tombstoning. (Evolving)" }
@@ -832,6 +958,7 @@
         const [hf, setHf] = useState(initialParams?.hf || 'hf0');
         const [loading, setLoading] = useState(false);
         const [customMode, setCustomMode] = useState(initialParams?.customMode || false);
+        const [error, setError] = useState("");
         
         const [customScenario, setCustomScenario] = useState({
             title: "Custom Scenario",
@@ -846,6 +973,7 @@
         });
 
         const handleGenerate = () => {
+            setError("");
             setLoading(true);
             setTimeout(() => {
                 let generatedScenario;
@@ -884,14 +1012,17 @@
                         (category === 'Any' || s.category === category) &&
                         (age === 'Any' || s.ageRange === age)
                     );
-                    if (pool.length === 0) pool = ALL_SCENARIOS;
+                    
+                    if (pool.length === 0) {
+                        setLoading(false);
+                        setError(`No scenarios found for ${category} + ${age}. Please try a different combination.`);
+                        return;
+                    }
 
                     const base = pool[Math.floor(Math.random() * pool.length)];
                     const patientAge = base.ageGenerator();
                     const ranges = getBaseVitals(patientAge);
                     
-                    // Vitals Calculation Fix: Explicitly check for undefined instead of truthiness
-                    // This allows values of 0 (cardiac arrest) to pass through correctly
                     let startVitals = {
                         hr: base.vitalsMod?.hr !== undefined ? base.vitalsMod.hr : ranges.hr,
                         bpSys: base.vitalsMod?.bpSys !== undefined ? base.vitalsMod.bpSys : ranges.bpSys,
@@ -918,7 +1049,6 @@
                     };
                 }
                 
-                // Calculate Weight if Paediatric (UK Practice: APLS/WETFLAG style estimations)
                 if (generatedScenario.ageRange === 'Paediatric' || generatedScenario.patientAge < 18) {
                      generatedScenario.weight = estimateWeight(generatedScenario.patientAge);
                 }
@@ -955,15 +1085,16 @@
                                     <option value="Toxicology">Toxicology</option>
                                     <option value="Psychiatry">Psychiatry</option>
                                     <option value="Obstetric & Gynae Emergencies">Obs & Gynae</option>
+                                    <option value="Obstetrics">Obstetrics (Maternal)</option>
                                 </select>
                             </div>
                             <div>
                                 <label className="text-xs uppercase text-slate-500 font-bold">Age</label>
                                 <select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">
                                     <option value="Any">Any</option>
-                                    <option value="Adult">Adult</option>
-                                    <option value="Elderly">Elderly</option>
-                                    <option value="Paediatric">Paediatric</option>
+                                    <option value="Adult">Adult (18-65)</option>
+                                    <option value="Elderly">Elderly (>65)</option>
+                                    <option value="Paediatric">Paediatric (&lt;18)</option>
                                 </select>
                             </div>
                             <div>
@@ -980,10 +1111,11 @@
                                     <label className="text-xs text-slate-500 font-bold">Title</label>
                                     <input type="text" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-sm"/>
                                 </div>
-                                {/* ... other inputs ... */}
                             </div>
                         </div>
                     )}
+
+                    {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-500 rounded text-red-200 text-sm font-bold flex items-center gap-2"><Lucide icon="alert-circle" className="w-4 h-4"/>{error}</div>}
 
                     <Button onClick={handleGenerate} disabled={loading} className="w-full py-4 text-lg">
                         {loading ? <Lucide icon="loader-2" className="animate-spin"/> : <Lucide icon="play"/>}
@@ -1056,13 +1188,11 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
         const { scenario, time, isRunning, vitals, prevVitals, log, flash, start, pause, applyIntervention, addLogEntry, manualUpdateVital, toggleDeterioration, triggerArrest, revealInvestigation, investigationsRevealed, loadingInvestigations } = sim;
-        // FIXED: Use a dedicated Ref for the container to prevent full window scroll jumping
         const logContainerRef = useRef(null);
         const [manualLog, setManualLog] = useState("");
         const [manualNotes, setManualNotes] = useState("");
         const [activeTab, setActiveTab] = useState("Airway"); 
 
-        // FIXED: Scroll the CONTAINER, not the window
         useEffect(() => {
             if (logContainerRef.current) {
                 logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
@@ -1079,7 +1209,6 @@
             <div className={`max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
                 <div className="lg:col-span-2 space-y-6 order-1">
-                    {/* Patient Summary Card */}
                     <Card className="bg-slate-800 border-slate-700">
                         <div className="flex justify-between items-start flex-wrap gap-2">
                             <div>
@@ -1095,12 +1224,10 @@
                     </Card>
 
                     <Card className="bg-slate-900 border-slate-800">
-                        {/* MOVED CONTROLS TO TOP OF MONITOR - Stack on mobile */}
                         <div className="flex flex-col md:flex-row justify-between items-center mb-4 border-b border-slate-800 pb-2 gap-3">
                             <div className="flex gap-2 w-full md:w-auto">
                                 <Button variant="secondary" onClick={onBack} disabled={isRunning} className="h-10 md:h-8 text-xs px-3 flex-1 md:flex-none"><Lucide icon="arrow-left" className="w-3 h-3"/> Back</Button>
                                 {!isRunning ? (
-                                    // Changed height to h-12, text to base, and px-6 to make it bigger
                                     <Button variant="success" onClick={start} className="h-12 text-base px-6 font-bold shadow-lg flex-grow md:flex-none"><Lucide icon="play" className="w-5 h-5"/> START</Button>
                                 ) : (
                                     <Button variant="danger" onClick={pause} className="h-10 md:h-8 text-xs px-3 flex-1 md:flex-none"><Lucide icon="pause" className="w-3 h-3"/> Pause</Button>
@@ -1115,7 +1242,6 @@
                             </div>
                         </div>
                         
-                        {/* Updated Vitals Grid with BP fix and Manual Input - 2 cols on mobile */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                             <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)}/>
                             <div className="bg-slate-900/50 p-3 rounded border border-slate-700 flex flex-col items-center justify-center h-28">
@@ -1143,10 +1269,9 @@
                     </Card>
 
                     <Card title="Clinical Actions" icon="activity">
-                        {/* New Instructor Override Controls */}
                         <div className="flex justify-end gap-2 mb-4 border-b border-slate-700 pb-2">
                             <Button variant="secondary" onClick={toggleDeterioration} className="text-xs h-10 border border-slate-600">
-                                <Lucide icon="scenario.deterioration.active ? 'pause-circle' : 'play-circle'" className="w-3 h-3"/> 
+                                <Lucide icon={scenario.deterioration.active ? "pause-circle" : "play-circle"} className="w-3 h-3"/> 
                                 {scenario.deterioration.active ? "Pause Det" : "Resume Det"}
                             </Button>
                             <Button variant="danger" onClick={triggerArrest} className="text-xs h-10">
@@ -1189,7 +1314,6 @@
                         </div>
                     </Card>
 
-                    {/* New Dynamic Investigations Section */}
                     <Card title="Investigations" icon="file-search">
                          <div className="grid grid-cols-2 gap-3">
                              <InvestigationButton type="ECG" icon="activity" label="ECG" isRevealed={investigationsRevealed['ECG']} isLoading={loadingInvestigations['ECG']} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
@@ -1223,7 +1347,6 @@
                             <h3 className="font-bold text-slate-200">Incident Log</h3>
                         </div>
 
-                        {/* FIXED: Added ref here to control internal scrolling */}
                         <div ref={logContainerRef} className="flex-grow overflow-y-auto space-y-2 pr-2 text-sm font-mono">
                             {log.length === 0 && <p className="text-slate-500 italic text-center mt-10">Simulation ready...</p>}
                             {log.map((l, i) => (
@@ -1338,14 +1461,12 @@
                     </div>
                 </div>
 
-                {/* New Graph Section */}
                 <Card title="Physiological Trends" icon="activity">
                     <div className="bg-slate-900 p-4 rounded h-80 relative">
                         <canvas ref={chartRef}></canvas>
                     </div>
                 </Card>
 
-                {/* Updated Guidelines Section */}
                 {scenario.learningLinks && scenario.learningLinks.length > 0 && (
                     <Card title="Guidelines & Evidence" icon="book">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1409,7 +1530,7 @@
                     <div className="flex items-center gap-4">
                         <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" />
                         <div>
-                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v6.4</h1>
+                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v7.0</h1>
                             <p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p>
                         </div>
                     </div>
@@ -1478,3 +1599,5 @@
     </script>
 </body>
 </html>
+
+
