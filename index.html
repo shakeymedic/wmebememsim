@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v10.0</title>
+    <title>WMEBEM Sim Generator v10.1</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -87,7 +87,7 @@
         if (age === 0) return "3.5"; 
         if (age < 1) return "4-9"; 
         if (age >= 1 && age <= 10) return ((age + 4) * 2).toFixed(1); 
-        if (age > 10) return (age * 3 + 7).toFixed(1); // Improved estimation for older kids
+        if (age > 10) return (age * 3 + 7).toFixed(1); 
         return null; 
     };
 
@@ -101,7 +101,7 @@
             { label: "Amiodarone (5mg/kg)", dose: `${(5 * w).toFixed(0)} mg`, type: "IV/IO" },
             { label: "Lorazepam (0.1mg/kg)", dose: `${(0.1 * w).toFixed(2)} mg`, type: "IV/IO" },
             { label: "Glucose 10% (2ml/kg)", dose: `${(2 * w).toFixed(0)} ml`, type: "IV/IO" },
-            { label: "Tube Size (Age/4 + 4)", dose: `Size 4-5`, type: "ET" }, // Simplified
+            { label: "Tube Size (Age/4 + 4)", dose: `Size 4-5`, type: "ET" }, 
             { label: "DC Shock (4J/kg)", dose: `${(4 * w).toFixed(0)} J`, type: "Defib" },
         ];
     };
@@ -197,7 +197,11 @@
           deterioration: { active: true, rate: 0.05, type: 'cardiac' }, stabilisers: ['Analgesia', 'Oxygen', 'Aspirin', 'GTN', 'Clopidogrel', 'Cardioversion'], 
           fluidResponse: 'positive',
           events: [{ time: 60, msg: "Patient vomits. Complains pain is worsening.", effect: { hr: 10, bpSys: -5 } }],
-          ecg: { type: "Anterior STEMI", findings: "STE V1-V4." }, learningLinks: [{ label: "NICE NG185: ACS", url: "https://www.nice.org.uk/guidance/ng185" }] 
+          ecg: { type: "Anterior STEMI", findings: "STE V1-V4." }, 
+          learningLinks: [
+              { label: "NICE NG185: Acute Coronary Syndromes", url: "https://www.nice.org.uk/guidance/ng185" },
+              { label: "RCEM: Acute Coronary Syndromes", url: "https://www.rcemlearning.co.uk/reference/acute-coronary-syndromes/" }
+          ] 
       },
       { 
         id: 'AT020', title: 'Ankle Fracture-Dislocation', category: 'Trauma', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 60), 
@@ -207,7 +211,7 @@
              progression: "Painful. Foot dusky. Needs urgent reduction.",
              interventions: ["Analgesia/Sedation", "Reduce & Splint", "X-ray"],
              equipment: "Plaster trolley, Ketamine",
-             debriefPoints: ["Skin viability", "Reduction techniques"]
+             debriefPoints: ["Skin viability", "Reduction techniques", "Safe Sedation"]
         },
         vitalsMod: { hr: 110, bpSys: 130, bpDia: 80, spO2: 98, rr: 20 }, deterioration: { active: false, rate: 0 }, 
         stabilisers: ['Analgesia', 'Splinting', 'reduce_ankle'], 
@@ -215,7 +219,11 @@
              { id: 'reduce_ankle', label: 'Reduce Ankle', effect: { bpSys: -5 }, log: 'Ankle reduced and held.', type: 'bolus' },
              { id: 'backslab', label: 'Apply Backslab', effect: {}, log: 'Backslab applied.', type: 'continuous' }
         ],
-        chestXray: { findings: "Trimalleolar fracture dislocation." }, learningLinks: [{ label: "BOAST: Ankle Fractures", url: "https://www.boa.ac.uk/" }] 
+        chestXray: { findings: "Trimalleolar fracture dislocation." }, 
+        learningLinks: [
+            { label: "RCEM: Procedural Sedation in Adults", url: "https://rcem.ac.uk/wp-content/uploads/2021/10/RCEM_BPC_Procedural_Sedation_in_Adults_2020.pdf" },
+            { label: "BOAST: Ankle Fractures", url: "https://www.boa.ac.uk/" }
+        ] 
       },
       { id: 'OB014', title: 'Shoulder Dystocia', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), 
         patientProfileTemplate: "A {age}-year-old. Head delivered, body stuck.", presentingComplaint: 'Shoulder Dystocia.', 
@@ -232,12 +240,37 @@
              { id: 'suprapubic', label: 'Suprapubic Pressure', effect: {}, log: 'Suprapubic pressure applied.', type: 'bolus' },
              { id: 'internal', label: 'Internal Manoeuvres', effect: {}, log: 'Internal rotational manoeuvres attempted.', type: 'bolus' }
         ],
-        learningLinks: [{ label: "RCOG: Shoulder Dystocia", url: "https://www.rcog.org.uk/" }] 
+        learningLinks: [
+            { label: "RCOG GTG 42: Shoulder Dystocia", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/shoulder-dystocia-green-top-guideline-no-42/" },
+            { label: "PROMPT: Shoulder Dystocia", url: "https://www.promptmaternity.org/" }
+        ] 
       },
-      { id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old {sex} collapsed.", presentingComplaint: 'Cardiac Arrest.', scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'No output.'], vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, stabilisers: ['CPR', 'Defib', 'Adrenaline', 'Amiodarone'], fluidResponse: 'neutral', ecg: { type: "VF", findings: "Ventricular Fibrillation." }, learningLinks: [{ label: "Resus Council UK: ALS", url: "https://www.resus.org.uk/" }] },
-      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in chest.", presentingComplaint: 'Respiratory Distress.', scenarioDetails: ['Tracheal deviation.', 'Absent breath sounds.', 'Shock.'], vitalsMod: { hr: 140, bpSys: 70, bpDia: 40, spO2: 80, rr: 35, gcs: 12 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen'], chestXray: { findings: "Large pneumothorax." }, learningLinks: [{ label: "ATLS Guidelines", url: "https://www.facs.org/" }] },
-      { id: 'PA001', title: 'Paediatric Sepsis', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(1, 10), patientProfileTemplate: "A {age}-year-old child. Lethargic, high fever.", presentingComplaint: 'Fever & Lethargy.', scenarioDetails: ['Mottled skin.', 'Cap refill 4s.', 'Tachycardic.'], vitalsMod: { hr: 160, bpSys: 80, bpDia: 40, spO2: 92, rr: 40, temp: 39.5, gcs: 12 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, stabilisers: ['Fluids', 'Antibiotics', 'Oxygen'], learningLinks: [{ label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/guidance/ng51" }] },
-      { id: 'AM040', title: 'Renal Colic', category: 'Medical', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(30, 60), patientProfileTemplate: "A {age}-year-old. Loin to groin pain, writhing.", presentingComplaint: 'Severe flank pain.', scenarioDetails: ['Unable to sit still.', 'Haematuria.', 'Vomiting.'], instructorBrief: { progression: "Patient is writhing in agony.", interventions: ["Analgesia"], equipment: "Urine pot, Analgesia", debriefPoints: ["Analgesic ladder"] }, vitalsMod: { hr: 110, bpSys: 140, bpDia: 85, spO2: 98, rr: 22, temp: 37.2 }, deterioration: { active: false, rate: 0 }, stabilisers: ['Analgesia', 'Fluids'], learningLinks: [{ label: "NICE NG118: Renal Stones", url: "https://www.nice.org.uk/" }] }
+      { id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old {sex} collapsed.", presentingComplaint: 'Cardiac Arrest.', scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'No output.'], vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, stabilisers: ['CPR', 'Defib', 'Adrenaline', 'Amiodarone'], fluidResponse: 'neutral', ecg: { type: "VF", findings: "Ventricular Fibrillation." }, 
+        learningLinks: [
+            { label: "Resus Council UK: ALS Guidelines", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" },
+            { label: "RCEM: Cardiac Arrest Management", url: "https://www.rcemlearning.co.uk/modules/cardiac-arrest/" }
+        ] 
+      },
+      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in chest.", presentingComplaint: 'Respiratory Distress.', scenarioDetails: ['Tracheal deviation.', 'Absent breath sounds.', 'Shock.'], vitalsMod: { hr: 140, bpSys: 70, bpDia: 40, spO2: 80, rr: 35, gcs: 12 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen'], chestXray: { findings: "Large pneumothorax." }, 
+        learningLinks: [
+            { label: "ATLS: Thoracic Trauma", url: "https://www.facs.org/quality-programs/trauma/atls/" },
+            { label: "BTS: Pleural Disease Guideline", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/pleural-disease/" },
+            { label: "RCEM: Procedural Sedation (for Drain)", url: "https://rcem.ac.uk/wp-content/uploads/2021/10/RCEM_BPC_Procedural_Sedation_in_Adults_2020.pdf" }
+        ] 
+      },
+      { id: 'PA001', title: 'Paediatric Sepsis', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(1, 10), patientProfileTemplate: "A {age}-year-old child. Lethargic, high fever.", presentingComplaint: 'Fever & Lethargy.', scenarioDetails: ['Mottled skin.', 'Cap refill 4s.', 'Tachycardic.'], vitalsMod: { hr: 160, bpSys: 80, bpDia: 40, spO2: 92, rr: 40, temp: 39.5, gcs: 12 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, stabilisers: ['Fluids', 'Antibiotics', 'Oxygen'], 
+        learningLinks: [
+            { label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/guidance/ng51" },
+            { label: "RCEM: Sepsis Toolkit", url: "https://rcem.ac.uk/clinical-standards/quality-improvement/quality-improvement-tools/sepsis/" },
+            { label: "APLS Guidelines", url: "https://www.alsg.org/" }
+        ] 
+      },
+      { id: 'AM040', title: 'Renal Colic', category: 'Medical', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(30, 60), patientProfileTemplate: "A {age}-year-old. Loin to groin pain, writhing.", presentingComplaint: 'Severe flank pain.', scenarioDetails: ['Unable to sit still.', 'Haematuria.', 'Vomiting.'], instructorBrief: { progression: "Patient is writhing in agony.", interventions: ["Analgesia"], equipment: "Urine pot, Analgesia", debriefPoints: ["Analgesic ladder"] }, vitalsMod: { hr: 110, bpSys: 140, bpDia: 85, spO2: 98, rr: 22, temp: 37.2 }, deterioration: { active: false, rate: 0 }, stabilisers: ['Analgesia', 'Fluids'], 
+        learningLinks: [
+            { label: "NICE NG118: Renal Stones", url: "https://www.nice.org.uk/guidance/ng118" },
+            { label: "RCEMLearning: Renal Colic", url: "https://www.rcemlearning.co.uk/reference/renal-colic/" }
+        ] 
+      }
     ];
 
     // --- 2. COMPONENTS ---
@@ -758,6 +791,18 @@
                                 {scenario.instructorBrief?.interventions ? scenario.instructorBrief.interventions.map((x, i) => <li key={i}>{x}</li>) : <li>ABCDE Assessment</li>}
                             </ul>
                         </div>
+                        {scenario.learningLinks && scenario.learningLinks.length > 0 && (
+                             <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
+                                <h4 className="text-sm font-bold text-purple-400 uppercase mb-2"><Lucide icon="book-open" className="inline w-4 h-4 mr-1"/> Guidelines & Evidence</h4>
+                                <div className="space-y-2">
+                                    {scenario.learningLinks.map((link, i) => (
+                                        <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="block text-xs text-sky-400 hover:underline hover:text-sky-300 flex items-center gap-2">
+                                            <Lucide icon="external-link" className="w-3 h-3"/> {link.label}
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -857,6 +902,20 @@
                 </div>
 
                 <div className="space-y-6 flex flex-col h-full order-2 lg:order-2">
+                    {/* Guidelines for quick access */}
+                    {scenario.learningLinks && scenario.learningLinks.length > 0 && (
+                        <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false}>
+                            <div className="flex flex-col gap-2">
+                                {scenario.learningLinks.map((link, i) => (
+                                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-700/50 hover:bg-slate-700 rounded border border-slate-600 flex items-center gap-2 transition-colors">
+                                        <Lucide icon="external-link" className="w-4 h-4 text-sky-400"/>
+                                        <span className="text-xs font-bold text-slate-300">{link.label}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        </Card>
+                    )}
+
                     {/* PAEDIATRIC CALCULATOR */}
                     {scenario.weight && (
                         <Card title="Paediatric Drug Guide" icon="baby" className="bg-sky-900/20 border-sky-500" collapsible={true}>
@@ -923,7 +982,25 @@
                         <Button onClick={onRestart} variant="primary" className="flex-1 md:flex-none h-12"><Lucide icon="rotate-ccw"/> New Scenario</Button>
                     </div>
                 </div>
+                
                 <Card title="Physiological Trends" icon="activity"><div className="bg-slate-900 p-4 rounded h-80 relative"><canvas ref={chartRef}></canvas></div></Card>
+                
+                {scenario.learningLinks && scenario.learningLinks.length > 0 && (
+                    <Card title="Learning Resources & Guidelines" icon="book-open">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {scenario.learningLinks.map((link, i) => (
+                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 rounded-lg transition-all hover:border-sky-500 group">
+                                    <div className="bg-sky-900/50 p-3 rounded-full text-sky-400 group-hover:text-white group-hover:bg-sky-600 transition-colors"><Lucide icon="external-link" className="w-6 h-6"/></div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-200 group-hover:text-white text-sm">{link.label}</h4>
+                                        <p className="text-xs text-slate-400 mt-1">Click to open external resource</p>
+                                    </div>
+                                </a>
+                            ))}
+                        </div>
+                    </Card>
+                )}
+
                 <Card title="Action Timeline" icon="clock"><div className="space-y-2 max-h-96 overflow-y-auto">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-2"><span className="font-mono text-sky-400 w-16 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
             </div>
         );
@@ -958,7 +1035,7 @@
         return (
             <div className="min-h-screen flex flex-col p-2 md:p-6 max-w-7xl mx-auto">
                 <header className="flex items-center justify-between mb-8 pb-4 border-b border-slate-800">
-                    <div className="flex items-center gap-4"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" /><div><h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v10.0</h1><p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p></div></div>
+                    <div className="flex items-center gap-4"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" /><div><h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v10.1</h1><p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p></div></div>
                     <div className="hidden md:block text-right"><p className="text-xs text-slate-600">In-situ Simulation Tool</p><p className="text-xs text-slate-600">UK Clinical Guidelines</p></div>
                 </header>
                 <main className="flex-grow">
