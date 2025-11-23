@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Scenario Generator v8.1 (Custom & UI Update)</title>
+    <title>WMEBEM Scenario Generator v8.2</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -129,7 +129,6 @@
       { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
     ];
 
-    // UPDATED: Added 'type' to distinguish Continuous (toggle) vs Bolus (count) interventions
     const INTERVENTIONS = {
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 5 }, category: 'Airway', log: 'High flow oxygen applied.', type: 'continuous' },
         'Nebs': { label: 'Nebulisers', effect: { HR: 10, RR: -2, SpO2: 2 }, category: 'Airway', log: 'Nebulisers administered.', type: 'bolus' },
@@ -156,30 +155,70 @@
         'Hypertonic': { label: 'Hypertonic Saline', effect: { BP: 5 }, category: 'Drugs', log: 'Hypertonic Saline administered.', type: 'bolus' },
         'Binder': { label: 'Pelvic Binder', effect: { BP: 5 }, category: 'Circulation', log: 'Pelvic binder applied.', type: 'continuous' },
         'Splinting': { label: 'Splint/Reduction', effect: {}, category: 'Procedures', log: 'Fracture splinted/reduced.', type: 'continuous' },
-        'Cardioversion': { label: 'Cardioversion', effect: { HR: -50, BP: 10 }, category: 'Procedures', log: 'Synchronised DC Cardioversion delivered.', type: 'bolus' }
+        'Cardioversion': { label: 'Cardioversion', effect: { HR: -50, BP: 10 }, category: 'Procedures', log: 'Synchronised DC Cardioversion delivered.', type: 'bolus' },
+        'Anti-D': { label: 'Anti-D', effect: {}, category: 'Drugs', log: 'Anti-D Immunoglobulin administered.', type: 'bolus' }
     };
 
     // === SCENARIO DATABASE ===
     
     const ALL_SCENARIOS = [
       // ============================================================
-      // OBSTETRICS (16-40 yrs)
+      // OBSTETRICS & GYNAE (All Ages)
       // ============================================================
+      // Teenage Obstetrics (16-17)
       {
-        id: 'OB001', title: 'Severe Pre-Eclampsia', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB011', title: 'Teenage Pregnancy Trauma', category: 'Obstetrics & Gynae', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(16, 17),
+        patientProfileTemplate: "A {age}-year-old female, 28 weeks pregnant. MVC passenger (seatbelt).",
+        presentingComplaint: 'Abdominal pain, Reduced movements.',
+        scenarioDetails: ['Seatbelt mark across bump.', 'Uterus tender.', 'Risk of abruption.', 'Social services referral?'],
+        vitalsMod: { hr: 110, bpSys: 110, bpDia: 60, spO2: 98, rr: 22, gcs: 15 },
+        deterioration: { active: true, rate: 0.05, type: 'shock' },
+        stabilisers: ['Blood', 'Anti-D', 'Obs'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "RCOG: Trauma in Pregnancy", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB012', title: 'Eclampsia (Teenager)', category: 'Obstetrics & Gynae', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(16, 17),
+        patientProfileTemplate: "A {age}-year-old female, 36 weeks pregnant. Seizing in ED.",
+        presentingComplaint: 'Seizure.',
+        scenarioDetails: ['Tonic-clonic seizure.', 'Hypertensive.', 'Proteinuria +++.'],
+        vitalsMod: { hr: 130, bpSys: 170, bpDia: 110, spO2: 90, rr: 24, gcs: 3 },
+        deterioration: { active: true, rate: 0.1, type: 'neuro' },
+        stabilisers: ['Magnesium', 'Oxygen', 'Intubation'],
+        vbgClinicalState: "normal",
+        learningLinks: [{ label: "RCOG: Eclampsia", url: "https://www.rcog.org.uk/" }]
+      },
+      {
+        id: 'OB013', title: 'Teenage Ectopic (Ruptured)', category: 'Obstetrics & Gynae', ageRange: 'Paediatric',
+        ageGenerator: () => getRandomInt(16, 17),
+        patientProfileTemplate: "A {age}-year-old female. Sudden onset RIF pain and collapse.",
+        presentingComplaint: 'Collapse, Abdominal pain.',
+        scenarioDetails: ['Pale.', 'Peritonitic.', 'Shoulder tip pain.', 'Sexual history relevant.'],
+        vitalsMod: { hr: 140, bpSys: 80, bpDia: 40, spO2: 98, rr: 26, gcs: 14 },
+        deterioration: { active: true, rate: 0.2, type: 'shock' },
+        stabilisers: ['Fluids', 'Blood', 'Surgery'],
+        vbgClinicalState: "haemorrhagic_shock",
+        learningLinks: [{ label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" }]
+      },
+
+      // Adult Obstetrics (18-40)
+      {
+        id: 'OB001', title: 'Severe Pre-Eclampsia', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female, 34 weeks pregnant. Headache and visual disturbance.",
         presentingComplaint: 'Headache, Hypertension.',
         scenarioDetails: ['Brisk reflexes.', 'Clonus present.', 'Proteinuria +++.'],
         vitalsMod: { hr: 90, bpSys: 170, bpDia: 115, spO2: 98, rr: 18, gcs: 15 },
-        deterioration: { active: true, rate: 0.05, type: 'neuro' }, // Risk of seizure
+        deterioration: { active: true, rate: 0.05, type: 'neuro' }, 
         stabilisers: ['Magnesium', 'Labetalol' /* Not in list but generic anti-HTN */],
         vbgClinicalState: "normal",
         learningLinks: [{ label: "RCOG: Pre-eclampsia", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB002', title: 'Eclampsia', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB002', title: 'Eclampsia', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female, 38 weeks pregnant. Seizing in waiting room.",
         presentingComplaint: 'Seizure.',
         scenarioDetails: ['Tonic-clonic activity.', 'Airway compromised.', 'Hypertensive.'],
@@ -190,8 +229,8 @@
         learningLinks: [{ label: "RCOG: Eclampsia", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB003', title: 'Post-Partum Haemorrhage', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB003', title: 'Post-Partum Haemorrhage', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female. Home birth 2 hours ago. Continuous bleeding.",
         presentingComplaint: 'PV Bleeding, Collapse.',
         scenarioDetails: ['Uterus boggy.', 'Pale and clammy.', 'EBL > 1500ml.'],
@@ -202,8 +241,8 @@
         learningLinks: [{ label: "RCOG: PPH", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB004', title: 'Cord Prolapse', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB004', title: 'Cord Prolapse', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female, 39 weeks. Waters broke, 'something came down'.",
         presentingComplaint: 'Cord visible.',
         scenarioDetails: ['Cord palpable/visible at introitus.', 'Pulsating cord.', 'Fetal bradycardia on Doppler.'],
@@ -214,8 +253,8 @@
         learningLinks: [{ label: "RCOG: Cord Prolapse", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB005', title: 'Maternal Sepsis (Chorio)', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB005', title: 'Maternal Sepsis (Chorio)', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female, 30 weeks. PROM 2 days ago. Fever.",
         presentingComplaint: 'Fever, Abdominal pain.',
         scenarioDetails: ['Uterine tenderness.', 'Foul smelling liquor.', 'Fetal tachycardia.'],
@@ -226,8 +265,8 @@
         learningLinks: [{ label: "RCOG: Sepsis in Pregnancy", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB006', title: 'Amniotic Fluid Embolus', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB006', title: 'Amniotic Fluid Embolus', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female. Active labour. Sudden collapse and hypoxia.",
         presentingComplaint: 'Cardiac Arrest/Peri-arrest.',
         scenarioDetails: ['Profound hypoxia.', 'Cardiovascular collapse.', 'Coagulopathy developing.'],
@@ -238,8 +277,8 @@
         learningLinks: [{ label: "RCOG: AFE", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB007', title: 'Placental Abruption', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB007', title: 'Placental Abruption', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female, 32 weeks. Severe constant abdominal pain.",
         presentingComplaint: 'Abdominal pain, Woody uterus.',
         scenarioDetails: ['Uterus hard (woody).', 'Dark PV blood.', 'Mother shocked out of proportion to visible loss.'],
@@ -250,8 +289,8 @@
         learningLinks: [{ label: "RCOG: Antepartum Haemorrhage", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB008', title: 'Ruptured Ectopic', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(16, 40),
+        id: 'OB008', title: 'Ruptured Ectopic', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female. Unknown pregnancy. Sudden RIF pain and collapse.",
         presentingComplaint: 'Collapse, Abdominal pain.',
         scenarioDetails: ['Positive pregnancy test.', 'Shoulder tip pain.', 'Peritonitic.'],
@@ -259,10 +298,10 @@
         deterioration: { active: true, rate: 0.2, type: 'shock' },
         stabilisers: ['Blood', 'Fluids', 'Surgery'],
         vbgClinicalState: "haemorrhagic_shock",
-        learningLinks: [{ label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/" }]
+        learningLinks: [{ label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" }]
       },
       {
-        id: 'OB009', title: 'HELLP Syndrome', category: 'Obstetrics', ageRange: 'Adult',
+        id: 'OB009', title: 'HELLP Syndrome', category: 'Obstetrics & Gynae', ageRange: 'Adult',
         ageGenerator: () => getRandomInt(20, 40),
         patientProfileTemplate: "A {age}-year-old female, 36 weeks. Severe epigastric pain and vomiting.",
         presentingComplaint: 'Epigastric pain, Hypertension.',
@@ -274,8 +313,8 @@
         learningLinks: [{ label: "RCOG: HELLP", url: "https://www.rcog.org.uk/" }]
       },
       {
-        id: 'OB010', title: 'Trauma in Pregnancy', category: 'Obstetrics', ageRange: 'Adult',
-        ageGenerator: () => getRandomInt(18, 35),
+        id: 'OB010', title: 'Trauma in Pregnancy (Adult)', category: 'Obstetrics & Gynae', ageRange: 'Adult',
+        ageGenerator: () => getRandomInt(18, 40),
         patientProfileTemplate: "A {age}-year-old female, 28 weeks. MVC (Passenger), seatbelt injury.",
         presentingComplaint: 'Abdominal pain, Reduced fetal movements.',
         scenarioDetails: ['Seatbelt mark on abdomen.', 'Uterus tender.', 'Risk of feto-maternal haemorrhage.'],
@@ -1231,6 +1270,8 @@
         deterioration: { active: true, rate: 0.15, type: 'respiratory' },
         stabilisers: ['Adrenaline', 'Magnesium', 'Nebs', 'Dexamethasone'],
         vbgClinicalState: "respiratory_acidosis_acute",
+        ecg: { type: "Sinus Tach", findings: "Rate 160." },
+        chestXray: { findings: "Hyperinflation." },
         learningLinks: [
             { label: "BTS/SIGN Asthma Guidelines", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/asthma/" }
         ]
@@ -1332,18 +1373,6 @@
         stabilisers: ['Analgesia', 'Oxygen', 'Fluids', 'Antibiotics'],
         vbgClinicalState: "normal",
         learningLinks: [{ label: "NICE CG143: Sickle Cell", url: "https://www.nice.org.uk/guidance/cg143" }]
-      },
-      {
-        id: 'PM009', title: 'Ruptured Ectopic (Adolescent)', category: 'Medical', ageRange: 'Paediatric',
-        ageGenerator: () => getRandomInt(13, 17),
-        patientProfileTemplate: "A {age}-year-old female. Sudden onset RIF pain and collapse.",
-        presentingComplaint: 'Abdo pain, Syncope.',
-        scenarioDetails: ['Pale.', 'Peritonitic.', 'Shoulder tip pain.', 'Sexual history relevant.'],
-        vitalsMod: { hr: 140, bpSys: 80, bpDia: 40, spO2: 98, rr: 26, gcs: 14 },
-        deterioration: { active: true, rate: 0.1, type: 'shock' },
-        stabilisers: ['Fluids', 'Blood', 'Surgery'],
-        vbgClinicalState: "haemorrhagic_shock",
-        learningLinks: [{ label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" }]
       },
       {
         id: 'PM010', title: 'Epiglottitis', category: 'Medical', ageRange: 'Paediatric',
@@ -1851,6 +1880,10 @@
                         (age === 'Any' || s.ageRange === age)
                     );
                     
+                    // Fallback for overlaps (e.g. 16yo is Paediatric age but Adult physio often)
+                    // If user selects 'Paediatric' + 'Obstetrics', they want teenage pregnancy
+                    // If user selects 'Adult' + 'Obstetrics', they want adult pregnancy
+                    
                     if (pool.length === 0) {
                         setLoading(false);
                         setError(`No scenarios found for ${category} + ${age}. Please try a different combination.`);
@@ -1922,8 +1955,7 @@
                                     <option value="Trauma">Trauma</option>
                                     <option value="Toxicology">Toxicology</option>
                                     <option value="Psychiatry">Psychiatry</option>
-                                    <option value="Obstetric & Gynae Emergencies">Obs & Gynae</option>
-                                    <option value="Obstetrics">Obstetrics (Maternal)</option>
+                                    <option value="Obstetrics & Gynae">Obstetrics & Gynae</option>
                                 </select>
                             </div>
                             <div>
@@ -2419,7 +2451,7 @@
                     <div className="flex items-center gap-4">
                         <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" />
                         <div>
-                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v8.1</h1>
+                            <h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v8.2</h1>
                             <p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p>
                         </div>
                     </div>
