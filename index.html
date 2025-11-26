@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v12.4</title>
+    <title>WMEBEM Sim Generator v13.0 (Expanded DB)</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -81,23 +81,23 @@
     const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
     const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
-    // Safety clamp function to prevent ludicrous values
     const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
-    // Medical Generators
     const generateHistory = (age, sex = 'Male') => {
         if (age < 20) return { pmh: ["Nil significant"], dhx: ["Nil"], allergies: ["Nil"] };
         
         const commonPMH = ["Hypertension", "Type 2 Diabetes", "Asthma", "Hyperlipidaemia", "GORD", "Depression", "Anxiety", "Previous MI", "AF", "CKD Stage 3"];
         const femalePMH = ["PCOS", "Endometriosis", "Previous C-Section"];
+        const elderlyPMH = ["Dementia", "Osteoporosis", "Parkinson's", "IHD", "CCF"];
         
         let pmh = [];
         let dhx = [];
         
-        const pmhCount = age > 60 ? getRandomInt(1, 4) : age > 40 ? getRandomInt(0, 2) : getRandomInt(0, 1);
+        const pmhCount = age > 70 ? getRandomInt(3, 6) : age > 40 ? getRandomInt(1, 3) : getRandomInt(0, 1);
         
         for(let i=0; i<pmhCount; i++) {
-            const item = getRandomItem(commonPMH);
+            const source = age > 70 ? [...commonPMH, ...elderlyPMH] : commonPMH;
+            const item = getRandomItem(source);
             if(!pmh.includes(item)) pmh.push(item);
         }
         
@@ -110,6 +110,7 @@
         if (pmh.includes("GORD")) dhx.push("Omeprazole 20mg OD");
         if (pmh.includes("AF")) dhx.push("Bisoprolol 2.5mg OD", "Edoxaban 60mg OD");
         if (pmh.includes("Previous MI")) dhx.push("Aspirin 75mg OD", "Atorvastatin 80mg ON", "Bisoprolol 2.5mg OD");
+        if (pmh.includes("Osteoporosis")) dhx.push("Alendronic Acid");
 
         if (pmh.length === 0) pmh.push("Nil significant");
         if (dhx.length === 0) dhx.push("Nil regular medications");
@@ -127,16 +128,16 @@
         else if (age <= 2) v = { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0, gcs: 15, pupils: '3mm' }; 
         else if (age <= 5) v = { hr: 110, rr: 25, bpSys: 95, bpDia: 60, temp: 37.0, bm: 5.0, gcs: 15, pupils: '3mm' }; 
         else if (age <= 12) v = { hr: 90, rr: 20, bpSys: 105, bpDia: 65, temp: 36.8, bm: 5.5, gcs: 15, pupils: '4mm' }; 
-        else if (age > 65) v = { hr: 70, rr: 18, bpSys: 135, bpDia: 80, temp: 36.5, bm: 6.0, gcs: 15, pupils: '3mm' }; 
+        else if (age > 75) v = { hr: 70, rr: 18, bpSys: 140, bpDia: 75, temp: 36.4, bm: 6.0, gcs: 15, pupils: '3mm' }; // Elderly baseline
         return v;
     };
 
     const estimateWeight = (age) => {
-        if (age === 0) return "3.5"; 
-        if (age < 1) return "4-9"; 
-        if (age >= 1 && age <= 10) return ((age + 4) * 2).toFixed(1); 
-        if (age > 10) return (age * 3 + 7).toFixed(1); 
-        return null; 
+        if (age === 0) return 3.5; 
+        if (age < 1) return 6; 
+        if (age >= 1 && age <= 10) return (age + 4) * 2; 
+        if (age > 10) return (age * 3) + 7; 
+        return 70; 
     };
 
     const generateVbg = (clinicalState = "normal") => {
@@ -173,7 +174,7 @@
         'Obs': { label: 'Apply Monitoring', effect: {}, category: 'Common', log: 'Full monitoring applied.', type: 'continuous', duration: 10 },
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Common', log: 'High flow oxygen applied (15L NRB).', type: 'continuous', duration: 5 },
         'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Common', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
-        'Fluids': { label: 'Fluid Bolus 500ml', effect: { BP: 8, HR: -3 }, category: 'Common', log: 'Fluid bolus 500ml given.', type: 'bolus', duration: 60 },
+        'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Common', log: 'Fluid bolus given.', type: 'bolus', duration: 60 },
         'Analgesia': { label: 'Morphine 5mg', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Common', log: 'IV Morphine 5mg administered.', type: 'bolus', duration: 10 },
         'Fentanyl': { label: 'Fentanyl 50mcg', effect: { HR: -2, RR: -3, BP: -2 }, category: 'Common', log: 'IV Fentanyl 50mcg administered.', type: 'bolus', duration: 10 },
         'Antiemetic': { label: 'Ondansetron 4mg', effect: {}, category: 'Common', log: 'IV Ondansetron 4mg administered.', type: 'bolus', duration: 10 },
@@ -188,7 +189,9 @@
         'Needle': { label: 'Needle Decompression', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Airway', log: 'Needle thoracocentesis performed.', type: 'bolus', duration: 30 },
         'CPAP': { label: 'CPAP', effect: { SpO2: 10, RR: -5, BP: -5 }, category: 'Airway', log: 'CPAP initiated.', type: 'continuous', duration: 60 },
         'NIV': { label: 'NIV (BiPAP)', effect: { SpO2: 12, RR: -5, BP: -5 }, category: 'Airway', log: 'NIV (BiPAP) initiated.', type: 'continuous', duration: 60 },
-        
+        'NebAdrenaline': { label: 'Neb Adrenaline', effect: { HR: 10, RR: -5, SpO2: 5 }, category: 'Airway', log: 'Nebulised Adrenaline (5mg) administered.', type: 'bolus', duration: 300 },
+        'Dexamethasone': { label: 'Dexamethasone', effect: { RR: -2 }, category: 'Drugs', log: 'PO/IV Dexamethasone administered.', type: 'bolus', duration: 10 },
+
         // RSI & INTUBATION
         'RSI': { label: 'Perform RSI', effect: { SpO2: 99, RR: 'vent', BP: -15, gcs: 'sedated' }, category: 'Airway', log: 'Rapid Sequence Induction performed. Patient intubated.', type: 'continuous', duration: 120 },
         'Ketamine': { label: 'Ketamine (Induction)', effect: { gcs: -5, BP: 5, HR: 5 }, category: 'Drugs', log: 'IV Ketamine administered.', type: 'bolus', duration: 15 },
@@ -198,6 +201,8 @@
 
         // CIRCULATION & TRAUMA
         'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: '1 Unit O-Negative Blood initiated.', type: 'bolus', duration: 300 },
+        'FFP': { label: 'FFP (Octaplas)', effect: { BP: 5 }, category: 'Circulation', log: 'FFP initiated.', type: 'bolus', duration: 300 },
+        'Platelets': { label: 'Platelets', effect: {}, category: 'Circulation', log: 'Pool of Platelets initiated.', type: 'bolus', duration: 300 },
         'TXA': { label: 'TXA 1g', effect: {}, category: 'Circulation', log: 'IV Tranexamic Acid 1g administered.', type: 'bolus', duration: 60 },
         'Binder': { label: 'Pelvic Binder', effect: { BP: 8 }, category: 'Circulation', log: 'Pelvic binder applied.', type: 'continuous', duration: 60 },
         'Splinting': { label: 'Splint Limb', effect: { HR: -2 }, category: 'Circulation', log: 'Limb splinted.', type: 'continuous', duration: 120 },
@@ -209,6 +214,7 @@
         'Adrenaline': { label: 'Adrenaline 1:1000', effect: { HR: 20, BP: 15 }, category: 'Drugs', log: 'IM Adrenaline 500mcg administered.', type: 'bolus', duration: 5 },
         'AdrenalineIV': { label: 'Adrenaline 1:10,000', effect: { changeRhythm: 'chance' }, category: 'Drugs', log: 'IV Adrenaline 1mg administered.', type: 'bolus', duration: 5 },
         'Amiodarone': { label: 'Amiodarone 300mg', effect: { changeRhythm: 'chance' }, category: 'Drugs', log: 'IV Amiodarone 300mg administered.', type: 'bolus', duration: 60 },
+        'Antibiotics': { label: 'Antibiotics (IV)', effect: { BP: 5 }, category: 'Drugs', log: 'IV Antibiotics administered.', type: 'bolus', duration: 20 },
         'Atropine': { label: 'Atropine 600mcg', effect: { HR: 20 }, category: 'Drugs', log: 'IV Atropine 600mcg administered.', type: 'bolus', duration: 10 },
         'Adenosine': { label: 'Adenosine', effect: { HR: 'reset' }, category: 'Drugs', log: 'IV Adenosine rapid bolus administered.', type: 'bolus', duration: 2 },
         'Aspirin': { label: 'Aspirin 300mg', effect: {}, category: 'Drugs', log: 'Aspirin 300mg PO administered.', type: 'bolus', duration: 10 },
@@ -217,6 +223,11 @@
         'Furosemide': { label: 'Furosemide 40mg', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide 40mg administered.', type: 'bolus', duration: 30 },
         'Clopidogrel': { label: 'Clopidogrel 300mg', effect: {}, category: 'Drugs', log: 'Clopidogrel 300mg PO administered.', type: 'bolus', duration: 10 },
         'Metaraminol': { label: 'Metaraminol', effect: { BP: 15 }, category: 'Drugs', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10 },
+        'Midazolam': { label: 'Midazolam', effect: { gcs: -2, HR: -5 }, category: 'Drugs', log: 'Buccal/IV Midazolam administered.', type: 'bolus', duration: 15 },
+        'Lorazepam': { label: 'Lorazepam', effect: { gcs: -3, HR: -5 }, category: 'Drugs', log: 'IV Lorazepam administered.', type: 'bolus', duration: 15 },
+        'Pabrinex': { label: 'Pabrinex', effect: {}, category: 'Drugs', log: 'IV Pabrinex pair administered.', type: 'bolus', duration: 10 },
+        'Naloxone': { label: 'Naloxone', effect: { RR: 10, gcs: 5 }, category: 'Drugs', log: 'IV Naloxone 400mcg administered.', type: 'bolus', duration: 5 },
+        'ActivatedCharcoal': { label: 'Activated Charcoal', effect: {}, category: 'Drugs', log: 'Activated Charcoal administered.', type: 'bolus', duration: 10 },
         
         // OBSTETRICS & GYNAE
         'Oxytocin': { label: 'Oxytocin 10u', effect: { BP: -5 }, category: 'Obs/Gynae', log: 'IM Oxytocin 10u administered.', type: 'bolus', duration: 10 },
@@ -228,7 +239,7 @@
         'AntiD': { label: 'Anti-D Ig', effect: {}, category: 'Obs/Gynae', log: 'IM Anti-D administered.', type: 'bolus', duration: 10 },
 
         // PROCEDURES
-        'Defib': { label: 'Defibrillation', effect: { changeRhythm: 'defib' }, category: 'Procedures', log: 'Shock Delivered (200J).', type: 'bolus', duration: 5 },
+        'Defib': { label: 'Defibrillation', effect: { changeRhythm: 'defib' }, category: 'Procedures', log: 'Shock Delivered.', type: 'bolus', duration: 5 },
         'Pacing': { label: 'External Pacing', effect: { HR: 'pace' }, category: 'Procedures', log: 'External Pacing initiated @ 80bpm.', type: 'continuous', duration: 10 },
         'Cardioversion': { label: 'Sync Cardioversion', effect: { changeRhythm: 'sync' }, category: 'Procedures', log: 'Synchronised DC Shock delivered.', type: 'bolus', duration: 5 },
         'Lucas': { label: 'Lucas/AutoPulse', effect: { BP: 30 }, category: 'Procedures', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
@@ -243,159 +254,48 @@
     
     // === SCENARIO DATABASE ---
     const ALL_SCENARIOS = [
-      { 
-          id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(45, 75), 
-          patientProfileTemplate: "A {age}-year-old {sex}. Crushing central chest pain radiating to left arm. Duration 1 hour.", presentingComplaint: 'Chest pain, Diaphoresis.', 
-          scenarioDetails: ['Pale, clammy, looks unwell.', 'Pain 10/10.', 'ECG: Anterior ST Elevation V1-V4.'], 
-          instructorBrief: {
-              progression: "Patient is anxious, pale, and sweaty. Pain score 10/10. High risk of VF arrest. Time is critical.",
-              interventions: ["12 Lead ECG", "Aspirin 300mg & Clopidogrel 300mg", "IV Morphine + Antiemetic", "GTN (caution)", "Primary PCI Activation"],
-              equipment: "Defib, ECG, Cardiac Drugs",
-              debriefPoints: ["Door-to-balloon time", "Contraindications to GTN", "Management of VF arrest"],
-              learningObjectives: ["Recognise STEMI.", "Manage ACS.", "Identify cardiogenic shock.", "Coordinate transfer."]
-          },
-          recommendedActions: ['Obs', 'Oxygen', 'IV Access', 'Aspirin', 'Clopidogrel', 'GTN', 'Analgesia', 'Antiemetic'],
-          vitalsMod: { hr: 95, bpSys: 145, bpDia: 85, spO2: 96, rr: 22 }, 
-          deterioration: { active: true, rate: 0.05, type: 'cardiac' }, 
-          stabilisers: ['Analgesia', 'Oxygen', 'Aspirin', 'GTN', 'Clopidogrel'], 
-          ecg: { type: "STEMI", findings: "Anterior ST Elevation V1-V4." }, 
-          urine: { findings: "Clear" }, ct: { findings: "Not indicated." },
-          learningLinks: [ 
-            { label: "NICE NG185: Acute Coronary Syndromes", url: "https://www.nice.org.uk/guidance/ng185" },
-            { label: "Resus Council: ACS Guidelines", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" }
-          ] 
-      },
-      { 
-        id: 'AT030', title: 'RTC Polytrauma (Driver)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 45), 
-        patientProfileTemplate: "A {age}-year-old male driver. High speed RTC.", presentingComplaint: 'Chest pain, Abdominal pain.', 
-        scenarioDetails: ['Pale, clammy.', 'Chest wall bruising.', 'Abdomen rigid.', 'Pelvis unstable.'], 
-        instructorBrief: {
-             progression: "Polytrauma with haemorrhagic shock. Injuries include chest trauma, intra-abdominal bleeding and pelvic fracture. 'Code Red'.",
-             interventions: ["Pelvic Binder", "TXA 1g", "Major Haemorrhage Protocol", "RSI", "CT Pan-scan"],
-             equipment: "Binder, Major Haem Pack, RSI Kit",
-             debriefPoints: ["Shock Class III vs IV", "Pelvic Binder placement", "Permissive Hypotension"],
-             learningObjectives: ["Recognise haemorrhagic shock.", "Apply pelvic binder.", "Manage massive transfusion."]
-        },
-        recommendedActions: ['Obs', 'Oxygen', 'Binder', 'IV Access', 'Blood', 'TXA', 'RSI', 'Surgery'],
-        vitalsMod: { hr: 135, bpSys: 80, bpDia: 40, spO2: 92, rr: 30, gcs: 13 }, deterioration: { active: true, rate: 0.15, type: 'shock' }, 
-        stabilisers: ['Blood', 'Binder', 'Surgery'], 
-        chestXray: { findings: "Multiple rib fractures. Widened mediastinum." }, 
-        vbgClinicalState: "haemorrhagic_shock",
-        urine: { findings: "Clear" }, ct: { findings: "Liver laceration Grade 4. Splenic injury. Pelvic fracture (Open book)." },
-        learningLinks: [ 
-            { label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/guidance/ng39" },
-            { label: "RCEM: Major Trauma in ED", url: "https://rcem.ac.uk/clinical-guidelines/" }
-        ] 
-      },
-      { 
-        id: 'OG001', title: 'Ruptured Ectopic Pregnancy', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), 
-        patientProfileTemplate: "A {age}-year-old female. Severe RIF pain and shoulder tip pain. 6 weeks amenorrhoea.", presentingComplaint: 'Abdominal Pain, Collapse.', 
-        scenarioDetails: ['Pale, peritonitic.', 'Guarding RIF.', 'FAST scan positive.'], 
-        instructorBrief: {
-             progression: "Life-threatening intra-abdominal haemorrhage. Patient is in decompensated shock. Needs immediate surgical source control.",
-             interventions: ["IV Access x2", "Crossmatch (O-Neg)", "Anti-D if Rhesus Neg", "Urgent Gynae Review/Theatre"],
-             equipment: "Ultrasound, Blood Warmer",
-             debriefPoints: ["Recognition of ectopic pregnancy", "Role of Anti-D", "Haemodynamic resuscitation in pregnancy"],
-             learningObjectives: ["Diagnose ruptured ectopic.", "Manage haemorrhagic shock in early pregnancy.", "Activate major haemorrhage protocol."]
-        },
-        recommendedActions: ['Obs', 'IV Access', 'Fluids', 'Blood', 'TXA', 'AntiD', 'Surgery', 'Analgesia'],
-        vitalsMod: { hr: 130, bpSys: 85, bpDia: 50, spO2: 97, rr: 24, temp: 36.8 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, 
-        stabilisers: ['Blood', 'Surgery'], 
-        ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." },
-        ultrasound: { findings: "Empty uterus. Free fluid in Morrison's pouch. Adnexal mass right side." },
-        urine: { findings: "bHCG Positive (+)" }, ct: { findings: "Complex right adnexal mass. Large haemoperitoneum." },
-        learningLinks: [ 
-            { label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" },
-            { label: "RCOG: Diagnosis & Management of Ectopic", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/diagnosis-and-management-of-ectopic-pregnancy-green-top-guideline-no-21/" }
-        ] 
-      },
-      { 
-        id: 'OG002', title: 'Post-Partum Haemorrhage', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), 
-        patientProfileTemplate: "A {age}-year-old female. 2 hours post-normal delivery. Continuous heavy bleeding.", presentingComplaint: 'Heavy PV Bleeding.', 
-        scenarioDetails: ['Uterus atonic (boggy).', 'Large clots passed.', 'Patient faint.'], 
-        instructorBrief: {
-             progression: "Primary PPH due to uterine atony (Tone - one of the 4 Ts). Estimate blood loss >1000ml. Needs mechanical and pharmacological management.",
-             interventions: ["Uterine Massage", "Syntocinon/Oxytocin", "Ergometrine (check BP)", "Tranexamic Acid", "Carboprost", "Examination Under Anaesthesia (EUA)"],
-             equipment: "PPH Box (Bakri balloon, drugs)",
-             debriefPoints: ["4 Ts of PPH (Tone, Trauma, Tissue, Thrombin)", "Drug doses and contraindications", "Bimanual compression technique"],
-             learningObjectives: ["Manage major PPH.", "Administer uterotonics correctly.", "Recognise need for surgical intervention."]
-        },
-        recommendedActions: ['Obs', 'IV Access', 'Blood', 'Oxytocin', 'Ergometrine', 'TXA', 'Carboprost', 'Surgery'],
-        vitalsMod: { hr: 120, bpSys: 90, bpDia: 60, spO2: 96, rr: 20, temp: 37.0 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, 
-        stabilisers: ['Oxytocin', 'Ergometrine', 'Blood', 'Surgery'], 
-        ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." },
-        urine: { findings: "Clear" }, ct: { findings: "Not indicated immediately." },
-        learningLinks: [ 
-            { label: "RCOG: Postpartum Haemorrhage (GTG 52)", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/prevention-and-management-of-postpartum-haemorrhage-green-top-guideline-no-52/" },
-            { label: "Resus Council: Maternal Resuscitation", url: "https://www.resus.org.uk/" }
-        ] 
-      },
-      { 
-        id: 'OG003', title: 'Severe Pre-Eclampsia', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), 
-        patientProfileTemplate: "A {age}-year-old female. 34 weeks pregnant. Headache and visual disturbances.", presentingComplaint: 'Severe Headache.', 
-        scenarioDetails: ['Oedema of face/hands.', 'Hyper-reflexic.', 'BP 180/110.'], 
-        instructorBrief: {
-             progression: "Severe pre-eclampsia with impending eclampsia (seizures). Risk of cerebral haemorrhage. Needs BP control and seizure prophylaxis.",
-             interventions: ["Labetalol (IV)", "Magnesium Sulphate (Loading dose)", "Fluid Restriction", "Urgent Delivery planning"],
-             equipment: "Magnesium, CTG machine",
-             debriefPoints: ["Magnesium toxicity signs", "BP targets in pre-eclampsia", "Fluid balance (risk of pulmonary oedema)"],
-             learningObjectives: ["Manage severe hypertension in pregnancy.", "Administer Magnesium Sulphate.", "Recognise eclampsia risk."]
-        },
-        recommendedActions: ['Obs', 'IV Access', 'Labetalol', 'MagSulph', 'Delivery', 'Oxygen'],
-        vitalsMod: { hr: 90, bpSys: 185, bpDia: 115, spO2: 98, rr: 18, gcs: 15 }, deterioration: { active: true, rate: 0.05, type: 'neuro' }, 
-        stabilisers: ['Labetalol', 'MagSulph'], 
-        ecg: { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm." },
-        urine: { findings: "Protein +++" }, ct: { findings: "Avoid unless focal neuro signs." },
-        learningLinks: [ 
-            { label: "NICE NG133: Hypertension in Pregnancy", url: "https://www.nice.org.uk/guidance/ng133" },
-            { label: "RCOG: Pre-eclampsia (GTG 10a)", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/management-of-severe-pre-eclampsia-and-eclampsia-green-top-guideline-no-10a/" }
-        ] 
-      },
-      { id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old {sex} collapsed in waiting room.", presentingComplaint: 'Cardiac Arrest.', scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'No output.'], vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, stabilisers: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone'], ecg: { type: "VF", findings: "Ventricular Fibrillation." }, 
-        recommendedActions: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone', 'i-gel', 'Bagging', 'IV Access', 'Lucas'],
-        instructorBrief: {
-            progression: "Initial rhythm VF. Requires ALS algorithm. High-quality CPR and early defibrillation are crucial.",
-            interventions: ["High-Quality CPR (30:2)", "Defibrillation", "Adrenaline 1mg (every 3-5 mins)", "Amiodarone 300mg"],
-            equipment: "Defib, Airway kit, Lucas",
-            debriefPoints: ["ALS Algorithm", "4Hs & 4Ts", "Team leadership"],
-            learningObjectives: ["Lead a cardiac arrest team.", "Follow ALS algorithm.", "Manage reversible causes."]
-        },
-        urine: { findings: "Catheter: Clear" }, ct: { findings: "Post-ROSC: Coronary calcification. No PE." },
-        learningLinks: [ 
-            { label: "Resus Council UK: ALS Guidelines 2021", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" },
-            { label: "RCEM: Cardiac Arrest Management", url: "https://rcem.ac.uk/" }
-        ] 
-      },
-      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Severe Respiratory Distress.', scenarioDetails: ['Tracheal deviation Left.', 'Absent breath sounds Right.', 'Distended neck veins.'], vitalsMod: { hr: 150, bpSys: 70, bpDia: 40, spO2: 78, rr: 40, gcs: 11 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen', 'SurgicalDrain', 'SeldingerDrain', 'FingerThoracostomy'], chestXray: { findings: "Large right pneumothorax with mediastinal shift." }, 
-        recommendedActions: ['Obs', 'Oxygen', 'Needle', 'FingerThoracostomy', 'SurgicalDrain', 'IV Access', 'Fluids', 'Analgesia'],
-        instructorBrief: {
-            progression: "Obstructive shock. Peri-arrest. Needs immediate decompression (Needle/Finger). Do not wait for X-ray.",
-            interventions: ["Needle Thoracocentesis", "Finger Thoracostomy", "Surgical/Seldinger Chest Drain", "Trauma Call"],
-            equipment: "Needle decompression kit, Chest Drain",
-            debriefPoints: ["Diagnosis of tension", "Decompression landmarks", "Primary Survey", "Needle vs Finger Thoracostomy"],
-            learningObjectives: ["Recognise tension pneumothorax.", "Perform needle decompression.", "Manage obstructive shock."]
-        },
-        urine: { findings: "Clear" }, ct: { findings: "Right tension pneumothorax. Lung collapse." },
-        learningLinks: [ 
-            { label: "ATLS: Thoracic Trauma", url: "https://www.facs.org/quality-programs/trauma/atls/" },
-            { label: "BTS: Pleural Disease Guidelines", url: "https://www.brit-thoracic.org.uk/guideline-and-quality-standards/pleural-disease-guideline/" }
-        ] 
-      },
-      { id: 'AM040', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old asthmatic. Short of breath for 2 days.", presentingComplaint: 'Severe Dyspnoea.', scenarioDetails: ['Silent chest.', 'Exhausted.'], 
-        recommendedActions: ['Obs', 'Oxygen', 'Nebs', 'Dexamethasone', 'Magnesium', 'IV Access', 'Salbutamol'],
-        instructorBrief: { 
-            progression: "Life-threatening asthma. Risk of hypercapnic arrest. Aggressive bronchodilation required.", 
-            interventions: ["Oxygen", "Back-to-back Nebs", "IV Steroids", "IV Magnesium", "IV Salbutamol"], 
-            equipment: "Nebuliser, ABG kit", 
-            debriefPoints: ["Asthma severity grading", "Indications for magnesium", "Ventilation strategy"],
-            learningObjectives: ["Manage life-threatening asthma.", "Use escalation therapy (Mg/IV Salbutamol).", "Interpret ABG."]
-        }, vitalsMod: { hr: 135, bpSys: 110, bpDia: 70, spO2: 88, rr: 35, temp: 37.0 }, deterioration: { active: true, rate: 0.08, type: 'respiratory' }, stabilisers: ['Nebs', 'Dexamethasone', 'Magnesium', 'Oxygen'], ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." }, vbgClinicalState: "respiratory_acidosis_acute",
-        urine: { findings: "Clear" }, ct: { findings: "Hyperinflation. No PE." },
-        learningLinks: [ 
-            { label: "BTS/SIGN 158: British Guideline on Asthma", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/asthma/" },
-            { label: "NICE NG80: Asthma", url: "https://www.nice.org.uk/guidance/ng80" }
-        ] 
-      }
+      // ADULT - MEDICAL
+      { id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(45, 75), patientProfileTemplate: "A {age}-year-old {sex}. Crushing chest pain > 1 hr.", presentingComplaint: 'Chest Pain', instructorBrief: { progression: "Classic STEMI. Risk of VF.", interventions: ["PPCI", "Aspirin", "Ticagrelor/Clopidogrel", "Heparin"], learningObjectives: ["Identify STEMI", "Manage ACS"] }, vitalsMod: { hr: 95, bpSys: 145, spO2: 96 }, deterioration: { active: true, rate: 0.05, type: 'cardiac' }, ecg: { type: "STEMI", findings: "Anterior ST Elevation" } },
+      { id: 'AM002', title: 'Severe Sepsis (Pneumonia)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(60, 90), patientProfileTemplate: "A {age}-year-old. Productive cough, confusion, fever.", presentingComplaint: 'Confusion & Fever', instructorBrief: { progression: "Septic shock. Needs Sepsis 6.", interventions: ["Oxygen", "Fluids", "Antibiotics"], learningObjectives: ["Sepsis 6", "Fluid Resus"] }, vitalsMod: { hr: 125, bpSys: 85, spO2: 88, temp: 39.2 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia" } },
+      { id: 'AM003', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old asthmatic. Short of breath.", presentingComplaint: 'Dyspnoea', instructorBrief: { progression: "Life threatening. Silent chest.", interventions: ["Nebs", "Magnesium", "Steroids"], learningObjectives: ["Asthma Management"] }, vitalsMod: { hr: 130, bpSys: 110, spO2: 88, rr: 35 }, deterioration: { active: true, rate: 0.08, type: 'respiratory' }, stabilisers: ['Nebs', 'Magnesium'], ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia" } },
+      { id: 'AM004', title: 'Hyperkalaemia (Renal)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old dialysis patient. Missed dialysis.", presentingComplaint: 'Weakness', instructorBrief: { progression: "Broad complex bradycardia. Risk of arrest.", interventions: ["Calcium Gluconate", "Insulin/Dextrose"], learningObjectives: ["Hyperkalaemia treatment"] }, vitalsMod: { hr: 40, bpSys: 90, spO2: 95 }, deterioration: { active: true, rate: 0.1, type: 'cardiac' }, ecg: { type: "Sinus Rhythm", findings: "Broad complex, Tented T waves" }, vbgClinicalState: "hyperkalemia" },
+      { id: 'AM005', title: 'Tricyclic Overdose', category: 'Toxicology', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old. Found with empty Amitriptyline packet.", presentingComplaint: 'Overdose', instructorBrief: { progression: "Anticholinergic toxidrome. Na channel blockade.", interventions: ["Sodium Bicarbonate", "Intubation"], learningObjectives: ["TCA Toxicity", "ECG changes"] }, vitalsMod: { hr: 130, bpSys: 90, spO2: 96, gcs: 10 }, deterioration: { active: true, rate: 0.1, type: 'neuro' }, ecg: { type: "Sinus Tachy", findings: "Wide QRS, Dominant R in aVR" } },
+      { id: 'AM006', title: 'Opioid Overdose', category: 'Toxicology', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old. Found unresponsive. Pinpoint pupils.", presentingComplaint: 'Unresponsive', instructorBrief: { progression: "Respiratory depression.", interventions: ["Naloxone", "Ventilatory Support"], learningObjectives: ["Opioid Toxidrome", "Naloxone dosing"] }, vitalsMod: { hr: 60, bpSys: 100, spO2: 85, rr: 4, gcs: 6 }, deterioration: { active: true, rate: 0.05, type: 'respiratory' }, stabilisers: ['Naloxone', 'Bagging'], ecg: { type: "Sinus Rhythm", findings: "NSR" } },
+      { id: 'AM007', title: 'Paracetamol Overdose', category: 'Toxicology', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old. Took 30g Paracetamol 4 hours ago.", presentingComplaint: 'Overdose', instructorBrief: { progression: "Asymptomatic phase but high risk.", interventions: ["NAC", "Blood Levels"], learningObjectives: ["Paracetamol nomogram", "NAC indications"] }, vitalsMod: { hr: 80, bpSys: 120, spO2: 98, gcs: 15 }, deterioration: { active: false, rate: 0 }, ecg: { type: "Sinus Rhythm", findings: "NSR" } },
+      { id: 'AM008', title: 'Acute Alcohol Withdrawal', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(30, 60), patientProfileTemplate: "A {age}-year-old alcoholic. Stopped drinking 2 days ago.", presentingComplaint: 'Tremors & Hallucinations', instructorBrief: { progression: "Delirium Tremens. Seizure risk.", interventions: ["Benzodiazepines", "Pabrinex"], learningObjectives: ["CIWA scoring", "Safe sedation"] }, vitalsMod: { hr: 130, bpSys: 160, spO2: 96, temp: 38.0 }, deterioration: { active: true, rate: 0.05, type: 'neuro' }, ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia" } },
+      { id: 'AM009', title: 'Psychiatric Emergency (Manic)', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 40), patientProfileTemplate: "A {age}-year-old. Aggressive, flight of ideas.", presentingComplaint: 'Aggression', instructorBrief: { progression: "Risk of violence. Rapid Tranquillisation required.", interventions: ["De-escalation", "Lorazepam/Haloperidol"], learningObjectives: ["Rapid Tranq guidelines", "Mental Capacity Act"] }, vitalsMod: { hr: 110, bpSys: 140, spO2: 99 }, deterioration: { active: false, rate: 0 }, ecg: { type: "Sinus Tachy", findings: "NSR" } },
+      
+      // ADULT - TRAUMA
+      { id: 'AT001', title: 'Major Trauma (RTC)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old driver. High speed RTC. Trapped 30 mins.", presentingComplaint: 'Polytrauma', instructorBrief: { progression: "Haemorrhagic shock. Pelvic/Chest injuries.", interventions: ["Binder", "TXA", "Blood"], learningObjectives: ["Major Trauma Call", "Permissive Hypotension"] }, vitalsMod: { hr: 130, bpSys: 80, spO2: 92, rr: 30, gcs: 13 }, deterioration: { active: true, rate: 0.15, type: 'shock' }, stabilisers: ['Blood', 'Binder'], vbgClinicalState: "haemorrhagic_shock" },
+      { id: 'AT002', title: 'Stab Wound Chest', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 35), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Stab Wound', instructorBrief: { progression: "Tension Pneumothorax.", interventions: ["Decompression", "Drain"], learningObjectives: ["Chest decompression"] }, vitalsMod: { hr: 140, bpSys: 70, spO2: 80, rr: 40 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'FingerThoracostomy', 'SurgicalDrain'], chestXray: { findings: "Tension Pneumothorax" } },
+      { id: 'AT003', title: 'Isolated Head Injury', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 60), patientProfileTemplate: "A {age}-year-old. Fell down stairs. GCS dropped.", presentingComplaint: 'Head Injury', instructorBrief: { progression: "Extradural haematoma. Cushing's response.", interventions: ["RSI", "Neuroprotective measures", "CT Head"], learningObjectives: ["Raised ICP management", "Cushing's Triad"] }, vitalsMod: { hr: 50, bpSys: 180, spO2: 96, gcs: 8, pupils: 'Fixed/Dilated R' }, deterioration: { active: true, rate: 0.1, type: 'neuro' }, ecg: { type: "Sinus Brady", findings: "Sinus Bradycardia" } },
+      { id: 'AT004', title: 'Burns (Thermal)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old. House fire. 40% TBSA burns.", presentingComplaint: 'Burns', instructorBrief: { progression: "Airway oedema risk. Fluid loss.", interventions: ["Intubation (Early)", "Parkland Fluid"], learningObjectives: ["Burn airway assessment", "Fluid calculation"] }, vitalsMod: { hr: 120, bpSys: 100, spO2: 90, rr: 28, gcs: 15 }, deterioration: { active: true, rate: 0.05, type: 'respiratory' }, stabilisers: ['Fluids', 'RSI'] },
+      
+      // ELDERLY
+      { id: 'EL001', title: 'NOF Fracture', category: 'Trauma', ageRange: 'Elderly', acuity: 'Majors', ageGenerator: () => getRandomInt(75, 95), patientProfileTemplate: "A {age}-year-old. Fall from standing. Shortened/Rotated leg.", presentingComplaint: 'Hip Pain', instructorBrief: { progression: "Pain management critical. Check for medical cause of fall.", interventions: ["Fascia Iliaca Block", "Analgesia"], learningObjectives: ["NOF management", "Frailty assessment"] }, vitalsMod: { hr: 90, bpSys: 150, spO2: 95 }, deterioration: { active: false, rate: 0 }, ecg: { type: "Sinus Rhythm", findings: "NSR or AF" } },
+      { id: 'EL002', title: 'Elderly Sepsis (UTI)', category: 'Medical', ageRange: 'Elderly', acuity: 'Majors', ageGenerator: () => getRandomInt(80, 99), patientProfileTemplate: "A {age}-year-old. Confusion and off legs.", presentingComplaint: 'Confusion', instructorBrief: { progression: "Urosepsis. Subtle presentation.", interventions: ["Antibiotics", "Fluids (Caution)"], learningObjectives: ["Sepsis in elderly", "Delirium"] }, vitalsMod: { hr: 105, bpSys: 100, spO2: 93, temp: 35.8, gcs: 13 }, deterioration: { active: true, rate: 0.05, type: 'shock' }, vbgClinicalState: "septic_shock" },
+      { id: 'EL003', title: 'Subdural Haemorrhage', category: 'Trauma', ageRange: 'Elderly', acuity: 'Majors', ageGenerator: () => getRandomInt(75, 90), patientProfileTemplate: "A {age}-year-old. Minor head bump 2 weeks ago. Now confused.", presentingComplaint: 'Confusion', instructorBrief: { progression: "Chronic Subdural. Slow deterioration.", interventions: ["CT Head", "Reverse Anticoagulation"], learningObjectives: ["Head injury in elderly", "Anticoagulation reversal"] }, vitalsMod: { hr: 70, bpSys: 130, spO2: 96, gcs: 12 }, deterioration: { active: true, rate: 0.05, type: 'neuro' } },
+
+      // PAEDIATRIC - MEDICAL
+      { id: 'PA001', title: 'Meningococcal Sepsis', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(1, 5), patientProfileTemplate: "A {age}-year-old. High fever, purpuric rash.", presentingComplaint: 'Fever & Rash', instructorBrief: { progression: "Septic shock. Rapid decline.", interventions: ["IM/IV Ceftriaxone", "Fluids", "IO Access"], learningObjectives: ["Paeds Sepsis", "IO Access"] }, vitalsMod: { hr: 160, bpSys: 70, spO2: 92, temp: 39.5, rr: 45 }, deterioration: { active: true, rate: 0.15, type: 'shock' }, stabilisers: ['Antibiotics', 'Fluids'], vbgClinicalState: "septic_shock" },
+      { id: 'PA002', title: 'Severe Croup', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(1, 3), patientProfileTemplate: "A {age}-year-old. Barking cough, stridor.", presentingComplaint: 'Stridor', instructorBrief: { progression: "Upper airway obstruction. Keep calm.", interventions: ["Neb Adrenaline", "Dexamethasone"], learningObjectives: ["Croup scoring", "Neb Adrenaline indications"] }, vitalsMod: { hr: 150, bpSys: 95, spO2: 93, rr: 50 }, deterioration: { active: true, rate: 0.08, type: 'respiratory' }, stabilisers: ['NebAdrenaline', 'Dexamethasone'] },
+      { id: 'PA003', title: 'Status Epilepticus', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(2, 10), patientProfileTemplate: "A {age}-year-old. Seizing > 10 mins.", presentingComplaint: 'Seizure', instructorBrief: { progression: "Prolonged seizure. Hypoxia risk.", interventions: ["Midazolam/Lorazepam", "RSI"], learningObjectives: ["APLS Seizure Algorithm"] }, vitalsMod: { hr: 140, bpSys: 100, spO2: 88, rr: 10, gcs: 3 }, deterioration: { active: true, rate: 0.1, type: 'neuro' }, stabilisers: ['Midazolam', 'Lorazepam', 'RSI'] },
+      { id: 'PA004', title: 'Anaphylaxis', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(4, 12), patientProfileTemplate: "A {age}-year-old. Nut allergy. Swollen lips, wheeze.", presentingComplaint: 'Anaphylaxis', instructorBrief: { progression: "Airway compromise.", interventions: ["IM Adrenaline", "Nebs", "Fluids"], learningObjectives: ["Paeds Anaphylaxis"] }, vitalsMod: { hr: 155, bpSys: 80, spO2: 91, rr: 35 }, deterioration: { active: true, rate: 0.15, type: 'shock' }, stabilisers: ['Adrenaline', 'Nebs'] },
+      { id: 'PA005', title: 'Bronchiolitis', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => 0, patientProfileTemplate: "A 4-month-old. 3 days coryza. Breathless.", presentingComplaint: 'DIB', instructorBrief: { progression: "Resp failure. Apnoeas.", interventions: ["High Flow/CPAP", "Suction"], learningObjectives: ["Bronchiolitis escalation"] }, vitalsMod: { hr: 170, bpSys: 80, spO2: 86, rr: 65 }, deterioration: { active: true, rate: 0.05, type: 'respiratory' }, stabilisers: ['Oxygen', 'CPAP', 'NIV'] },
+      { id: 'PA006', title: 'Paediatric DKA', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(6, 16), patientProfileTemplate: "A {age}-year-old. New onset polyuria/polydipsia. Vomiting.", presentingComplaint: 'Vomiting & Lethargy', instructorBrief: { progression: "Severe Acidosis. Cerebral Edema risk.", interventions: ["Slow Fluids", "Insulin (Delay)"], learningObjectives: ["Paeds DKA Fluids", "Cerebral Edema"] }, vitalsMod: { hr: 130, bpSys: 95, spO2: 98, rr: 30, bm: 28 }, deterioration: { active: true, rate: 0.05, type: 'shock' }, vbgClinicalState: "dka_severe" },
+      { id: 'PA007', title: 'SVT', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(0, 12), patientProfileTemplate: "A {age}-year-old. Pale, irritable. HR > 220.", presentingComplaint: 'Palpitations/Poor Feeding', instructorBrief: { progression: "Stable vs Unstable SVT.", interventions: ["Vagal Manoeuvres", "Adenosine", "Cardioversion"], learningObjectives: ["Paeds SVT management"] }, vitalsMod: { hr: 240, bpSys: 85, spO2: 95 }, deterioration: { active: true, rate: 0.05, type: 'cardiac' }, ecg: { type: "SVT", findings: "Narrow Complex Tachycardia > 220bpm" } },
+      
+      // PAEDIATRIC - TRAUMA
+      { id: 'PT001', title: 'NAI (Non-Accidental)', category: 'Trauma', ageRange: 'Paediatric', acuity: 'Majors', ageGenerator: () => getRandomInt(0, 2), patientProfileTemplate: "A {age}-year-old. 'Fell off sofa'. Bruising to ears/neck.", presentingComplaint: 'Injury', instructorBrief: { progression: "Safeguarding concern. Thorough survey needed.", interventions: ["Skeletal Survey", "Social Services"], learningObjectives: ["Recognising NAI", "Safeguarding"] }, vitalsMod: { hr: 110, bpSys: 90, spO2: 99 }, deterioration: { active: false, rate: 0 } },
+      { id: 'PT002', title: 'Paediatric Head Injury', category: 'Trauma', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(2, 8), patientProfileTemplate: "A {age}-year-old. Fall 2m onto concrete. Vomiting.", presentingComplaint: 'Head Injury', instructorBrief: { progression: "Intracranial bleed.", interventions: ["CT Head", "Neuroobs", "RSI"], learningObjectives: ["PECARN Rules", "Paeds Head Injury"] }, vitalsMod: { hr: 90, bpSys: 110, spO2: 98, gcs: 13 }, deterioration: { active: true, rate: 0.1, type: 'neuro' } },
+      
+      // CARDIAC ARREST (ALL)
+      { id: 'CA001', title: 'Adult VF Arrest', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "Adult Male. Collapsed. Witnessed.", presentingComplaint: 'Cardiac Arrest', instructorBrief: { progression: "VF Arrest.", interventions: ["CPR", "Shock", "Adrenaline", "Amiodarone"], learningObjectives: ["ALS Algorithm"] }, vitalsMod: { hr: 0, bpSys: 0, spO2: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, ecg: { type: "VF", findings: "VF" } },
+      { id: 'CA002', title: 'Paediatric PEA Arrest', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(1, 8), patientProfileTemplate: "Child. Found unresponsive in bed.", presentingComplaint: 'Cardiac Arrest', instructorBrief: { progression: "PEA Arrest. Hypoxia likely cause.", interventions: ["CPR", "Airway", "Adrenaline"], learningObjectives: ["APLS Arrest", "4Hs 4Ts"] }, vitalsMod: { hr: 40, bpSys: 0, spO2: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, ecg: { type: "PEA", findings: "Slow electrical activity, no pulse" } },
+      
+      // OBSTETRICS
+      { id: 'OB001', title: 'Cord Prolapse', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), patientProfileTemplate: "38 weeks pregnant. Waters broke. Loop of cord visible.", presentingComplaint: 'Cord Prolapse', instructorBrief: { progression: "Fetal hypoxia. Obstetric emergency.", interventions: ["Elevate presenting part", "Emergency C-Section"], learningObjectives: ["Cord prolapse management"] }, vitalsMod: { hr: 100, bpSys: 120, spO2: 99 }, deterioration: { active: false, rate: 0 } },
+      { id: 'OB002', title: 'Shoulder Dystocia', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), patientProfileTemplate: "In labour. Head delivered, body stuck.", presentingComplaint: 'Stuck Baby', instructorBrief: { progression: "Turtle sign. Fetal compromise.", interventions: ["McRoberts", "Suprapubic Pressure"], learningObjectives: ["HELPERR Mnemonic"] }, vitalsMod: { hr: 110, bpSys: 130, spO2: 98 }, deterioration: { active: false, rate: 0 } }
     ];
 
     // --- 2. COMPONENTS ---
@@ -457,14 +357,27 @@
         );
     };
     
-    // Updated VitalDisplay to handle BP explicitly
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false }) => {
+    // Improved VitalDisplay to include robust trend indication (30s)
+    const VitalDisplay = ({ label, value, value2, history, unit, lowIsBad = true, onUpdate, alert, isText = false }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
         const isBP = label === "BP";
+        
+        // Trend Logic: Compare current vs ~30 seconds ago (index 10 in buffer, as buffer pushes every 3s)
+        // history is array of {hr, bp, spo2...}
+        let trend = 'flat';
+        if (history && history.length > 10 && !isText && value !== '?') {
+            const oldVal = label === "Heart Rate" ? history[history.length - 10].hr : 
+                           label === "BP" ? history[history.length - 10].bp :
+                           label === "SpO2" ? history[history.length - 10].spo2 : 
+                           label === "RR" ? history[history.length - 10].rr : value;
+                           
+            if (value > oldVal + (isBP ? 5 : 2)) trend = 'up';
+            else if (value < oldVal - (isBP ? 5 : 2)) trend = 'down';
+        }
 
         return (
             <div className={`bg-slate-900/50 p-2 md:p-3 rounded border flex flex-col items-center justify-center h-24 md:h-28 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
@@ -477,11 +390,33 @@
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
                             {isBP && value2 !== undefined && `/${Math.round(value2)}`}
                         </span>
-                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-xs md:text-sm font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                        {!isText && !isBP && value !== '?' && (
+                            <span className={`text-xs md:text-sm font-bold ${trend === 'flat' ? 'text-slate-500' : (lowIsBad ? (trend === 'up' ? 'text-emerald-400' : 'text-red-400') : (trend === 'up' ? 'text-red-400' : 'text-emerald-400'))}`}>
+                                {trend === 'up' ? '▲' : trend === 'down' ? '▼' : '▬'}
+                            </span>
+                        )}
                     </div>
                 )}
                 <span className="text-[9px] md:text-[10px] text-slate-600 mt-1">{unit}</span>
             </div>
+        );
+    };
+
+    // Paediatric Calculator Component
+    const PaedsCalculator = ({ weight, age }) => {
+        if (!weight) return null;
+        const w = parseFloat(weight);
+        return (
+            <Card title="WETFAG Calculator" icon="calculator" collapsible={true} className="mb-4 border-pink-500/50">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-slate-900/50 p-2 rounded"><span className="text-slate-500 block">Weight</span><span className="text-lg font-bold text-pink-400">{w} kg</span></div>
+                    <div className="bg-slate-900/50 p-2 rounded"><span className="text-slate-500 block">Energy (4J/kg)</span><span className="text-lg font-bold text-yellow-400">{Math.round(w * 4)} J</span></div>
+                    <div className="bg-slate-900/50 p-2 rounded"><span className="text-slate-500 block">Tube (Uncuffed)</span><span className="text-lg font-bold text-sky-400">{(age/4)+4} mm</span></div>
+                    <div className="bg-slate-900/50 p-2 rounded"><span className="text-slate-500 block">Fluid (10ml/kg)</span><span className="text-lg font-bold text-blue-400">{Math.round(w * 10)} ml</span></div>
+                    <div className="bg-slate-900/50 p-2 rounded"><span className="text-slate-500 block">Adrenaline (10mcg/kg)</span><span className="text-lg font-bold text-purple-400">{Math.round(w * 0.1 * 100)/100} ml (1:10k)</span></div>
+                    <div className="bg-slate-900/50 p-2 rounded"><span className="text-slate-500 block">Glucose 10% (2ml/kg)</span><span className="text-lg font-bold text-white">{Math.round(w * 2)} ml</span></div>
+                </div>
+            </Card>
         );
     };
 
@@ -490,18 +425,10 @@
         const requestRef = useRef(null);
         
         // --- PERSISTENT STATE ---
-        // We use refs for drawing state so the canvas is NOT reset when React props (like HR) change
         const drawState = useRef({
-            x: 0,
-            lastY: 50,
-            beatProgress: 0,
-            breathProgress: 0,
-            lastTime: 0,
-            lastYCO2: 0 // Will init in loop
+            x: 0, lastY: 50, beatProgress: 0, breathProgress: 0, lastTime: 0, lastYCO2: 0 
         });
 
-        // We use a ref to hold current props so the animation loop always sees the latest data
-        // without needing to be re-instantiated by useEffect
         const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused });
 
         useEffect(() => {
@@ -510,7 +437,7 @@
 
         const getWaveform = (type, t) => {
             const noise = (Math.random() - 0.5) * 2;
-            if (type === 'Asystole') return 50 + noise;
+            if (type === 'Asystole' || type === 'PEA') return 50 + noise; // PEA is electrical activity but functionally asystole on line if disconnected, or complex if not. Let's treat simple PEA as rhythm but we usually check pulse. For simple graphic, keep it simple. Actually PEA should show rhythm but user must check pulse.
             if (type === 'VF') { return 50 + Math.sin(t * 20) * 15 + Math.sin(t * 7) * 25 + noise * 2; }
             if (type === 'VT') {
                 let y = 50; if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 40; else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 40; return y + noise;
@@ -525,38 +452,37 @@
             if (type === 'STEMI') {
                 let y = 50; if (t < 0.15) y -= Math.sin(t / 0.15 * Math.PI) * 3; else if (t >= 0.15 && t < 0.20) y -= 2; else if (t >= 0.20 && t < 0.24) y -= 45; else if (t >= 0.24 && t < 0.26) y += 10; else if (t >= 0.26 && t < 0.55) { y -= 10; y -= Math.sin((t-0.26)/0.29 * Math.PI) * 8; } return y + noise;
             }
+            if (type === 'SVT') {
+                 let y = 50; if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; return y + noise;
+            }
+            // Normal / Sinus Tachy
             let y = 50; if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
         };
 
         const getEtco2Wave = (t, pathology, rr, rhythm) => {
-            if (rr <= 0) return 0; // Apnoea = Flatline
+            if (rr <= 0) return 0; 
             
             const isCardiacArrest = ['VF', 'VT', 'Asystole', 'PEA'].includes(rhythm);
-            const baseAmplitude = isCardiacArrest ? 0.3 : 1.0; // Low amplitude in arrest
+            const baseAmplitude = isCardiacArrest ? 0.3 : 1.0; 
 
-            // Returns normalized 0.0 to 1.0 (0 = baseline, 1 = max height)
             if (t < 0.1 || t > 0.6) return 0; 
             
             if (t >= 0.1 && t < 0.15) {
-                // Upstroke
                 return ((t - 0.1) / 0.05) * baseAmplitude;
             }
             
             if (t >= 0.15 && t < 0.5) {
-                // Plateau
                 const plateauBase = 1.0;
                 const plateauEnd = 0.9;
                 const p = (t - 0.15) / 0.35;
                 
                 if (pathology === 'respiratory') {
-                    // Shark fin ramp up for asthma/COPD
                     return (0.5 + (p * 0.5)) * baseAmplitude; 
                 }
                 return (plateauBase - (p * (plateauBase - plateauEnd))) * baseAmplitude;
             }
             
             if (t >= 0.5 && t <= 0.6) {
-                // Downstroke
                 const startVal = (pathology === 'respiratory' ? 1.0 : 0.9);
                 const p = (t - 0.5) / 0.1;
                 return (startVal * (1 - p)) * baseAmplitude;
@@ -572,8 +498,6 @@
                 const parent = canvas.parentElement;
                 canvas.width = parent.clientWidth;
                 canvas.height = parent.clientHeight;
-                
-                // Initialize Y positions on resize to prevent jumps
                 drawState.current.lastYCO2 = canvas.height - 2;
                 ctx.fillStyle = '#000000';
                 ctx.fillRect(0,0, canvas.width, canvas.height);
@@ -594,44 +518,36 @@
                     return;
                 }
 
-                // --- LOGIC ---
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
                 let currentRate = props.hr || 60;
                 
-                // AF Rhythm variability
                 if (currentRhythm === 'AF' && state.beatProgress >= 1) { 
                     currentRate = props.hr + (Math.random() * 60 - 30); 
                 }
                 let beatDuration = 60 / Math.max(10, currentRate);
-                if (currentRhythm === 'VF') beatDuration = 60/300; // VF is fast
+                if (currentRhythm === 'VF' || currentRhythm === 'SVT') beatDuration = 60/Math.max(150, currentRate); // Fast rhythms
 
-                // Move Cursor
-                const ecgSpeed = 150; // pixels per sec
+                const ecgSpeed = 150; 
                 const dx = ecgSpeed * dt;
                 const prevX = state.x;
                 state.x += dx;
 
-                // Wrap logic
                 if (state.x > canvas.width) {
                     state.x = 0;
-                    // Reset paths to prevent cross-screen lines
                     state.lastY = getWaveform(currentRhythm, state.beatProgress);
                     state.lastYCO2 = canvas.height - 2;
                 }
 
-                // Eraser Bar (Clear small segment ahead)
                 const eraserWidth = 20;
                 if (state.x + eraserWidth < canvas.width) {
                     ctx.fillStyle = '#000000';
-                    ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); // +5 for overlap safety
+                    ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); 
                 } else {
-                     // Wrap eraser
                      ctx.fillStyle = '#000000';
                      ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height);
                      ctx.fillRect(0, 0, eraserWidth, canvas.height);
                 }
 
-                // --- ECG DRAW ---
                 state.beatProgress += dt / beatDuration;
                 if (state.beatProgress >= 1) state.beatProgress = 0;
 
@@ -648,21 +564,18 @@
                 }
                 state.lastY = yECG;
 
-                // --- ETCO2 DRAW ---
                 if (props.showEtco2) {
                     let breathDuration = 60 / (Math.max(1, props.rr) || 12);
-                    // If RR is 0, we still advance time but the wave func returns 0
                     state.breathProgress += dt / breathDuration;
                     if (state.breathProgress >= 1) state.breathProgress = 0;
 
                     const normalizedHeight = getEtco2Wave(state.breathProgress, props.pathology, props.rr, currentRhythm);
-                    const co2MaxHeight = 35; // Pixels
-                    const co2BaseY = canvas.height - 2; // Bottom of canvas offset
+                    const co2MaxHeight = 35; 
+                    const co2BaseY = canvas.height - 2; 
                     const yCO2 = co2BaseY - (normalizedHeight * co2MaxHeight);
 
                     if (state.x > prevX) {
-                         // 1. Draw solid fill
-                         ctx.fillStyle = 'rgba(250, 204, 21, 0.4)'; // Yellow transparent
+                         ctx.fillStyle = 'rgba(250, 204, 21, 0.4)'; 
                          ctx.beginPath();
                          ctx.moveTo(prevX, state.lastYCO2);
                          ctx.lineTo(state.x, yCO2);
@@ -670,8 +583,7 @@
                          ctx.lineTo(prevX, co2BaseY);
                          ctx.fill();
 
-                         // 2. Draw sharp top line
-                         ctx.strokeStyle = '#facc15'; // Solid yellow
+                         ctx.strokeStyle = '#facc15'; 
                          ctx.lineWidth = 2;
                          ctx.beginPath();
                          ctx.moveTo(prevX, state.lastYCO2);
@@ -689,7 +601,7 @@
                 window.removeEventListener('resize', setSize);
                 cancelAnimationFrame(requestRef.current);
             };
-        }, []); // Empty dependency array ensures we don't reset canvas on prop changes
+        }, []); 
 
         return (
             <div className="w-full h-32 bg-black rounded border border-slate-700 relative overflow-hidden">
@@ -746,6 +658,7 @@
         etco2Enabled: false,
         isParalysed: false,
         queuedRhythm: null,
+        metronomeActive: false,
     };
 
     const simReducer = (state, action) => {
@@ -770,6 +683,8 @@
                 return { ...state, time: state.time + 1, activeDurations: durChanged ? newDurations : state.activeDurations };
             case 'UPDATE_VITALS': 
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
+                // Keep history size reasonable
+                if (newHist.length > 60) newHist.shift();
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
             case 'ADD_LOG':
@@ -789,6 +704,7 @@
             case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
             case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
             case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
+            case 'TOGGLE_METRONOME': return { ...state, metronomeActive: !state.metronomeActive };
             case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
             default: return state;
         }
@@ -800,6 +716,7 @@
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
         const stateRef = useRef(state);
+        const metronomeRef = useRef(null);
         
         useEffect(() => { stateRef.current = state; }, [state]);
         
@@ -812,6 +729,7 @@
 
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
 
+        // Monitor Audio (Beeps)
         useEffect(() => {
             let timerId;
             if (state.isRunning && state.vitals.hr > 0 && state.rhythm !== 'VF' && state.rhythm !== 'Asystole') {
@@ -833,6 +751,35 @@
             }
             return () => clearTimeout(timerId);
         }, [state.isRunning, state.isMuted, state.vitals.hr, state.vitals.spO2, state.rhythm]);
+
+        // Metronome Audio
+        useEffect(() => {
+            if (state.metronomeActive && state.isRunning) {
+                const ctx = audioCtxRef.current;
+                if (ctx.state === 'suspended') ctx.resume();
+                const bpm = 110;
+                const interval = 60000 / bpm;
+                
+                const playClick = () => {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.value = 800;
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    const now = ctx.currentTime;
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    osc.start(now);
+                    osc.stop(now + 0.05);
+                };
+                
+                metronomeRef.current = setInterval(playClick, interval);
+            } else {
+                if (metronomeRef.current) clearInterval(metronomeRef.current);
+            }
+            return () => { if (metronomeRef.current) clearInterval(metronomeRef.current); };
+        }, [state.metronomeActive, state.isRunning]);
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
@@ -962,7 +909,12 @@
             if (current.scenario?.deterioration?.active && current.scenario.deterioration.rate > 0 && current.rhythm !== 'VF' && current.rhythm !== 'Asystole') {
                 if (Math.random() < current.scenario.deterioration.rate) {
                     if (current.scenario.deterioration.type === 'shock') { next.bpSys -= 2; next.hr += 1; }
-                    else if (current.scenario.deterioration.type === 'neuro') { next.bpSys += 1; next.hr = Math.max(40, next.hr - 1); }
+                    else if (current.scenario.deterioration.type === 'neuro') { 
+                        // Cushing's: Widening pulse pressure (Sys up, Dia stable/up slightly), Bradycardia, Irregular RR
+                        next.bpSys += 2; 
+                        next.bpDia += 0.5; 
+                        next.hr = Math.max(40, next.hr - 1); 
+                    }
                     else if (current.scenario.deterioration.type === 'respiratory') { next.spO2 -= 1; next.rr += 1; }
                     else if (current.scenario.deterioration.type === 'cardiac') { next.bpSys -= 2; }
                 }
@@ -1006,6 +958,34 @@
         const [error, setError] = useState("");
         const [customScenario, setCustomScenario] = useState({ title: "Custom Case", age: 40, complaint: "Unwell", profile: "History...", hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37.0, gcs: 15, bm: 5.5, ecgType: "Sinus Rhythm", ecgFindings: "NSR", cxrFindings: "Normal", urineFindings: "Clear", ctFindings: "Normal" });
 
+        // NEW: Load preset scenario into custom fields
+        const loadPreset = (id) => {
+            if (!id) return;
+            const preset = ALL_SCENARIOS.find(s => s.id === id);
+            if (preset) {
+                const age = preset.ageGenerator();
+                const vitals = preset.vitalsMod || getBaseVitals(age);
+                setCustomScenario({
+                    title: preset.title,
+                    age: age,
+                    complaint: preset.presentingComplaint,
+                    profile: preset.patientProfileTemplate.replace('{age}', age).replace('{sex}', 'Male'),
+                    hr: vitals.hr,
+                    bpSys: vitals.bpSys,
+                    rr: vitals.rr,
+                    spO2: vitals.spO2,
+                    temp: vitals.temp || 36.8,
+                    gcs: vitals.gcs || 15,
+                    bm: vitals.bm || 5.5,
+                    ecgType: preset.ecg ? preset.ecg.type : "Sinus Rhythm",
+                    ecgFindings: preset.ecg ? preset.ecg.findings : "NSR",
+                    cxrFindings: preset.chestXray ? preset.chestXray.findings : "Normal",
+                    urineFindings: preset.urine ? preset.urine.findings : "Clear",
+                    ctFindings: preset.ct ? preset.ct.findings : "Normal"
+                });
+            }
+        };
+
         const handleGenerate = () => {
             setError(""); setLoading(true);
             setTimeout(() => {
@@ -1047,13 +1027,20 @@
                     </div>
                     {!customMode ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option></select></div>
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option></select></div>
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Resus">Resus</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Toxicology">Toxicology</option><option value="Psychiatric">Psychiatric</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Elderly">Elderly</option><option value="Paediatric">Paediatric</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
                             <div><label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">{HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
                         </div>
                     ) : (
                         <div className="space-y-4 mb-6">
+                            <div className="mb-4 bg-slate-900/50 p-3 rounded border border-slate-600">
+                                <label className="text-xs uppercase text-sky-400 font-bold block mb-2">Load Preset Scenario (Optional)</label>
+                                <select onChange={(e) => loadPreset(e.target.value)} className="w-full bg-slate-800 border border-slate-500 rounded p-2 text-sm text-white">
+                                    <option value="">Select a preset to auto-fill...</option>
+                                    {ALL_SCENARIOS.map(s => <option key={s.id} value={s.id}>{s.title} ({s.category})</option>)}
+                                </select>
+                            </div>
                             <input type="text" placeholder="Title" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3"/>
                             <div className="grid grid-cols-2 gap-2">
                                 <select value={customScenario.ecgType} onChange={e => setCustomScenario({...customScenario, ecgType: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-3"><option>Sinus Rhythm</option><option>Sinus Tachy</option><option>AF</option><option>VT</option><option>VF</option><option>STEMI</option><option>Asystole</option></select>
@@ -1144,12 +1131,18 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle } = sim;
-        const { scenario, time, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm } = state;
+        const { scenario, time, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, history, metronomeActive } = state;
         const [activeTab, setActiveTab] = useState("Common");
-        const [customLog, setCustomLog] = useState("");
+        const [customDrug, setCustomDrug] = useState("");
 
         const getInterventionsByCat = (cat) => Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+
+        // MTP Ratio Calculation
+        const unitsBlood = interventionCounts['Blood'] || 0;
+        const unitsFFP = interventionCounts['FFP'] || 0;
+        const unitsPlt = interventionCounts['Platelets'] || 0;
+        const showMTP = unitsBlood > 0 || scenario.category === 'Trauma';
 
         return (
             <div className={`h-full grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -1183,14 +1176,14 @@
 
                         {/* NUMERICS GRID (Expanded) */}
                         <div className="grid grid-cols-4 gap-2">
-                            <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
-                            <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
-                            <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
-                            <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
+                            <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} history={history} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
+                            <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} history={history} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
+                            <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} history={history} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
+                            <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} history={history} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
                             
                             {/* Row 2: Obs */}
-                            <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38}/>
-                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4}/>
+                            <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} history={history} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38}/>
+                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} history={history} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4}/>
                             <VitalDisplay label="Pupils" value={vitals.pupils || "3mm"} unit="" isText={true} onUpdate={(v) => manualUpdateVital('pupils', v)} />
                             {etco2Enabled ? (
                                 <div className="bg-slate-900/50 p-2 md:p-3 rounded border border-yellow-500/50 flex flex-col items-center justify-center h-24 md:h-28 relative">
@@ -1222,8 +1215,21 @@
                                  <option value="Asystole">Asystole</option>
                                  <option value="PEA">PEA</option>
                              </select>
-                             <Button variant="warning" onClick={nextCycle} className="text-xs h-8">Next Cycle (+2m)</Button>
+                             <Button variant={metronomeActive ? "warning" : "secondary"} onClick={() => sim.dispatch({type: 'TOGGLE_METRONOME'})} className="text-xs h-8">{metronomeActive ? "Stop Metronome" : "110bpm Metronome"}</Button>
                         </div>
+
+                        {/* MTP Ratio Monitor */}
+                        {showMTP && (
+                            <div className="mb-4 bg-red-900/20 border border-red-600/50 p-2 rounded-lg flex justify-between items-center">
+                                <h4 className="text-[10px] font-bold text-red-400 uppercase flex items-center gap-2"><Lucide icon="droplet" className="w-3 h-3"/> Massive Transfusion</h4>
+                                <div className="flex gap-4 text-xs">
+                                    <span>Blood: <b className="text-white">{unitsBlood}</b></span>
+                                    <span>FFP: <b className="text-white">{unitsFFP}</b></span>
+                                    <span>Plt: <b className="text-white">{unitsPlt}</b></span>
+                                    <span className="text-slate-400 ml-2">Ratio: {unitsBlood}:{unitsFFP}:{unitsPlt}</span>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Recommended Actions (Restored) */}
                         {scenario.recommendedActions && (
@@ -1282,8 +1288,8 @@
                         
                         {/* Manual Log */}
                         <div className="mt-2 flex gap-2 pt-2 border-t border-slate-700">
-                             <input type="text" className="bg-slate-900 border border-slate-600 rounded px-2 text-xs flex-1 text-white" placeholder="Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                             <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} className="h-8 text-xs">Log</Button>
+                             <input type="text" className="bg-slate-900 border border-slate-600 rounded px-2 text-xs flex-1 text-white" placeholder="Custom Drug / Note..." value={customDrug} onChange={e=>setCustomDrug(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(`Custom: ${customDrug}`, 'manual') || setCustomDrug(""))} />
+                             <Button onClick={() => {addLogEntry(`Custom: ${customDrug}`, 'manual'); setCustomDrug("");}} className="h-8 text-xs">Add Entry</Button>
                         </div>
                     </Card>
                 </div>
@@ -1299,6 +1305,10 @@
                              ))}
                          </div>
                     </Card>
+                    
+                    {(scenario.ageRange === 'Paediatric' || scenario.patientAge < 18) && (
+                        <PaedsCalculator weight={scenario.weight} age={scenario.patientAge} />
+                    )}
                     
                     <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
                         <div className="flex flex-col gap-2">
@@ -1330,9 +1340,14 @@
         useEffect(() => {
             if (!chartRef.current || !history.length) return;
             
+            // Fix: Deterministic y-offset calculation to prevent jitter
             const interventions = log
                 .filter(l => l.type === 'action' || l.type === 'manual')
-                .map(l => ({ x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, label: l.msg }));
+                .map((l, index) => ({ 
+                    x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, 
+                    label: l.msg,
+                    yOffset: 10 + (index % 5) * 15 // Static offset based on index
+                }));
 
             const chart = new window.Chart(chartRef.current, {
                 type: 'line',
@@ -1377,7 +1392,8 @@
                                 
                                 ctx.fillStyle = 'rgba(255,255,255,0.7)';
                                 ctx.font = '10px sans-serif';
-                                ctx.fillText(item.label.substring(0, 15), xPos + 2, top + 10 + (Math.random() * 100));
+                                // Use pre-calculated offset to prevent jitter
+                                ctx.fillText(item.label.substring(0, 15), xPos + 2, top + item.yOffset);
                             }
                         });
                         ctx.restore();
@@ -1482,7 +1498,7 @@
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.4</h1></div></div>
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v13.0</h1></div></div>
                     <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
                 <main className="flex-grow overflow-hidden relative">
