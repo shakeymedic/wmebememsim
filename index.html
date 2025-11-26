@@ -1559,7 +1559,40 @@
                         </div>
                     </Card>
                 </div>
-            </div> 
+
+                {/* --- MISSING RIGHT COLUMN: LOG & STATUS --- */}
+                <div className="flex flex-col gap-4 h-full overflow-hidden">
+                    {/* Event Log */}
+                    <Card title="Event Log" icon="clipboard-list" className="flex-1 min-h-0 bg-slate-800">
+                        <div className="space-y-1 overflow-y-auto pr-2 font-mono text-xs h-full">
+                            {log.length === 0 && <div className="text-slate-500 italic text-center mt-4">Simulation ready...</div>}
+                            {[...log].reverse().map((l, i) => (
+                                <div key={i} className={`flex gap-2 border-b border-slate-700/50 pb-1 ${l.type === 'danger' ? 'text-red-400' : l.type === 'success' ? 'text-emerald-400' : l.type === 'action' ? 'text-sky-300' : l.type === 'manual' ? 'text-amber-300' : 'text-slate-300'}`}>
+                                    <span className="opacity-50 w-10 flex-shrink-0">{l.simTime}</span>
+                                    <span>{l.msg}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+
+                    {/* Active Infusions Status */}
+                    <Card title="Active Status" icon="zap" className="flex-shrink-0 bg-slate-800">
+                        <div className="space-y-2 text-xs">
+                            {activeInterventions.size === 0 ? <div className="text-slate-500 italic">No active continuous interventions.</div> : 
+                                Array.from(activeInterventions).map(key => (
+                                    <div key={key} className="flex justify-between items-center bg-sky-900/20 p-2 rounded border border-sky-600/30">
+                                        <span className="font-bold text-sky-400">{INTERVENTIONS[key]?.label}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="animate-pulse w-2 h-2 bg-green-500 rounded-full"></span>
+                                            <span className="text-slate-400">Running</span>
+                                        </div>
+                                    </div>
+                                ))
+                            }
+                        </div>
+                    </Card>
+                </div>
+            </div>
         );
     };
 
