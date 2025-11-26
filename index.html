@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v12.2</title>
+    <title>WMEBEM Sim Generator v12.3</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -172,7 +172,8 @@
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Common', log: 'High flow oxygen applied (15L NRB).', type: 'continuous', duration: 5 },
         'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Common', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
         'Fluids': { label: 'Fluid Bolus 500ml', effect: { BP: 8, HR: -3 }, category: 'Common', log: 'Fluid bolus 500ml given.', type: 'bolus', duration: 60 },
-        'Analgesia': { label: 'Morphine 5mg', effect: { HR: -5, RR: -2, BP: -2 }, category: 'Common', log: 'IV Morphine 5mg administered.', type: 'bolus', duration: 10 },
+        'Analgesia': { label: 'Morphine 5mg', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Common', log: 'IV Morphine 5mg administered.', type: 'bolus', duration: 10 },
+        'Fentanyl': { label: 'Fentanyl 50mcg', effect: { HR: -2, RR: -3, BP: -2 }, category: 'Common', log: 'IV Fentanyl 50mcg administered.', type: 'bolus', duration: 10 },
         'Antiemetic': { label: 'Ondansetron 4mg', effect: {}, category: 'Common', log: 'IV Ondansetron 4mg administered.', type: 'bolus', duration: 10 },
         
         // AIRWAY & BREATHING
@@ -229,6 +230,10 @@
         'CPR': { label: 'Manual CPR', effect: {}, category: 'Procedures', log: 'CPR in progress (30:2).', type: 'continuous', duration: 5 },
         'Surgery': { label: 'Surgical Consult', effect: {}, category: 'Procedures', log: 'Surgeons contacted urgently.', type: 'bolus', duration: 30 },
         'Delivery': { label: 'Emergency Delivery', effect: {}, category: 'Obs/Gynae', log: 'Preparation for emergency delivery.', type: 'continuous', duration: 300 },
+        'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Procedures', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
+        'SeldingerDrain': { label: 'Chest Drain (Seldinger)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Procedures', log: 'Seldinger chest drain inserted.', type: 'continuous', duration: 450 },
+        'FingerThoracostomy': { label: 'Finger Thoracostomy', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Procedures', log: 'Finger thoracostomy performed.', type: 'bolus', duration: 30 },
+        'Pericardiocentesis': { label: 'Pericardiocentesis', effect: { BP: 20, HR: -10 }, category: 'Procedures', log: 'Pericardiocentesis performed.', type: 'bolus', duration: 30 },
     };
     
     // === SCENARIO DATABASE ---
@@ -356,13 +361,13 @@
             { label: "RCEM: Cardiac Arrest Management", url: "https://rcem.ac.uk/" }
         ] 
       },
-      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Severe Respiratory Distress.', scenarioDetails: ['Tracheal deviation Left.', 'Absent breath sounds Right.', 'Distended neck veins.'], vitalsMod: { hr: 150, bpSys: 70, bpDia: 40, spO2: 78, rr: 40, gcs: 11 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen'], chestXray: { findings: "Large right pneumothorax with mediastinal shift." }, 
-        recommendedActions: ['Obs', 'Oxygen', 'Needle', 'IV Access', 'Fluids', 'Analgesia', 'Surgery', 'Blood'],
+      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Severe Respiratory Distress.', scenarioDetails: ['Tracheal deviation Left.', 'Absent breath sounds Right.', 'Distended neck veins.'], vitalsMod: { hr: 150, bpSys: 70, bpDia: 40, spO2: 78, rr: 40, gcs: 11 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen', 'SurgicalDrain', 'SeldingerDrain', 'FingerThoracostomy'], chestXray: { findings: "Large right pneumothorax with mediastinal shift." }, 
+        recommendedActions: ['Obs', 'Oxygen', 'Needle', 'FingerThoracostomy', 'SurgicalDrain', 'IV Access', 'Fluids', 'Analgesia'],
         instructorBrief: {
             progression: "Obstructive shock. Peri-arrest. Needs immediate decompression (Needle/Finger). Do not wait for X-ray.",
-            interventions: ["Needle Thoracocentesis", "Chest Drain", "Trauma Call"],
+            interventions: ["Needle Thoracocentesis", "Finger Thoracostomy", "Surgical/Seldinger Chest Drain", "Trauma Call"],
             equipment: "Needle decompression kit, Chest Drain",
-            debriefPoints: ["Diagnosis of tension", "Decompression landmarks", "Primary Survey"],
+            debriefPoints: ["Diagnosis of tension", "Decompression landmarks", "Primary Survey", "Needle vs Finger Thoracostomy"],
             learningObjectives: ["Recognise tension pneumothorax.", "Perform needle decompression.", "Manage obstructive shock."]
         },
         urine: { findings: "Clear" }, ct: { findings: "Right tension pneumothorax. Lung collapse." },
@@ -858,8 +863,12 @@
             // Drugs Logic
             const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
             if (!isArrest) {
-                if (action.effect.HR) { if (action.effect.HR === 'reset') newVitals.hr = 80; else newVitals.hr += action.effect.HR; }
-                if (action.effect.BP) newVitals.bpSys += action.effect.BP;
+                if (action.effect.HR) { 
+                    if (action.effect.HR === 'reset') newVitals.hr = 80; 
+                    else newVitals.hr = Math.max(0, newVitals.hr + action.effect.HR); 
+                }
+                if (action.effect.BP) newVitals.bpSys = Math.max(0, newVitals.bpSys + action.effect.BP);
+                if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = Math.max(0, newVitals.rr + action.effect.RR);
             }
             if (action.effect.SpO2) newVitals.spO2 = Math.min(100, newVitals.spO2 + action.effect.SpO2);
             if (action.effect.gcs) newVitals.gcs = Math.max(3, Math.min(15, newVitals.gcs + action.effect.gcs));
@@ -909,6 +918,14 @@
             const current = stateRef.current;
             let next = { ...current.vitals };
             
+            // ARREST LOGIC: HR 0 -> ARREST
+            if (next.hr <= 0 && current.rhythm !== 'Asystole' && current.rhythm !== 'VF' && current.rhythm !== 'VT' && current.rhythm !== 'PEA') {
+                dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' });
+                addLogEntry("Cardiac Arrest Detected (HR 0). Rhythm: Asystole.", 'danger');
+                dispatch({ type: 'SET_FLASH', payload: 'red' });
+                next.hr = 0;
+            }
+
             if (current.rhythm === 'Asystole' || current.rhythm === 'VF') { 
                 next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
                 next.spO2 = Math.max(0, next.spO2 - 2); 
@@ -936,6 +953,7 @@
                 }
             }
 
+            // Safety Checks: Negative Obs Prevention
             next.hr = Math.max(0, next.hr);
             next.bpSys = Math.max(0, next.bpSys);
             next.bpDia = Math.max(0, next.bpDia);
@@ -1279,7 +1297,7 @@
                     <Card className="flex-1 min-h-0 bg-slate-800 flex flex-col">
                         <div className="flex items-center gap-2 mb-2 border-b border-slate-700 pb-2"><Lucide icon="list" className="w-4 h-4 text-sky-400" /><h3 className="font-bold text-slate-200 text-sm">Incident Log</h3></div>
                         <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-xs font-mono">
-                            {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
+                            {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
                         </div>
                     </Card>
                 </div>
@@ -1314,6 +1332,8 @@
                     maintainAspectRatio: false,
                     // FIX: Interaction mode 'index' with intersect false to prevent label jumping
                     interaction: { mode: 'index', intersect: false },
+                    animation: false, // Disable animation to prevent flickering updates
+                    hover: { animationDuration: 0 }, // Specific fix for flickering tooltips
                     plugins: { 
                         title: { display: true, text: 'Vital Signs Trend' },
                         tooltip: { position: 'nearest' }, // Helps stability
@@ -1445,7 +1465,7 @@
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.2</h1></div></div>
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.3</h1></div></div>
                     <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
                 <main className="flex-grow overflow-hidden relative">
