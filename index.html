@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v12.3</title>
+    <title>WMEBEM Sim Generator v12.4</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -81,6 +81,8 @@
     const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
     const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    // Safety clamp function to prevent ludicrous values
+    const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
     // Medical Generators
     const generateHistory = (age, sex = 'Male') => {
@@ -184,7 +186,8 @@
         'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25, RR: 'vent' }, category: 'Airway', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
         'Nebs': { label: 'Nebs (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Airway', log: 'Nebulisers (Salb/Iprat) running.', type: 'bolus', duration: 300 },
         'Needle': { label: 'Needle Decompression', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Airway', log: 'Needle thoracocentesis performed.', type: 'bolus', duration: 30 },
-        'NIV': { label: 'NIV / CPAP', effect: { SpO2: 10, RR: -5, BP: -5 }, category: 'Airway', log: 'NIV/CPAP initiated.', type: 'continuous', duration: 60 },
+        'CPAP': { label: 'CPAP', effect: { SpO2: 10, RR: -5, BP: -5 }, category: 'Airway', log: 'CPAP initiated.', type: 'continuous', duration: 60 },
+        'NIV': { label: 'NIV (BiPAP)', effect: { SpO2: 12, RR: -5, BP: -5 }, category: 'Airway', log: 'NIV (BiPAP) initiated.', type: 'continuous', duration: 60 },
         
         // RSI & INTUBATION
         'RSI': { label: 'Perform RSI', effect: { SpO2: 99, RR: 'vent', BP: -15, gcs: 'sedated' }, category: 'Airway', log: 'Rapid Sequence Induction performed. Patient intubated.', type: 'continuous', duration: 120 },
@@ -210,6 +213,8 @@
         'Adenosine': { label: 'Adenosine', effect: { HR: 'reset' }, category: 'Drugs', log: 'IV Adenosine rapid bolus administered.', type: 'bolus', duration: 2 },
         'Aspirin': { label: 'Aspirin 300mg', effect: {}, category: 'Drugs', log: 'Aspirin 300mg PO administered.', type: 'bolus', duration: 10 },
         'GTN': { label: 'GTN Spray', effect: { BP: -8 }, category: 'Drugs', log: 'GTN Spray sublingual administered.', type: 'bolus', duration: 5 },
+        'GTNInfusion': { label: 'GTN Infusion', effect: { BP: -20 }, category: 'Drugs', log: 'GTN Infusion started (5ml/hr).', type: 'continuous', duration: 300 },
+        'Furosemide': { label: 'Furosemide 40mg', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide 40mg administered.', type: 'bolus', duration: 30 },
         'Clopidogrel': { label: 'Clopidogrel 300mg', effect: {}, category: 'Drugs', log: 'Clopidogrel 300mg PO administered.', type: 'bolus', duration: 10 },
         'Metaraminol': { label: 'Metaraminol', effect: { BP: 15 }, category: 'Drugs', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10 },
         
@@ -523,13 +528,18 @@
             let y = 50; if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
         };
 
-        const getEtco2Wave = (t, pathology) => {
+        const getEtco2Wave = (t, pathology, rr, rhythm) => {
+            if (rr <= 0) return 0; // Apnoea = Flatline
+            
+            const isCardiacArrest = ['VF', 'VT', 'Asystole', 'PEA'].includes(rhythm);
+            const baseAmplitude = isCardiacArrest ? 0.3 : 1.0; // Low amplitude in arrest
+
             // Returns normalized 0.0 to 1.0 (0 = baseline, 1 = max height)
             if (t < 0.1 || t > 0.6) return 0; 
             
             if (t >= 0.1 && t < 0.15) {
                 // Upstroke
-                return (t - 0.1) / 0.05;
+                return ((t - 0.1) / 0.05) * baseAmplitude;
             }
             
             if (t >= 0.15 && t < 0.5) {
@@ -537,15 +547,19 @@
                 const plateauBase = 1.0;
                 const plateauEnd = 0.9;
                 const p = (t - 0.15) / 0.35;
-                if (pathology === 'respiratory') return 0.5 + (p * 0.5); // Shark fin ramp up
-                return plateauBase - (p * (plateauBase - plateauEnd));
+                
+                if (pathology === 'respiratory') {
+                    // Shark fin ramp up for asthma/COPD
+                    return (0.5 + (p * 0.5)) * baseAmplitude; 
+                }
+                return (plateauBase - (p * (plateauBase - plateauEnd))) * baseAmplitude;
             }
             
             if (t >= 0.5 && t <= 0.6) {
                 // Downstroke
                 const startVal = (pathology === 'respiratory' ? 1.0 : 0.9);
                 const p = (t - 0.5) / 0.1;
-                return startVal * (1 - p);
+                return (startVal * (1 - p)) * baseAmplitude;
             }
             return 0;
         };
@@ -637,10 +651,11 @@
                 // --- ETCO2 DRAW ---
                 if (props.showEtco2) {
                     let breathDuration = 60 / (Math.max(1, props.rr) || 12);
+                    // If RR is 0, we still advance time but the wave func returns 0
                     state.breathProgress += dt / breathDuration;
                     if (state.breathProgress >= 1) state.breathProgress = 0;
 
-                    const normalizedHeight = getEtco2Wave(state.breathProgress, props.pathology);
+                    const normalizedHeight = getEtco2Wave(state.breathProgress, props.pathology, props.rr, currentRhythm);
                     const co2MaxHeight = 35; // Pixels
                     const co2BaseY = canvas.height - 2; // Bottom of canvas offset
                     const yCO2 = co2BaseY - (normalizedHeight * co2MaxHeight);
@@ -865,13 +880,13 @@
             if (!isArrest) {
                 if (action.effect.HR) { 
                     if (action.effect.HR === 'reset') newVitals.hr = 80; 
-                    else newVitals.hr = Math.max(0, newVitals.hr + action.effect.HR); 
+                    else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); 
                 }
-                if (action.effect.BP) newVitals.bpSys = Math.max(0, newVitals.bpSys + action.effect.BP);
-                if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = Math.max(0, newVitals.rr + action.effect.RR);
+                if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300);
+                if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60);
             }
-            if (action.effect.SpO2) newVitals.spO2 = Math.min(100, newVitals.spO2 + action.effect.SpO2);
-            if (action.effect.gcs) newVitals.gcs = Math.max(3, Math.min(15, newVitals.gcs + action.effect.gcs));
+            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
+            if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
 
             // Scenario stabilisers
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) {
@@ -953,12 +968,14 @@
                 }
             }
 
-            // Safety Checks: Negative Obs Prevention
-            next.hr = Math.max(0, next.hr);
-            next.bpSys = Math.max(0, next.bpSys);
-            next.bpDia = Math.max(0, next.bpDia);
-            next.rr = Math.max(0, next.rr);
-            next.spO2 = Math.max(0, Math.min(100, next.spO2));
+            // Safety Checks: Clamp to realistic values to prevent "ludicrous" obs
+            next.hr = clamp(next.hr, 0, 250);
+            next.bpSys = clamp(next.bpSys, 0, 300);
+            next.bpDia = clamp(next.bpDia, 0, 250);
+            next.rr = clamp(next.rr, 0, 60);
+            next.spO2 = clamp(next.spO2, 0, 100);
+            next.temp = clamp(next.temp, 32, 43);
+            next.bm = clamp(next.bm, 1, 40);
             
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
@@ -1465,7 +1482,7 @@
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.3</h1></div></div>
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.4</h1></div></div>
                     <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
                 <main className="flex-grow overflow-hidden relative">
