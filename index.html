@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v11.8</title>
+    <title>WMEBEM Sim Generator v12.1</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -17,6 +17,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- jsPDF for Exports -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Chart.js Annotation Plugin -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.1.0/chartjs-plugin-annotation.min.js"></script>
     
     <style>
         .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
@@ -41,8 +43,9 @@
             50% { border-color: #10b981; }
         }
         
-        html { overflow-y: scroll; -webkit-tap-highlight-color: transparent; }
-        body { overscroll-behavior-y: none; }
+        html, body { height: 100%; overflow: hidden; }
+        body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; }
+        #root { height: 100%; display: flex; flex-direction: column; }
 
         @keyframes loadProgress { from { width: 0%; } to { width: 100%; } }
         .loading-bar {
@@ -51,16 +54,17 @@
             animation: loadProgress 2s linear forwards; z-index: 0;
         }
         
-        .pea-warning {
-            animation: pulseText 1s infinite;
-        }
-        @keyframes pulseText {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+        .pea-warning { animation: pulseText 1s infinite; }
+        @keyframes pulseText { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        /* Mobile specific adjustments */
+        @media (max-width: 768px) {
+            .mobile-stack { flex-direction: column; }
+            .mobile-h-full { height: 100%; }
         }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-100 antialiased selection:bg-sky-500 selection:text-white">
+<body class="antialiased selection:bg-sky-500 selection:text-white">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -72,13 +76,12 @@
     const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
     // Medical Generators
-    const generateHistory = (age) => {
+    const generateHistory = (age, sex = 'Male') => {
         if (age < 20) return { pmh: ["Nil significant"], dhx: ["Nil"], allergies: ["Nil"] };
         
         const commonPMH = ["Hypertension", "Type 2 Diabetes", "Asthma", "Hyperlipidaemia", "GORD", "Depression", "Anxiety", "Previous MI", "AF", "CKD Stage 3"];
-        const commonMeds = ["Ramipril", "Amlodipine", "Metformin", "Salbutamol Inhaler", "Atorvastatin", "Omeprazole", "Sertraline", "Bisoprolol", "Apixaban", "Aspirin"];
-        const allergies = ["Nil", "Penicillin", "Latex", "NSAIDs", "Trimethoprim"];
-
+        const femalePMH = ["PCOS", "Endometriosis", "Previous C-Section"];
+        
         let pmh = [];
         let dhx = [];
         
@@ -88,6 +91,8 @@
             const item = getRandomItem(commonPMH);
             if(!pmh.includes(item)) pmh.push(item);
         }
+        
+        if (sex === 'Female' && Math.random() > 0.8) pmh.push(getRandomItem(femalePMH));
 
         if (pmh.includes("Hypertension")) dhx.push("Ramipril 5mg OD");
         if (pmh.includes("Type 2 Diabetes")) dhx.push("Metformin 1g BD");
@@ -103,7 +108,7 @@
         return {
             pmh: pmh,
             dhx: dhx,
-            allergies: [Math.random() > 0.8 ? getRandomItem(allergies.slice(1)) : "NKDA"]
+            allergies: [Math.random() > 0.8 ? getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"]
         };
     };
 
@@ -122,20 +127,6 @@
         if (age >= 1 && age <= 10) return ((age + 4) * 2).toFixed(1); 
         if (age > 10) return (age * 3 + 7).toFixed(1); 
         return null; 
-    };
-
-    const calculatePaedDoses = (weight) => {
-        const w = parseFloat(weight);
-        if(!w) return [];
-        return [
-            { label: "Fluid Bolus (20ml/kg)", dose: `${(20 * w).toFixed(0)} ml`, type: "Vol" },
-            { label: "Adrenaline 1:10,000 (10mcg/kg)", dose: `${(0.1 * w).toFixed(2)} ml`, type: "IV/IO" },
-            { label: "Amiodarone (5mg/kg)", dose: `${(5 * w).toFixed(0)} mg`, type: "IV/IO" },
-            { label: "Lorazepam (0.1mg/kg)", dose: `${(0.1 * w).toFixed(2)} mg`, type: "IV/IO" },
-            { label: "Glucose 10% (2ml/kg)", dose: `${(2 * w).toFixed(0)} ml`, type: "IV/IO" },
-            { label: "Tube Size (Age/4 + 4)", dose: `Size 4-5`, type: "ET" }, 
-            { label: "DC Shock (4J/kg)", dose: `${(4 * w).toFixed(0)} J`, type: "Defib" },
-        ];
     };
 
     const generateVbg = (clinicalState = "normal") => {
@@ -166,7 +157,7 @@
       { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
     ];
 
-    // INTERVENTIONS with Durations
+    // INTERVENTIONS
     const INTERVENTIONS = {
         // COMMON
         'Obs': { label: 'Apply Monitoring', effect: {}, category: 'Common', log: 'Full monitoring applied.', type: 'continuous', duration: 10 },
@@ -180,8 +171,8 @@
         'Manoeuvres': { label: 'Head Tilt / Jaw Thrust', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway manoeuvres applied.', type: 'continuous', duration: 5 },
         'OPA': { label: 'Guedel / OPA', effect: { SpO2: 5 }, category: 'Airway', log: 'Oropharyngeal airway inserted.', type: 'continuous', duration: 10 },
         'NPA': { label: 'Nasopharyngeal', effect: { SpO2: 5 }, category: 'Airway', log: 'Nasopharyngeal airway inserted.', type: 'continuous', duration: 15 },
-        'i-gel': { label: 'i-gel / LMA', effect: { SpO2: 15, RR: -5 }, category: 'Airway', log: 'Supraglottic airway (i-gel) inserted.', type: 'continuous', duration: 30 },
-        'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25 }, category: 'Airway', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
+        'i-gel': { label: 'i-gel / LMA', effect: { SpO2: 15, RR: 'vent' }, category: 'Airway', log: 'Supraglottic airway (i-gel) inserted.', type: 'continuous', duration: 30 },
+        'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25, RR: 'vent' }, category: 'Airway', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
         'Nebs': { label: 'Nebs (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Airway', log: 'Nebulisers (Salb/Iprat) running.', type: 'bolus', duration: 300 },
         'Needle': { label: 'Needle Decompression', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Airway', log: 'Needle thoracocentesis performed.', type: 'bolus', duration: 30 },
         'NIV': { label: 'NIV / CPAP', effect: { SpO2: 10, RR: -5, BP: -5 }, category: 'Airway', log: 'NIV/CPAP initiated.', type: 'continuous', duration: 60 },
@@ -189,8 +180,8 @@
         // RSI & INTUBATION
         'RSI': { label: 'Perform RSI', effect: { SpO2: 99, RR: 'vent', BP: -15, gcs: 'sedated' }, category: 'Airway', log: 'Rapid Sequence Induction performed. Patient intubated.', type: 'continuous', duration: 120 },
         'Ketamine': { label: 'Ketamine (Induction)', effect: { gcs: -5, BP: 5, HR: 5 }, category: 'Drugs', log: 'IV Ketamine administered.', type: 'bolus', duration: 15 },
-        'Roc': { label: 'Rocuronium', effect: { RR: 0 }, category: 'Drugs', log: 'IV Rocuronium administered.', type: 'bolus', duration: 10 },
-        'Sux': { label: 'Suxamethonium', effect: { RR: 0 }, category: 'Drugs', log: 'IV Suxamethonium administered.', type: 'bolus', duration: 10 },
+        'Roc': { label: 'Rocuronium', effect: { RR: 0, paralysed: true }, category: 'Drugs', log: 'IV Rocuronium administered.', type: 'bolus', duration: 10 },
+        'Sux': { label: 'Suxamethonium', effect: { RR: 0, paralysed: true }, category: 'Drugs', log: 'IV Suxamethonium administered.', type: 'bolus', duration: 10 },
         'Propofol': { label: 'Propofol', effect: { gcs: -5, BP: -10, RR: -5 }, category: 'Drugs', log: 'IV Propofol administered.', type: 'bolus', duration: 10 },
 
         // CIRCULATION & TRAUMA
@@ -213,18 +204,14 @@
         'Clopidogrel': { label: 'Clopidogrel 300mg', effect: {}, category: 'Drugs', log: 'Clopidogrel 300mg PO administered.', type: 'bolus', duration: 10 },
         'Metaraminol': { label: 'Metaraminol', effect: { BP: 15 }, category: 'Drugs', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10 },
         
-        // OTHER DRUGS
-        'Antibiotics': { label: 'IV Antibiotics', effect: { BP: 2 }, category: 'Drugs', log: 'Broad spectrum IV antibiotics administered.', type: 'bolus', duration: 30 },
-        'Benzos': { label: 'Lorazepam 1mg', effect: { HR: -10, RR: -3, gcs: -2 }, category: 'Drugs', log: 'IV Lorazepam administered.', type: 'bolus', duration: 30 },
-        'Dexamethasone': { label: 'Dexamethasone', effect: {}, category: 'Drugs', log: 'IV Dexamethasone administered.', type: 'bolus', duration: 10 },
-        'Magnesium': { label: 'Magnesium 2g', effect: { BP: -5 }, category: 'Drugs', log: 'IV Magnesium 2g administered.', type: 'bolus', duration: 300 },
-        'Glucose': { label: 'Glucose 10%', effect: { gcs: 5 }, category: 'Drugs', log: 'IV Glucose 10% administered.', type: 'bolus', duration: 60 },
-        'Naloxone': { label: 'Naloxone', effect: { RR: 8, gcs: 5 }, category: 'Drugs', log: 'IV Naloxone administered.', type: 'bolus', duration: 10 },
-        'Calcium': { label: 'Calcium Gluconate', effect: { BP: 3 }, category: 'Drugs', log: 'IV Calcium Gluconate administered.', type: 'bolus', duration: 60 },
-        'Insulin': { label: 'VRII / Insulin', effect: {}, category: 'Drugs', log: 'Variable Rate Insulin Infusion started.', type: 'continuous', duration: 30 },
-        'Terlipressin': { label: 'Terlipressin 2mg', effect: { BP: 10 }, category: 'Drugs', log: 'IV Terlipressin 2mg administered.', type: 'bolus', duration: 30 },
-        'VitaminK': { label: 'Vitamin K (IV)', effect: {}, category: 'Drugs', log: 'IV Vitamin K administered.', type: 'bolus', duration: 30 },
-        'Hypertonic': { label: 'Hypertonic Saline', effect: { BP: 5 }, category: 'Drugs', log: 'IV Hypertonic Saline administered.', type: 'bolus', duration: 60 },
+        // OBSTETRICS & GYNAE
+        'Oxytocin': { label: 'Oxytocin 10u', effect: { BP: -5 }, category: 'Obs/Gynae', log: 'IM Oxytocin 10u administered.', type: 'bolus', duration: 10 },
+        'Ergometrine': { label: 'Ergometrine 500mcg', effect: { BP: 15 }, category: 'Obs/Gynae', log: 'IM Ergometrine 500mcg administered.', type: 'bolus', duration: 10 },
+        'Carboprost': { label: 'Carboprost 250mcg', effect: { BP: 5 }, category: 'Obs/Gynae', log: 'IM Carboprost 250mcg administered.', type: 'bolus', duration: 10 },
+        'Misoprostol': { label: 'Misoprostol 800mcg', effect: {}, category: 'Obs/Gynae', log: 'PR Misoprostol 800mcg administered.', type: 'bolus', duration: 30 },
+        'Labetalol': { label: 'Labetalol 50mg', effect: { BP: -15, HR: -5 }, category: 'Obs/Gynae', log: 'IV Labetalol 50mg administered.', type: 'bolus', duration: 15 },
+        'MagSulph': { label: 'Magnesium Sulph 4g', effect: { BP: -5, RR: -2 }, category: 'Obs/Gynae', log: 'IV Magnesium Sulphate 4g loading dose.', type: 'bolus', duration: 600 },
+        'AntiD': { label: 'Anti-D Ig', effect: {}, category: 'Obs/Gynae', log: 'IM Anti-D administered.', type: 'bolus', duration: 10 },
 
         // PROCEDURES
         'Defib': { label: 'Defibrillation', effect: { changeRhythm: 'defib' }, category: 'Procedures', log: 'Shock Delivered (200J).', type: 'bolus', duration: 5 },
@@ -233,247 +220,139 @@
         'Lucas': { label: 'Lucas/AutoPulse', effect: { BP: 30 }, category: 'Procedures', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
         'CPR': { label: 'Manual CPR', effect: {}, category: 'Procedures', log: 'CPR in progress (30:2).', type: 'continuous', duration: 5 },
         'Surgery': { label: 'Surgical Consult', effect: {}, category: 'Procedures', log: 'Surgeons contacted urgently.', type: 'bolus', duration: 30 },
+        'Delivery': { label: 'Emergency Delivery', effect: {}, category: 'Obs/Gynae', log: 'Preparation for emergency delivery.', type: 'continuous', duration: 300 },
     };
     
-    // === SCENARIO DATABASE with Recommended Actions ---
+    // === SCENARIO DATABASE ---
     const ALL_SCENARIOS = [
       { 
           id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(45, 75), 
           patientProfileTemplate: "A {age}-year-old {sex}. Crushing central chest pain radiating to left arm. Duration 1 hour.", presentingComplaint: 'Chest pain, Diaphoresis.', 
           scenarioDetails: ['Pale, clammy, looks unwell.', 'Pain 10/10.', 'ECG: Anterior ST Elevation V1-V4.'], 
           instructorBrief: {
-              progression: "Patient is anxious, pale, and sweaty. Pain score 10/10. There is a high risk of deterioration into Ventricular Fibrillation (VF) if not managed promptly. Time is critical for myocardial salvage.",
-              interventions: ["12 Lead ECG (within 10 mins)", "Aspirin 300mg & Clopidogrel 300mg", "IV Morphine + Antiemetic", "GTN (assess BP first)", "Primary PCI (PPCI) Activation"],
-              equipment: "Defibrillator (pads applied), 12-Lead ECG Machine, IV Access kit, Cardiac Drug Pack",
-              debriefPoints: ["Door-to-balloon time targets", "Contraindications to GTN (e.g., Inferior MI/RV involvement)", "Management of VT/VF arrest"],
-              learningObjectives: ["Recognise STEMI on 12-lead ECG.", "Manage Acute Coronary Syndrome according to NICE guidelines.", "Identify and treat cardiogenic shock.", "Coordinate safe transfer to PPCI centre."]
+              progression: "Patient is anxious, pale, and sweaty. Pain score 10/10. High risk of VF arrest. Time is critical.",
+              interventions: ["12 Lead ECG", "Aspirin 300mg & Clopidogrel 300mg", "IV Morphine + Antiemetic", "GTN (caution)", "Primary PCI Activation"],
+              equipment: "Defib, ECG, Cardiac Drugs",
+              debriefPoints: ["Door-to-balloon time", "Contraindications to GTN", "Management of VF arrest"],
+              learningObjectives: ["Recognise STEMI.", "Manage ACS.", "Identify cardiogenic shock.", "Coordinate transfer."]
           },
           recommendedActions: ['Obs', 'Oxygen', 'IV Access', 'Aspirin', 'Clopidogrel', 'GTN', 'Analgesia', 'Antiemetic'],
           vitalsMod: { hr: 95, bpSys: 145, bpDia: 85, spO2: 96, rr: 22 }, 
           deterioration: { active: true, rate: 0.05, type: 'cardiac' }, 
           stabilisers: ['Analgesia', 'Oxygen', 'Aspirin', 'GTN', 'Clopidogrel'], 
-          fluidResponse: 'positive',
-          ecg: { type: "STEMI", findings: "Anterior ST Elevation V1-V4 with reciprocal depression." }, 
-          urine: { findings: "Clear" },
-          learningLinks: [
-              { label: "NICE NG185: Acute Coronary Syndromes", url: "https://www.nice.org.uk/guidance/ng185" }
-          ] 
-      },
-      { 
-        id: 'AT020', title: 'Open Ankle Fracture', category: 'Trauma', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 60), 
-        patientProfileTemplate: "A {age}-year-old. Fell 3m from a ladder.", presentingComplaint: 'Deformed ankle, bone exposed.', 
-        scenarioDetails: ['Open fracture dislocation right ankle.', 'Foot dusky.', 'Pulse weak dorsalis pedis.'], 
-        instructorBrief: {
-             progression: "Patient is in severe pain. The limb is deformed with bone exposed. The foot is dusky, indicating potential neurovascular compromise. Urgent reduction is required to restore circulation and protect soft tissues.",
-             interventions: ["Analgesia & Procedural Sedation (Ketamine)", "Urgent Reduction of fracture-dislocation", "Application of Backslab/Splint", "IV Antibiotics & Tetanus prophylaxis", "Neurovascular checks pre and post reduction"],
-             equipment: "Plaster trolley (plaster of paris, wool, water), Ketamine/Sedation kit, Image Intensifier (optional)",
-             debriefPoints: ["BOAST guidelines for open fractures", "Checklist for safe procedural sedation", "Neurovascular assessment techniques"],
-             learningObjectives: ["Assess limb viability and neurovascular status.", "Perform safe procedural sedation.", "Reduce and splint a fracture-dislocation.", "Initiate open fracture management (antibiotics, tetanus, dressing)."]
-        },
-        recommendedActions: ['Obs', 'IV Access', 'Analgesia', 'Ketamine', 'Reduction', 'Plaster', 'Antibiotics', 'Splinting'],
-        vitalsMod: { hr: 115, bpSys: 140, bpDia: 85, spO2: 98, rr: 22 }, deterioration: { active: false, rate: 0 }, 
-        stabilisers: ['Analgesia', 'Splinting', 'Ketamine'], 
-        chestXray: { findings: "Trimalleolar fracture dislocation." }, 
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "BOAST: Open Fractures", url: "https://www.boa.ac.uk/" }
-        ] 
+          ecg: { type: "STEMI", findings: "Anterior ST Elevation V1-V4." }, 
+          urine: { findings: "Clear" }, ct: { findings: "Not indicated." },
+          learningLinks: [ { label: "NICE NG185: ACS", url: "https://www.nice.org.uk/guidance/ng185" } ] 
       },
       { 
         id: 'AT030', title: 'RTC Polytrauma (Driver)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 45), 
-        patientProfileTemplate: "A {age}-year-old male driver. High speed RTC, prolonged extrication.", presentingComplaint: 'Chest pain, Abdominal pain.', 
-        scenarioDetails: ['Pale, clammy.', 'Chest wall bruising.', 'Abdomen rigid.', 'Pelvis unstable on spring.'], 
+        patientProfileTemplate: "A {age}-year-old male driver. High speed RTC.", presentingComplaint: 'Chest pain, Abdominal pain.', 
+        scenarioDetails: ['Pale, clammy.', 'Chest wall bruising.', 'Abdomen rigid.', 'Pelvis unstable.'], 
         instructorBrief: {
-             progression: "Classic polytrauma with haemorrhagic shock (Class III/IV). Injuries include chest trauma, intra-abdominal bleeding and pelvic fracture. Requires 'Code Red' trauma activation and damage control resuscitation.",
-             interventions: ["Pelvic Binder application", "Tranexamic Acid (1g IV)", "Major Haemorrhage Protocol (O-Neg / FFP)", "Rapid Sequence Induction (RSI) for agitation/transfer", "CT Pan-scan"],
-             equipment: "Pelvic Binder, Major Haemorrhage Pack, RSI Kit",
-             debriefPoints: ["Identification of Shock Class III vs IV", "Timing of Pelvic Binder application", "Concept of Permissive Hypotension"],
-             learningObjectives: ["Recognise signs of decompensated haemorrhagic shock.", "Apply a pelvic binder correctly.", "Activate and manage a massive transfusion protocol.", "Prioritise imaging in unstable trauma."]
+             progression: "Polytrauma with haemorrhagic shock. Injuries include chest trauma, intra-abdominal bleeding and pelvic fracture. 'Code Red'.",
+             interventions: ["Pelvic Binder", "TXA 1g", "Major Haemorrhage Protocol", "RSI", "CT Pan-scan"],
+             equipment: "Binder, Major Haem Pack, RSI Kit",
+             debriefPoints: ["Shock Class III vs IV", "Pelvic Binder placement", "Permissive Hypotension"],
+             learningObjectives: ["Recognise haemorrhagic shock.", "Apply pelvic binder.", "Manage massive transfusion."]
         },
         recommendedActions: ['Obs', 'Oxygen', 'Binder', 'IV Access', 'Blood', 'TXA', 'RSI', 'Surgery'],
         vitalsMod: { hr: 135, bpSys: 80, bpDia: 40, spO2: 92, rr: 30, gcs: 13 }, deterioration: { active: true, rate: 0.15, type: 'shock' }, 
         stabilisers: ['Blood', 'Binder', 'Surgery'], 
         chestXray: { findings: "Multiple rib fractures. Widened mediastinum." }, 
         vbgClinicalState: "haemorrhagic_shock",
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/guidance/ng39" }
-        ] 
+        urine: { findings: "Clear" }, ct: { findings: "Liver laceration Grade 4. Splenic injury. Pelvic fracture (Open book)." },
+        learningLinks: [ { label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/guidance/ng39" } ] 
       },
       { 
-        id: 'AT031', title: 'Abdominal Stab Wound', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 35), 
-        patientProfileTemplate: "A {age}-year-old male. Single stab wound to left upper quadrant.", presentingComplaint: 'Stab wound, Collapse.', 
-        scenarioDetails: ['Omentum eviscerating.', 'Pale and diaphoretic.', 'Tachycardic.'], 
+        id: 'OG001', title: 'Ruptured Ectopic Pregnancy', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), 
+        patientProfileTemplate: "A {age}-year-old female. Severe RIF pain and shoulder tip pain. 6 weeks amenorrhoea.", presentingComplaint: 'Abdominal Pain, Collapse.', 
+        scenarioDetails: ['Pale, peritonitic.', 'Guarding RIF.', 'FAST scan positive.'], 
         instructorBrief: {
-             progression: "Penetrating abdominal trauma with evisceration. Signs of active haemorrhage. Needs immediate surgical exploration (Laparotomy). Do not delay for CT if unstable.",
-             interventions: ["High flow Oxygen", "IV Access x2", "Fluid/Blood Resuscitation", "TXA", "Immediate transfer to Theatre"],
-             equipment: "Trauma pads, Major Haemorrhage Pack",
-             debriefPoints: ["Indications for immediate laparotomy", "Management of evisceration (do not push back)", "Permissive hypotension targets"],
-             learningObjectives: ["Manage penetrating abdominal trauma.", "Recognise indications for immediate theatre transfer.", "Apply principles of damage control surgery."]
+             progression: "Life-threatening intra-abdominal haemorrhage. Patient is in decompensated shock. Needs immediate surgical source control.",
+             interventions: ["IV Access x2", "Crossmatch (O-Neg)", "Anti-D if Rhesus Neg", "Urgent Gynae Review/Theatre"],
+             equipment: "Ultrasound, Blood Warmer",
+             debriefPoints: ["Recognition of ectopic pregnancy", "Role of Anti-D", "Haemodynamic resuscitation in pregnancy"],
+             learningObjectives: ["Diagnose ruptured ectopic.", "Manage haemorrhagic shock in early pregnancy.", "Activate major haemorrhage protocol."]
         },
-        recommendedActions: ['Obs', 'Oxygen', 'IV Access', 'Blood', 'TXA', 'Fluids', 'Surgery', 'Analgesia'],
-        vitalsMod: { hr: 125, bpSys: 90, bpDia: 50, spO2: 96, rr: 24, gcs: 14 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, 
+        recommendedActions: ['Obs', 'IV Access', 'Fluids', 'Blood', 'TXA', 'AntiD', 'Surgery', 'Analgesia'],
+        vitalsMod: { hr: 130, bpSys: 85, bpDia: 50, spO2: 97, rr: 24, temp: 36.8 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, 
         stabilisers: ['Blood', 'Surgery'], 
-        vbgClinicalState: "haemorrhagic_shock",
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/guidance/ng39" }
-        ] 
+        ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." },
+        ultrasound: { findings: "Empty uterus. Free fluid in Morrison's pouch. Adnexal mass right side." },
+        urine: { findings: "bHCG Positive (+)" }, ct: { findings: "Complex right adnexal mass. Large haemoperitoneum." },
+        learningLinks: [ { label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" } ] 
       },
       { 
-        id: 'AT032', title: 'Traumatic Brain Injury (Fall)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 60), 
-        patientProfileTemplate: "A {age}-year-old builder. Fell 3m from ladder onto concrete.", presentingComplaint: 'Head Injury, Reduced GCS.', 
-        scenarioDetails: ['GCS 9 (E2 V3 M4).', 'Large parietal haematoma.', 'Pupils unequal (R>L).'], 
+        id: 'OG002', title: 'Post-Partum Haemorrhage', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), 
+        patientProfileTemplate: "A {age}-year-old female. 2 hours post-normal delivery. Continuous heavy bleeding.", presentingComplaint: 'Heavy PV Bleeding.', 
+        scenarioDetails: ['Uterus atonic (boggy).', 'Large clots passed.', 'Patient faint.'], 
         instructorBrief: {
-             progression: "Severe TBI with signs of raised intracranial pressure (Cushing's response possible: Hypertension/Bradycardia). Risk of herniation. Needs neuroprotective intubation and urgent CT.",
-             interventions: ["C-Spine Immobilisation", "RSI (Neuroprotective)", "Hypertonic Saline / Mannitol", "Maintain MAP > 80mmHg", "CT Head/Neck"],
-             equipment: "RSI Kit, C-Collar, Blocks/Tape",
-             debriefPoints: ["Cushing's Triad", "Indication for Hypertonic Saline", "Targets for CO2 and BP in TBI"],
-             learningObjectives: ["Perform a neurological assessment in trauma.", "Manage raised intracranial pressure.", "Prepare a patient for safe transfer to CT."]
+             progression: "Primary PPH due to uterine atony (Tone - one of the 4 Ts). Estimate blood loss >1000ml. Needs mechanical and pharmacological management.",
+             interventions: ["Uterine Massage", "Syntocinon/Oxytocin", "Ergometrine (check BP)", "Tranexamic Acid", "Carboprost", "Examination Under Anaesthesia (EUA)"],
+             equipment: "PPH Box (Bakri balloon, drugs)",
+             debriefPoints: ["4 Ts of PPH (Tone, Trauma, Tissue, Thrombin)", "Drug doses and contraindications", "Bimanual compression technique"],
+             learningObjectives: ["Manage major PPH.", "Administer uterotonics correctly.", "Recognise need for surgical intervention."]
         },
-        recommendedActions: ['Obs', 'Oxygen', 'Collar', 'IV Access', 'RSI', 'Hypertonic', 'CT'],
-        vitalsMod: { hr: 60, bpSys: 170, bpDia: 100, spO2: 94, rr: 12, gcs: 9 }, deterioration: { active: true, rate: 0.05, type: 'neuro' }, 
-        stabilisers: ['RSI', 'Hypertonic'], 
-        chestXray: { findings: "Normal chest." }, 
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "NICE CG176: Head Injury", url: "https://www.nice.org.uk/guidance/cg176" }
-        ] 
+        recommendedActions: ['Obs', 'IV Access', 'Blood', 'Oxytocin', 'Ergometrine', 'TXA', 'Carboprost', 'Surgery'],
+        vitalsMod: { hr: 120, bpSys: 90, bpDia: 60, spO2: 96, rr: 20, temp: 37.0 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, 
+        stabilisers: ['Oxytocin', 'Ergometrine', 'Blood', 'Surgery'], 
+        ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." },
+        urine: { findings: "Clear" }, ct: { findings: "Not indicated immediately." },
+        learningLinks: [ { label: "RCOG: Postpartum Haemorrhage", url: "https://www.rcog.org.uk/guidance/" } ] 
       },
       { 
-        id: 'AT033', title: 'Femur Fracture (Motorcyclist)', category: 'Trauma', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 50), 
-        patientProfileTemplate: "A {age}-year-old motorcyclist. Hit by car at 30mph.", presentingComplaint: 'Right leg pain and deformity.', 
-        scenarioDetails: ['Right mid-shaft thigh deformity.', 'Swollen and tense.', 'Pedal pulses present.'], 
+        id: 'OG003', title: 'Severe Pre-Eclampsia', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), 
+        patientProfileTemplate: "A {age}-year-old female. 34 weeks pregnant. Headache and visual disturbances.", presentingComplaint: 'Severe Headache.', 
+        scenarioDetails: ['Oedema of face/hands.', 'Hyper-reflexic.', 'BP 180/110.'], 
         instructorBrief: {
-             progression: "Isolated high-energy injury. Significant potential for blood loss (1-1.5L) into the thigh. Severe pain. Risk of fat embolism. Requires splinting and analgesia.",
-             interventions: ["IV Access", "Analgesia (Ketamine/Morphine/Fascia Iliaca Block)", "Traction Splinting", "TXA (consider)", "X-ray Femur"],
-             equipment: "Kendrick Traction Splint, Ketamine",
-             debriefPoints: ["Blood loss from femur fractures", "Application of traction splints", "Pain management in trauma"],
-             learningObjectives: ["Assess and manage long bone fractures.", "Apply a traction splint.", "Estimate blood loss from skeletal injuries."]
+             progression: "Severe pre-eclampsia with impending eclampsia (seizures). Risk of cerebral haemorrhage. Needs BP control and seizure prophylaxis.",
+             interventions: ["Labetalol (IV)", "Magnesium Sulphate (Loading dose)", "Fluid Restriction", "Urgent Delivery planning"],
+             equipment: "Magnesium, CTG machine",
+             debriefPoints: ["Magnesium toxicity signs", "BP targets in pre-eclampsia", "Fluid balance (risk of pulmonary oedema)"],
+             learningObjectives: ["Manage severe hypertension in pregnancy.", "Administer Magnesium Sulphate.", "Recognise eclampsia risk."]
         },
-        recommendedActions: ['Obs', 'IV Access', 'Analgesia', 'Ketamine', 'Splinting', 'TXA', 'X-ray', 'Blood'],
-        vitalsMod: { hr: 110, bpSys: 115, bpDia: 70, spO2: 98, rr: 20, gcs: 15 }, deterioration: { active: false, rate: 0 }, 
-        stabilisers: ['Analgesia', 'Splinting'], 
-        chestXray: { findings: "Clear." }, 
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "BOAST: Femoral Shaft Fractures", url: "https://www.boa.ac.uk/" }
-        ] 
+        recommendedActions: ['Obs', 'IV Access', 'Labetalol', 'MagSulph', 'Delivery', 'Oxygen'],
+        vitalsMod: { hr: 90, bpSys: 185, bpDia: 115, spO2: 98, rr: 18, gcs: 15 }, deterioration: { active: true, rate: 0.05, type: 'neuro' }, 
+        stabilisers: ['Labetalol', 'MagSulph'], 
+        ecg: { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm." },
+        urine: { findings: "Protein +++" }, ct: { findings: "Avoid unless focal neuro signs." },
+        learningLinks: [ { label: "NICE NG133: Hypertension in Pregnancy", url: "https://www.nice.org.uk/guidance/ng133" } ] 
       },
-      { 
-        id: 'AT035', title: 'Neurogenic Shock (C-Spine)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 30), 
-        patientProfileTemplate: "A {age}-year-old rugby player. Collapsed scrum, heard crack in neck.", presentingComplaint: 'Neck pain, Quadriplegia.', 
-        scenarioDetails: ['Cannot feel/move limbs.', 'Priapism.', 'Skin warm and dry.'], 
-        instructorBrief: {
-             progression: "High cervical spine injury leading to neurogenic shock (loss of sympathetic tone). Presents with hypotension and bradycardia (unlike hypovolaemic shock). Fluids alone may not work; needs vasopressors.",
-             interventions: ["C-Spine Immobilisation (Triple Immobilisation)", "IV Fluids (cautious)", "Vasopressors (Metaraminol/Noradrenaline)", "Atropine (if severe bradycardia)", "Log roll & removal from board"],
-             equipment: "Scoop stretcher/Spinal board, Collar, blocks",
-             debriefPoints: ["Neurogenic vs Spinal Shock", "Differentiation from Hypovolaemic Shock", "Autonomic dysreflexia (later complication)"],
-             learningObjectives: ["Recognise the clinical features of neurogenic shock.", "Manage hypotension in spinal cord injury.", "Perform safe spinal immobilisation and log-rolling."]
-        },
-        recommendedActions: ['Obs', 'Oxygen', 'Collar', 'IV Access', 'Fluids', 'Metaraminol', 'Atropine', 'CT'],
-        vitalsMod: { hr: 50, bpSys: 80, bpDia: 40, spO2: 96, rr: 14, gcs: 15, temp: 36.2 }, deterioration: { active: true, rate: 0.05, type: 'neurogenic_shock' }, 
-        stabilisers: ['Metaraminol', 'Atropine'], 
-        chestXray: { findings: "Clear." }, 
-        ecg: { type: "Sinus Brady", findings: "Sinus Bradycardia." },
-        urine: { findings: "Catheter: Clear" },
-        learningLinks: [
-            { label: "NICE NG39: Major Trauma (Spinal)", url: "https://www.nice.org.uk/guidance/ng39" }
-        ] 
-      },
-      { id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old {sex} collapsed in waiting room.", presentingComplaint: 'Cardiac Arrest.', scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'No output.'], vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, stabilisers: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone'], fluidResponse: 'neutral', ecg: { type: "VF", findings: "Ventricular Fibrillation." }, 
+      { id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old {sex} collapsed in waiting room.", presentingComplaint: 'Cardiac Arrest.', scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'No output.'], vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, stabilisers: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone'], ecg: { type: "VF", findings: "Ventricular Fibrillation." }, 
         recommendedActions: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone', 'i-gel', 'Bagging', 'IV Access', 'Lucas'],
         instructorBrief: {
-            progression: "Patient collapsed and is in cardiac arrest. Initial rhythm is Ventricular Fibrillation (VF). High-quality CPR and early defibrillation are crucial. Return of Spontaneous Circulation (ROSC) is possible with prompt treatment.",
-            interventions: ["High-Quality CPR (30:2)", "Early Defibrillation", "Airway management (i-gel/intubation)", "IV/IO Access", "Adrenaline 1mg (every 3-5 mins)", "Amiodarone 300mg (after 3rd shock)"],
-            equipment: "Defibrillator, Airway adjuncts (i-gel, ETT), Lucas device (optional), Emergency Drug Pack",
-            debriefPoints: [" ALS Algorithm compliance", "Team leadership and communication", "Identification of reversible causes (4Hs & 4Ts)", "Post-ROSC care bundle"],
-            learningObjectives: ["Demonstrate the ALS algorithm for shockable rhythms.", "Lead a cardiac arrest team effectively.", "Perform high-quality chest compressions.", "Manage airway and drugs during arrest."]
+            progression: "Initial rhythm VF. Requires ALS algorithm. High-quality CPR and early defibrillation are crucial.",
+            interventions: ["High-Quality CPR (30:2)", "Defibrillation", "Adrenaline 1mg (every 3-5 mins)", "Amiodarone 300mg"],
+            equipment: "Defib, Airway kit, Lucas",
+            debriefPoints: ["ALS Algorithm", "4Hs & 4Ts", "Team leadership"],
+            learningObjectives: ["Lead a cardiac arrest team.", "Follow ALS algorithm.", "Manage reversible causes."]
         },
-        urine: { findings: "Catheter: Clear" },
-        learningLinks: [
-            { label: "Resus Council UK: ALS Guidelines", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" }
-        ] 
+        urine: { findings: "Catheter: Clear" }, ct: { findings: "Post-ROSC: Coronary calcification. No PE." },
+        learningLinks: [ { label: "Resus Council UK: ALS", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines" } ] 
       },
-      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Severe Respiratory Distress.', scenarioDetails: ['Tracheal deviation to Left.', 'Absent breath sounds Right.', 'Distended neck veins.'], vitalsMod: { hr: 150, bpSys: 70, bpDia: 40, spO2: 78, rr: 40, gcs: 11 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen'], chestXray: { findings: "Large right pneumothorax with mediastinal shift." }, 
+      { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Severe Respiratory Distress.', scenarioDetails: ['Tracheal deviation Left.', 'Absent breath sounds Right.', 'Distended neck veins.'], vitalsMod: { hr: 150, bpSys: 70, bpDia: 40, spO2: 78, rr: 40, gcs: 11 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen'], chestXray: { findings: "Large right pneumothorax with mediastinal shift." }, 
         recommendedActions: ['Obs', 'Oxygen', 'Needle', 'IV Access', 'Fluids', 'Analgesia', 'Surgery', 'Blood'],
         instructorBrief: {
-            progression: "Rapid respiratory decline with signs of obstructive shock (hypotension, tachycardia, jugular venous distension). Trachea is deviated. This is a peri-arrest situation requiring immediate decompression.",
-            interventions: ["High flow Oxygen", "Needle Thoracocentesis (2nd ICS mid-clavicular or 5th ICS mid-axillary)", "Chest Drain insertion", "Fluid resuscitation", "Trauma Call activation"],
-            equipment: "Trauma Bay, Needle decompression kit (large bore cannula), Chest Drain kit, Scalpel",
-            debriefPoints: ["Clinical diagnosis of tension (do not wait for X-ray)", "Landmarks for decompression", "ATLS Primary Survey (Airway, Breathing, Circulation)"],
-            learningObjectives: ["Recognise clinical signs of tension pneumothorax.", "Perform immediate needle decompression.", "Manage obstructive shock in trauma.", "Prioritise interventions in the primary survey."]
+            progression: "Obstructive shock. Peri-arrest. Needs immediate decompression (Needle/Finger). Do not wait for X-ray.",
+            interventions: ["Needle Thoracocentesis", "Chest Drain", "Trauma Call"],
+            equipment: "Needle decompression kit, Chest Drain",
+            debriefPoints: ["Diagnosis of tension", "Decompression landmarks", "Primary Survey"],
+            learningObjectives: ["Recognise tension pneumothorax.", "Perform needle decompression.", "Manage obstructive shock."]
         },
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "ATLS: Thoracic Trauma", url: "https://www.facs.org/quality-programs/trauma/atls/" }
-        ] 
+        urine: { findings: "Clear" }, ct: { findings: "Right tension pneumothorax. Lung collapse." },
+        learningLinks: [ { label: "ATLS Guidelines", url: "https://www.facs.org/quality-programs/trauma/atls/" } ] 
       },
-      { id: 'PA001', title: 'Paediatric Meningococcemia', category: 'Medical', ageRange: 'Paediatric', acuity: 'Resus', ageGenerator: () => getRandomInt(1, 5), patientProfileTemplate: "A {age}-year-old child. Non-blanching rash, lethargic.", presentingComplaint: 'Fever & Rash.', scenarioDetails: ['Mottled skin.', 'Cap refill 5s.', 'Purpuric rash on legs.'], vitalsMod: { hr: 170, bpSys: 75, bpDia: 40, spO2: 91, rr: 45, temp: 40.1, gcs: 10 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, stabilisers: ['Fluids', 'Antibiotics', 'Oxygen'], 
-        recommendedActions: ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Antibiotics', 'Glucose'],
-        instructorBrief: {
-            progression: "Child presents with rapid onset fever and lethargy. The non-blanching rash suggests invasive meningococcal disease. The child is in decompensated shock (tachycardia, hypotension, poor perfusion). Urgent resuscitation is needed to prevent arrest.",
-            interventions: ["High flow Oxygen", "IV/IO Access (do not delay for IV)", "Fluid Bolus 20ml/kg", "IV Ceftriaxone/Cefotaxime", "Correct Hypoglycaemia"],
-            equipment: "Paediatric Resus Trolley, IO Drill, WETFLAG calculation aid",
-            debriefPoints: ["Recognition of paediatric septic shock", "Fluid management (bolus vs maintenance)", "Antibiotic stewardship vs urgent treatment", "Role of IO access"],
-            learningObjectives: ["Recognise signs of septic shock in children.", "Calculate and administer paediatric fluid boluses.", "Prioritise antibiotic administration in suspected sepsis.", "Demonstrate intraosseous (IO) access technique."]
-        },
-        urine: { findings: "Protein +, Ketones +" },
-        learningLinks: [
-            { label: "NICE NG51: Sepsis", url: "https://www.nice.org.uk/guidance/ng51" }
-        ] 
-      },
-      { id: 'AM040', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old asthmatic. Short of breath for 2 days.", presentingComplaint: 'Severe Dyspnoea.', scenarioDetails: ['Unable to complete sentences.', 'Widespread wheeze.', 'Exhausted.'], 
+      { id: 'AM040', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old asthmatic. Short of breath for 2 days.", presentingComplaint: 'Severe Dyspnoea.', scenarioDetails: ['Silent chest.', 'Exhausted.'], 
         recommendedActions: ['Obs', 'Oxygen', 'Nebs', 'Dexamethasone', 'Magnesium', 'IV Access', 'Salbutamol'],
         instructorBrief: { 
-            progression: "Patient is tiring rapidly. hypoxic and tachycardic. 'Silent chest' is a pre-terminal sign. Requires aggressive bronchodilation. Risk of hypercapnic respiratory failure and arrest.", 
-            interventions: ["High flow Oxygen (maintain 94-98%)", "Back-to-back Nebulisers (Salbutamol/Ipratropium)", "IV Hydrocortisone/Oral Prednisolone", "IV Magnesium Sulphate", "Consider IV Salbutamol/Aminophylline"], 
-            equipment: "Nebuliser mask, IV Access, Blood Gas syringe", 
-            debriefPoints: ["Classification of asthma severity (Moderate, Severe, Life-Threatening)", "Escalation therapy", "Blood gas interpretation in asthma (rising CO2 is bad)"],
-            learningObjectives: ["Assess severity of acute asthma exacerbation.", "Deliver stepwise pharmacological treatment.", "Recognise the deteriorating asthmatic.", "Interpret ABG findings in respiratory distress."]
+            progression: "Life-threatening asthma. Risk of hypercapnic arrest. Aggressive bronchodilation required.", 
+            interventions: ["Oxygen", "Back-to-back Nebs", "IV Steroids", "IV Magnesium", "IV Salbutamol"], 
+            equipment: "Nebuliser, ABG kit", 
+            debriefPoints: ["Asthma severity grading", "Indications for magnesium", "Ventilation strategy"],
+            learningObjectives: ["Manage life-threatening asthma.", "Use escalation therapy (Mg/IV Salbutamol).", "Interpret ABG."]
         }, vitalsMod: { hr: 135, bpSys: 110, bpDia: 70, spO2: 88, rr: 35, temp: 37.0 }, deterioration: { active: true, rate: 0.08, type: 'respiratory' }, stabilisers: ['Nebs', 'Dexamethasone', 'Magnesium', 'Oxygen'], ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." }, vbgClinicalState: "respiratory_acidosis_acute",
-        urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "BTS/SIGN Asthma Guidelines", url: "https://www.brit-thoracic.org.uk/" }
-        ] 
-      },
-      { 
-        id: 'AM050', title: 'Upper GI Bleed (Severe)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(45, 65), 
-        patientProfileTemplate: "A {age}-year-old male with known alcohol liver disease. Vomiting large amounts of fresh blood.", presentingComplaint: 'Haematemesis, Collapse.', 
-        scenarioDetails: ['Pale, cool peripheries.', 'Capillary refill 4s.', 'Abdomen soft but distended ascites.'], 
-        instructorBrief: {
-             progression: "Patient is in decompensated hypovolaemic shock from likely variceal haemorrhage. Risk of aspiration and airway compromise. Requires aggressive resuscitation and pharmacological management of portal hypertension.",
-             interventions: ["IV Access (2x large bore)", "Activate Major Haemorrhage Protocol", "IV Terlipressin & Prophylactic Antibiotics", "Fluid/Blood resuscitation", "Urgent Endoscopy referral"],
-             equipment: "Major Haemorrhage Pack, Sengstaken Tube (for discussion), Airway trolley",
-             debriefPoints: ["Management of massive haemorrhage", "Specific variceal bleed drugs (Terlipressin/Antibiotics)", "Thresholds for airway protection"],
-             learningObjectives: ["Recognise and manage hypovolaemic shock in liver disease.", "Initiate appropriate pharmacological therapy for variceal bleeding.", "Activate major haemorrhage protocols.", "Manage coagulopathy in liver failure."]
-        },
-        recommendedActions: ['Obs', 'Oxygen', 'IV Access', 'Blood', 'Fluids', 'Terlipressin', 'Antibiotics', 'TXA'],
-        vitalsMod: { hr: 130, bpSys: 85, bpDia: 50, spO2: 95, rr: 24, temp: 36.0 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, 
-        stabilisers: ['Blood', 'Fluids', 'Terlipressin'], 
-        ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." }, vbgClinicalState: "gi_bleed", urine: { findings: "Dark / Bilirubin +" },
-        learningLinks: [
-            { label: "BSG: Upper GI Bleeding", url: "https://www.bsg.org.uk/clinical-resource/upper-gastrointestinal-bleeding-acute-management/" }
-        ] 
-      },
-      { 
-        id: 'AM051', title: 'Lower GI Bleed (Unstable)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(70, 90), 
-        patientProfileTemplate: "A {age}-year-old female on Warfarin for AF. Passed large volume clots PR. Now feeling faint.", presentingComplaint: 'Rectal Bleeding, Dizziness.', 
-        scenarioDetails: ['Pale, anxious.', 'HR 110 irregular (AF).', 'BP 90/60.'], 
-        instructorBrief: {
-             progression: "Elderly patient with significant lower GI bleeding on anticoagulation. Unstable haemodynamics indicate active bleeding. Requires reversal of anticoagulation and resuscitation.",
-             interventions: ["IV Access", "Fluid Resuscitation", "Crossmatch & Blood Transfusion", "Reverse Warfarin (Vitamin K + Beriplex/Octaplex)", "Surgical/IR Consult"],
-             equipment: "Blood warmer, Vitamin K",
-             debriefPoints: ["Reversal of anticoagulation (Warfarin vs DOACs)", "Shock index in the elderly", "Role of CT Angiogram in LGIB"],
-             learningObjectives: ["Manage haemodynamic instability in the elderly.", "Reverse anticoagulation in life-threatening haemorrhage.", "Formulate a plan for investigating unstable LGIB (CT Angio)."]
-        },
-        recommendedActions: ['Obs', 'IV Access', 'Blood', 'Fluids', 'TXA', 'VitaminK', 'Surgery'],
-        vitalsMod: { hr: 110, bpSys: 90, bpDia: 60, spO2: 96, rr: 20, temp: 36.5 }, deterioration: { active: true, rate: 0.08, type: 'shock' }, 
-        stabilisers: ['Blood', 'Fluids', 'VitaminK'], 
-        ecg: { type: "AF", findings: "Atrial Fibrillation." }, vbgClinicalState: "gi_bleed", urine: { findings: "Clear" },
-        learningLinks: [
-            { label: "BSG: Lower GI Bleeding", url: "https://www.bsg.org.uk/clinical-resource/lower-gastrointestinal-bleeding-acute-management/" }
-        ] 
+        urine: { findings: "Clear" }, ct: { findings: "Hyperinflation. No PE." },
+        learningLinks: [ { label: "BTS/SIGN Asthma Guidelines", url: "https://www.brit-thoracic.org.uk/" } ] 
       }
     ];
 
@@ -481,15 +360,12 @@
 
     const { useState, useEffect, useRef, useReducer } = React;
     
-    // OPTIMIZED: Wrapped in React.memo to prevent Lucide scanning on every tick
+    // OPTIMIZED: Wrapped in React.memo
     const Lucide = React.memo(({ icon, className }) => {
-        useEffect(() => {
-            if (window.lucide) window.lucide.createIcons();
-        }, [icon]); 
+        useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [icon]); 
         return <i data-lucide={icon} className={className}></i>;
     });
 
-    // UPDATED BUTTON WITH PROGRESS BAR
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
         let variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white",
@@ -517,10 +393,10 @@
     const Card = ({ title, icon, children, className = "", collapsible = false, defaultOpen = true }) => {
         const [isOpen, setIsOpen] = useState(defaultOpen);
         return (
-            <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg ${className}`}>
+            <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg flex flex-col ${className}`}>
                 {title && (
                     <div 
-                        className={`bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between ${collapsible ? 'cursor-pointer hover:bg-slate-700/50 transition-colors' : ''}`}
+                        className={`bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-700/50 transition-colors' : ''}`}
                         onClick={() => collapsible && setIsOpen(!isOpen)}
                     >
                         <div className="flex items-center gap-2">
@@ -533,38 +409,43 @@
                     </div>
                 )}
                 {(!collapsible || isOpen) && (
-                    <div className="p-4 animate-fadeIn">{children}</div>
+                    <div className="p-4 animate-fadeIn flex-grow overflow-auto min-h-0">{children}</div>
                 )}
             </div>
         );
     };
     
-    const VitalDisplay = ({ label, value, prev, unit, lowIsBad = true, onUpdate, alert }) => {
+    // Updated VitalDisplay to handle BP explicitly
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(parseInt(editVal)); };
 
+        const isBP = label === "BP";
+
         return (
-            <div className={`bg-slate-900/50 p-3 rounded border flex flex-col items-center justify-center h-28 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
+            <div className={`bg-slate-900/50 p-2 md:p-3 rounded border flex flex-col items-center justify-center h-24 md:h-28 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                <span className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
                 {isEditing ? (
-                    <input type="number" value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-20 text-center" autoFocus />
+                    <input type="number" value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-16 text-center" autoFocus />
                 ) : (
-                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-2" onClick={() => { setEditVal(value); setIsEditing(true); }}>
-                        <span className="text-3xl font-mono font-bold text-white">{value === '?' ? '--' : Math.round(value)}</span>
-                        {value !== '?' && prev !== '?' && <span className={`text-sm font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-1" onClick={() => { setEditVal(value); setIsEditing(true); }}>
+                        <span className="text-2xl md:text-3xl font-mono font-bold text-white">
+                            {value === '?' ? '--' : Math.round(value)}
+                            {isBP && value2 !== undefined && `/${Math.round(value2)}`}
+                        </span>
+                        {!isBP && value !== '?' && prev !== '?' && <span className={`text-xs md:text-sm font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
                 )}
-                <span className="text-[10px] text-slate-600 mt-1">{unit}</span>
+                <span className="text-[9px] md:text-[10px] text-slate-600 mt-1">{unit}</span>
             </div>
         );
     };
 
-    const ECGMonitor = ({ rhythmType, hr, isPaused }) => {
+    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
-        const xRef = useRef(0);
         const lastYRef = useRef(50);
         
         const getWaveform = (type, t) => {
@@ -574,10 +455,26 @@
             if (type === 'VT') {
                 let y = 50; if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 40; else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 40; return y + noise;
             }
+            if (type === 'AF') {
+                let y = 50; 
+                if (t > 0.4 && t < 0.44) y -= 40;
+                else if (t >= 0.44 && t < 0.46) y += 10;
+                y += Math.sin(t * 50) * 2;
+                return y + noise;
+            }
             if (type === 'STEMI') {
                 let y = 50; if (t < 0.15) y -= Math.sin(t / 0.15 * Math.PI) * 3; else if (t >= 0.15 && t < 0.20) y -= 2; else if (t >= 0.20 && t < 0.24) y -= 45; else if (t >= 0.24 && t < 0.26) y += 10; else if (t >= 0.26 && t < 0.55) { y -= 10; y -= Math.sin((t-0.26)/0.29 * Math.PI) * 8; } return y + noise;
             }
             let y = 50; if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
+        };
+
+        const getEtco2Wave = (t, pathology) => {
+            if (t < 0.1 || t > 0.6) return 90; 
+            if (pathology === 'respiratory') {
+                if (t < 0.15) return 90 - (t-0.1)*1000; 
+                return 40 - (t-0.15)*20; 
+            }
+            return 40; 
         };
 
         useEffect(() => {
@@ -585,30 +482,92 @@
             const ctx = canvas.getContext('2d');
             let w = canvas.width = canvas.parentElement.clientWidth;
             let h = canvas.height = canvas.parentElement.clientHeight;
-            ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, h); ctx.lineWidth = 2; ctx.strokeStyle = '#00ff00'; ctx.lineJoin = 'round';
-            let lastTime = 0; let beatDuration = 60 / (hr || 60); let beatProgress = 0; let x = 0; let speed = 150;
+            
+            let x = 0; 
+            let ecgSpeed = 150;
+            
+            let beatProgress = 0; 
+            let beatDuration = 60 / (hr || 60);
+            
+            let breathProgress = 0;
+            let breathDuration = 60 / (Math.max(1, rr) || 12);
+
+            let lastTime = 0; 
+
             const animate = (timestamp) => {
-                if (!lastTime) lastTime = timestamp; const dt = (timestamp - lastTime) / 1000; lastTime = timestamp;
+                if (!lastTime) lastTime = timestamp; 
+                const dt = (timestamp - lastTime) / 1000; 
+                lastTime = timestamp;
+                
                 if (isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
-                let currentRhythm = rhythmType || 'Sinus Rhythm'; let currentRate = hr || 60;
-                if (currentRhythm === 'AF' && beatProgress >= 1) { currentRate = hr + (Math.random() * 40 - 20); }
+
+                let currentRhythm = rhythmType || 'Sinus Rhythm'; 
+                let currentRate = hr || 60;
+                
+                if (currentRhythm === 'AF' && beatProgress >= 1) { 
+                    currentRate = hr + (Math.random() * 60 - 30); 
+                    beatDuration = 60 / Math.max(20, currentRate);
+                } else if (beatProgress >= 1) {
+                    beatDuration = 60 / Math.max(10, currentRate);
+                }
+                
                 if (currentRhythm === 'VF') currentRate = 300; 
-                beatDuration = 60 / Math.max(10, currentRate);
-                const dx = speed * dt; const prevX = x; x += dx;
-                beatProgress += dt / beatDuration; if (beatProgress >= 1) beatProgress = 0; 
-                const y = getWaveform(currentRhythm, beatProgress);
-                ctx.beginPath(); ctx.moveTo(prevX, lastYRef.current); ctx.lineTo(x, y); ctx.stroke(); lastYRef.current = y;
-                if (x > w) { x = 0; ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fillRect(0, 0, w, h); ctx.beginPath(); } else { ctx.fillStyle = 'rgba(0,0,0,1)'; ctx.fillRect(x, 0, 20, h); }
+
+                const dx = ecgSpeed * dt; 
+                const prevX = x; 
+                x += dx;
+
+                if (x > w) { x = 0; }
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(x, 0, 20, h); 
+
+                beatProgress += dt / beatDuration; 
+                if (beatProgress >= 1) beatProgress = 0; 
+                
+                const yECG = getWaveform(currentRhythm, beatProgress);
+                ctx.strokeStyle = '#00ff00'; 
+                ctx.lineWidth = 2; 
+                ctx.lineJoin = 'round';
+                
+                if (x > prevX) {
+                    ctx.beginPath(); 
+                    ctx.moveTo(prevX, lastYRef.current); 
+                    ctx.lineTo(x, yECG); 
+                    ctx.stroke(); 
+                }
+                lastYRef.current = yECG;
+
+                if (showEtco2) {
+                    breathProgress += dt / breathDuration;
+                    if (breathProgress >= 1) breathProgress = 0;
+                    
+                    const yCO2 = getEtco2Wave(breathProgress, pathology) + 60; 
+                    ctx.strokeStyle = '#facc15'; 
+                    
+                    if (x > prevX) {
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, h - 30); 
+                        ctx.lineTo(x, yCO2);
+                        ctx.stroke();
+                    }
+                }
+
                 requestRef.current = requestAnimationFrame(animate);
             };
             requestRef.current = requestAnimationFrame(animate);
             return () => cancelAnimationFrame(requestRef.current);
-        }, [rhythmType, hr, isPaused]);
+        }, [rhythmType, hr, rr, isPaused, showEtco2, pathology]);
 
-        return <div className="w-full h-24 bg-black rounded border border-slate-700 relative overflow-hidden"><canvas ref={canvasRef} className="block"></canvas><div className="absolute top-1 right-2 text-xs font-mono text-green-500 font-bold">{rhythmType}</div></div>;
+        return (
+            <div className="w-full h-32 bg-black rounded border border-slate-700 relative overflow-hidden">
+                <canvas ref={canvasRef} className="block"></canvas>
+                <div className="absolute top-1 right-2 text-xs font-mono text-green-500 font-bold">{rhythmType}</div>
+                {showEtco2 && <div className="absolute bottom-1 right-2 text-xs font-mono text-yellow-500 font-bold">ETCO2</div>}
+            </div>
+        );
     };
 
-    const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario, currentVitals }) => {
+    const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const hasData = (type === 'ECG' && scenario.ecg) || (type === 'X-ray' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct) || (type === 'Urine' && scenario.urine);
         return (
             <div className="flex flex-col gap-2">
@@ -648,9 +607,12 @@
         loadingInvestigations: {},
         activeInterventions: new Set(),
         interventionCounts: {},
-        activeDurations: {}, // { key: { startTime, duration } }
+        activeDurations: {},
         processedEvents: new Set(),
         isMuted: false,
+        etco2Enabled: false,
+        isParalysed: false,
+        queuedRhythm: null,
     };
 
     const simReducer = (state, action) => {
@@ -666,56 +628,36 @@
                 const restored = action.payload;
                 return { ...restored, activeInterventions: new Set(restored.activeInterventions || []), processedEvents: new Set(restored.processedEvents || []), isRunning: false };
             case 'TICK_TIME':
-                // Check durations
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
                 Object.keys(newDurations).forEach(key => {
                     const elapsed = state.time + 1 - newDurations[key].startTime;
-                    if (elapsed >= newDurations[key].duration) {
-                        delete newDurations[key]; // Finished
-                        durChanged = true;
-                    }
+                    if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; }
                 });
                 return { ...state, time: state.time + 1, activeDurations: durChanged ? newDurations : state.activeDurations };
             case 'UPDATE_VITALS': 
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
-            case 'UPDATE_RHYTHM':
-                return { ...state, rhythm: action.payload };
+            case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
             case 'ADD_LOG':
                 const timestamp = new Date().toLocaleTimeString('en-GB');
                 const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`;
                 const entry = { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time };
-                let updatedHistory = [...state.history];
-                if (action.payload.type === 'action' || action.payload.type === 'success') {
-                    if (updatedHistory.length > 0) {
-                        const lastIdx = updatedHistory.length - 1;
-                        updatedHistory[lastIdx] = { ...updatedHistory[lastIdx], actions: [...(updatedHistory[lastIdx].actions || []), action.payload.msg.split(' ')[0]] };
-                    }
-                }
-                return { ...state, log: [...state.log, entry], history: updatedHistory };
-            case 'SET_FLASH':
-                return { ...state, flash: action.payload };
-            case 'START_INTERVENTION_TIMER':
-                return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
-            case 'UPDATE_INTERVENTION_STATE':
-                return { ...state, activeInterventions: action.payload.active ? action.payload.active : state.activeInterventions, interventionCounts: action.payload.counts ? action.payload.counts : state.interventionCounts };
-            case 'REVEAL_INVESTIGATION':
-                return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
-            case 'SET_LOADING_INVESTIGATION':
-                return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
-            case 'SET_MUTED':
-                return { ...state, isMuted: action.payload };
-            case 'MANUAL_VITAL_UPDATE':
-                return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
-            case 'UPDATE_SCENARIO':
-                return { ...state, scenario: action.payload };
-            case 'MARK_EVENT_PROCESSED':
-                const newEvents = new Set(state.processedEvents);
-                newEvents.add(action.payload);
-                return { ...state, processedEvents: newEvents };
-            default:
-                return state;
+                return { ...state, log: [...state.log, entry] };
+            case 'SET_FLASH': return { ...state, flash: action.payload };
+            case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
+            case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
+            case 'SET_PARALYSIS': return { ...state, isParalysed: action.payload };
+            case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
+            case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
+            case 'SET_MUTED': return { ...state, isMuted: action.payload };
+            case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
+            case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
+            case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
+            case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
+            case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
+            case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
+            default: return state;
         }
     };
 
@@ -724,9 +666,8 @@
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
-        
-        // FIX: Use a ref to hold the latest state so the tick interval always sees fresh data
         const stateRef = useRef(state);
+        
         useEffect(() => { stateRef.current = state; }, [state]);
         
         useEffect(() => {
@@ -734,13 +675,13 @@
                 const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) };
                 localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState));
             }
-        }, [state.vitals, state.log, state.time]);
+        }, [state.vitals, state.log]);
 
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
 
         useEffect(() => {
             let timerId;
-            if (state.isRunning && state.vitals.hr > 0) {
+            if (state.isRunning && state.vitals.hr > 0 && state.rhythm !== 'VF' && state.rhythm !== 'Asystole') {
                 const ctx = audioCtxRef.current;
                 if (ctx.state === 'suspended') ctx.resume();
                 const playBeep = () => {
@@ -758,7 +699,7 @@
                 playBeep();
             }
             return () => clearTimeout(timerId);
-        }, [state.isRunning, state.isMuted, state.vitals.hr, state.vitals.spO2]);
+        }, [state.isRunning, state.isMuted, state.vitals.hr, state.vitals.spO2, state.rhythm]);
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
@@ -783,142 +724,113 @@
             }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
 
-            // --- PHYSIOLOGY ENGINE ---
-            if (action.effect.changeRhythm) {
-                if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT')) {
-                    if (Math.random() < 0.85) { // Increased success chance for demo
-                        const newRhythm = Math.random() > 0.3 ? 'Sinus Rhythm' : 'Asystole'; 
-                        dispatch({ type: 'UPDATE_RHYTHM', payload: newRhythm });
-                        
-                        if (newRhythm === 'Sinus Rhythm') {
-                            // Set robust ROSC vitals immediately
-                            newVitals.hr = 90; 
-                            newVitals.bpSys = 110; 
-                            newVitals.bpDia = 70; 
-                            newVitals.spO2 = 96; 
-                            newVitals.rr = 16; 
-                            newVitals.gcs = 8;
-                            addLogEntry(`Defib successful. Rhythm: ${newRhythm}. Output detected.`, 'success');
-                            dispatch({ type: 'SET_FLASH', payload: 'green' });
-                        } else {
-                            addLogEntry(`Defib delivered. Rhythm changed to ${newRhythm}`, 'manual');
-                        }
-                    } else { addLogEntry('Defib delivered. No change in rhythm.', 'warning'); }
-                } else if (action.effect.changeRhythm === 'sync' && ['SVT', 'AF', 'VT'].includes(state.rhythm)) {
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); newVitals.hr = 80; newVitals.bpSys += 10; addLogEntry('Cardioversion successful.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' });
+            // Effects
+            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT')) {
+                // Defib logic now relies on queued rhythm if set, else chance
+                if (state.queuedRhythm) {
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm });
+                    if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC();
+                    else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual');
+                    dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
+                } else if (Math.random() < 0.6) {
+                     addLogEntry('Defib: No change in rhythm.', 'warning');
+                } else {
+                     dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' });
+                     addLogEntry('Rhythm changed to Asystole', 'warning');
                 }
             }
 
-            if (key === 'RSI') { newVitals.gcs = 3; newVitals.rr = 12; newVitals.bpSys -= 20; newVitals.spO2 = 99; }
-            if (key === 'Bagging') { newVitals.spO2 = Math.min(100, newVitals.spO2 + 20); }
-            if (key === 'i-gel') { newVitals.spO2 = Math.min(100, newVitals.spO2 + 10); }
-
-            // Drugs Logic - Skip HR/BP effects if in arrest unless it causes ROSC
-            const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
+            if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
+            // Drugs Logic
+            const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
             if (!isArrest) {
                 if (action.effect.HR) { if (action.effect.HR === 'reset') newVitals.hr = 80; else newVitals.hr += action.effect.HR; }
                 if (action.effect.BP) newVitals.bpSys += action.effect.BP;
             }
-
             if (action.effect.SpO2) newVitals.spO2 = Math.min(100, newVitals.spO2 + action.effect.SpO2);
-            if (action.effect.RR) { if (action.effect.RR === 0) newVitals.rr = 0; else if (action.effect.RR === 'vent') newVitals.rr = 12; else newVitals.rr += action.effect.RR; }
             if (action.effect.gcs) newVitals.gcs = Math.max(3, Math.min(15, newVitals.gcs + action.effect.gcs));
-            
+
+            // Scenario stabilisers
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) {
                 dispatch({ type: 'UPDATE_SCENARIO', payload: { ...state.scenario, deterioration: { ...state.scenario.deterioration, rate: Math.max(0, state.scenario.deterioration.rate - 0.05) } } });
-                addLogEntry(`${key} appears effective.`, 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' });
+                dispatch({ type: 'SET_FLASH', payload: 'green' });
             }
-
-            newVitals.spO2 = Math.min(100, Math.max(0, newVitals.spO2));
-            newVitals.hr = Math.max(0, newVitals.hr);
 
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
 
-        const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual override: ${key} set to ${value}`, 'manual'); };
-        const triggerArrest = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'VF' }); addLogEntry('CARDIAC ARREST - VF', 'manual'); dispatch({ type: 'SET_FLASH', payload: 'red' }); };
+        const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        
+        const triggerArrest = () => { 
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 } }); 
+            dispatch({ type: 'UPDATE_RHYTHM', payload: 'VF' }); 
+            addLogEntry('CARDIAC ARREST - VF', 'manual'); 
+            dispatch({ type: 'SET_FLASH', payload: 'red' }); 
+        };
         
         const triggerROSC = () => { 
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 120, bpDia: 75, spO2: 96, rr: 16, gcs: 6 } }); 
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6 } }); 
             dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); 
-            addLogEntry('ROSC achieved.', 'success'); 
+            // Disable deterioration to prevent immediate re-arrest unless instructor re-enables
+            const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
+            dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+            addLogEntry('ROSC achieved. Deterioration paused.', 'success'); 
             dispatch({ type: 'SET_FLASH', payload: 'green' }); 
         };
         
         const revealInvestigation = (type) => { if (state.investigationsRevealed[type] || state.loadingInvestigations[type]) return; dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); };
         
-        const tick = () => {
-            // IMPORTANT: Read from Ref to get the absolute latest state
-            const current = stateRef.current;
-            let next = { ...current.vitals };
-            
-            // Arrest Logic
-            if (current.rhythm === 'Asystole' || current.rhythm === 'VF') { 
-                next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
-                next.rr = (current.activeInterventions.has('Bagging') || current.activeInterventions.has('RSI')) ? 12 : 0; 
-                next.spO2 = Math.max(0, next.spO2 - 2); 
-                dispatch({ type: 'UPDATE_VITALS', payload: next }); 
-                return; 
-            }
-
-            // Normal Fluctuation
-            next.hr += getRandomInt(-1, 1); 
-            next.bpSys += getRandomInt(-2, 2); 
-            next.bpDia += getRandomInt(-2, 2); 
-            next.spO2 += Math.random() > 0.9 ? getRandomInt(-1, 1) : 0;
-            
-            // Deterioration Logic
-            if (current.scenario?.deterioration?.active && current.scenario.deterioration.rate > 0) {
-                if (Math.random() < current.scenario.deterioration.rate) {
-                    // STANDARD SHOCK (Hypovolaemic/Septic/Cardiogenic) -> High HR, Low BP
-                    if (current.scenario.deterioration.type === 'shock') { 
-                        next.bpSys -= 2; 
-                        next.hr += 1; 
-                    }
-                    // NEUROGENIC SHOCK -> Low HR, Low BP
-                    else if (current.scenario.deterioration.type === 'neurogenic_shock') {
-                        next.bpSys -= 2;
-                        next.hr = Math.max(30, next.hr - 1); // Bradycardia limit
-                    }
-                    // RESPIRATORY FAILURE -> Low SpO2, High RR
-                    else if (current.scenario.deterioration.type === 'respiratory') { 
-                        next.spO2 -= 1; 
-                        next.rr += 1; 
-                    }
-                    // NEURO (CUSHING'S) -> High BP, Low HR, Low/Erratic RR
-                    else if (current.scenario.deterioration.type === 'neuro') {
-                        next.bpSys += 1;
-                        next.hr = Math.max(40, next.hr - 1);
-                        next.gcs = Math.max(3, next.gcs - 0.1); // Slow GCS drop
-                    }
-                    // PURE CARDIAC -> Low BP
-                    else if (current.scenario.deterioration.type === 'cardiac') { 
-                        next.bpSys -= 2; 
-                    }
-                }
-            }
-            next.spO2 = Math.min(100, Math.max(0, next.spO2)); 
-            next.hr = Math.max(0, next.hr);
-            
-            dispatch({ type: 'UPDATE_VITALS', payload: next });
-
-            if (current.scenario?.events) {
-                current.scenario.events.forEach(event => {
-                    if (current.time === event.time && !current.processedEvents.has(event.msg)) {
-                        addLogEntry(`UPDATE: ${event.msg}`, 'manual'); dispatch({ type: 'MARK_EVENT_PROCESSED', payload: event.msg });
-                        if (event.effect) { if (event.effect.hr) next.hr += event.effect.hr; if (event.effect.bpSys) next.bpSys += event.effect.bpSys; dispatch({ type: 'UPDATE_VITALS', payload: next }); } dispatch({ type: 'SET_FLASH', payload: 'red' });
-                    }
-                });
+        const nextCycle = () => {
+            dispatch({ type: 'FAST_FORWARD', payload: 120 });
+            addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system');
+            if (state.queuedRhythm) {
+                dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm });
+                if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC();
+                else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual');
+                dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
             }
         };
 
-        useEffect(() => { 
-            if (state.vitals.spO2 < 85 || state.vitals.bpSys < 80 || state.vitals.hr > 160) { 
-                if (state.time % 5 === 0 && state.isRunning) dispatch({ type: 'SET_FLASH', payload: 'red' }); 
-                else dispatch({ type: 'SET_FLASH', payload: null }); 
-            } 
-        }, [state.vitals, state.time, state.isRunning]);
+        const tick = () => {
+            const current = stateRef.current;
+            let next = { ...current.vitals };
+            
+            if (current.rhythm === 'Asystole' || current.rhythm === 'VF') { 
+                next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
+                next.spO2 = Math.max(0, next.spO2 - 2); 
+            } else {
+                next.hr += getRandomInt(-1, 1); 
+                next.bpSys += getRandomInt(-2, 2); 
+                next.bpDia += getRandomInt(-2, 2); 
+                next.spO2 += Math.random() > 0.9 ? getRandomInt(-1, 1) : 0;
+            }
+
+            if (current.activeInterventions.has('Bagging') || current.activeInterventions.has('RSI') || current.activeInterventions.has('i-gel')) {
+                next.rr = 12; // Controlled ventilation
+                if (current.rhythm !== 'Asystole' && current.rhythm !== 'VF') next.spO2 = Math.min(100, next.spO2 + 2);
+            } else if (current.isParalysed) {
+                next.rr = 0; // Paralysed and not ventilated
+                next.spO2 -= 5; // Hypoxia
+            }
+
+            if (current.scenario?.deterioration?.active && current.scenario.deterioration.rate > 0 && current.rhythm !== 'VF' && current.rhythm !== 'Asystole') {
+                if (Math.random() < current.scenario.deterioration.rate) {
+                    if (current.scenario.deterioration.type === 'shock') { next.bpSys -= 2; next.hr += 1; }
+                    else if (current.scenario.deterioration.type === 'neuro') { next.bpSys += 1; next.hr = Math.max(40, next.hr - 1); }
+                    else if (current.scenario.deterioration.type === 'respiratory') { next.spO2 -= 1; next.rr += 1; }
+                    else if (current.scenario.deterioration.type === 'cardiac') { next.bpSys -= 2; }
+                }
+            }
+
+            next.hr = Math.max(0, next.hr);
+            next.bpSys = Math.max(0, next.bpSys);
+            next.bpDia = Math.max(0, next.bpDia);
+            next.rr = Math.max(0, next.rr);
+            next.spO2 = Math.max(0, Math.min(100, next.spO2));
+            
+            dispatch({ type: 'UPDATE_VITALS', payload: next });
+        };
 
         const start = () => { 
             if (state.isRunning) return; 
@@ -931,7 +843,7 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); addLogEntry("Simulation Ended", 'system'); localStorage.removeItem('wmebem_sim_state'); };
 
-        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation };
+        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle };
     };
 
     // --- UI SCREENS ---
@@ -944,229 +856,226 @@
         const [loading, setLoading] = useState(false);
         const [customMode, setCustomMode] = useState(initialParams?.customMode || false);
         const [error, setError] = useState("");
-        const [customScenario, setCustomScenario] = useState({ title: "Custom Case", age: 40, complaint: "Unwell", profile: "History...", hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37.0, gcs: 15, bm: 5.5, ecgType: "Sinus Rhythm", ecgFindings: "NSR", cxrFindings: "Normal", urineFindings: "Clear" });
+        const [customScenario, setCustomScenario] = useState({ title: "Custom Case", age: 40, complaint: "Unwell", profile: "History...", hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37.0, gcs: 15, bm: 5.5, ecgType: "Sinus Rhythm", ecgFindings: "NSR", cxrFindings: "Normal", urineFindings: "Clear", ctFindings: "Normal" });
 
         const handleGenerate = () => {
             setError(""); setLoading(true);
             setTimeout(() => {
                 let generatedScenario;
-                const currentParams = { category, age, hf, customMode, acuity }; 
                 if (customMode) {
                     const history = generateHistory(customScenario.age);
-                    generatedScenario = { id: 'CUSTOM', title: customScenario.title, category: 'Custom', ageRange: 'Custom', patientAge: customScenario.age, profile: customScenario.profile, presentingComplaint: customScenario.complaint, scenarioDetails: ['Custom scenario.'], instructorBrief: { progression: "Custom.", interventions: [], equipment: "Standard", debriefPoints: [] }, recommendedActions: ['Obs', 'Oxygen', 'IV Access'], vitals: { hr: parseInt(customScenario.hr), bpSys: parseInt(customScenario.bpSys), bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65), rr: parseInt(customScenario.rr), spO2: parseInt(customScenario.spO2), temp: parseFloat(customScenario.temp), gcs: parseInt(customScenario.gcs), bm: parseFloat(customScenario.bm) }, vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings }, chestXray: { findings: customScenario.cxrFindings }, deterioration: { active: false, rate: 0 }, stabilisers: [], interventions: [], pmh: history.pmh, dhx: history.dhx, allergies: history.allergies, urine: { findings: customScenario.urineFindings } };
+                    generatedScenario = { id: 'CUSTOM', title: customScenario.title, category: 'Custom', ageRange: 'Custom', patientAge: customScenario.age, profile: customScenario.profile, presentingComplaint: customScenario.complaint, scenarioDetails: ['Custom scenario.'], instructorBrief: { progression: "Custom.", interventions: [], equipment: "Standard", debriefPoints: [] }, recommendedActions: [], vitals: { hr: parseInt(customScenario.hr), bpSys: parseInt(customScenario.bpSys), bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65), rr: parseInt(customScenario.rr), spO2: parseInt(customScenario.spO2), temp: parseFloat(customScenario.temp), gcs: parseInt(customScenario.gcs), bm: parseFloat(customScenario.bm) }, vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings }, chestXray: { findings: customScenario.cxrFindings }, deterioration: { active: false, rate: 0 }, stabilisers: [], interventions: [], pmh: history.pmh, dhx: history.dhx, allergies: history.allergies, urine: { findings: customScenario.urineFindings }, ct: { findings: customScenario.ctFindings } };
                 } else {
                     let pool = ALL_SCENARIOS.filter(s => (category === 'Any' || s.category === category) && (age === 'Any' || s.ageRange === age) && (acuity === 'Any' || s.acuity === acuity));
                     if (pool.length === 0) { setLoading(false); setError(`No scenarios found for ${category} + ${age} + ${acuity}.`); return; }
                     const base = pool[Math.floor(Math.random() * pool.length)];
                     const patientAge = base.ageGenerator();
                     const ranges = getBaseVitals(patientAge);
-                    const history = generateHistory(patientAge);
+                    const history = generateHistory(patientAge, base.category === 'Obstetrics & Gynae' ? 'Female' : 'Male');
                     let startVitals = { hr: base.vitalsMod?.hr || ranges.hr, bpSys: base.vitalsMod?.bpSys || ranges.bpSys, bpDia: base.vitalsMod?.bpDia || ranges.bpDia || Math.floor((base.vitalsMod?.bpSys || ranges.bpSys) * 0.65), rr: base.vitalsMod?.rr || ranges.rr, spO2: base.vitalsMod?.spO2 || 98, temp: base.vitalsMod?.temp || ranges.temp, gcs: base.vitalsMod?.gcs || 15, bm: ranges.bm };
                     const profile = base.patientProfileTemplate.replace(/{age}/g, patientAge).replace(/{sex}/g, 'male');
-                    const defaultEcg = { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm" };
-                    const defaultUrine = { findings: "Clear" };
-                    generatedScenario = { ...base, patientAge, profile, vitals: startVitals, vbg: generateVbg(base.vbgClinicalState), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies, ecg: base.ecg || defaultEcg, urine: base.urine || defaultUrine };
+                    generatedScenario = { ...base, patientAge, profile, vitals: startVitals, vbg: generateVbg(base.vbgClinicalState), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies };
                 }
                 if (generatedScenario.ageRange === 'Paediatric' || generatedScenario.patientAge < 18) { generatedScenario.weight = estimateWeight(generatedScenario.patientAge); }
-                setLoading(false); onGenerate(generatedScenario, currentParams);
+                setLoading(false); onGenerate(generatedScenario, { category, age, hf, customMode, acuity });
             }, 600);
         };
 
         useEffect(() => { if (initialParams && initialParams.autoGenerate) { handleGenerate(); } }, []);
 
         return (
-            <div className="max-w-2xl mx-auto space-y-6 p-2">
+            <div className="max-w-2xl mx-auto space-y-6 p-4 w-full h-full overflow-y-auto">
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between">
                         <div><h3 className="font-bold text-emerald-400">Previous Session Found</h3><p className="text-sm text-slate-300">Resume {savedState.scenario.title}?</p></div>
                         <Button onClick={onResume} variant="success">Resume</Button>
                     </div>
                 )}
-                
-                <div className="bg-slate-800 p-4 md:p-6 rounded-lg border border-slate-700 shadow-xl">
-                    <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings" className="w-5 h-5"/> Simulation Parameters</h2>
-                    <div className="flex gap-4 mb-6 border-b border-slate-700 pb-2 overflow-x-auto">
-                        <button onClick={() => setCustomMode(false)} className={`text-sm font-bold uppercase pb-1 whitespace-nowrap ${!customMode ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Random Scenario</button>
-                        <button onClick={() => setCustomMode(true)} className={`text-sm font-bold uppercase pb-1 whitespace-nowrap ${customMode ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Custom Scenario</button>
+                <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
+                    <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings"/> Simulation Parameters</h2>
+                    <div className="flex gap-4 mb-6 border-b border-slate-700 pb-2">
+                        <button onClick={() => setCustomMode(false)} className={`text-sm font-bold uppercase pb-1 ${!customMode ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Random</button>
+                        <button onClick={() => setCustomMode(true)} className={`text-sm font-bold uppercase pb-1 ${customMode ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Custom</button>
                     </div>
                     {!customMode ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obstetrics & Gynae</option></select></div>
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Adult">Adult (18-65)</option><option value="Paediatric">Paediatric (&lt;18)</option></select></div>
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Resus">Resus</option></select></div>
                             <div><label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">{HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
                         </div>
                     ) : (
                         <div className="space-y-4 mb-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="text-xs text-slate-500 font-bold">Title</label><input type="text" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-sm"/></div><div><label className="text-xs text-slate-500 font-bold">Age</label><input type="number" value={customScenario.age} onChange={e => setCustomScenario({...customScenario, age: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-sm"/></div></div>
+                            <input type="text" placeholder="Title" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3"/>
+                            <div className="grid grid-cols-2 gap-2">
+                                <select value={customScenario.ecgType} onChange={e => setCustomScenario({...customScenario, ecgType: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-3"><option>Sinus Rhythm</option><option>Sinus Tachy</option><option>AF</option><option>VT</option><option>VF</option><option>STEMI</option><option>Asystole</option></select>
+                                <input type="number" placeholder="HR" value={customScenario.hr} onChange={e => setCustomScenario({...customScenario, hr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-3"/>
+                            </div>
                         </div>
                     )}
                     {error && <div className="mb-4 p-3 bg-red-900/30 border border-red-500 rounded text-red-200 text-sm font-bold flex items-center gap-2"><Lucide icon="alert-circle" className="w-4 h-4"/>{error}</div>}
-                    <Button onClick={handleGenerate} disabled={loading} className="w-full py-4 text-lg">{loading ? <Lucide icon="loader-2" className="animate-spin"/> : <Lucide icon="play"/>}{loading ? "Building Scenario..." : "Generate Scenario"}</Button>
+                    <Button onClick={handleGenerate} disabled={loading} className="w-full py-4 text-lg">{loading ? "Building Scenario..." : "Generate Scenario"}</Button>
                 </div>
             </div>
         );
     };
 
     const BriefingScreen = ({ scenario, onStart, onBack, onNewScenario }) => (
-        <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-2">
-            <div className="bg-slate-800 p-4 md:p-6 rounded-lg border-l-4 border-sky-500 shadow-lg">
-                <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                    <div><h2 className="text-2xl md:text-3xl font-bold text-white">{scenario.title}</h2><span className="inline-block bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded mt-2">{scenario.category}</span> <span className="inline-block bg-slate-700 text-amber-400 text-xs px-2 py-1 rounded mt-2 ml-2">{scenario.acuity}</span></div>
-                    <div className="text-left md:text-right"><p className="text-2xl font-mono font-bold text-emerald-400">GCS {scenario.vitals.gcs}</p><p className="text-sm text-slate-400">Initial Status</p></div>
+        <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
+            <div className="bg-slate-800 p-6 rounded-lg border-l-4 border-sky-500 shadow-lg">
+                <div className="flex justify-between items-start mb-4">
+                    <div><h2 className="text-3xl font-bold text-white">{scenario.title}</h2><span className="inline-block bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded mt-2">{scenario.category}</span></div>
+                    <div className="text-right"><p className="text-2xl font-mono font-bold text-emerald-400">GCS {scenario.vitals.gcs}</p></div>
                 </div>
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Patient Profile</h3>
-                        <p className="text-lg leading-relaxed">{scenario.profile}</p>
+                        <p className="text-lg leading-relaxed mb-4">{scenario.profile}</p>
                         
-                        <div className="mt-4 space-y-2">
+                        <div className="space-y-2 mb-4">
                             <div className="p-2 bg-slate-900/50 rounded border border-slate-700">
                                 <span className="text-xs text-slate-500 uppercase font-bold block">PMH</span>
-                                <span className="text-sm text-slate-200">{scenario.pmh.join(", ")}</span>
+                                <span className="text-sm text-slate-200">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span>
                             </div>
                             <div className="p-2 bg-slate-900/50 rounded border border-slate-700">
                                 <span className="text-xs text-slate-500 uppercase font-bold block">Drug History</span>
-                                <span className="text-sm text-slate-200">{scenario.dhx.join(", ")}</span>
+                                <span className="text-sm text-slate-200">{scenario.dhx ? scenario.dhx.join(", ") : 'Nil'}</span>
                             </div>
                             <div className="p-2 bg-slate-900/50 rounded border border-slate-700">
                                 <span className="text-xs text-slate-500 uppercase font-bold block">Allergies</span>
-                                <span className="text-sm text-red-300 font-bold">{scenario.allergies.join(", ")}</span>
+                                <span className="text-sm text-red-300 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'Nil'}</span>
                             </div>
                         </div>
 
-                        {scenario.weight && <div className="mt-2 p-2 bg-sky-900/30 border border-sky-700/50 rounded inline-block"><p className="text-xs text-sky-400 font-bold uppercase">Est. Weight (APLS)</p><p className="text-lg font-mono text-white">{scenario.weight} kg</p></div>}
-                        <div className="mt-4 p-3 bg-slate-700/50 rounded border border-slate-600"><p className="font-bold text-sky-300"><Lucide icon="alert-circle" className="inline w-4 h-4 mr-1"/> PC: {scenario.presentingComplaint}</p></div>
+                        <div className="p-3 bg-slate-700/50 rounded border border-slate-600"><p className="font-bold text-sky-300">PC: {scenario.presentingComplaint}</p></div>
                     </div>
-                    
                     <div className="space-y-4">
-                        {scenario.instructorBrief?.progression && (
-                            <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
-                                <h4 className="text-sm font-bold text-amber-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> Progression</h4>
-                                <p className="text-sm text-slate-300">{scenario.instructorBrief.progression}</p>
-                            </div>
-                        )}
-                        {scenario.instructorBrief?.learningObjectives && (
-                            <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
-                                <h4 className="text-sm font-bold text-sky-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="target" className="w-4 h-4"/> Learning Objectives</h4>
-                                <ul className="text-sm text-slate-300 list-disc pl-4 space-y-1">
-                                    {scenario.instructorBrief.learningObjectives.map((x, i) => <li key={i}>{x}</li>)}
-                                </ul>
-                            </div>
-                        )}
                         <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
-                            <h4 className="text-sm font-bold text-emerald-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="check-circle" className="w-4 h-4"/> Key Interventions</h4>
-                            <ul className="text-sm text-slate-300 list-disc pl-4 space-y-1">
-                                {scenario.instructorBrief?.interventions ? scenario.instructorBrief.interventions.map((x, i) => <li key={i}>{x}</li>) : <li>ABCDE Assessment</li>}
+                            <h4 className="text-sm font-bold text-amber-400 uppercase mb-2">Progression</h4>
+                            <p className="text-sm text-slate-300">{scenario.instructorBrief.progression}</p>
+                        </div>
+                        
+                        <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
+                            <h4 className="text-sm font-bold text-sky-400 uppercase mb-2">Learning Objectives</h4>
+                            <ul className="list-disc pl-4 text-sm text-slate-300">
+                                {scenario.instructorBrief.learningObjectives && scenario.instructorBrief.learningObjectives.map((l, i) => <li key={i}>{l}</li>)}
                             </ul>
                         </div>
-                        {scenario.instructorBrief?.debriefPoints && (
-                            <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
-                                <h4 className="text-sm font-bold text-purple-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="message-square" className="w-4 h-4"/> Debrief Points</h4>
-                                <ul className="text-sm text-slate-300 list-disc pl-4 space-y-1">
-                                    {scenario.instructorBrief.debriefPoints.map((x, i) => <li key={i}>{x}</li>)}
-                                </ul>
-                            </div>
-                        )}
-                        {scenario.instructorBrief?.equipment && (
-                            <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
-                                <h4 className="text-sm font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="briefcase" className="w-4 h-4"/> Equipment</h4>
-                                <p className="text-sm text-slate-300">{scenario.instructorBrief.equipment}</p>
-                            </div>
+                        
+                        <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
+                            <h4 className="text-sm font-bold text-emerald-400 uppercase mb-2">Key Interventions</h4>
+                            <ul className="list-disc pl-4 text-sm text-slate-300">
+                                {scenario.instructorBrief.interventions && scenario.instructorBrief.interventions.map((l, i) => <li key={i}>{l}</li>)}
+                            </ul>
+                        </div>
+                        
+                        <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
+                            <h4 className="text-sm font-bold text-purple-400 uppercase mb-2">Debrief Points</h4>
+                            <ul className="list-disc pl-4 text-sm text-slate-300">
+                                {scenario.instructorBrief.debriefPoints && scenario.instructorBrief.debriefPoints.map((l, i) => <li key={i}>{l}</li>)}
+                            </ul>
+                        </div>
+
+                        {scenario.hf.id !== 'hf0' && (
+                             <div className="bg-purple-900/30 p-3 rounded border border-purple-500">
+                                <h4 className="text-sm font-bold text-purple-300 uppercase mb-1">Human Factor Challenge</h4>
+                                <p className="font-bold text-white mb-1">{scenario.hf.type}</p>
+                                <p className="text-xs text-purple-200">{scenario.hf.description}</p>
+                             </div>
                         )}
                     </div>
                 </div>
             </div>
-            {scenario.hf.id !== 'hf0' && (<div className="bg-purple-900/20 border border-purple-500/50 p-4 rounded flex items-center gap-3"><Lucide icon="users" className="text-purple-400 w-6 h-6"/><div><h4 className="font-bold text-purple-200">{scenario.hf.type}</h4><p className="text-sm text-purple-300">{scenario.hf.description}</p></div></div>)}
-            <div className="flex flex-col md:flex-row justify-center gap-4 pt-4"><Button onClick={onBack} variant="secondary" className="w-full md:w-1/3 py-4 text-lg"><Lucide icon="arrow-left"/> Back</Button><Button onClick={onNewScenario} variant="secondary" className="w-full md:w-1/3 py-4 text-lg"><Lucide icon="refresh-cw"/> New Scenario</Button><Button onClick={onStart} className="w-full md:w-1/3 py-4 text-lg shadow-sky-900/20 shadow-xl"><Lucide icon="activity"/> Start Live Simulation</Button></div>
+            <div className="flex flex-col md:flex-row gap-4">
+                <Button onClick={onBack} variant="secondary" className="flex-1">Back</Button>
+                <Button onClick={onNewScenario} variant="secondary" className="flex-1">New Scenario</Button>
+                <Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl">Start Simulation</Button>
+            </div>
         </div>
     );
 
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
-        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation } = sim;
-        const { scenario, time, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm } = state;
+        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle } = sim;
+        const { scenario, time, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm } = state;
         const [activeTab, setActiveTab] = useState("Common");
+        const [customLog, setCustomLog] = useState("");
 
         const getInterventionsByCat = (cat) => Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-        
-        const isPEA = !['VF','VT','Asystole'].includes(rhythm) && vitals.bpSys < 30;
 
         return (
-            <div className={`max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className="lg:col-span-2 space-y-6 order-1">
-                    <Card className="bg-slate-800 border-slate-700">
-                        <div className="flex justify-between items-start flex-wrap gap-2">
-                            <div><h3 className="font-bold text-lg text-white mb-1">{scenario.title} ({scenario.patientAge})</h3><p className="text-sm text-slate-300">{scenario.profile}</p></div>
-                            <div className="bg-sky-900/50 border border-sky-700 px-3 py-1 rounded"><p className="text-xs font-bold text-sky-300 uppercase">Presenting Complaint</p><p className="text-sm text-white">{scenario.presentingComplaint}</p></div>
-                        </div>
-                         <div className="mt-3 flex gap-3 text-xs text-slate-400 border-t border-slate-700 pt-2">
-                            <span><span className="font-bold text-slate-300">PMH:</span> {scenario.pmh.slice(0,3).join(", ")}...</span>
-                            <span><span className="font-bold text-slate-300">Allergies:</span> <span className="text-red-400">{scenario.allergies.join(", ")}</span></span>
-                        </div>
-                    </Card>
-
-                    <Card className="bg-slate-900 border-slate-800">
-                        <div className="flex flex-col md:flex-row justify-between items-center mb-4 border-b border-slate-800 pb-2 gap-3">
-                            <div className="flex gap-2 w-full md:w-auto">
-                                <Button variant="secondary" onClick={onBack} disabled={isRunning} className="h-10 md:h-8 text-xs px-3 flex-1 md:flex-none"><Lucide icon="arrow-left" className="w-3 h-3"/> Back</Button>
-                                {!isRunning ? <Button variant="success" onClick={start} className="h-16 text-xl px-8 font-bold shadow-lg flex-grow md:flex-none"><Lucide icon="play" className="w-6 h-6"/> START</Button> : <Button variant="danger" onClick={pause} className="h-14 text-lg px-4 flex-1 md:flex-none"><Lucide icon="pause" className="w-5 h-5"/> Pause</Button>}
-                                <Button variant="primary" onClick={onFinish} className="h-14 text-lg px-4 flex-1 md:flex-none"><Lucide icon="square" className="w-5 h-5"/> Finish</Button>
+            <div className={`h-full grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                
+                {/* LEFT COL: Monitor & Actions */}
+                <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden h-full">
+                    
+                    {/* MONITOR HEADER */}
+                    <Card className="bg-slate-900 border-slate-800 flex-shrink-0">
+                        <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
+                            <div className="flex gap-2">
+                                <Button variant="secondary" onClick={onBack} className="h-8 text-xs px-2"><Lucide icon="arrow-left"/> Back</Button>
+                                {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> Pause</Button>}
+                                <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> Finish</Button>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className={`p-2 rounded-full ${isMuted ? 'bg-red-900 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}><Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-5 h-5" /></button>
-                                <div className="font-mono text-2xl font-bold text-emerald-400 bg-black/40 px-4 py-1 rounded">{formatTime(time)}</div>
+                                <button onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className={`p-1.5 rounded-full ${isMuted ? 'bg-red-900 text-white' : 'bg-slate-800 text-slate-400'}`}><Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4" /></button>
+                                <div className="font-mono text-xl font-bold text-emerald-400 bg-black/40 px-3 py-1 rounded">{formatTime(time)}</div>
                             </div>
                         </div>
 
-                        {/* MONITOR SECTION */}
-                        <div className="mb-4 relative">
-                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} isPaused={!isRunning} />
-                             {isPEA && (
+                        {/* WAVEFORMS */}
+                        <div className="mb-2 relative">
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario.deterioration.type} />
+                             {(!['VF','VT','Asystole'].includes(rhythm) && vitals.bpSys < 30) && (
                                 <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none">
-                                    <div className="bg-red-600/80 text-white font-bold text-xl px-6 py-2 rounded pea-warning border-2 border-white">WARNING: PEA - CHECK PULSE</div>
+                                    <div className="bg-red-600/80 text-white font-bold text-lg px-6 py-2 rounded pea-warning border-2 border-white">PEA - CHECK PULSE</div>
                                 </div>
                              )}
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                        {/* NUMERICS */}
+                        <div className="grid grid-cols-4 gap-2">
                             <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
-                            <div className={`bg-slate-900/50 p-3 rounded border flex flex-col items-center justify-center h-28 ${vitals.bpSys < 90 ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}><span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">BP</span><span className="text-2xl font-mono font-bold text-white">{Math.round(vitals.bpSys)}/{Math.round(vitals.bpDia)}</span><span className="text-[10px] text-slate-600 mt-1">mmHg</span></div>
+                            <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
                             <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
-                            <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="bg-slate-900/30 p-2 rounded text-center border border-slate-700"><span className="text-xs text-slate-500 block">GCS</span><span className="font-mono font-bold text-lg">{vitals.gcs}</span></div>
-                            <div className="bg-slate-900/30 p-2 rounded text-center border border-slate-700"><span className="text-xs text-slate-500 block">Temp</span><span className="font-mono font-bold text-lg">{vitals.temp}°C</span></div>
-                            <div className="bg-slate-900/30 p-2 rounded text-center border border-slate-700"><span className="text-xs text-slate-500 block">Glucose</span><span className="font-mono font-bold text-lg">{vitals.bm}</span></div>
+                            <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
                         </div>
                     </Card>
 
-                    <Card title="Clinical Actions" icon="activity" collapsible={true}>
-                        <div className="flex justify-end gap-2 mb-4 border-b border-slate-700 pb-2">
-                             <Button variant="danger" onClick={triggerArrest} className="text-xs h-10"><Lucide icon="alert-triangle" className="w-3 h-3"/> Arrest</Button>
-                            <Button variant="success" onClick={triggerROSC} className="text-xs h-10"><Lucide icon="heart-pulse" className="w-3 h-3"/> ROSC</Button>
+                    {/* ACTIONS PANEL */}
+                    <Card title="Clinical Actions" icon="activity" className="flex-1 min-h-0 bg-slate-800">
+                        {/* Sim Controls */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 bg-slate-900/50 p-2 rounded">
+                             <Button variant="danger" onClick={triggerArrest} className="text-xs h-8">VF Arrest</Button>
+                             <Button variant="success" onClick={triggerROSC} className="text-xs h-8">ROSC</Button>
+                             <select className="bg-slate-700 text-white text-xs rounded px-2 h-8 border border-slate-600" value={queuedRhythm || ""} onChange={(e) => sim.dispatch({type: 'SET_QUEUED_RHYTHM', payload: e.target.value})}>
+                                 <option value="">Next Rhythm...</option>
+                                 <option value="Sinus Rhythm">ROSC (Sinus)</option>
+                                 <option value="VF">VF</option>
+                                 <option value="Asystole">Asystole</option>
+                                 <option value="PEA">PEA</option>
+                             </select>
+                             <Button variant="warning" onClick={nextCycle} className="text-xs h-8">Next Cycle (+2m)</Button>
                         </div>
 
-                        {/* RECOMMENDED ACTIONS PANEL */}
+                        {/* Recommended Actions (Restored) */}
                         {scenario.recommendedActions && (
-                            <div className="mb-4 bg-sky-900/20 border border-sky-600/50 p-3 rounded-lg">
-                                <h4 className="text-xs font-bold text-sky-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="check-square" className="w-3 h-3"/> Recommended Actions</h4>
+                            <div className="mb-4 bg-sky-900/20 border border-sky-600/50 p-2 rounded-lg">
+                                <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="check-square" className="w-3 h-3"/> Recommended</h4>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     {scenario.recommendedActions.map(key => {
                                         const action = INTERVENTIONS[key];
                                         if(!action) return null;
                                         const isActive = activeInterventions.has(key);
-                                        // Calculate progress
                                         let progress = 0;
                                         if(activeDurations[key]) {
                                             const elapsed = time - activeDurations[key].startTime;
                                             progress = Math.min(100, Math.max(0, 100 - (elapsed / activeDurations[key].duration * 100)));
                                         }
                                         return (
-                                            <Button key={`rec-${key}`} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-10 touch-manipulation relative border border-sky-500/30" progress={progress}>
+                                            <Button key={`rec-${key}`} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-8 relative border border-sky-500/30" progress={progress}>
                                                 {action.label}
-                                                {interventionCounts[key] > 0 && action.type !== 'continuous' && <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1 shadow-sm">x{interventionCounts[key]}</span>}
+                                                {interventionCounts[key] > 0 && action.type !== 'continuous' && <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1">x{interventionCounts[key]}</span>}
                                             </Button>
                                         );
                                     })}
@@ -1174,13 +1083,20 @@
                             </div>
                         )}
                         
-                        <div className="flex space-x-2 mb-4 overflow-x-auto pb-2 border-b border-slate-700 no-scrollbar">
-                            {['Common', 'Airway', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
-                                <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-2 text-sm font-bold rounded transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>{cat}</button>
+                        {/* Tabs */}
+                        <div className="flex space-x-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+                            {['Common', 'Airway', 'Circulation', 'Drugs', 'Obs/Gynae', 'Procedures'].map(cat => (
+                                <button key={cat} onClick={() => setActiveTab(cat)} className={`px-3 py-1 text-xs font-bold rounded transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{cat}</button>
                             ))}
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-4">
+                        {/* Grid */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto min-h-0 flex-1 content-start">
+                            {activeTab === 'Airway' && (
+                                <Button variant={etco2Enabled ? "success" : "secondary"} onClick={() => sim.dispatch({type: 'TOGGLE_ETCO2'})} className="text-xs h-10">
+                                    {etco2Enabled ? "Disconnect ETCO2" : "Connect ETCO2"}
+                                </Button>
+                            )}
                             {getInterventionsByCat(activeTab).map(key => {
                                 const isActive = activeInterventions.has(key);
                                 let progress = 0;
@@ -1189,43 +1105,49 @@
                                     progress = Math.min(100, Math.max(0, 100 - (elapsed / activeDurations[key].duration * 100)));
                                 }
                                 return (
-                                    <Button key={key} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-12 touch-manipulation relative" progress={progress}>
+                                    <Button key={key} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-10 relative" progress={progress}>
                                         {INTERVENTIONS[key]?.label || key}
-                                        {interventionCounts[key] > 0 && INTERVENTIONS[key].type !== 'continuous' && <span className="bg-white/20 text-white text-[10px] px-1.5 py-0.5 rounded-full ml-1 shadow-sm">x{interventionCounts[key]}</span>}
+                                        {interventionCounts[key] > 0 && INTERVENTIONS[key].type !== 'continuous' && <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1">x{interventionCounts[key]}</span>}
                                     </Button>
                                 )
                             })}
                         </div>
-                    </Card>
-
-                    <Card title="Investigations" icon="file-search" collapsible={true} defaultOpen={false}>
-                         <div className="grid grid-cols-2 gap-3">
-                             {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (
-                                 <InvestigationButton key={t} type={t} icon="activity" label={t === 'Urine' ? 'Urine Dip' : t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario} currentVitals={vitals}/>
-                             ))}
-                         </div>
+                        
+                        {/* Manual Log */}
+                        <div className="mt-2 flex gap-2 pt-2 border-t border-slate-700">
+                             <input type="text" className="bg-slate-900 border border-slate-600 rounded px-2 text-xs flex-1 text-white" placeholder="Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                             <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} className="h-8 text-xs">Log</Button>
+                        </div>
                     </Card>
                 </div>
 
-                <div className="space-y-6 flex flex-col h-full order-2 lg:order-2">
+                {/* RIGHT COL: Info & Log */}
+                <div className="flex flex-col gap-4 h-full overflow-hidden">
+                    <Card title="Scenario Info" icon="info" collapsible={true} className="flex-shrink-0">
+                         <h3 className="font-bold text-white mb-1">{scenario.title}</h3>
+                         <p className="text-xs text-slate-300 mb-2">{scenario.patientProfileTemplate.replace('{age}', scenario.patientAge).replace('{sex}', 'Male')}</p>
+                         <div className="grid grid-cols-2 gap-2">
+                             {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (
+                                 <InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
+                             ))}
+                         </div>
+                    </Card>
                     
-                    {/* GUIDELINES ON LIVE SCREEN */}
-                    {scenario.learningLinks && scenario.learningLinks.length > 0 && (
-                        <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="bg-slate-800/90">
-                            <div className="flex flex-col gap-2">
-                                {scenario.learningLinks.map((link, i) => (
-                                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-700/50 hover:bg-slate-700 rounded border border-slate-600 flex items-center gap-2 transition-colors">
-                                        <Lucide icon="external-link" className="w-4 h-4 text-sky-400"/>
-                                        <span className="text-xs font-bold text-slate-300">{link.label}</span>
-                                    </a>
-                                ))}
-                            </div>
-                        </Card>
-                    )}
+                    <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
+                        <div className="flex flex-col gap-1">
+                            {scenario.learningLinks && scenario.learningLinks.map((link, i) => (
+                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-700/50 hover:bg-slate-700 rounded border border-slate-600 flex items-center gap-2 text-xs font-bold text-sky-400">
+                                    <Lucide icon="external-link" className="w-3 h-3"/> {link.label}
+                                </a>
+                            ))}
+                        </div>
+                    </Card>
 
-                    <Card className="flex-grow flex flex-col bg-slate-800 h-96 lg:h-auto" collapsible={true}>
-                        <div className="flex items-center gap-2 mb-3 border-b border-slate-700 pb-2"><Lucide icon="list" className="w-5 h-5 text-sky-400" /><h3 className="font-bold text-slate-200">Incident Log</h3></div>
-                        <div className="flex-grow overflow-y-auto space-y-2 pr-2 text-sm font-mono touch-pan-y overscroll-contain" style={{WebkitOverflowScrolling: 'touch'}}>{log.map((l, i) => (<div key={i} className={`p-2 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'warning' ? 'bg-amber-900/20 border-amber-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-xs text-slate-500 block">{l.simTime}</span><p className="text-slate-200">{l.msg}</p></div>))}</div>
+                    <Card className="flex-1 min-h-0 bg-slate-800 flex flex-col">
+                        <div className="flex items-center gap-2 mb-2 border-b border-slate-700 pb-2"><Lucide icon="list" className="w-4 h-4 text-sky-400" /><h3 className="font-bold text-slate-200 text-sm">Incident Log</h3></div>
+                        <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-xs font-mono">
+                            {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
+                        </div>
                     </Card>
                 </div>
             </div>
@@ -1239,103 +1161,87 @@
 
         useEffect(() => {
             if (!chartRef.current || !history.length) return;
-            const labels = history.map(h => h.time);
             
-            // Extract Interventions for Scatter Plot
-            const interventions = [];
-            log.forEach(l => {
-                if(l.type === 'action' || l.type === 'success' || l.type === 'manual') {
-                    // Find closest history point
-                    interventions.push({ x: l.simTime, y: 100, label: l.msg }); // Arbitrary Y
-                }
-            });
-
-            // Map interventions to the closest history index for X axis if using linear scale, but since we use category labels (strings):
-            // We need to match log time string to label string
-            const interventionPoints = log
-                .filter(l => l.type === 'action' || l.type === 'success' || l.type === 'manual')
-                .map(l => {
-                    const timeStr = `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`;
-                    // We need to return an object that chartjs can parse on the category axis, effectively the label string
-                    return { x: timeStr, y: 50, rawMsg: l.msg }; // Y at 50 to sit in middle
-                });
+            const interventions = log
+                .filter(l => l.type === 'action' || l.type === 'manual')
+                .map(l => ({ x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, label: l.msg }));
 
             const chart = new window.Chart(chartRef.current, {
                 type: 'line',
                 data: {
-                    labels: labels.map(t => `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`),
+                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`),
                     datasets: [ 
-                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', tension: 0.4 }, 
-                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', tension: 0.4 }, 
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', tension: 0.4, yAxisID: 'y1' },
-                        { 
-                            label: 'Interventions', 
-                            type: 'scatter',
-                            data: interventionPoints,
-                            backgroundColor: '#f59e0b',
-                            pointRadius: 6,
-                            pointHoverRadius: 8,
-                            showLine: false
-                        }
+                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
+                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
+                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' }
                     ]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     interaction: { mode: 'index', intersect: false },
                     plugins: { 
                         title: { display: true, text: 'Vital Signs Trend' },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    if (context.dataset.type === 'scatter') {
-                                        return context.raw.rawMsg;
-                                    }
-                                    return context.dataset.label + ': ' + context.parsed.y;
-                                }
-                            }
+                        annotation: {
+                            // Basic support via custom plugin below if official plugin missing
                         }
                     },
                     scales: { y: { position: 'left', min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } }
-                }
+                },
+                plugins: [{
+                    id: 'verticalLines',
+                    afterDatasetsDraw(chart) {
+                        const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+                        ctx.save();
+                        interventions.forEach(item => {
+                            const xPos = x.getPixelForValue(item.x);
+                            if (xPos) {
+                                ctx.beginPath();
+                                ctx.moveTo(xPos, top);
+                                ctx.lineTo(xPos, bottom);
+                                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                                
+                                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                                ctx.font = '10px sans-serif';
+                                ctx.fillText(item.label.substring(0, 15), xPos + 2, top + 10 + (Math.random() * 100));
+                            }
+                        });
+                        ctx.restore();
+                    }
+                }]
             });
             return () => chart.destroy();
         }, [history, log]);
 
         const handleExport = () => {
             const doc = new window.jspdf.jsPDF();
-            doc.setFontSize(18); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10);
+            doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10);
+            doc.setFontSize(10);
             let y = 30;
-            log.forEach(l => { if (y > 280) { doc.addPage(); y = 10; } doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 7; });
+            log.forEach(l => { 
+                if (y > 280) { doc.addPage(); y = 10; } 
+                doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; 
+            });
             doc.save("sim-debrief.pdf");
         };
 
         return (
-            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-2">
+            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
                 <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
                     <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
-                    <div className="flex gap-2 w-full md:w-auto">
-                        <Button onClick={handleExport} variant="secondary" className="flex-1 md:flex-none h-12"><Lucide icon="download"/> Export PDF</Button>
-                        <Button onClick={onRestart} variant="primary" className="flex-1 md:flex-none h-12"><Lucide icon="rotate-ccw"/> New Scenario</Button>
+                    <div className="flex gap-2">
+                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
+                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
                     </div>
                 </div>
                 <Card title="Physiological Trends" icon="activity">
-                    <div className="bg-slate-900 p-4 rounded h-96 relative">
+                    <div className="bg-slate-900 p-2 rounded h-64 md:h-96 relative">
                         <canvas ref={chartRef}></canvas>
                     </div>
                 </Card>
-                {scenario.learningLinks && scenario.learningLinks.length > 0 && (
-                    <Card title="Learning Resources & Guidelines" icon="book-open">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {scenario.learningLinks.map((link, i) => (
-                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-4 bg-slate-700/50 hover:bg-slate-700 border border-slate-600 rounded-lg transition-all hover:border-sky-500 group">
-                                    <div className="bg-sky-900/50 p-3 rounded-full text-sky-400 group-hover:text-white group-hover:bg-sky-600 transition-colors"><Lucide icon="external-link" className="w-6 h-6"/></div>
-                                    <div><h4 className="font-bold text-slate-200 group-hover:text-white text-sm">{link.label}</h4></div>
-                                </a>
-                            ))}
-                        </div>
-                    </Card>
-                )}
-                <Card title="Action Timeline" icon="clock"><div className="space-y-2 max-h-96 overflow-y-auto">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-2"><span className="font-mono text-sky-400 w-16 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
+                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
             </div>
         );
     };
@@ -1359,18 +1265,17 @@
         const handleResume = () => { setCurrentScenario(resumeState.scenario); setView('resume'); };
 
         return (
-            <div className="min-h-screen flex flex-col p-2 md:p-6 max-w-7xl mx-auto">
-                <header className="flex items-center justify-between mb-8 pb-4 border-b border-slate-800">
-                    <div className="flex items-center gap-4"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-12 md:h-16 object-contain" /><div><h1 className="text-xl md:text-3xl font-bold text-sky-400">Sim Generator v11.8</h1><p className="text-slate-500 text-xs md:text-sm">West Midlands Evidence Based Emergency Medicine</p></div></div>
-                    <div className="hidden md:block text-right"><p className="text-xs text-slate-600">In-situ Simulation Tool</p><p className="text-xs text-slate-600">UK Clinical Guidelines</p></div>
+            <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
+                <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.1</h1></div></div>
+                    <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
-                <main className="flex-grow">
+                <main className="flex-grow overflow-hidden relative">
                     {view === 'setup' && (<SetupScreen onGenerate={(s, params) => { setCurrentScenario(s); setLastSetupParams(params); setView('briefing'); }} savedState={resumeState} onResume={handleResume} />)}
                     {view === 'setup_regen' && (<SetupScreen initialParams={{ ...lastSetupParams, autoGenerate: true }} onGenerate={(s, params) => { setCurrentScenario(s); setLastSetupParams(params); setView('briefing'); }} />)}
                     {view === 'briefing' && currentScenario && (<BriefingScreen scenario={currentScenario} onStart={() => setView('live')} onBack={() => setView('setup')} onNewScenario={() => setView('setup_regen')} />)}
                     {(view === 'live' || view === 'debrief' || view === 'resume') && currentScenario && (<LiveSimContainer scenario={currentScenario} view={view} setView={setView} resumeData={view === 'resume' ? resumeState : null} onRestart={() => { setCurrentScenario(null); setView('setup'); setResumeState(null); localStorage.removeItem('wmebem_sim_state'); }} />)}
                 </main>
-                <footer className="mt-12 text-center text-slate-600 text-xs py-4 border-t border-slate-800"><p>© {new Date().getFullYear()} WMEBEM. All rights reserved.</p></footer>
             </div>
         );
     };
@@ -1382,7 +1287,7 @@
             else if (view !== 'debrief' && !sim.state.scenario) { sim.dispatch({ type: 'LOAD_SCENARIO', payload: scenario }); }
         }, []);
         
-        if (!sim.state.scenario) return <div className="flex flex-col items-center justify-center min-h-[50vh] text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-10 h-10 mb-4 animate-spin text-sky-500" /><p className="text-lg font-mono">Initializing Simulation Engine...</p></div>;
+        if (!sim.state.scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>;
 
         if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { sim.stop(); setView('debrief'); }} onBack={() => setView('briefing')} />;
         if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />;
