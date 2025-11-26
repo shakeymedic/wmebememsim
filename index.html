@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v12.1</title>
+    <title>WMEBEM Sim Generator v12.2</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -57,10 +57,17 @@
         .pea-warning { animation: pulseText 1s infinite; }
         @keyframes pulseText { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        /* Mobile specific adjustments */
+        /* Diamond Debrief Shape CSS */
+        .diamond-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        
         @media (max-width: 768px) {
             .mobile-stack { flex-direction: column; }
             .mobile-h-full { height: 100%; }
+            .diamond-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -113,12 +120,13 @@
     };
 
     const getBaseVitals = (age) => {
-        if (age < 1) return { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5, gcs: 15 }; 
-        if (age <= 2) return { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0, gcs: 15 }; 
-        if (age <= 5) return { hr: 110, rr: 25, bpSys: 95, bpDia: 60, temp: 37.0, bm: 5.0, gcs: 15 }; 
-        if (age <= 12) return { hr: 90, rr: 20, bpSys: 105, bpDia: 65, temp: 36.8, bm: 5.5, gcs: 15 }; 
-        if (age > 65) return { hr: 70, rr: 18, bpSys: 135, bpDia: 80, temp: 36.5, bm: 6.0, gcs: 15 }; 
-        return { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8, gcs: 15 }; 
+        let v = { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8, gcs: 15, pupils: '3mm' }; 
+        if (age < 1) v = { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5, gcs: 15, pupils: '3mm' }; 
+        else if (age <= 2) v = { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0, gcs: 15, pupils: '3mm' }; 
+        else if (age <= 5) v = { hr: 110, rr: 25, bpSys: 95, bpDia: 60, temp: 37.0, bm: 5.0, gcs: 15, pupils: '3mm' }; 
+        else if (age <= 12) v = { hr: 90, rr: 20, bpSys: 105, bpDia: 65, temp: 36.8, bm: 5.5, gcs: 15, pupils: '4mm' }; 
+        else if (age > 65) v = { hr: 70, rr: 18, bpSys: 135, bpDia: 80, temp: 36.5, bm: 6.0, gcs: 15, pupils: '3mm' }; 
+        return v;
     };
 
     const estimateWeight = (age) => {
@@ -242,7 +250,10 @@
           stabilisers: ['Analgesia', 'Oxygen', 'Aspirin', 'GTN', 'Clopidogrel'], 
           ecg: { type: "STEMI", findings: "Anterior ST Elevation V1-V4." }, 
           urine: { findings: "Clear" }, ct: { findings: "Not indicated." },
-          learningLinks: [ { label: "NICE NG185: ACS", url: "https://www.nice.org.uk/guidance/ng185" } ] 
+          learningLinks: [ 
+            { label: "NICE NG185: Acute Coronary Syndromes", url: "https://www.nice.org.uk/guidance/ng185" },
+            { label: "Resus Council: ACS Guidelines", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" }
+          ] 
       },
       { 
         id: 'AT030', title: 'RTC Polytrauma (Driver)', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 45), 
@@ -261,7 +272,10 @@
         chestXray: { findings: "Multiple rib fractures. Widened mediastinum." }, 
         vbgClinicalState: "haemorrhagic_shock",
         urine: { findings: "Clear" }, ct: { findings: "Liver laceration Grade 4. Splenic injury. Pelvic fracture (Open book)." },
-        learningLinks: [ { label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/guidance/ng39" } ] 
+        learningLinks: [ 
+            { label: "NICE NG39: Major Trauma", url: "https://www.nice.org.uk/guidance/ng39" },
+            { label: "RCEM: Major Trauma in ED", url: "https://rcem.ac.uk/clinical-guidelines/" }
+        ] 
       },
       { 
         id: 'OG001', title: 'Ruptured Ectopic Pregnancy', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), 
@@ -280,7 +294,10 @@
         ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." },
         ultrasound: { findings: "Empty uterus. Free fluid in Morrison's pouch. Adnexal mass right side." },
         urine: { findings: "bHCG Positive (+)" }, ct: { findings: "Complex right adnexal mass. Large haemoperitoneum." },
-        learningLinks: [ { label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" } ] 
+        learningLinks: [ 
+            { label: "NICE NG126: Ectopic Pregnancy", url: "https://www.nice.org.uk/guidance/ng126" },
+            { label: "RCOG: Diagnosis & Management of Ectopic", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/diagnosis-and-management-of-ectopic-pregnancy-green-top-guideline-no-21/" }
+        ] 
       },
       { 
         id: 'OG002', title: 'Post-Partum Haemorrhage', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), 
@@ -298,7 +315,10 @@
         stabilisers: ['Oxytocin', 'Ergometrine', 'Blood', 'Surgery'], 
         ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." },
         urine: { findings: "Clear" }, ct: { findings: "Not indicated immediately." },
-        learningLinks: [ { label: "RCOG: Postpartum Haemorrhage", url: "https://www.rcog.org.uk/guidance/" } ] 
+        learningLinks: [ 
+            { label: "RCOG: Postpartum Haemorrhage (GTG 52)", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/prevention-and-management-of-postpartum-haemorrhage-green-top-guideline-no-52/" },
+            { label: "Resus Council: Maternal Resuscitation", url: "https://www.resus.org.uk/" }
+        ] 
       },
       { 
         id: 'OG003', title: 'Severe Pre-Eclampsia', category: 'Obstetrics & Gynae', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), 
@@ -316,7 +336,10 @@
         stabilisers: ['Labetalol', 'MagSulph'], 
         ecg: { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm." },
         urine: { findings: "Protein +++" }, ct: { findings: "Avoid unless focal neuro signs." },
-        learningLinks: [ { label: "NICE NG133: Hypertension in Pregnancy", url: "https://www.nice.org.uk/guidance/ng133" } ] 
+        learningLinks: [ 
+            { label: "NICE NG133: Hypertension in Pregnancy", url: "https://www.nice.org.uk/guidance/ng133" },
+            { label: "RCOG: Pre-eclampsia (GTG 10a)", url: "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/management-of-severe-pre-eclampsia-and-eclampsia-green-top-guideline-no-10a/" }
+        ] 
       },
       { id: 'AM010', title: 'Cardiac Arrest (VF)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(50, 80), patientProfileTemplate: "A {age}-year-old {sex} collapsed in waiting room.", presentingComplaint: 'Cardiac Arrest.', scenarioDetails: ['Unresponsive, apnoeic.', 'CPR in progress.', 'No output.'], vitalsMod: { hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 }, deterioration: { active: false, rate: 0 }, stabilisers: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone'], ecg: { type: "VF", findings: "Ventricular Fibrillation." }, 
         recommendedActions: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone', 'i-gel', 'Bagging', 'IV Access', 'Lucas'],
@@ -328,7 +351,10 @@
             learningObjectives: ["Lead a cardiac arrest team.", "Follow ALS algorithm.", "Manage reversible causes."]
         },
         urine: { findings: "Catheter: Clear" }, ct: { findings: "Post-ROSC: Coronary calcification. No PE." },
-        learningLinks: [ { label: "Resus Council UK: ALS", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines" } ] 
+        learningLinks: [ 
+            { label: "Resus Council UK: ALS Guidelines 2021", url: "https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines" },
+            { label: "RCEM: Cardiac Arrest Management", url: "https://rcem.ac.uk/" }
+        ] 
       },
       { id: 'AT006', title: 'Tension Pneumothorax', category: 'Trauma', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old male. Stabbed in right chest.", presentingComplaint: 'Severe Respiratory Distress.', scenarioDetails: ['Tracheal deviation Left.', 'Absent breath sounds Right.', 'Distended neck veins.'], vitalsMod: { hr: 150, bpSys: 70, bpDia: 40, spO2: 78, rr: 40, gcs: 11 }, deterioration: { active: true, rate: 0.2, type: 'arrest' }, stabilisers: ['Needle', 'Oxygen'], chestXray: { findings: "Large right pneumothorax with mediastinal shift." }, 
         recommendedActions: ['Obs', 'Oxygen', 'Needle', 'IV Access', 'Fluids', 'Analgesia', 'Surgery', 'Blood'],
@@ -340,7 +366,10 @@
             learningObjectives: ["Recognise tension pneumothorax.", "Perform needle decompression.", "Manage obstructive shock."]
         },
         urine: { findings: "Clear" }, ct: { findings: "Right tension pneumothorax. Lung collapse." },
-        learningLinks: [ { label: "ATLS Guidelines", url: "https://www.facs.org/quality-programs/trauma/atls/" } ] 
+        learningLinks: [ 
+            { label: "ATLS: Thoracic Trauma", url: "https://www.facs.org/quality-programs/trauma/atls/" },
+            { label: "BTS: Pleural Disease Guidelines", url: "https://www.brit-thoracic.org.uk/guideline-and-quality-standards/pleural-disease-guideline/" }
+        ] 
       },
       { id: 'AM040', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old asthmatic. Short of breath for 2 days.", presentingComplaint: 'Severe Dyspnoea.', scenarioDetails: ['Silent chest.', 'Exhausted.'], 
         recommendedActions: ['Obs', 'Oxygen', 'Nebs', 'Dexamethasone', 'Magnesium', 'IV Access', 'Salbutamol'],
@@ -352,7 +381,10 @@
             learningObjectives: ["Manage life-threatening asthma.", "Use escalation therapy (Mg/IV Salbutamol).", "Interpret ABG."]
         }, vitalsMod: { hr: 135, bpSys: 110, bpDia: 70, spO2: 88, rr: 35, temp: 37.0 }, deterioration: { active: true, rate: 0.08, type: 'respiratory' }, stabilisers: ['Nebs', 'Dexamethasone', 'Magnesium', 'Oxygen'], ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia." }, vbgClinicalState: "respiratory_acidosis_acute",
         urine: { findings: "Clear" }, ct: { findings: "Hyperinflation. No PE." },
-        learningLinks: [ { label: "BTS/SIGN Asthma Guidelines", url: "https://www.brit-thoracic.org.uk/" } ] 
+        learningLinks: [ 
+            { label: "BTS/SIGN 158: British Guideline on Asthma", url: "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/asthma/" },
+            { label: "NICE NG80: Asthma", url: "https://www.nice.org.uk/guidance/ng80" }
+        ] 
       }
     ];
 
@@ -416,11 +448,11 @@
     };
     
     // Updated VitalDisplay to handle BP explicitly
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert }) => {
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
-        const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(parseInt(editVal)); };
+        const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
         const isBP = label === "BP";
 
@@ -428,14 +460,14 @@
             <div className={`bg-slate-900/50 p-2 md:p-3 rounded border flex flex-col items-center justify-center h-24 md:h-28 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
                 <span className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
                 {isEditing ? (
-                    <input type="number" value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-16 text-center" autoFocus />
+                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-xl md:text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center" autoFocus />
                 ) : (
                     <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-1" onClick={() => { setEditVal(value); setIsEditing(true); }}>
-                        <span className="text-2xl md:text-3xl font-mono font-bold text-white">
-                            {value === '?' ? '--' : Math.round(value)}
+                        <span className={`font-mono font-bold text-white ${isText ? 'text-lg md:text-xl' : 'text-2xl md:text-3xl'}`}>
+                            {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
                             {isBP && value2 !== undefined && `/${Math.round(value2)}`}
                         </span>
-                        {!isBP && value !== '?' && prev !== '?' && <span className={`text-xs md:text-sm font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-xs md:text-sm font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
                 )}
                 <span className="text-[9px] md:text-[10px] text-slate-600 mt-1">{unit}</span>
@@ -446,8 +478,26 @@
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
-        const lastYRef = useRef(50);
         
+        // --- PERSISTENT STATE ---
+        // We use refs for drawing state so the canvas is NOT reset when React props (like HR) change
+        const drawState = useRef({
+            x: 0,
+            lastY: 50,
+            beatProgress: 0,
+            breathProgress: 0,
+            lastTime: 0,
+            lastYCO2: 0 // Will init in loop
+        });
+
+        // We use a ref to hold current props so the animation loop always sees the latest data
+        // without needing to be re-instantiated by useEffect
+        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused });
+
+        useEffect(() => {
+            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused };
+        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused]);
+
         const getWaveform = (type, t) => {
             const noise = (Math.random() - 0.5) * 2;
             if (type === 'Asystole') return 50 + noise;
@@ -469,98 +519,161 @@
         };
 
         const getEtco2Wave = (t, pathology) => {
-            if (t < 0.1 || t > 0.6) return 90; 
-            if (pathology === 'respiratory') {
-                if (t < 0.15) return 90 - (t-0.1)*1000; 
-                return 40 - (t-0.15)*20; 
+            // Returns normalized 0.0 to 1.0 (0 = baseline, 1 = max height)
+            if (t < 0.1 || t > 0.6) return 0; 
+            
+            if (t >= 0.1 && t < 0.15) {
+                // Upstroke
+                return (t - 0.1) / 0.05;
             }
-            return 40; 
+            
+            if (t >= 0.15 && t < 0.5) {
+                // Plateau
+                const plateauBase = 1.0;
+                const plateauEnd = 0.9;
+                const p = (t - 0.15) / 0.35;
+                if (pathology === 'respiratory') return 0.5 + (p * 0.5); // Shark fin ramp up
+                return plateauBase - (p * (plateauBase - plateauEnd));
+            }
+            
+            if (t >= 0.5 && t <= 0.6) {
+                // Downstroke
+                const startVal = (pathology === 'respiratory' ? 1.0 : 0.9);
+                const p = (t - 0.5) / 0.1;
+                return startVal * (1 - p);
+            }
+            return 0;
         };
 
         useEffect(() => {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext('2d');
-            let w = canvas.width = canvas.parentElement.clientWidth;
-            let h = canvas.height = canvas.parentElement.clientHeight;
             
-            let x = 0; 
-            let ecgSpeed = 150;
-            
-            let beatProgress = 0; 
-            let beatDuration = 60 / (hr || 60);
-            
-            let breathProgress = 0;
-            let breathDuration = 60 / (Math.max(1, rr) || 12);
-
-            let lastTime = 0; 
+            const setSize = () => {
+                const parent = canvas.parentElement;
+                canvas.width = parent.clientWidth;
+                canvas.height = parent.clientHeight;
+                
+                // Initialize Y positions on resize to prevent jumps
+                drawState.current.lastYCO2 = canvas.height - 2;
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0,0, canvas.width, canvas.height);
+            };
+            setSize();
+            window.addEventListener('resize', setSize);
 
             const animate = (timestamp) => {
-                if (!lastTime) lastTime = timestamp; 
-                const dt = (timestamp - lastTime) / 1000; 
-                lastTime = timestamp;
+                const state = drawState.current;
+                const props = propsRef.current;
                 
-                if (isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
+                if (!state.lastTime) state.lastTime = timestamp;
+                const dt = (timestamp - state.lastTime) / 1000;
+                state.lastTime = timestamp;
 
-                let currentRhythm = rhythmType || 'Sinus Rhythm'; 
-                let currentRate = hr || 60;
-                
-                if (currentRhythm === 'AF' && beatProgress >= 1) { 
-                    currentRate = hr + (Math.random() * 60 - 30); 
-                    beatDuration = 60 / Math.max(20, currentRate);
-                } else if (beatProgress >= 1) {
-                    beatDuration = 60 / Math.max(10, currentRate);
+                if (props.isPaused) {
+                    requestRef.current = requestAnimationFrame(animate);
+                    return;
                 }
-                
-                if (currentRhythm === 'VF') currentRate = 300; 
 
-                const dx = ecgSpeed * dt; 
-                const prevX = x; 
-                x += dx;
-
-                if (x > w) { x = 0; }
-                ctx.fillStyle = '#000000';
-                ctx.fillRect(x, 0, 20, h); 
-
-                beatProgress += dt / beatDuration; 
-                if (beatProgress >= 1) beatProgress = 0; 
+                // --- LOGIC ---
+                let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
+                let currentRate = props.hr || 60;
                 
-                const yECG = getWaveform(currentRhythm, beatProgress);
-                ctx.strokeStyle = '#00ff00'; 
-                ctx.lineWidth = 2; 
-                ctx.lineJoin = 'round';
-                
-                if (x > prevX) {
-                    ctx.beginPath(); 
-                    ctx.moveTo(prevX, lastYRef.current); 
-                    ctx.lineTo(x, yECG); 
-                    ctx.stroke(); 
+                // AF Rhythm variability
+                if (currentRhythm === 'AF' && state.beatProgress >= 1) { 
+                    currentRate = props.hr + (Math.random() * 60 - 30); 
                 }
-                lastYRef.current = yECG;
+                let beatDuration = 60 / Math.max(10, currentRate);
+                if (currentRhythm === 'VF') beatDuration = 60/300; // VF is fast
 
-                if (showEtco2) {
-                    breathProgress += dt / breathDuration;
-                    if (breathProgress >= 1) breathProgress = 0;
-                    
-                    const yCO2 = getEtco2Wave(breathProgress, pathology) + 60; 
-                    ctx.strokeStyle = '#facc15'; 
-                    
-                    if (x > prevX) {
-                        ctx.beginPath();
-                        ctx.moveTo(prevX, h - 30); 
-                        ctx.lineTo(x, yCO2);
-                        ctx.stroke();
+                // Move Cursor
+                const ecgSpeed = 150; // pixels per sec
+                const dx = ecgSpeed * dt;
+                const prevX = state.x;
+                state.x += dx;
+
+                // Wrap logic
+                if (state.x > canvas.width) {
+                    state.x = 0;
+                    // Reset paths to prevent cross-screen lines
+                    state.lastY = getWaveform(currentRhythm, state.beatProgress);
+                    state.lastYCO2 = canvas.height - 2;
+                }
+
+                // Eraser Bar (Clear small segment ahead)
+                const eraserWidth = 20;
+                if (state.x + eraserWidth < canvas.width) {
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); // +5 for overlap safety
+                } else {
+                     // Wrap eraser
+                     ctx.fillStyle = '#000000';
+                     ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height);
+                     ctx.fillRect(0, 0, eraserWidth, canvas.height);
+                }
+
+                // --- ECG DRAW ---
+                state.beatProgress += dt / beatDuration;
+                if (state.beatProgress >= 1) state.beatProgress = 0;
+
+                const yECG = getWaveform(currentRhythm, state.beatProgress);
+                
+                if (state.x > prevX) {
+                    ctx.strokeStyle = '#00ff00'; 
+                    ctx.lineWidth = 2; 
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(prevX, state.lastY);
+                    ctx.lineTo(state.x, yECG);
+                    ctx.stroke();
+                }
+                state.lastY = yECG;
+
+                // --- ETCO2 DRAW ---
+                if (props.showEtco2) {
+                    let breathDuration = 60 / (Math.max(1, props.rr) || 12);
+                    state.breathProgress += dt / breathDuration;
+                    if (state.breathProgress >= 1) state.breathProgress = 0;
+
+                    const normalizedHeight = getEtco2Wave(state.breathProgress, props.pathology);
+                    const co2MaxHeight = 35; // Pixels
+                    const co2BaseY = canvas.height - 2; // Bottom of canvas offset
+                    const yCO2 = co2BaseY - (normalizedHeight * co2MaxHeight);
+
+                    if (state.x > prevX) {
+                         // 1. Draw solid fill
+                         ctx.fillStyle = 'rgba(250, 204, 21, 0.4)'; // Yellow transparent
+                         ctx.beginPath();
+                         ctx.moveTo(prevX, state.lastYCO2);
+                         ctx.lineTo(state.x, yCO2);
+                         ctx.lineTo(state.x, co2BaseY);
+                         ctx.lineTo(prevX, co2BaseY);
+                         ctx.fill();
+
+                         // 2. Draw sharp top line
+                         ctx.strokeStyle = '#facc15'; // Solid yellow
+                         ctx.lineWidth = 2;
+                         ctx.beginPath();
+                         ctx.moveTo(prevX, state.lastYCO2);
+                         ctx.lineTo(state.x, yCO2);
+                         ctx.stroke();
                     }
+                    state.lastYCO2 = yCO2;
                 }
 
                 requestRef.current = requestAnimationFrame(animate);
             };
+
             requestRef.current = requestAnimationFrame(animate);
-            return () => cancelAnimationFrame(requestRef.current);
-        }, [rhythmType, hr, rr, isPaused, showEtco2, pathology]);
+            return () => {
+                window.removeEventListener('resize', setSize);
+                cancelAnimationFrame(requestRef.current);
+            };
+        }, []); // Empty dependency array ensures we don't reset canvas on prop changes
 
         return (
             <div className="w-full h-32 bg-black rounded border border-slate-700 relative overflow-hidden">
-                <canvas ref={canvasRef} className="block"></canvas>
+                <canvas ref={canvasRef} className="block w-full h-full"></canvas>
                 <div className="absolute top-1 right-2 text-xs font-mono text-green-500 font-bold">{rhythmType}</div>
                 {showEtco2 && <div className="absolute bottom-1 right-2 text-xs font-mono text-yellow-500 font-bold">ETCO2</div>}
             </div>
@@ -763,14 +876,14 @@
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
         const triggerArrest = () => { 
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3 } }); 
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } }); 
             dispatch({ type: 'UPDATE_RHYTHM', payload: 'VF' }); 
             addLogEntry('CARDIAC ARREST - VF', 'manual'); 
             dispatch({ type: 'SET_FLASH', payload: 'red' }); 
         };
         
         const triggerROSC = () => { 
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6 } }); 
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); 
             dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); 
             // Disable deterioration to prevent immediate re-arrest unless instructor re-enables
             const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
@@ -864,7 +977,7 @@
                 let generatedScenario;
                 if (customMode) {
                     const history = generateHistory(customScenario.age);
-                    generatedScenario = { id: 'CUSTOM', title: customScenario.title, category: 'Custom', ageRange: 'Custom', patientAge: customScenario.age, profile: customScenario.profile, presentingComplaint: customScenario.complaint, scenarioDetails: ['Custom scenario.'], instructorBrief: { progression: "Custom.", interventions: [], equipment: "Standard", debriefPoints: [] }, recommendedActions: [], vitals: { hr: parseInt(customScenario.hr), bpSys: parseInt(customScenario.bpSys), bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65), rr: parseInt(customScenario.rr), spO2: parseInt(customScenario.spO2), temp: parseFloat(customScenario.temp), gcs: parseInt(customScenario.gcs), bm: parseFloat(customScenario.bm) }, vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings }, chestXray: { findings: customScenario.cxrFindings }, deterioration: { active: false, rate: 0 }, stabilisers: [], interventions: [], pmh: history.pmh, dhx: history.dhx, allergies: history.allergies, urine: { findings: customScenario.urineFindings }, ct: { findings: customScenario.ctFindings } };
+                    generatedScenario = { id: 'CUSTOM', title: customScenario.title, category: 'Custom', ageRange: 'Custom', patientAge: customScenario.age, profile: customScenario.profile, presentingComplaint: customScenario.complaint, scenarioDetails: ['Custom scenario.'], instructorBrief: { progression: "Custom.", interventions: [], equipment: "Standard", debriefPoints: [] }, recommendedActions: [], vitals: { hr: parseInt(customScenario.hr), bpSys: parseInt(customScenario.bpSys), bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65), rr: parseInt(customScenario.rr), spO2: parseInt(customScenario.spO2), temp: parseFloat(customScenario.temp), gcs: parseInt(customScenario.gcs), bm: parseFloat(customScenario.bm), pupils: '3mm' }, vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings }, chestXray: { findings: customScenario.cxrFindings }, deterioration: { active: false, rate: 0 }, stabilisers: [], interventions: [], pmh: history.pmh, dhx: history.dhx, allergies: history.allergies, urine: { findings: customScenario.urineFindings }, ct: { findings: customScenario.ctFindings } };
                 } else {
                     let pool = ALL_SCENARIOS.filter(s => (category === 'Any' || s.category === category) && (age === 'Any' || s.ageRange === age) && (acuity === 'Any' || s.acuity === acuity));
                     if (pool.length === 0) { setLoading(false); setError(`No scenarios found for ${category} + ${age} + ${acuity}.`); return; }
@@ -872,7 +985,7 @@
                     const patientAge = base.ageGenerator();
                     const ranges = getBaseVitals(patientAge);
                     const history = generateHistory(patientAge, base.category === 'Obstetrics & Gynae' ? 'Female' : 'Male');
-                    let startVitals = { hr: base.vitalsMod?.hr || ranges.hr, bpSys: base.vitalsMod?.bpSys || ranges.bpSys, bpDia: base.vitalsMod?.bpDia || ranges.bpDia || Math.floor((base.vitalsMod?.bpSys || ranges.bpSys) * 0.65), rr: base.vitalsMod?.rr || ranges.rr, spO2: base.vitalsMod?.spO2 || 98, temp: base.vitalsMod?.temp || ranges.temp, gcs: base.vitalsMod?.gcs || 15, bm: ranges.bm };
+                    let startVitals = { hr: base.vitalsMod?.hr || ranges.hr, bpSys: base.vitalsMod?.bpSys || ranges.bpSys, bpDia: base.vitalsMod?.bpDia || ranges.bpDia || Math.floor((base.vitalsMod?.bpSys || ranges.bpSys) * 0.65), rr: base.vitalsMod?.rr || ranges.rr, spO2: base.vitalsMod?.spO2 || 98, temp: base.vitalsMod?.temp || ranges.temp, gcs: base.vitalsMod?.gcs || 15, bm: ranges.bm, pupils: ranges.pupils };
                     const profile = base.patientProfileTemplate.replace(/{age}/g, patientAge).replace(/{sex}/g, 'male');
                     generatedScenario = { ...base, patientAge, profile, vitals: startVitals, vbg: generateVbg(base.vbgClinicalState), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies };
                 }
@@ -1033,12 +1146,31 @@
                              )}
                         </div>
 
-                        {/* NUMERICS */}
+                        {/* NUMERICS GRID (Expanded) */}
                         <div className="grid grid-cols-4 gap-2">
                             <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
                             <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
                             <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
                             <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
+                            
+                            {/* Row 2: Obs */}
+                            <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38}/>
+                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4}/>
+                            <VitalDisplay label="Pupils" value={vitals.pupils || "3mm"} unit="" isText={true} onUpdate={(v) => manualUpdateVital('pupils', v)} />
+                            {etco2Enabled ? (
+                                <div className="bg-slate-900/50 p-2 md:p-3 rounded border border-yellow-500/50 flex flex-col items-center justify-center h-24 md:h-28 relative">
+                                    <span className="text-[10px] md:text-xs font-bold text-yellow-500 uppercase tracking-wider mb-1">ETCO2</span>
+                                    <span className="text-2xl md:text-3xl font-mono font-bold text-yellow-500">
+                                        {vitals.hr > 0 ? (scenario.deterioration.type === 'respiratory' ? '6.5' : '4.5') : '1.0'}
+                                    </span>
+                                    <span className="text-[9px] md:text-[10px] text-slate-600 mt-1">kPa</span>
+                                </div>
+                            ) : (
+                                <div className="bg-slate-900/20 p-2 md:p-3 rounded border border-slate-800 flex flex-col items-center justify-center h-24 md:h-28 opacity-50">
+                                    <span className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-wider">ETCO2</span>
+                                    <span className="text-lg text-slate-700">OFF</span>
+                                </div>
+                            )}
                         </div>
                     </Card>
 
@@ -1134,12 +1266,13 @@
                     </Card>
                     
                     <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-2">
                             {scenario.learningLinks && scenario.learningLinks.map((link, i) => (
-                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="p-2 bg-slate-700/50 hover:bg-slate-700 rounded border border-slate-600 flex items-center gap-2 text-xs font-bold text-sky-400">
-                                    <Lucide icon="external-link" className="w-3 h-3"/> {link.label}
+                                <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-700/50 hover:bg-slate-700 rounded border border-slate-600 flex flex-col gap-1 text-xs">
+                                    <div className="font-bold text-sky-400 flex items-center gap-2"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</div>
                                 </a>
                             ))}
+                            {!scenario.learningLinks && <p className="text-xs text-slate-400 italic">No specific guidelines linked.</p>}
                         </div>
                     </Card>
 
@@ -1179,9 +1312,11 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    // FIX: Interaction mode 'index' with intersect false to prevent label jumping
                     interaction: { mode: 'index', intersect: false },
                     plugins: { 
                         title: { display: true, text: 'Vital Signs Trend' },
+                        tooltip: { position: 'nearest' }, // Helps stability
                         annotation: {
                             // Basic support via custom plugin below if official plugin missing
                         }
@@ -1236,6 +1371,49 @@
                         <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
                     </div>
                 </div>
+
+                {/* DIAMOND DEBRIEF */}
+                <Card title="Diamond Debrief Model" icon="message-circle">
+                    <div className="diamond-grid">
+                        <div className="bg-sky-900/20 p-4 rounded border border-sky-600/30">
+                            <h4 className="text-sky-400 font-bold mb-2 uppercase text-sm">1. Description</h4>
+                            <p className="text-slate-300 text-xs italic mb-2">What happened? How did it feel?</p>
+                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
+                                <li>Clarify clinical facts.</li>
+                                <li>Allow team to vent emotions.</li>
+                                <li>Establish shared mental model.</li>
+                            </ul>
+                        </div>
+                        <div className="bg-amber-900/20 p-4 rounded border border-amber-600/30">
+                            <h4 className="text-amber-400 font-bold mb-2 uppercase text-sm">2. Analysis</h4>
+                            <p className="text-slate-300 text-xs italic mb-2">Why did it happen?</p>
+                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
+                                <li>Explore decision making.</li>
+                                <li>Discuss guidelines ({scenario.learningLinks && scenario.learningLinks.length > 0 ? 'Review Links' : 'Check Guidelines'}).</li>
+                                <li>Review differential diagnoses.</li>
+                            </ul>
+                        </div>
+                        <div className="bg-purple-900/20 p-4 rounded border border-purple-600/30">
+                            <h4 className="text-purple-400 font-bold mb-2 uppercase text-sm">3. Human Factors</h4>
+                            <p className="text-slate-300 text-xs italic mb-2">Non-technical skills?</p>
+                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
+                                <li>Leadership & Followership.</li>
+                                <li>Communication (Closed Loop).</li>
+                                <li>Specific Challenge: <span className="text-white font-bold">{scenario.hf.type}</span></li>
+                            </ul>
+                        </div>
+                        <div className="bg-emerald-900/20 p-4 rounded border border-emerald-600/30">
+                            <h4 className="text-emerald-400 font-bold mb-2 uppercase text-sm">4. Application</h4>
+                            <p className="text-slate-300 text-xs italic mb-2">What will we do next time?</p>
+                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
+                                <li>Identify take-home messages.</li>
+                                <li>Plan for system changes.</li>
+                                <li>Personal learning goals.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </Card>
+
                 <Card title="Physiological Trends" icon="activity">
                     <div className="bg-slate-900 p-2 rounded h-64 md:h-96 relative">
                         <canvas ref={chartRef}></canvas>
@@ -1267,7 +1445,7 @@
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.1</h1></div></div>
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.2</h1></div></div>
                     <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
                 <main className="flex-grow overflow-hidden relative">
