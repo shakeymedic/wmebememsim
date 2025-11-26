@@ -1782,6 +1782,7 @@
         );
     };
 
+ // --- UPDATED APP COMPONENT WITH FOOTER ---
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [currentScenario, setCurrentScenario] = useState(null);
@@ -1803,14 +1804,22 @@
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v13.2</h1></div></div>
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v13.3</h1></div></div>
                     <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
-                <main className="flex-grow overflow-hidden relative">
-                    {view === 'setup' && (<SetupScreen onGenerate={(s, params) => { setCurrentScenario(s); setLastSetupParams(params); setView('briefing'); }} savedState={resumeState} onResume={handleResume} />)}
-                    {view === 'setup_regen' && (<SetupScreen initialParams={{ ...lastSetupParams, autoGenerate: true }} onGenerate={(s, params) => { setCurrentScenario(s); setLastSetupParams(params); setView('briefing'); }} />)}
-                    {view === 'briefing' && currentScenario && (<BriefingScreen scenario={currentScenario} onStart={() => setView('live')} onBack={() => setView('setup')} onNewScenario={() => setView('setup_regen')} />)}
-                    {(view === 'live' || view === 'debrief' || view === 'resume') && currentScenario && (<LiveSimContainer scenario={currentScenario} view={view} setView={setView} resumeData={view === 'resume' ? resumeState : null} onRestart={() => { setCurrentScenario(null); setView('setup'); setResumeState(null); localStorage.removeItem('wmebem_sim_state'); }} />)}
+                <main className="flex-grow overflow-hidden relative flex flex-col">
+                    <div className="flex-grow overflow-hidden relative">
+                        {view === 'setup' && (<SetupScreen onGenerate={(s, params) => { setCurrentScenario(s); setLastSetupParams(params); setView('briefing'); }} savedState={resumeState} onResume={handleResume} />)}
+                        {view === 'setup_regen' && (<SetupScreen initialParams={{ ...lastSetupParams, autoGenerate: true }} onGenerate={(s, params) => { setCurrentScenario(s); setLastSetupParams(params); setView('briefing'); }} />)}
+                        {view === 'briefing' && currentScenario && (<BriefingScreen scenario={currentScenario} onStart={() => setView('live')} onBack={() => setView('setup')} onNewScenario={() => setView('setup_regen')} />)}
+                        {(view === 'live' || view === 'debrief' || view === 'resume') && currentScenario && (<LiveSimContainer scenario={currentScenario} view={view} setView={setView} resumeData={view === 'resume' ? resumeState : null} onRestart={() => { setCurrentScenario(null); setView('setup'); setResumeState(null); localStorage.removeItem('wmebem_sim_state'); }} />)}
+                    </div>
+                    {/* COPYRIGHT FOOTER */}
+                    <div className="flex-shrink-0 bg-slate-950 p-1 border-t border-slate-800 text-center">
+                        <p className="text-[10px] text-slate-600 font-mono">
+                            © 2025 WMEBEM Simulation Tool. All Rights Reserved. Licensed for Educational Use Only.
+                        </p>
+                    </div>
                 </main>
             </div>
         );
