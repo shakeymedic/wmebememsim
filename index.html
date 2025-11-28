@@ -259,7 +259,32 @@
         'Glucagon': { label: 'Glucagon', effect: { HR: 15, BP: 5 }, category: 'Drugs', log: 'IV Glucagon administered.', type: 'bolus', duration: 10 },
         'Intralipid': { label: 'Intralipid 20%', effect: { BP: 10 }, category: 'Drugs', log: 'Intralipid 20% bolus/infusion started.', type: 'bolus', duration: 60 },
         'Lactulose': { label: 'Lactulose Enema', effect: {}, category: 'Drugs', log: 'Lactulose enema administered.', type: 'bolus', duration: 60 },
-        'Suction': { label: 'Suction Airway', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway suctioned.', type: 'bolus', duration: 15 }
+        'Suction': { label: 'Suction Airway', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway suctioned.', type: 'bolus', duration: 15 },
+        'SodiumBicarb': { label: 'Sodium Bicarbonate', effect: { pH: 0.1 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 10 },
+        'Cooling': { label: 'Active Cooling', effect: { Temp: -1 }, category: 'Procedures', log: 'Active cooling measures started.', type: 'continuous', duration: 300 },
+        'Heparin': { label: 'LMWH / Heparin', effect: {}, category: 'Drugs', log: 'Anticoagulation (Heparin/LMWH) administered.', type: 'bolus', duration: 10 },
+        'Terlipressin': { label: 'Terlipressin', effect: { BP: 5 }, category: 'Drugs', log: 'IV Terlipressin administered.', type: 'bolus', duration: 10 },
+        'Thrombolysis': { label: 'Thrombolysis', effect: { BP: -5, SpO2: 5 }, category: 'Drugs', log: 'Thrombolytic (Alteplase) administered.', type: 'bolus', duration: 60 },
+        'HypertonicSaline': { label: 'Hypertonic Saline', effect: { BP: 5, gcs: 1 }, category: 'Drugs', log: 'Hypertonic Saline administered.', type: 'bolus', duration: 30 },
+        'Nimodipine': { label: 'Nimodipine', effect: {}, category: 'Drugs', log: 'Oral/NG Nimodipine administered.', type: 'bolus', duration: 10 },
+        'Desferrioxamine': { label: 'Desferrioxamine', effect: {}, category: 'Drugs', log: 'IV Desferrioxamine infusion started.', type: 'continuous', duration: 60 },
+        'Fomepizole': { label: 'Fomepizole', effect: {}, category: 'Drugs', log: 'IV Fomepizole administered.', type: 'bolus', duration: 30 },
+        'Pralidoxime': { label: 'Pralidoxime', effect: {}, category: 'Drugs', log: 'IV Pralidoxime administered.', type: 'bolus', duration: 30 },
+        'Rasburicase': { label: 'Rasburicase', effect: {}, category: 'Drugs', log: 'IV Rasburicase administered.', type: 'bolus', duration: 30 },
+        'Albumin': { label: 'IV Albumin', effect: { BP: 5 }, category: 'Drugs', log: 'IV Human Albumin Solution administered.', type: 'bolus', duration: 30 },
+        'VitaminA': { label: 'Vitamin A', effect: {}, category: 'Drugs', log: 'Vitamin A administered.', type: 'bolus', duration: 10 },
+        'Phototherapy': { label: 'Phototherapy', effect: {}, category: 'Procedures', log: 'Phototherapy initiated.', type: 'continuous', duration: 60 },
+        'Tourniquet': { label: 'Tourniquet', effect: { BP: 5 }, category: 'Procedures', log: 'Tourniquet applied to limb.', type: 'continuous', duration: 10 },
+        'NerveBlock': { label: 'Fascia Iliaca Block', effect: { HR: -5 }, category: 'Procedures', log: 'Fascia Iliaca Compartment Block performed.', type: 'bolus', duration: 20 },
+        'Acetazolamide': { label: 'Acetazolamide', effect: {}, category: 'Drugs', log: 'IV Acetazolamide administered.', type: 'bolus', duration: 10 },
+        'TopicalEyeDrops': { label: 'Topical Eye Drops', effect: {}, category: 'Drugs', log: 'Timolol/Pilocarpine drops applied.', type: 'bolus', duration: 5 },
+        'Canthotomy': { label: 'Lat. Canthotomy', effect: {}, category: 'Procedures', log: 'Lateral Canthotomy performed.', type: 'bolus', duration: 20 },
+        'EyeIrrigation': { label: 'Eye Irrigation', effect: {}, category: 'Procedures', log: 'Copious eye irrigation started.', type: 'continuous', duration: 300 },
+        'Dantrolene': { label: 'Dantrolene', effect: { Temp: -1, HR: -5 }, category: 'Drugs', log: 'IV Dantrolene administered.', type: 'bolus', duration: 15 },
+        'Phentolamine': { label: 'Phentolamine', effect: { BP: -20 }, category: 'Drugs', log: 'IV Phentolamine administered.', type: 'bolus', duration: 10 },
+        'Digibind': { label: 'Digibind', effect: { HR: 10 }, category: 'Drugs', log: 'Digoxin-specific antibody fragments administered.', type: 'bolus', duration: 30 },
+        'Cyproheptadine': { label: 'Cyproheptadine', effect: {}, category: 'Drugs', log: 'NG Cyproheptadine administered.', type: 'bolus', duration: 10 },
+        'Rifaximin': { label: 'Rifaximin', effect: {}, category: 'Drugs', log: 'Oral/NG Rifaximin administered.', type: 'bolus', duration: 10 }
     };
     
     // === SCENARIO DATABASE ---
