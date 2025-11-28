@@ -1451,7 +1451,6 @@
 
         const getInterventionsByCat = (cat) => {
             if (cat === 'Common') {
-                // Return a curated list of high-frequency items
                 return ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM']; 
             }
             return Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
@@ -1691,6 +1690,85 @@
         );
     };
 
+    const DebriefScreen = ({ sim, onRestart }) => {
+        const { state } = sim;
+        const { log, scenario, history } = state; 
+        const chartRef = useRef(null);
+
+        useEffect(() => {
+            if (!chartRef.current || !history.length) return;
+            
+            // Fix Jitter: Calculate Y-offset based on index (deterministic), not Math.random()
+            const interventions = log
+                .filter(l => l.type === 'action' || l.type === 'manual')
+                .map((l, i) => ({ 
+                    x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, 
+                    label: l.msg,
+                    yOffset: (i % 6) * 15 // Stagger labels cyclically to avoid overlap without random jumping
+                }));
+
+            const chart = new window.Chart(chartRef.current, {
+                type: 'line',
+                data: {
+                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`),
+                    datasets: [ 
+                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
+                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
+                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    animation: false, 
+                    hover: { animationDuration: 0 },
+                    plugins: { 
+                        title: { display: true, text: 'Vital Signs Trend' },
+                        tooltip: { position: 'nearest' }
+                    },
+                    scales: { y: { position: 'left', min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } }
+                },
+                plugins: [{
+                    id: 'verticalLines',
+                    afterDatasetsDraw(chart) {
+                        const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+                        ctx.save();
+                        interventions.forEach(item => {
+                            const xPos = x.getPixelForValue(item.x);
+                            if (xPos) {
+                                ctx.beginPath();
+                                ctx.moveTo(xPos, top);
+                                ctx.lineTo(xPos, bottom);
+                                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                                
+                                ctx.fillStyle = 'rgba(255,255,255,0.7)';
+                                ctx.font = '10px sans-serif';
+                                // Use the pre-calculated deterministic offset
+                                ctx.fillText(item.label.substring(0, 20) + (item.label.length>20?"...":""), xPos + 4, top + 10 + item.yOffset);
+                            }
+                        });
+                        ctx.restore();
+                    }
+                }]
+            });
+            return () => chart.destroy();
+        }, [history, log]);
+
+        const handleExport = () => {
+            const doc = new window.jspdf.jsPDF();
+            doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10);
+            doc.setFontSize(10);
+            let y = 30;
+            log.forEach(l => { 
+                if (y > 280) { doc.addPage(); y = 10; } 
+                doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; 
+            });
+            doc.save("sim-debrief.pdf");
+        };
+
         return (
             <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
                 <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
@@ -1710,68 +1788,6 @@
             </div>
         );
     };
-        return (
-            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
-                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
-                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
-                    <div className="flex gap-2">
-                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
-                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
-                    </div>
-                </div>
-
-                {/* DIAMOND DEBRIEF */}
-                <Card title="Diamond Debrief Model" icon="message-circle">
-                    <div className="diamond-grid">
-                        <div className="bg-sky-900/20 p-4 rounded border border-sky-600/30">
-                            <h4 className="text-sky-400 font-bold mb-2 uppercase text-sm">1. Description</h4>
-                            <p className="text-slate-300 text-xs italic mb-2">What happened? How did it feel?</p>
-                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
-                                <li>Clarify clinical facts.</li>
-                                <li>Allow team to vent emotions.</li>
-                                <li>Establish shared mental model.</li>
-                            </ul>
-                        </div>
-                        <div className="bg-amber-900/20 p-4 rounded border border-amber-600/30">
-                            <h4 className="text-amber-400 font-bold mb-2 uppercase text-sm">2. Analysis</h4>
-                            <p className="text-slate-300 text-xs italic mb-2">Why did it happen?</p>
-                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
-                                <li>Explore decision making.</li>
-                                <li>Discuss guidelines ({scenario.learningLinks && scenario.learningLinks.length > 0 ? 'Review Links' : 'Check Guidelines'}).</li>
-                                <li>Review differential diagnoses.</li>
-                            </ul>
-                        </div>
-                        <div className="bg-purple-900/20 p-4 rounded border border-purple-600/30">
-                            <h4 className="text-purple-400 font-bold mb-2 uppercase text-sm">3. Human Factors</h4>
-                            <p className="text-slate-300 text-xs italic mb-2">Non-technical skills?</p>
-                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
-                                <li>Leadership & Followership.</li>
-                                <li>Communication (Closed Loop).</li>
-                                <li>Specific Challenge: <span className="text-white font-bold">{scenario.hf.type}</span></li>
-                            </ul>
-                        </div>
-                        <div className="bg-emerald-900/20 p-4 rounded border border-emerald-600/30">
-                            <h4 className="text-emerald-400 font-bold mb-2 uppercase text-sm">4. Application</h4>
-                            <p className="text-slate-300 text-xs italic mb-2">What will we do next time?</p>
-                            <ul className="list-disc pl-4 text-xs text-slate-300 space-y-1">
-                                <li>Identify take-home messages.</li>
-                                <li>Plan for system changes.</li>
-                                <li>Personal learning goals.</li>
-                            </ul>
-                        </div>
-                    </div>
-                </Card>
-
-                <Card title="Physiological Trends" icon="activity">
-                    <div className="bg-slate-900 p-2 rounded h-64 md:h-96 relative">
-                        <canvas ref={chartRef}></canvas>
-                    </div>
-                </Card>
-                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
-            </div>
-        );
-    };
-
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [currentScenario, setCurrentScenario] = useState(null);
