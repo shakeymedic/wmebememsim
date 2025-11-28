@@ -1051,7 +1051,7 @@
         return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle };
     };
         
-    // --- UI SCREENS ---
+        // --- UI SCREENS ---
 
     const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
         const [category, setCategory] = useState(initialParams?.category || 'Any');
@@ -1136,7 +1136,6 @@
                     <div>
                         <h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Patient Profile</h3>
                         <p className="text-lg leading-relaxed mb-4">{scenario.profile}</p>
-                        
                         <div className="space-y-2 mb-4">
                             <div className="p-2 bg-slate-900/50 rounded border border-slate-700">
                                 <span className="text-xs text-slate-500 uppercase font-bold block">PMH</span>
@@ -1151,7 +1150,6 @@
                                 <span className="text-sm text-red-300 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'Nil'}</span>
                             </div>
                         </div>
-
                         <div className="p-3 bg-slate-700/50 rounded border border-slate-600"><p className="font-bold text-sky-300">PC: {scenario.presentingComplaint}</p></div>
                     </div>
                     <div className="space-y-4">
@@ -1159,28 +1157,24 @@
                             <h4 className="text-sm font-bold text-amber-400 uppercase mb-2">Progression</h4>
                             <p className="text-sm text-slate-300">{scenario.instructorBrief.progression}</p>
                         </div>
-                        
                         <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
                             <h4 className="text-sm font-bold text-sky-400 uppercase mb-2">Learning Objectives</h4>
                             <ul className="list-disc pl-4 text-sm text-slate-300">
                                 {scenario.instructorBrief.learningObjectives && scenario.instructorBrief.learningObjectives.map((l, i) => <li key={i}>{l}</li>)}
                             </ul>
                         </div>
-                        
                         <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
                             <h4 className="text-sm font-bold text-emerald-400 uppercase mb-2">Key Interventions</h4>
                             <ul className="list-disc pl-4 text-sm text-slate-300">
                                 {scenario.instructorBrief.interventions && scenario.instructorBrief.interventions.map((l, i) => <li key={i}>{l}</li>)}
                             </ul>
                         </div>
-                        
                         <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
                             <h4 className="text-sm font-bold text-purple-400 uppercase mb-2">Debrief Points</h4>
                             <ul className="list-disc pl-4 text-sm text-slate-300">
                                 {scenario.instructorBrief.debriefPoints && scenario.instructorBrief.debriefPoints.map((l, i) => <li key={i}>{l}</li>)}
                             </ul>
                         </div>
-
                         {scenario.hf.id !== 'hf0' && (
                              <div className="bg-purple-900/30 p-3 rounded border border-purple-500">
                                 <h4 className="text-sm font-bold text-purple-300 uppercase mb-1">Human Factor Challenge</h4>
@@ -1209,10 +1203,10 @@
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
 
         return (
-            <div className={`h-full grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+            <div className={`lg:h-full min-h-screen grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
                 {/* LEFT COL: Monitor & Actions */}
-                <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden h-full">
+                <div className="lg:col-span-2 flex flex-col gap-4 lg:overflow-hidden lg:h-full h-auto">
                     
                     {/* MONITOR HEADER */}
                     <Card className="bg-slate-900 border-slate-800 flex-shrink-0">
@@ -1238,8 +1232,8 @@
                              )}
                         </div>
 
-                        {/* NUMERICS GRID (Expanded) */}
-                        <div className="grid grid-cols-4 gap-2">
+                        {/* NUMERICS GRID (MOBILE RESPONSIVE: grid-cols-2 on mobile, 4 on desktop) */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
                             <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
                             <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
