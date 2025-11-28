@@ -467,6 +467,7 @@
       { id: 'PS003', title: 'Catatonia', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old. Mute, immobile, holding awkward postures.", presentingComplaint: 'Unresponsive', instructorBrief: { progression: "Malnutrition/DVT risks.", interventions: ["Lorazepam Trial", "Exclude organic cause"], learningObjectives: ["Benzodiazepine response", "Waxy flexibility"] }, vitalsMod: { hr: 80, bpSys: 120, spO2: 98, gcs: 10 }, deterioration: { active: false, rate: 0 }, stabilisers: ['Lorazepam'], recommendedActions: ['Obs', 'IV Access', 'Lorazepam', 'Fluids'] }  
     ];
         // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES & KIT (2025 UPDATES) ---
+    // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES, KIT & PROGRESSION LOGIC ---
     const ALL_SCENARIOS = RAW_SCENARIOS.map(s => {
         let kit = ['Monitoring', 'IV Access'];
         let links = [];
@@ -477,7 +478,7 @@
         if (s.ageRange === 'Paediatric') kit = [...kit, 'Broselow Tape', 'Paeds Drug Calc'];
         if (s.category === 'Obstetrics & Gynae') kit = [...kit, 'Obs Delivery Pack', 'Neonatal Resuscatire'];
 
-        // Guidelines Logic (Verified 2025 Links)
+        // Guidelines Logic (2025 Updates)
         if (s.ageRange === 'Paediatric') {
             links.push({ label: 'RCUK Paeds Guidelines 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines' });
             links.push({ label: 'APLS Algorithms', url: 'https://www.resus.org.uk/sites/default/files/2025-07/RCUK%20Paediatric%20emergency%20algorithms%20and%20resources%20Jul%2025%20V3.1.pdf' });
@@ -485,16 +486,62 @@
             links.push({ label: 'RCUK Adult ALS 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/adult-advanced-life-support-guidelines' });
             links.push({ label: 'DAS Intubation 2025', url: 'https://das.uk.com/new-das-2025-intubation-guidelines/' });
         }
-
         if (s.category === 'Trauma') links.push({ label: 'NICE Trauma (NG39)', url: 'https://www.nice.org.uk/guidance/ng39' });
         if (s.category === 'Toxicology') links.push({ label: 'TOXBASE', url: 'https://www.toxbase.org/' });
         if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust Tools', url: 'https://sepsistrust.org/professional-resources/clinical-tools/' });
         if (s.category === 'Obstetrics & Gynae') links.push({ label: 'RCOG Guidelines', url: 'https://www.rcog.org.uk/guidance/browse-all-guidance/' });
 
+        // --- PROGRESSION ENGINE ---
+        // Defines how investigations change when patient improves/deteriorates
+        let improved = { ...s };
+        let deteriorated = { ...s };
+
+        // 1. CXR Changes
+        if (s.chestXray) {
+            let newCXR = s.chestXray.findings;
+            if (newCXR.includes("Pneumothorax") || s.title.includes("Pneumothorax") || s.title.includes("Stab")) {
+                newCXR = "Intercostal drain seen in good position. Lung re-expanded. No residual pneumothorax.";
+            } else if (newCXR.includes("tube") || s.title.includes("Intubation")) {
+                newCXR = "ETT tip in good position above carina. Lung fields clear.";
+            } else if (newCXR.includes("Normal")) {
+                newCXR = "Remains Normal.";
+            } else {
+                newCXR = "Findings unchanged (radiological lag).";
+            }
+            improved.chestXray = { findings: newCXR };
+            deteriorated.chestXray = { findings: s.chestXray.findings + " Worsening appearance." };
+        }
+
+        // 2. ECG Changes
+        if (s.ecg) {
+            let newECG = s.ecg.findings;
+            let newType = s.ecg.type;
+            if (s.ecg.type === "STEMI") {
+                newECG = "ST segments resolving. Q waves developing.";
+                newType = "Sinus Rhythm (Post-MI)";
+            } else if (["VT", "VF", "SVT", "AF"].includes(s.ecg.type)) {
+                newECG = "Reverted to Sinus Rhythm.";
+                newType = "Sinus Rhythm";
+            } else if (s.title.includes("Hyperkalaemia")) {
+                newECG = "T waves normalising. QRS narrowing.";
+            }
+            improved.ecg = { type: newType, findings: newECG };
+            deteriorated.ecg = { type: s.ecg.type, findings: "Worsening changes / Arrythmia persistence." };
+        }
+
+        // 3. VBG Changes
+        if (s.vbg) {
+            const improvePh = (val) => val < 7.35 ? val + 0.1 : val;
+            const worsenPh = (val) => val - 0.1;
+            improved.vbg = { ...s.vbg, pH: improvePh(s.vbg.pH), Lac: Math.max(1, s.vbg.Lac / 2), K: s.vbg.K > 5.5 ? 5.0 : s.vbg.K };
+            deteriorated.vbg = { ...s.vbg, pH: worsenPh(s.vbg.pH), Lac: s.vbg.Lac + 2 };
+        }
+
         return {
             ...s,
-            equipment: s.instructorBrief.equipment || kit, // Prefer manual override if exists
-            learningLinks: s.learningLinks || links
+            equipment: s.instructorBrief.equipment || kit, 
+            learningLinks: s.learningLinks || links,
+            evolution: { improved, deteriorated }
         };
     });
     // --- 2. COMPONENTS ---
@@ -888,6 +935,17 @@
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
+            
+            // --- NEW: PROGRESSION LOGIC ---
+            case 'TRIGGER_IMPROVE':
+                if (!state.scenario.evolution) return state;
+                const improvedScen = { ...state.scenario, ...state.scenario.evolution.improved, deterioration: { ...state.scenario.deterioration, active: false } };
+                return { ...state, scenario: improvedScen, flash: 'green' };
+            case 'TRIGGER_DETERIORATE':
+                 if (!state.scenario.evolution) return state;
+                 const detScen = { ...state.scenario, ...state.scenario.evolution.deteriorated, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 } };
+                 return { ...state, scenario: detScen, flash: 'red' };
+
             case 'ADD_LOG':
                 const timestamp = new Date().toLocaleTimeString('en-GB');
                 const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`;
@@ -996,44 +1054,43 @@
             }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
 
+            // --- AUTO-PROGRESSION LOGIC ---
+            // If this intervention is a known stabiliser for this specific scenario, improve the patient state.
+            if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) {
+                dispatch({ type: 'TRIGGER_IMPROVE' });
+                addLogEntry("Patient condition IMPROVING (Investigations updated)", "success");
+            }
+
             // --- STATE CHANGE LOGIC (NARRATIVE) ---
-            // 1. SEIZURE CESSATION
             if (state.scenario.presentingComplaint === 'Seizure' || state.scenario.title.includes('Seizure') || state.scenario.title.includes('Eclampsia')) {
                 const benzos = (newCounts['Lorazepam'] || 0) + (newCounts['Midazolam'] || 0);
-                const secondLine = (newCounts['Levetiracetam'] || 0) + (newCounts['Phenytoin'] || 0) + (newCounts['MagSulph'] || 0); // Mag for Eclampsia
+                const secondLine = (newCounts['Levetiracetam'] || 0) + (newCounts['Phenytoin'] || 0) + (newCounts['MagSulph'] || 0); 
                 
-                // Logic: Stop if 2 doses benzo OR 1 benzo + 1 second line, OR RSI
                 if ((benzos >= 2 || (benzos >= 1 && secondLine >= 1) || newActive.has('RSI')) && state.vitals.gcs < 10) {
                      addLogEntry("CLINICAL UPDATE: Seizure activity has ceased. Patient is post-ictal.", 'success');
                      newVitals.hr = Math.max(80, newVitals.hr - 30);
                      newVitals.rr = 18;
                      newVitals.spO2 = 96;
-                     // Stop deterioration
-                     const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
-                     dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
-                     dispatch({ type: 'SET_FLASH', payload: 'green' });
+                     dispatch({ type: 'TRIGGER_IMPROVE' });
                 }
             }
 
-            // 2. TENSION PNEUMOTHORAX RESOLUTION
             if (state.scenario.title.includes('Tension') || state.scenario.title.includes('Stab')) {
                 if (key === 'Needle' || key === 'FingerThoracostomy') {
                      addLogEntry("CLINICAL UPDATE: Hiss of air heard. Hemodynamics improving.", 'success');
                      newVitals.spO2 = 92; 
                      newVitals.bpSys = Math.max(90, newVitals.bpSys + 30);
+                     dispatch({ type: 'TRIGGER_IMPROVE' });
                 }
             }
 
-            // 3. ANAPHYLAXIS RESOLUTION
             if (state.scenario.title.includes('Anaphylaxis')) {
                 if (key === 'Adrenaline' && count >= 2) {
                     addLogEntry("CLINICAL UPDATE: Wheeze resolving. BP stabilizing.", 'success');
-                    const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
-                    dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+                    dispatch({ type: 'TRIGGER_IMPROVE' });
                 }
             }
 
-            // 4. HYPOGLYCAEMIA
             if (state.vitals.bm < 4.0 && (key === 'InsulinDextrose' || key === 'Glucagon')) {
                  newVitals.bm = 6.0;
                  newVitals.gcs = 14;
@@ -1057,13 +1114,12 @@
 
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
-            // Standard Vital Adjustments
             const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
             
-            // Thoracotomy in Arrest (Trauma) - Drastic improvement potential
             if (key === 'Thoracotomy' && isArrest && state.scenario.category === 'Trauma') {
                  newVitals.bpSys = 60;
                  addLogEntry("CLINICAL UPDATE: Output achieved with internal massage.", 'success');
+                 dispatch({ type: 'TRIGGER_IMPROVE' });
             }
 
             if (!isArrest) {
@@ -1077,15 +1133,8 @@
             if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
             if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
 
-            // General Stabilisers pausing deterioration
-            if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) {
-                dispatch({ type: 'UPDATE_SCENARIO', payload: { ...state.scenario, deterioration: { ...state.scenario.deterioration, rate: Math.max(0, state.scenario.deterioration.rate - 0.05) } } });
-                dispatch({ type: 'SET_FLASH', payload: 'green' });
-            }
-
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
-
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
         const triggerArrest = () => { 
@@ -1584,9 +1633,11 @@
                                  <option value="Asystole">Asystole</option>
                                  <option value="PEA">PEA</option>
                              </select>
-                             <Button variant="warning" onClick={nextCycle} className="text-xs h-8">Next Cycle (+2m)</Button>
+                             <div className="flex gap-1">
+                                <Button variant="success" onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Instructor: Patient Improving", "success")}} className="text-xs h-8 flex-1 px-1">Improve</Button>
+                                <Button variant="danger" onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Instructor: Patient Deteriorating", "danger")}} className="text-xs h-8 flex-1 px-1">Worsen</Button>
+                             </div>
                         </div>
-
                         {/* DYNAMIC ALS BUTTONS */}
                         <div className="flex gap-2 mb-2">
                             {isArrest && (
