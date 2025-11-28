@@ -466,7 +466,7 @@
       { id: 'PS002', title: 'Lithium Toxicity', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(30, 60), patientProfileTemplate: "A {age}-year-old. Coarse tremor, vomiting, ataxia.", presentingComplaint: 'Tremor & Vomiting', instructorBrief: { progression: "Seizures and renal failure.", interventions: ["Aggressive Hydration", "Dialysis (if severe)"], learningObjectives: ["Chronic vs Acute toxicity", "Dialysis indications"] }, vitalsMod: { hr: 90, bpSys: 130, spO2: 98, gcs: 14 }, deterioration: { active: true, rate: 0.05, type: 'neuro' }, stabilisers: ['Fluids'], recommendedActions: ['Obs', 'IV Access', 'Fluids'] },
       { id: 'PS003', title: 'Catatonia', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old. Mute, immobile, holding awkward postures.", presentingComplaint: 'Unresponsive', instructorBrief: { progression: "Malnutrition/DVT risks.", interventions: ["Lorazepam Trial", "Exclude organic cause"], learningObjectives: ["Benzodiazepine response", "Waxy flexibility"] }, vitalsMod: { hr: 80, bpSys: 120, spO2: 98, gcs: 10 }, deterioration: { active: false, rate: 0 }, stabilisers: ['Lorazepam'], recommendedActions: ['Obs', 'IV Access', 'Lorazepam', 'Fluids'] }  
     ];
-        // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES & KIT ---
+        // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES & KIT (2025 UPDATES) ---
     const ALL_SCENARIOS = RAW_SCENARIOS.map(s => {
         let kit = ['Monitoring', 'IV Access'];
         let links = [];
@@ -477,24 +477,26 @@
         if (s.ageRange === 'Paediatric') kit = [...kit, 'Broselow Tape', 'Paeds Drug Calc'];
         if (s.category === 'Obstetrics & Gynae') kit = [...kit, 'Obs Delivery Pack', 'Neonatal Resuscatire'];
 
-        // Guidelines Logic
+        // Guidelines Logic (Verified 2025 Links)
         if (s.ageRange === 'Paediatric') {
-            links.push({ label: 'APLS Guidelines', url: 'https://www.resus.org.uk/library/2021-resuscitation-guidelines/paediatric-advanced-life-support-guidelines' });
+            links.push({ label: 'RCUK Paeds Guidelines 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines' });
+            links.push({ label: 'APLS Algorithms', url: 'https://www.resus.org.uk/sites/default/files/2025-07/RCUK%20Paediatric%20emergency%20algorithms%20and%20resources%20Jul%2025%20V3.1.pdf' });
         } else {
-            links.push({ label: 'ALS Guidelines', url: 'https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines' });
+            links.push({ label: 'RCUK Adult ALS 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/adult-advanced-life-support-guidelines' });
+            links.push({ label: 'DAS Intubation 2025', url: 'https://das.uk.com/new-das-2025-intubation-guidelines/' });
         }
 
-        if (s.category === 'Trauma') links.push({ label: 'NICE Trauma', url: 'https://www.nice.org.uk/guidance/ng39' });
-        if (s.category === 'Toxicology') links.push({ label: 'TOXBASE (Sim)', url: 'https://www.toxbase.org/' });
-        if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust', url: 'https://sepsistrust.org/' });
-        
+        if (s.category === 'Trauma') links.push({ label: 'NICE Trauma (NG39)', url: 'https://www.nice.org.uk/guidance/ng39' });
+        if (s.category === 'Toxicology') links.push({ label: 'TOXBASE', url: 'https://www.toxbase.org/' });
+        if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust Tools', url: 'https://sepsistrust.org/professional-resources/clinical-tools/' });
+        if (s.category === 'Obstetrics & Gynae') links.push({ label: 'RCOG Guidelines', url: 'https://www.rcog.org.uk/guidance/browse-all-guidance/' });
+
         return {
             ...s,
             equipment: s.instructorBrief.equipment || kit, // Prefer manual override if exists
             learningLinks: s.learningLinks || links
         };
     });
-
     // --- 2. COMPONENTS ---
 
     const { useState, useEffect, useRef, useReducer } = React;
