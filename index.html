@@ -1323,6 +1323,28 @@
                             </div>
                         </div>
                         <div className="p-3 bg-slate-700/50 rounded border border-slate-600"><p className="font-bold text-sky-300">PC: {scenario.presentingComplaint}</p></div>
+                        
+                        {/* RECOMMENDED EQUIPMENT SECTION */}
+                        <div className="mt-4 p-3 bg-slate-900/30 rounded border border-slate-600">
+                            <h4 className="text-sm font-bold text-slate-400 uppercase mb-2"><Lucide icon="briefcase" className="w-3 h-3 inline mr-1"/> Recommended Kit</h4>
+                            <div className="flex flex-wrap gap-2">
+                                {scenario.equipment && scenario.equipment.map((item, i) => (
+                                    <span key={i} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-600">{item}</span>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* CLINICAL GUIDELINES SECTION */}
+                        <div className="mt-4 p-3 bg-slate-900/30 rounded border border-slate-600">
+                            <h4 className="text-sm font-bold text-slate-400 uppercase mb-2"><Lucide icon="book-open" className="w-3 h-3 inline mr-1"/> Guidelines</h4>
+                            <div className="flex flex-col gap-2">
+                                {scenario.learningLinks && scenario.learningLinks.map((link, i) => (
+                                    <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-sky-400 hover:underline">
+                                        <Lucide icon="external-link" className="w-3 h-3"/> {link.label}
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                     <div className="space-y-4">
                         <div className="bg-slate-900/50 p-3 rounded border border-slate-600">
@@ -1347,13 +1369,6 @@
                                 {scenario.instructorBrief.debriefPoints && scenario.instructorBrief.debriefPoints.map((l, i) => <li key={i}>{l}</li>)}
                             </ul>
                         </div>
-                        {scenario.hf.id !== 'hf0' && (
-                             <div className="bg-purple-900/30 p-3 rounded border border-purple-500">
-                                <h4 className="text-sm font-bold text-purple-300 uppercase mb-1">Human Factor Challenge</h4>
-                                <p className="font-bold text-white mb-1">{scenario.hf.type}</p>
-                                <p className="text-xs text-purple-200">{scenario.hf.description}</p>
-                             </div>
-                        )}
                     </div>
                 </div>
             </div>
@@ -1364,19 +1379,81 @@
             </div>
         </div>
     );
-
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle } = sim;
         const { scenario, time, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm } = state;
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
+        
+        // MODAL STATES
+        const [showChecklist, setShowChecklist] = useState(false);
+        const [showDrugCalc, setShowDrugCalc] = useState(false);
+        const [checklistItems, setChecklistItems] = useState({ cpr: false, pads: false, airway: false, access: false, adrenaline: false, amiodarone: false, shock: false });
+        
+        // DRUG CALC STATE
+        const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
 
         const getInterventionsByCat = (cat) => Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+        
+        const isArrest = ['VF', 'VT', 'Asystole', 'PEA'].includes(rhythm);
+
+        const handleChecklistToggle = (item) => {
+            const newState = !checklistItems[item];
+            setChecklistItems({ ...checklistItems, [item]: newState });
+            if(newState) addLogEntry(`Checklist: ${item.toUpperCase()} confirmed.`, 'action');
+        };
+
+        const handleDrugCalc = () => {
+            if(!drugCalc.dose) return;
+            const total = parseFloat(drugCalc.dose) * parseFloat(drugCalc.weight);
+            addLogEntry(`Drug Prep: ${drugCalc.drug} ${drugCalc.dose}mg/kg -> Total ${total.toFixed(1)}mg prepared.`, 'action');
+            setShowDrugCalc(false);
+        };
 
         return (
-            <div className={`h-full overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+            <div className={`h-full overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
+                {/* --- MODALS --- */}
+                {showChecklist && (
+                    <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 w-full max-w-md shadow-2xl">
+                            <h3 className="text-xl font-bold text-red-500 mb-4 flex items-center gap-2"><Lucide icon="clipboard-list"/> Cardiac Arrest Protocol</h3>
+                            <div className="space-y-3">
+                                {Object.keys(checklistItems).map(key => (
+                                    <button key={key} onClick={() => handleChecklistToggle(key)} className={`w-full p-3 rounded flex items-center justify-between font-bold border ${checklistItems[key] ? 'bg-emerald-600/30 border-emerald-500 text-emerald-400' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                                        <span className="uppercase">{key}</span>
+                                        {checklistItems[key] && <Lucide icon="check" className="w-5 h-5"/>}
+                                    </button>
+                                ))}
+                            </div>
+                            <Button className="w-full mt-4" onClick={() => setShowChecklist(false)}>Close Checklist</Button>
+                        </div>
+                    </div>
+                )}
+
+                {showDrugCalc && (
+                    <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 w-full max-w-md shadow-2xl">
+                            <h3 className="text-xl font-bold text-sky-500 mb-4 flex items-center gap-2"><Lucide icon="calculator"/> Drug Calculator</h3>
+                            <div className="space-y-4">
+                                <div><label className="text-xs font-bold text-slate-500">Patient Weight</label><input type="number" value={drugCalc.weight} onChange={e => setDrugCalc({...drugCalc, weight: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" /></div>
+                                <div><label className="text-xs font-bold text-slate-500">Drug</label>
+                                    <select value={drugCalc.drug} onChange={e => setDrugCalc({...drugCalc, drug: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">
+                                        {['Salbutamol', 'Aminophylline', 'Magnesium Sulphate', 'Phenytoin', 'Levetiracetam', 'Ketamine', 'Propofol'].map(d => <option key={d}>{d}</option>)}
+                                    </select>
+                                </div>
+                                <div><label className="text-xs font-bold text-slate-500">Dose (mg/kg)</label><input type="number" value={drugCalc.dose} onChange={e => setDrugCalc({...drugCalc, dose: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" placeholder="e.g. 5" /></div>
+                                {drugCalc.dose && <div className="p-3 bg-emerald-900/30 rounded border border-emerald-500 text-center"><p className="text-xs text-emerald-400 font-bold">TOTAL DOSE</p><p className="text-2xl font-bold text-white">{(parseFloat(drugCalc.dose) * parseFloat(drugCalc.weight)).toFixed(1)} mg</p></div>}
+                            </div>
+                            <div className="flex gap-2 mt-4">
+                                <Button variant="secondary" className="flex-1" onClick={() => setShowDrugCalc(false)}>Cancel</Button>
+                                <Button variant="success" className="flex-1" onClick={handleDrugCalc}>Log & Prep</Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* LEFT COL: Monitor & Actions */}
                 <div className="lg:col-span-2 flex flex-col gap-4 lg:overflow-hidden lg:h-full h-auto">
                     
@@ -1404,14 +1481,13 @@
                              )}
                         </div>
 
-                        {/* NUMERICS GRID (MOBILE RESPONSIVE: grid-cols-2 on mobile, 4 on desktop) */}
+                        {/* NUMERICS GRID */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
                             <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
                             <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
                             <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
                             
-                            {/* Row 2: Obs */}
                             <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38}/>
                             <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4}/>
                             <VitalDisplay label="Pupils" value={vitals.pupils || "3mm"} unit="" isText={true} onUpdate={(v) => manualUpdateVital('pupils', v)} />
@@ -1448,7 +1524,19 @@
                              <Button variant="warning" onClick={nextCycle} className="text-xs h-8">Next Cycle (+2m)</Button>
                         </div>
 
-                        {/* Recommended Actions (Restored) */}
+                        {/* DYNAMIC ALS BUTTONS */}
+                        <div className="flex gap-2 mb-2">
+                            {isArrest && (
+                                <Button variant="danger" onClick={() => setShowChecklist(true)} className="flex-1 h-10 animate-pulse font-bold text-sm">
+                                    <Lucide icon="clipboard-list"/> CARDIAC ARREST MODE
+                                </Button>
+                            )}
+                            <Button variant="primary" onClick={() => setShowDrugCalc(true)} className="flex-1 h-10 text-xs">
+                                <Lucide icon="calculator"/> Drug Infusion/Calc
+                            </Button>
+                        </div>
+
+                        {/* Recommended Actions */}
                         {scenario.recommendedActions && (
                             <div className="mb-4 bg-sky-900/20 border border-sky-600/50 p-2 rounded-lg">
                                 <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="check-square" className="w-3 h-3"/> Recommended</h4>
@@ -1501,7 +1589,7 @@
                                 
                                 if (isPaeds) {
                                     if (key === 'Fluids') label = `Fluid Bolus (10ml/kg)`; 
-                                    else if (key === 'Adrenaline') label = `Adrenaline 1:1000 IM`; // Implicitly dose-adjusted in mind
+                                    else if (key === 'Adrenaline') label = `Adrenaline 1:1000 IM`;
                                     else if (key === 'Atropine') label = `Atropine (20mcg/kg)`;
                                     else if (key === 'Amidarone') label = `Amiodarone (5mg/kg)`;
                                     else if (key === 'Lorazepam') label = `Lorazepam (0.1mg/kg)`;
@@ -1538,20 +1626,20 @@
                              ))}
                          </div>
                         {scenario.wetflag && (
-    <div className="mt-4 bg-slate-900/50 rounded border border-slate-700 p-2">
-        <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1 border-b border-slate-700 pb-1">WETFLAG (Wt: {scenario.wetflag.weight}kg)</h4>
-        <table className="w-full text-[10px] text-left text-slate-300">
-            <tbody>
-                <tr><td className="py-0.5 text-slate-500 font-bold">Energy (4J/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.energy} J</td></tr>
-                <tr><td className="py-0.5 text-slate-500 font-bold">Tube Size</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.tube}</td></tr>
-                <tr><td className="py-0.5 text-slate-500 font-bold">Fluids (10ml/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.fluids} ml</td></tr>
-                <tr><td className="py-0.5 text-slate-500 font-bold">Lorazepam</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.lorazepam} mg</td></tr>
-                <tr><td className="py-0.5 text-slate-500 font-bold">Adren (1:10k)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.adrenaline} ml</td></tr>
-                <tr><td className="py-0.5 text-slate-500 font-bold">Glucose (10%)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.glucose} ml</td></tr>
-            </tbody>
-        </table>
-    </div>
-)}
+                            <div className="mt-4 bg-slate-900/50 rounded border border-slate-700 p-2">
+                                <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1 border-b border-slate-700 pb-1">WETFLAG (Wt: {scenario.wetflag.weight}kg)</h4>
+                                <table className="w-full text-[10px] text-left text-slate-300">
+                                    <tbody>
+                                        <tr><td className="py-0.5 text-slate-500 font-bold">Energy (4J/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.energy} J</td></tr>
+                                        <tr><td className="py-0.5 text-slate-500 font-bold">Tube Size</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.tube}</td></tr>
+                                        <tr><td className="py-0.5 text-slate-500 font-bold">Fluids (10ml/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.fluids} ml</td></tr>
+                                        <tr><td className="py-0.5 text-slate-500 font-bold">Lorazepam</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.lorazepam} mg</td></tr>
+                                        <tr><td className="py-0.5 text-slate-500 font-bold">Adren (1:10k)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.adrenaline} ml</td></tr>
+                                        <tr><td className="py-0.5 text-slate-500 font-bold">Glucose (10%)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.glucose} ml</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </Card>
                     
                     <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
@@ -1584,9 +1672,14 @@
         useEffect(() => {
             if (!chartRef.current || !history.length) return;
             
+            // Fix Jitter: Calculate Y-offset based on index (deterministic), not Math.random()
             const interventions = log
                 .filter(l => l.type === 'action' || l.type === 'manual')
-                .map(l => ({ x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, label: l.msg }));
+                .map((l, i) => ({ 
+                    x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, 
+                    label: l.msg,
+                    yOffset: (i % 6) * 15 // Stagger labels cyclically to avoid overlap without random jumping
+                }));
 
             const chart = new window.Chart(chartRef.current, {
                 type: 'line',
@@ -1601,16 +1694,12 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    // FIX: Interaction mode 'index' with intersect false to prevent label jumping
                     interaction: { mode: 'index', intersect: false },
-                    animation: false, // Disable animation to prevent flickering updates
-                    hover: { animationDuration: 0 }, // Specific fix for flickering tooltips
+                    animation: false, 
+                    hover: { animationDuration: 0 },
                     plugins: { 
                         title: { display: true, text: 'Vital Signs Trend' },
-                        tooltip: { position: 'nearest' }, // Helps stability
-                        annotation: {
-                            // Basic support via custom plugin below if official plugin missing
-                        }
+                        tooltip: { position: 'nearest' }
                     },
                     scales: { y: { position: 'left', min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } }
                 },
@@ -1631,7 +1720,8 @@
                                 
                                 ctx.fillStyle = 'rgba(255,255,255,0.7)';
                                 ctx.font = '10px sans-serif';
-                                ctx.fillText(item.label.substring(0, 15), xPos + 2, top + 10 + (Math.random() * 100));
+                                // Use the pre-calculated deterministic offset
+                                ctx.fillText(item.label.substring(0, 20) + (item.label.length>20?"...":""), xPos + 4, top + 10 + item.yOffset);
                             }
                         });
                         ctx.restore();
@@ -1653,6 +1743,25 @@
             doc.save("sim-debrief.pdf");
         };
 
+        return (
+            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
+                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
+                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
+                    <div className="flex gap-2">
+                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
+                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
+                    </div>
+                </div>
+
+                <Card title="Physiological Trends" icon="activity">
+                    <div className="bg-slate-900 p-2 rounded h-64 md:h-96 relative">
+                        <canvas ref={chartRef}></canvas>
+                    </div>
+                </Card>
+                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
+            </div>
+        );
+    };
         return (
             <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
                 <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
