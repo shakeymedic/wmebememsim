@@ -191,25 +191,25 @@
         'i-gel': { label: 'i-gel / LMA', effect: { SpO2: 15, RR: 'vent' }, category: 'Airway', log: 'Supraglottic airway (i-gel) inserted.', type: 'continuous', duration: 30 },
         'Suction': { label: 'Suction Airway', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway suctioned.', type: 'bolus', duration: 15 },
         'RSI': { label: 'Perform RSI', effect: { SpO2: 99, RR: 'vent', BP: -15, gcs: 'sedated' }, category: 'Airway', log: 'Rapid Sequence Induction performed. Patient intubated.', type: 'continuous', duration: 120 },
-        'FONA': { label: 'FONA (Front of Neck)', effect: { SpO2: 95, RR: 'vent' }, category: 'Airway', log: 'Emergency FONA performed.', type: 'continuous', duration: 60 },
+        'FONA': { label: 'FONA (Front of Neck)', effect: { SpO2: 95, RR: 'vent' }, category: 'Airway', log: 'Emergency FONA performed. Airway secured.', type: 'continuous', duration: 60 },
         'Magills': { label: 'Magill Forceps', effect: { SpO2: 10 }, category: 'Airway', log: 'Foreign body removed with Magills.', type: 'bolus', duration: 15 },
 
         // --- BREATHING ---
         'Obs': { label: 'Monitoring (SpO2/ECG/BP)', effect: {}, category: 'Exposure', log: 'Full monitoring applied.', type: 'continuous', duration: 10 },
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Breathing', log: 'High flow oxygen applied.', type: 'continuous', duration: 5 },
         'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25, RR: 'vent' }, category: 'Breathing', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
-        'Nebs': { label: 'Nebs (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Breathing', log: 'Nebulisers (Salb/Iprat) running.', type: 'bolus', duration: 300 },
+        'Nebs': { label: 'Nebulisers', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Breathing', log: 'Nebulisers administered.', type: 'bolus', duration: 300 },
         'NebAdrenaline': { label: 'Neb Adrenaline', effect: { HR: 10, RR: -5, SpO2: 5 }, category: 'Breathing', log: 'Nebulised Adrenaline running.', type: 'bolus', duration: 300 },
         'CPAP': { label: 'CPAP', effect: { SpO2: 10, RR: -5, BP: -5 }, category: 'Breathing', log: 'CPAP initiated.', type: 'continuous', duration: 60 },
         'NIV': { label: 'NIV (BiPAP)', effect: { SpO2: 12, RR: -5, BP: -5 }, category: 'Breathing', log: 'NIV (BiPAP) initiated.', type: 'continuous', duration: 60 },
         'Needle': { label: 'Needle Decompression', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Breathing', log: 'Needle thoracocentesis performed.', type: 'bolus', duration: 30 },
-        'FingerThoracostomy': { label: 'Finger Thoracostomy', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Breathing', log: 'Finger thoracostomy performed.', type: 'bolus', duration: 30 },
+        'FingerThoracostomy': { label: 'Finger Thoracostomy', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Breathing', log: 'Finger thoracostomy performed.', type: 'bolus', duration: 60 },
         'SeldingerDrain': { label: 'Chest Drain (Seldinger)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Seldinger chest drain inserted.', type: 'continuous', duration: 450 },
         'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
 
         // --- CIRCULATION ---
         'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
-        'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Circulation', log: 'Subclavian central line inserted.', type: 'continuous', duration: 300 },
+        'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Circulation', log: 'Subclavian central line inserted (US guided).', type: 'continuous', duration: 300 },
         'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
         'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: 'O-Negative Blood administered.', type: 'bolus', duration: 300 },
         'TXA': { label: 'TXA', effect: {}, category: 'Circulation', log: 'IV Tranexamic Acid administered.', type: 'bolus', duration: 60 },
@@ -232,8 +232,8 @@
         'Binder': { label: 'Pelvic Binder', effect: { BP: 8 }, category: 'Circulation', log: 'Pelvic binder applied.', type: 'continuous', duration: 60 },
         'Tourniquet': { label: 'Tourniquet', effect: { BP: 5 }, category: 'Circulation', log: 'Tourniquet applied.', type: 'continuous', duration: 10 },
         'Pericardiocentesis': { label: 'Pericardiocentesis', effect: { BP: 20, HR: -10 }, category: 'Circulation', log: 'Pericardiocentesis performed.', type: 'bolus', duration: 30 },
-        'Thoracotomy': { label: 'Resus Thoracotomy', effect: { BP: 30, HR: 20 }, category: 'Circulation', log: 'Resuscitative Thoracotomy performed.', type: 'bolus', duration: 120 },
-        'Hysterotomy': { label: 'Resus Hysterotomy', effect: { BP: 15 }, category: 'Circulation', log: 'Perimortem C-Section (Hysterotomy) performed.', type: 'bolus', duration: 60 },
+        'Thoracotomy': { label: 'Resus Thoracotomy', effect: { BP: 30, HR: 20 }, category: 'Circulation', log: 'Clamshell Thoracotomy performed. Internal cardiac massage started.', type: 'bolus', duration: 120 },
+        'Hysterotomy': { label: 'Resus Hysterotomy', effect: { BP: 15 }, category: 'Circulation', log: 'Perimortem C-Section (Hysterotomy) performed. Baby delivered.', type: 'bolus', duration: 60 },
         'Oxytocin': { label: 'Oxytocin', effect: { BP: -5 }, category: 'Circulation', log: 'IM/IV Oxytocin administered.', type: 'bolus', duration: 10 },
         'Ergometrine': { label: 'Ergometrine', effect: { BP: 15 }, category: 'Circulation', log: 'IM Ergometrine administered.', type: 'bolus', duration: 10 },
         'Carboprost': { label: 'Carboprost', effect: { BP: 5 }, category: 'Circulation', log: 'IM Carboprost administered.', type: 'bolus', duration: 10 },
@@ -247,6 +247,8 @@
         'Ketamine': { label: 'Ketamine', effect: { gcs: -5, BP: 5, HR: 5 }, category: 'Disability', log: 'IV Ketamine administered.', type: 'bolus', duration: 15 },
         'Midazolam': { label: 'Midazolam', effect: { gcs: -3 }, category: 'Disability', log: 'IV Midazolam administered.', type: 'bolus', duration: 10 },
         'Lorazepam': { label: 'Lorazepam', effect: { gcs: -2 }, category: 'Disability', log: 'IV Lorazepam administered.', type: 'bolus', duration: 10 },
+        'Levetiracetam': { label: 'Levetiracetam', effect: {}, category: 'Disability', log: 'IV Levetiracetam administered.', type: 'bolus', duration: 30 },
+        'Phenytoin': { label: 'Phenytoin', effect: {}, category: 'Disability', log: 'IV Phenytoin administered.', type: 'bolus', duration: 60 },
         'Naloxone': { label: 'Naloxone', effect: { RR: 10, gcs: 5 }, category: 'Disability', log: 'IV Naloxone administered.', type: 'bolus', duration: 5 },
         'Glucagon': { label: 'Glucagon', effect: { HR: 15, BP: 5 }, category: 'Disability', log: 'IV Glucagon administered.', type: 'bolus', duration: 10 },
         'InsulinDextrose': { label: 'Insulin/Dextrose', effect: { BM: -5 }, category: 'Disability', log: 'Insulin/Dextrose infusion started.', type: 'bolus', duration: 60 },
@@ -294,7 +296,7 @@
         'Warming': { label: 'Active Warming', effect: { Temp: 1 }, category: 'Exposure', log: 'Bair hugger/Warming blanket applied.', type: 'continuous', duration: 300 },
         'Cooling': { label: 'Active Cooling', effect: { Temp: -1 }, category: 'Exposure', log: 'Active cooling measures started.', type: 'continuous', duration: 300 },
         'Irrigation': { label: 'Eye/Wound Irrigation', effect: {}, category: 'Exposure', log: 'Copious irrigation started.', type: 'continuous', duration: 300 },
-        'Escharotomy': { label: 'Escharotomy', effect: { SpO2: 5 }, category: 'Exposure', log: 'Escharotomy performed.', type: 'bolus', duration: 45 },
+        'Escharotomy': { label: 'Escharotomy', effect: { SpO2: 5 }, category: 'Exposure', log: 'Escharotomy performed on chest/limbs.', type: 'bolus', duration: 45 },
         'Surgery': { label: 'Surgical Consult', effect: {}, category: 'Exposure', log: 'Surgeons contacted urgently.', type: 'bolus', duration: 30 },
         'Delivery': { label: 'Emergency Delivery', effect: {}, category: 'Exposure', log: 'Preparation for emergency delivery.', type: 'continuous', duration: 300 },
         'AirEnema': { label: 'Air Enema (Radio)', effect: {}, category: 'Exposure', log: 'Radiology performing Air Enema.', type: 'bolus', duration: 300 },
@@ -942,6 +944,7 @@
             const newVitals = { ...state.vitals };
             let newActive = new Set(state.activeInterventions);
             let newCounts = { ...state.interventionCounts };
+            const count = (newCounts[key] || 0) + 1;
             
             if (action.duration && !state.activeDurations[key]) {
                 dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
@@ -951,14 +954,57 @@
                 if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } 
                 else { newActive.add(key); addLogEntry(action.log, 'action'); }
             } else {
-                newCounts[key] = (newCounts[key] || 0) + 1;
+                newCounts[key] = count;
                 addLogEntry(action.log, 'action');
             }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
 
-            // Effects
+            // --- STATE CHANGE LOGIC (NARRATIVE) ---
+            // 1. SEIZURE CESSATION
+            if (state.scenario.presentingComplaint === 'Seizure' || state.scenario.title.includes('Seizure') || state.scenario.title.includes('Eclampsia')) {
+                const benzos = (newCounts['Lorazepam'] || 0) + (newCounts['Midazolam'] || 0);
+                const secondLine = (newCounts['Levetiracetam'] || 0) + (newCounts['Phenytoin'] || 0) + (newCounts['MagSulph'] || 0); // Mag for Eclampsia
+                
+                // Logic: Stop if 2 doses benzo OR 1 benzo + 1 second line, OR RSI
+                if ((benzos >= 2 || (benzos >= 1 && secondLine >= 1) || newActive.has('RSI')) && state.vitals.gcs < 10) {
+                     addLogEntry("CLINICAL UPDATE: Seizure activity has ceased. Patient is post-ictal.", 'success');
+                     newVitals.hr = Math.max(80, newVitals.hr - 30);
+                     newVitals.rr = 18;
+                     newVitals.spO2 = 96;
+                     // Stop deterioration
+                     const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
+                     dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+                     dispatch({ type: 'SET_FLASH', payload: 'green' });
+                }
+            }
+
+            // 2. TENSION PNEUMOTHORAX RESOLUTION
+            if (state.scenario.title.includes('Tension') || state.scenario.title.includes('Stab')) {
+                if (key === 'Needle' || key === 'FingerThoracostomy') {
+                     addLogEntry("CLINICAL UPDATE: Hiss of air heard. Hemodynamics improving.", 'success');
+                     newVitals.spO2 = 92; 
+                     newVitals.bpSys = Math.max(90, newVitals.bpSys + 30);
+                }
+            }
+
+            // 3. ANAPHYLAXIS RESOLUTION
+            if (state.scenario.title.includes('Anaphylaxis')) {
+                if (key === 'Adrenaline' && count >= 2) {
+                    addLogEntry("CLINICAL UPDATE: Wheeze resolving. BP stabilizing.", 'success');
+                    const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
+                    dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+                }
+            }
+
+            // 4. HYPOGLYCAEMIA
+            if (state.vitals.bm < 4.0 && (key === 'InsulinDextrose' || key === 'Glucagon')) {
+                 newVitals.bm = 6.0;
+                 newVitals.gcs = 14;
+                 addLogEntry("CLINICAL UPDATE: GCS improving. BM 6.0.", 'success');
+            }
+
+            // --- PHYSIOLOGICAL EFFECTS ---
             if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT')) {
-                // Defib logic now relies on queued rhythm if set, else chance
                 if (state.queuedRhythm) {
                     dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm });
                     if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC();
@@ -974,8 +1020,15 @@
 
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
-            // Drugs Logic
+            // Standard Vital Adjustments
             const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
+            
+            // Thoracotomy in Arrest (Trauma) - Drastic improvement potential
+            if (key === 'Thoracotomy' && isArrest && state.scenario.category === 'Trauma') {
+                 newVitals.bpSys = 60;
+                 addLogEntry("CLINICAL UPDATE: Output achieved with internal massage.", 'success');
+            }
+
             if (!isArrest) {
                 if (action.effect.HR) { 
                     if (action.effect.HR === 'reset') newVitals.hr = 80; 
@@ -987,7 +1040,7 @@
             if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
             if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
 
-            // Scenario stabilisers
+            // General Stabilisers pausing deterioration
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) {
                 dispatch({ type: 'UPDATE_SCENARIO', payload: { ...state.scenario, deterioration: { ...state.scenario.deterioration, rate: Math.max(0, state.scenario.deterioration.rate - 0.05) } } });
                 dispatch({ type: 'SET_FLASH', payload: 'green' });
@@ -1099,11 +1152,41 @@
         const [category, setCategory] = useState(initialParams?.category || 'Any');
         const [age, setAge] = useState(initialParams?.age || 'Any');
         const [hf, setHf] = useState(initialParams?.hf || 'hf0');
-        const [acuity, setAcuity] = useState('Any'); 
+        const [acuity, setAcuity] = useState(initialParams?.acuity || 'Any'); 
         const [loading, setLoading] = useState(false);
         const [customMode, setCustomMode] = useState(initialParams?.customMode || false);
         const [error, setError] = useState("");
-        const [customScenario, setCustomScenario] = useState({ title: "Custom Case", age: 40, complaint: "Unwell", profile: "History...", hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37.0, gcs: 15, bm: 5.5, ecgType: "Sinus Rhythm", ecgFindings: "NSR", cxrFindings: "Normal", urineFindings: "Clear", ctFindings: "Normal" });
+        const [baseTemplate, setBaseTemplate] = useState(""); // For picking a pre-made scenario
+        
+        const [customScenario, setCustomScenario] = useState({ 
+            title: "Custom Case", age: 40, complaint: "Unwell", profile: "History...", 
+            hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37.0, gcs: 15, bm: 5.5, 
+            ecgType: "Sinus Rhythm", ecgFindings: "NSR", cxrFindings: "Normal", 
+            urineFindings: "Clear", ctFindings: "Normal" 
+        });
+
+        // Function to fill custom fields from a selected template
+        const handleTemplateChange = (e) => {
+            const templateId = e.target.value;
+            setBaseTemplate(templateId);
+            const tmpl = ALL_SCENARIOS.find(s => s.id === templateId);
+            if (tmpl) {
+                const pAge = tmpl.ageGenerator();
+                const v = tmpl.vitalsMod || getBaseVitals(pAge);
+                setCustomScenario({
+                    title: tmpl.title,
+                    age: pAge,
+                    complaint: tmpl.presentingComplaint,
+                    profile: tmpl.patientProfileTemplate.replace('{age}', pAge).replace('{sex}', 'Male'),
+                    hr: v.hr || 80, bpSys: v.bpSys || 120, rr: v.rr || 16, spO2: v.spO2 || 98, temp: v.temp || 37, gcs: v.gcs || 15, bm: v.bm || 5.5,
+                    ecgType: tmpl.ecg?.type || "Sinus Rhythm",
+                    ecgFindings: tmpl.ecg?.findings || "NSR",
+                    cxrFindings: tmpl.chestXray?.findings || "Normal",
+                    urineFindings: tmpl.urine?.findings || "Normal",
+                    ctFindings: tmpl.ct?.findings || "Normal"
+                });
+            }
+        };
 
         const handleGenerate = () => {
             setError(""); setLoading(true);
@@ -1111,23 +1194,60 @@
                 let generatedScenario;
                 if (customMode) {
                     const history = generateHistory(customScenario.age);
-                    generatedScenario = { id: 'CUSTOM', title: customScenario.title, category: 'Custom', ageRange: 'Custom', patientAge: customScenario.age, profile: customScenario.profile, presentingComplaint: customScenario.complaint, scenarioDetails: ['Custom scenario.'], instructorBrief: { progression: "Custom.", interventions: [], equipment: "Standard", debriefPoints: [] }, recommendedActions: [], vitals: { hr: parseInt(customScenario.hr), bpSys: parseInt(customScenario.bpSys), bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65), rr: parseInt(customScenario.rr), spO2: parseInt(customScenario.spO2), temp: parseFloat(customScenario.temp), gcs: parseInt(customScenario.gcs), bm: parseFloat(customScenario.bm), pupils: '3mm' }, vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings }, chestXray: { findings: customScenario.cxrFindings }, deterioration: { active: false, rate: 0 }, stabilisers: [], interventions: [], pmh: history.pmh, dhx: history.dhx, allergies: history.allergies, urine: { findings: customScenario.urineFindings }, ct: { findings: customScenario.ctFindings } };
+                    generatedScenario = { 
+                        id: 'CUSTOM', title: customScenario.title, category: 'Custom', ageRange: 'Custom', 
+                        patientAge: customScenario.age, profile: customScenario.profile, presentingComplaint: customScenario.complaint, 
+                        scenarioDetails: ['Custom scenario.'], 
+                        instructorBrief: { progression: "Custom.", interventions: [], equipment: "Standard", debriefPoints: [] }, 
+                        recommendedActions: [], 
+                        vitals: { hr: parseInt(customScenario.hr), bpSys: parseInt(customScenario.bpSys), bpDia: Math.floor(parseInt(customScenario.bpSys) * 0.65), rr: parseInt(customScenario.rr), spO2: parseInt(customScenario.spO2), temp: parseFloat(customScenario.temp), gcs: parseInt(customScenario.gcs), bm: parseFloat(customScenario.bm), pupils: '3mm' }, 
+                        vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), 
+                        ecg: { type: customScenario.ecgType, findings: customScenario.ecgFindings }, 
+                        chestXray: { findings: customScenario.cxrFindings }, deterioration: { active: false, rate: 0 }, 
+                        stabilisers: [], interventions: [], pmh: history.pmh, dhx: history.dhx, allergies: history.allergies, 
+                        urine: { findings: customScenario.urineFindings }, ct: { findings: customScenario.ctFindings } 
+                    };
                 } else {
-                    let pool = ALL_SCENARIOS.filter(s => (category === 'Any' || s.category === category) && (age === 'Any' || s.ageRange === age) && (acuity === 'Any' || s.acuity === acuity));
+                    let pool = ALL_SCENARIOS.filter(s => 
+                        (category === 'Any' || s.category === category) && 
+                        (age === 'Any' || s.ageRange === age) && 
+                        (acuity === 'Any' || s.acuity === acuity)
+                    );
+                    
                     if (pool.length === 0) { setLoading(false); setError(`No scenarios found for ${category} + ${age} + ${acuity}.`); return; }
+                    
                     const base = pool[Math.floor(Math.random() * pool.length)];
                     const patientAge = base.ageGenerator();
                     const ranges = getBaseVitals(patientAge);
                     const history = generateHistory(patientAge, base.category === 'Obstetrics & Gynae' ? 'Female' : 'Male');
-                    let startVitals = { hr: base.vitalsMod?.hr || ranges.hr, bpSys: base.vitalsMod?.bpSys || ranges.bpSys, bpDia: base.vitalsMod?.bpDia || ranges.bpDia || Math.floor((base.vitalsMod?.bpSys || ranges.bpSys) * 0.65), rr: base.vitalsMod?.rr || ranges.rr, spO2: base.vitalsMod?.spO2 || 98, temp: base.vitalsMod?.temp || ranges.temp, gcs: base.vitalsMod?.gcs || 15, bm: ranges.bm, pupils: ranges.pupils };
+                    let startVitals = { 
+                        hr: base.vitalsMod?.hr || ranges.hr, 
+                        bpSys: base.vitalsMod?.bpSys || ranges.bpSys, 
+                        bpDia: base.vitalsMod?.bpDia || ranges.bpDia || Math.floor((base.vitalsMod?.bpSys || ranges.bpSys) * 0.65), 
+                        rr: base.vitalsMod?.rr || ranges.rr, 
+                        spO2: base.vitalsMod?.spO2 || 98, 
+                        temp: base.vitalsMod?.temp || ranges.temp, 
+                        gcs: base.vitalsMod?.gcs || 15, 
+                        bm: ranges.bm, 
+                        pupils: ranges.pupils 
+                    };
                     const profile = base.patientProfileTemplate.replace(/{age}/g, patientAge).replace(/{sex}/g, 'male');
-                    generatedScenario = { ...base, patientAge, profile, vitals: startVitals, vbg: generateVbg(base.vbgClinicalState), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies };
+                    generatedScenario = { 
+                        ...base, patientAge, profile, vitals: startVitals, 
+                        vbg: generateVbg(base.vbgClinicalState), 
+                        hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), 
+                        pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies 
+                    };
                 }
+                
+                // Add Paeds Weight/WETFLAG if applicable
                 if (generatedScenario.ageRange === 'Paediatric' || generatedScenario.patientAge < 18) { 
-    generatedScenario.weight = estimateWeight(generatedScenario.patientAge);
-    generatedScenario.wetflag = calculateWetflag(generatedScenario.patientAge, generatedScenario.weight);
-}
-                setLoading(false); onGenerate(generatedScenario, { category, age, hf, customMode, acuity });
+                    generatedScenario.weight = estimateWeight(generatedScenario.patientAge);
+                    generatedScenario.wetflag = calculateWetflag(generatedScenario.patientAge, generatedScenario.weight);
+                }
+                
+                setLoading(false); 
+                onGenerate(generatedScenario, { category, age, hf, customMode, acuity });
             }, 600);
         };
 
@@ -1151,11 +1271,18 @@
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             <div><label className="text-xs uppercase text-slate-500 font-bold">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option></select></div>
                             <div><label className="text-xs uppercase text-slate-500 font-bold">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option></select></div>
-                            <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Resus">Resus</option></select></div>
+                            <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
                             <div><label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">{HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
                         </div>
                     ) : (
                         <div className="space-y-4 mb-6">
+                             <div>
+                                <label className="text-xs uppercase text-slate-500 font-bold">Pre-fill from Scenario (Optional)</label>
+                                <select value={baseTemplate} onChange={handleTemplateChange} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">
+                                    <option value="">-- Select Base --</option>
+                                    {ALL_SCENARIOS.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                                </select>
+                            </div>
                             <input type="text" placeholder="Title" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3"/>
                             <div className="grid grid-cols-2 gap-2">
                                 <select value={customScenario.ecgType} onChange={e => setCustomScenario({...customScenario, ecgType: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-3"><option>Sinus Rhythm</option><option>Sinus Tachy</option><option>AF</option><option>VT</option><option>VF</option><option>STEMI</option><option>Asystole</option></select>
