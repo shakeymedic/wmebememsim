@@ -307,7 +307,7 @@
     };
     
     // === SCENARIO DATABASE ---
-    const ALL_SCENARIOS = [
+    const RAW_SCENARIOS = [
       { id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(45, 75), patientProfileTemplate: "A {age}-year-old {sex}. Crushing chest pain > 1 hr.", presentingComplaint: 'Chest Pain', instructorBrief: { progression: "Classic STEMI. Risk of VF.", interventions: ["PPCI", "Aspirin", "Ticagrelor/Clopidogrel", "Heparin"], learningObjectives: ["Identify STEMI", "Manage ACS"] }, vitalsMod: { hr: 95, bpSys: 145, spO2: 96 }, deterioration: { active: true, rate: 0.05, type: 'cardiac' }, ecg: { type: "STEMI", findings: "Anterior ST Elevation" }, recommendedActions: ['Obs', 'IV Access', 'Aspirin', 'Clopidogrel', 'GTN', 'Analgesia', 'Oxygen'] },
       { id: 'AM002', title: 'Severe Sepsis (Pneumonia)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(60, 90), patientProfileTemplate: "A {age}-year-old. Productive cough, confusion, fever.", presentingComplaint: 'Confusion & Fever', instructorBrief: { progression: "Septic shock. Needs Sepsis 6.", interventions: ["Oxygen", "Fluids", "Antibiotics"], learningObjectives: ["Sepsis 6", "Fluid Resus"] }, vitalsMod: { hr: 125, bpSys: 85, spO2: 88, temp: 39.2 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia" }, recommendedActions: ['Obs', 'IV Access', 'Oxygen', 'Fluids', 'Antibiotics'] },
       { id: 'AM003', title: 'Acute Severe Asthma', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(18, 40), patientProfileTemplate: "A {age}-year-old asthmatic. Short of breath.", presentingComplaint: 'Dyspnoea', instructorBrief: { progression: "Life threatening. Silent chest.", interventions: ["Nebs", "Magnesium", "Steroids"], learningObjectives: ["Asthma Management"] }, vitalsMod: { hr: 130, bpSys: 110, spO2: 88, rr: 35 }, deterioration: { active: true, rate: 0.08, type: 'respiratory' }, stabilisers: ['Nebs', 'Magnesium'], ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia" }, recommendedActions: ['Obs', 'IV Access', 'Oxygen', 'Nebs', 'Dexamethasone', 'MagSulph'] },
@@ -459,6 +459,34 @@
       { id: 'PS002', title: 'Lithium Toxicity', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(30, 60), patientProfileTemplate: "A {age}-year-old. Coarse tremor, vomiting, ataxia.", presentingComplaint: 'Tremor & Vomiting', instructorBrief: { progression: "Seizures and renal failure.", interventions: ["Aggressive Hydration", "Dialysis (if severe)"], learningObjectives: ["Chronic vs Acute toxicity", "Dialysis indications"] }, vitalsMod: { hr: 90, bpSys: 130, spO2: 98, gcs: 14 }, deterioration: { active: true, rate: 0.05, type: 'neuro' }, stabilisers: ['Fluids'], recommendedActions: ['Obs', 'IV Access', 'Fluids'] },
       { id: 'PS003', title: 'Catatonia', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old. Mute, immobile, holding awkward postures.", presentingComplaint: 'Unresponsive', instructorBrief: { progression: "Malnutrition/DVT risks.", interventions: ["Lorazepam Trial", "Exclude organic cause"], learningObjectives: ["Benzodiazepine response", "Waxy flexibility"] }, vitalsMod: { hr: 80, bpSys: 120, spO2: 98, gcs: 10 }, deterioration: { active: false, rate: 0 }, stabilisers: ['Lorazepam'], recommendedActions: ['Obs', 'IV Access', 'Lorazepam', 'Fluids'] }  
     ];
+        // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES & KIT ---
+    const ALL_SCENARIOS = RAW_SCENARIOS.map(s => {
+        let kit = ['Monitoring', 'IV Access'];
+        let links = [];
+
+        // Kit Logic
+        if (s.acuity === 'Resus') kit = [...kit, 'Defibrillator', 'Airway Trolley', 'Drugs Bag', 'IO Drill', 'Ultrasound'];
+        if (s.category === 'Trauma') kit = [...kit, 'Pelvic Binder', 'Splints', 'TXA', 'Blood Warmer'];
+        if (s.ageRange === 'Paediatric') kit = [...kit, 'Broselow Tape', 'Paeds Drug Calc'];
+        if (s.category === 'Obstetrics & Gynae') kit = [...kit, 'Obs Delivery Pack', 'Neonatal Resuscatire'];
+
+        // Guidelines Logic
+        if (s.ageRange === 'Paediatric') {
+            links.push({ label: 'APLS Guidelines', url: 'https://www.resus.org.uk/library/2021-resuscitation-guidelines/paediatric-advanced-life-support-guidelines' });
+        } else {
+            links.push({ label: 'ALS Guidelines', url: 'https://www.resus.org.uk/library/2021-resuscitation-guidelines/adult-advanced-life-support-guidelines' });
+        }
+
+        if (s.category === 'Trauma') links.push({ label: 'NICE Trauma', url: 'https://www.nice.org.uk/guidance/ng39' });
+        if (s.category === 'Toxicology') links.push({ label: 'TOXBASE (Sim)', url: 'https://www.toxbase.org/' });
+        if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust', url: 'https://sepsistrust.org/' });
+        
+        return {
+            ...s,
+            equipment: s.instructorBrief.equipment || kit, // Prefer manual override if exists
+            learningLinks: s.learningLinks || links
+        };
+    });
 
     // --- 2. COMPONENTS ---
 
@@ -1845,7 +1873,7 @@
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v12.4</h1></div></div>
+                    <div className="flex items-center gap-3"><img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" /><div><h1 className="text-lg md:text-2xl font-bold text-sky-400">Sim Generator v14</h1></div></div>
                     <div className="hidden md:block text-right"><p className="text-[10px] text-slate-500">In-situ Simulation Tool</p></div>
                 </header>
                 <main className="flex-grow overflow-hidden relative">
