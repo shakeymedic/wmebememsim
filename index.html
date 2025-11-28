@@ -1769,25 +1769,6 @@
             doc.save("sim-debrief.pdf");
         };
 
-        return (
-            <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
-                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
-                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
-                    <div className="flex gap-2">
-                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
-                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
-                    </div>
-                </div>
-
-                <Card title="Physiological Trends" icon="activity">
-                    <div className="bg-slate-900 p-2 rounded h-64 md:h-96 relative">
-                        <canvas ref={chartRef}></canvas>
-                    </div>
-                </Card>
-                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
-            </div>
-        );
-    };
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [currentScenario, setCurrentScenario] = useState(null);
