@@ -1081,7 +1081,10 @@
                     const profile = base.patientProfileTemplate.replace(/{age}/g, patientAge).replace(/{sex}/g, 'male');
                     generatedScenario = { ...base, patientAge, profile, vitals: startVitals, vbg: generateVbg(base.vbgClinicalState), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf), pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies };
                 }
-                if (generatedScenario.ageRange === 'Paediatric' || generatedScenario.patientAge < 18) { generatedScenario.weight = estimateWeight(generatedScenario.patientAge); }
+                if (generatedScenario.ageRange === 'Paediatric' || generatedScenario.patientAge < 18) { 
+    generatedScenario.weight = estimateWeight(generatedScenario.patientAge);
+    generatedScenario.wetflag = calculateWetflag(generatedScenario.patientAge, generatedScenario.weight);
+}
                 setLoading(false); onGenerate(generatedScenario, { category, age, hf, customMode, acuity });
             }, 600);
         };
@@ -1349,6 +1352,21 @@
                                  <InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
                              ))}
                          </div>
+                        {scenario.wetflag && (
+    <div className="mt-4 bg-slate-900/50 rounded border border-slate-700 p-2">
+        <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1 border-b border-slate-700 pb-1">WETFLAG (Wt: {scenario.wetflag.weight}kg)</h4>
+        <table className="w-full text-[10px] text-left text-slate-300">
+            <tbody>
+                <tr><td className="py-0.5 text-slate-500 font-bold">Energy (4J/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.energy} J</td></tr>
+                <tr><td className="py-0.5 text-slate-500 font-bold">Tube Size</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.tube}</td></tr>
+                <tr><td className="py-0.5 text-slate-500 font-bold">Fluids (10ml/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.fluids} ml</td></tr>
+                <tr><td className="py-0.5 text-slate-500 font-bold">Lorazepam</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.lorazepam} mg</td></tr>
+                <tr><td className="py-0.5 text-slate-500 font-bold">Adren (1:10k)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.adrenaline} ml</td></tr>
+                <tr><td className="py-0.5 text-slate-500 font-bold">Glucose (10%)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.glucose} ml</td></tr>
+            </tbody>
+        </table>
+    </div>
+)}
                     </Card>
                     
                     <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
