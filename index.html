@@ -878,9 +878,18 @@
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set() };
+            
             case 'RESTORE_SESSION':
                 const restored = action.payload;
-                return { ...restored, activeInterventions: new Set(restored.activeInterventions || []), processedEvents: new Set(restored.processedEvents || []), isRunning: false };
+                return { 
+                    ...restored, 
+                    activeInterventions: new Set(restored.activeInterventions || []), 
+                    processedEvents: new Set(restored.processedEvents || []), 
+                    isRunning: false,
+                    // FIX: Ensure CPR state exists even if restoring an old session
+                    cpr: restored.cpr || { active: false, startTime: 0, lastShockTime: 0, lastAdrenalineTime: 0 }
+                };
+
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
@@ -922,7 +931,6 @@
             default: return state;
         }
     };
-
     const useSimulation = (initialScenario) => {
         const [state, dispatch] = useReducer(simReducer, initialState);
         const timerRef = useRef(null);
