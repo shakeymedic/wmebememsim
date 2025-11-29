@@ -1366,7 +1366,23 @@
                                 <label className="text-xs uppercase text-slate-500 font-bold">Pre-fill from Scenario (Optional)</label>
                                 <select value={baseTemplate} onChange={handleTemplateChange} className="w-full bg-slate-700 border-slate-600 rounded p-3 text-sm">
                                     <option value="">-- Select Base --</option>
-                                    {ALL_SCENARIOS.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                                    {[
+                                        { label: 'Paediatric', filter: s => s.ageRange === 'Paediatric' },
+                                        { label: 'Elderly Care', filter: s => s.ageRange === 'Elderly' },
+                                        { label: 'Obstetrics & Gynae', filter: s => s.category === 'Obstetrics & Gynae' && s.ageRange !== 'Elderly' },
+                                        { label: 'Toxicology', filter: s => s.category === 'Toxicology' && s.ageRange === 'Adult' },
+                                        { label: 'Psychiatric', filter: s => s.category === 'Psychiatric' && s.ageRange === 'Adult' },
+                                        { label: 'Major Trauma', filter: s => s.category === 'Trauma' && s.ageRange === 'Adult' },
+                                        { label: 'Medical Emergencies', filter: s => s.category === 'Medical' && s.ageRange === 'Adult' }
+                                    ].map(group => {
+                                        const options = ALL_SCENARIOS.filter(group.filter);
+                                        if (options.length === 0) return null;
+                                        return (
+                                            <optgroup key={group.label} label={group.label}>
+                                                {options.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                                            </optgroup>
+                                        );
+                                    })}
                                 </select>
                             </div>
                             <input type="text" placeholder="Title" value={customScenario.title} onChange={e => setCustomScenario({...customScenario, title: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-3"/>
