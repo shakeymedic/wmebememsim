@@ -208,9 +208,9 @@
         'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
 
         // --- CIRCULATION ---
-        'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Common', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
+        'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
         'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Circulation', log: 'Subclavian central line inserted (US guided).', type: 'continuous', duration: 300 },
-        'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Common', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
+        'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
         'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: 'O-Negative Blood administered.', type: 'bolus', duration: 300 },
         'TXA': { label: 'TXA', effect: {}, category: 'Circulation', log: 'IV Tranexamic Acid administered.', type: 'bolus', duration: 60 },
         'AdrenalineIV': { label: 'Adrenaline (IV)', effect: { changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Adrenaline administered.', type: 'bolus', duration: 5 },
@@ -235,7 +235,7 @@
 
         // --- DRUGS (Formerly Disability/General) ---
         'AdrenalineIM': { label: 'Adrenaline (IM)', effect: { HR: 20, BP: 15 }, category: 'Drugs', log: 'IM Adrenaline administered.', type: 'bolus', duration: 5 },
-        'Analgesia': { label: 'Morphine', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Common', log: 'IV Morphine administered.', type: 'bolus', duration: 10 },
+        'Analgesia': { label: 'Morphine', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Morphine administered.', type: 'bolus', duration: 10 },
         'Fentanyl': { label: 'Fentanyl', effect: { HR: -2, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Fentanyl administered.', type: 'bolus', duration: 10 },
         'Paracetamol': { label: 'Paracetamol', effect: {}, category: 'Drugs', log: 'IV Paracetamol administered.', type: 'bolus', duration: 10 },
         'Ketamine': { label: 'Ketamine', effect: { gcs: -5, BP: 5, HR: 5 }, category: 'Drugs', log: 'IV Ketamine administered.', type: 'bolus', duration: 15 },
@@ -253,7 +253,7 @@
         'Clopidogrel': { label: 'Clopidogrel', effect: {}, category: 'Drugs', log: 'Clopidogrel PO administered.', type: 'bolus', duration: 10 },
         'Dexamethasone': { label: 'Dexamethasone', effect: {}, category: 'Drugs', log: 'IV Dexamethasone administered.', type: 'bolus', duration: 10 },
         'Hydrocortisone': { label: 'Hydrocortisone', effect: { BP: 5 }, category: 'Drugs', log: 'IV Hydrocortisone administered.', type: 'bolus', duration: 10 },
-        'Antiemetic': { label: 'Ondansetron', effect: {}, category: 'Common', log: 'IV Ondansetron administered.', type: 'bolus', duration: 10, searchTags: 'zofran' },
+        'Antiemetic': { label: 'Ondansetron', effect: {}, category: 'Drugs', log: 'IV Ondansetron administered.', type: 'bolus', duration: 10, searchTags: 'zofran' },
         'Cyclizine': { label: 'Cyclizine', effect: { HR: 5 }, category: 'Drugs', log: 'IV Cyclizine administered.', type: 'bolus', duration: 10 },
         'Pabrinex': { label: 'Pabrinex', effect: {}, category: 'Drugs', log: 'IV Pabrinex administered.', type: 'bolus', duration: 30 },
         'Heparin': { label: 'LMWH / Heparin', effect: {}, category: 'Drugs', log: 'Anticoagulation administered.', type: 'bolus', duration: 10 },
