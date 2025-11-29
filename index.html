@@ -968,7 +968,10 @@
         etco2Enabled: false,
         isParalysed: false,
         queuedRhythm: null,
+        cpr: { active: false, startTime: 0, lastShockTime: 0, lastAdrenalineTime: 0 }, // <--- NEW LINE ADDED HERE
     };
+
+    const simReducer = (state, action) => {
 
     const simReducer = (state, action) => {
         switch (action.type) {
@@ -976,6 +979,14 @@
                 return { ...state, isRunning: true, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
             case 'PAUSE_SIM':
                 return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
+            
+            // --- NEW CODE STARTS HERE ---
+            case 'TOGGLE_CPR': 
+                return { ...state, cpr: { ...state.cpr, active: !state.cpr.active, startTime: !state.cpr.active ? state.time : 0 } };
+            case 'SET_CPR_TIME': 
+                return { ...state, cpr: { ...state.cpr, [action.payload.key]: action.payload.value } };
+            // --- NEW CODE ENDS HERE ---
+
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set() };
