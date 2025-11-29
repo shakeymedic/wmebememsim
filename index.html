@@ -1408,7 +1408,6 @@
 
                     {/* ACTIONS PANEL */}
                     <Card title="Clinical Actions" icon="activity" className="flex-1 min-h-0 bg-slate-800">
-                        {/* RESUS CONSOLE */}
                         {isArrest && <ResusConsole sim={sim} />}
                         
                         {/* Sim Controls */}
@@ -1537,7 +1536,6 @@
             </div>
         );
     };
-
     const DebriefScreen = ({ sim, onRestart }) => {
         const { state } = sim;
         const { log, scenario, history } = state; 
