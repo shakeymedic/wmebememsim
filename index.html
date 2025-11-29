@@ -968,10 +968,9 @@
         etco2Enabled: false,
         isParalysed: false,
         queuedRhythm: null,
-        cpr: { active: false, startTime: 0, lastShockTime: 0, lastAdrenalineTime: 0 }, // <--- NEW LINE ADDED HERE
+        // --- CPR STATE INITIALIZATION ---
+        cpr: { active: false, startTime: 0, lastShockTime: 0, lastAdrenalineTime: 0 },
     };
-
-    const simReducer = (state, action) => {
 
     const simReducer = (state, action) => {
         switch (action.type) {
@@ -980,12 +979,12 @@
             case 'PAUSE_SIM':
                 return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
             
-            // --- NEW CODE STARTS HERE ---
+            // --- CPR LOGIC START ---
             case 'TOGGLE_CPR': 
                 return { ...state, cpr: { ...state.cpr, active: !state.cpr.active, startTime: !state.cpr.active ? state.time : 0 } };
             case 'SET_CPR_TIME': 
                 return { ...state, cpr: { ...state.cpr, [action.payload.key]: action.payload.value } };
-            // --- NEW CODE ENDS HERE ---
+            // --- CPR LOGIC END ---
 
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
@@ -1005,8 +1004,6 @@
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
-            
-            // --- NEW: PROGRESSION LOGIC ---
             case 'TRIGGER_IMPROVE':
                 if (!state.scenario.evolution) return state;
                 const improvedScen = { ...state.scenario, ...state.scenario.evolution.improved, deterioration: { ...state.scenario.deterioration, active: false } };
@@ -1015,7 +1012,6 @@
                  if (!state.scenario.evolution) return state;
                  const detScen = { ...state.scenario, ...state.scenario.evolution.deteriorated, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 } };
                  return { ...state, scenario: detScen, flash: 'red' };
-
             case 'ADD_LOG':
                 const timestamp = new Date().toLocaleTimeString('en-GB');
                 const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`;
