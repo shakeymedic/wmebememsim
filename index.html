@@ -694,7 +694,7 @@
         );
     };
 
-    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology }) => {
+    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2 }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
         
@@ -705,14 +705,15 @@
             beatProgress: 0,
             breathProgress: 0,
             lastTime: 0,
-            lastYCO2: 0 // Will init in loop
+            lastYCO2: 0,
+            lastYPleth: 0
         });
 
-        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused });
+        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2 });
 
         useEffect(() => {
-            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused };
-        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused]);
+            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2 };
+        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2]);
 
         const getWaveform = (type, t) => {
             const noise = (Math.random() - 0.5) * 2;
@@ -731,29 +732,38 @@
             if (type === 'STEMI') {
                 let y = 50; if (t < 0.15) y -= Math.sin(t / 0.15 * Math.PI) * 3; else if (t >= 0.15 && t < 0.20) y -= 2; else if (t >= 0.20 && t < 0.24) y -= 45; else if (t >= 0.24 && t < 0.26) y += 10; else if (t >= 0.26 && t < 0.55) { y -= 10; y -= Math.sin((t-0.26)/0.29 * Math.PI) * 8; } return y + noise;
             }
+            // Normal Sinus
             let y = 50; if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
         };
 
+        const getPlethWave = (t, spO2) => {
+            if (!spO2 || spO2 < 10) return 0; // Flatline if no sensor/very low
+            // Simple dicrotic notch simulation
+            // Main peak at 0.2, notch at 0.5
+            let y = 0;
+            if (t < 0.3) {
+                y = Math.sin((t / 0.3) * Math.PI);
+            } else {
+                y = Math.sin(((t - 0.3) / 0.7) * Math.PI) * 0.3; // Dicrotic notch area
+            }
+            return y; 
+        };
+
         const getEtco2Wave = (t, pathology, rr, rhythm) => {
-            if (rr <= 0) return 0; // Apnoea = Flatline
+            if (rr <= 0) return 0; 
             const isCardiacArrest = ['VF', 'VT', 'Asystole', 'PEA'].includes(rhythm);
-            const baseAmplitude = isCardiacArrest ? 0.3 : 1.0; // Low amplitude in arrest
+            const baseAmplitude = isCardiacArrest ? 0.3 : 1.0; 
 
             if (t < 0.1 || t > 0.6) return 0; 
-            
-            if (t >= 0.1 && t < 0.15) { // Upstroke
-                return ((t - 0.1) / 0.05) * baseAmplitude;
-            }
-            if (t >= 0.15 && t < 0.5) { // Plateau
+            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05) * baseAmplitude;
+            if (t >= 0.15 && t < 0.5) {
                 const plateauBase = 1.0;
                 const plateauEnd = 0.9;
                 const p = (t - 0.15) / 0.35;
-                if (pathology === 'respiratory') {
-                    return (0.5 + (p * 0.5)) * baseAmplitude; 
-                }
+                if (pathology === 'respiratory') return (0.5 + (p * 0.5)) * baseAmplitude; 
                 return (plateauBase - (p * (plateauBase - plateauEnd))) * baseAmplitude;
             }
-            if (t >= 0.5 && t <= 0.6) { // Downstroke
+            if (t >= 0.5 && t <= 0.6) {
                 const startVal = (pathology === 'respiratory' ? 1.0 : 0.9);
                 const p = (t - 0.5) / 0.1;
                 return (startVal * (1 - p)) * baseAmplitude;
@@ -770,7 +780,9 @@
                 if(parent) {
                     canvas.width = parent.clientWidth;
                     canvas.height = parent.clientHeight;
-                    drawState.current.lastYCO2 = canvas.height - 2;
+                    // Reset Y positions based on new height
+                    drawState.current.lastYCO2 = canvas.height * 0.65;
+                    drawState.current.lastYPleth = canvas.height - 5;
                     ctx.fillStyle = '#000000';
                     ctx.fillRect(0,0, canvas.width, canvas.height);
                 }
@@ -791,43 +803,43 @@
                     return;
                 }
 
-                // --- LOGIC ---
+                // --- RHYTHM LOGIC ---
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
                 let currentRate = props.hr || 60;
-                
-                if (currentRhythm === 'AF' && state.beatProgress >= 1) { 
-                    currentRate = props.hr + (Math.random() * 60 - 30); 
-                }
+                if (currentRhythm === 'AF' && state.beatProgress >= 1) currentRate = props.hr + (Math.random() * 60 - 30); 
                 let beatDuration = 60 / Math.max(10, currentRate);
-                if (currentRhythm === 'VF') beatDuration = 60/300; // VF is fast
+                if (currentRhythm === 'VF') beatDuration = 60/300;
+
+                // --- BREATH LOGIC ---
+                let breathDuration = 60 / (Math.max(1, props.rr) || 12);
 
                 // Move Cursor
-                const ecgSpeed = 150; // pixels per sec
+                const ecgSpeed = 150; 
                 const dx = ecgSpeed * dt;
                 const prevX = state.x;
                 state.x += dx;
 
                 if (state.x > canvas.width) {
                     state.x = 0;
+                    // Reset Ys to prevent "streak" across screen
                     state.lastY = getWaveform(currentRhythm, state.beatProgress);
-                    state.lastYCO2 = canvas.height - 2;
+                    state.lastYCO2 = canvas.height * 0.65; 
+                    state.lastYPleth = canvas.height - 5;
                 }
 
                 // Eraser Bar
                 const eraserWidth = 20;
+                ctx.fillStyle = '#000000';
                 if (state.x + eraserWidth < canvas.width) {
-                    ctx.fillStyle = '#000000';
                     ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); 
                 } else {
-                     ctx.fillStyle = '#000000';
                      ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height);
                      ctx.fillRect(0, 0, eraserWidth, canvas.height);
                 }
 
-                // --- ECG DRAW ---
+                // --- 1. ECG DRAW (Top) ---
                 state.beatProgress += dt / beatDuration;
                 if (state.beatProgress >= 1) state.beatProgress = 0;
-
                 const yECG = getWaveform(currentRhythm, state.beatProgress);
                 
                 if (state.x > prevX) {
@@ -841,19 +853,17 @@
                 }
                 state.lastY = yECG;
 
-                // --- ETCO2 DRAW ---
+                // --- 2. ETCO2 DRAW (Middle) ---
                 if (props.showEtco2) {
-                    let breathDuration = 60 / (Math.max(1, props.rr) || 12);
                     state.breathProgress += dt / breathDuration;
                     if (state.breathProgress >= 1) state.breathProgress = 0;
-
-                    const normalizedHeight = getEtco2Wave(state.breathProgress, props.pathology, props.rr, currentRhythm);
-                    const co2MaxHeight = 35; 
-                    const co2BaseY = canvas.height - 2; 
-                    const yCO2 = co2BaseY - (normalizedHeight * co2MaxHeight);
+                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr, currentRhythm);
+                    const co2MaxHeight = 30; 
+                    const co2BaseY = (canvas.height * 0.65); 
+                    const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
 
                     if (state.x > prevX) {
-                         ctx.fillStyle = 'rgba(250, 204, 21, 0.4)'; 
+                         ctx.fillStyle = 'rgba(250, 204, 21, 0.2)'; // Faint fill
                          ctx.beginPath();
                          ctx.moveTo(prevX, state.lastYCO2);
                          ctx.lineTo(state.x, yCO2);
@@ -871,6 +881,27 @@
                     state.lastYCO2 = yCO2;
                 }
 
+                // --- 3. PLETH DRAW (Bottom) ---
+                // Uses same beat progress as heart, but slightly delayed phase if we wanted to be fancy.
+                // We use the same beatProgress for sync.
+                if (currentRhythm !== 'VF' && currentRhythm !== 'Asystole' && props.spO2 > 10) {
+                    const plethHeight = 25;
+                    const plethBaseY = canvas.height - 5;
+                    // Only draw if we have a pulse (approx)
+                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
+                    const yPleth = plethBaseY - (normPleth * plethHeight);
+
+                    if (state.x > prevX) {
+                        ctx.strokeStyle = '#0ea5e9'; // Sky Blue
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, state.lastYPleth);
+                        ctx.lineTo(state.x, yPleth);
+                        ctx.stroke();
+                    }
+                    state.lastYPleth = yPleth;
+                }
+
                 requestRef.current = requestAnimationFrame(animate);
             };
 
@@ -882,14 +913,14 @@
         }, []);
 
         return (
-            <div className="w-full h-32 bg-black rounded border border-slate-700 relative overflow-hidden">
+            <div className="w-full h-40 bg-black rounded border border-slate-700 relative overflow-hidden">
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
                 <div className="absolute top-1 right-2 text-xs font-mono text-green-500 font-bold">{rhythmType}</div>
-                {showEtco2 && <div className="absolute bottom-1 right-2 text-xs font-mono text-yellow-500 font-bold">ETCO2</div>}
+                {showEtco2 && <div className="absolute top-14 right-2 text-xs font-mono text-yellow-500 font-bold">ETCO2</div>}
+                <div className="absolute bottom-1 right-2 text-xs font-mono text-sky-500 font-bold">PLETH</div>
             </div>
         );
     };
-
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const hasData = (type === 'ECG' && scenario.ecg) || (type === 'X-ray' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct) || (type === 'Urine' && scenario.urine);
         return (
@@ -1627,7 +1658,15 @@
 
                         {/* WAVEFORMS */}
                         <div className="mb-2 relative">
-                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario.deterioration.type} />
+                             <ECGMonitor 
+                                rhythmType={rhythm} 
+                                hr={vitals.hr} 
+                                rr={vitals.rr} 
+                                spO2={vitals.spO2} 
+                                isPaused={!isRunning} 
+                                showEtco2={etco2Enabled} 
+                                pathology={scenario.deterioration.type} 
+                             />
                              {(!['VF','VT','Asystole'].includes(rhythm) && vitals.bpSys < 30) && (
                                 <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none">
                                     <div className="bg-red-600/80 text-white font-bold text-lg px-6 py-2 rounded pea-warning border-2 border-white">PEA - CHECK PULSE</div>
