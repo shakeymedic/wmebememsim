@@ -209,6 +209,7 @@
 
         // --- CIRCULATION ---
         'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Common', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
+        'ArtLine': { label: 'Arterial Line', effect: {}, category: 'Circulation', log: 'Arterial Line inserted. Invasive BP monitoring active.', type: 'continuous', duration: 180 },
         'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Circulation', log: 'Subclavian central line inserted (US guided).', type: 'continuous', duration: 300 },
         'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Common', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
         'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: 'O-Negative Blood administered.', type: 'bolus', duration: 300 },
@@ -219,6 +220,8 @@
         'Adenosine': { label: 'Adenosine', effect: { HR: 'reset' }, category: 'Circulation', log: 'IV Adenosine rapid bolus administered.', type: 'bolus', duration: 2 },
         'MagSulph': { label: 'Magnesium Sulphate', effect: { BP: -5, RR: -2 }, category: 'Drugs', log: 'IV Magnesium Sulphate administered.', type: 'bolus', duration: 600 },
         'Calcium': { label: 'Calcium Gluconate', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Gluconate administered.', type: 'bolus', duration: 30 },
+        'CalciumChloride': { label: 'Calcium Chloride', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Chloride administered.', type: 'bolus', duration: 30 },
+        'SodiumBicarb': { label: 'Sodium Bicarbonate', effect: { pH: 0.1 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 30 },
         'Metaraminol': { label: 'Metaraminol', effect: { BP: 15 }, category: 'Circulation', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10 },
         'GTN': { label: 'GTN Spray', effect: { BP: -8 }, category: 'Circulation', log: 'GTN Spray sublingual administered.', type: 'bolus', duration: 5 },
         'GTNInfusion': { label: 'GTN Infusion', effect: { BP: -20 }, category: 'Circulation', log: 'GTN Infusion started.', type: 'continuous', duration: 300 },
@@ -227,7 +230,6 @@
         'Defib': { label: 'Defibrillation', effect: { changeRhythm: 'defib' }, category: 'Circulation', log: 'Shock Delivered.', type: 'bolus', duration: 5 },
         'Cardioversion': { label: 'Sync Cardioversion', effect: { changeRhythm: 'sync' }, category: 'Circulation', log: 'Synchronised DC Shock delivered.', type: 'bolus', duration: 5 },
         'Pacing': { label: 'External Pacing', effect: { HR: 'pace' }, category: 'Circulation', log: 'External Pacing initiated.', type: 'continuous', duration: 10 },
-        'CPR': { label: 'Manual CPR', effect: {}, category: 'Circulation', log: 'CPR in progress (30:2).', type: 'continuous', duration: 5 },
         'Lucas': { label: 'Lucas/AutoPulse', effect: { BP: 30 }, category: 'Circulation', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
         'Pericardiocentesis': { label: 'Pericardiocentesis', effect: { BP: 20, HR: -10 }, category: 'Procedures', log: 'Pericardiocentesis performed.', type: 'bolus', duration: 30 },
         'Thoracotomy': { label: 'Resus Thoracotomy', effect: { BP: 30, HR: 20 }, category: 'Procedures', log: 'Clamshell Thoracotomy performed. Internal cardiac massage started.', type: 'bolus', duration: 120 },
@@ -668,38 +670,45 @@
     };
     
     // Updated VitalDisplay to handle BP explicitly
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false }) => {
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false, visible = true }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
         const isBP = label === "BP";
+        
+        if (!visible) {
+             return (
+                <div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40">
+                    <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span>
+                    <span className="text-xl font-mono text-slate-700">--</span>
+                </div>
+             );
+        }
 
         return (
-            <div className={`bg-slate-900/50 p-2 md:p-3 rounded border flex flex-col items-center justify-center h-24 md:h-28 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
-                <span className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</span>
+            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{label}</span>
                 {isEditing ? (
-                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-xl md:text-2xl font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center" autoFocus />
+                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center" autoFocus />
                 ) : (
-                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-1" onClick={() => { setEditVal(value); setIsEditing(true); }}>
-                        <span className={`font-mono font-bold text-white ${isText ? 'text-lg md:text-xl' : 'text-2xl md:text-3xl'}`}>
+                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5" onClick={() => { setEditVal(value); setIsEditing(true); }}>
+                        <span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
                             {isBP && value2 !== undefined && `/${Math.round(value2)}`}
                         </span>
-                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-xs md:text-sm font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
                 )}
-                <span className="text-[9px] md:text-[10px] text-slate-600 mt-1">{unit}</span>
+                <span className="text-[8px] md:text-[9px] text-slate-600 leading-none">{unit}</span>
             </div>
         );
     };
-
-    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2 }) => {
+    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
         
-        // --- PERSISTENT STATE ---
         const drawState = useRef({
             x: 0,
             lastY: 50,
@@ -707,67 +716,76 @@
             breathProgress: 0,
             lastTime: 0,
             lastYCO2: 0,
-            lastYPleth: 0
+            lastYPleth: 0,
+            lastYArt: 0
         });
 
-        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2 });
+        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR });
 
         useEffect(() => {
-            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2 };
-        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2]);
+            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR };
+        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR]);
 
-        const getWaveform = (type, t) => {
+        const getWaveform = (type, t, cpr) => {
             const noise = (Math.random() - 0.5) * 2;
+            let y = 50;
+
+            if (cpr) {
+                // Large sine wave for CPR compressions (~100/min = 1.6Hz)
+                const compression = Math.sin(t * 10) * 35;
+                const artifact = (Math.random() - 0.5) * 15;
+                return 50 + compression + artifact;
+            }
+
             if (type === 'Asystole') return 50 + noise;
-            if (type === 'VF') { return 50 + Math.sin(t * 20) * 15 + Math.sin(t * 7) * 25 + noise * 2; }
+            if (type === 'VF' || type === 'Coarse VF') { return 50 + Math.sin(t * 20) * 15 + Math.sin(t * 7) * 25 + noise * 2; }
+            if (type === 'Fine VF') { return 50 + Math.sin(t * 25) * 5 + Math.sin(t * 10) * 8 + noise; }
             if (type === 'VT') {
-                let y = 50; if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 40; else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 40; return y + noise;
+                if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 40; else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 40; return y + noise;
             }
             if (type === 'AF') {
-                let y = 50; 
                 if (t > 0.4 && t < 0.44) y -= 40;
                 else if (t >= 0.44 && t < 0.46) y += 10;
                 y += Math.sin(t * 50) * 2;
                 return y + noise;
             }
             if (type === 'STEMI') {
-                let y = 50; if (t < 0.15) y -= Math.sin(t / 0.15 * Math.PI) * 3; else if (t >= 0.15 && t < 0.20) y -= 2; else if (t >= 0.20 && t < 0.24) y -= 45; else if (t >= 0.24 && t < 0.26) y += 10; else if (t >= 0.26 && t < 0.55) { y -= 10; y -= Math.sin((t-0.26)/0.29 * Math.PI) * 8; } return y + noise;
+                if (t < 0.15) y -= Math.sin(t / 0.15 * Math.PI) * 3; else if (t >= 0.15 && t < 0.20) y -= 2; else if (t >= 0.20 && t < 0.24) y -= 45; else if (t >= 0.24 && t < 0.26) y += 10; else if (t >= 0.26 && t < 0.55) { y -= 10; y -= Math.sin((t-0.26)/0.29 * Math.PI) * 8; } return y + noise;
             }
-            // Normal Sinus
-            let y = 50; if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
+            // Normal Sinus / Sinus Tachy / Brady
+            if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
         };
 
         const getPlethWave = (t, spO2) => {
-            if (!spO2 || spO2 < 10) return 0; // Flatline if no sensor/very low
-            // Simple dicrotic notch simulation
-            // Main peak at 0.2, notch at 0.5
+            if (!spO2 || spO2 < 10) return 0;
             let y = 0;
-            if (t < 0.3) {
-                y = Math.sin((t / 0.3) * Math.PI);
-            } else {
-                y = Math.sin(((t - 0.3) / 0.7) * Math.PI) * 0.3; // Dicrotic notch area
-            }
+            if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI); } 
+            else { y = Math.sin(((t - 0.3) / 0.7) * Math.PI) * 0.3; }
             return y; 
         };
 
-        const getEtco2Wave = (t, pathology, rr, rhythm) => {
-            if (rr <= 0) return 0; 
-            const isCardiacArrest = ['VF', 'VT', 'Asystole', 'PEA'].includes(rhythm);
-            const baseAmplitude = isCardiacArrest ? 0.3 : 1.0; 
+        const getArtWave = (t, bpSys) => {
+             // Sharp upstroke
+             if (t < 0.2) return Math.sin((t / 0.2) * Math.PI);
+             // Dicrotic notch
+             return Math.sin(((t - 0.2) / 0.8) * Math.PI) * 0.4;
+        };
 
+        const getEtco2Wave = (t, pathology, rr) => {
+            if (rr <= 0) return 0; 
             if (t < 0.1 || t > 0.6) return 0; 
-            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05) * baseAmplitude;
+            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05);
             if (t >= 0.15 && t < 0.5) {
                 const plateauBase = 1.0;
                 const plateauEnd = 0.9;
                 const p = (t - 0.15) / 0.35;
-                if (pathology === 'respiratory') return (0.5 + (p * 0.5)) * baseAmplitude; 
-                return (plateauBase - (p * (plateauBase - plateauEnd))) * baseAmplitude;
+                if (pathology === 'respiratory') return (0.5 + (p * 0.5)); 
+                return (plateauBase - (p * (plateauBase - plateauEnd)));
             }
             if (t >= 0.5 && t <= 0.6) {
                 const startVal = (pathology === 'respiratory' ? 1.0 : 0.9);
                 const p = (t - 0.5) / 0.1;
-                return (startVal * (1 - p)) * baseAmplitude;
+                return (startVal * (1 - p));
             }
             return 0;
         };
@@ -781,8 +799,9 @@
                 if(parent) {
                     canvas.width = parent.clientWidth;
                     canvas.height = parent.clientHeight;
-                    // Reset Y positions based on new height
-                    drawState.current.lastYCO2 = canvas.height * 0.65;
+                    // Calc Y positions
+                    drawState.current.lastYCO2 = canvas.height * 0.60;
+                    drawState.current.lastYArt = canvas.height * 0.80;
                     drawState.current.lastYPleth = canvas.height - 5;
                     ctx.fillStyle = '#000000';
                     ctx.fillRect(0,0, canvas.width, canvas.height);
@@ -799,126 +818,102 @@
                 const dt = (timestamp - state.lastTime) / 1000;
                 state.lastTime = timestamp;
 
-                if (props.isPaused) {
-                    requestRef.current = requestAnimationFrame(animate);
-                    return;
-                }
+                if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
 
-                // --- RHYTHM LOGIC ---
-                let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
-                let currentRate = props.hr || 60;
-                if (currentRhythm === 'AF' && state.beatProgress >= 1) currentRate = props.hr + (Math.random() * 60 - 30); 
-                let beatDuration = 60 / Math.max(10, currentRate);
-                if (currentRhythm === 'VF') beatDuration = 60/300;
-
-                // --- BREATH LOGIC ---
-                let breathDuration = 60 / (Math.max(1, props.rr) || 12);
-
-                // Move Cursor
+                // Eraser Bar
                 const ecgSpeed = 150; 
                 const dx = ecgSpeed * dt;
                 const prevX = state.x;
                 state.x += dx;
+                const eraserWidth = 20;
+                ctx.fillStyle = '#000000';
+                if (state.x + eraserWidth < canvas.width) { ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); } 
+                else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, eraserWidth, canvas.height); }
+
+                if (!props.showTraces) {
+                    // Draw Flatline if monitor off
+                    ctx.strokeStyle = '#003300'; ctx.beginPath(); ctx.moveTo(prevX, 50); ctx.lineTo(state.x, 50); ctx.stroke();
+                    requestRef.current = requestAnimationFrame(animate);
+                    return;
+                }
+
+                // RHYTHM CALCS
+                let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
+                let currentRate = props.isCPR ? 110 : (props.hr || 60);
+                if (currentRhythm === 'AF' && state.beatProgress >= 1) currentRate = props.hr + (Math.random() * 60 - 30); 
+                let beatDuration = 60 / Math.max(10, currentRate);
+                if (currentRhythm === 'VF' || currentRhythm === 'Coarse VF' || currentRhythm === 'Fine VF') beatDuration = 60/300;
+
+                state.beatProgress += dt / beatDuration;
+                if (state.beatProgress >= 1) state.beatProgress = 0;
+
+                let breathDuration = 60 / (Math.max(1, props.rr) || 12);
+                state.breathProgress += dt / breathDuration;
+                if (state.breathProgress >= 1) state.breathProgress = 0;
 
                 if (state.x > canvas.width) {
                     state.x = 0;
-                    // Reset Ys to prevent "streak" across screen
-                    state.lastY = getWaveform(currentRhythm, state.beatProgress);
-                    state.lastYCO2 = canvas.height * 0.65; 
+                    state.lastY = getWaveform(currentRhythm, state.beatProgress, props.isCPR);
+                    state.lastYCO2 = canvas.height * 0.60;
+                    state.lastYArt = canvas.height * 0.80;
                     state.lastYPleth = canvas.height - 5;
                 }
 
-                // Eraser Bar
-                const eraserWidth = 20;
-                ctx.fillStyle = '#000000';
-                if (state.x + eraserWidth < canvas.width) {
-                    ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); 
-                } else {
-                     ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height);
-                     ctx.fillRect(0, 0, eraserWidth, canvas.height);
-                }
-
-                // --- 1. ECG DRAW (Top) ---
-                state.beatProgress += dt / beatDuration;
-                if (state.beatProgress >= 1) state.beatProgress = 0;
-                const yECG = getWaveform(currentRhythm, state.beatProgress);
-                
+                // 1. ECG
+                const yECG = getWaveform(currentRhythm, state.beatProgress, props.isCPR);
                 if (state.x > prevX) {
-                    ctx.strokeStyle = '#00ff00'; 
-                    ctx.lineWidth = 2; 
-                    ctx.lineJoin = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(prevX, state.lastY);
-                    ctx.lineTo(state.x, yECG);
-                    ctx.stroke();
+                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
+                    ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke();
                 }
                 state.lastY = yECG;
 
-                // --- 2. ETCO2 DRAW (Middle) ---
+                // 2. ETCO2 (Yellow)
                 if (props.showEtco2) {
-                    state.breathProgress += dt / breathDuration;
-                    if (state.breathProgress >= 1) state.breathProgress = 0;
-                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr, currentRhythm);
-                    const co2MaxHeight = 30; 
-                    const co2BaseY = (canvas.height * 0.65); 
-                    const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
-
+                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr);
+                    const co2MaxHeight = 25; const co2BaseY = (canvas.height * 0.60); const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
                     if (state.x > prevX) {
-                         ctx.fillStyle = 'rgba(250, 204, 21, 0.2)'; // Faint fill
-                         ctx.beginPath();
-                         ctx.moveTo(prevX, state.lastYCO2);
-                         ctx.lineTo(state.x, yCO2);
-                         ctx.lineTo(state.x, co2BaseY);
-                         ctx.lineTo(prevX, co2BaseY);
-                         ctx.fill();
-
-                         ctx.strokeStyle = '#facc15'; 
-                         ctx.lineWidth = 2;
-                         ctx.beginPath();
-                         ctx.moveTo(prevX, state.lastYCO2);
-                         ctx.lineTo(state.x, yCO2);
-                         ctx.stroke();
+                         ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath();
+                         ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
                     }
                     state.lastYCO2 = yCO2;
                 }
 
-                // --- 3. PLETH DRAW (Bottom) ---
-                // Uses same beat progress as heart, but slightly delayed phase if we wanted to be fancy.
-                // We use the same beatProgress for sync.
-                if (currentRhythm !== 'VF' && currentRhythm !== 'Asystole' && props.spO2 > 10) {
-                    const plethHeight = 25;
-                    const plethBaseY = canvas.height - 5;
-                    // Only draw if we have a pulse (approx)
-                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
-                    const yPleth = plethBaseY - (normPleth * plethHeight);
+                // 3. ART LINE (Red)
+                if (props.showArt && !props.isCPR && currentRate > 0) {
+                     const normArt = getArtWave(state.beatProgress, 120);
+                     const artHeight = 30; const artBaseY = (canvas.height * 0.80); const yArt = artBaseY - (normArt * artHeight);
+                     if (state.x > prevX) {
+                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath();
+                        ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
+                     }
+                     state.lastYArt = yArt;
+                }
 
+                // 4. PLETH (Blue)
+                if (currentRate > 0 && !props.isCPR && props.spO2 > 10) {
+                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
+                    const plethHeight = 20; const plethBaseY = canvas.height - 5; const yPleth = plethBaseY - (normPleth * plethHeight);
                     if (state.x > prevX) {
-                        ctx.strokeStyle = '#0ea5e9'; // Sky Blue
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        ctx.moveTo(prevX, state.lastYPleth);
-                        ctx.lineTo(state.x, yPleth);
-                        ctx.stroke();
+                        ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2; ctx.beginPath();
+                        ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
                     }
                     state.lastYPleth = yPleth;
                 }
-
+                
                 requestRef.current = requestAnimationFrame(animate);
             };
 
             requestRef.current = requestAnimationFrame(animate);
-            return () => {
-                window.removeEventListener('resize', setSize);
-                if (requestRef.current) cancelAnimationFrame(requestRef.current);
-            };
+            return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
         }, []);
 
         return (
             <div className="w-full h-40 bg-black rounded border border-slate-700 relative overflow-hidden">
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
-                <div className="absolute top-1 right-2 text-xs font-mono text-green-500 font-bold">{rhythmType}</div>
-                {showEtco2 && <div className="absolute top-14 right-2 text-xs font-mono text-yellow-500 font-bold">ETCO2</div>}
-                <div className="absolute bottom-1 right-2 text-xs font-mono text-sky-500 font-bold">PLETH</div>
+                <div className="absolute top-1 right-2 text-xs font-mono text-green-500 font-bold">{showTraces ? rhythmType : ''}</div>
+                {showEtco2 && showTraces && <div className="absolute top-14 right-2 text-xs font-mono text-yellow-500 font-bold">ETCO2</div>}
+                {showArt && showTraces && <div className="absolute bottom-10 right-2 text-xs font-mono text-red-500 font-bold">ABP</div>}
+                {showTraces && <div className="absolute bottom-1 right-2 text-xs font-mono text-sky-500 font-bold">PLETH</div>}
             </div>
         );
     };
@@ -951,6 +946,7 @@
     const initialState = {
         scenario: null,
         time: 0,
+        cycleTimer: 0, // 2 min cycle timer
         isRunning: false,
         vitals: {},
         prevVitals: {},
@@ -968,20 +964,17 @@
         etco2Enabled: false,
         isParalysed: false,
         queuedRhythm: null,
+        cprInProgress: false,
     };
 
     const simReducer = (state, action) => {
         switch (action.type) {
-            case 'START_SIM':
-                return { ...state, isRunning: true, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
-            case 'PAUSE_SIM':
-                return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
+            case 'START_SIM': return { ...state, isRunning: true, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
+            case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set() };
-            case 'RESTORE_SESSION':
-                const restored = action.payload;
-                return { ...restored, activeInterventions: new Set(restored.activeInterventions || []), processedEvents: new Set(restored.processedEvents || []), isRunning: false };
+            case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
@@ -989,13 +982,12 @@
                     const elapsed = state.time + 1 - newDurations[key].startTime;
                     if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; }
                 });
-                return { ...state, time: state.time + 1, activeDurations: durChanged ? newDurations : state.activeDurations };
+                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations };
+            case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_VITALS': 
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
-            
-            // --- NEW: PROGRESSION LOGIC ---
             case 'TRIGGER_IMPROVE':
                 if (!state.scenario.evolution) return state;
                 const improvedScen = { ...state.scenario, ...state.scenario.evolution.improved, deterioration: { ...state.scenario.deterioration, active: false } };
@@ -1004,12 +996,10 @@
                  if (!state.scenario.evolution) return state;
                  const detScen = { ...state.scenario, ...state.scenario.evolution.deteriorated, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 } };
                  return { ...state, scenario: detScen, flash: 'red' };
-
             case 'ADD_LOG':
                 const timestamp = new Date().toLocaleTimeString('en-GB');
                 const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`;
-                const entry = { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time };
-                return { ...state, log: [...state.log, entry] };
+                return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
             case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
@@ -1018,6 +1008,7 @@
             case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
+            case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
             case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
             case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
             case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
@@ -1026,7 +1017,6 @@
             default: return state;
         }
     };
-
     const useSimulation = (initialScenario) => {
         const [state, dispatch] = useReducer(simReducer, initialState);
         const timerRef = useRef(null);
@@ -1230,21 +1220,35 @@
             const current = stateRef.current;
             let next = { ...current.vitals };
             
-            // ARREST LOGIC: HR 0 -> ARREST
-            if (next.hr <= 0 && current.rhythm !== 'Asystole' && current.rhythm !== 'VF' && current.rhythm !== 'VT' && current.rhythm !== 'PEA') {
+            // ARREST LOGIC
+            // Ensure Asystole if HR hits 0 (unless already in a defined arrest rhythm)
+            if (next.hr <= 0 && !['Asystole', 'VF', 'Coarse VF', 'Fine VF', 'VT', 'PEA'].includes(current.rhythm)) {
                 dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' });
                 addLogEntry("Cardiac Arrest Detected (HR 0). Rhythm: Asystole.", 'danger');
                 dispatch({ type: 'SET_FLASH', payload: 'red' });
                 next.hr = 0;
             }
 
-            if (current.rhythm === 'Asystole' || current.rhythm === 'VF') { 
+            if (['Asystole', 'VF', 'Coarse VF', 'Fine VF'].includes(current.rhythm)) { 
                 next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
-                next.spO2 = Math.max(0, next.spO2 - 2); 
+                // If CPR is NOT in progress, oxygen drops.
+                if(!current.cprInProgress) next.spO2 = Math.max(0, next.spO2 - 2); 
             } else {
+                // NORMAL FLUCTUATION
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-2, 2); 
+                
+                // --- FIXED BP LOGIC ---
+                // Diastolic should roughly follow Systolic but stay 30-40mmHg lower
+                // Only change Diastolic if it gets "too close" or "too far"
+                let targetDia = Math.floor(next.bpSys * 0.65);
                 next.bpDia += getRandomInt(-2, 2); 
+                
+                // Correction clamp: Ensure Dia is at least 15 below Sys
+                if (next.bpDia >= next.bpSys - 15) next.bpDia = next.bpSys - 15;
+                // Minimum sane diastolic if sys is okay
+                if (next.bpSys > 60 && next.bpDia < 30) next.bpDia = 30;
+                
                 next.spO2 += Math.random() > 0.9 ? getRandomInt(-1, 1) : 0;
             }
 
@@ -1256,7 +1260,8 @@
                 next.spO2 -= 5; // Hypoxia
             }
 
-            if (current.scenario?.deterioration?.active && current.scenario.deterioration.rate > 0 && current.rhythm !== 'VF' && current.rhythm !== 'Asystole') {
+            // --- DETERIORATION LOGIC (Keep existing) ---
+             if (current.scenario?.deterioration?.active && current.scenario.deterioration.rate > 0 && current.rhythm !== 'VF' && current.rhythm !== 'Asystole') {
                 if (Math.random() < current.scenario.deterioration.rate) {
                     if (current.scenario.deterioration.type === 'shock') { next.bpSys -= 2; next.hr += 1; }
                     else if (current.scenario.deterioration.type === 'neuro') { next.bpSys += 1; next.hr = Math.max(40, next.hr - 1); }
@@ -1265,7 +1270,7 @@
                 }
             }
 
-            // Safety Checks: Clamp to realistic values to prevent "ludicrous" obs
+            // Safety Clamps
             next.hr = clamp(next.hr, 0, 250);
             next.bpSys = clamp(next.bpSys, 0, 300);
             next.bpDia = clamp(next.bpDia, 0, 250);
@@ -1276,7 +1281,6 @@
             
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
-
         const start = () => { 
             if (state.isRunning) return; 
             dispatch({ type: 'START_SIM' }); 
@@ -1541,83 +1545,109 @@
     );
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle } = sim;
-        const { scenario, time, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress } = state;
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
         
-        // MODAL STATES
-        const [showChecklist, setShowChecklist] = useState(false);
+        // UI STATES
+        const [arrestMode, setArrestMode] = useState(false);
         const [showDrugCalc, setShowDrugCalc] = useState(false);
-        const [checklistItems, setChecklistItems] = useState({ cpr: false, pads: false, airway: false, access: false, adrenaline: false, amiodarone: false, shock: false });
-        
-        // DRUG CALC STATE
+        const [expandRhythm, setExpandRhythm] = useState(false);
         const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
 
-        // SEARCH LOGIC
+        // SEARCH
         useEffect(() => {
             if (customLog.length > 1) {
-                const results = Object.keys(INTERVENTIONS).filter(key => {
-                    const item = INTERVENTIONS[key];
-                    const searchStr = (key + item.label + (item.searchTags || "")).toLowerCase();
-                    return searchStr.includes(customLog.toLowerCase());
-                });
+                const results = Object.keys(INTERVENTIONS).filter(key => (key + INTERVENTIONS[key].label).toLowerCase().includes(customLog.toLowerCase()));
                 setSearchResults(results);
-            } else {
-                setSearchResults([]);
-            }
+            } else { setSearchResults([]); }
         }, [customLog]);
 
-        const handleSearchSelect = (key) => {
-            applyIntervention(key);
-            setCustomLog("");
-            setSearchResults([]);
-        };
+        const handleSearchSelect = (key) => { applyIntervention(key); setCustomLog(""); setSearchResults([]); };
 
         const getInterventionsByCat = (cat) => {
-            if (cat === 'Common') {
-                return ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM']; 
-            }
-            return Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
+            let keys = [];
+            if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM']; 
+            else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
+            
+            // --- ALPHABETICAL SORT ---
+            return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
         };
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-        const isArrest = ['VF', 'VT', 'Asystole', 'PEA'].includes(rhythm);
-
-        const handleChecklistToggle = (item) => {
-            const newState = !checklistItems[item];
-            setChecklistItems({ ...checklistItems, [item]: newState });
-            if(newState) addLogEntry(`Checklist: ${item.toUpperCase()} confirmed.`, 'action');
+        
+        const toggleCPR = () => {
+            const newState = !cprInProgress;
+            sim.dispatch({ type: 'TOGGLE_CPR', payload: newState });
+            addLogEntry(newState ? 'CPR Started' : 'CPR Stopped', 'action');
         };
 
-        const handleDrugCalc = () => {
-            if(!drugCalc.dose) return;
-            const total = parseFloat(drugCalc.dose) * parseFloat(drugCalc.weight);
-            addLogEntry(`Drug Prep: ${drugCalc.drug} ${drugCalc.dose}mg/kg -> Total ${total.toFixed(1)}mg prepared.`, 'action');
-            setShowDrugCalc(false);
+        const handleShock = () => {
+             applyIntervention('Defib');
+             // Auto restart CPR after shock (2025 guidelines)
+             if (!cprInProgress) toggleCPR();
         };
+
+        const handleRhythmSelect = (r) => {
+            sim.dispatch({type: 'UPDATE_RHYTHM', payload: r});
+            addLogEntry(`Rhythm set to ${r}`, 'manual');
+            setExpandRhythm(false);
+        };
+
+        const hasMonitoring = activeInterventions.has('Obs');
+        const hasArtLine = activeInterventions.has('ArtLine');
 
         return (
             <div className={`h-full overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
-                {/* --- MODALS --- */}
-                {showChecklist && (
-                    <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
-                        <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 w-full max-w-md shadow-2xl">
-                            <h3 className="text-xl font-bold text-red-500 mb-4 flex items-center gap-2"><Lucide icon="clipboard-list"/> Cardiac Arrest Protocol</h3>
-                            <div className="space-y-3">
-                                {Object.keys(checklistItems).map(key => (
-                                    <button key={key} onClick={() => handleChecklistToggle(key)} className={`w-full p-3 rounded flex items-center justify-between font-bold border ${checklistItems[key] ? 'bg-emerald-600/30 border-emerald-500 text-emerald-400' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>
-                                        <span className="uppercase">{key}</span>
-                                        {checklistItems[key] && <Lucide icon="check" className="w-5 h-5"/>}
-                                    </button>
-                                ))}
+                {/* --- CARDIAC ARREST MODE PANEL --- */}
+                {arrestMode && (
+                    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn">
+                        <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
+                            <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
+                            <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                                {formatTime(cycleTimer)}
                             </div>
-                            <Button className="w-full mt-4" onClick={() => setShowChecklist(false)}>Close Checklist</Button>
+                            <div className="flex gap-2 mt-2">
+                                <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
+                                <Button variant="secondary" onClick={nextCycle} className="h-8 text-xs">+2 Min</Button>
+                            </div>
+                        </div>
+                        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">
+                                {cprInProgress ? "STOP CPR" : "START CPR"}
+                            </Button>
+                            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col">
+                                <Lucide icon="zap" /> SHOCK
+                            </Button>
+                            <Button onClick={() => applyIntervention('AdrenalineIV')} variant="outline" className="h-16 font-bold flex flex-col">
+                                <span>Adrenaline 1mg</span>
+                                <span className="text-[10px] text-slate-400 font-normal">Every 3-5 min</span>
+                            </Button>
+                            <Button onClick={() => applyIntervention('Amiodarone')} variant="outline" className="h-16 font-bold flex flex-col">
+                                <span>Amiodarone 300mg</span>
+                                <span className="text-[10px] text-slate-400 font-normal">After 3 shocks</span>
+                            </Button>
+                            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant="secondary" className="h-12">Mechanical CPR</Button>
+                            <Button onClick={() => applyIntervention('Bagging')} variant="secondary" className="h-12">BVM Ventilation</Button>
+                            <Button onClick={() => applyIntervention('Intubation')} variant="secondary" className="h-12">Secure Airway</Button>
+                            <Button onClick={() => setShowDrugCalc(true)} variant="secondary" className="h-12">Drugs...</Button>
+                        </div>
+                        <div className="flex-1 flex flex-col gap-2">
+                             <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
+                             <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300">
+                                 <div>Hypoxia</div><div>Thrombosis</div>
+                                 <div>Hypovolaemia</div><div>Tension #</div>
+                                 <div>Hyper/Hypo-K</div><div>Tamponade</div>
+                                 <div>Hypothermia</div><div>Toxins</div>
+                             </div>
+                             <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
                         </div>
                     </div>
                 )}
 
+                {/* --- DRUG CALC MODAL --- */}
                 {showDrugCalc && (
                     <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 w-full max-w-md shadow-2xl">
@@ -1634,7 +1664,7 @@
                             </div>
                             <div className="flex gap-2 mt-4">
                                 <Button variant="secondary" className="flex-1" onClick={() => setShowDrugCalc(false)}>Cancel</Button>
-                                <Button variant="success" className="flex-1" onClick={handleDrugCalc}>Log & Prep</Button>
+                                <Button variant="success" className="flex-1" onClick={() => { addLogEntry(`Drug Prep: ${drugCalc.drug} ${drugCalc.dose}mg/kg -> Total ${(parseFloat(drugCalc.dose) * parseFloat(drugCalc.weight)).toFixed(1)}mg`, 'action'); setShowDrugCalc(false); }}>Log & Prep</Button>
                             </div>
                         </div>
                     </div>
@@ -1659,44 +1689,32 @@
 
                         {/* WAVEFORMS */}
                         <div className="mb-2 relative">
-                             <ECGMonitor 
-                                rhythmType={rhythm} 
-                                hr={vitals.hr} 
-                                rr={vitals.rr} 
-                                spO2={vitals.spO2} 
-                                isPaused={!isRunning} 
-                                showEtco2={etco2Enabled} 
-                                pathology={scenario.deterioration.type} 
-                             />
-                             {(!['VF','VT','Asystole'].includes(rhythm) && vitals.bpSys < 30) && (
-                                <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none">
-                                    <div className="bg-red-600/80 text-white font-bold text-lg px-6 py-2 rounded pea-warning border-2 border-white">PEA - CHECK PULSE</div>
-                                </div>
-                             )}
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario.deterioration.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} />
                         </div>
 
                         {/* NUMERICS GRID */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40}/>
-                            <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90}/>
-                            <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90}/>
-                            <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8}/>
+                            <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={(v) => manualUpdateVital('hr', v)} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} />
+                            <VitalDisplay label={hasArtLine ? "ABP" : "NIBP"} value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={(v) => manualUpdateVital('bpSys', v)} alert={vitals.bpSys < 90} visible={hasMonitoring} />
+                            <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} alert={vitals.spO2 < 90} visible={hasMonitoring} />
+                            <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} />
                             
-                            <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38}/>
-                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4}/>
-                            <VitalDisplay label="Pupils" value={vitals.pupils || "3mm"} unit="" isText={true} onUpdate={(v) => manualUpdateVital('pupils', v)} />
-                            {etco2Enabled ? (
-                                <div className="bg-slate-900/50 p-2 md:p-3 rounded border border-yellow-500/50 flex flex-col items-center justify-center h-24 md:h-28 relative">
-                                    <span className="text-[10px] md:text-xs font-bold text-yellow-500 uppercase tracking-wider mb-1">ETCO2</span>
-                                    <span className="text-2xl md:text-3xl font-mono font-bold text-yellow-500">
-                                        {vitals.hr > 0 ? (scenario.deterioration.type === 'respiratory' ? '6.5' : '4.5') : '1.0'}
+                            <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38} visible={hasMonitoring} />
+                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4} visible={true} /> {/* BM often handheld */}
+                            <VitalDisplay label="Pupils" value={vitals.pupils || "3mm"} unit="" isText={true} onUpdate={(v) => manualUpdateVital('pupils', v)} visible={true} />
+                            
+                            {etco2Enabled && hasMonitoring ? (
+                                <div className="bg-slate-900/50 p-1 md:p-2 rounded border border-yellow-500/50 flex flex-col items-center justify-center h-20 relative">
+                                    <span className="text-[9px] md:text-[10px] font-bold text-yellow-500 uppercase tracking-wider mb-1">ETCO2</span>
+                                    <span className="text-xl md:text-2xl font-mono font-bold text-yellow-500">
+                                        {cprInProgress ? '2.5' : (vitals.hr > 0 ? (scenario.deterioration.type === 'respiratory' ? '6.5' : '4.5') : '1.0')}
                                     </span>
-                                    <span className="text-[9px] md:text-[10px] text-slate-600 mt-1">kPa</span>
+                                    <span className="text-[8px] md:text-[9px] text-slate-600 mt-1">kPa</span>
                                 </div>
                             ) : (
-                                <div className="bg-slate-900/20 p-2 md:p-3 rounded border border-slate-800 flex flex-col items-center justify-center h-24 md:h-28 opacity-50">
-                                    <span className="text-[10px] md:text-xs font-bold text-slate-600 uppercase tracking-wider">ETCO2</span>
-                                    <span className="text-lg text-slate-700">OFF</span>
+                                <div className="bg-slate-900/20 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 opacity-50">
+                                    <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">ETCO2</span>
+                                    <span className="text-sm text-slate-700">OFF</span>
                                 </div>
                             )}
                         </div>
@@ -1708,27 +1726,31 @@
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4 bg-slate-900/50 p-2 rounded">
                              <Button variant="danger" onClick={triggerArrest} className="text-xs h-8">VF Arrest</Button>
                              <Button variant="success" onClick={triggerROSC} className="text-xs h-8">ROSC</Button>
-                             <select className="bg-slate-700 text-white text-xs rounded px-2 h-8 border border-slate-600" value={queuedRhythm || ""} onChange={(e) => sim.dispatch({type: 'SET_QUEUED_RHYTHM', payload: e.target.value})}>
-                                 <option value="">Next Rhythm...</option>
-                                 <option value="Sinus Rhythm">ROSC (Sinus)</option>
-                                 <option value="VF">VF</option>
-                                 <option value="Asystole">Asystole</option>
-                                 <option value="PEA">PEA</option>
-                             </select>
+                             <div className="relative">
+                                 <Button variant="secondary" onClick={() => setExpandRhythm(!expandRhythm)} className="text-xs h-8 w-full border border-slate-600">
+                                     Rhythm Select...
+                                 </Button>
+                                 {expandRhythm && (
+                                     <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-600 z-50 rounded shadow-xl max-h-48 overflow-y-auto">
+                                         {['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Fine VF', 'Coarse VF', 'Asystole', 'PEA', 'STEMI', '1st Deg Block', '3rd Deg Block'].map(r => (
+                                             <button key={r} onClick={() => handleRhythmSelect(r)} className="block w-full text-left px-2 py-2 text-xs hover:bg-sky-600 border-b border-slate-700">{r}</button>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
                              <div className="flex gap-1">
                                 <Button variant="success" onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Instructor: Patient Improving", "success")}} className="text-xs h-8 flex-1 px-1">Improve</Button>
                                 <Button variant="danger" onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Instructor: Patient Deteriorating", "danger")}} className="text-xs h-8 flex-1 px-1">Worsen</Button>
                              </div>
                         </div>
+
                         {/* DYNAMIC ALS BUTTONS */}
                         <div className="flex gap-2 mb-2">
-                            {isArrest && (
-                                <Button variant="danger" onClick={() => setShowChecklist(true)} className="flex-1 h-10 animate-pulse font-bold text-sm">
-                                    <Lucide icon="clipboard-list"/> CARDIAC ARREST MODE
-                                </Button>
-                            )}
-                            <Button variant="primary" onClick={() => setShowDrugCalc(true)} className="flex-1 h-10 text-xs">
-                                <Lucide icon="calculator"/> Drug Infusion/Calc
+                             <Button variant={arrestMode ? "danger" : "outline"} onClick={() => setArrestMode(!arrestMode)} className={`flex-1 h-10 font-bold text-sm ${arrestMode ? '' : 'border-red-500 text-red-500'}`}>
+                                <Lucide icon="activity"/> {arrestMode ? "CLOSE ARREST MODE" : "OPEN ARREST MODE"}
+                            </Button>
+                            <Button variant={cprInProgress ? "warning" : "secondary"} onClick={toggleCPR} className="w-1/4 h-10 text-xs font-bold">
+                                {cprInProgress ? "Stop CPR" : "CPR"}
                             </Button>
                         </div>
 
@@ -1782,7 +1804,6 @@
                                 // DYNAMIC PAEDIATRIC LABELING
                                 const isPaeds = scenario.ageRange === 'Paediatric' || scenario.patientAge < 18;
                                 let label = INTERVENTIONS[key]?.label || key;
-                                
                                 if (isPaeds) {
                                     if (key === 'Fluids') label = `Fluid Bolus (10ml/kg)`; 
                                     else if (key === 'Adrenaline') label = `Adrenaline 1:1000 IM`;
@@ -1821,6 +1842,7 @@
                         </div>
                     </Card>
                 </div>
+                
                 {/* RIGHT COL: Info & Log */}
                 <div className="flex flex-col gap-4 h-full overflow-hidden">
                     <Card title="Scenario Info" icon="info" collapsible={true} className="flex-shrink-0">
