@@ -1695,50 +1695,72 @@
             <div className={`h-full overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
                 {/* --- CARDIAC ARREST MODE PANEL --- */}
-                {arrestMode && (
-                    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn">
-                        <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
-                            <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
-                            <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-                                {formatTime(cycleTimer)}
-                            </div>
-                            <div className="flex gap-2 mt-2">
-                                <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
-                                <Button variant="secondary" onClick={nextCycle} className="h-8 text-xs">+2 Min</Button>
-                            </div>
-                        </div>
-                        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">
-                                {cprInProgress ? "STOP CPR" : "START CPR"}
-                            </Button>
-                            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col">
-                                <Lucide icon="zap" /> SHOCK
-                            </Button>
-                            <Button onClick={() => applyIntervention('AdrenalineIV')} variant="outline" className="h-16 font-bold flex flex-col">
-                                <span>Adrenaline 1mg</span>
-                                <span className="text-[10px] text-slate-400 font-normal">Every 3-5 min</span>
-                            </Button>
-                            <Button onClick={() => applyIntervention('Amiodarone')} variant="outline" className="h-16 font-bold flex flex-col">
-                                <span>Amiodarone 300mg</span>
-                                <span className="text-[10px] text-slate-400 font-normal">After 3 shocks</span>
-                            </Button>
-                            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant="secondary" className="h-12">Mechanical CPR</Button>
-                            <Button onClick={() => applyIntervention('Bagging')} variant="secondary" className="h-12">BVM Ventilation</Button>
-                            <Button onClick={() => applyIntervention('Intubation')} variant="secondary" className="h-12">Secure Airway</Button>
-                            <Button onClick={() => setShowDrugCalc(true)} variant="secondary" className="h-12">Drugs...</Button>
-                        </div>
-                        <div className="flex-1 flex flex-col gap-2">
-                             <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
-                             <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300">
-                                 <div>Hypoxia</div><div>Thrombosis</div>
-                                 <div>Hypovolaemia</div><div>Tension #</div>
-                                 <div>Hyper/Hypo-K</div><div>Tamponade</div>
-                                 <div>Hypothermia</div><div>Toxins</div>
-                             </div>
-                             <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
-                        </div>
-                    </div>
-                )}
+{arrestMode && (
+    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn">
+        <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
+            <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
+            <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                {formatTime(cycleTimer)}
+            </div>
+            <div className="flex gap-2 mt-2">
+                <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
+                {/* CHANGED: Logic to skip to end of cycle (2 mins) */}
+                <Button variant="secondary" onClick={() => {
+                    const remaining = 120 - cycleTimer;
+                    if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining});
+                    sim.dispatch({type: 'RESET_CYCLE_TIMER'});
+                    addLogEntry("Cycle Skipped / Finished", "system");
+                }} className="h-8 text-xs">Finish Cycle</Button>
+            </div>
+        </div>
+        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">
+                {cprInProgress ? "STOP CPR" : "START CPR"}
+            </Button>
+            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col">
+                <Lucide icon="zap" /> SHOCK
+            </Button>
+            
+            {/* CHANGED: Visual toggle for drugs (outline -> success if count > 0) */}
+            <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col">
+                <span>Adrenaline</span>
+                <span className="text-[10px] font-normal opacity-80">1mg (1:10k)</span>
+                {interventionCounts['AdrenalineIV'] > 0 && <span className="absolute top-1 right-1 bg-white text-emerald-600 text-[9px] px-1 rounded-full">x{interventionCounts['AdrenalineIV']}</span>}
+            </Button>
+
+            {/* CHANGED: Fixed text size for Amiodarone to prevent overflow */}
+            <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col justify-center">
+                <span className="text-sm">Amiodarone</span>
+                <span className="text-[10px] font-normal opacity-80">300mg</span>
+                 {interventionCounts['Amiodarone'] > 0 && <span className="absolute top-1 right-1 bg-white text-emerald-600 text-[9px] px-1 rounded-full">x{interventionCounts['Amiodarone']}</span>}
+            </Button>
+
+            {/* CHANGED: Buttons are now toggles (Green when active) */}
+            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-12 border border-slate-600">Mechanical CPR</Button>
+            
+            <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
+            
+            {/* Note: 'Intubation' key maps to 'RSI' or similar in your INTERVENTIONS list usually, 
+                but based on your logs it looks like 'Intubation' might not be a direct key in INTERVENTIONS object 
+                unless added. If 'RSI' is the key, use that. Assuming 'RSI' based on file content. 
+                Replacing 'Intubation' with 'RSI' for safety, or keep generic if you have a mapped handler.
+                Let's use 'RSI' as it exists in your data. */}
+            <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
+            
+            <Button onClick={() => setShowDrugCalc(true)} variant="secondary" className="h-12 border border-slate-600">Drugs...</Button>
+        </div>
+        <div className="flex-1 flex flex-col gap-2">
+                <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
+                <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300">
+                    <div>Hypoxia</div><div>Thrombosis</div>
+                    <div>Hypovolaemia</div><div>Tension #</div>
+                    <div>Hyper/Hypo-K</div><div>Tamponade</div>
+                    <div>Hypothermia</div><div>Toxins</div>
+                </div>
+                <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
+        </div>
+    </div>
+)}
 
                 {/* --- DRUG CALC MODAL --- */}
                 {showDrugCalc && (
@@ -1782,9 +1804,22 @@
                         </div>
 
                         {/* WAVEFORMS */}
-                        <div className="mb-2 relative">
-                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario.deterioration.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} />
-                        </div>
+<div className="mb-2 relative">
+     {/* CHANGED: Added className="h-60" to expand monitor by 50% */}
+     <ECGMonitor 
+        rhythmType={rhythm} 
+        hr={vitals.hr} 
+        rr={vitals.rr} 
+        spO2={vitals.spO2} 
+        isPaused={!isRunning} 
+        showEtco2={etco2Enabled} 
+        pathology={scenario.deterioration.type} 
+        showTraces={hasMonitoring} 
+        showArt={hasArtLine} 
+        isCPR={cprInProgress} 
+        className="h-60"
+     />
+</div>
 
                         {/* NUMERICS GRID */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1839,14 +1874,18 @@
                         </div>
 
                         {/* DYNAMIC ALS BUTTONS */}
-                        <div className="flex gap-2 mb-2">
-                             <Button variant={arrestMode ? "danger" : "outline"} onClick={() => setArrestMode(!arrestMode)} className={`flex-1 h-10 font-bold text-sm ${arrestMode ? '' : 'border-red-500 text-red-500'}`}>
-                                <Lucide icon="activity"/> {arrestMode ? "CLOSE ARREST MODE" : "OPEN ARREST MODE"}
-                            </Button>
-                            <Button variant={cprInProgress ? "warning" : "secondary"} onClick={toggleCPR} className="w-1/4 h-10 text-xs font-bold">
-                                {cprInProgress ? "Stop CPR" : "CPR"}
-                            </Button>
-                        </div>
+<div className="flex gap-2 mb-2">
+     {/* CHANGED: Added dispatch RESET_CYCLE_TIMER to onClick */}
+     <Button variant={arrestMode ? "danger" : "outline"} onClick={() => {
+        if (!arrestMode) sim.dispatch({type: 'RESET_CYCLE_TIMER'});
+        setArrestMode(!arrestMode);
+    }} className={`flex-1 h-10 font-bold text-sm ${arrestMode ? '' : 'border-red-500 text-red-500'}`}>
+        <Lucide icon="activity"/> {arrestMode ? "CLOSE ARREST MODE" : "OPEN ARREST MODE"}
+    </Button>
+    <Button variant={cprInProgress ? "warning" : "secondary"} onClick={toggleCPR} className="w-1/4 h-10 text-xs font-bold">
+        {cprInProgress ? "Stop CPR" : "CPR"}
+    </Button>
+</div>
 
                         {/* Recommended Actions */}
                         {scenario.recommendedActions && (
