@@ -676,7 +676,7 @@
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
-        const isBP = label === "BP";
+        const isBP = label === "BP" || label === "NIBP" || label === "ABP";
         
         if (!visible) {
              return (
@@ -696,7 +696,9 @@
                     <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5" onClick={() => { setEditVal(value); setIsEditing(true); }}>
                         <span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
-                            {isBP && value2 !== undefined && `/${Math.round(value2)}`}
+                            {isBP && (
+                                <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>
+                            )}
                         </span>
                         {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
@@ -726,67 +728,104 @@
             propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR };
         }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR]);
 
+        // --- WAVEFORM GENERATORS ---
         const getWaveform = (type, t, cpr) => {
-            const noise = (Math.random() - 0.5) * 2;
-            let y = 50;
-
+            const noise = (Math.random() - 0.5) * 1.5;
+            
             if (cpr) {
-                // Large sine wave for CPR compressions (~100/min = 1.6Hz)
-                const compression = Math.sin(t * 10) * 35;
-                const artifact = (Math.random() - 0.5) * 15;
-                return 50 + compression + artifact;
+                // Large CPR Artifact
+                const compression = Math.sin(t * 12) * 35; // ~100-120bpm
+                return 50 + compression + (Math.random() * 10 - 5);
             }
 
             if (type === 'Asystole') return 50 + noise;
-            if (type === 'VF' || type === 'Coarse VF') { return 50 + Math.sin(t * 20) * 15 + Math.sin(t * 7) * 25 + noise * 2; }
-            if (type === 'Fine VF') { return 50 + Math.sin(t * 25) * 5 + Math.sin(t * 10) * 8 + noise; }
+            
+            // VF / VT
+            if (type === 'VF' || type === 'Coarse VF') return 50 + Math.sin(t * 20) * 15 + Math.sin(t * 7) * 20 + noise * 3;
+            if (type === 'Fine VF') return 50 + Math.sin(t * 25) * 5 + Math.sin(t * 10) * 6 + noise;
             if (type === 'VT') {
-                if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 40; else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 40; return y + noise;
-            }
-            if (type === 'AF') {
-                if (t > 0.4 && t < 0.44) y -= 40;
-                else if (t >= 0.44 && t < 0.46) y += 10;
-                y += Math.sin(t * 50) * 2;
+                let y = 50;
+                if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 40; 
+                else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 40; 
                 return y + noise;
             }
-            if (type === 'STEMI') {
-                if (t < 0.15) y -= Math.sin(t / 0.15 * Math.PI) * 3; else if (t >= 0.15 && t < 0.20) y -= 2; else if (t >= 0.20 && t < 0.24) y -= 45; else if (t >= 0.24 && t < 0.26) y += 10; else if (t >= 0.26 && t < 0.55) { y -= 10; y -= Math.sin((t-0.26)/0.29 * Math.PI) * 8; } return y + noise;
+
+            // Complex Rhythms
+            let y = 50;
+            
+            // P-Wave (Skip for AF, STEMI varies, etc)
+            const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type);
+            if (hasP) {
+                if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3;
+            } else if (type === 'AF') {
+                // Fibrillatory baseline for AF
+                y += Math.sin(t * 50) * 1.5 + Math.sin(t * 30) * 1; 
             }
-            // Normal Sinus / Sinus Tachy / Brady
-            if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 3; else if (t > 0.12 && t < 0.14) y += 2; else if (t >= 0.14 && t < 0.18) y -= 40; else if (t >= 0.18 && t < 0.20) y += 8; else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6; return y + noise;
+
+            // QRS Complex
+            if (t > 0.12 && t < 0.14) y += 2; // Q
+            else if (t >= 0.14 && t < 0.18) y -= 45; // R (Up is negative in canvas usually, but here 50 is mid)
+            // Note: Canvas Y coordinates: 0 is top. So y-=45 is UP.
+            else if (t >= 0.18 && t < 0.20) y += 10; // S
+
+            // ST Segment / T Wave
+            if (type === 'STEMI') {
+                // Elevated ST
+                if (t >= 0.20 && t < 0.4) {
+                    y -= 10; // Elevation
+                    y -= Math.sin((t-0.20)/0.2 * Math.PI) * 5; // T wave merged
+                }
+            } else {
+                // Normal ST/T
+                if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 6;
+            }
+
+            return y + noise;
         };
 
         const getPlethWave = (t, spO2) => {
             if (!spO2 || spO2 < 10) return 0;
             let y = 0;
-            if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI); } 
-            else { y = Math.sin(((t - 0.3) / 0.7) * Math.PI) * 0.3; }
-            return y; 
+            // Smooth sine rise and slower fall
+            if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI/2); } 
+            else { y = Math.cos(((t - 0.3) / 0.7) * Math.PI/2); }
+            return y * (spO2/100); 
         };
 
-        const getArtWave = (t, bpSys) => {
-             // Sharp upstroke
-             if (t < 0.2) return Math.sin((t / 0.2) * Math.PI);
-             // Dicrotic notch
-             return Math.sin(((t - 0.2) / 0.8) * Math.PI) * 0.4;
+        const getArtWave = (t) => {
+             // More realistic arterial pressure waveform
+             // 1. Systolic Upstroke (Steep)
+             // 2. Systolic Peak
+             // 3. Dicrotic Notch
+             // 4. Diastolic Runoff
+             let y = 0;
+             if (t < 0.15) {
+                 // Steep rise
+                 y = Math.sin((t/0.15) * Math.PI/2); 
+             } else if (t < 0.4) {
+                 // Fall to notch
+                 y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2;
+             } else if (t < 0.5) {
+                 // Dicrotic notch bump
+                 y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1;
+             } else {
+                 // Diastolic runoff
+                 y = 0.2 * (1 - (t-0.5)/0.5);
+             }
+             return y;
         };
 
         const getEtco2Wave = (t, pathology, rr) => {
             if (rr <= 0) return 0; 
             if (t < 0.1 || t > 0.6) return 0; 
-            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05);
+            // Square wave-ish
+            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); // Rise
             if (t >= 0.15 && t < 0.5) {
-                const plateauBase = 1.0;
-                const plateauEnd = 0.9;
-                const p = (t - 0.15) / 0.35;
-                if (pathology === 'respiratory') return (0.5 + (p * 0.5)); 
-                return (plateauBase - (p * (plateauBase - plateauEnd)));
+                // Plateau
+                if (pathology === 'respiratory') return 0.5 + ((t - 0.15)/0.35)*0.5; // Shark fin (Obstructive)
+                return 1.0; 
             }
-            if (t >= 0.5 && t <= 0.6) {
-                const startVal = (pathology === 'respiratory' ? 1.0 : 0.9);
-                const p = (t - 0.5) / 0.1;
-                return (startVal * (1 - p));
-            }
+            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); // Fall
             return 0;
         };
 
@@ -799,7 +838,8 @@
                 if(parent) {
                     canvas.width = parent.clientWidth;
                     canvas.height = parent.clientHeight;
-                    // Calc Y positions
+                    // Reset Ys to prevent drawing lines across screen on resize
+                    drawState.current.lastY = 50;
                     drawState.current.lastYCO2 = canvas.height * 0.60;
                     drawState.current.lastYArt = canvas.height * 0.80;
                     drawState.current.lastYPleth = canvas.height - 5;
@@ -815,7 +855,10 @@
                 const props = propsRef.current;
                 
                 if (!state.lastTime) state.lastTime = timestamp;
-                const dt = (timestamp - state.lastTime) / 1000;
+                
+                // --- GLITCH FIX: Calculate DT and Cap it ---
+                let dt = (timestamp - state.lastTime) / 1000;
+                if (dt > 0.05) dt = 0.05; // Hard cap at 50ms to prevent "teleporting" trace when tab inactive
                 state.lastTime = timestamp;
 
                 if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
@@ -826,13 +869,15 @@
                 const prevX = state.x;
                 state.x += dx;
                 const eraserWidth = 20;
+                
                 ctx.fillStyle = '#000000';
                 if (state.x + eraserWidth < canvas.width) { ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); } 
                 else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, eraserWidth, canvas.height); }
 
+                // MONITOR OFF LOGIC
                 if (!props.showTraces) {
-                    // Draw Flatline if monitor off
-                    ctx.strokeStyle = '#003300'; ctx.beginPath(); ctx.moveTo(prevX, 50); ctx.lineTo(state.x, 50); ctx.stroke();
+                    // Draw faint flatline
+                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, 50); ctx.lineTo(state.x, 50); ctx.stroke();
                     requestRef.current = requestAnimationFrame(animate);
                     return;
                 }
@@ -840,9 +885,17 @@
                 // RHYTHM CALCS
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
                 let currentRate = props.isCPR ? 110 : (props.hr || 60);
-                if (currentRhythm === 'AF' && state.beatProgress >= 1) currentRate = props.hr + (Math.random() * 60 - 30); 
+                
+                // AF Rate Jitter: Change rate only when beat cycle resets (approx) to avoid stretching waveform mid-beat
+                if (currentRhythm === 'AF' && state.beatProgress <= 0.05) {
+                     // Mild jitter per beat
+                     // We don't change 'currentRate' variable here directly as it affects duration calc below immediately
+                     // Instead, we let the beatDuration calculation handle randomness if we wanted, 
+                     // but simplified: we assume the 'hr' prop coming in fluctuates enough from the main tick loop.
+                }
+
                 let beatDuration = 60 / Math.max(10, currentRate);
-                if (currentRhythm === 'VF' || currentRhythm === 'Coarse VF' || currentRhythm === 'Fine VF') beatDuration = 60/300;
+                if (['VF', 'Coarse VF', 'Fine VF'].includes(currentRhythm)) beatDuration = 0.2; // Fast chaotic cycle
 
                 state.beatProgress += dt / beatDuration;
                 if (state.beatProgress >= 1) state.beatProgress = 0;
@@ -851,6 +904,7 @@
                 state.breathProgress += dt / breathDuration;
                 if (state.breathProgress >= 1) state.breathProgress = 0;
 
+                // WRAP AROUND
                 if (state.x > canvas.width) {
                     state.x = 0;
                     state.lastY = getWaveform(currentRhythm, state.beatProgress, props.isCPR);
@@ -859,7 +913,7 @@
                     state.lastYPleth = canvas.height - 5;
                 }
 
-                // 1. ECG
+                // 1. ECG (Green)
                 const yECG = getWaveform(currentRhythm, state.beatProgress, props.isCPR);
                 if (state.x > prevX) {
                     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
@@ -880,8 +934,8 @@
 
                 // 3. ART LINE (Red)
                 if (props.showArt && !props.isCPR && currentRate > 0) {
-                     const normArt = getArtWave(state.beatProgress, 120);
-                     const artHeight = 30; const artBaseY = (canvas.height * 0.80); const yArt = artBaseY - (normArt * artHeight);
+                     const normArt = getArtWave(state.beatProgress);
+                     const artHeight = 35; const artBaseY = (canvas.height * 0.85); const yArt = artBaseY - (normArt * artHeight);
                      if (state.x > prevX) {
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath();
                         ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
@@ -1938,13 +1992,13 @@
         useEffect(() => {
             if (!chartRef.current || !history.length) return;
             
-            // Fix Jitter: Calculate Y-offset based on index (deterministic)
+            // --- FIX: Capture ALL relevant actions ---
             const interventions = log
-                .filter(l => l.type === 'action' || l.type === 'manual')
+                .filter(l => l.type === 'action' || l.type === 'manual' || l.type === 'alert' || l.type === 'success' || l.type === 'danger')
                 .map((l, i) => ({ 
                     x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, 
                     label: l.msg,
-                    yOffset: (i % 6) * 15 
+                    yOffset: (i % 8) * 12 // Stagger labels so they don't overlap
                 }));
 
             const chart = new window.Chart(chartRef.current, {
@@ -1980,13 +2034,13 @@
                                 ctx.beginPath();
                                 ctx.moveTo(xPos, top);
                                 ctx.lineTo(xPos, bottom);
-                                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
                                 ctx.lineWidth = 1;
                                 ctx.stroke();
                                 
-                                ctx.fillStyle = 'rgba(255,255,255,0.7)';
-                                ctx.font = '10px sans-serif';
-                                ctx.fillText(item.label.substring(0, 20) + (item.label.length>20?"...":""), xPos + 4, top + 10 + item.yOffset);
+                                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                                ctx.font = '9px sans-serif';
+                                ctx.fillText(item.label.substring(0, 25) + (item.label.length>25?"...":""), xPos + 2, top + 10 + item.yOffset);
                             }
                         });
                         ctx.restore();
