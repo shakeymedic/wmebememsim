@@ -2036,31 +2036,50 @@
                 </div>
                 
                 {/* RIGHT COL: Info & Log */}
-                <div className="flex flex-col gap-4 h-full overflow-hidden">
-                    <Card title="Scenario Info" icon="info" collapsible={true} className="flex-shrink-0">
-                         <h3 className="font-bold text-white mb-1">{scenario.title}</h3>
-                         <p className="text-xs text-slate-300 mb-2">{scenario.patientProfileTemplate.replace('{age}', scenario.patientAge).replace('{sex}', 'Male')}</p>
-                         <div className="grid grid-cols-2 gap-2">
-                             {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (
-                                 <InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
-                             ))}
-                         </div>
-                        {scenario.wetflag && (
-                            <div className="mt-4 bg-slate-900/50 rounded border border-slate-700 p-2">
-                                <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1 border-b border-slate-700 pb-1">WETFLAG (Wt: {scenario.wetflag.weight}kg)</h4>
-                                <table className="w-full text-[10px] text-left text-slate-300">
-                                    <tbody>
-                                        <tr><td className="py-0.5 text-slate-500 font-bold">Energy (4J/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.energy} J</td></tr>
-                                        <tr><td className="py-0.5 text-slate-500 font-bold">Tube Size</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.tube}</td></tr>
-                                        <tr><td className="py-0.5 text-slate-500 font-bold">Fluids (10ml/kg)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.fluids} ml</td></tr>
-                                        <tr><td className="py-0.5 text-slate-500 font-bold">Lorazepam</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.lorazepam} mg</td></tr>
-                                        <tr><td className="py-0.5 text-slate-500 font-bold">Adren (1:10k)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.adrenaline} ml</td></tr>
-                                        <tr><td className="py-0.5 text-slate-500 font-bold">Glucose (10%)</td><td className="py-0.5 text-right font-mono text-emerald-400">{scenario.wetflag.glucose} ml</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                    </Card>
+<div className="flex flex-col gap-4 h-full overflow-hidden">
+    
+    <Card title="Scenario Info" icon="info" collapsible={true} className="flex-shrink-0">
+         {/* --- PASTE YOUR NEW CODE HERE --- */}
+         <div className="flex justify-between items-start border-b border-slate-700 pb-2 mb-2">
+            <h3 className="font-bold text-white text-lg">{scenario.title}</h3>
+            <span className="bg-sky-900 text-sky-200 text-xs px-2 py-1 rounded">{scenario.ageRange}</span>
+         </div>
+         
+         <div className="mb-3">
+            <p className="text-sm text-slate-200 leading-snug">{scenario.patientProfileTemplate.replace('{age}', scenario.patientAge).replace('{sex}', 'Male')}</p>
+            <p className="text-sm font-bold text-sky-400 mt-1">PC: {scenario.presentingComplaint}</p>
+         </div>
+
+         {/* CRITICAL INFO GRID */}
+         <div className="grid grid-cols-1 gap-2 bg-black/20 p-2 rounded">
+             <div className="flex flex-col">
+                 <span className="text-[10px] uppercase text-slate-500 font-bold">Past Medical History</span>
+                 <span className="text-sm font-medium text-white">{scenario.pmh ? scenario.pmh.join(", ") : "Nil Significant"}</span>
+             </div>
+             <div className="flex flex-col border-t border-slate-700/50 pt-1">
+                 <span className="text-[10px] uppercase text-slate-500 font-bold">Medications</span>
+                 <span className="text-sm font-medium text-white">{scenario.dhx ? scenario.dhx.join(", ") : "Nil Regular"}</span>
+             </div>
+             <div className="flex flex-col border-t border-slate-700/50 pt-1">
+                 <span className="text-[10px] uppercase text-slate-500 font-bold">Allergies</span>
+                 <span className={`text-sm font-bold ${scenario.allergies && scenario.allergies[0] !== 'Nil' && scenario.allergies[0] !== 'NKDA' ? 'text-red-400' : 'text-emerald-400'}`}>
+                     {scenario.allergies ? scenario.allergies.join(", ") : "NKDA"}
+                 </span>
+             </div>
+         </div>
+
+         {/* Investigation Buttons Grid */}
+         <div className="grid grid-cols-3 gap-2 mt-3">
+             {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (
+                 <InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>
+             ))}
+         </div>
+         {/* --- END OF YOUR PASTED CODE --- */}
+    </Card>
+
+    <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
+        {/* ... guidelines content ... */}
+    </Card>
                     
                     <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
                         <div className="flex flex-col gap-2">
