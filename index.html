@@ -996,6 +996,26 @@
                  if (!state.scenario.evolution) return state;
                  const detScen = { ...state.scenario, ...state.scenario.evolution.deteriorated, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 } };
                  return { ...state, scenario: detScen, flash: 'red' };
+            
+            // --- NEW: SYNC ACTION FOR MONITOR ---
+            case 'SYNC_FROM_MASTER':
+                return {
+                    ...state,
+                    vitals: action.payload.vitals,
+                    rhythm: action.payload.rhythm,
+                    cprInProgress: action.payload.cprInProgress,
+                    etco2Enabled: action.payload.etco2Enabled,
+                    flash: action.payload.flash,
+                    cycleTimer: action.payload.cycleTimer,
+                    // Reconstruct a minimal scenario object for display purposes
+                    scenario: {
+                        ...state.scenario,
+                        title: action.payload.scenarioTitle,
+                        deterioration: { type: action.payload.pathology }
+                    },
+                    activeInterventions: new Set(action.payload.activeInterventions)
+                };
+
             case 'ADD_LOG':
                 const timestamp = new Date().toLocaleTimeString('en-GB');
                 const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`;
@@ -1017,7 +1037,7 @@
             default: return state;
         }
     };
-    const useSimulation = (initialScenario) => {
+    const useSimulation = (initialScenario, isMonitorMode = false) => {
         const [state, dispatch] = useReducer(simReducer, initialState);
         const timerRef = useRef(null);
         const tickRef = useRef(null);
@@ -1027,16 +1047,50 @@
         // Update ref whenever state changes so loops can access fresh state
         useEffect(() => { stateRef.current = state; }, [state]);
         
+        // --- DATA SYNC (Controller <-> Monitor) ---
         useEffect(() => {
-            if (state.scenario && state.log.length > 0) {
+            if (isMonitorMode) {
+                // MONITOR MODE: Listen for updates
+                const handleStorage = (e) => {
+                    if (e.key === 'wmebem_sync_stream' && e.newValue) {
+                        try { dispatch({ type: 'SYNC_FROM_MASTER', payload: JSON.parse(e.newValue) }); } catch (err) {}
+                    }
+                };
+                window.addEventListener('storage', handleStorage);
+                
+                // Immediate load
+                const existing = localStorage.getItem('wmebem_sync_stream');
+                if (existing) try { dispatch({ type: 'SYNC_FROM_MASTER', payload: JSON.parse(existing) }); } catch (e) {}
+
+                return () => window.removeEventListener('storage', handleStorage);
+            } else {
+                // CONTROLLER MODE: Broadcast state
+                if (!state.scenario) return;
+                const payload = {
+                    vitals: state.vitals,
+                    rhythm: state.rhythm,
+                    cprInProgress: state.cprInProgress,
+                    etco2Enabled: state.etco2Enabled,
+                    flash: state.flash,
+                    cycleTimer: state.cycleTimer,
+                    scenarioTitle: state.scenario.title,
+                    pathology: state.scenario.deterioration?.type || 'normal',
+                    activeInterventions: Array.from(state.activeInterventions)
+                };
+                localStorage.setItem('wmebem_sync_stream', JSON.stringify(payload));
+            }
+        }, [state, isMonitorMode]);
+
+        useEffect(() => {
+            if (!isMonitorMode && state.scenario && state.log.length > 0) {
                 const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) };
                 localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState));
             }
-        }, [state.vitals, state.log]);
+        }, [state.vitals, state.log, isMonitorMode]);
 
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
 
-        // OPTIMIZED AUDIO LOOP: Avoids stopping/starting interval on every beat to reduce jitter
+        // AUDIO LOOP
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
@@ -1044,10 +1098,8 @@
             const scheduleBeep = () => {
                 const current = stateRef.current;
                 
-                if (!current.isRunning || current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') {
-                     // Check back later if sim resumes or rhythm changes, handled by effect re-mount
-                     return; 
-                }
+                if (!current.isRunning && !isMonitorMode) return; // In monitor mode, we might want audio even if "paused" logic is complex, but generally audio follows visual
+                if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') return;
 
                 if (!current.isMuted && ctx) {
                     const osc = ctx.createOscillator(); 
@@ -1069,15 +1121,14 @@
                 timerId = setTimeout(scheduleBeep, delay);
             };
 
-            if (state.isRunning) {
+            // Monitor always runs audio if HR > 0, Controller runs if isRunning
+            if (state.isRunning || (isMonitorMode && state.vitals.hr > 0)) {
                 if (ctx && ctx.state === 'suspended') ctx.resume();
                 scheduleBeep();
             }
 
             return () => clearTimeout(timerId);
-        }, [state.isRunning]); 
-        // We only restart the loop if running status changes. 
-        // Pitch/Rate changes are picked up by stateRef inside the loop.
+        }, [state.isRunning, isMonitorMode]); 
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
@@ -1104,22 +1155,19 @@
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
 
             // --- AUTO-PROGRESSION LOGIC ---
-            // If this intervention is a known stabiliser for this specific scenario, improve the patient state.
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) {
                 dispatch({ type: 'TRIGGER_IMPROVE' });
                 addLogEntry("Patient condition IMPROVING (Investigations updated)", "success");
             }
 
-            // --- STATE CHANGE LOGIC (NARRATIVE) ---
+            // --- STATE CHANGE LOGIC ---
             if (state.scenario.presentingComplaint === 'Seizure' || state.scenario.title.includes('Seizure') || state.scenario.title.includes('Eclampsia')) {
                 const benzos = (newCounts['Lorazepam'] || 0) + (newCounts['Midazolam'] || 0);
                 const secondLine = (newCounts['Levetiracetam'] || 0) + (newCounts['Phenytoin'] || 0) + (newCounts['MagSulph'] || 0); 
                 
                 if ((benzos >= 2 || (benzos >= 1 && secondLine >= 1) || newActive.has('RSI')) && state.vitals.gcs < 10) {
                      addLogEntry("CLINICAL UPDATE: Seizure activity has ceased. Patient is post-ictal.", 'success');
-                     newVitals.hr = Math.max(80, newVitals.hr - 30);
-                     newVitals.rr = 18;
-                     newVitals.spO2 = 96;
+                     newVitals.hr = Math.max(80, newVitals.hr - 30); newVitals.rr = 18; newVitals.spO2 = 96;
                      dispatch({ type: 'TRIGGER_IMPROVE' });
                 }
             }
@@ -1127,8 +1175,7 @@
             if (state.scenario.title.includes('Tension') || state.scenario.title.includes('Stab')) {
                 if (key === 'Needle' || key === 'FingerThoracostomy') {
                      addLogEntry("CLINICAL UPDATE: Hiss of air heard. Hemodynamics improving.", 'success');
-                     newVitals.spO2 = 92; 
-                     newVitals.bpSys = Math.max(90, newVitals.bpSys + 30);
+                     newVitals.spO2 = 92; newVitals.bpSys = Math.max(90, newVitals.bpSys + 30);
                      dispatch({ type: 'TRIGGER_IMPROVE' });
                 }
             }
@@ -1141,8 +1188,7 @@
             }
 
             if (state.vitals.bm < 4.0 && (key === 'InsulinDextrose' || key === 'Glucagon')) {
-                 newVitals.bm = 6.0;
-                 newVitals.gcs = 14;
+                 newVitals.bm = 6.0; newVitals.gcs = 14;
                  addLogEntry("CLINICAL UPDATE: GCS improving. BM 6.0.", 'success');
             }
 
@@ -1196,7 +1242,6 @@
         const triggerROSC = () => { 
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); 
             dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); 
-            // Disable deterioration to prevent immediate re-arrest unless instructor re-enables
             const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } };
             dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
             addLogEntry('ROSC achieved. Deterioration paused.', 'success'); 
@@ -1221,7 +1266,6 @@
             let next = { ...current.vitals };
             
             // ARREST LOGIC
-            // Ensure Asystole if HR hits 0 (unless already in a defined arrest rhythm)
             if (next.hr <= 0 && !['Asystole', 'VF', 'Coarse VF', 'Fine VF', 'VT', 'PEA'].includes(current.rhythm)) {
                 dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' });
                 addLogEntry("Cardiac Arrest Detected (HR 0). Rhythm: Asystole.", 'danger');
@@ -1231,22 +1275,15 @@
 
             if (['Asystole', 'VF', 'Coarse VF', 'Fine VF'].includes(current.rhythm)) { 
                 next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
-                // If CPR is NOT in progress, oxygen drops.
                 if(!current.cprInProgress) next.spO2 = Math.max(0, next.spO2 - 2); 
             } else {
-                // NORMAL FLUCTUATION
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-2, 2); 
                 
-                // --- FIXED BP LOGIC ---
-                // Diastolic should roughly follow Systolic but stay 30-40mmHg lower
-                // Only change Diastolic if it gets "too close" or "too far"
+                // BP LOGIC FIX
                 let targetDia = Math.floor(next.bpSys * 0.65);
                 next.bpDia += getRandomInt(-2, 2); 
-                
-                // Correction clamp: Ensure Dia is at least 15 below Sys
                 if (next.bpDia >= next.bpSys - 15) next.bpDia = next.bpSys - 15;
-                // Minimum sane diastolic if sys is okay
                 if (next.bpSys > 60 && next.bpDia < 30) next.bpDia = 30;
                 
                 next.spO2 += Math.random() > 0.9 ? getRandomInt(-1, 1) : 0;
@@ -1256,11 +1293,10 @@
                 next.rr = 12; // Controlled ventilation
                 if (current.rhythm !== 'Asystole' && current.rhythm !== 'VF') next.spO2 = Math.min(100, next.spO2 + 2);
             } else if (current.isParalysed) {
-                next.rr = 0; // Paralysed and not ventilated
-                next.spO2 -= 5; // Hypoxia
+                next.rr = 0; next.spO2 -= 5; 
             }
 
-            // --- DETERIORATION LOGIC (Keep existing) ---
+            // Deterioration
              if (current.scenario?.deterioration?.active && current.scenario.deterioration.rate > 0 && current.rhythm !== 'VF' && current.rhythm !== 'Asystole') {
                 if (Math.random() < current.scenario.deterioration.rate) {
                     if (current.scenario.deterioration.type === 'shock') { next.bpSys -= 2; next.hr += 1; }
@@ -1281,8 +1317,9 @@
             
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
+
         const start = () => { 
-            if (state.isRunning) return; 
+            if (state.isRunning || isMonitorMode) return; 
             dispatch({ type: 'START_SIM' }); 
             timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); 
             tickRef.current = setInterval(tick, 3000); 
@@ -1677,10 +1714,11 @@
                     <Card className="bg-slate-900 border-slate-800 flex-shrink-0">
                         <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
                             <div className="flex gap-2">
-                                <Button variant="secondary" onClick={onBack} className="h-8 text-xs px-2"><Lucide icon="arrow-left"/> Back</Button>
-                                {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> Pause</Button>}
-                                <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> Finish</Button>
-                            </div>
+        <Button variant="secondary" onClick={onBack} className="h-8 text-xs px-2"><Lucide icon="arrow-left"/> Back</Button>
+        {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> Pause</Button>}
+        <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor', '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="monitor"/> Monitor</Button>
+        <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> Finish</Button>
+    </div>
                             <div className="flex items-center gap-3">
                                 <button onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className={`p-1.5 rounded-full ${isMuted ? 'bg-red-900 text-white' : 'bg-slate-800 text-slate-400'}`}><Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4" /></button>
                                 <div className="font-mono text-xl font-bold text-emerald-400 bg-black/40 px-3 py-1 rounded">{formatTime(time)}</div>
@@ -2031,13 +2069,49 @@
             </div>
         );
     };
+     const MonitorScreen = ({ sim }) => {
+        const { state } = sim;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario } = state;
+        const hasMonitoring = activeInterventions.has('Obs');
+        const hasArtLine = activeInterventions.has('ArtLine');
+
+        return (
+            <div className={`h-full w-full flex flex-col bg-black text-white p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                <div className="flex-1 relative border border-slate-700 rounded mb-4 overflow-hidden">
+                    <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} />
+                </div>
+                <div className="h-1/3 grid grid-cols-4 gap-4">
+                    <VitalDisplay label="HR" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} />
+                    <VitalDisplay label={hasArtLine ? "ABP" : "NIBP"} value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={hasMonitoring} />
+                    <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} />
+                    <div className="grid grid-rows-2 gap-2">
+                        <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} />
+                        {etco2Enabled && hasMonitoring && <div className="bg-slate-900/50 p-2 rounded border border-yellow-500/50 flex flex-col items-center justify-center"><span className="text-xs font-bold text-yellow-500">ETCO2</span><span className="text-2xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : '4.5'}</span></div>}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const MonitorContainer = () => {
+        const sim = useSimulation(null, true);
+        if (!sim.state.vitals.hr) return <div className="h-full flex items-center justify-center bg-black text-slate-500 font-mono animate-pulse">WAITING FOR CONTROLLER...</div>;
+        return <MonitorScreen sim={sim} />;
+    };   
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [currentScenario, setCurrentScenario] = useState(null);
         const [lastSetupParams, setLastSetupParams] = useState(null);
         const [resumeState, setResumeState] = useState(null);
 
-        useEffect(() => { 
+        useEffect(() => {
+            // CHECK FOR MONITOR MODE
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('mode') === 'monitor') {
+                setView('monitor');
+                return;
+            }
+
             const saved = localStorage.getItem('wmebem_sim_state');
             if (saved) {
                 try {
@@ -2048,6 +2122,8 @@
         }, []); 
 
         const handleResume = () => { setCurrentScenario(resumeState.scenario); setView('resume'); };
+
+        if (view === 'monitor') return <MonitorContainer />;
 
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
