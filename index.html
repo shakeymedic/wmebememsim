@@ -195,7 +195,7 @@
         'Magills': { label: 'Magill Forceps', effect: { SpO2: 10 }, category: 'Airway', log: 'Foreign body removed with Magills.', type: 'bolus', duration: 15 },
 
         // --- BREATHING ---
-        'Obs': { label: 'Monitoring (SpO2/ECG/BP)', effect: {}, category: 'Common', log: 'Full monitoring applied.', type: 'continuous', duration: 10 },
+        'Obs': { label: 'Monitoring (SpO2/ECG/BP)', effect: {}, category: 'Breathing', log: 'Full monitoring applied.', type: 'continuous', duration: 10 },
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Breathing', log: 'High flow oxygen applied.', type: 'continuous', duration: 5 },
         'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25, RR: 'vent' }, category: 'Breathing', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
         'Nebs': { label: 'Nebulisers (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Breathing', log: 'Nebulisers (Salbutamol/Ipratropium) administered.', type: 'bolus', duration: 300 },
@@ -208,10 +208,10 @@
         'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
 
         // --- CIRCULATION ---
-        'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Common', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
+        'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
         'ArtLine': { label: 'Arterial Line', effect: {}, category: 'Circulation', log: 'Arterial Line inserted. Invasive BP monitoring active.', type: 'continuous', duration: 180 },
         'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Circulation', log: 'Subclavian central line inserted (US guided).', type: 'continuous', duration: 300 },
-        'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Common', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
+        'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
         'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: 'O-Negative Blood administered.', type: 'bolus', duration: 300 },
         'TXA': { label: 'TXA', effect: {}, category: 'Circulation', log: 'IV Tranexamic Acid administered.', type: 'bolus', duration: 60 },
         'AdrenalineIV': { label: 'Adrenaline (IV)', effect: { changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Adrenaline administered.', type: 'bolus', duration: 5 },
@@ -237,7 +237,7 @@
 
         // --- DRUGS (Formerly Disability/General) ---
         'AdrenalineIM': { label: 'Adrenaline (IM)', effect: { HR: 20, BP: 15 }, category: 'Drugs', log: 'IM Adrenaline administered.', type: 'bolus', duration: 5 },
-        'Analgesia': { label: 'Morphine', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Common', log: 'IV Morphine administered.', type: 'bolus', duration: 10 },
+        'Analgesia': { label: 'Morphine', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Morphine administered.', type: 'bolus', duration: 10 },
         'Fentanyl': { label: 'Fentanyl', effect: { HR: -2, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Fentanyl administered.', type: 'bolus', duration: 10 },
         'Paracetamol': { label: 'Paracetamol', effect: {}, category: 'Drugs', log: 'IV Paracetamol administered.', type: 'bolus', duration: 10 },
         'Ketamine': { label: 'Ketamine', effect: { gcs: -5, BP: 5, HR: 5 }, category: 'Drugs', log: 'IV Ketamine administered.', type: 'bolus', duration: 15 },
@@ -248,14 +248,14 @@
         'Naloxone': { label: 'Naloxone', effect: { RR: 10, gcs: 5 }, category: 'Drugs', log: 'IV Naloxone administered.', type: 'bolus', duration: 5 },
         'Glucagon': { label: 'Glucagon', effect: { HR: 15, BP: 5 }, category: 'Drugs', log: 'IV Glucagon administered.', type: 'bolus', duration: 10 },
         'InsulinDextrose': { label: 'Insulin/Dextrose', effect: { BM: -5 }, category: 'Drugs', log: 'Insulin/Dextrose infusion started.', type: 'bolus', duration: 60 },
-        'Antibiotics': { label: 'Broad Spectrum Abx', effect: {}, category: 'Common', log: 'Broad spectrum IV Antibiotics administered.', type: 'bolus', duration: 60 },
+        'Antibiotics': { label: 'Broad Spectrum Abx', effect: {}, category: 'Drugs', log: 'Broad spectrum IV Antibiotics administered.', type: 'bolus', duration: 60 },
         'Ceftriaxone': { label: 'Ceftriaxone', effect: {}, category: 'Drugs', log: 'IV Ceftriaxone administered.', type: 'bolus', duration: 30 },
         'CoAmoxiclav': { label: 'Co-Amoxiclav', effect: {}, category: 'Drugs', log: 'IV Co-Amoxiclav administered.', type: 'bolus', duration: 30 },
         'Aspirin': { label: 'Aspirin', effect: {}, category: 'Drugs', log: 'Aspirin PO administered.', type: 'bolus', duration: 10 },
         'Clopidogrel': { label: 'Clopidogrel', effect: {}, category: 'Drugs', log: 'Clopidogrel PO administered.', type: 'bolus', duration: 10 },
         'Dexamethasone': { label: 'Dexamethasone', effect: {}, category: 'Drugs', log: 'IV Dexamethasone administered.', type: 'bolus', duration: 10 },
         'Hydrocortisone': { label: 'Hydrocortisone', effect: { BP: 5 }, category: 'Drugs', log: 'IV Hydrocortisone administered.', type: 'bolus', duration: 10 },
-        'Antiemetic': { label: 'Ondansetron', effect: {}, category: 'Common', log: 'IV Ondansetron administered.', type: 'bolus', duration: 10, searchTags: 'zofran' },
+        'Antiemetic': { label: 'Ondansetron', effect: {}, category: 'Drugs', log: 'IV Ondansetron administered.', type: 'bolus', duration: 10, searchTags: 'zofran' },
         'Cyclizine': { label: 'Cyclizine', effect: { HR: 5 }, category: 'Drugs', log: 'IV Cyclizine administered.', type: 'bolus', duration: 10 },
         'Pabrinex': { label: 'Pabrinex', effect: {}, category: 'Drugs', log: 'IV Pabrinex administered.', type: 'bolus', duration: 30 },
         'Heparin': { label: 'LMWH / Heparin', effect: {}, category: 'Drugs', log: 'Anticoagulation administered.', type: 'bolus', duration: 10 },
@@ -670,7 +670,7 @@
     };
     
     // Updated VitalDisplay to handle BP explicitly
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false, visible = true, isMonitor = false }) => {
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false, visible = true, isMonitor = false, hideTrends = false }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
@@ -690,7 +690,7 @@
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
                             {isBP && <span className="text-5xl text-slate-400">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
                         </span>
-                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-2xl font-bold ${value === prev ? 'text-slate-600' : (lowIsBad ? (value > prev ? 'text-emerald-500' : 'text-red-500') : (value > prev ? 'text-red-500' : 'text-emerald-500'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-2xl font-bold ${value === prev ? 'text-slate-600' : (lowIsBad ? (value > prev ? 'text-emerald-500' : 'text-red-500') : (value > prev ? 'text-red-500' : 'text-emerald-500'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
                     <span className="text-lg text-slate-500 mt-2">{unit}</span>
                 </div>
@@ -725,7 +725,26 @@
             </div>
         );
     };
-    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40" }) => {
+
+        return (
+            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{label}</span>
+                {isEditing ? (
+                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center" autoFocus />
+                ) : (
+                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5" onClick={() => { setEditVal(value); setIsEditing(true); }}>
+                        <span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>
+                            {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
+                            {isBP && <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
+                        </span>
+                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                    </div>
+                )}
+                <span className="text-[8px] md:text-[9px] text-slate-600 leading-none">{unit}</span>
+            </div>
+        );
+    };
+    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
         
@@ -740,11 +759,11 @@
             lastYArt: 0
         });
 
-        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR });
+        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
 
         useEffect(() => {
-            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR };
-        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR]);
+            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel };
+        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
 
         // --- WAVEFORM GENERATORS ---
         const getWaveform = (type, t, cpr, baseline) => {
@@ -864,7 +883,6 @@
                 if (!state.lastTime) state.lastTime = timestamp;
                 
                 // --- GLITCH FIX ---
-                // Clamp dt to prevent massive jumps if tab is inactive
                 let dt = (timestamp - state.lastTime) / 1000;
                 if (dt > 0.05) dt = 0.05; 
                 state.lastTime = timestamp;
@@ -907,7 +925,6 @@
 
                 if (state.x > canvas.width) {
                     state.x = 0;
-                    // Reset Ys to current targets to avoid wrapping lines
                     state.lastY = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
                     state.lastYCO2 = canvas.height * 0.60;
                     state.lastYArt = canvas.height * 0.80;
@@ -965,7 +982,8 @@
         return (
             <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
-                <div className="absolute top-2 right-4 text-lg font-mono text-green-500 font-bold">{showTraces ? rhythmType : ''}</div>
+                {/* Use rhythmLabel if provided, otherwise fall back to type (but MonitorScreen provides label='ECG') */}
+                <div className="absolute top-2 right-4 text-lg font-mono text-green-500 font-bold">{showTraces ? (propsRef.current.rhythmLabel || rhythmType) : ''}</div>
                 {showEtco2 && showTraces && <div className="absolute top-[58%] right-4 text-lg font-mono text-yellow-500 font-bold">ETCO2</div>}
                 {showArt && showTraces && <div className="absolute top-[78%] right-4 text-lg font-mono text-red-500 font-bold">ABP</div>}
                 {showTraces && <div className="absolute bottom-4 right-4 text-lg font-mono text-sky-500 font-bold">PLETH</div>}
@@ -1769,11 +1787,11 @@
                     <Card className="bg-slate-900 border-slate-800 flex-shrink-0">
                         <div className="flex justify-between items-center mb-2 border-b border-slate-800 pb-2">
                             <div className="flex gap-2">
-        <Button variant="secondary" onClick={onBack} className="h-8 text-xs px-2"><Lucide icon="arrow-left"/> Back</Button>
-        {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> Pause</Button>}
-        <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor', '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="monitor"/> Monitor</Button>
-        <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> Finish</Button>
-    </div>
+                                <Button variant="secondary" onClick={onBack} className="h-8 text-xs px-2"><Lucide icon="arrow-left"/> Back</Button>
+                                {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> Pause</Button>}
+                                <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor', '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="monitor"/> Monitor</Button>
+                                <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> Finish</Button>
+                            </div>
                             <div className="flex items-center gap-3">
                                 <button onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className={`p-1.5 rounded-full ${isMuted ? 'bg-red-900 text-white' : 'bg-slate-800 text-slate-400'}`}><Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4" /></button>
                                 <div className="font-mono text-xl font-bold text-emerald-400 bg-black/40 px-3 py-1 rounded">{formatTime(time)}</div>
@@ -1824,7 +1842,7 @@
                                      Rhythm Select...
                                  </Button>
                                  {expandRhythm && (
-                                     <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-600 z-50 rounded shadow-xl max-h-48 overflow-y-auto">
+                                     <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-600 z-50 rounded shadow-xl max-h-96 overflow-y-auto">
                                          {['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Fine VF', 'Coarse VF', 'Asystole', 'PEA', 'STEMI', '1st Deg Block', '3rd Deg Block'].map(r => (
                                              <button key={r} onClick={() => handleRhythmSelect(r)} className="block w-full text-left px-2 py-2 text-xs hover:bg-sky-600 border-b border-slate-700">{r}</button>
                                          ))}
@@ -1874,9 +1892,26 @@
                         
                         {/* Tabs */}
                         <div className="flex space-x-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
-                            {['Common', 'Airway', 'Circulation', 'Drugs', 'Obs/Gynae', 'Procedures'].map(cat => (
+                            {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Obs/Gynae', 'Procedures'].map(cat => (
                                 <button key={cat} onClick={() => setActiveTab(cat)} className={`px-3 py-1 text-xs font-bold rounded transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{cat}</button>
                             ))}
+                        </div>
+
+                        {/* Manual Log / Search Bar */}
+                        <div className="flex gap-2 mb-2 relative">
+                             {/* SEARCH RESULTS DROPDOWN */}
+                             {searchResults.length > 0 && (
+                                <div className="absolute top-full left-0 right-0 bg-slate-800 border border-slate-600 rounded-b-lg shadow-xl max-h-48 overflow-y-auto z-20">
+                                    {searchResults.map(key => (
+                                        <button key={key} onClick={() => handleSearchSelect(key)} className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-sky-900 border-b border-slate-700 flex justify-between">
+                                            <span className="font-bold">{INTERVENTIONS[key].label}</span>
+                                            <span className="text-slate-500 italic">{INTERVENTIONS[key].category}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                             )}
+                             <input type="text" className="bg-slate-900 border border-slate-600 rounded px-2 text-xs flex-1 text-white" placeholder="Search or Type Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                             <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} className="h-8 text-xs">Log</Button>
                         </div>
 
                         {/* Grid */}
@@ -1915,23 +1950,6 @@
                                     </Button>
                                 )
                             })}
-                        </div>
-                        
-                        {/* Manual Log / Search Bar */}
-                        <div className="mt-2 flex gap-2 pt-2 border-t border-slate-700 relative">
-                             {/* SEARCH RESULTS DROPDOWN */}
-                             {searchResults.length > 0 && (
-                                <div className="absolute bottom-full left-0 right-0 bg-slate-800 border border-slate-600 rounded-t-lg shadow-xl max-h-48 overflow-y-auto z-20">
-                                    {searchResults.map(key => (
-                                        <button key={key} onClick={() => handleSearchSelect(key)} className="w-full text-left px-3 py-2 text-xs text-slate-200 hover:bg-sky-900 border-b border-slate-700 flex justify-between">
-                                            <span className="font-bold">{INTERVENTIONS[key].label}</span>
-                                            <span className="text-slate-500 italic">{INTERVENTIONS[key].category}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                             )}
-                             <input type="text" className="bg-slate-900 border border-slate-600 rounded px-2 text-xs flex-1 text-white" placeholder="Search or Type Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                             <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} className="h-8 text-xs">Log</Button>
                         </div>
                     </Card>
                 </div>
@@ -2146,16 +2164,17 @@
                         showArt={hasArtLine} 
                         isCPR={cprInProgress}
                         className="h-full" 
+                        rhythmLabel="ECG" 
                     />
                 </div>
                 
                 {/* Big Vitals Grid */}
                 <div className="h-[25vh] grid grid-cols-4 gap-4">
-                    <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} />
-                    <VitalDisplay label={hasArtLine ? "ABP" : "NIBP"} value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} />
-                    <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} />
+                    <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    <VitalDisplay label={hasArtLine ? "ABP" : "NIBP"} value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     <div className="grid grid-rows-2 gap-4">
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         {etco2Enabled && hasMonitoring ? (
                             <div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50">
                                 <span className="text-sm font-bold text-yellow-500">ETCO2</span>
@@ -2170,7 +2189,7 @@
                 </div>
             </div>
         );
-    };
+    };;
 
     const MonitorContainer = () => {
         const sim = useSimulation(null, true);
