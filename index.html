@@ -1403,39 +1403,38 @@
     };
         
         // --- UI SCREENS ---
+    const useAuth = () => {
+        const [user, setUser] = useState(null);
+        const [isPro, setIsPro] = useState(false);
+        useEffect(() => {
+            const unsubscribe = firebase.auth().onAuthStateChanged(async (u) => {
+                if (u) {
+                    setUser(u);
+                    const dbStore = firebase.firestore();
+                    const subSnapshot = await dbStore.collection('customers').doc(u.uid).collection('subscriptions').where('status', 'in', ['active', 'trialing']).get();
+                    setIsPro(!subSnapshot.empty);
+                } else { setUser(null); setIsPro(false); }
+            });
+            return () => unsubscribe();
+        }, []);
+        const signIn = () => { const provider = new firebase.auth.GoogleAuthProvider(); firebase.auth().signInWithPopup(provider); };
+        const signOut = () => firebase.auth().signOut();
+        return { user, isPro, signIn, signOut };
+    };
 
     const startCheckout = async (userId) => {
-    const dbStore = firebase.firestore();
-    // 1. Add a document to the 'checkout_sessions' collection
-    const docRef = await dbStore
-        .collection('customers')
-        .doc(userId)
-        .collection('checkout_sessions')
-        .add({
-            price: 'price_8.99', // Get this from Stripe Dashboard
+        const dbStore = firebase.firestore();
+        const docRef = await dbStore.collection('customers').doc(userId).collection('checkout_sessions').add({
+            price: 'price_1SZLnwCwda605Qgrr0RE1Rmb', // UPDATED PRICE ID
             success_url: window.location.href,
             cancel_url: window.location.href,
         });
+        docRef.onSnapshot((snap) => { const { error, url } = snap.data(); if (error) alert(`Error: ${error.message}`); if (url) window.location.assign(url); });
+    };
 
-    // 2. Listen for the sessionId (written by the Extension)
-    docRef.onSnapshot((snap) => {
-        const { error, url } = snap.data();
-        if (error) {
-            alert(`An error occurred: ${error.message}`);
-        }
-        if (url) {
-            // 3. Redirect to Stripe
-            window.location.assign(url);
-        }
-    });
-};
-        const SetupScreen = ({ onGenerate, initialParams, savedState, onResume, auth }) => {
-        // 1. NEW: Auth Hook
+    const SetupScreen = ({ onGenerate, initialParams, savedState, onResume, auth }) => {
         const { user, isPro, signIn, signOut } = auth;
-
         const [mode, setMode] = useState('random'); 
-        
-        // --- RESTORED OPTIONS ---
         const [category, setCategory] = useState('Any');
         const [age, setAge] = useState('Any');
         const [acuity, setAcuity] = useState('Any'); 
