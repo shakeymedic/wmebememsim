@@ -263,7 +263,6 @@
         'Magills': { label: 'Magill Forceps', effect: { SpO2: 10 }, category: 'Airway', log: 'Foreign body removed with Magills.', type: 'bolus', duration: 15 },
 
         // --- BREATHING ---
-        'Obs': { label: 'Monitoring (SpO2/ECG/BP)', effect: {}, category: 'Breathing', log: 'Full monitoring applied.', type: 'continuous', duration: 10 },
         'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Breathing', log: 'High flow oxygen applied.', type: 'continuous', duration: 5 },
         'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25, RR: 'vent' }, category: 'Breathing', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
         'Nebs': { label: 'Nebulisers (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Breathing', log: 'Nebulisers (Salbutamol/Ipratropium) administered.', type: 'bolus', duration: 300 },
@@ -275,10 +274,17 @@
         'SeldingerDrain': { label: 'Chest Drain (Seldinger)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Seldinger chest drain inserted.', type: 'continuous', duration: 450 },
         'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
 
+        // --- MONITORING (Moved to specific category) ---
+        'Obs': { label: 'Standard Monitoring', effect: {}, category: 'Monitoring', log: 'SpO2/ECG/NIBP applied.', type: 'continuous', duration: 10 },
+        'ArtLine': { label: 'Arterial Line', effect: {}, category: 'Monitoring', log: 'Arterial Line inserted. Invasive BP monitoring active.', type: 'continuous', duration: 180 },
+        'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Monitoring', log: 'Subclavian central line inserted (US guided).', type: 'continuous', duration: 300 },
+        'Defib': { label: 'Defibrillator Pads', effect: { changeRhythm: 'defib' }, category: 'Monitoring', log: 'Defib pads applied. Shock Delivered if charged.', type: 'bolus', duration: 5 },
+        'Cardioversion': { label: 'Sync Cardioversion', effect: { changeRhythm: 'sync' }, category: 'Monitoring', log: 'Synchronised DC Shock delivered.', type: 'bolus', duration: 5 },
+        'Pacing': { label: 'External Pacing', effect: { HR: 'pace' }, category: 'Monitoring', log: 'External Pacing initiated.', type: 'continuous', duration: 10 },
+        'Lucas': { label: 'Lucas/AutoPulse', effect: { BP: 30 }, category: 'Monitoring', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
+
         // --- CIRCULATION ---
         'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
-        'ArtLine': { label: 'Arterial Line', effect: {}, category: 'Circulation', log: 'Arterial Line inserted. Invasive BP monitoring active.', type: 'continuous', duration: 180 },
-        'SubclavianLine': { label: 'Central Line (Subclavian)', effect: {}, category: 'Circulation', log: 'Subclavian central line inserted (US guided).', type: 'continuous', duration: 300 },
         'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
         'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: 'O-Negative Blood administered.', type: 'bolus', duration: 300 },
         'TXA': { label: 'TXA', effect: {}, category: 'Circulation', log: 'IV Tranexamic Acid administered.', type: 'bolus', duration: 60 },
@@ -286,26 +292,16 @@
         'Amiodarone': { label: 'Amiodarone', effect: { changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Amiodarone administered.', type: 'bolus', duration: 60 },
         'Atropine': { label: 'Atropine', effect: { HR: 20 }, category: 'Circulation', log: 'IV Atropine administered.', type: 'bolus', duration: 10 },
         'Adenosine': { label: 'Adenosine', effect: { HR: 'reset' }, category: 'Circulation', log: 'IV Adenosine rapid bolus administered.', type: 'bolus', duration: 2 },
-        'MagSulph': { label: 'Magnesium Sulphate', effect: { BP: -5, RR: -2 }, category: 'Drugs', log: 'IV Magnesium Sulphate administered.', type: 'bolus', duration: 600 },
-        'Calcium': { label: 'Calcium Gluconate', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Gluconate administered.', type: 'bolus', duration: 30 },
-        'CalciumChloride': { label: 'Calcium Chloride', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Chloride administered.', type: 'bolus', duration: 30 },
-        'SodiumBicarb': { label: 'Sodium Bicarbonate', effect: { pH: 0.1 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 30 },
         'Metaraminol': { label: 'Metaraminol', effect: { BP: 15 }, category: 'Circulation', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10 },
         'GTN': { label: 'GTN Spray', effect: { BP: -8 }, category: 'Circulation', log: 'GTN Spray sublingual administered.', type: 'bolus', duration: 5 },
         'GTNInfusion': { label: 'GTN Infusion', effect: { BP: -20 }, category: 'Circulation', log: 'GTN Infusion started.', type: 'continuous', duration: 300 },
-        'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30 },
-        'Labetalol': { label: 'Labetalol', effect: { BP: -15, HR: -5 }, category: 'Drugs', log: 'IV Labetalol administered.', type: 'bolus', duration: 15 },
-        'Defib': { label: 'Defibrillation', effect: { changeRhythm: 'defib' }, category: 'Circulation', log: 'Shock Delivered.', type: 'bolus', duration: 5 },
-        'Cardioversion': { label: 'Sync Cardioversion', effect: { changeRhythm: 'sync' }, category: 'Circulation', log: 'Synchronised DC Shock delivered.', type: 'bolus', duration: 5 },
-        'Pacing': { label: 'External Pacing', effect: { HR: 'pace' }, category: 'Circulation', log: 'External Pacing initiated.', type: 'continuous', duration: 10 },
-        'Lucas': { label: 'Lucas/AutoPulse', effect: { BP: 30 }, category: 'Circulation', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
         'Pericardiocentesis': { label: 'Pericardiocentesis', effect: { BP: 20, HR: -10 }, category: 'Procedures', log: 'Pericardiocentesis performed.', type: 'bolus', duration: 30 },
         'Thoracotomy': { label: 'Resus Thoracotomy', effect: { BP: 30, HR: 20 }, category: 'Procedures', log: 'Clamshell Thoracotomy performed. Internal cardiac massage started.', type: 'bolus', duration: 120 },
         'Lipid': { label: 'Intralipid 20%', effect: { BP: 10 }, category: 'Drugs', log: 'Intralipid 20% administered.', type: 'bolus', duration: 60 },
 
-        // --- DRUGS (Formerly Disability/General) ---
+        // --- DRUGS (Fixed Keys for Drawer) ---
         'AdrenalineIM': { label: 'Adrenaline (IM)', effect: { HR: 20, BP: 15 }, category: 'Drugs', log: 'IM Adrenaline administered.', type: 'bolus', duration: 5 },
-        'Analgesia': { label: 'Morphine', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Morphine administered.', type: 'bolus', duration: 10 },
+        'Morphine': { label: 'Morphine', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Morphine administered.', type: 'bolus', duration: 10 },
         'Fentanyl': { label: 'Fentanyl', effect: { HR: -2, RR: -3, BP: -2 }, category: 'Drugs', log: 'IV Fentanyl administered.', type: 'bolus', duration: 10 },
         'Paracetamol': { label: 'Paracetamol', effect: {}, category: 'Drugs', log: 'IV Paracetamol administered.', type: 'bolus', duration: 10 },
         'Ketamine': { label: 'Ketamine', effect: { gcs: -5, BP: 5, HR: 5 }, category: 'Drugs', log: 'IV Ketamine administered.', type: 'bolus', duration: 15 },
@@ -332,6 +328,12 @@
         'Roc': { label: 'Rocuronium', effect: { RR: 0, paralysed: true }, category: 'Drugs', log: 'IV Rocuronium administered.', type: 'bolus', duration: 10 },
         'Sux': { label: 'Suxamethonium', effect: { RR: 0, paralysed: true }, category: 'Drugs', log: 'IV Suxamethonium administered.', type: 'bolus', duration: 10 },
         'Propofol': { label: 'Propofol', effect: { gcs: -5, BP: -10, RR: -5 }, category: 'Drugs', log: 'IV Propofol administered.', type: 'bolus', duration: 10 },
+        'MagSulph': { label: 'Magnesium Sulphate', effect: { BP: -5, RR: -2 }, category: 'Drugs', log: 'IV Magnesium Sulphate administered.', type: 'bolus', duration: 600 },
+        'Calcium': { label: 'Calcium Gluconate', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Gluconate administered.', type: 'bolus', duration: 30 },
+        'CalciumChloride': { label: 'Calcium Chloride', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Chloride administered.', type: 'bolus', duration: 30 },
+        'SodiumBicarb': { label: 'Sodium Bicarbonate', effect: { pH: 0.1 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 30 },
+        'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30 },
+        'Labetalol': { label: 'Labetalol', effect: { BP: -15, HR: -5 }, category: 'Drugs', log: 'IV Labetalol administered.', type: 'bolus', duration: 15 },
         'Bisphosphonate': { label: 'Bisphosphonate', effect: {}, category: 'Drugs', log: 'IV Bisphosphonate administered.', type: 'bolus', duration: 60 },
         'Prostin': { label: 'Dinoprostone', effect: { SpO2: 10 }, category: 'Drugs', log: 'Prostin infusion started.', type: 'continuous', duration: 60 },
         'Nimodipine': { label: 'Nimodipine', effect: {}, category: 'Drugs', log: 'Oral/NG Nimodipine administered.', type: 'bolus', duration: 10 },
@@ -347,7 +349,6 @@
         'Mannitol': { label: 'Mannitol', effect: { gcs: 1 }, category: 'Drugs', log: 'IV Mannitol administered.', type: 'bolus', duration: 15 },
         'HypertonicSaline': { label: 'Hypertonic Saline', effect: { BP: 5, gcs: 1 }, category: 'Drugs', log: 'Hypertonic Saline administered.', type: 'bolus', duration: 30 },
         'Thrombolysis': { label: 'Thrombolysis', effect: { BP: -5, SpO2: 5 }, category: 'Drugs', log: 'Thrombolytic (Alteplase) administered.', type: 'bolus', duration: 60 },
-        'Misoprostol': { label: 'Misoprostol', effect: {}, category: 'Obs/Gynae', log: 'PR Misoprostol administered.', type: 'bolus', duration: 30 },
         'VitaminA': { label: 'Vitamin A', effect: {}, category: 'Drugs', log: 'Vitamin A administered.', type: 'bolus', duration: 10 },
         'Rifaximin': { label: 'Rifaximin', effect: {}, category: 'Drugs', log: 'Rifaximin administered.', type: 'bolus', duration: 10 },
         'Lactulose': { label: 'Lactulose', effect: {}, category: 'Drugs', log: 'Lactulose administered.', type: 'bolus', duration: 60 },
@@ -363,6 +364,7 @@
         'AntiD': { label: 'Anti-D Ig', effect: {}, category: 'Obs/Gynae', log: 'IM Anti-D administered.', type: 'bolus', duration: 10 },
         'Hysterotomy': { label: 'Resus Hysterotomy', effect: { BP: 15 }, category: 'Obs/Gynae', log: 'Perimortem C-Section (Hysterotomy) performed. Baby delivered.', type: 'bolus', duration: 60 },
         'Delivery': { label: 'Emergency Delivery', effect: {}, category: 'Obs/Gynae', log: 'Preparation for emergency delivery.', type: 'continuous', duration: 300 },
+        'Misoprostol': { label: 'Misoprostol', effect: {}, category: 'Obs/Gynae', log: 'PR Misoprostol administered.', type: 'bolus', duration: 30 },
 
         // --- PROCEDURES / EXPOSURE ---
         'Splinting': { label: 'Splint Limb', effect: { HR: -2 }, category: 'Procedures', log: 'Limb splinted.', type: 'continuous', duration: 120 },
@@ -1254,6 +1256,10 @@
 
             const scheduleBeep = () => {
                 const current = stateRef.current;
+                
+                // --- FIX: Check if Monitoring is applied ---
+                if (!current.activeInterventions.has('Obs')) return;
+                
                 if (!current.isRunning && !isMonitorMode) return; 
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') return;
 
@@ -1281,7 +1287,7 @@
                 scheduleBeep();
             }
             return () => clearTimeout(timerId);
-        }, [state.isRunning, isMonitorMode]); 
+        }, [state.isRunning, isMonitorMode, state.activeInterventions]); // Added activeInterventions to dep array 
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
@@ -1724,7 +1730,7 @@
         const [expandRhythm, setExpandRhythm] = useState(false);
         const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
 
-        // DRUG DRAWER GROUPS
+        // DRUG DRAWER GROUPS - KEYS UPDATED TO MATCH INTERVENTIONS
         const DRUG_GROUPS = {
             'Cardiac': { color: 'border-red-500', bg: 'bg-red-900/20', title: 'text-red-400', keys: ['AdrenalineIV', 'Amiodarone', 'Atropine', 'Adenosine', 'MagSulph', 'Calcium', 'Metaraminol', 'GTN', 'Furosemide', 'Labetalol'] },
             'Analgesia & Sedation': { color: 'border-purple-500', bg: 'bg-purple-900/20', title: 'text-purple-400', keys: ['Morphine', 'Fentanyl', 'Paracetamol', 'Ketamine', 'Midazolam', 'Lorazepam'] },
@@ -1787,9 +1793,9 @@
             let label = action.label || keyName;
             if (isPaeds) {
                 if (keyName === 'Fluids') label = `Fluid Bolus (10ml/kg)`; 
-                else if (keyName === 'Adrenaline') label = `Adrenaline 1:1000 IM`;
+                else if (keyName === 'AdrenalineIM') label = `Adrenaline 1:1000 IM`;
                 else if (keyName === 'Atropine') label = `Atropine (20mcg/kg)`;
-                else if (keyName === 'Amidarone') label = `Amiodarone (5mg/kg)`;
+                else if (keyName === 'Amiodarone') label = `Amiodarone (5mg/kg)`;
                 else if (keyName === 'Lorazepam') label = `Lorazepam (0.1mg/kg)`;
                 else if (keyName === 'Midazolam') label = `Midazolam (0.5mg/kg)`;
                 else if (keyName === 'TXA') label = `TXA (15mg/kg)`;
@@ -1996,9 +2002,9 @@
                             </div>
                         )}
                         
-                        {/* Tabs */}
+                        {/* Tabs - Added Monitoring */}
                         <div className="flex space-x-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
-                            {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Obs/Gynae', 'Procedures'].map(cat => (
+                            {['Common', 'Monitoring', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Obs/Gynae', 'Procedures'].map(cat => (
                                 <button key={cat} onClick={() => setActiveTab(cat)} className={`px-3 py-1 text-xs font-bold rounded transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{cat}</button>
                             ))}
                         </div>
