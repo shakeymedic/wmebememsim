@@ -53,10 +53,25 @@
             background-color: rgba(16, 185, 129, 0.2);
             animation: loadProgress 2s linear forwards; z-index: 0;
         }
-        
-        .pea-warning { animation: pulseText 1s infinite; }
-        @keyframes pulseText { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
+        /* CRT Monitor Effect */
+        .scanline {
+            background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2));
+            background-size: 100% 4px;
+            pointer-events: none;
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 20;
+        }
+        .monitor-glow {
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.1);
+        }
+
+        /* Drug Drawer Grid */
+        .drawer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 0.75rem;
+        }
+        
         .diamond-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -67,6 +82,8 @@
             .mobile-stack { flex-direction: column; }
             .mobile-h-full { height: 100%; }
             .diamond-grid { grid-template-columns: 1fr; }
+            /* Better mobile monitor layout */
+            .monitor-grid { grid-template-columns: 1fr 1fr !important; } 
         }
         /* Hide number input spinners */
         input[type=number]::-webkit-inner-spin-button, 
@@ -303,46 +320,54 @@
     };
     
     // Updated VitalDisplay to handle BP explicitly
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false, visible = true, isMonitor = false, hideTrends = false }) => {
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onTrend, alert, isText = false, visible = true, isMonitor = false, hideTrends = false }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
+        const [showTrend, setShowTrend] = useState(false);
+        const [trendTarget, setTrendTarget] = useState(value);
+        const [trendTime, setTrendTime] = useState(60);
+
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
+        
+        const applyTrend = () => {
+            onTrend(parseFloat(trendTarget), parseInt(trendTime));
+            setShowTrend(false);
+        };
 
         const isBP = label === "BP" || label === "NIBP" || label === "ABP";
-        
-        // --- MONITOR MODE (LARGE) ---
+
         if (isMonitor) {
-            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
-            
+            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-xl md:text-2xl font-bold text-slate-600">{label}</span><span className="text-2xl md:text-4xl font-mono text-slate-700">--</span></div>;
             return (
                 <div className={`flex flex-col items-center justify-center h-full rounded border-2 transition-colors duration-500 ${alert ? 'bg-red-900/40 border-red-500 animate-pulse' : 'bg-slate-900/40 border-slate-700'}`}>
-                    <span className="text-xl font-bold text-slate-400 uppercase tracking-widest mb-2">{label}</span>
+                    <span className="text-sm md:text-xl font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</span>
                     <div className="flex items-baseline gap-2">
-                        <span className={`font-mono font-bold text-white ${isText ? 'text-4xl' : 'text-7xl'}`}>
+                        <span className={`font-mono font-bold text-white ${isText ? 'text-2xl md:text-5xl' : 'text-4xl md:text-8xl'}`}>
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
-                            {isBP && <span className="text-5xl text-slate-400">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
+                            {isBP && <span className="text-2xl md:text-5xl text-slate-400">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
                         </span>
-                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-2xl font-bold ${value === prev ? 'text-slate-600' : (lowIsBad ? (value > prev ? 'text-emerald-500' : 'text-red-500') : (value > prev ? 'text-red-500' : 'text-emerald-500'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-xl md:text-2xl font-bold ${value === prev ? 'text-slate-600' : (lowIsBad ? (value > prev ? 'text-emerald-500' : 'text-red-500') : (value > prev ? 'text-red-500' : 'text-emerald-500'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
-                    <span className="text-lg text-slate-500 mt-2">{unit}</span>
+                    <span className="text-xs md:text-lg text-slate-500 mt-1">{unit}</span>
                 </div>
             );
         }
 
-        // --- CONTROLLER MODE (COMPACT) ---
-        if (!visible) {
-             return (
-                <div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40">
-                    <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span>
-                    <span className="text-xl font-mono text-slate-700">--</span>
-                </div>
-             );
-        }
+        if (!visible) return <div className="bg-slate-900/50 p-1 rounded border border-slate-800 flex flex-col items-center justify-center h-20 opacity-40"><span className="text-[9px] font-bold text-slate-600 uppercase">{label}</span><span className="text-xl font-mono text-slate-700">--</span></div>;
 
         return (
-            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
-                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{label}</span>
+            <div className={`bg-slate-900/50 p-1 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                {showTrend && (
+                    <div className="absolute inset-0 bg-slate-800 z-20 flex flex-col p-2 gap-1 rounded border border-sky-500">
+                        <div className="flex gap-1"><input type="number" value={trendTarget} onChange={e=>setTrendTarget(e.target.value)} className="w-1/2 bg-slate-900 text-white text-xs p-1" placeholder="Tgt" /><input type="number" value={trendTime} onChange={e=>setTrendTime(e.target.value)} className="w-1/2 bg-slate-900 text-white text-xs p-1" placeholder="Sec" /></div>
+                        <Button onClick={applyTrend} variant="success" className="h-6 text-[10px]">Go</Button>
+                    </div>
+                )}
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 w-full flex justify-between px-2">
+                    {label} 
+                    {!isText && <button onClick={() => setShowTrend(!showTrend)} className="text-sky-500 hover:text-white"><Lucide icon="trending-up" className="w-3 h-3"/></button>}
+                </span>
                 {isEditing ? (
                     <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center" autoFocus />
                 ) : (
@@ -351,10 +376,311 @@
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
                             {isBP && <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
                         </span>
-                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
                 )}
-                <span className="text-[8px] md:text-[9px] text-slate-600 leading-none">{unit}</span>
+                <span className="text-[8px] text-slate-600 leading-none">{unit}</span>
+            </div>
+        );
+    };
+
+    const DrugDrawer = ({ isOpen, onClose, onAdminister, interventionCounts }) => {
+        if (!isOpen) return null;
+        const categories = {
+            "Resus": ["AdrenalineIV", "Amiodarone", "Atropine", "Calcium", "MagSulph"],
+            "Airway/RSI": ["Propofol", "Roc", "Sux", "Ketamine", "Midazolam", "Fentanyl"],
+            "Circulation": ["Fluids", "Blood", "TXA", "Metaraminol", "Noradrenaline"],
+            "Analgesia": ["Morphine", "Paracetamol", "Ibuprofen", "Analgesia"],
+            "Antibiotics": ["Antibiotics", "Ceftriaxone", "CoAmoxiclav"],
+            "Other": ["InsulinDextrose", "Ondansetron", "Hydrocortisone"]
+        };
+
+        return (
+            <div className="absolute inset-0 z-40 bg-slate-900/95 backdrop-blur flex flex-col animate-fadeIn p-4">
+                <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-2">
+                    <h2 className="text-2xl font-bold text-sky-400 flex items-center gap-2"><Lucide icon="package"/> Drug Drawer</h2>
+                    <Button onClick={onClose} variant="secondary"><Lucide icon="x"/> Close</Button>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-6">
+                    {Object.entries(categories).map(([cat, drugs]) => (
+                        <div key={cat}>
+                            <h3 className="text-sm font-bold text-slate-500 uppercase mb-2 ml-1">{cat}</h3>
+                            <div className="drawer-grid">
+                                {drugs.map(key => {
+                                    const item = INTERVENTIONS[key];
+                                    if (!item) return null;
+                                    const count = interventionCounts[key] || 0;
+                                    return (
+                                        <button key={key} onClick={() => onAdminister(key)} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500 rounded p-3 flex flex-col items-start relative transition-all active:scale-95 group">
+                                            {count > 0 && <span className="absolute top-2 right-2 bg-sky-600 text-white text-[10px] px-1.5 rounded-full font-bold">{count}</span>}
+                                            <span className="font-bold text-slate-200 text-sm group-hover:text-white text-left leading-tight mb-1">{item.label}</span>
+                                            <span className="text-[10px] text-slate-500 uppercase">{item.category}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    const HandoverModal = ({ isOpen, onClose, scenario, activeInterventions, vitals }) => {
+        if (!isOpen) return null;
+        return (
+            <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+                <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 w-full max-w-2xl shadow-2xl">
+                    <div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-white">SBAR Handover / Referral</h3><button onClick={onClose}><Lucide icon="x" className="text-slate-400"/></button></div>
+                    <div className="grid grid-cols-1 gap-4 text-sm">
+                        <div className="bg-slate-900 p-3 rounded border border-l-4 border-sky-500">
+                            <h4 className="font-bold text-sky-400">Situation</h4>
+                            <p className="text-white">This is a {scenario.ageRange} male presenting with {scenario.presentingComplaint}.</p>
+                        </div>
+                        <div className="bg-slate-900 p-3 rounded border border-l-4 border-amber-500">
+                            <h4 className="font-bold text-amber-400">Background</h4>
+                            <p className="text-slate-300">PMH: {scenario.pmh.join(', ')}</p>
+                            <p className="text-slate-300">Allergies: {scenario.allergies.join(', ')}</p>
+                        </div>
+                        <div className="bg-slate-900 p-3 rounded border border-l-4 border-emerald-500">
+                            <h4 className="font-bold text-emerald-400">Assessment</h4>
+                            <div className="grid grid-cols-4 gap-2 text-white font-mono my-2">
+                                <div>A: Patent</div><div>B: RR {vitals.rr}</div><div>C: HR {vitals.hr} BP {vitals.bpSys}</div><div>D: GCS {vitals.gcs}</div>
+                            </div>
+                            <p className="text-slate-300">Interventions: {Array.from(activeInterventions).join(', ') || 'None'}</p>
+                        </div>
+                        <div className="bg-slate-900 p-3 rounded border border-l-4 border-purple-500">
+                            <h4 className="font-bold text-purple-400">Recommendation</h4>
+                            <textarea className="w-full bg-slate-800 text-white mt-1 p-2 rounded text-xs" rows="3" placeholder="Type recommendation here..."></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const MonitorScreen = ({ sim }) => {
+        const { state } = sim;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, nibpTriggered } = state;
+        const hasMonitoring = activeInterventions.has('Obs');
+        const hasArtLine = activeInterventions.has('ArtLine');
+
+        // Wake Lock
+        useEffect(() => {
+            let lock;
+            (async () => { if ('wakeLock' in navigator) { try { lock = await navigator.wakeLock.request('screen'); } catch (e) {} } })();
+            return () => { if (lock) lock.release(); };
+        }, []);
+
+        return (
+            <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 relative overflow-hidden ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                <div className="scanline"></div>
+                
+                {/* Waveforms Area */}
+                <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col monitor-glow">
+                    <ECGMonitor 
+                        rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} 
+                        showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} 
+                        showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="II" 
+                    />
+                </div>
+                
+                {/* Big Vitals Grid - Mobile Optimized */}
+                <div className="h-auto md:h-[25vh] grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 monitor-grid">
+                    <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    
+                    {/* NIBP BOX */}
+                    <div className="relative">
+                        <VitalDisplay label={hasArtLine ? "ABP" : "NIBP"} value={hasArtLine ? vitals.bpSys : nibp.sys} value2={hasArtLine ? vitals.bpDia : nibp.dia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                         {/* Hidden trigger button for touchscreens */}
+                         {!hasArtLine && hasMonitoring && (
+                             <button onClick={sim.runNIBPCycle} className="absolute inset-0 z-30 opacity-0 active:opacity-20 bg-white"></button>
+                         )}
+                         {nibpTriggered && <div className="absolute top-2 right-2 w-3 h-3 bg-white rounded-full animate-ping"></div>}
+                    </div>
+
+                    <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    <div className="grid grid-rows-2 gap-2 md:gap-4">
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        {etco2Enabled && hasMonitoring ? (
+                            <div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50">
+                                <span className="text-xs font-bold text-yellow-500">ETCO2</span>
+                                <span className="text-2xl md:text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const LiveSimScreen = ({ sim, onFinish, onBack }) => {
+        const { state, applyIntervention, addLogEntry, manualUpdateVital, setVitalTrend, triggerArrest, triggerROSC, revealInvestigation, playPatientSound } = sim;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, cprInProgress, nibpTimer, nibpAuto } = state;
+        const [activeTab, setActiveTab] = useState("Common");
+        const [drawerOpen, setDrawerOpen] = useState(false);
+        const [sbarOpen, setSbarOpen] = useState(false);
+        const [logMinimised, setLogMinimised] = useState(true);
+        const [arrestMode, setArrestMode] = useState(false);
+        const [expandRhythm, setExpandRhythm] = useState(false);
+        const [showSounds, setShowSounds] = useState(false);
+
+        const toggleCPR = () => { sim.dispatch({ type: 'TOGGLE_CPR', payload: !cprInProgress }); addLogEntry(!cprInProgress ? 'CPR Started' : 'CPR Stopped', 'action'); };
+        const handleShock = () => { applyIntervention('Defib'); if (!cprInProgress) toggleCPR(); };
+        const hasMonitoring = activeInterventions.has('Obs');
+        const hasArtLine = activeInterventions.has('ArtLine');
+
+        const getInterventionsByCat = (cat) => {
+            // Enhanced Categorization
+            const allKeys = Object.keys(INTERVENTIONS);
+            if (cat === 'Common') return ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM'];
+            if (cat === 'Airway') return allKeys.filter(k => INTERVENTIONS[k].category === 'Airway' || k === 'Suction' || k === 'Oxygen' || k === 'RSI');
+            if (cat === 'Breathing') return allKeys.filter(k => INTERVENTIONS[k].category === 'Breathing' || k === 'Oxygen' || k === 'Nebs' || k === 'NebAdrenaline');
+            if (cat === 'Circulation') return allKeys.filter(k => INTERVENTIONS[k].category === 'Circulation' || k === 'Fluids' || k === 'Blood');
+            if (cat === 'Procedures') return allKeys.filter(k => INTERVENTIONS[k].category === 'Procedures' || k === 'Splinting' || k === 'Binder');
+            return allKeys.filter(key => INTERVENTIONS[key].category === cat);
+        };
+
+        return (
+            <div className={`h-full overflow-hidden flex flex-col lg:flex-row gap-2 p-2 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                <DrugDrawer isOpen={drawerOpen} onClose={()=>setDrawerOpen(false)} onAdminister={(k) => {applyIntervention(k);}} interventionCounts={interventionCounts} />
+                <HandoverModal isOpen={sbarOpen} onClose={()=>setSbarOpen(false)} scenario={scenario} activeInterventions={activeInterventions} vitals={vitals} />
+                
+                {/* --- LEFT: CONTROLS --- */}
+                <div className="flex-1 flex flex-col gap-2 min-h-0 overflow-y-auto pb-10 lg:pb-0">
+                    {/* Header */}
+                    <Card className="bg-slate-900 border-slate-800 flex-shrink-0">
+                        <div className="flex justify-between items-center mb-1">
+                            <div className="flex gap-2">
+                                <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/></Button>
+                                <Button variant="primary" onClick={() => window.open(`?mode=monitor`, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="monitor"/> Monitor</Button>
+                                <Button variant="outline" onClick={()=>setSbarOpen(true)} className="h-8 px-2 text-xs">SBAR</Button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setShowSounds(!showSounds)} className={`p-1 rounded ${showSounds ? 'bg-sky-600' : 'bg-slate-700'}`}><Lucide icon="mic" className="w-4 h-4 text-white"/></button>
+                                <button onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className={`p-1 rounded ${isMuted ? 'bg-red-900' : 'bg-slate-700'}`}><Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4 text-white"/></button>
+                                <div className="font-mono text-xl font-bold text-emerald-400 bg-black/40 px-2 rounded">{Math.floor(time/60).toString().padStart(2,'0')}:{(time%60).toString().padStart(2,'0')}</div>
+                            </div>
+                        </div>
+                        
+                        {/* Sounds Bar */}
+                        {showSounds && (
+                             <div className="flex gap-2 mb-2 bg-slate-800 p-1 rounded overflow-x-auto">
+                                 {['Yes', 'No', 'Pain', 'Breathless', 'Confused', 'Scream'].map(t => (
+                                     <button key={t} onClick={() => playPatientSound(t)} className="px-3 py-1 bg-slate-700 hover:bg-sky-600 rounded text-xs text-white whitespace-nowrap">{t}</button>
+                                 ))}
+                             </div>
+                        )}
+
+                        {/* Monitor & Vitals */}
+                        <div className="mb-2 relative h-32 lg:h-40">
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario.deterioration.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="II"/>
+                        </div>
+                        <div className="grid grid-cols-4 gap-1">
+                            <VitalDisplay label="HR" value={vitals.hr} prev={prevVitals.hr} unit="bpm" onUpdate={(v) => manualUpdateVital('hr', v)} onTrend={(v,t) => setVitalTrend('hr',v,t)} alert={vitals.hr>140||vitals.hr<40} visible={hasMonitoring} />
+                            
+                            <div className="flex flex-col gap-1 bg-slate-900/50 p-1 rounded border border-slate-700 relative">
+                                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center w-full">{hasArtLine ? "ABP" : "NIBP"}</span>
+                                <div className="flex items-center justify-center h-full">
+                                     <span className="text-xl font-mono font-bold text-white">{hasArtLine ? vitals.bpSys : state.nibp.sys}/{hasArtLine ? vitals.bpDia : state.nibp.dia}</span>
+                                </div>
+                                {!hasArtLine && (
+                                    <div className="flex gap-1 mt-auto">
+                                        <button onClick={sim.runNIBPCycle} className="flex-1 bg-slate-700 hover:bg-slate-600 text-[9px] text-white rounded py-0.5">Stat</button>
+                                        <button onClick={() => sim.dispatch({type:'TOGGLE_NIBP_AUTO'})} className={`w-8 ${nibpAuto ? 'bg-emerald-600' : 'bg-slate-700'} text-[9px] text-white rounded py-0.5`}>{Math.ceil(nibpTimer/60)}m</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={(v) => manualUpdateVital('spO2', v)} onTrend={(v,t) => setVitalTrend('spO2',v,t)} alert={vitals.spO2<90} visible={hasMonitoring} />
+                            <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" onUpdate={(v) => manualUpdateVital('rr', v)} onTrend={(v,t) => setVitalTrend('rr',v,t)} alert={vitals.rr>30} visible={hasMonitoring} />
+                        </div>
+                    </Card>
+
+                    {/* Arrest Mode Toggle */}
+                    <div className="flex gap-2">
+                        <Button variant={arrestMode ? "danger" : "outline"} onClick={() => { if(!arrestMode) sim.dispatch({type:'RESET_CYCLE_TIMER'}); setArrestMode(!arrestMode); }} className="flex-1 h-10 border-red-500 text-red-400 font-bold">{arrestMode ? "CLOSE ARREST MODE" : "OPEN ARREST MODE"}</Button>
+                        <Button onClick={() => setDrawerOpen(true)} variant="secondary" className="w-1/3 h-10"><Lucide icon="package"/> Drugs</Button>
+                    </div>
+
+                    {/* Arrest Controls */}
+                    {arrestMode && (
+                        <div className="bg-red-900/10 border border-red-500/50 p-2 rounded grid grid-cols-2 gap-2 animate-fadeIn">
+                             <div className="col-span-2 flex items-center justify-between bg-black/40 p-2 rounded">
+                                 <span className="text-red-400 font-bold">CYCLE: {Math.floor(cycleTimer/60)}:{(cycleTimer%60).toString().padStart(2,'0')}</span>
+                                 <div className="flex gap-1">
+                                     <button onClick={sim.nextCycle} className="bg-slate-700 px-2 py-1 text-xs rounded text-white">Skip</button>
+                                     <button onClick={() => sim.dispatch({type:'RESET_CYCLE_TIMER'})} className="bg-slate-700 px-2 py-1 text-xs rounded text-white">Reset</button>
+                                 </div>
+                             </div>
+                             <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-12 font-bold">{cprInProgress ? "STOP CPR" : "START CPR"}</Button>
+                             <Button onClick={handleShock} variant="warning" className="h-12 font-bold"><Lucide icon="zap"/> SHOCK</Button>
+                             <Button onClick={() => applyIntervention('AdrenalineIV')} variant="outline" className="h-10 border-red-400 text-red-300">Adrenaline</Button>
+                             <Button onClick={() => applyIntervention('Amiodarone')} variant="outline" className="h-10 border-red-400 text-red-300">Amiodarone</Button>
+                             <Button onClick={() => applyIntervention('Lucas')} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-10">Lucas</Button>
+                             <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-10">Intubate</Button>
+                        </div>
+                    )}
+
+                    {/* Standard Controls */}
+                    {!arrestMode && (
+                        <div className="grid grid-cols-3 gap-2 flex-1 content-start">
+                             <div className="col-span-3 flex gap-1 mb-1 overflow-x-auto pb-1 no-scrollbar">
+                                {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
+                                    <button key={cat} onClick={() => setActiveTab(cat)} className={`px-3 py-1 text-xs font-bold rounded ${activeTab === cat ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{cat}</button>
+                                ))}
+                             </div>
+                             {getInterventionsByCat(activeTab).map(key => {
+                                 const isActive = activeInterventions.has(key);
+                                 return <Button key={key} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-[10px] h-10 leading-tight">{INTERVENTIONS[key]?.label || key}</Button>
+                             })}
+                        </div>
+                    )}
+                </div>
+
+                {/* --- RIGHT: INFO & LOG --- */}
+                <div className="w-full lg:w-80 flex-shrink-0 flex flex-col gap-2 h-1/3 lg:h-full">
+                    <Card title="Controls" className="flex-shrink-0 bg-slate-800">
+                         <div className="grid grid-cols-2 gap-2 p-2">
+                             <Button variant="danger" onClick={triggerArrest} className="text-xs h-8">VF Arrest</Button>
+                             <Button variant="success" onClick={triggerROSC} className="text-xs h-8">ROSC</Button>
+                             <div className="col-span-2 relative">
+                                 <button onClick={() => setExpandRhythm(!expandRhythm)} className="w-full bg-slate-700 text-xs py-2 rounded text-left px-2 border border-slate-600 flex justify-between">
+                                     <span>Rhythm: {rhythm}</span><Lucide icon="chevron-down" className="w-3 h-3"/>
+                                 </button>
+                                 {expandRhythm && (
+                                     <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 z-50 max-h-48 overflow-y-auto">
+                                         {['Sinus Rhythm','Sinus Tachy','Sinus Brady','AF','SVT','VT','VF','Asystole','PEA','STEMI','Complete Heart Block'].map(r => (
+                                             <button key={r} onClick={() => { sim.dispatch({type:'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false); }} className="block w-full text-left px-2 py-2 text-xs hover:bg-sky-600 border-b border-slate-700">{r}</button>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
+                             <Button variant="outline" onClick={() => { sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry('Improving...', 'success'); }} className="text-xs h-8 border-emerald-500 text-emerald-400">Improve</Button>
+                             <Button variant="outline" onClick={() => { sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry('Deteriorating...', 'danger'); }} className="text-xs h-8 border-red-500 text-red-400">Worsen</Button>
+                         </div>
+                    </Card>
+
+                    <Card title="Scenario" icon="info" collapsible={true} className="flex-shrink-0 bg-slate-800 border-l-2 border-sky-500">
+                         <div className="p-2 space-y-2">
+                             <p className="text-xs text-white leading-snug">{scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}</p>
+                             <div className="grid grid-cols-3 gap-1">
+                                 {['ECG', 'VBG', 'X-ray', 'POCUS'].map(t => <button key={t} onClick={() => revealInvestigation(t)} className={`text-[10px] py-1 rounded border ${state.investigationsRevealed[t] ? 'bg-emerald-900 border-emerald-500' : 'bg-slate-700 border-slate-600'}`}>{t}</button>)}
+                             </div>
+                         </div>
+                    </Card>
+
+                    <Card className="flex-1 min-h-0 bg-slate-800 flex flex-col">
+                        <div className="flex items-center justify-between p-2 border-b border-slate-700 cursor-pointer" onClick={() => setLogMinimised(!logMinimised)}>
+                            <div className="flex items-center gap-2"><Lucide icon="list" className="w-3 h-3 text-sky-400" /><span className="font-bold text-slate-200 text-xs">Log</span></div>
+                            <Lucide icon={logMinimised ? "chevron-up" : "chevron-down"} className="w-3 h-3 text-slate-500"/>
+                        </div>
+                        <div className={`flex-1 overflow-y-auto p-1 space-y-1 ${logMinimised ? 'hidden lg:block' : ''}`}>
+                             {log.slice().reverse().map((l, i) => (<div key={i} className={`text-[10px] p-1 rounded border-l-2 ${l.type==='action'?'border-sky-500 bg-sky-900/10':l.type==='manual'?'border-purple-500 bg-purple-900/10':'border-slate-500'}`}><span className="opacity-50 mr-1">{l.simTime}</span>{l.msg}</div>))}
+                        </div>
+                    </Card>
+                </div>
             </div>
         );
     };
@@ -662,10 +988,11 @@
     const initialState = {
         scenario: null,
         time: 0,
-        cycleTimer: 0, // 2 min cycle timer
+        cycleTimer: 0,
         isRunning: false,
         vitals: {},
         prevVitals: {},
+        vitalTransitions: {}, // Stores active gradual changes
         rhythm: "Sinus Rhythm", 
         log: [],
         flash: null,
@@ -677,13 +1004,15 @@
         activeDurations: {},
         processedEvents: new Set(),
         isMuted: false,
-        soundSource: 'monitor', // NEW: Default to monitor
+        soundSource: 'monitor', // 'monitor', 'controller', 'both'
         etco2Enabled: false,
         isParalysed: false,
         queuedRhythm: null,
         cprInProgress: false,
-        nibpTimer: 180, // NEW: 3 minutes (180 seconds)
-        nibpAuto: true,  // NEW: Default to auto NIBP cycle
+        nibp: { sys: '--', dia: '--', time: 0 }, // Displayed NIBP
+        nibpTimer: 180, 
+        nibpAuto: true,
+        nibpTriggered: false, // For animation/sound
     };
 
     const simReducer = (state, action) => {
@@ -692,47 +1021,87 @@
             case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set() };
+                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set(), nibp: { sys: action.payload.vitals.bpSys, dia: action.payload.vitals.bpDia, time: 0 } };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
-            case 'RESET_SIM': // FIX: Safely clears current scenario and state
-                return { 
-                    ...initialState, 
-                    isRunning: false, 
-                    scenario: null, 
-                    vitals: {}, 
-                    prevVitals: {}, 
-                    log: [],
-                    soundSource: state.soundSource // Preserve sound setting across reset
-                }; 
+            case 'RESET_SIM': return { ...initialState, isRunning: false, scenario: null, vitals: {}, prevVitals: {}, log: [], soundSource: state.soundSource }; 
+            
             case 'TICK_TIME':
+                if (!state.isRunning) return state;
+
+                // 1. Manage Interventions
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
                 Object.keys(newDurations).forEach(key => {
                     const elapsed = state.time + 1 - newDurations[key].startTime;
                     if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; }
                 });
+                
+                // 2. Manage Vital Transitions (Lerp)
+                let nextVitals = { ...state.vitals };
+                let nextTrans = { ...state.vitalTransitions };
+                let transChanged = false;
+                
+                Object.keys(state.vitalTransitions).forEach(key => {
+                    const t = state.vitalTransitions[key];
+                    const elapsed = (Date.now() - t.startTime) / 1000; // use real time for smoothness
+                    const progress = Math.min(1, elapsed / t.duration);
+                    
+                    nextVitals[key] = t.startVal + (t.targetVal - t.startVal) * progress;
+                    
+                    if (progress >= 1) { delete nextTrans[key]; }
+                    transChanged = true;
+                });
+
                 return { 
                     ...state, 
                     time: state.time + 1, 
                     cycleTimer: state.cycleTimer + 1, 
                     activeDurations: durChanged ? newDurations : state.activeDurations,
-                    nibpTimer: Math.max(0, state.nibpTimer - 1) // Decrements NIBP timer, preventing negative values
+                    nibpTimer: Math.max(0, state.nibpTimer - 1),
+                    vitals: transChanged ? nextVitals : state.vitals,
+                    vitalTransitions: transChanged ? nextTrans : state.vitalTransitions
                 };
+
+            case 'START_VITAL_TRANSITION':
+                return {
+                    ...state,
+                    vitalTransitions: {
+                        ...state.vitalTransitions,
+                        [action.payload.key]: {
+                            startVal: state.vitals[action.payload.key],
+                            targetVal: action.payload.target,
+                            duration: action.payload.duration,
+                            startTime: Date.now()
+                        }
+                    }
+                };
+
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
+            
             case 'UPDATE_VITALS': 
+                if (!state.isRunning) return state; // Stop graph advancing if paused
+                // Safety logic: HR 0 = Arrest
+                if (action.payload.hr <= 0 && state.rhythm !== 'VF' && state.rhythm !== 'Asystole' && state.rhythm !== 'PEA') {
+                     // Auto-arrest logic could go here, but usually safer to let instructor trigger or just show flatline
+                }
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
+            
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
             case 'TRIGGER_IMPROVE':
                 if (!state.scenario.evolution) return state;
                 const improvedScen = { ...state.scenario, ...state.scenario.evolution.improved, deterioration: { ...state.scenario.deterioration, active: false } };
                 return { ...state, scenario: improvedScen, flash: 'green' };
             case 'TRIGGER_DETERIORATE':
+                 // Link Logic: Check if there is a specific 'Next Scenario' defined, otherwise standard deterioration
+                 if (state.scenario.nextScenarioId) {
+                     // This would require loading a new scenario, handled in UI or effect. 
+                     // For now, standard deterioration:
+                 }
                  if (!state.scenario.evolution) return state;
                  const detScen = { ...state.scenario, ...state.scenario.evolution.deteriorated, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 } };
                  return { ...state, scenario: detScen, flash: 'red' };
             
-            // --- NEW: SYNC ACTION FOR MONITOR ---
             case 'SYNC_FROM_MASTER':
                 return {
                     ...state,
@@ -742,12 +1111,9 @@
                     etco2Enabled: action.payload.etco2Enabled,
                     flash: action.payload.flash,
                     cycleTimer: action.payload.cycleTimer,
-                    scenario: {
-                        ...state.scenario,
-                        title: action.payload.scenarioTitle,
-                        deterioration: { type: action.payload.pathology }
-                    },
-                    // SAFEGUARD: Ensure we handle undefined/null cleanly
+                    nibp: action.payload.nibp, // Sync displayed NIBP
+                    nibpTriggered: action.payload.nibpTriggered,
+                    scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } },
                     activeInterventions: new Set(action.payload.activeInterventions || [])
                 };
 
@@ -762,26 +1128,32 @@
             case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
             case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
-            case 'SET_SOUND_SOURCE': return { ...state, soundSource: action.payload }; // Q1
-            case 'RESET_NIBP_TIMER': return { ...state, nibpTimer: 180 }; // Q3
-            case 'TOGGLE_NIBP_AUTO': return { ...state, nibpAuto: !state.nibpAuto, nibpTimer: 180 }; // Q3
-            case 'NIBP_UPDATE': // Q3: Updates BP and resets timer
+            case 'SET_SOUND_SOURCE': return { ...state, soundSource: action.payload };
+            
+            case 'RESET_NIBP_TIMER': return { ...state, nibpTimer: 180 };
+            case 'TOGGLE_NIBP_AUTO': return { ...state, nibpAuto: !state.nibpAuto, nibpTimer: 180 };
+            case 'TRIGGER_NIBP_START': return { ...state, nibpTriggered: true }; 
+            case 'NIBP_UPDATE': 
                 return { 
                     ...state, 
-                    vitals: { ...state.vitals, bpSys: action.payload.bpSys, bpDia: action.payload.bpDia }, 
-                    prevVitals: { ...state.vitals },
+                    nibp: { sys: action.payload.bpSys, dia: action.payload.bpDia, time: state.time },
+                    nibpTriggered: false,
                     nibpTimer: 180 
                 };
+
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
             case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
             case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
-            case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
+            case 'MANUAL_VITAL_UPDATE': 
+                // Immediate update
+                return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
             case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
             case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
             default: return state;
         }
     };
+
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [state, dispatch] = useReducer(simReducer, initialState);
         const timerRef = useRef(null);
@@ -789,28 +1161,21 @@
         const audioCtxRef = useRef(null);
         const stateRef = useRef(state);
         
-        // Update ref
         useEffect(() => { stateRef.current = state; }, [state]);
         
         // --- DATA SYNC (Firebase) ---
         useEffect(() => {
             if (!db || !sessionID) return; 
-            
             const sessionRef = db.ref(`sessions/${sessionID}`);
-
             if (isMonitorMode) {
                 const handleUpdate = (snapshot) => {
                     const data = snapshot.val();
-                    if (data) {
-                        try { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); } 
-                        catch (err) { console.error("Sync Error", err); }
-                    }
+                    if (data) { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); }
                 };
                 sessionRef.on('value', handleUpdate);
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
-
                 const payload = {
                     vitals: state.vitals,
                     rhythm: state.rhythm,
@@ -818,6 +1183,8 @@
                     etco2Enabled: state.etco2Enabled,
                     flash: state.flash,
                     cycleTimer: state.cycleTimer,
+                    nibp: state.nibp, // Sync displayed NIBP
+                    nibpTriggered: state.nibpTriggered,
                     scenarioTitle: state.scenario.title,
                     pathology: state.scenario.deterioration?.type || 'normal',
                     activeInterventions: Array.from(state.activeInterventions)
@@ -835,60 +1202,57 @@
 
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
-        
-        // NEW FUNCTION: Plays the one-shot NIBP sound
+        // --- SOUNDS ---
         const playNIBPSound = () => {
             const current = stateRef.current;
             if (current.isMuted || !audioCtxRef.current) return;
-            
             const isController = !isMonitorMode;
-            const shouldPlay = 
-                (current.soundSource === 'controller' && isController) || 
-                (current.soundSource === 'monitor' && !isController) || 
-                (current.soundSource === 'both');
+            const shouldPlay = (current.soundSource === 'controller' && isController) || (current.soundSource === 'monitor' && !isController) || (current.soundSource === 'both');
 
             if (shouldPlay && audioCtxRef.current) {
                 const ctx = audioCtxRef.current;
                 const osc = ctx.createOscillator(); 
                 const gain = ctx.createGain();
                 osc.type = 'sawtooth';
-                osc.frequency.value = 440; 
+                osc.frequency.value = 150; // Low mechanical hum
                 osc.connect(gain); 
                 gain.connect(ctx.destination);
                 const now = ctx.currentTime;
                 gain.gain.setValueAtTime(0, now); 
-                gain.gain.linearRampToValueAtTime(0.2, now + 0.01); 
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); 
+                gain.gain.linearRampToValueAtTime(0.3, now + 0.5); 
+                gain.gain.linearRampToValueAtTime(0.3, now + 4.0); 
+                gain.gain.linearRampToValueAtTime(0, now + 4.5); 
                 osc.start(now); 
-                osc.stop(now + 0.4);
+                osc.stop(now + 4.5);
             }
         };
 
+        const playPatientSound = (text, gender = 'Male') => {
+             const current = stateRef.current;
+             const isController = !isMonitorMode;
+             const shouldPlay = (current.soundSource === 'controller' && isController) || (current.soundSource === 'monitor' && !isController) || (current.soundSource === 'both');
+             
+             if(shouldPlay && window.speechSynthesis) {
+                 const u = new SpeechSynthesisUtterance(text);
+                 u.rate = 0.9;
+                 u.pitch = gender === 'Female' ? 1.2 : 0.9;
+                 window.speechSynthesis.speak(u);
+             }
+        };
 
-        // AUDIO LOOP (Q1 Fix)
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
-
             const scheduleBeep = () => {
                 const current = stateRef.current;
                 if (!current.isRunning && !isMonitorMode) return; 
+                if (current.vitals.hr <= 0 || ['VF','Asystole','PEA'].includes(current.rhythm)) return;
                 
-                // 1. Check for non-perfusing rhythm/no HR (silence)
-                if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'PEA') return;
-
-                // 2. NEW Check for Monitoring (Obs) status
+                // AUDIO LOGIC: Only beep if Obs are attached
                 if (!current.activeInterventions.has('Obs')) return;
 
-                // 3. NEW Check for sound source (Controller / Monitor / Both)
                 const isController = !isMonitorMode;
-                const shouldBeep = 
-                    !current.isMuted && 
-                    (
-                        (current.soundSource === 'controller' && isController) || 
-                        (current.soundSource === 'monitor' && !isController) || 
-                        (current.soundSource === 'both')
-                    );
+                const shouldBeep = !current.isMuted && ((current.soundSource === 'controller' && isController) || (current.soundSource === 'monitor' && !isController) || (current.soundSource === 'both'));
                 
                 if (shouldBeep && ctx) {
                     const osc = ctx.createOscillator(); 
@@ -908,7 +1272,6 @@
                 const delay = 60000 / (Math.max(20, current.vitals.hr) || 60);
                 timerId = setTimeout(scheduleBeep, delay);
             };
-
             if (state.isRunning || (isMonitorMode && state.vitals.hr > 0)) {
                 if (ctx && ctx.state === 'suspended') ctx.resume();
                 scheduleBeep();
@@ -916,44 +1279,37 @@
             return () => clearTimeout(timerId);
         }, [state.isRunning, isMonitorMode]); 
 
-        // NEW FUNCTION: Runs the NIBP check
         const runNIBPCycle = () => {
             const current = stateRef.current;
-            // Do not read NIBP in arrest or without monitor
-            if (current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'PEA' || !current.activeInterventions.has('Obs')) return; 
-
-            // Calculate NIBP based on current state (using current vitals + random noise)
-            let targetSys = current.vitals.bpSys;
-            let targetDia = current.vitals.bpDia;
+            if (['VF','Asystole','PEA'].includes(current.rhythm) || !current.activeInterventions.has('Obs')) return; 
             
-            // Simulate reading with noise
-            targetSys = clamp(targetSys + getRandomInt(-5, 5), 50, 250); 
-            targetDia = clamp(targetDia + getRandomInt(-3, 3), 30, 150); 
+            // Trigger animation/sound first
+            dispatch({ type: 'TRIGGER_NIBP_START' });
+            playNIBPSound();
+            addLogEntry("NIBP measurement started...", "info");
 
-            const newNIBP = { 
-                bpSys: targetSys, 
-                bpDia: targetDia 
-            };
-            
-            playNIBPSound(); 
-            dispatch({ type: 'NIBP_UPDATE', payload: newNIBP });
-            addLogEntry(`NIBP Cycle Complete: ${newNIBP.bpSys}/${newNIBP.bpDia} mmHg (Next in 3 mins)`, 'info');
+            // Delay for realistic measurement time (e.g., 4 seconds)
+            setTimeout(() => {
+                const freshCurrent = stateRef.current; // Get latest
+                let targetSys = freshCurrent.vitals.bpSys;
+                let targetDia = freshCurrent.vitals.bpDia;
+                targetSys = clamp(targetSys + getRandomInt(-5, 5), 50, 250); 
+                targetDia = clamp(targetDia + getRandomInt(-3, 3), 30, 150); 
+                
+                dispatch({ type: 'NIBP_UPDATE', payload: { bpSys: targetSys, bpDia: targetDia } });
+            }, 4000);
         };
-
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
-        // RESTORED & COMPLETED: applyIntervention function
         const applyIntervention = (key) => {
             const action = INTERVENTIONS[key];
             if (!action) return;
-            const newVitals = { ...state.vitals };
             let newActive = new Set(state.activeInterventions);
             let newCounts = { ...state.interventionCounts };
             const count = (newCounts[key] || 0) + 1;
             
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
-
             if (action.type === 'continuous') {
                 if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } 
                 else { newActive.add(key); addLogEntry(action.log, 'action'); }
@@ -962,15 +1318,14 @@
                 addLogEntry(action.log, 'action');
             }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
-
-            // Auto-progression & Logic
-            if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
-            
-            if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
+            if (state.scenario.stabilisers?.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
 
             // Physiological Effects
-            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT')) {
+            let nextVitals = { ...state.vitals };
+            const isArrest = state.vitals.bpSys < 10 && ['VF','VT','Asystole'].includes(state.rhythm);
+            
+            if (action.effect.changeRhythm === 'defib' && ['VF','VT'].includes(state.rhythm)) {
                 if (state.queuedRhythm) {
                     dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm });
                     if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC();
@@ -978,28 +1333,20 @@
                     dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
                 } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } 
                 else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); }
+            } else if (!isArrest) {
+                // Immediate physiological changes
+                if (action.effect.HR) { nextVitals.hr = action.effect.HR === 'reset' ? 80 : clamp(nextVitals.hr + action.effect.HR, 0, 250); }
+                if (action.effect.BP) nextVitals.bpSys = clamp(nextVitals.bpSys + action.effect.BP, 0, 300);
+                if (action.effect.RR && action.effect.RR !== 'vent') nextVitals.rr = clamp(nextVitals.rr + action.effect.RR, 0, 60);
+                if (action.effect.SpO2) nextVitals.spO2 = clamp(nextVitals.spO2 + action.effect.SpO2, 0, 100);
+                if (action.effect.gcs) nextVitals.gcs = clamp(nextVitals.gcs + action.effect.gcs, 3, 15);
+                dispatch({ type: 'UPDATE_VITALS', payload: nextVitals });
             }
-            
-            const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
-            if (!isArrest) {
-                if (action.effect.HR) { if (action.effect.HR === 'reset') newVitals.hr = 80; else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); }
-                if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300);
-                if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60);
-            }
-            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
-            if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
-
-            // Dynamic Investigations
-            const updatedScenario = { ...state.scenario };
-            let updateNeeded = false;
-            if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray?.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
-            if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
-
-            dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
 
-
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        const setVitalTrend = (key, target, duration) => { dispatch({ type: 'START_VITAL_TRANSITION', payload: { key, target, duration } }); addLogEntry(`Trend: ${key} -> ${target} over ${duration}s`, 'manual'); };
+
         const triggerArrest = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'VF' }); addLogEntry('CARDIAC ARREST - VF', 'manual'); dispatch({ type: 'SET_FLASH', payload: 'red' }); };
         const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
         const revealInvestigation = (type) => { if (state.investigationsRevealed[type] || state.loadingInvestigations[type]) return; dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); };
@@ -1017,32 +1364,24 @@
 
         const tick = () => {
             const current = stateRef.current;
+            if (!current.isRunning) return; 
+            
             let next = { ...current.vitals };
             
-            // Dynamic VBG
-            if (current.scenario?.vbg) {
-                const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3);
-                if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) {
-                     dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } });
-                }
+            // Jitter for realism (only if not doing a transition)
+            if (!current.vitalTransitions.hr && !['Asystole', 'VF', 'Coarse VF'].includes(current.rhythm)) next.hr += getRandomInt(-1, 1);
+            if (!current.vitalTransitions.spO2 && !['Asystole'].includes(current.rhythm)) next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0;
+            
+            // If ArtLine, BP jitters continuously
+            if (current.activeInterventions.has('ArtLine') && !current.vitalTransitions.bpSys) {
+                next.bpSys += getRandomInt(-1, 1);
+                next.bpDia = Math.floor(next.bpSys * 0.65) + getRandomInt(-1, 1);
             }
 
-            // Jitter (Q3 Fix: Only continuous monitoring jitters the values)
-            if (['Asystole', 'VF', 'Coarse VF', 'Fine VF'].includes(current.rhythm)) { 
-                next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
-                if(!current.cprInProgress) next.spO2 = Math.max(0, next.spO2 - 2); 
-            } else {
-                next.hr += getRandomInt(-1, 1); 
-                next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0;
-                
-                // If ArtLine is active, BP jitters continuously
-                if (current.activeInterventions.has('ArtLine')) {
-                    next.bpSys += getRandomInt(-1, 1);
-                    let targetDia = Math.floor(next.bpSys * 0.65);
-                    next.bpDia = targetDia + getRandomInt(-2, 2);
-                }
-            }
-            
+            // Physio Rules
+            if (current.rhythm === 'VF' || current.rhythm === 'Asystole') { next.hr = 0; next.bpSys = 0; }
+            if (next.rr < 6 && next.spO2 > 80 && !current.activeInterventions.has('Bagging')) next.spO2 -= 1; // Apnoea desaturation
+
             next.hr = clamp(next.hr, 0, 250);
             next.bpSys = clamp(next.bpSys, 0, 300);
             next.spO2 = clamp(next.spO2, 0, 100);
@@ -1051,31 +1390,21 @@
         };
 
         const start = () => { 
-            if (stateRef.current.isRunning || isMonitorMode) return; // Check ref for running status
-            
-            // 1. Start Simulation
+            if (stateRef.current.isRunning || isMonitorMode) return; 
             dispatch({ type: 'START_SIM' }); 
-            
-            // 2. Start Timers
             timerRef.current = setInterval(() => { 
                 dispatch({ type: 'TICK_TIME' });
-                // NEW: NIBP timer check
-                if (!isMonitorMode && stateRef.current.nibpTimer <= 0 && stateRef.current.nibpAuto) {
-                    runNIBPCycle();
-                }
+                // Check Auto NIBP
+                if (!isMonitorMode && stateRef.current.nibpTimer <= 0 && stateRef.current.nibpAuto) { runNIBPCycle(); }
             }, 1000); 
-            
-            // 3. Start Tick/Jitter
             tickRef.current = setInterval(tick, 3000); 
-            
-            // 4. Resume Audio
             if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); 
         };
         
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); addLogEntry("Simulation Ended", 'system'); localStorage.removeItem('wmebem_sim_state'); };
 
-        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, runNIBPCycle };
+        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, setVitalTrend, triggerArrest, triggerROSC, revealInvestigation, nextCycle, runNIBPCycle, playPatientSound };
     };
         
         // --- UI SCREENS ---
