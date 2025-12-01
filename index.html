@@ -2461,40 +2461,54 @@
     }; 
         // --- AUTH & SUBSCRIPTION LOGIC ---
 const useAuth = () => {
-    const [user, setUser] = useState(null);
-    const [isPro, setIsPro] = useState(false);
+        const [user, setUser] = useState(null);
+        const [isPro, setIsPro] = useState(false);
 
-    useEffect(() => {
-        const unsubscribe = firebase.auth().onAuthStateChanged(async (u) => {
-            if (u) {
-                setUser(u);
-                // Check Firestore for subscription status (managed by Extension)
-                const dbStore = firebase.firestore();
-                const subSnapshot = await dbStore
-                    .collection('customers')
-                    .doc(u.uid)
-                    .collection('subscriptions')
-                    .where('status', 'in', ['active', 'trialing'])
-                    .get();
-                
-                setIsPro(!subSnapshot.empty);
-            } else {
-                setUser(null);
-                setIsPro(false);
+        useEffect(() => {
+            // SAFETY CHECK: Ensure Firebase is loaded before using it
+            if (!window.firebase || !firebase.auth) {
+                console.warn("Firebase SDK not ready yet.");
+                return;
             }
-        });
-        return () => unsubscribe();
-    }, []);
 
-    const signIn = () => {
-        const provider = new firebase.auth.GoogleAuthProvider();
-        firebase.auth().signInWithPopup(provider);
+            const unsubscribe = firebase.auth().onAuthStateChanged(async (u) => {
+                if (u) {
+                    setUser(u);
+                    // Check Firestore for subscription status (managed by Extension)
+                    const dbStore = firebase.firestore();
+                    const subSnapshot = await dbStore
+                        .collection('customers')
+                        .doc(u.uid)
+                        .collection('subscriptions')
+                        .where('status', 'in', ['active', 'trialing'])
+                        .get();
+                    
+                    setIsPro(!subSnapshot.empty);
+                } else {
+                    setUser(null);
+                    setIsPro(false);
+                }
+            });
+            return () => unsubscribe();
+        }, []);
+
+        const signIn = () => {
+            if (window.firebase && firebase.auth) {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                firebase.auth().signInWithPopup(provider);
+            } else {
+                alert("Firebase not loaded. Please check your internet connection.");
+            }
+        };
+
+        const signOut = () => {
+            if (window.firebase && firebase.auth) {
+                firebase.auth().signOut();
+            }
+        };
+
+        return { user, isPro, signIn, signOut };
     };
-
-    const signOut = () => firebase.auth().signOut();
-
-    return { user, isPro, signIn, signOut };
-};
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [sessionID, setSessionID] = useState(null);
