@@ -1424,12 +1424,28 @@
 
     const startCheckout = async (userId) => {
         const dbStore = firebase.firestore();
-        const docRef = await dbStore.collection('customers').doc(userId).collection('checkout_sessions').add({
-            price: 'price_1SZLnwCwda605Qgrr0RE1Rmb', // UPDATED PRICE ID
-            success_url: window.location.href,
-            cancel_url: window.location.href,
+        // 1. Add a document to the 'checkout_sessions' collection
+        const docRef = await dbStore
+            .collection('customers')
+            .doc(userId)
+            .collection('checkout_sessions')
+            .add({
+                price: 'price_1SZLnwCwda605Qgrr0RE1Rmb', // <--- UPDATED PRICE ID HERE
+                success_url: window.location.href,
+                cancel_url: window.location.href,
+            });
+
+        // 2. Listen for the sessionId (written by the Extension)
+        docRef.onSnapshot((snap) => {
+            const { error, url } = snap.data();
+            if (error) {
+                alert(`An error occurred: ${error.message}`);
+            }
+            if (url) {
+                // 3. Redirect to Stripe
+                window.location.assign(url);
+            }
         });
-        docRef.onSnapshot((snap) => { const { error, url } = snap.data(); if (error) alert(`Error: ${error.message}`); if (url) window.location.assign(url); });
     };
 
     const SetupScreen = ({ onGenerate, initialParams, savedState, onResume, auth }) => {
