@@ -1724,6 +1724,14 @@
         const [expandRhythm, setExpandRhythm] = useState(false);
         const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
 
+        // DRUG DRAWER GROUPS
+        const DRUG_GROUPS = {
+            'Cardiac': { color: 'border-red-500', bg: 'bg-red-900/20', title: 'text-red-400', keys: ['AdrenalineIV', 'Amiodarone', 'Atropine', 'Adenosine', 'MagSulph', 'Calcium', 'Metaraminol', 'GTN', 'Furosemide', 'Labetalol'] },
+            'Analgesia & Sedation': { color: 'border-purple-500', bg: 'bg-purple-900/20', title: 'text-purple-400', keys: ['Morphine', 'Fentanyl', 'Paracetamol', 'Ketamine', 'Midazolam', 'Lorazepam'] },
+            'RSI & Airway': { color: 'border-sky-500', bg: 'bg-sky-900/20', title: 'text-sky-400', keys: ['Roc', 'Sux', 'Propofol', 'Dexamethasone', 'Nebs', 'NebAdrenaline'] },
+            'General & Antidotes': { color: 'border-emerald-500', bg: 'bg-emerald-900/20', title: 'text-emerald-400', keys: ['Ondansetron', 'Hydrocortisone', 'TXA', 'Naloxone', 'Glucose', 'InsulinDextrose', 'Antibiotics', 'Fluids'] }
+        };
+
         // SEARCH
         useEffect(() => {
             if (customLog.length > 1) {
@@ -1738,8 +1746,6 @@
             let keys = [];
             if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM']; 
             else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
-            
-            // --- ALPHABETICAL SORT ---
             return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
         };
 
@@ -1753,7 +1759,6 @@
 
         const handleShock = () => {
              applyIntervention('Defib');
-             // Auto restart CPR after shock (2025 guidelines)
              if (!cprInProgress) toggleCPR();
         };
 
@@ -1766,76 +1771,97 @@
         const hasMonitoring = activeInterventions.has('Obs');
         const hasArtLine = activeInterventions.has('ArtLine');
 
+        // Render a Single Button (Helper)
+        const RenderButton = ({ keyName }) => {
+            const action = INTERVENTIONS[keyName];
+            if (!action) return null;
+            const isActive = activeInterventions.has(keyName);
+            let progress = 0;
+            if(activeDurations[keyName]) {
+                const elapsed = time - activeDurations[keyName].startTime;
+                progress = Math.min(100, Math.max(0, 100 - (elapsed / activeDurations[keyName].duration * 100)));
+            }
+
+            // DYNAMIC PAEDIATRIC LABELING
+            const isPaeds = scenario.ageRange === 'Paediatric' || scenario.patientAge < 18;
+            let label = action.label || keyName;
+            if (isPaeds) {
+                if (keyName === 'Fluids') label = `Fluid Bolus (10ml/kg)`; 
+                else if (keyName === 'Adrenaline') label = `Adrenaline 1:1000 IM`;
+                else if (keyName === 'Atropine') label = `Atropine (20mcg/kg)`;
+                else if (keyName === 'Amidarone') label = `Amiodarone (5mg/kg)`;
+                else if (keyName === 'Lorazepam') label = `Lorazepam (0.1mg/kg)`;
+                else if (keyName === 'Midazolam') label = `Midazolam (0.5mg/kg)`;
+                else if (keyName === 'TXA') label = `TXA (15mg/kg)`;
+                else if (keyName === 'Blood') label = `Blood (10ml/kg)`;
+            }
+
+            return (
+                <Button key={keyName} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(keyName)} disabled={!isRunning} className="text-xs h-10 relative truncate" progress={progress}>
+                    {label}
+                    {interventionCounts[keyName] > 0 && action.type !== 'continuous' && <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1">x{interventionCounts[keyName]}</span>}
+                </Button>
+            );
+        };
+
         return (
             <div className={`h-full overflow-y-auto lg:overflow-hidden grid grid-cols-1 lg:grid-cols-3 gap-4 p-2 md:p-4 transition-colors duration-500 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
                 {/* --- CARDIAC ARREST MODE PANEL --- */}
-{arrestMode && (
-    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn">
-        <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
-            <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
-            <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-                {formatTime(cycleTimer)}
-            </div>
-            <div className="flex gap-2 mt-2">
-                <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
-                {/* CHANGED: Logic to skip to end of cycle (2 mins) */}
-                <Button variant="secondary" onClick={() => {
-                    const remaining = 120 - cycleTimer;
-                    if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining});
-                    sim.dispatch({type: 'RESET_CYCLE_TIMER'});
-                    addLogEntry("Cycle Skipped / Finished", "system");
-                }} className="h-8 text-xs">Finish Cycle</Button>
-            </div>
-        </div>
-        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">
-                {cprInProgress ? "STOP CPR" : "START CPR"}
-            </Button>
-            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col">
-                <Lucide icon="zap" /> SHOCK
-            </Button>
-            
-            {/* CHANGED: Visual toggle for drugs (outline -> success if count > 0) */}
-            <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col">
-                <span>Adrenaline</span>
-                <span className="text-[10px] font-normal opacity-80">1mg (1:10k)</span>
-                {interventionCounts['AdrenalineIV'] > 0 && <span className="absolute top-1 right-1 bg-white text-emerald-600 text-[9px] px-1 rounded-full">x{interventionCounts['AdrenalineIV']}</span>}
-            </Button>
+                {arrestMode && (
+                    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn">
+                        <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
+                            <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
+                            <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                                {formatTime(cycleTimer)}
+                            </div>
+                            <div className="flex gap-2 mt-2">
+                                <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
+                                <Button variant="secondary" onClick={() => {
+                                    const remaining = 120 - cycleTimer;
+                                    if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining});
+                                    sim.dispatch({type: 'RESET_CYCLE_TIMER'});
+                                    addLogEntry("Cycle Skipped / Finished", "system");
+                                }} className="h-8 text-xs">Finish Cycle</Button>
+                            </div>
+                        </div>
+                        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">
+                                {cprInProgress ? "STOP CPR" : "START CPR"}
+                            </Button>
+                            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col">
+                                <Lucide icon="zap" /> SHOCK
+                            </Button>
+                            
+                            <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col">
+                                <span>Adrenaline</span>
+                                <span className="text-[10px] font-normal opacity-80">1mg (1:10k)</span>
+                                {interventionCounts['AdrenalineIV'] > 0 && <span className="absolute top-1 right-1 bg-white text-emerald-600 text-[9px] px-1 rounded-full">x{interventionCounts['AdrenalineIV']}</span>}
+                            </Button>
 
-            {/* CHANGED: Fixed text size for Amiodarone to prevent overflow */}
-            <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col justify-center">
-                <span className="text-sm">Amiodarone</span>
-                <span className="text-[10px] font-normal opacity-80">300mg</span>
-                 {interventionCounts['Amiodarone'] > 0 && <span className="absolute top-1 right-1 bg-white text-emerald-600 text-[9px] px-1 rounded-full">x{interventionCounts['Amiodarone']}</span>}
-            </Button>
+                            <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col justify-center">
+                                <span className="text-sm">Amiodarone</span>
+                                <span className="text-[10px] font-normal opacity-80">300mg</span>
+                                 {interventionCounts['Amiodarone'] > 0 && <span className="absolute top-1 right-1 bg-white text-emerald-600 text-[9px] px-1 rounded-full">x{interventionCounts['Amiodarone']}</span>}
+                            </Button>
 
-            {/* CHANGED: Buttons are now toggles (Green when active) */}
-            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-12 border border-slate-600">Mechanical CPR</Button>
-            
-            <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
-            
-            {/* Note: 'Intubation' key maps to 'RSI' or similar in your INTERVENTIONS list usually, 
-                but based on your logs it looks like 'Intubation' might not be a direct key in INTERVENTIONS object 
-                unless added. If 'RSI' is the key, use that. Assuming 'RSI' based on file content. 
-                Replacing 'Intubation' with 'RSI' for safety, or keep generic if you have a mapped handler.
-                Let's use 'RSI' as it exists in your data. */}
-            <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
-            
-            <Button onClick={() => setShowDrugCalc(true)} variant="secondary" className="h-12 border border-slate-600">Drugs...</Button>
-        </div>
-        <div className="flex-1 flex flex-col gap-2">
-                <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
-                <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300">
-                    <div>Hypoxia</div><div>Thrombosis</div>
-                    <div>Hypovolaemia</div><div>Tension #</div>
-                    <div>Hyper/Hypo-K</div><div>Tamponade</div>
-                    <div>Hypothermia</div><div>Toxins</div>
-                </div>
-                <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
-        </div>
-    </div>
-)}
+                            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-12 border border-slate-600">Mechanical CPR</Button>
+                            <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
+                            <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
+                            <Button onClick={() => setShowDrugCalc(true)} variant="secondary" className="h-12 border border-slate-600">Drugs...</Button>
+                        </div>
+                        <div className="flex-1 flex flex-col gap-2">
+                                <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
+                                <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300">
+                                    <div>Hypoxia</div><div>Thrombosis</div>
+                                    <div>Hypovolaemia</div><div>Tension #</div>
+                                    <div>Hyper/Hypo-K</div><div>Tamponade</div>
+                                    <div>Hypothermia</div><div>Toxins</div>
+                                </div>
+                                <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
+                        </div>
+                    </div>
+                )}
 
                 {/* --- DRUG CALC MODAL --- */}
                 {showDrugCalc && (
@@ -1879,21 +1905,21 @@
                         </div>
 
                         {/* WAVEFORMS */}
-<div className="mb-2 relative">
-             <ECGMonitor 
-                rhythmType={rhythm} 
-                hr={vitals.hr}
-        rr={vitals.rr} 
-        spO2={vitals.spO2} 
-        isPaused={!isRunning} 
-        showEtco2={etco2Enabled} 
-        pathology={scenario.deterioration.type} 
-        showTraces={hasMonitoring} 
-        showArt={hasArtLine} 
-        isCPR={cprInProgress} 
-        className="h-28 md:h-60"
-     />
-</div>
+                        <div className="mb-2 relative">
+                             <ECGMonitor 
+                                rhythmType={rhythm} 
+                                hr={vitals.hr} 
+                                rr={vitals.rr} 
+                                spO2={vitals.spO2} 
+                                isPaused={!isRunning} 
+                                showEtco2={etco2Enabled} 
+                                pathology={scenario.deterioration.type} 
+                                showTraces={hasMonitoring} 
+                                showArt={hasArtLine} 
+                                isCPR={cprInProgress} 
+                                className="h-28 md:h-60"
+                             />
+                        </div>
 
                         {/* NUMERICS GRID */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1903,7 +1929,7 @@
                             <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={(v) => manualUpdateVital('rr', v)} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} />
                             
                             <VitalDisplay label="Temp" value={vitals.temp} prev={prevVitals.temp} unit="°C" onUpdate={(v) => manualUpdateVital('temp', v)} alert={vitals.temp > 38} visible={hasMonitoring} />
-                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4} visible={true} /> {/* BM often handheld */}
+                            <VitalDisplay label="Glucose" value={vitals.bm} prev={prevVitals.bm} unit="mmol/L" onUpdate={(v) => manualUpdateVital('bm', v)} alert={vitals.bm < 4} visible={true} />
                             <VitalDisplay label="Pupils" value={vitals.pupils || "3mm"} unit="" isText={true} onUpdate={(v) => manualUpdateVital('pupils', v)} visible={true} />
                             
                             {etco2Enabled && hasMonitoring ? (
@@ -1948,40 +1974,24 @@
                         </div>
 
                         {/* DYNAMIC ALS BUTTONS */}
-<div className="flex gap-2 mb-2">
-     {/* CHANGED: Added dispatch RESET_CYCLE_TIMER to onClick */}
-     <Button variant={arrestMode ? "danger" : "outline"} onClick={() => {
-        if (!arrestMode) sim.dispatch({type: 'RESET_CYCLE_TIMER'});
-        setArrestMode(!arrestMode);
-    }} className={`flex-1 h-10 font-bold text-sm ${arrestMode ? '' : 'border-red-500 text-red-500'}`}>
-        <Lucide icon="activity"/> {arrestMode ? "CLOSE ARREST MODE" : "OPEN ARREST MODE"}
-    </Button>
-    <Button variant={cprInProgress ? "warning" : "secondary"} onClick={toggleCPR} className="w-1/4 h-10 text-xs font-bold">
-        {cprInProgress ? "Stop CPR" : "CPR"}
-    </Button>
-</div>
+                        <div className="flex gap-2 mb-2">
+                             <Button variant={arrestMode ? "danger" : "outline"} onClick={() => {
+                                if (!arrestMode) sim.dispatch({type: 'RESET_CYCLE_TIMER'});
+                                setArrestMode(!arrestMode);
+                            }} className={`flex-1 h-10 font-bold text-sm ${arrestMode ? '' : 'border-red-500 text-red-500'}`}>
+                                <Lucide icon="activity"/> {arrestMode ? "CLOSE ARREST MODE" : "OPEN ARREST MODE"}
+                            </Button>
+                            <Button variant={cprInProgress ? "warning" : "secondary"} onClick={toggleCPR} className="w-1/4 h-10 text-xs font-bold">
+                                {cprInProgress ? "Stop CPR" : "CPR"}
+                            </Button>
+                        </div>
 
                         {/* Recommended Actions */}
                         {scenario.recommendedActions && (
                             <div className="mb-4 bg-sky-900/20 border border-sky-600/50 p-2 rounded-lg">
                                 <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="check-square" className="w-3 h-3"/> Recommended</h4>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                    {scenario.recommendedActions.map(key => {
-                                        const action = INTERVENTIONS[key];
-                                        if(!action) return null;
-                                        const isActive = activeInterventions.has(key);
-                                        let progress = 0;
-                                        if(activeDurations[key]) {
-                                            const elapsed = time - activeDurations[key].startTime;
-                                            progress = Math.min(100, Math.max(0, 100 - (elapsed / activeDurations[key].duration * 100)));
-                                        }
-                                        return (
-                                            <Button key={`rec-${key}`} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-8 relative border border-sky-500/30" progress={progress}>
-                                                {action.label}
-                                                {interventionCounts[key] > 0 && action.type !== 'continuous' && <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1">x{interventionCounts[key]}</span>}
-                                            </Button>
-                                        );
-                                    })}
+                                    {scenario.recommendedActions.map(key => <RenderButton key={key} keyName={key} />)}
                                 </div>
                             </div>
                         )}
@@ -2011,41 +2021,29 @@
                         </div>
 
                         {/* Grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 overflow-y-auto min-h-0 flex-1 content-start">
-                            {activeTab === 'Airway' && (
-                                <Button variant={etco2Enabled ? "success" : "secondary"} onClick={() => sim.dispatch({type: 'TOGGLE_ETCO2'})} className="text-xs h-10">
-                                    {etco2Enabled ? "Disconnect ETCO2" : "Connect ETCO2"}
-                                </Button>
+                        <div className="overflow-y-auto min-h-0 flex-1 content-start">
+                            {activeTab === 'Drugs' ? (
+                                /* DRUG CUPBOARD VISUAL METAPHOR */
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {Object.entries(DRUG_GROUPS).map(([title, group]) => (
+                                        <div key={title} className={`rounded-lg border-2 p-2 ${group.color} ${group.bg}`}>
+                                            <h5 className={`text-xs font-bold uppercase mb-2 ${group.title} border-b border-white/10 pb-1`}>{title}</h5>
+                                            <div className="grid grid-cols-2 gap-1.5">
+                                                {group.keys.map(key => <RenderButton key={key} keyName={key} />)}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {activeTab === 'Airway' && (
+                                        <Button variant={etco2Enabled ? "success" : "secondary"} onClick={() => sim.dispatch({type: 'TOGGLE_ETCO2'})} className="text-xs h-10">
+                                            {etco2Enabled ? "Disconnect ETCO2" : "Connect ETCO2"}
+                                        </Button>
+                                    )}
+                                    {getInterventionsByCat(activeTab).map(key => <RenderButton key={key} keyName={key} />)}
+                                </div>
                             )}
-                            {getInterventionsByCat(activeTab).map(key => {
-                                const isActive = activeInterventions.has(key);
-                                let progress = 0;
-                                if(activeDurations[key]) {
-                                    const elapsed = time - activeDurations[key].startTime;
-                                    progress = Math.min(100, Math.max(0, 100 - (elapsed / activeDurations[key].duration * 100)));
-                                }
-                                
-                                // DYNAMIC PAEDIATRIC LABELING
-                                const isPaeds = scenario.ageRange === 'Paediatric' || scenario.patientAge < 18;
-                                let label = INTERVENTIONS[key]?.label || key;
-                                if (isPaeds) {
-                                    if (key === 'Fluids') label = `Fluid Bolus (10ml/kg)`; 
-                                    else if (key === 'Adrenaline') label = `Adrenaline 1:1000 IM`;
-                                    else if (key === 'Atropine') label = `Atropine (20mcg/kg)`;
-                                    else if (key === 'Amidarone') label = `Amiodarone (5mg/kg)`;
-                                    else if (key === 'Lorazepam') label = `Lorazepam (0.1mg/kg)`;
-                                    else if (key === 'Midazolam') label = `Midazolam (0.5mg/kg)`;
-                                    else if (key === 'TXA') label = `TXA (15mg/kg)`;
-                                    else if (key === 'Blood') label = `Blood (10ml/kg)`;
-                                }
-
-                                return (
-                                    <Button key={key} variant={isActive ? "success" : "secondary"} onClick={() => applyIntervention(key)} disabled={!isRunning} className="text-xs h-10 relative" progress={progress}>
-                                        {label}
-                                        {interventionCounts[key] > 0 && INTERVENTIONS[key].type !== 'continuous' && <span className="bg-white/20 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-1">x{interventionCounts[key]}</span>}
-                                    </Button>
-                                )
-                            })}
                         </div>
                     </Card>
                 </div>
@@ -2102,7 +2100,7 @@
                         )}
                     </Card>
                     
-                    {/* GUIDELINES CARD (Single Instance) */}
+                    {/* GUIDELINES CARD */}
                     <Card title="Clinical Guidelines" icon="book" collapsible={true} defaultOpen={false} className="flex-shrink-0">
                         <div className="flex flex-col gap-2">
                             {scenario.learningLinks && scenario.learningLinks.map((link, i) => (
@@ -2114,13 +2112,9 @@
                         </div>
                     </Card>
 
-                    {/* INCIDENT LOG (Resizing Fix: flex-1 to fill space, min-h to prevent crushing) */}
-                    <Card className="flex-1 min-h-[200px] bg-slate-800 flex flex-col shadow-inner">
-                        <div className="flex items-center gap-2 mb-2 border-b border-slate-700 pb-2 flex-shrink-0">
-                            <Lucide icon="list" className="w-4 h-4 text-sky-400" />
-                            <h3 className="font-bold text-slate-200 text-sm">Incident Log</h3>
-                        </div>
-                        <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-xs font-mono">
+                    {/* INCIDENT LOG - NOW COLLAPSIBLE & DEFAULT MINIMISED */}
+                    <Card title="Incident Log" icon="list" collapsible={true} defaultOpen={false} className="flex-1 min-h-0 bg-slate-800 shadow-inner">
+                        <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-xs font-mono h-64">
                             {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
                              {/* Auto-scroll anchor */}
                             <div ref={(el) => { if (el) el.scrollIntoView({ behavior: "smooth" }); }}></div>
@@ -2135,17 +2129,18 @@
         const { state } = sim;
         const { log, scenario, history } = state; 
         const chartRef = useRef(null);
+        // Ref to store list items for scrolling
+        const logContainerRef = useRef(null);
 
         useEffect(() => {
             if (!chartRef.current || !history.length) return;
             
-            // --- FIX: Capture ALL relevant actions ---
             const interventions = log
                 .filter(l => l.type === 'action' || l.type === 'manual' || l.type === 'alert' || l.type === 'success' || l.type === 'danger')
                 .map((l, i) => ({ 
                     x: `${Math.floor(l.timeSeconds/60)}:${(l.timeSeconds%60).toString().padStart(2,'0')}`, 
                     label: l.msg,
-                    yOffset: (i % 8) * 12 // Stagger labels so they don't overlap
+                    yOffset: (i % 8) * 12 
                 }));
 
             const chart = new window.Chart(chartRef.current, {
@@ -2153,9 +2148,9 @@
                 data: {
                     labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`),
                     datasets: [ 
-                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' }
+                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 3, hoverRadius: 6, tension: 0.1 }, 
+                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 3, hoverRadius: 6, tension: 0.1 }, 
+                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 3, hoverRadius: 6, tension: 0.1, yAxisID: 'y1' }
                     ]
                 },
                 options: {
@@ -2164,8 +2159,31 @@
                     interaction: { mode: 'index', intersect: false },
                     animation: false, 
                     hover: { animationDuration: 0 },
+                    // TIMELINE SCRUBBING LOGIC
+                    onClick: (event, elements) => {
+                        if (elements.length > 0) {
+                            const index = elements[0].index;
+                            const pointData = history[index];
+                            if(pointData) {
+                                // Find the log entry closest to this time
+                                const targetTime = pointData.time;
+                                // Find first log entry that occurred AFTER or AT this time
+                                const logIndex = log.findIndex(l => l.timeSeconds >= targetTime);
+                                
+                                if (logIndex !== -1) {
+                                    const el = document.getElementById(`log-item-${logIndex}`);
+                                    if (el) {
+                                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        // Visual highlight effect
+                                        el.classList.add('bg-sky-500/40');
+                                        setTimeout(() => el.classList.remove('bg-sky-500/40'), 1500);
+                                    }
+                                }
+                            }
+                        }
+                    },
                     plugins: { 
-                        title: { display: true, text: 'Vital Signs Trend' },
+                        title: { display: true, text: 'Vital Signs Trend (Click point to find in Log)' },
                         tooltip: { position: 'nearest' }
                     },
                     scales: { y: { position: 'left', min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } }
@@ -2184,10 +2202,6 @@
                                 ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
                                 ctx.lineWidth = 1;
                                 ctx.stroke();
-                                
-                                ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                                ctx.font = '9px sans-serif';
-                                ctx.fillText(item.label.substring(0, 25) + (item.label.length>25?"...":""), xPos + 2, top + 10 + item.yOffset);
                             }
                         });
                         ctx.restore();
@@ -2266,10 +2280,19 @@
                         <canvas ref={chartRef}></canvas>
                     </div>
                 </Card>
-                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
+                <Card title="Action Timeline" icon="clock">
+                    <div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs" ref={logContainerRef}>
+                        {log.map((l, i) => (
+                            <div key={i} id={`log-item-${i}`} className="flex gap-4 border-b border-slate-700 pb-1 transition-colors duration-500 p-1 rounded">
+                                <span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span>
+                                <span className="text-slate-300">{l.msg}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Card>
             </div>
         );
-    };
+    }
      // UPDATED MONITOR SCREEN (Header Update)
     const MonitorScreen = ({ sim }) => {
         const { state } = sim;
