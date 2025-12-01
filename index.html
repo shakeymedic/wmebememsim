@@ -14,6 +14,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.1.0/chartjs-plugin-annotation.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script src="data/interventions.js"></script>
+    <script src="data/scenarios.js"></script>
     
     <style>
         .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
@@ -253,11 +256,6 @@
       { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
       { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
     ];
-
-    const INTERVENTIONS = {
-        
-    
-    // === SCENARIO DATABASE ---
     
         // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES & KIT (2025 UPDATES) ---
     // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES, KIT & PROGRESSION LOGIC ---
