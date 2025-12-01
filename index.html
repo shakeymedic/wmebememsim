@@ -1403,24 +1403,6 @@
     };
         
         // --- UI SCREENS ---
-    const useAuth = () => {
-        const [user, setUser] = useState(null);
-        const [isPro, setIsPro] = useState(false);
-        useEffect(() => {
-            const unsubscribe = firebase.auth().onAuthStateChanged(async (u) => {
-                if (u) {
-                    setUser(u);
-                    const dbStore = firebase.firestore();
-                    const subSnapshot = await dbStore.collection('customers').doc(u.uid).collection('subscriptions').where('status', 'in', ['active', 'trialing']).get();
-                    setIsPro(!subSnapshot.empty);
-                } else { setUser(null); setIsPro(false); }
-            });
-            return () => unsubscribe();
-        }, []);
-        const signIn = () => { const provider = new firebase.auth.GoogleAuthProvider(); firebase.auth().signInWithPopup(provider); };
-        const signOut = () => firebase.auth().signOut();
-        return { user, isPro, signIn, signOut };
-    };
 
     const startCheckout = async (userId) => {
         const dbStore = firebase.firestore();
@@ -2516,6 +2498,9 @@ const useAuth = () => {
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [sessionID, setSessionID] = useState(null);
+        
+        // FIX 1: Initialize the auth hook here
+        const auth = useAuth(); 
 
         // --- 1. SESSION ID & RECOVERY ---
         useEffect(() => {
@@ -2538,8 +2523,6 @@ const useAuth = () => {
         }, []); 
 
         // --- 2. HOIST THE SIMULATION ENGINE ---
-        // We initialize it here. It starts broadcasting "Setup Mode" (or the running state) immediately.
-        // This allows the monitor to connect anytime.
         const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
 
         // --- HANDLERS ---
@@ -2554,20 +2537,16 @@ const useAuth = () => {
         };
 
         const handleResume = (savedState) => {
-             // Dispatch restore to the engine
              sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); 
              setView('live');
         };
         
-        // Full Reset (New Scenario)
         const handleRestart = () => {
             sim.dispatch({ type: 'LOAD_SCENARIO', payload: null });
-            // We do NOT clear the session ID here, so the monitor stays connected
             setView('setup'); 
             localStorage.removeItem('wmebem_sim_state');
         };
 
-        // Check for saved state (Crash Recovery for Simulation Data)
         const [resumeAvailable, setResumeAvailable] = useState(null);
         useEffect(() => {
             if (view === 'setup') {
@@ -2583,16 +2562,14 @@ const useAuth = () => {
         
         if (view === 'monitor') {
              if (!sessionID) return null;
-             // Improved Waiting Screen
-             // FIX: Check if hr is undefined, because 0 is a valid heart rate in cardiac arrest!
-if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
-   <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
-       <Lucide icon="activity" className="w-16 h-16 animate-bounce text-sky-600" />
-       <div className="text-2xl font-bold text-white tracking-widest text-center">CONNECTED</div>
-       <p className="text-slate-400 text-center px-4">Waiting for controller input...</p>
-       <div className="mt-4 bg-slate-900 px-6 py-3 rounded border border-slate-800 font-mono text-2xl text-sky-500">{sessionID}</div>
-   </div>
-);
+             if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
+               <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
+                   <Lucide icon="activity" className="w-16 h-16 animate-bounce text-sky-600" />
+                   <div className="text-2xl font-bold text-white tracking-widest text-center">CONNECTED</div>
+                   <p className="text-slate-400 text-center px-4">Waiting for controller input...</p>
+                   <div className="mt-4 bg-slate-900 px-6 py-3 rounded border border-slate-800 font-mono text-2xl text-sky-500">{sessionID}</div>
+               </div>
+            );
             return <MonitorScreen sim={sim} />;
         }
 
@@ -2613,17 +2590,17 @@ if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
                 </header>
 
                 <main className="flex-grow overflow-hidden relative">
-                    {/* Setup Screens */}
                     {(view === 'setup' || view === 'setup_regen') && (
                         <SetupScreen 
                             onGenerate={handleGenerate} 
                             initialParams={view === 'setup_regen' ? { autoGenerate: true } : null}
                             savedState={view === 'setup' ? resumeAvailable : null} 
-                            onResume={() => handleResume(resumeAvailable)} 
+                            onResume={() => handleResume(resumeAvailable)}
+                            // FIX 2: Pass the auth object prop here
+                            auth={auth} 
                         />
                     )}
 
-                    {/* Briefing Screen */}
                     {view === 'briefing' && sim.state.scenario && (
                         <BriefingScreen 
                             scenario={sim.state.scenario} 
@@ -2636,10 +2613,9 @@ if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
                         />
                     )}
 
-                    {/* Live Sim & Debrief */}
                     {(view === 'live' || view === 'debrief') && sim.state.scenario && (
                          <LiveSimContainer 
-                            sim={sim} // PASS THE SIM ENGINE DOWN
+                            sim={sim} 
                             view={view}
                             setView={setView}
                             resumeData={view === 'live' && resumeAvailable ? resumeAvailable : null}
