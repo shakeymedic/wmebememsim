@@ -90,6 +90,29 @@
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Prevent double-tap zoom on buttons */
+        .touch-action-manipulation {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Prevent text selection during rapid interactions */
+        .no-select {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        /* Smooth animations for mobile */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
@@ -943,7 +966,13 @@
             };
 
             requestRef.current = requestAnimationFrame(animate);
-            return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
+            return () => { 
+                window.removeEventListener('resize', setSize); 
+                if (requestRef.current) {
+                    cancelAnimationFrame(requestRef.current); 
+                    requestRef.current = null;
+                }
+            };
         }, []);
 
         return (
@@ -1183,6 +1212,11 @@
                     prevVitals: { ...state.vitals } 
                 };
 
+            default:
+                return state;
+        }
+    };
+
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [state, dispatch] = useReducer(simReducer, initialState);
         const timerRef = useRef(null);
@@ -1201,7 +1235,13 @@
                     const data = snapshot.val();
                     if (data) { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); }
                 };
-                sessionRef.on('value', handleUpdate);
+                
+                const handleError = (error) => {
+                    console.error("Firebase sync error:", error);
+                    // Optionally show user-friendly error
+                };
+                
+                sessionRef.on('value', handleUpdate, handleError);
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
@@ -1229,7 +1269,21 @@
             }
         }, [state.vitals, state.log, isMonitorMode]);
 
-        useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
+        useEffect(() => { 
+            if (!audioCtxRef.current) { 
+                const AudioContext = window.AudioContext || window.webkitAudioContext; 
+                audioCtxRef.current = new AudioContext(); 
+                
+                // Resume on first user interaction (required by browsers)
+                const resumeAudio = () => {
+                    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+                        audioCtxRef.current.resume();
+                    }
+                };
+                document.addEventListener('click', resumeAudio, { once: true });
+                document.addEventListener('touchstart', resumeAudio, { once: true });
+            } 
+        }, []);
         
         // --- SOUNDS ---
         const playNIBPSound = () => {
@@ -1453,7 +1507,11 @@
             timerRef.current = setInterval(() => { 
                 dispatch({ type: 'TICK_TIME' });
                 // Check Auto NIBP
-                if (!isMonitorMode && stateRef.current.nibpTimer <= 0 && stateRef.current.nibpAuto) { runNIBPCycle(); }
+                const current = stateRef.current;
+                if (!isMonitorMode && current.nibpAuto && current.nibpTimer <= 0 && current.activeInterventions.has('Obs')) { 
+                    runNIBPCycle();
+                    dispatch({ type: 'RESET_NIBP_TIMER' });
+                }
             }, 1000); 
             tickRef.current = setInterval(tick, 3000); 
             if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); 
@@ -1815,10 +1873,10 @@
             </div>
         </div>
         <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">
+            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double touch-action-manipulation" style={{ touchAction: 'manipulation' }}>
                 {cprInProgress ? "STOP CPR" : "START CPR"}
             </Button>
-            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col">
+            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col touch-action-manipulation" style={{ touchAction: 'manipulation' }}>
                 <Lucide icon="zap" /> SHOCK
             </Button>
             
@@ -2163,7 +2221,7 @@
                             <h3 className="font-bold text-slate-200 text-sm">Incident Log</h3>
                         </div>
                         <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-xs font-mono">
-                            {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
+                            {log.slice().reverse().map((l, i) => (<div key={`log-${l.timeSeconds}-${i}`} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
                              {/* Auto-scroll anchor */}
                             <div ref={(el) => { if (el) el.scrollIntoView({ behavior: "smooth" }); }}></div>
                         </div>
@@ -2244,10 +2302,10 @@
             doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10);
             doc.setFontSize(10);
             let y = 30;
-            log.forEach(l => { 
-                if (y > 280) { doc.addPage(); y = 10; } 
-                doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; 
-            });
+            log.forEach((l, idx) => { 
+                        if (y > 280) { doc.addPage(); y = 10; } 
+                        doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; 
+                    });
             doc.save("sim-debrief.pdf");
         };
 
@@ -2308,7 +2366,7 @@
                         <canvas ref={chartRef}></canvas>
                     </div>
                 </Card>
-                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
+                <Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={`timeline-${l.timeSeconds || 0}-${i}`} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card>
             </div>
         );
     };
