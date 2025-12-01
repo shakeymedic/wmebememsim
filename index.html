@@ -694,6 +694,16 @@
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set() };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
+            case 'RESET_SIM': // FIX: Safely clears current scenario and state
+                return { 
+                    ...initialState, 
+                    isRunning: false, 
+                    scenario: null, 
+                    vitals: {}, 
+                    prevVitals: {}, 
+                    log: [],
+                    soundSource: state.soundSource // Preserve sound setting across reset
+                }; 
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
@@ -2096,7 +2106,9 @@
         
         // Full Reset (New Scenario)
         const handleRestart = () => {
-            sim.dispatch({ type: 'LOAD_SCENARIO', payload: null });
+            // FIX: Use RESET_SIM to safely clear the engine state before navigating to setup.
+            sim.dispatch({ type: 'RESET_SIM' }); 
+            
             // We do NOT clear the session ID here, so the monitor stays connected
             setView('setup'); 
             localStorage.removeItem('wmebem_sim_state');
