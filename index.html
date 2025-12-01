@@ -2098,77 +2098,7 @@
             </div>
         );
     };
-
-    const MonitorContainer = ({ sessionID }) => {
-        // Pass sessionID to hook
-        const sim = useSimulation(null, true, sessionID);
-        
-        // --- AUDIO AUTOPLAY CHECK ---
-        const [audioSuspended, setAudioSuspended] = useState(false);
-        useEffect(() => {
-             const checkAudio = () => {
-                 if (sim.audioContext && sim.audioContext.state === 'suspended') {
-                     setAudioSuspended(true);
-                 } else {
-                     setAudioSuspended(false);
-                 }
-             };
-             // Check every second in case it changes
-             const interval = setInterval(checkAudio, 1000);
-             return () => clearInterval(interval);
-        }, [sim.audioContext]);
-
-        // --- WAKE LOCK IMPLEMENTATION ---
-        useEffect(() => {
-            let wakeLock = null;
-            const requestWakeLock = async () => {
-                if ('wakeLock' in navigator) {
-                    try {
-                        wakeLock = await navigator.wakeLock.request('screen');
-                        console.log('Screen Wake Lock acquired');
-                    } catch (err) {
-                        console.error(`${err.name}, ${err.message}`);
-                    }
-                }
-            };
-            requestWakeLock();
-            const handleVisibilityChange = () => {
-                if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock();
-            };
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-            return () => {
-                document.removeEventListener('visibilitychange', handleVisibilityChange);
-                if (wakeLock !== null) wakeLock.release();
-            };
-        }, []);
-        
-        if (!sessionID) return null;
-        
-        // Waiting Screen (HR check ensures we don't block during cardiac arrest where HR is 0)
-        if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
-            <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
-                <Lucide icon="activity" className="w-16 h-16 animate-bounce text-sky-600" />
-                <div className="text-2xl font-bold text-white tracking-widest text-center">CONNECTED</div>
-                <p className="text-slate-400 text-center px-4">Waiting for controller input...</p>
-                <div className="mt-4 bg-slate-900 px-6 py-3 rounded border border-slate-800 font-mono text-2xl text-sky-500">{sessionID}</div>
-            </div>
-        );
-
-        return (
-            <>
-                {audioSuspended && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 cursor-pointer" 
-                         onClick={() => { if(sim.audioContext) sim.audioContext.resume().then(() => setAudioSuspended(false)); }}>
-                        <div className="bg-sky-600 text-white p-6 rounded-lg animate-bounce text-center shadow-xl border-2 border-white">
-                            <h1 className="text-2xl font-bold mb-2"><Lucide icon="volume-2" className="inline mr-2"/> Tap to Enable Sound</h1>
-                            <p className="text-sm text-sky-100">Browser policy requires a click to start audio.</p>
-                        </div>
-                    </div>
-                )}
-                <MonitorScreen sim={sim} />
-            </>
-        );
-    };  
+ 
 
     const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart }) => {
         // CHANGED: We now accept 'sim' as a prop instead of creating a new one.
