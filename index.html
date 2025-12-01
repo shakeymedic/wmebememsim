@@ -75,8 +75,37 @@
     <div id="root"></div>
 
     <script type="text/babel">
+    // --- FIREBASE CONFIGURATION ---
+    const firebaseConfig = {
+        apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
+        authDomain: "wmebem-sim.firebaseapp.com",
+        projectId: "wmebem-sim",
+        storageBucket: "wmebem-sim.firebasestorage.app",
+        messagingSenderId: "143041936940",
+        appId: "1:143041936940:web:4d15c3fc3ce7e10c081b89",
+        measurementId: "G-8C6WW1EWXJ"
+    };
+
+    // Initialize Firebase
+    let db = null;
+    try {
+        if (window.firebase) {
+            // Check if already initialized to prevent hot-reload errors
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            } else {
+                firebase.app(); // if already initialized, use that one
+            }
+            db = firebase.database();
+            console.log("Firebase Connected Successfully");
+        } else {
+            console.error("Firebase SDK not loaded");
+        }
+    } catch (e) {
+        console.error("Firebase Init Error:", e);
+    }
     
-    // --- 1. HELPER FUNCTIONS & DATA ---
+        // --- 1. HELPER FUNCTIONS & DATA ---
 
     const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
@@ -1166,25 +1195,35 @@
         // Update ref whenever state changes so loops can access fresh state
         useEffect(() => { stateRef.current = state; }, [state]);
         
-        // --- DATA SYNC (Controller <-> Monitor) ---
+        // Update ref whenever state changes so loops can access fresh state
+        useEffect(() => { stateRef.current = state; }, [state]);
+        
+        // --- DATA SYNC (Firebase Real-Time) ---
         useEffect(() => {
+            if (!db) return; // If Firebase failed, do nothing
+            
+            const sessionRef = db.ref('sim_session');
+
             if (isMonitorMode) {
-                // MONITOR MODE: Listen for updates
-                const handleStorage = (e) => {
-                    if (e.key === 'wmebem_sync_stream' && e.newValue) {
-                        try { dispatch({ type: 'SYNC_FROM_MASTER', payload: JSON.parse(e.newValue) }); } catch (err) {}
+                // MONITOR MODE: Listen for changes from the internet
+                const handleUpdate = (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        try { 
+                            dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); 
+                        } catch (err) { console.error("Sync Error", err); }
                     }
                 };
-                window.addEventListener('storage', handleStorage);
                 
-                // Immediate load
-                const existing = localStorage.getItem('wmebem_sync_stream');
-                if (existing) try { dispatch({ type: 'SYNC_FROM_MASTER', payload: JSON.parse(existing) }); } catch (e) {}
+                // Subscribe to updates
+                sessionRef.on('value', handleUpdate);
 
-                return () => window.removeEventListener('storage', handleStorage);
+                // Cleanup when closing
+                return () => sessionRef.off('value', handleUpdate);
             } else {
-                // CONTROLLER MODE: Broadcast state
+                // CONTROLLER MODE: Broadcast state to the internet
                 if (!state.scenario) return;
+
                 const payload = {
                     vitals: state.vitals,
                     rhythm: state.rhythm,
@@ -1196,9 +1235,14 @@
                     pathology: state.scenario.deterioration?.type || 'normal',
                     activeInterventions: Array.from(state.activeInterventions)
                 };
-                localStorage.setItem('wmebem_sync_stream', JSON.stringify(payload));
+
+                // Send to Firebase
+                sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
             }
         }, [state, isMonitorMode]);
+
+        useEffect(() => {
+            if (!isMonitorMode && state.scenario && state.log.length > 0) {
 
         useEffect(() => {
             if (!isMonitorMode && state.scenario && state.log.length > 0) {
