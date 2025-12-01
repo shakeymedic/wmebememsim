@@ -1608,7 +1608,7 @@
                                 <div className="bg-slate-900/50 p-1 md:p-2 rounded border border-yellow-500/50 flex flex-col items-center justify-center h-20 relative">
                                     <span className="text-[9px] md:text-[10px] font-bold text-yellow-500 uppercase tracking-wider mb-1">ETCO2</span>
                                     <span className="text-xl md:text-2xl font-mono font-bold text-yellow-500">
-                                        {cprInProgress ? '2.5' : (vitals.hr > 0 ? (scenario.deterioration.type === 'respiratory' ? '6.5' : '4.5') : '1.0')}
+                                        {cprInProgress ? '2.5' : (vitals.hr > 0 ? (scenario.deterioration?.type === 'respiratory' ? '6.5' : '4.5') : '1.0')}
                                     </span>
                                     <span className="text-[8px] md:text-[9px] text-slate-600 mt-1">kPa</span>
                                 </div>
