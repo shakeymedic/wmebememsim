@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v12.8 (Mobile Fix)</title>
+    <title>WMEBEM Sim Generator v15</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
@@ -39,8 +39,8 @@
             50% { border-color: #10b981; }
         }
         
-        html, body { height: 100%; overflow: hidden; }
-        body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; }
+        html, body { height: 100%; overflow: hidden; overscroll-behavior-y: none; }
+        body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; user-select: none; -webkit-user-select: none; }
         #root { height: 100%; display: flex; flex-direction: column; }
 
         @keyframes loadProgress { from { width: 0%; } to { width: 100%; } }
@@ -69,6 +69,9 @@
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Stop double-tap to zoom on buttons */
+        button { touch-action: manipulation; }
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
@@ -1877,10 +1880,9 @@
 
                         {/* WAVEFORMS */}
 <div className="mb-2 relative">
-     {/* CHANGED: Added className="h-60" to expand monitor by 50% */}
-     <ECGMonitor 
-        rhythmType={rhythm} 
-        hr={vitals.hr} 
+             <ECGMonitor 
+                rhythmType={rhythm} 
+                hr={vitals.hr}
         rr={vitals.rr} 
         spO2={vitals.spO2} 
         isPaused={!isRunning} 
@@ -1889,7 +1891,7 @@
         showTraces={hasMonitoring} 
         showArt={hasArtLine} 
         isCPR={cprInProgress} 
-        className="h-60"
+        className="h-28 md:h-60"
      />
 </div>
 
@@ -2268,7 +2270,7 @@
             </div>
         );
     };
-     // UPDATED MONITOR SCREEN (Responsive Layout)
+     // UPDATED MONITOR SCREEN (Header Update)
     const MonitorScreen = ({ sim }) => {
         const { state } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, cycleTimer } = state;
@@ -2282,16 +2284,16 @@
         return (
             <div className={`fixed inset-0 flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
-                {/* TOP BAR */}
-                <div className="flex justify-between items-start shrink-0 mb-2 min-h-[50px]">
-                    <div className="flex flex-col">
-                        <span className="text-sm md:text-xl font-bold text-sky-500 tracking-widest uppercase truncate max-w-[200px] md:max-w-none">{scenario?.title || "MONITOR"}</span>
-                        <span className="text-[10px] md:text-xs text-slate-500 truncate">{scenario?.patientProfileTemplate ? "ACTIVE SESSION" : "Loading..."}</span>
+                {/* TOP BAR - UPDATED HEADER */}
+                <div className="flex justify-between items-center shrink-0 mb-2 min-h-[50px]">
+                    <div className="flex items-center gap-3 md:gap-4">
+                        <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-8 md:h-12 object-contain" />
+                        <div><h1 className="text-lg md:text-2xl font-bold text-sky-500 tracking-tight">EM Sim Generator v15</h1></div>
                     </div>
 
                     {/* RESPONSIVE ARREST TIMER */}
                     {isArrest && (
-                        <div className="flex flex-col items-end animate-fadeIn z-50">
+                        <div className="flex flex-col items-end animate-fadeIn z-50 ml-auto">
                             <div className="flex items-center gap-2 md:gap-3 bg-red-900/80 border border-red-500 px-2 md:px-4 py-1 md:py-2 rounded">
                                 <span className="text-red-500 font-bold uppercase tracking-widest text-[10px] md:text-sm hidden sm:inline">Cycle Time</span>
                                 <span className={`font-mono text-2xl md:text-4xl font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
@@ -2351,14 +2353,47 @@
         // Pass sessionID to hook
         const sim = useSimulation(null, true, sessionID);
         
+        // --- WAKE LOCK IMPLEMENTATION ---
+        useEffect(() => {
+            let wakeLock = null;
+            const requestWakeLock = async () => {
+                if ('wakeLock' in navigator) {
+                    try {
+                        wakeLock = await navigator.wakeLock.request('screen');
+                        console.log('Screen Wake Lock acquired');
+                    } catch (err) {
+                        console.error(`${err.name}, ${err.message}`);
+                    }
+                }
+            };
+            
+            // Request wake lock when component mounts
+            requestWakeLock();
+
+            // Re-request wake lock if the page visibility changes (e.g. switching tabs)
+            const handleVisibilityChange = () => {
+                if (wakeLock !== null && document.visibilityState === 'visible') {
+                    requestWakeLock();
+                }
+            };
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+
+            return () => {
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+                if (wakeLock !== null) wakeLock.release();
+            };
+        }, []);
+        
         if (!sessionID) return null;
         
-        // Waiting Screen
-        if (!sim.state.vitals.hr) return (
+        // BUG FIX: Changed !sim.state.vitals.hr to sim.state.vitals.hr === undefined
+        // This ensures that HR 0 (Cardiac Arrest) does not trigger the waiting screen.
+        if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
             <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
-                <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
-                <div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div>
-                <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
+                <Lucide icon="activity" className="w-16 h-16 animate-bounce text-sky-600" />
+                <div className="text-2xl font-bold text-white tracking-widest text-center">CONNECTED</div>
+                <p className="text-slate-400 text-center px-4">Waiting for controller input...</p>
+                <div className="mt-4 bg-slate-900 px-6 py-3 rounded border border-slate-800 font-mono text-2xl text-sky-500">{sessionID}</div>
             </div>
         );
         return <MonitorScreen sim={sim} />;
