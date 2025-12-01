@@ -735,6 +735,7 @@
     };
     
     // Updated VitalDisplay to handle BP explicitly
+    // UPDATED VITAL DISPLAY (Responsive Text Sizes)
     const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false, visible = true, isMonitor = false, hideTrends = false }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
@@ -743,26 +744,26 @@
 
         const isBP = label === "BP" || label === "NIBP" || label === "ABP";
         
-        // --- MONITOR MODE (LARGE) ---
+        // --- MONITOR MODE (LARGE & RESPONSIVE) ---
         if (isMonitor) {
-            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
+            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-sm md:text-2xl font-bold text-slate-600">{label}</span><span className="text-2xl md:text-4xl font-mono text-slate-700">--</span></div>;
             
             return (
-                <div className={`flex flex-col items-center justify-center h-full rounded border-2 transition-colors duration-500 ${alert ? 'bg-red-900/40 border-red-500 animate-pulse' : 'bg-slate-900/40 border-slate-700'}`}>
-                    <span className="text-xl font-bold text-slate-400 uppercase tracking-widest mb-2">{label}</span>
-                    <div className="flex items-baseline gap-2">
-                        <span className={`font-mono font-bold text-white ${isText ? 'text-4xl' : 'text-7xl'}`}>
+                <div className={`flex flex-col items-center justify-center h-full w-full rounded border-2 transition-colors duration-500 overflow-hidden ${alert ? 'bg-red-900/40 border-red-500 animate-pulse' : 'bg-slate-900/40 border-slate-700'}`}>
+                    <span className="text-xs md:text-xl font-bold text-slate-400 uppercase tracking-widest mb-1">{label}</span>
+                    <div className="flex items-baseline justify-center gap-1 md:gap-2 w-full text-center">
+                        <span className={`font-mono font-bold text-white leading-none ${isText ? 'text-2xl md:text-5xl' : 'text-4xl md:text-6xl lg:text-7xl'}`}>
                             {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
-                            {isBP && <span className="text-5xl text-slate-400">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
+                            {isBP && <span className="text-2xl md:text-5xl text-slate-400">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
                         </span>
-                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-2xl font-bold ${value === prev ? 'text-slate-600' : (lowIsBad ? (value > prev ? 'text-emerald-500' : 'text-red-500') : (value > prev ? 'text-red-500' : 'text-emerald-500'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-xl md:text-2xl font-bold ${value === prev ? 'text-slate-600' : (lowIsBad ? (value > prev ? 'text-emerald-500' : 'text-red-500') : (value > prev ? 'text-red-500' : 'text-emerald-500'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
                     </div>
-                    <span className="text-lg text-slate-500 mt-2">{unit}</span>
+                    <span className="text-xs md:text-lg text-slate-500 mt-1 md:mt-2">{unit}</span>
                 </div>
             );
         }
 
-        // --- CONTROLLER MODE (COMPACT) ---
+        // --- CONTROLLER MODE (COMPACT - No changes needed here, kept for completeness) ---
         if (!visible) {
              return (
                 <div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40">
@@ -2267,16 +2268,43 @@
             </div>
         );
     };
-     const MonitorScreen = ({ sim }) => {
+     // UPDATED MONITOR SCREEN (Responsive Layout)
+    const MonitorScreen = ({ sim }) => {
         const { state } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, cycleTimer } = state;
         const hasMonitoring = activeInterventions.has('Obs');
         const hasArtLine = activeInterventions.has('ArtLine');
 
+        // Show Timer if CPR is in progress OR if we are in an arrest rhythm
+        const isArrest = cprInProgress || ['VF', 'VT', 'Asystole', 'PEA', 'Coarse VF', 'Fine VF'].includes(rhythm);
+        const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+
         return (
-            <div className={`h-full w-full flex flex-col bg-black text-white p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className="flex-grow relative border border-slate-800 rounded mb-4 overflow-hidden flex flex-col">
-                    {/* Waveforms Area - Expanded */}
+            <div className={`fixed inset-0 flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                
+                {/* TOP BAR */}
+                <div className="flex justify-between items-start shrink-0 mb-2 min-h-[50px]">
+                    <div className="flex flex-col">
+                        <span className="text-sm md:text-xl font-bold text-sky-500 tracking-widest uppercase truncate max-w-[200px] md:max-w-none">{scenario?.title || "MONITOR"}</span>
+                        <span className="text-[10px] md:text-xs text-slate-500 truncate">{scenario?.patientProfileTemplate ? "ACTIVE SESSION" : "Loading..."}</span>
+                    </div>
+
+                    {/* RESPONSIVE ARREST TIMER */}
+                    {isArrest && (
+                        <div className="flex flex-col items-end animate-fadeIn z-50">
+                            <div className="flex items-center gap-2 md:gap-3 bg-red-900/80 border border-red-500 px-2 md:px-4 py-1 md:py-2 rounded">
+                                <span className="text-red-500 font-bold uppercase tracking-widest text-[10px] md:text-sm hidden sm:inline">Cycle Time</span>
+                                <span className={`font-mono text-2xl md:text-4xl font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                                    {formatTime(cycleTimer)}
+                                </span>
+                            </div>
+                            {cprInProgress && <span className="text-red-500 font-bold tracking-widest text-[10px] md:text-xs mt-1 animate-pulse">CPR IN PROGRESS</span>}
+                        </div>
+                    )}
+                </div>
+
+                {/* WAVEFORMS - Takes all remaining height */}
+                <div className="flex-grow relative border border-slate-800 rounded mb-2 md:mb-4 overflow-hidden flex flex-col">
                     <ECGMonitor 
                         rhythmType={rhythm} 
                         hr={vitals.hr} 
@@ -2288,33 +2316,36 @@
                         showTraces={hasMonitoring} 
                         showArt={hasArtLine} 
                         isCPR={cprInProgress}
-                        className="h-full" 
+                        className="h-full w-full" 
                         rhythmLabel="ECG" 
                     />
                 </div>
                 
-                {/* Big Vitals Grid */}
-                <div className="h-[25vh] grid grid-cols-4 gap-4">
+                {/* VITALS GRID - Responsive Columns */}
+                <div className="shrink-0 h-auto min-h-[120px] md:h-[20vh] grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
                     <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     <VitalDisplay label={hasArtLine ? "ABP" : "NIBP"} value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                    <div className="grid grid-rows-2 gap-4">
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    <div className="grid grid-cols-2 md:grid-cols-1 md:grid-rows-2 gap-2 md:gap-4">
+                        <VitalDisplay label="RR" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         {etco2Enabled && hasMonitoring ? (
-                            <div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50">
-                                <span className="text-sm font-bold text-yellow-500">ETCO2</span>
-                                <span className="text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span>
+                            <div className="flex flex-col items-center justify-center h-full w-full bg-slate-900/40 rounded border border-yellow-500/50 overflow-hidden">
+                                <span className="text-[10px] md:text-sm font-bold text-yellow-500">ETCO2</span>
+                                <span className="text-xl md:text-3xl font-mono font-bold text-yellow-500 leading-none">
+                                    {cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} 
+                                    <span className="text-[10px] md:text-sm ml-1 text-slate-500">kPa</span>
+                                </span>
                             </div>
                         ) : (
                             <div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30">
-                                <span className="font-bold text-slate-600">ETCO2 OFF</span>
+                                <span className="text-xs md:text-base font-bold text-slate-600">ETCO2 OFF</span>
                             </div>
                         )}
                     </div>
                 </div>
             </div>
         );
-    };;
+    };
 
     const MonitorContainer = ({ sessionID }) => {
         // Pass sessionID to hook
@@ -2428,14 +2459,15 @@
         if (view === 'monitor') {
              if (!sessionID) return null;
              // Improved Waiting Screen
-             if (!sim.state.vitals || !sim.state.vitals.hr) return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
-                    <Lucide icon="activity" className="w-16 h-16 animate-bounce text-sky-600" />
-                    <div className="text-2xl font-bold text-white tracking-widest">CONNECTED</div>
-                    <p className="text-slate-400">Waiting for controller input...</p>
-                    <div className="mt-4 bg-slate-900 px-6 py-3 rounded border border-slate-800 font-mono text-2xl text-sky-500">{sessionID}</div>
-                </div>
-            );
+             // FIX: Check if hr is undefined, because 0 is a valid heart rate in cardiac arrest!
+if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
+   <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
+       <Lucide icon="activity" className="w-16 h-16 animate-bounce text-sky-600" />
+       <div className="text-2xl font-bold text-white tracking-widest text-center">CONNECTED</div>
+       <p className="text-slate-400 text-center px-4">Waiting for controller input...</p>
+       <div className="mt-4 bg-slate-900 px-6 py-3 rounded border border-slate-800 font-mono text-2xl text-sky-500">{sessionID}</div>
+   </div>
+);
             return <MonitorScreen sim={sim} />;
         }
 
