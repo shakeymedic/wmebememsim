@@ -1359,7 +1359,7 @@
             const current = stateRef.current;
             let next = { ...current.vitals };
             
-            // Physiology
+            // Physiology: Hypoxia effect
             if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; 
             if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; addLogEntry("Bradycardia (Hypoxia)", 'danger'); }
             
@@ -1371,11 +1371,26 @@
                 }
             }
 
-            // Jitter
-            if (['Asystole', 'VF', 'Coarse VF', 'Fine VF'].includes(current.rhythm)) { 
-                next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
-                if(!current.cprInProgress) next.spO2 = Math.max(0, next.spO2 - 2); 
+            // CARDIAC ARREST LOGIC (Variance & CPR)
+            // If rhythm is non-perfusing OR heart rate is manually set to 0 (Arrest)
+            const nonPerfusing = ['Asystole', 'VF', 'Coarse VF', 'Fine VF', 'PEA', 'VT (No Pulse)'];
+            const isArrest = nonPerfusing.includes(current.rhythm) || (current.rhythm === 'VT' && current.vitals.hr === 0) || current.vitals.hr === 0;
+
+            if (isArrest) { 
+                next.hr = 0; 
+                
+                if (current.cprInProgress) {
+                    // CPR generates artificial BP
+                    next.bpSys = 30 + getRandomInt(-5, 5); // Jitter
+                    next.bpDia = 15 + getRandomInt(-5, 5); // Jitter
+                    // SpO2 degrades slower or holds
+                } else {
+                    next.bpSys = 0; 
+                    next.bpDia = 0; 
+                    next.spO2 = Math.max(0, next.spO2 - 2); 
+                }
             } else {
+                // Normal Jitter
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
                 let targetDia = Math.floor(next.bpSys * 0.65);
@@ -1383,6 +1398,7 @@
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0;
             }
             
+            // Safety Clamps
             next.hr = clamp(next.hr, 0, 250);
             next.bpSys = clamp(next.bpSys, 0, 300);
             next.spO2 = clamp(next.spO2, 0, 100);
@@ -1401,7 +1417,7 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); addLogEntry("Simulation Ended", 'system'); localStorage.removeItem('wmebem_sim_state'); };
 
-        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle };
+        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, toggleLocalSound, localMute };
     };
         
         // --- UI SCREENS ---
@@ -1716,6 +1732,7 @@
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
+        const [isLogOpen, setIsLogOpen] = useState(false); // Default Closed
         
         // UI STATES
         const [arrestMode, setArrestMode] = useState(false);
@@ -1725,10 +1742,10 @@
 
         // DRUG DRAWER GROUPS
         const DRUG_GROUPS = {
-            'Cardiac': { color: 'border-red-500', bg: 'bg-red-900/20', title: 'text-red-400', keys: ['AdrenalineIV', 'Amiodarone', 'Atropine', 'Adenosine', 'MagSulph', 'Calcium', 'Metaraminol', 'GTN', 'Furosemide', 'Labetalol'] },
-            'Analgesia & Sedation': { color: 'border-purple-500', bg: 'bg-purple-900/20', title: 'text-purple-400', keys: ['Morphine', 'Fentanyl', 'Paracetamol', 'Ketamine', 'Midazolam', 'Lorazepam'] },
-            'RSI & Airway': { color: 'border-sky-500', bg: 'bg-sky-900/20', title: 'text-sky-400', keys: ['Roc', 'Sux', 'Propofol', 'Dexamethasone', 'Nebs', 'NebAdrenaline'] },
-            'General & Antidotes': { color: 'border-emerald-500', bg: 'bg-emerald-900/20', title: 'text-emerald-400', keys: ['Ondansetron', 'Hydrocortisone', 'TXA', 'Naloxone', 'Glucose', 'InsulinDextrose', 'Antibiotics', 'Fluids'] }
+            'Cardiac': { color: 'border-red-500', bg: 'bg-red-900/20', title: 'text-red-400', keys: ['AdrenalineIV', 'Amiodarone', 'Atropine', 'Adenosine', 'MagSulph', 'Calcium', 'Metaraminol', 'GTN', 'Furosemide', 'Labetalol', 'Digibind'] },
+            'Analgesia & Sedation': { color: 'border-purple-500', bg: 'bg-purple-900/20', title: 'text-purple-400', keys: ['Analgesia', 'Fentanyl', 'Paracetamol', 'Ketamine', 'Midazolam', 'Lorazepam', 'Propofol'] },
+            'RSI & Airway': { color: 'border-sky-500', bg: 'bg-sky-900/20', title: 'text-sky-400', keys: ['Roc', 'Sux', 'Dexamethasone', 'Nebs', 'NebAdrenaline'] },
+            'General & Antidotes': { color: 'border-emerald-500', bg: 'bg-emerald-900/20', title: 'text-emerald-400', keys: ['Ondansetron', 'Hydrocortisone', 'TXA', 'Naloxone', 'Glucose', 'InsulinDextrose', 'Antibiotics', 'Fluids', 'Lipid', 'SodiumBicarb', 'Chlorphenamine'] }
         };
 
         // SEARCH
@@ -1898,7 +1915,9 @@
                                 <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> Finish</Button>
                             </div>
                             <div className="flex items-center gap-3">
-                                <button onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className={`p-1.5 rounded-full ${isMuted ? 'bg-red-900 text-white' : 'bg-slate-800 text-slate-400'}`}><Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4" /></button>
+                                <button onClick={sim.toggleLocalSound} className={`p-1.5 rounded-full ${sim.localMute ? 'bg-red-900 text-white' : 'bg-slate-800 text-slate-400'}`}>
+    <Lucide icon={sim.localMute ? "volume-x" : "volume-2"} className="w-4 h-4" />
+</button>
                                 <div className="font-mono text-xl font-bold text-emerald-400 bg-black/40 px-3 py-1 rounded">{formatTime(time)}</div>
                             </div>
                         </div>
