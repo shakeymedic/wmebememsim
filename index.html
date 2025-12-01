@@ -93,11 +93,10 @@
     let db = null;
     try {
         if (window.firebase) {
-            // Check if already initialized to prevent hot-reload errors
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
             } else {
-                firebase.app(); // if already initialized, use that one
+                firebase.app(); 
             }
             db = firebase.database();
             console.log("Firebase Connected Successfully");
