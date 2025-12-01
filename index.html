@@ -831,7 +831,15 @@
             // VF / VT
             if (type === 'VF' || type === 'Coarse VF') return baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
             if (type === 'Fine VF') return baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
-            if (type === 'VT') {
+            if (type === 'PEA') {
+                // PEA looks like Sinus but no pulse (handled in vital logic, trace remains sinus-like)
+                // If it's PEA, we draw a rhythm, but logic elsewhere kills the BP
+                 if (t < 0.12) return baseline + noise; // P wave 
+                 if (t > 0.12 && t < 0.18) return baseline - 40; // QRS
+                 if (t > 0.3 && t < 0.45) return baseline - 10; // T
+                 return baseline + noise;
+            }
+            if (type === 'VT' || type === 'VT (No Pulse)') {
                 let y = baseline;
                 if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 50; 
                 else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 50; 
@@ -840,68 +848,67 @@
 
             // Complex Rhythms
             let y = baseline;
-            
-            // P-Wave (Skip for AF, SVT, etc)
             const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type);
-            if (hasP) {
-                if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
-            } else if (type === 'AF') {
-                // Fibrillatory baseline for AF (f-waves)
-                y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
-            }
+            if (hasP) { if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4; } 
+            else if (type === 'AF') { y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; }
 
             // QRS Complex
-            if (t > 0.12 && t < 0.14) y += 3; // Q
-            else if (t >= 0.14 && t < 0.18) y -= 55; // R (Up is negative)
-            else if (t >= 0.18 && t < 0.20) y += 12; // S
+            if (t > 0.12 && t < 0.14) y += 3; 
+            else if (t >= 0.14 && t < 0.18) y -= 55; 
+            else if (t >= 0.18 && t < 0.20) y += 12; 
 
-            // ST Segment / T Wave
+            // ST Segment
             if (type === 'STEMI') {
-                // Elevated ST
-                if (t >= 0.20 && t < 0.4) {
-                    y -= 15; // Elevation
-                    y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; // T wave merged
-                }
+                if (t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; }
             } else {
-                // Normal ST/T
                 if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
             }
 
             return y + noise;
         };
 
-        const getPlethWave = (t, spO2) => {
-            if (!spO2 || spO2 < 10) return 0;
+        const getPlethWave = (t, spO2, hr, cpr) => {
+            // Flat line if arrest (HR 0) and NO CPR, or very low SpO2
+            if (!spO2 || spO2 < 10 || (hr === 0 && !cpr)) return 0;
             let y = 0;
-            if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI/2); } 
-            else { y = Math.cos(((t - 0.3) / 0.7) * Math.PI/2); }
+            // If CPR, small artifact in pleth
+            if (cpr) {
+                 y = Math.sin(t * 12) * 0.2;
+            } else {
+                if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI/2); } 
+                else { y = Math.cos(((t - 0.3) / 0.7) * Math.PI/2); }
+            }
             return y * (spO2/100); 
         };
 
-        const getArtWave = (t) => {
-             // Realistic arterial pressure waveform
+        const getArtWave = (t, hr, cpr) => {
+             // Flat if arrest (HR 0) and NO CPR
+             if (hr === 0 && !cpr) return 0;
+             
              let y = 0;
-             if (t < 0.15) {
-                 y = Math.sin((t/0.15) * Math.PI/2); // Steep rise
-             } else if (t < 0.4) {
-                 y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; // Fall to notch
-             } else if (t < 0.5) {
-                 y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; // Dicrotic notch
+             if (cpr) {
+                 // Small generated pressure during CPR
+                 y = Math.max(0, Math.sin(t * 12) * 0.3); 
              } else {
-                 y = 0.2 * (1 - (t-0.5)/0.5); // Diastolic runoff
+                 // Normal Arterial Trace
+                 if (t < 0.15) { y = Math.sin((t/0.15) * Math.PI/2); } 
+                 else if (t < 0.4) { y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; } 
+                 else if (t < 0.5) { y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; } 
+                 else { y = 0.2 * (1 - (t-0.5)/0.5); }
              }
              return y;
         };
 
-        const getEtco2Wave = (t, pathology, rr) => {
-            if (rr <= 0) return 0; 
+        const getEtco2Wave = (t, pathology, rr, cpr) => {
+            if (rr <= 0 && !cpr) return 0; 
             if (t < 0.1 || t > 0.6) return 0; 
-            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); // Rise
-            if (t >= 0.15 && t < 0.5) {
-                if (pathology === 'respiratory') return 0.5 + ((t - 0.15)/0.35)*0.5; // Shark fin
-                return 1.0; 
-            }
-            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); // Fall
+            
+            // If CPR, show small square waves if ventilated
+            const shape = (pathology === 'respiratory') ? 0.5 + ((t - 0.15)/0.35)*0.5 : 1.0;
+
+            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); 
+            if (t >= 0.15 && t < 0.5) return shape; 
+            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); 
             return 0;
         };
 
@@ -914,8 +921,6 @@
                 if(parent) {
                     canvas.width = parent.clientWidth;
                     canvas.height = parent.clientHeight;
-                    // Calc Y positions dynamically based on height
-                    // ECG at 30% height, CO2 at 60%, Art at 80%, Pleth at 95%
                     drawState.current.lastY = canvas.height * 0.30;
                     drawState.current.lastYCO2 = canvas.height * 0.60;
                     drawState.current.lastYArt = canvas.height * 0.80;
@@ -932,15 +937,13 @@
                 const props = propsRef.current;
                 
                 if (!state.lastTime) state.lastTime = timestamp;
-                
-                // --- GLITCH FIX ---
                 let dt = (timestamp - state.lastTime) / 1000;
                 if (dt > 0.05) dt = 0.05; 
                 state.lastTime = timestamp;
 
                 if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
 
-                // Eraser Bar
+                // Eraser
                 const ecgSpeed = 150; 
                 const dx = ecgSpeed * dt;
                 const prevX = state.x;
@@ -954,19 +957,17 @@
                 const baselineECG = canvas.height * 0.30;
 
                 if (!props.showTraces) {
-                    // Draw faint flatline
                     ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke();
                     requestRef.current = requestAnimationFrame(animate);
                     return;
                 }
 
-                // RHYTHM CALCS
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
                 let currentRate = props.isCPR ? 110 : (props.hr || 60);
                 
+                // ECG Calculation
                 let beatDuration = 60 / Math.max(10, currentRate);
                 if (['VF', 'Coarse VF', 'Fine VF'].includes(currentRhythm)) beatDuration = 0.2; 
-
                 state.beatProgress += dt / beatDuration;
                 if (state.beatProgress >= 1) state.beatProgress = 0;
 
@@ -992,7 +993,7 @@
 
                 // 2. ETCO2 (Yellow)
                 if (props.showEtco2) {
-                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr);
+                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr, props.isCPR);
                     const co2MaxHeight = canvas.height * 0.12; const co2BaseY = (canvas.height * 0.60); const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
                     if (state.x > prevX) {
                          ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5; ctx.beginPath();
@@ -1002,8 +1003,8 @@
                 }
 
                 // 3. ART LINE (Red)
-                if (props.showArt && !props.isCPR && currentRate > 0) {
-                     const normArt = getArtWave(state.beatProgress);
+                if (props.showArt) {
+                     const normArt = getArtWave(state.beatProgress, props.hr, props.isCPR);
                      const artHeight = canvas.height * 0.12; const artBaseY = (canvas.height * 0.80); const yArt = artBaseY - (normArt * artHeight);
                      if (state.x > prevX) {
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5; ctx.beginPath();
@@ -1013,15 +1014,14 @@
                 }
 
                 // 4. PLETH (Blue)
-                if (currentRate > 0 && !props.isCPR && props.spO2 > 10) {
-                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
-                    const plethHeight = canvas.height * 0.10; const plethBaseY = canvas.height - 10; const yPleth = plethBaseY - (normPleth * plethHeight);
-                    if (state.x > prevX) {
-                        ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2.5; ctx.beginPath();
-                        ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
-                    }
-                    state.lastYPleth = yPleth;
+                // Always draw blue line. If arrest/no signal, it stays flat (amplitude handled in getPlethWave)
+                const normPleth = getPlethWave(state.beatProgress, props.spO2, props.hr, props.isCPR);
+                const plethHeight = canvas.height * 0.10; const plethBaseY = canvas.height - 10; const yPleth = plethBaseY - (normPleth * plethHeight);
+                if (state.x > prevX) {
+                    ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2.5; ctx.beginPath();
+                    ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
                 }
+                state.lastYPleth = yPleth;
                 
                 requestRef.current = requestAnimationFrame(animate);
             };
@@ -1030,41 +1030,17 @@
             return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
         }, []);
 
+        // Responsive Label Classes
+        const labelClass = "absolute right-2 px-2 py-0.5 rounded border-l-2 text-[10px] md:text-sm font-mono font-bold bg-black/60 shadow-md";
+
         return (
             <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
                 
-                {/* NEAT LABELS: Positioned in "Lanes" on the right side with background pills */}
-                
-                {/* Lane 1: ECG (Top) */}
-                {showTraces && (
-                    <div className="absolute top-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-green-500">
-                        <span className="text-lg font-mono text-green-500 font-bold shadow-black drop-shadow-md">
-                            {propsRef.current.rhythmLabel || rhythmType}
-                        </span>
-                    </div>
-                )}
-                
-                {/* Lane 2: ETCO2 (Middle) */}
-                {showEtco2 && showTraces && (
-                    <div className="absolute top-[45%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-yellow-500">
-                        <span className="text-sm font-mono text-yellow-500 font-bold shadow-black drop-shadow-md">ETCO2</span>
-                    </div>
-                )}
-                
-                {/* Lane 3: ABP (Lower Middle) */}
-                {showArt && showTraces && (
-                    <div className="absolute top-[65%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-red-500">
-                        <span className="text-sm font-mono text-red-500 font-bold shadow-black drop-shadow-md">ABP</span>
-                    </div>
-                )}
-                
-                {/* Lane 4: PLETH (Bottom) */}
-                {showTraces && (
-                    <div className="absolute bottom-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-sky-500">
-                        <span className="text-sm font-mono text-sky-500 font-bold shadow-black drop-shadow-md">PLETH</span>
-                    </div>
-                )}
+                {showTraces && <div className={`${labelClass} border-green-500 text-green-500 top-[5%]`}>{propsRef.current.rhythmLabel || rhythmType}</div>}
+                {showEtco2 && showTraces && <div className={`${labelClass} border-yellow-500 text-yellow-500 top-[45%]`}>ETCO2</div>}
+                {showArt && showTraces && <div className={`${labelClass} border-red-500 text-red-500 top-[65%]`}>ABP</div>}
+                {showTraces && <div className={`${labelClass} border-sky-500 text-sky-500 bottom-[5%]`}>PLETH</div>}
             </div>
         );
     };
@@ -1247,16 +1223,27 @@
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
 
         // AUDIO LOOP
+        // Local state for mute preference. Default: Muted on Controller (!MonitorMode), Unmuted on Monitor.
+        const [localMute, setLocalMute] = useState(!isMonitorMode);
+
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
 
             const scheduleBeep = () => {
                 const current = stateRef.current;
+                
+                // 1. Must be Running or Monitor
                 if (!current.isRunning && !isMonitorMode) return; 
-                if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') return;
 
-                if (!current.isMuted && ctx) {
+                // 2. MUST have Monitoring applied to beep
+                if (!current.activeInterventions.has('Obs')) return;
+                
+                // 3. Arrest Rhythms don't beep (unless we want alarms, but usually QRS beep stops)
+                if (current.vitals.hr <= 0 || ['VF', 'Asystole', 'PEA', 'Coarse VF', 'Fine VF'].includes(current.rhythm)) return;
+
+                // 4. Check Local Mute (Controller defaults to Muted, Monitor defaults to Open)
+                if (!localMute && ctx) {
                     const osc = ctx.createOscillator(); 
                     const gain = ctx.createGain();
                     osc.type = 'sine';
@@ -1280,7 +1267,10 @@
                 scheduleBeep();
             }
             return () => clearTimeout(timerId);
-        }, [state.isRunning, isMonitorMode]); 
+        }, [state.isRunning, isMonitorMode, localMute]); 
+        
+        // Expose toggle for UI
+        const toggleLocalSound = () => setLocalMute(!localMute);
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
@@ -1540,7 +1530,16 @@
                 )}
                 
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
-                    <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings"/> Sim Setup</h2>
+    <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold text-sky-400 flex items-center gap-2"><Lucide icon="settings"/> Sim Setup</h2>
+        <Button 
+            variant="outline" 
+            onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor', '_blank', 'popup=yes')} 
+            className="h-8 text-xs"
+        >
+            <Lucide icon="monitor" className="w-4 h-4"/> Open Monitor
+        </Button>
+    </div>
                     
                     <div className="flex gap-2 mb-6 border-b border-slate-700">
                         <button onClick={() => setMode('random')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'random' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Random</button>
@@ -2130,18 +2129,27 @@
                         </div>
                     </Card>
 
-                    {/* INCIDENT LOG - NOW COLLAPSIBLE & DEFAULT MINIMISED */}
-                    <Card title="Incident Log" icon="list" collapsible={true} defaultOpen={false} className="flex-1 min-h-0 bg-slate-800 shadow-inner">
-                        <div className="flex-1 overflow-y-auto space-y-1 pr-1 text-xs font-mono h-64">
-                            {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
-                             {/* Auto-scroll anchor */}
-                            <div ref={(el) => { if (el) el.scrollIntoView({ behavior: "smooth" }); }}></div>
+                    {/* INCIDENT LOG - Properly Minimized */}
+                    <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-inner flex flex-col transition-all duration-300 ${isLogOpen ? 'flex-1 min-h-0' : 'flex-none h-12'}`}>
+                        <div 
+                            className="bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between cursor-pointer hover:bg-slate-700/50"
+                            onClick={() => setIsLogOpen(!isLogOpen)}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Lucide icon="list" className="w-5 h-5 text-sky-400" />
+                                <h3 className="font-bold text-slate-200">Incident Log</h3>
+                                {!isLogOpen && <span className="text-xs text-slate-500 ml-2">({log.length} events)</span>}
+                            </div>
+                            <Lucide icon="chevron-down" className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isLogOpen ? 'rotate-180' : ''}`} />
                         </div>
-                    </Card>
-                </div>
-            </div>
-        );
-    };
+                        
+                        {isLogOpen && (
+                            <div className="flex-1 overflow-y-auto space-y-1 p-2 text-xs font-mono">
+                                {log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'manual' ? 'bg-purple-900/20 border-purple-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}
+                                <div ref={(el) => { if (el) el.scrollIntoView({ behavior: "smooth" }); }}></div>
+                            </div>
+                        )}
+                    </div>
 
     const DebriefScreen = ({ sim, onRestart }) => {
         const { state } = sim;
