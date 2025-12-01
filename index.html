@@ -1403,35 +1403,9 @@
     };
         
         // --- UI SCREENS ---
+    
 
-    const startCheckout = async (userId) => {
-        const dbStore = firebase.firestore();
-        // 1. Add a document to the 'checkout_sessions' collection
-        const docRef = await dbStore
-            .collection('customers')
-            .doc(userId)
-            .collection('checkout_sessions')
-            .add({
-                price: 'price_1SZLnwCwda605Qgrr0RE1Rmb', // <--- UPDATED PRICE ID HERE
-                success_url: window.location.href,
-                cancel_url: window.location.href,
-            });
-
-        // 2. Listen for the sessionId (written by the Extension)
-        docRef.onSnapshot((snap) => {
-            const { error, url } = snap.data();
-            if (error) {
-                alert(`An error occurred: ${error.message}`);
-            }
-            if (url) {
-                // 3. Redirect to Stripe
-                window.location.assign(url);
-            }
-        });
-    };
-
-    const SetupScreen = ({ onGenerate, initialParams, savedState, onResume, auth }) => {
-        const { user, isPro, signIn, signOut } = auth;
+    const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
         const [mode, setMode] = useState('random'); 
         const [category, setCategory] = useState('Any');
         const [age, setAge] = useState('Any');
@@ -1452,27 +1426,6 @@
             const saved = localStorage.getItem('wmebem_custom_scenarios');
             if (saved) setCustomScenarios(JSON.parse(saved));
         }, []);
-
-        // 2. NEW: PRO FEATURE GATEKEEPING
-        const handleCategoryChange = (e) => {
-            const val = e.target.value;
-            // Lock specific categories for Pro users
-            const proCategories = ['Paediatric', 'Obstetrics & Gynae', 'Trauma'];
-            
-            if (proCategories.includes(val) && !isPro) {
-                alert(`${val} scenarios are a Pro feature. Please upgrade to access.`);
-                return;
-            }
-            setCategory(val);
-        };
-
-        const toggleBuilder = () => {
-            if (!isPro) {
-                alert("The Scenario Builder is a Pro feature.");
-                return;
-            }
-            setMode('builder');
-        };
 
         const saveCustomScenario = () => {
             const newScen = {
@@ -1500,7 +1453,6 @@
         };
 
         const handleGenerate = () => {
-             // Logic to filter the main array based on dropdowns
              let pool = ALL_SCENARIOS.filter(s => 
                 (category === 'Any' || s.category === category || (category === 'Medical' && (s.category === 'Toxicology' || s.category === 'Psychiatric'))) && 
                 (age === 'Any' || s.ageRange === age) &&
@@ -1535,6 +1487,116 @@
              };
              onGenerate(generated, {});
         };
+        
+        const loadCustom = (scen) => {
+             const patientAge = scen.ageGenerator();
+             const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
+             const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
+
+             const generated = { 
+                ...scen, 
+                patientAge, 
+                profile: scen.patientProfileTemplate,
+                vitals: { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', ...scen.vitalsMod },
+                vbg: generateVbg("normal"),
+                hf: HUMAN_FACTOR_CHALLENGES[0],
+                weight,
+                wetflag
+             };
+             onGenerate(generated, {});
+        };
+
+        return (
+            <div className="max-w-2xl mx-auto p-4 h-full overflow-y-auto space-y-6">
+                
+                {/* SAVED STATE ALERT */}
+                {savedState && (
+                    <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between">
+                        <div><h3 className="font-bold text-emerald-400">Previous Session Found</h3><p className="text-sm text-slate-300">Resume {savedState.scenario.title}?</p></div>
+                        <Button onClick={onResume} variant="success">Resume</Button>
+                    </div>
+                )}
+                
+                <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
+                    <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings"/> Sim Setup</h2>
+                    
+                    <div className="flex gap-2 mb-6 border-b border-slate-700">
+                        <button onClick={() => setMode('random')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'random' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Random</button>
+                        <button onClick={() => setMode('custom')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'custom' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Saved</button>
+                        <button onClick={() => setMode('builder')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'builder' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Builder</button>
+                    </div>
+
+                    {mode === 'random' && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs uppercase text-slate-500 font-bold">Category</label>
+                                    <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600">
+                                        <option value="Any">Any</option>
+                                        <option value="Medical">Medical</option>
+                                        <option value="Trauma">Trauma</option>
+                                        <option value="Obstetrics & Gynae">Obstetrics & Gynae</option>
+                                        <option value="Toxicology">Toxicology</option>
+                                        <option value="Psychiatric">Psychiatric</option>
+                                        <option value="Paediatric">Paediatric</option>
+                                        <option value="Cardiac Arrest">Cardiac Arrest</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs uppercase text-slate-500 font-bold">Age Group</label>
+                                    <select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600">
+                                        <option value="Any">Any</option>
+                                        <option value="Adult">Adult</option>
+                                        <option value="Paediatric">Paediatric</option>
+                                        <option value="Elderly">Elderly</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs uppercase text-slate-500 font-bold">Acuity</label>
+                                    <select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600">
+                                        <option value="Any">Any</option>
+                                        <option value="Majors">Majors (Stable-ish)</option>
+                                        <option value="Resus">Resus (Unstable)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label>
+                                    <select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600">
+                                        {HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <Button onClick={handleGenerate} className="w-full py-4 text-lg">Generate Scenario</Button>
+                        </div>
+                    )}
+                    
+                    {mode === 'custom' && (
+                        <div className="space-y-2">
+                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic">No custom scenarios yet. Use the Builder to create one.</p>}
+                             {customScenarios.map((s, i) => (
+                                 <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
+                                     <div><div className="font-bold text-white">{s.title}</div></div>
+                                     <Button onClick={() => loadCustom(s)} variant="success" className="h-8 text-xs">Load</Button>
+                                 </div>
+                             ))}
+                        </div>
+                    )}
+
+                    {mode === 'builder' && (
+                        <div className="space-y-4">
+                            <input type="text" placeholder="Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3"/>
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3"/>
+                                <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 text-white"><option>Medical</option><option>Trauma</option><option>Obs</option></select>
+                            </div>
+                            <textarea placeholder="Patient Profile..." value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 h-24"></textarea>
+                            <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    };
         
         const loadCustom = (scen) => {
              const patientAge = scen.ageGenerator();
@@ -2460,61 +2522,10 @@
         return null;
     }; 
         // --- AUTH & SUBSCRIPTION LOGIC ---
-const useAuth = () => {
-        const [user, setUser] = useState(null);
-        const [isPro, setIsPro] = useState(false);
 
-        useEffect(() => {
-            // SAFETY CHECK: Ensure Firebase is loaded before using it
-            if (!window.firebase || !firebase.auth) {
-                console.warn("Firebase SDK not ready yet.");
-                return;
-            }
-
-            const unsubscribe = firebase.auth().onAuthStateChanged(async (u) => {
-                if (u) {
-                    setUser(u);
-                    // Check Firestore for subscription status (managed by Extension)
-                    const dbStore = firebase.firestore();
-                    const subSnapshot = await dbStore
-                        .collection('customers')
-                        .doc(u.uid)
-                        .collection('subscriptions')
-                        .where('status', 'in', ['active', 'trialing'])
-                        .get();
-                    
-                    setIsPro(!subSnapshot.empty);
-                } else {
-                    setUser(null);
-                    setIsPro(false);
-                }
-            });
-            return () => unsubscribe();
-        }, []);
-
-        const signIn = () => {
-            if (window.firebase && firebase.auth) {
-                const provider = new firebase.auth.GoogleAuthProvider();
-                firebase.auth().signInWithPopup(provider);
-            } else {
-                alert("Firebase not loaded. Please check your internet connection.");
-            }
-        };
-
-        const signOut = () => {
-            if (window.firebase && firebase.auth) {
-                firebase.auth().signOut();
-            }
-        };
-
-        return { user, isPro, signIn, signOut };
-    };
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [sessionID, setSessionID] = useState(null);
-        
-        // FIX 1: Initialize the auth hook here
-        const auth = useAuth(); 
 
         // --- 1. SESSION ID & RECOVERY ---
         useEffect(() => {
@@ -2609,9 +2620,7 @@ const useAuth = () => {
                             onGenerate={handleGenerate} 
                             initialParams={view === 'setup_regen' ? { autoGenerate: true } : null}
                             savedState={view === 'setup' ? resumeAvailable : null} 
-                            onResume={() => handleResume(resumeAvailable)}
-                            // FIX 2: Pass the auth object prop here
-                            auth={auth} 
+                            onResume={() => handleResume(resumeAvailable)} 
                         />
                     )}
 
