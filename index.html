@@ -116,7 +116,7 @@
     
         // --- 1. HELPER FUNCTIONS & DATA ---
 
-    const getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    window.getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
     const getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
     const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
     const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
