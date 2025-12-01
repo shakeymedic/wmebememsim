@@ -701,7 +701,13 @@
                     const elapsed = state.time + 1 - newDurations[key].startTime;
                     if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; }
                 });
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations };
+                return { 
+                    ...state, 
+                    time: state.time + 1, 
+                    cycleTimer: state.cycleTimer + 1, 
+                    activeDurations: durChanged ? newDurations : state.activeDurations,
+                    nibpTimer: Math.max(0, state.nibpTimer - 1) // Decrements NIBP timer, preventing negative values
+                };
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_VITALS': 
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
