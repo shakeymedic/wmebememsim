@@ -1,6 +1,15 @@
 const { useState, useEffect, useRef, useReducer } = React;
 
 const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
+        // Add this immediately inside the SetupScreen function
+    const { 
+        generateHistory, 
+        getBaseVitals, 
+        estimateWeight, 
+        calculateWetflag, 
+        generateVbg, 
+        HUMAN_FACTOR_CHALLENGES // This is the critical addition
+    } = window;
         const [mode, setMode] = useState('random'); 
         
         // --- RESTORED OPTIONS ---
