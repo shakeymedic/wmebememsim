@@ -445,3 +445,10 @@ const { useState, useEffect, useRef, useReducer } = React;
             </div>
         );
     };
+// Add this to the very end of data/components.js
+window.Lucide = Lucide;
+window.Button = Button;
+window.Card = Card;
+window.VitalDisplay = VitalDisplay;
+window.ECGMonitor = ECGMonitor;
+window.InvestigationButton = InvestigationButton;
