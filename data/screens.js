@@ -374,7 +374,7 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
                 <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
                 {/* CHANGED: Logic to skip to end of cycle (2 mins) */}
                 <Button variant="secondary" onClick={() => {
-                    const remaining = 120 - cycleTimer;
+                    const remaining = Math.max(0, 120 - cycleTimer);
                     if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining});
                     sim.dispatch({type: 'RESET_CYCLE_TIMER'});
                     addLogEntry("Cycle Skipped / Finished", "system");
@@ -626,7 +626,7 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
                                     if (key === 'Fluids') label = `Fluid Bolus (10ml/kg)`; 
                                     else if (key === 'Adrenaline') label = `Adrenaline 1:1000 IM`;
                                     else if (key === 'Atropine') label = `Atropine (20mcg/kg)`;
-                                    else if (key === 'Amidarone') label = `Amiodarone (5mg/kg)`;
+                                    else if (key === 'Amiodarone') label = `Amiodarone (5mg/kg)`;
                                     else if (key === 'Lorazepam') label = `Lorazepam (0.1mg/kg)`;
                                     else if (key === 'Midazolam') label = `Midazolam (0.5mg/kg)`;
                                     else if (key === 'TXA') label = `TXA (15mg/kg)`;
