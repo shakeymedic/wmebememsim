@@ -954,3 +954,11 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
         if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />;
         return null;
     };
+// Add this to the very end of data/screens.js
+window.SetupScreen = SetupScreen;
+window.JoinScreen = JoinScreen;
+window.BriefingScreen = BriefingScreen;
+window.MonitorScreen = MonitorScreen;
+window.MonitorContainer = MonitorContainer;
+window.LiveSimContainer = LiveSimContainer;
+window.DebriefScreen = DebriefScreen;
