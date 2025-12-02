@@ -18,6 +18,7 @@
     <script src="data/generators.js"></script>
     <script src="data/interventions.js"></script>
     <script src="data/scenarios.js"></script>
+
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
     <script type="text/babel" src="data/screens.js"></script>
@@ -28,7 +29,6 @@
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
@@ -60,18 +60,12 @@
         .pea-warning { animation: pulseText 1s infinite; }
         @keyframes pulseText { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-        .diamond-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-        
+        .diamond-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
         @media (max-width: 768px) {
             .mobile-stack { flex-direction: column; }
             .mobile-h-full { height: 100%; }
             .diamond-grid { grid-template-columns: 1fr; }
         }
-        /* Hide number input spinners */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -93,15 +87,13 @@
         measurementId: "G-8C6WW1EWXJ"
     };
 
-    // Initialize Firebase
     let db = null;
     try {
         if (window.firebase) {
-            // Check if already initialized to prevent hot-reload errors
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
             } else {
-                firebase.app(); // if already initialized, use that one
+                firebase.app(); 
             }
             db = firebase.database();
             console.log("Firebase Connected Successfully");
@@ -112,11 +104,7 @@
         console.error("Firebase Init Error:", e);
     }
     
-// --- 1. HELPER FUNCTIONS & DATA ---
-    // helpers are now loaded from data/generators.js
-    
-    // You can use them directly as window.generateHistory etc.
-    // Or create shortcuts:
+    // --- SETUP HELPERS ---
     const { generateHistory, getBaseVitals, estimateWeight, calculateWetflag, generateVbg, calculateDynamicVbg, getRandomInt, getRandomFloat, getRandomItem, clamp } = window;
 
     const HUMAN_FACTOR_CHALLENGES = [
@@ -129,22 +117,18 @@
     ];
 
     const INTERVENTIONS = window.INTERVENTIONS;
-    
     const RAW_SCENARIOS = window.RAW_SCENARIOS;
         
-        // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES & KIT (2025 UPDATES) ---
-    // --- AUTOMATICALLY ENRICH SCENARIOS WITH GUIDELINES, KIT & PROGRESSION LOGIC ---
+    // --- SCENARIO PROCESSING LOGIC ---
     const ALL_SCENARIOS = RAW_SCENARIOS.map(s => {
         let kit = ['Monitoring', 'IV Access'];
         let links = [];
 
-        // Kit Logic
         if (s.acuity === 'Resus') kit = [...kit, 'Defibrillator', 'Airway Trolley', 'Drugs Bag', 'IO Drill', 'Ultrasound'];
         if (s.category === 'Trauma') kit = [...kit, 'Pelvic Binder', 'Splints', 'TXA', 'Blood Warmer'];
         if (s.ageRange === 'Paediatric') kit = [...kit, 'Broselow Tape', 'Paeds Drug Calc'];
         if (s.category === 'Obstetrics & Gynae') kit = [...kit, 'Obs Delivery Pack', 'Neonatal Resuscatire'];
 
-        // Guidelines Logic (2025 Updates)
         if (s.ageRange === 'Paediatric') {
             links.push({ label: 'RCUK Paeds Guidelines 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines' });
             links.push({ label: 'APLS Algorithms', url: 'https://www.resus.org.uk/sites/default/files/2025-07/RCUK%20Paediatric%20emergency%20algorithms%20and%20resources%20Jul%2025%20V3.1.pdf' });
@@ -157,12 +141,9 @@
         if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust Tools', url: 'https://sepsistrust.org/professional-resources/clinical-tools/' });
         if (s.category === 'Obstetrics & Gynae') links.push({ label: 'RCOG Guidelines', url: 'https://www.rcog.org.uk/guidance/browse-all-guidance/' });
 
-        // --- PROGRESSION ENGINE ---
-        // Defines how investigations change when patient improves/deteriorates
         let improved = { ...s };
         let deteriorated = { ...s };
 
-        // 1. CXR Changes
         if (s.chestXray) {
             let newCXR = s.chestXray.findings;
             if (newCXR.includes("Pneumothorax") || s.title.includes("Pneumothorax") || s.title.includes("Stab")) {
@@ -178,7 +159,6 @@
             deteriorated.chestXray = { findings: s.chestXray.findings + " Worsening appearance." };
         }
 
-        // 2. ECG Changes
         if (s.ecg) {
             let newECG = s.ecg.findings;
             let newType = s.ecg.type;
@@ -195,7 +175,6 @@
             deteriorated.ecg = { type: s.ecg.type, findings: "Worsening changes / Arrythmia persistence." };
         }
 
-        // 3. VBG Changes
         if (s.vbg) {
             const improvePh = (val) => val < 7.35 ? val + 0.1 : val;
             const worsenPh = (val) => val - 0.1;
@@ -210,14 +189,10 @@
             evolution: { improved, deteriorated }
         };
     });
-    // --- 2. COMPONENTS ---
 
     const { useState, useEffect, useRef, useReducer } = React;
     
-        
-        // --- UI SCREENS ---
-
-       
+    // --- MAIN APP COMPONENT ---
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [sessionID, setSessionID] = useState(null);
@@ -242,12 +217,9 @@
             }
         }, []); 
 
-        // --- 2. HOIST THE SIMULATION ENGINE ---
-        // We initialize it here. It starts broadcasting "Setup Mode" (or the running state) immediately.
-        // This allows the monitor to connect anytime.
+        // useSimulation is now loaded from data/engine.js
         const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
 
-        // --- HANDLERS ---
         const handleJoin = (code) => {
             setSessionID(code);
             setView('monitor');
@@ -284,6 +256,7 @@
             }
         }, [view]);
 
+        // Screens are now loaded from data/screens.js
         if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
         
         if (view === 'monitor') {
