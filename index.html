@@ -550,6 +550,28 @@
         );
     };
 
+        // ============================================
+    // HELPER FUNCTIONS (Add before LiveSimScreen)
+    // ============================================
+    
+    // FORMAT TIME HELPER
+    const formatTime = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    // GET INTERVENTIONS BY CATEGORY
+    const getInterventionsByCat = (cat) => {
+        const allKeys = Object.keys(INTERVENTIONS);
+        if (cat === 'Common') return ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM'];
+        if (cat === 'Airway') return allKeys.filter(k => INTERVENTIONS[k].category === 'Airway' || k === 'Suction' || k === 'Oxygen' || k === 'RSI');
+        if (cat === 'Breathing') return allKeys.filter(k => INTERVENTIONS[k].category === 'Breathing' || k === 'Oxygen' || k === 'Nebs' || k === 'NebAdrenaline');
+        if (cat === 'Circulation') return allKeys.filter(k => INTERVENTIONS[k].category === 'Circulation' || k === 'Fluids' || k === 'Blood');
+        if (cat === 'Procedures') return allKeys.filter(k => INTERVENTIONS[k].category === 'Procedures' || k === 'Splinting' || k === 'Binder');
+        if (cat === 'Obs/Gynae') return allKeys.filter(k => INTERVENTIONS[k].category === 'Obstetrics' || k === 'Magnesium' || k === 'Syntometrine');
+        return allKeys.filter(key => INTERVENTIONS[key].category === cat);
+    };
     const LiveSimScreen = ({ sim, onFinish, onBack }) => {
         const { state, applyIntervention, addLogEntry, manualUpdateVital, setVitalTrend, triggerArrest, triggerROSC, revealInvestigation, playPatientSound } = sim;
         const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, cprInProgress, nibpTimer, nibpAuto } = state;
@@ -1192,7 +1214,12 @@
                     ...state, 
                     nibp: { sys: action.payload.bpSys, dia: action.payload.bpDia, time: state.time },
                     nibpTriggered: false,
-                    nibpTimer: 180 
+                    nibpTimer: 180,
+                    vitals: {
+                        ...state.vitals,
+                        bpSys: action.payload.bpSys,
+                        bpDia: action.payload.bpDia
+                    }
                 };
 
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
