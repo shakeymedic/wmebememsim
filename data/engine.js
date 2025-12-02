@@ -309,3 +309,5 @@ const { useState, useEffect, useRef, useReducer } = React;
 
         return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle };
     };
+// Add this to the very end of data/engine.js
+window.useSimulation = useSimulation;
