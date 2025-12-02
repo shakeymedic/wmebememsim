@@ -127,3 +127,12 @@ window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, time
 
     return vbg;
 };
+
+window.HUMAN_FACTOR_CHALLENGES = [
+  { id: 'hf0', type: 'Standard Simulation', description: 'Manage effectively.' },
+  { id: 'hf1', type: 'Blindfolded Lead', description: 'Leader blindfolded. Tests closed-loop comms.' },
+  { id: 'hf2', type: 'Silent Team', description: 'Only leader speaks.' },
+  { id: 'hf3', type: 'New Junior', description: 'Junior member needs explicit instructions.' },
+  { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
+  { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
+];
