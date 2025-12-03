@@ -8,9 +8,9 @@ window.clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
 // --- NAME GENERATOR ---
 window.generateName = (sex) => {
-    const male = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "George", "Harry", "Jack", "Oliver", "Noah"];
-    const female = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica", "Sarah", "Karen", "Olivia", "Amelia", "Isla", "Ava", "Mia"];
-    const sur = ["Smith", "Jones", "Williams", "Taylor", "Brown", "Davies", "Evans", "Wilson", "Thomas", "Johnson", "Roberts", "Robinson", "Thompson", "Wright", "Walker"];
+    const male = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "George", "Harry", "Jack", "Oliver", "Noah", "Arthur", "Leo"];
+    const female = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica", "Sarah", "Karen", "Olivia", "Amelia", "Isla", "Ava", "Mia", "Grace", "Lily"];
+    const sur = ["Smith", "Jones", "Williams", "Taylor", "Brown", "Davies", "Evans", "Wilson", "Thomas", "Johnson", "Roberts", "Robinson", "Thompson", "Wright", "Walker", "White", "Edwards", "Hughes", "Green", "Hall"];
     
     const first = sex === 'Female' ? window.getRandomItem(female) : window.getRandomItem(male);
     return `${first} ${window.getRandomItem(sur)}`;
@@ -20,22 +20,12 @@ window.generateName = (sex) => {
 
 window.generateHistory = (age, sex = 'Male') => {
     if (age < 20) return { pmh: ["Nil significant"], dhx: ["Nil"], allergies: ["Nil"] };
-    
     const commonPMH = ["Hypertension", "Type 2 Diabetes", "Asthma", "Hyperlipidaemia", "GORD", "Depression", "Anxiety", "Previous MI", "AF", "CKD Stage 3"];
     const femalePMH = ["PCOS", "Endometriosis", "Previous C-Section"];
-    
-    let pmh = [];
-    let dhx = [];
-    
+    let pmh = []; let dhx = [];
     const pmhCount = age > 60 ? window.getRandomInt(1, 4) : age > 40 ? window.getRandomInt(0, 2) : window.getRandomInt(0, 1);
-    
-    for(let i=0; i<pmhCount; i++) {
-        const item = window.getRandomItem(commonPMH);
-        if(!pmh.includes(item)) pmh.push(item);
-    }
-    
+    for(let i=0; i<pmhCount; i++) { const item = window.getRandomItem(commonPMH); if(!pmh.includes(item)) pmh.push(item); }
     if (sex === 'Female' && Math.random() > 0.8) pmh.push(window.getRandomItem(femalePMH));
-
     if (pmh.includes("Hypertension")) dhx.push("Ramipril 5mg OD");
     if (pmh.includes("Type 2 Diabetes")) dhx.push("Metformin 1g BD");
     if (pmh.includes("Asthma")) dhx.push("Salbutamol PRN", "Beclometasone BD");
@@ -43,19 +33,12 @@ window.generateHistory = (age, sex = 'Male') => {
     if (pmh.includes("GORD")) dhx.push("Omeprazole 20mg OD");
     if (pmh.includes("AF")) dhx.push("Bisoprolol 2.5mg OD", "Edoxaban 60mg OD");
     if (pmh.includes("Previous MI")) dhx.push("Aspirin 75mg OD", "Atorvastatin 80mg ON", "Bisoprolol 2.5mg OD");
-
     if (pmh.length === 0) pmh.push("Nil significant");
     if (dhx.length === 0) dhx.push("Nil regular medications");
-
-    return {
-        pmh: pmh,
-        dhx: dhx,
-        allergies: [Math.random() > 0.8 ? window.getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"]
-    };
+    return { pmh: pmh, dhx: dhx, allergies: [Math.random() > 0.8 ? window.getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"] };
 };
 
 window.getBaseVitals = (age) => {
-    // FIX: Pupils are now number '3' not string '3mm' to fix NaN bug
     let v = { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8, gcs: 15, pupils: 3 }; 
     if (age < 1) v = { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5, gcs: 15, pupils: 3 }; 
     else if (age <= 2) v = { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0, gcs: 15, pupils: 3 }; 
@@ -77,16 +60,7 @@ window.estimateWeight = (age) => {
 window.calculateWetflag = (age, weightStr) => {
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight <= 0) return null;
-
-    return {
-        weight: weight,
-        energy: Math.min(200, Math.round(weight * 4)), 
-        tube: age < 1 ? "3.5-4.0" : Math.min(8.0, ((age / 4) + 4)).toFixed(1),
-        fluids: Math.round(weight * 10), 
-        lorazepam: Math.min(4, weight * 0.1).toFixed(1), 
-        adrenaline: Math.min(10, weight * 0.1).toFixed(1), 
-        glucose: Math.round(weight * 2) 
-    };
+    return { weight: weight, energy: Math.min(200, Math.round(weight * 4)), tube: age < 1 ? "3.5-4.0" : Math.min(8.0, ((age / 4) + 4)).toFixed(1), fluids: Math.round(weight * 10), lorazepam: Math.min(4, weight * 0.1).toFixed(1), adrenaline: Math.min(10, weight * 0.1).toFixed(1), glucose: Math.round(weight * 2) };
 };
 
 window.generateVbg = (clinicalState = "normal") => {
@@ -113,28 +87,12 @@ window.generateVbg = (clinicalState = "normal") => {
 
 window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, timeSeconds) => {
     if (!startVbg) return { pH: 7.4, pCO2: 5.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5 };
-    
     let vbg = { ...startVbg };
     const minutes = timeSeconds / 60;
-
     const isVentilated = activeInterventions.has('Bagging') || activeInterventions.has('RSI') || activeInterventions.has('i-gel') || activeInterventions.has('NIV');
-    
-    if (currentVitals.rr < 10 && !isVentilated) {
-        vbg.pCO2 = Math.min(15, vbg.pCO2 + (0.1 * minutes)); 
-        vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes));
-    }
-
-    if (isVentilated && vbg.pCO2 > 6.0) {
-         vbg.pCO2 = Math.max(4.5, vbg.pCO2 - (0.2 * minutes));
-         vbg.pH = Math.min(7.4, vbg.pH + (0.02 * minutes));
-    }
-
-    if (currentVitals.spO2 < 85 || currentVitals.bpSys < 80) {
-        vbg.Lac = Math.min(15, vbg.Lac + (0.1 * minutes));
-        vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes));
-        vbg.HCO3 = Math.max(10, vbg.HCO3 - (0.5 * minutes));
-    }
-
+    if (currentVitals.rr < 10 && !isVentilated) { vbg.pCO2 = Math.min(15, vbg.pCO2 + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); }
+    if (isVentilated && vbg.pCO2 > 6.0) { vbg.pCO2 = Math.max(4.5, vbg.pCO2 - (0.2 * minutes)); vbg.pH = Math.min(7.4, vbg.pH + (0.02 * minutes)); }
+    if (currentVitals.spO2 < 85 || currentVitals.bpSys < 80) { vbg.Lac = Math.min(15, vbg.Lac + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); vbg.HCO3 = Math.max(10, vbg.HCO3 - (0.5 * minutes)); }
     return vbg;
 };
 
