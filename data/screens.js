@@ -277,13 +277,12 @@
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
-// --- SCREEN 3: BRIEFING ---
+    // --- SCREEN 3: BRIEFING ---
     const BriefingScreen = ({ scenario, onStart, onBack }) => (
         <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
             <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
                 <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
                     <div>
-                        {/* CHANGED: Title is now the main header, Patient Name removed from header */}
                         <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
                         <div className="flex gap-2 mt-2">
                             <span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span>
@@ -301,8 +300,7 @@
                     <div className="space-y-6">
                         <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
                             <h3 className="text-sm font-bold text-sky-400 uppercase mb-2 border-b border-slate-700 pb-1">Patient Brief</h3>
-                            {/* CHANGED: Patient Name is now displayed here in the info section */}
-                            <p className="text-sm text-slate-400 mb-1"><strong className="text-slate-300">Name:</strong> {scenario.patientName}</p>
+                            <p className="text-sm text-slate-400 mb-2"><strong className="text-slate-300 uppercase text-xs">Patient Name:</strong> {scenario.patientName}</p>
                             <p className="text-lg leading-relaxed text-slate-200 mb-4">{scenario.profile}</p>
                             <div className="space-y-2 text-sm">
                                 <div className="flex"><span className="w-24 text-slate-500 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
@@ -361,13 +359,14 @@
     // --- SCREEN 4: LIVE SIM CONTROLLER ---
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
         const [arrestMode, setArrestMode] = useState(false);
         const [expandRhythm, setExpandRhythm] = useState(false);
+        const [expandArrest, setExpandArrest] = useState(false); // New arrest menu state
         const [customSpeech, setCustomSpeech] = useState("");
         const [showDrugCalc, setShowDrugCalc] = useState(false);
         const [showLogModal, setShowLogModal] = useState(false);
@@ -497,12 +496,13 @@
                     {/* --- LEFT COLUMN: MONITOR & INFO --- */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         <Card className="bg-black border-slate-800 flex-shrink-0">
-                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
+                             {/* Controller ALWAYS sees traces (visible=true), monitor logic is handled in MonitorScreen */}
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black">
-                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={hasMonitoring} />
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={hasMonitoring} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={hasMonitoring} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={hasMonitoring} />
+                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
+                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
+                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
+                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
                              </div>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
                                  <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
@@ -526,7 +526,17 @@
                         <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10">
                             <h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Rhythm & Arrest</h4>
                             <div className="grid grid-cols-2 gap-1 mb-2">
-                                <Button onClick={triggerArrest} variant="danger" className="h-8 text-xs">VF Arrest</Button>
+                                {/* CHANGED: Arrest Button is now a menu */}
+                                <div className="relative">
+                                     <Button onClick={() => setExpandArrest(!expandArrest)} variant="danger" className="h-8 text-xs w-full justify-between">Trigger Arrest... <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
+                                     {expandArrest && (
+                                         <div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl mt-1 z-50">
+                                             {['VF', 'PEA', 'pVT', 'Asystole'].map(type => (
+                                                 <button key={type} onClick={() => { triggerArrest(type); setExpandArrest(false); }} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-red-900 border-b border-slate-700">{type}</button>
+                                             ))}
+                                         </div>
+                                     )}
+                                </div>
                                 <Button onClick={triggerROSC} variant="success" className="h-8 text-xs">ROSC</Button>
                             </div>
                             
@@ -598,7 +608,32 @@
                                 </div>
                             )}
                         </div>
-                        <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2"><input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} /><Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button><Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button></div>
+                        {/* CHANGED: Improve/Worsen now calculate progress based on trends state */}
+                        <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2">
+                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                            
+                            {/* Improve Button with Progress Bar */}
+                            <Button 
+                                onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} 
+                                className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 relative overflow-hidden"
+                            >
+                                {trends.active && flash === 'green' && (
+                                    <div className="absolute inset-0 bg-emerald-500/30 z-0 transition-all duration-1000" style={{ width: `${Math.min(100, (trends.elapsed / trends.duration) * 100)}%` }}></div>
+                                )}
+                                <span className="relative z-10">Improve</span>
+                            </Button>
+
+                            {/* Worsen Button with Progress Bar */}
+                            <Button 
+                                onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} 
+                                className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100 relative overflow-hidden"
+                            >
+                                {trends.active && flash === 'red' && (
+                                    <div className="absolute inset-0 bg-red-500/30 z-0 transition-all duration-1000" style={{ width: `${Math.min(100, (trends.elapsed / trends.duration) * 100)}%` }}></div>
+                                )}
+                                <span className="relative z-10">Worsen</span>
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
@@ -655,6 +690,7 @@
         );
     };
 
+    // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
         const { state, enableAudio, playNibp } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp } = state;
@@ -662,17 +698,55 @@
         const [audioEnabled, setAudioEnabled] = useState(false);
         const wakeLockRef = useRef(null);
 
+        // Ensure audio enabled on first click
+        const handleEnableAudio = () => {
+            enableAudio();
+            setAudioEnabled(true);
+        };
+
         useEffect(() => { const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; requestWakeLock(); const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; document.addEventListener('visibilitychange', handleVis); return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; }, []);
         useEffect(() => { if (nibp.lastTaken && audioEnabled) playNibp(); }, [nibp.lastTaken]);
 
         return (
             <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => { enableAudio(); setAudioEnabled(true); }}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
-                <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col"><ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" /></div>
+                {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
+                
+                <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
+                    {/* HIDE TRACES IF NO OBS */}
+                    {hasMonitoring ? (
+                        <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-slate-600 font-mono text-xl">NO SENSOR DETECTED</div>
+                    )}
+                </div>
+
                 <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
                     <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                    {hasArtLine ? (<VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />) : (<VitalDisplay label="NIBP" value={nibp.sys || '?'} value2={nibp.dia || '?'} unit="mmHg" onUpdate={() => {}} onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} isNIBP={true} lastNIBP={nibp.lastTaken} hideTrends={true} />)}
+                    
+                    {/* CHANGED: BP DISPLAY & BIG BUTTON */}
+                    {hasArtLine ? (
+                        <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
+                    ) : (
+                        <div className="flex gap-2">
+                             <div className="flex-grow">
+                                <VitalDisplay label="NIBP" value={nibp.sys || '?'} value2={nibp.dia || '?'} unit="mmHg" onUpdate={() => {}} alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} isNIBP={false} lastNIBP={nibp.lastTaken} hideTrends={true} />
+                             </div>
+                             {/* SEPARATE LARGE NIBP BUTTON */}
+                             {hasMonitoring && (
+                                 <button 
+                                     onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} 
+                                     className={`w-24 md:w-32 rounded flex flex-col items-center justify-center border-2 ${nibp.mode === 'auto' ? 'bg-sky-900 border-sky-500 text-sky-100' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
+                                 >
+                                     <Lucide icon="activity" className="w-8 h-8 mb-1" />
+                                     <span className="text-xs font-bold uppercase">{nibp.mode === 'auto' ? 'AUTO' : 'CYCLE'}</span>
+                                     {nibp.mode === 'auto' && <span className="text-[10px] opacity-70">{(nibp.timer/60).toFixed(0)}m</span>}
+                                 </button>
+                             )}
+                        </div>
+                    )}
+
                     <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    
                     <div className="grid grid-rows-2 gap-2 md:gap-4"><VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />{etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}</div>
                 </div>
             </div>
