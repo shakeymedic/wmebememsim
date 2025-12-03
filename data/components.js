@@ -432,5 +432,36 @@
     window.Card = Card;
     window.VitalDisplay = VitalDisplay;
     window.ECGMonitor = ECGMonitor;
+const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
+        // Helper to get result text based on type
+        const getResult = () => {
+            if (!scenario) return "No data";
+            if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
+            if (type === 'VBG') return scenario.vbg ? `pH ${scenario.vbg.pH.toFixed(2)} / pCO2 ${scenario.vbg.pCO2} / Lac ${scenario.vbg.Lac}` : "Normal";
+            if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
+            if (type === 'Urine') return scenario.urine ? scenario.urine.findings : "Normal";
+            if (type === 'CT') return scenario.ct ? scenario.ct.findings : "CT Head: No acute intracranial abnormality.";
+            if (type === 'POCUS') return scenario.pocus ? scenario.pocus.findings : "No free fluid. Normal lung sliding.";
+            return "No significant abnormalities.";
+        };
+
+        return (
+            <div className="flex flex-col bg-slate-900 border border-slate-700 rounded overflow-hidden">
+                <button 
+                    onClick={() => !isRevealed && !isLoading && revealInvestigation(type)}
+                    disabled={isRevealed || isLoading || !isRunning}
+                    className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors ${isRevealed ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
+                >
+                    <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {label}</span>
+                    {isLoading && <Lucide icon="loader-2" className="w-3 h-3 animate-spin" />}
+                </button>
+                {isRevealed && (
+                    <div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700">
+                        {getResult()}
+                    </div>
+                )}
+            </div>
+        );
+    };
     window.InvestigationButton = InvestigationButton;
 })();
