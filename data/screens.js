@@ -9,8 +9,13 @@
 
     // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
-        const [mode, setMode] = useState('random'); 
-        const [category, setCategory] = useState('Any');
+        const [mode, setMode] = useState('library'); 
+        
+        // Library State
+        const [selectedCat, setSelectedCat] = useState('Medical');
+        const [selectedScen, setSelectedScen] = useState(null);
+
+        // Random/Builder State
         const [age, setAge] = useState('Any');
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
@@ -18,48 +23,98 @@
         const [buildAge, setBuildAge] = useState(40);
         const [buildCat, setBuildCat] = useState("Medical");
         const [buildDesc, setBuildDesc] = useState("A 40-year-old male...");
-        const [buildPC, setBuildPC] = useState("Chest Pain");
-        const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, glucose: 5.0 });
-        const [buildRhythm, setBuildRhythm] = useState("Sinus Rhythm");
-        const [customScenarios, setCustomScenarios] = useState([]);
-
-        useEffect(() => { const saved = localStorage.getItem('wmebem_custom_scenarios'); if (saved) setCustomScenarios(JSON.parse(saved)); }, []);
-
-        const saveCustomScenario = () => {
-            const newScen = { id: `CUST_${Date.now()}`, title: buildTitle || "Untitled Scenario", category: buildCat, ageRange: buildAge < 18 ? "Paediatric" : "Adult", acuity: 'Majors', ageGenerator: () => buildAge, patientProfileTemplate: buildDesc, presentingComplaint: buildPC, vitalsMod: { ...buildVitals, bpDia: Math.floor(buildVitals.bpSys * 0.65) }, pmh: ["Custom PMH"], dhx: ["Nil"], allergies: ["NKDA"], instructorBrief: { progression: "Custom Scenario", interventions: [] }, vbgClinicalState: "normal", ecg: { type: buildRhythm, findings: buildRhythm }, chestXray: { findings: "Unremarkable" } };
-            const updated = [...customScenarios, newScen]; setCustomScenarios(updated); localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated)); alert("Scenario Saved!"); setMode('custom'); 
-        };
-
-        const handleGenerate = () => {
-             let pool = ALL_SCENARIOS.filter(s => (category === 'Any' || s.category === category || (category === 'Medical' && (s.category === 'Toxicology' || s.category === 'Psychiatric'))) && (age === 'Any' || s.ageRange === age) && (acuity === 'Any' || s.acuity === acuity));
-             if (pool.length === 0) { alert("No scenarios found matching this combination."); return; }
-             const base = pool[Math.floor(Math.random() * pool.length)]; const patientAge = base.ageGenerator();
-             const history = generateHistory(patientAge, base.category === 'Obstetrics & Gynae' ? 'Female' : 'Male'); const weight = patientAge < 16 ? estimateWeight(patientAge) : null; const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
+        const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98 });
+        
+        const handleGenerate = (base) => {
+             const patientAge = base.ageGenerator();
+             const history = generateHistory(patientAge, base.category === 'Obstetrics & Gynae' ? 'Female' : 'Male');
+             const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
+             const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
              let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', ...base.vitalsMod };
              if (base.vitalsMod && base.vitalsMod.bpSys !== undefined && base.vitalsMod.bpDia === undefined) { finalVitals.bpDia = Math.floor(base.vitalsMod.bpSys * 0.65); }
-             const generated = { ...base, patientAge, profile: base.patientProfileTemplate.replace('{age}', patientAge).replace('{sex}', 'Male'), vitals: finalVitals, pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies, vbg: generateVbg(base.vbgClinicalState), hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0], weight, wetflag };
+             const generated = { 
+                ...base, patientAge, 
+                profile: base.patientProfileTemplate.replace('{age}', patientAge).replace('{sex}', 'Male'),
+                vitals: finalVitals, pmh: base.pmh || history.pmh, dhx: base.dhx || history.dhx, allergies: base.allergies || history.allergies,
+                vbg: generateVbg(base.vbgClinicalState),
+                hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
+                weight, wetflag
+             };
              onGenerate(generated, {});
         };
 
-        const loadCustom = (scen) => { const patientAge = scen.ageGenerator(); const generated = { ...scen, patientAge, profile: scen.patientProfileTemplate, vitals: { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', ...scen.vitalsMod }, vbg: generateVbg("normal"), hf: HUMAN_FACTOR_CHALLENGES[0], weight: null, wetflag: null }; onGenerate(generated, {}); };
+        const filteredScenarios = ALL_SCENARIOS.filter(s => s.category === selectedCat);
 
         return (
-            <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
+            <div className="max-w-6xl mx-auto p-4 h-full overflow-y-auto space-y-6">
                 <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <div className="bg-sky-900/30 p-2 rounded text-center border border-sky-500/50"><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
-                        <div className="text-sm text-slate-400">Share this code to connect remote monitors.</div>
+                        <div className="text-sm text-slate-400">Share code to connect monitors.</div>
                     </div>
                     <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Use as Monitor</Button>
                 </div>
 
                 {savedState && (<div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between"><div><h3 className="font-bold text-emerald-400">Previous Session Found</h3><p className="text-sm text-slate-300">Resume {savedState.scenario.title}?</p></div><Button onClick={onResume} variant="success">Resume</Button></div>)}
+                
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
-                    <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings"/> Simulation Setup</h2>
-                    <div className="flex gap-2 mb-6 border-b border-slate-700"><button onClick={() => setMode('random')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'random' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Random</button><button onClick={() => setMode('custom')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'custom' ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>Saved</button><button onClick={() => setMode('builder')} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === 'builder' ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-slate-500'}`}>Builder</button></div>
-                    {mode === 'random' && (<div className="space-y-4"><div className="grid grid-cols-1 md:grid-cols-2 gap-4"><div><label className="text-xs uppercase text-slate-500 font-bold">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obstetrics & Gynae</option><option value="Toxicology">Toxicology</option><option value="Psychiatric">Psychiatric</option><option value="Cardiac Arrest">Cardiac Arrest</option></select></div><div><label className="text-xs uppercase text-slate-500 font-bold">Age Group</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div><div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Majors">Majors (Stable-ish)</option><option value="Resus">Resus (Unstable)</option></select></div><div><label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600">{HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}</select></div></div><Button onClick={handleGenerate} className="w-full py-4 text-lg shadow-sky-500/20">Generate Scenario</Button></div>)}
-                    {mode === 'custom' && (<div className="space-y-2">{customScenarios.map((s, i) => (<div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600"><div><div className="font-bold text-white">{s.title}</div></div><Button onClick={() => loadCustom(s)} variant="success" className="h-8 text-xs">Load</Button></div>))}</div>)}
-                    {mode === 'builder' && (<div className="space-y-4 animate-fadeIn"><input type="text" placeholder="Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white"/><div className="grid grid-cols-2 gap-2"><input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 text-white"/><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-3 text-white"><option>Medical</option><option>Trauma</option><option>Toxicology</option></select></div><div className="grid grid-cols-4 gap-2"><input type="number" placeholder="HR" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: parseInt(e.target.value)})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm"/><input type="number" placeholder="BP Sys" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: parseInt(e.target.value)})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm"/><input type="number" placeholder="RR" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: parseInt(e.target.value)})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm"/><input type="number" placeholder="SpO2" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: parseInt(e.target.value)})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm"/></div><select value={buildRhythm} onChange={e=>setBuildRhythm(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white"><option>Sinus Rhythm</option><option>Sinus Tachycardia</option><option>AF</option><option>VT</option><option>VF</option><option>Asystole</option></select><Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button></div>)}
+                    <div className="flex gap-4 mb-6 border-b border-slate-700 pb-2">
+                        {['Library', 'Random', 'Builder'].map(m => (
+                            <button key={m} onClick={() => setMode(m.toLowerCase())} className={`text-sm font-bold uppercase pb-2 ${mode === m.toLowerCase() ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>{m}</button>
+                        ))}
+                    </div>
+
+                    {/* MODE: LIBRARY (NEW) */}
+                    {mode === 'library' && (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase">1. Category</h3>
+                                {['Medical', 'Trauma', 'Cardiac Arrest', 'Paediatric', 'Obstetrics & Gynae', 'Toxicology', 'Psychiatric', 'Elderly'].map(cat => (
+                                    <button key={cat} onClick={() => {setSelectedCat(cat); setSelectedScen(null);}} className={`w-full text-left px-4 py-3 rounded border transition-colors ${selectedCat === cat ? 'bg-sky-600 border-sky-500 text-white shadow-lg' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>{cat}</button>
+                                ))}
+                            </div>
+                            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase">2. Select Scenario</h3>
+                                {filteredScenarios.map(s => (
+                                    <button key={s.id} onClick={() => setSelectedScen(s)} className={`w-full text-left px-4 py-3 rounded border transition-colors ${selectedScen?.id === s.id ? 'bg-emerald-600 border-emerald-500 text-white shadow-lg' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
+                                        <div className="font-bold">{s.title}</div>
+                                        <div className="text-xs opacity-70">{s.acuity} • {s.ageRange}</div>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="space-y-4 bg-slate-900/50 p-4 rounded border border-slate-700">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase">3. Preview & Launch</h3>
+                                {selectedScen ? (
+                                    <div className="animate-fadeIn space-y-4">
+                                        <div><h2 className="text-xl font-bold text-white">{selectedScen.title}</h2><p className="text-sm text-slate-400">{selectedScen.patientProfileTemplate}</p></div>
+                                        <div className="text-xs space-y-1 text-slate-300">
+                                            <p><strong className="text-sky-400">Progression:</strong> {selectedScen.instructorBrief.progression}</p>
+                                            <p><strong className="text-emerald-400">Objectives:</strong> {selectedScen.instructorBrief.learningObjectives.join(", ")}</p>
+                                        </div>
+                                        <div><label className="text-xs uppercase text-slate-500 font-bold">Human Factor</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600 mt-1">{HUMAN_FACTOR_CHALLENGES.map(h => <option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
+                                        <Button onClick={() => handleGenerate(selectedScen)} className="w-full py-3 text-lg shadow-sky-500/20">Generate Simulation</Button>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center h-40 text-slate-500 italic">Select a scenario to view details.</div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MODE: RANDOM (Classic) */}
+                    {mode === 'random' && (
+                        <div className="space-y-4 max-w-lg mx-auto">
+                            <div className="grid grid-cols-1 gap-4">
+                                <div><label className="text-xs uppercase text-slate-500 font-bold">Age Group</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div>
+                                <div><label className="text-xs uppercase text-slate-500 font-bold">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-3 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
+                                <Button onClick={() => {
+                                    let pool = ALL_SCENARIOS.filter(s => (age === 'Any' || s.ageRange === age) && (acuity === 'Any' || s.acuity === acuity));
+                                    if(pool.length===0) return alert("No match");
+                                    handleGenerate(pool[Math.floor(Math.random()*pool.length)]);
+                                }} className="w-full py-4 text-lg">Surprise Me</Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -72,24 +127,34 @@
     };
 
     // --- SCREEN 3: BRIEFING ---
-    const BriefingScreen = ({ scenario, onStart, onBack, onNewScenario }) => (
+    const BriefingScreen = ({ scenario, onStart, onBack }) => (
         <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
-            <div className="bg-slate-800 p-6 rounded-lg border-l-4 border-sky-500 shadow-lg"><div className="flex justify-between items-start mb-4"><div><h2 className="text-3xl font-bold text-white">{scenario.title}</h2><span className="inline-block bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded mt-2">{scenario.category}</span></div><div className="text-right"><p className="text-2xl font-mono font-bold text-emerald-400">GCS {scenario.vitals.gcs}</p></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Patient Profile</h3><p className="text-lg leading-relaxed mb-4">{scenario.profile}</p><div className="space-y-2 mb-4"><div className="p-2 bg-slate-900/50 rounded border border-slate-700"><span className="text-xs text-slate-500 uppercase font-bold block">PMH</span><span className="text-sm text-slate-200">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div><div className="p-2 bg-slate-900/50 rounded border border-slate-700"><span className="text-xs text-slate-500 uppercase font-bold block">Allergies</span><span className="text-sm text-red-300 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'Nil'}</span></div></div></div><div className="space-y-4"><div className="bg-slate-900/50 p-3 rounded border border-slate-600"><h4 className="text-sm font-bold text-amber-400 uppercase mb-2">Progression</h4><p className="text-sm text-slate-300">{scenario.instructorBrief.progression}</p></div></div></div></div>
-            <div className="flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back</Button><Button onClick={onNewScenario} variant="secondary" className="flex-1">New Scenario</Button><Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl">Start Simulation</Button></div>
+            <div className="bg-slate-800 p-6 rounded-lg border-l-4 border-sky-500 shadow-lg"><div className="flex justify-between items-start mb-4"><div><h2 className="text-3xl font-bold text-white">{scenario.title}</h2><span className="inline-block bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded mt-2">{scenario.category}</span></div><div className="text-right"><p className="text-2xl font-mono font-bold text-emerald-400">GCS {scenario.vitals.gcs}</p></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Patient Profile</h3><p className="text-lg leading-relaxed mb-4">{scenario.profile}</p></div><div className="space-y-4"><div className="bg-slate-900/50 p-3 rounded border border-slate-600"><h4 className="text-sm font-bold text-amber-400 uppercase mb-2">Progression</h4><p className="text-sm text-slate-300">{scenario.instructorBrief.progression}</p></div></div></div></div>
+            <div className="flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back</Button><Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl">Start Simulation</Button></div>
         </div>
     );
 
     // --- SCREEN 4: LIVE SIM CONTROLLER ---
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput } = state;
+        
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
+        const [arrestMode, setArrestMode] = useState(false);
         const [showTrends, setShowTrends] = useState(false);
         const [expandRhythm, setExpandRhythm] = useState(false);
         const [trendParams, setTrendParams] = useState({ hr: vitals.hr, bpSys: vitals.bpSys, duration: 60 });
         const [customSpeech, setCustomSpeech] = useState("");
+
+        // VOICE MAPPING
+        const mapVoice = (txt) => {
+            if (txt === '*Coughing*') return 'Cough, cough, cough';
+            if (txt === '*Screaming*') return 'Ahhhhh! Help me!';
+            if (txt === '*Moaning*') return 'Ohhhhhh...';
+            return txt;
+        };
 
         useEffect(() => { if (customLog.length > 1) { const results = Object.keys(INTERVENTIONS).filter(key => (key + INTERVENTIONS[key].label).toLowerCase().includes(customLog.toLowerCase())); setSearchResults(results); } else { setSearchResults([]); } }, [customLog]);
         const handleSearchSelect = (key) => { applyIntervention(key); setCustomLog(""); setSearchResults([]); };
@@ -101,8 +166,10 @@
             return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
         };
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
+        const toggleCPR = () => { sim.dispatch({ type: 'TOGGLE_CPR', payload: !cprInProgress }); addLogEntry(!cprInProgress ? 'CPR Started' : 'CPR Stopped', 'action'); };
+        const handleShock = () => { applyIntervention('Defib'); if (!cprInProgress) toggleCPR(); };
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
-        const generateSBAR = () => `S: ${scenario.title}. ${scenario.ageRange} patient.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: Stats: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%. Interventions: ${Array.from(activeInterventions).join(', ') || 'None'}.\nR: Request urgent review / transfer.`;
+        const generateSBAR = () => `S: ${scenario.title}.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%.\nR: Review.`;
         const getCatColor = (cat) => { if (cat === 'Airway') return 'bg-sky-700 border-sky-500'; if (cat === 'Breathing') return 'bg-cyan-700 border-cyan-500'; if (cat === 'Circulation') return 'bg-red-700 border-red-500'; if (cat === 'Drugs') return 'bg-yellow-700 border-yellow-500'; if (cat === 'Procedures') return 'bg-emerald-700 border-emerald-500'; return 'bg-slate-700 border-slate-500'; };
 
         return (
@@ -111,26 +178,74 @@
                     <div className="flex gap-2"><Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>{!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={stop} className="h-8 px-4"><Lucide icon="square"/> STOP</Button>}<Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button></div>
                     <div className="text-right hidden md:block"><div className="text-[10px] text-slate-400 uppercase">Sim Time</div><div className="font-mono text-xl font-bold text-emerald-400 leading-none">{formatTime(time)}</div></div>
                 </div>
+
+                {/* --- ARREST MODE OVERLAY (Restored Layout) --- */}
+                {arrestMode && (
+                    <div className="bg-red-900/30 border-2 border-red-500 p-3 rounded mb-2 flex flex-col md:flex-row gap-2 animate-fadeIn shadow-2xl shadow-red-900/50">
+                        <div className="flex-1 bg-black/50 p-2 rounded border border-red-500/50 text-center flex flex-col justify-center">
+                            <h3 className="text-red-500 font-bold uppercase text-[10px] tracking-widest">Cycle Timer</h3>
+                            <div className={`text-4xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
+                            <div className="flex gap-1 justify-center mt-1"><Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-6 text-[10px] px-2">Reset</Button><Button variant="secondary" onClick={nextCycle} className="h-6 text-[10px] px-2">Next Cycle</Button></div>
+                        </div>
+                        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-full text-lg font-bold border-4 border-double">{cprInProgress ? "STOP CPR" : "START CPR"}</Button>
+                            <Button onClick={handleShock} variant="warning" className="h-full text-lg font-bold flex flex-col"><Lucide icon="zap" /> SHOCK</Button>
+                            <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-full font-bold flex flex-col"><span>Adrenaline</span><span className="text-[10px] opacity-70">1mg 1:10k</span></Button>
+                            <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-full font-bold flex flex-col"><span>Amiodarone</span><span className="text-[10px] opacity-70">300mg</span></Button>
+                        </div>
+                        <Button onClick={() => setArrestMode(false)} variant="secondary" className="h-full w-12"><Lucide icon="x"/></Button>
+                    </div>
+                )}
+
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         <Card className="bg-black border-slate-800 flex-shrink-0">
                              <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black"><VitalDisplay label="HR" value={vitals.hr} onUpdate={v=>manualUpdateVital('hr', v)} visible={hasMonitoring} /><VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onUpdate={v=>manualUpdateVital('bpSys', v)} visible={hasMonitoring} /><VitalDisplay label="SpO2" value={vitals.spO2} onUpdate={v=>manualUpdateVital('spO2', v)} visible={hasMonitoring} /><VitalDisplay label="RR" value={vitals.rr} onUpdate={v=>manualUpdateVital('rr', v)} visible={hasMonitoring} /></div>
                         </Card>
-                        <div className="grid grid-cols-2 gap-2"><div className="bg-slate-800 p-2 rounded border border-slate-600"><h4 className="text-[10px] font-bold text-red-400 uppercase mb-1">NIBP Control</h4><div className="flex gap-1"><Button onClick={() => sim.dispatch({type: 'TRIGGER_NIBP_MEASURE'})} className="h-8 text-[10px] flex-1">Measure Now</Button><Button onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} variant={nibp.mode === 'auto' ? "success" : "secondary"} className="h-8 text-[10px] flex-1">{nibp.mode === 'auto' ? `Auto (${Math.ceil(nibp.timer/60)}m)` : 'Auto Off'}</Button></div></div><div className="bg-slate-800 p-2 rounded border border-slate-600"><h4 className="text-[10px] font-bold text-purple-400 uppercase mb-1">Time Travel</h4><Button onClick={() => setShowTrends(true)} variant="outline" className="h-8 text-[10px] w-full">Set Trends...</Button></div></div>
-                        <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10"><h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Cardiac Rhythm</h4><Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>{expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', 'STEMI', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}<div className="flex gap-1 mt-2"><Button onClick={triggerArrest} variant="danger" className="flex-1 h-8 text-[10px]">Arrest</Button><Button onClick={triggerROSC} variant="success" className="flex-1 h-8 text-[10px]">ROSC</Button></div></div>
                         
-                        <Card title="Incident Log" icon="list" collapsible={true} defaultOpen={false} className="flex-shrink-0 bg-slate-800 flex flex-col shadow-inner">
-                            <div className="max-h-48 overflow-y-auto space-y-1 pr-1 text-xs font-mono">{log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}</div>
+                        {/* --- RESTORED: PATIENT INFO CARD --- */}
+                        <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
+                            <div className="text-xs space-y-1 mb-2">
+                                <p><strong className="text-slate-400">Name:</strong> {scenario.title}</p>
+                                <p><strong className="text-slate-400">Age:</strong> {scenario.patientAge}</p>
+                                <p><strong className="text-slate-400">PMH:</strong> {scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</p>
+                                <p><strong className="text-slate-400">Allergies:</strong> <span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></p>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1">
+                                {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (<InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>))}
+                            </div>
                         </Card>
+
+                        <div className="grid grid-cols-2 gap-2"><div className="bg-slate-800 p-2 rounded border border-slate-600"><h4 className="text-[10px] font-bold text-red-400 uppercase mb-1">NIBP Control</h4><div className="flex gap-1"><Button onClick={() => sim.dispatch({type: 'TRIGGER_NIBP_MEASURE'})} className="h-8 text-[10px] flex-1">Measure</Button><Button onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} variant={nibp.mode === 'auto' ? "success" : "secondary"} className="h-8 text-[10px] flex-1">{nibp.mode === 'auto' ? `Auto` : 'Off'}</Button></div></div><div className="bg-slate-800 p-2 rounded border border-slate-600"><h4 className="text-[10px] font-bold text-purple-400 uppercase mb-1">Time Travel</h4><Button onClick={() => setShowTrends(true)} variant="outline" className="h-8 text-[10px] w-full">Set Trends...</Button></div></div>
+                        <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10"><h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Cardiac Rhythm</h4><Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>{expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', 'STEMI', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}<Button onClick={() => setArrestMode(!arrestMode)} variant={arrestMode ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestMode ? "Close Arrest Panel" : "Open Arrest Panel"}</Button></div>
                     </div>
+                    
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">{['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice', 'Handover'].map(cat => (<button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>))}</div>
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
+                            {/* --- RESTORED: RECOMMENDED ACTIONS (Top of drawer) --- */}
+                            {scenario.recommendedActions && (
+                                <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
+                                    <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended</h4>
+                                    <div className="flex flex-wrap gap-1">
+                                        {scenario.recommendedActions.map(key => (
+                                            <Button key={key} onClick={() => applyIntervention(key)} variant={activeInterventions.has(key) ? "success" : "outline"} className="h-6 text-[10px] px-2">{INTERVENTIONS[key]?.label || key}</Button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {activeTab === 'Handover' ? (
                                 <div className="space-y-4 p-2"><div className="bg-slate-900 p-4 rounded border border-slate-600 font-mono text-sm text-green-400 whitespace-pre-wrap">{generateSBAR()}</div><div className="flex gap-2"><Button onClick={() => speak(generateSBAR())} variant="secondary">Read Aloud</Button><Button onClick={() => navigator.clipboard.writeText(generateSBAR())} variant="outline">Copy</Button></div></div>
                             ) : activeTab === 'Voice' ? (
-                                <div className="space-y-4 p-4"><h4 className="text-sm font-bold text-sky-400">Patient Voice Control</h4><div className="grid grid-cols-2 md:grid-cols-3 gap-2">{["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(txt)} variant="secondary" className="h-12 text-xs">{txt}</Button>))}</div><div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div></div>
+                                <div className="space-y-4 p-4">
+                                    <div className="flex gap-2 mb-4 bg-slate-900 p-2 rounded">
+                                        {['monitor', 'controller', 'both'].map(o => (<button key={o} onClick={() => sim.dispatch({type: 'SET_AUDIO_OUTPUT', payload: o})} className={`flex-1 py-1 text-[10px] uppercase font-bold rounded ${audioOutput === o ? 'bg-sky-600 text-white' : 'text-slate-500 hover:bg-slate-800'}`}>{o}</button>))}
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">{["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}</div>
+                                    <div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
+                                </div>
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                     {getInterventionsByCat(activeTab).map(key => {
@@ -189,7 +304,7 @@
     };
 
     const MonitorContainer = ({ sessionID }) => { const sim = useSimulation(null, true, sessionID); if (!sessionID) return null; if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (<div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn"><Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" /><div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div><div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div></div>); return <MonitorScreen sim={sim} />; };   
-    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />; return null; };
+    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
 
     window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
 })();
