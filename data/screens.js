@@ -41,6 +41,15 @@
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
+            
+            // FIX: Ensure vitals are parsed as Integers to prevent string concatenation bugs in engine
+            const safeVitals = {
+                hr: parseInt(buildVitals.hr) || 80,
+                bpSys: parseInt(buildVitals.bpSys) || 120,
+                rr: parseInt(buildVitals.rr) || 16,
+                spO2: parseInt(buildVitals.spO2) || 98
+            };
+
             const newScen = {
                 id: `CUST_${Date.now()}`,
                 title: buildTitle,
@@ -50,7 +59,7 @@
                 ageGenerator: () => parseInt(buildAge),
                 patientProfileTemplate: buildDesc,
                 presentingComplaint: buildPC,
-                vitalsMod: { ...buildVitals, bpDia: Math.floor(buildVitals.bpSys * 0.65), gcs: 15, temp: 37 },
+                vitalsMod: { ...safeVitals, bpDia: Math.floor(safeVitals.bpSys * 0.65), gcs: 15, temp: 37 },
                 pmh: buildPMH.split(','),
                 dhx: ["As per history"],
                 allergies: ["NKDA"],
@@ -259,6 +268,15 @@
                                 <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
                             </div>
                             <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+                            
+                            {/* FIX: Ensure numeric inputs for vitals */}
+                            <div className="grid grid-cols-4 gap-2">
+                                <input type="number" placeholder="HR" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
+                                <input type="number" placeholder="BP Sys" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
+                                <input type="number" placeholder="RR" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
+                                <input type="number" placeholder="SpO2" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
+                            </div>
+
                             <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
                         </div>
                     )}
@@ -391,8 +409,9 @@
         const getInterventionsByCat = (cat) => {
             if (cat === 'Handover' || cat === 'Voice') return [];
             let keys = [];
-            if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM', 'Blood', 'TXA']; 
-            else if (cat === 'Drugs') keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === 'Drugs'); // Fallback
+            // FIX: Added 'ArtLine' to Common list for visibility
+            if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM', 'Blood', 'TXA', 'ArtLine']; 
+            else if (cat === 'Drugs') keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === 'Drugs'); 
             else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
             return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
         };
@@ -508,12 +527,20 @@
 
                         <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10">
                             <h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Rhythm & Arrest</h4>
+                            
+                            {/* FIX: Added ETCO2 Toggle Button */}
+                            <Button onClick={() => sim.dispatch({type: 'TOGGLE_ETCO2'})} variant={etco2Enabled ? "success" : "secondary"} className="w-full h-8 mb-2 text-xs border border-slate-500">
+                                {etco2Enabled ? "ETCO2: ON" : "ETCO2: OFF"}
+                            </Button>
+
                             <div className="grid grid-cols-2 gap-1 mb-2">
                                 <Button onClick={triggerArrest} variant="danger" className="h-8 text-xs">VF Arrest</Button>
                                 <Button onClick={triggerROSC} variant="success" className="h-8 text-xs">ROSC</Button>
                             </div>
+
+                            {/* FIX: Removed 'STEMI' from drop down list */}
                             <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
-                            {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', 'STEMI', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
+                            {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
                             <Button onClick={() => setArrestMode(!arrestMode)} variant={arrestMode ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestMode ? "Close Arrest Panel" : "Open Arrest Panel"}</Button>
                         </div>
                     </div>
