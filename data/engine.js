@@ -35,8 +35,6 @@
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
-            
-            // UPDATED: Trend based Improve/Worsen
             case 'TRIGGER_IMPROVE':
                 let impTargets = { ...state.vitals };
                 if (state.scenario.evolution && state.scenario.evolution.improved && state.scenario.evolution.improved.vitals) {
@@ -47,7 +45,6 @@
                      impTargets.spO2 = Math.min(99, impTargets.spO2 + 5);
                 }
                 return { ...state, trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...state.vitals } }, flash: 'green' };
-
             case 'TRIGGER_DETERIORATE':
                  let detTargets = { ...state.vitals };
                  if (state.scenario.evolution && state.scenario.evolution.deteriorated && state.scenario.evolution.deteriorated.vitals) {
@@ -58,7 +55,6 @@
                      detTargets.spO2 = Math.max(80, detTargets.spO2 - 10);
                  }
                  return { ...state, trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...state.vitals } }, flash: 'red' };
-
             case 'TRIGGER_NIBP_MEASURE': return { ...state, nibp: { ...state.nibp, sys: state.vitals.bpSys, dia: state.vitals.bpDia, lastTaken: Date.now(), timer: state.nibp.interval } };
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
@@ -99,6 +95,7 @@
         
         useEffect(() => { stateRef.current = state; }, [state]);
         
+        // --- FIREBASE SYNC ---
         useEffect(() => {
             const db = window.db; 
             if (!db || !sessionID) return; 
@@ -124,12 +121,11 @@
             const scheduleBeep = () => {
                 const current = stateRef.current;
                 
-                // Audio Separation Logic
+                // Logic: Only play if current mode matches audio output setting
                 const shouldPlay = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || 
                                    (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
 
                 if (!current.isRunning && !isMonitorMode) return; 
-                // Don't beep on arrest rhythms
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'pVT' || current.rhythm === 'PEA') return;
                 
                 if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
@@ -153,11 +149,17 @@
         const lastSpeechRef = useRef(0);
         useEffect(() => {
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) {
+                // Prevent playing old messages on load
+                if (Date.now() - state.speech.timestamp > 5000) {
+                    lastSpeechRef.current = state.speech.timestamp;
+                    return;
+                }
+
                 lastSpeechRef.current = state.speech.timestamp;
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both'));
                 
                 if (shouldPlay && 'speechSynthesis' in window) {
-                    window.speechSynthesis.cancel(); // Stop overlapping speech
+                    window.speechSynthesis.cancel(); // Prevent overlap/double speak
                     const utterance = new SpeechSynthesisUtterance(state.speech.text);
                     window.speechSynthesis.speak(utterance);
                 }
@@ -166,10 +168,30 @@
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
         const applyIntervention = (key) => {
+            if (key === 'ToggleETCO2') {
+                dispatch({ type: 'TOGGLE_ETCO2' });
+                addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action');
+                return;
+            }
+
             const action = INTERVENTIONS[key]; if (!action) return;
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
-            if (action.type === 'continuous') { if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } else { newActive.add(key); addLogEntry(action.log, 'action'); } } else { newCounts[key] = count; addLogEntry(action.log, 'action'); }
+            
+            // Logic for continuous items (toggle on/off without counts)
+            if (action.type === 'continuous') { 
+                if (newActive.has(key)) { 
+                    newActive.delete(key); 
+                    addLogEntry(`${key} removed/stopped.`, 'action'); 
+                } else { 
+                    newActive.add(key); 
+                    addLogEntry(action.log, 'action'); 
+                } 
+            } else { 
+                newCounts[key] = count; 
+                addLogEntry(action.log, 'action'); 
+            }
+
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
@@ -187,10 +209,7 @@
         };
 
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
-        
-        // --- ARREST LOGIC ---
         const triggerArrest = (type = 'VF') => {
-            // For PEA/pVT, rhythm exists but pulses are 0.
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } });
             dispatch({ type: 'UPDATE_RHYTHM', payload: newRhythm });
@@ -198,7 +217,7 @@
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
 
-        const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
+        const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: 3 } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
         const revealInvestigation = (type) => { if (state.investigationsRevealed[type] || state.loadingInvestigations[type]) return; dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); };
         const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
@@ -217,6 +236,14 @@
             if (current.scenario.vbg) { const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } }
             if (next.hr > 0) { next.hr += getRandomInt(-1, 1); next.bpSys += getRandomInt(-1, 1); let targetDia = Math.floor(next.bpSys * 0.65); next.bpDia = targetDia + getRandomInt(-2, 2); next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; }
             next.hr = clamp(next.hr, 0, 250); next.bpSys = clamp(next.bpSys, 0, 300); next.spO2 = clamp(next.spO2, 0, 100);
+            
+            // Rounding for whole numbers
+            next.hr = Math.round(next.hr);
+            next.bpSys = Math.round(next.bpSys);
+            next.bpDia = Math.round(next.bpDia);
+            next.spO2 = Math.round(next.spO2);
+            next.rr = Math.round(next.rr);
+
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
         const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
