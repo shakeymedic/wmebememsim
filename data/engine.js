@@ -121,11 +121,12 @@
             const scheduleBeep = () => {
                 const current = stateRef.current;
                 
-                // Logic: Only play if current mode matches audio output setting
+                // Audio Separation Logic: Strict check
                 const shouldPlay = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || 
                                    (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
 
                 if (!current.isRunning && !isMonitorMode) return; 
+                // Don't beep on arrest rhythms
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'pVT' || current.rhythm === 'PEA') return;
                 
                 if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
@@ -178,18 +179,10 @@
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
             
-            // Logic for continuous items (toggle on/off without counts)
             if (action.type === 'continuous') { 
-                if (newActive.has(key)) { 
-                    newActive.delete(key); 
-                    addLogEntry(`${key} removed/stopped.`, 'action'); 
-                } else { 
-                    newActive.add(key); 
-                    addLogEntry(action.log, 'action'); 
-                } 
+                if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } else { newActive.add(key); addLogEntry(action.log, 'action'); } 
             } else { 
-                newCounts[key] = count; 
-                addLogEntry(action.log, 'action'); 
+                newCounts[key] = count; addLogEntry(action.log, 'action'); 
             }
 
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
@@ -209,6 +202,7 @@
         };
 
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } });
@@ -237,7 +231,7 @@
             if (next.hr > 0) { next.hr += getRandomInt(-1, 1); next.bpSys += getRandomInt(-1, 1); let targetDia = Math.floor(next.bpSys * 0.65); next.bpDia = targetDia + getRandomInt(-2, 2); next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; }
             next.hr = clamp(next.hr, 0, 250); next.bpSys = clamp(next.bpSys, 0, 300); next.spO2 = clamp(next.spO2, 0, 100);
             
-            // Rounding for whole numbers
+            // Rounding for whole numbers (Fixes "120.33232")
             next.hr = Math.round(next.hr);
             next.bpSys = Math.round(next.bpSys);
             next.bpDia = Math.round(next.bpDia);
