@@ -277,14 +277,14 @@
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
-    // --- SCREEN 3: BRIEFING ---
+// --- SCREEN 3: BRIEFING ---
     const BriefingScreen = ({ scenario, onStart, onBack }) => (
         <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
             <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
                 <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
                     <div>
-                        <h2 className="text-3xl font-bold text-white mb-2">{scenario.patientName}</h2>
-                        <div className="text-sm text-slate-400 font-bold uppercase tracking-wider">{scenario.title}</div>
+                        {/* CHANGED: Title is now the main header, Patient Name removed from header */}
+                        <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
                         <div className="flex gap-2 mt-2">
                             <span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span>
                             <span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span>
@@ -301,6 +301,8 @@
                     <div className="space-y-6">
                         <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
                             <h3 className="text-sm font-bold text-sky-400 uppercase mb-2 border-b border-slate-700 pb-1">Patient Brief</h3>
+                            {/* CHANGED: Patient Name is now displayed here in the info section */}
+                            <p className="text-sm text-slate-400 mb-1"><strong className="text-slate-300">Name:</strong> {scenario.patientName}</p>
                             <p className="text-lg leading-relaxed text-slate-200 mb-4">{scenario.profile}</p>
                             <div className="space-y-2 text-sm">
                                 <div className="flex"><span className="w-24 text-slate-500 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
