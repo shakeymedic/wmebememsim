@@ -8,7 +8,7 @@
         vitals: {}, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
         investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
         isMuted: false, etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
-        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 },
+        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false },
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         speech: { text: null, timestamp: 0, source: null },
         audioOutput: 'monitor' 
@@ -22,7 +22,7 @@
             case 'CLEAR_SESSION': return { ...initialState };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 }, processedEvents: new Set(), activeInterventions: new Set() };
+                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false }, processedEvents: new Set(), activeInterventions: new Set() };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations }; let durChanged = false;
@@ -55,34 +55,29 @@
                      detTargets.spO2 = Math.max(80, detTargets.spO2 - 10);
                  }
                  return { ...state, trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...state.vitals } }, flash: 'red' };
-            case 'TRIGGER_NIBP_MEASURE': return { ...state, nibp: { ...state.nibp, sys: state.vitals.bpSys, dia: state.vitals.bpDia, lastTaken: Date.now(), timer: state.nibp.interval } };
-            case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
+            
+            // --- NIBP LOGIC CHANGES ---
+            case 'START_NIBP': 
+                return { ...state, nibp: { ...state.nibp, inflating: true } };
+            case 'COMMIT_NIBP': 
+                return { ...state, nibp: { ...state.nibp, sys: state.vitals.bpSys, dia: state.vitals.bpDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false } };
+            case 'TOGGLE_NIBP_MODE': 
+                const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; 
+                return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
+            
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
             case 'UPDATE_TREND_PROGRESS':
                 const progress = Math.min(1, (state.trends.elapsed + 3) / state.trends.duration);
-                
-                // Calculate interpolated values first
                 const interpolated = { ...state.vitals };
                 Object.keys(state.trends.targets).forEach(key => { 
                     const startVal = state.trends.startVitals[key] || 0; 
                     const endVal = state.trends.targets[key]; 
                     interpolated[key] = startVal + (endVal - startVal) * progress; 
                 });
-
-                // If finished, force targets (snap) and deactivate
                 if (progress >= 1) {
-                    return { 
-                        ...state, 
-                        vitals: { ...state.vitals, ...state.trends.targets }, 
-                        trends: { ...state.trends, active: false, elapsed: 0 } 
-                    };
+                    return { ...state, vitals: { ...state.vitals, ...state.trends.targets }, trends: { ...state.trends, active: false, elapsed: 0 } };
                 }
-
-                return { 
-                    ...state, 
-                    vitals: interpolated, 
-                    trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } 
-                };
+                return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
             case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, audioOutput: action.payload.audioOutput || 'monitor', trends: action.payload.trends || state.trends };
@@ -145,9 +140,7 @@
                                    (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
 
                 if (!current.isRunning && !isMonitorMode) return; 
-                // Don't beep on arrest rhythms
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'pVT' || current.rhythm === 'PEA') return;
-                
                 if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
 
                 if (!current.isMuted && ctx && shouldPlay) {
@@ -160,25 +153,36 @@
                 const delay = 60000 / (Math.max(20, current.vitals.hr) || 60); timerId = setTimeout(scheduleBeep, delay);
             };
             
-            // Start Logic: Runs if Sim is running OR if Monitor Mode has HR (Fixes "Monitor Silent" bug)
             const shouldStart = state.isRunning || (isMonitorMode && state.vitals && state.vitals.hr > 0);
-            
             if (shouldStart) {
                  if (ctx && ctx.state === 'suspended') ctx.resume();
                  scheduleBeep();
             }
-            
             return () => clearTimeout(timerId);
-        }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]); // HR > 0 dependency restarts loop if ROSC occurs or data arrives
+        }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]);
 
-        useEffect(() => { if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning) { dispatch({ type: 'TRIGGER_NIBP_MEASURE' }); } }, [state.nibp.timer, state.isRunning]);
+        // --- NIBP AUTO LOGIC & SOUND ---
+        useEffect(() => { 
+            // Trigger Auto Measurement
+            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating) { 
+                dispatch({ type: 'START_NIBP' }); 
+            }
+            // Handle Inflation Sequence (5 Seconds)
+            if (state.nibp.inflating) {
+                playInflationSound();
+                const timeout = setTimeout(() => {
+                    dispatch({ type: 'COMMIT_NIBP' });
+                }, 5000);
+                return () => clearTimeout(timeout);
+            }
+        }, [state.nibp.timer, state.isRunning, state.nibp.inflating]);
 
-        // --- SPEECH ENGINE ---
+        // --- SPEECH ENGINE (ENHANCED) ---
         const lastSpeechRef = useRef(0);
         useEffect(() => {
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) {
-                // Prevent playing old messages on load
-                if (Date.now() - state.speech.timestamp > 5000) {
+                // Prevent playing very old messages on refresh
+                if (Date.now() - state.speech.timestamp > 8000) {
                     lastSpeechRef.current = state.speech.timestamp;
                     return;
                 }
@@ -187,8 +191,15 @@
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both'));
                 
                 if (shouldPlay && 'speechSynthesis' in window) {
-                    window.speechSynthesis.cancel(); // Prevent overlap/double speak
+                    window.speechSynthesis.cancel(); // Prioritise new message
+                    // Force resume for Chrome strict autoplay policies
+                    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                    
                     const utterance = new SpeechSynthesisUtterance(state.speech.text);
+                    // Ensure voice is set (optional, defaults to system)
+                    const voices = window.speechSynthesis.getVoices();
+                    if(voices.length > 0) utterance.voice = voices[0];
+                    
                     window.speechSynthesis.speak(utterance);
                 }
             }
@@ -196,11 +207,7 @@
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
         const applyIntervention = (key) => {
-            if (key === 'ToggleETCO2') {
-                dispatch({ type: 'TOGGLE_ETCO2' });
-                addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action');
-                return;
-            }
+            if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
 
             const action = INTERVENTIONS[key]; if (!action) return;
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
@@ -244,20 +251,32 @@
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
         
-        const playNibp = () => { 
-            // FIXED: Safety check for audio context state
+        const playInflationSound = () => { 
+            // Plays a low rumbles/humming sound for BP inflation
             if (audioCtxRef.current && audioCtxRef.current.state === 'running') { 
                 const ctx = audioCtxRef.current; 
                 const osc = ctx.createOscillator(); 
                 const gain = ctx.createGain(); 
-                osc.connect(gain); 
+                
+                osc.type = 'sawtooth'; // Rougher sound for motor
+                osc.frequency.setValueAtTime(60, ctx.currentTime); 
+                osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); 
+                
+                // Filter to make it sound muffled like a pump
+                const filter = ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 150;
+
+                osc.connect(filter);
+                filter.connect(gain);
                 gain.connect(ctx.destination); 
-                osc.frequency.setValueAtTime(150, ctx.currentTime); 
-                osc.frequency.linearRampToValueAtTime(100, ctx.currentTime + 1); 
-                gain.gain.setValueAtTime(0.1, ctx.currentTime); 
-                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); 
+                
+                gain.gain.setValueAtTime(0.3, ctx.currentTime); 
+                gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); 
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); 
+                
                 osc.start(); 
-                osc.stop(ctx.currentTime + 1); 
+                osc.stop(ctx.currentTime + 5); 
             } 
         };
 
@@ -274,9 +293,6 @@
             if (next.hr > 0) { next.hr += getRandomInt(-1, 1); next.bpSys += getRandomInt(-1, 1); let targetDia = Math.floor(next.bpSys * 0.65); next.bpDia = targetDia + getRandomInt(-2, 2); next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; }
             next.hr = clamp(next.hr, 0, 250); next.bpSys = clamp(next.bpSys, 0, 300); next.spO2 = clamp(next.spO2, 0, 100);
             
-            // REMOVED: Rounding block to prevent stuttering trends
-            // next.hr = Math.round(next.hr); ... (Deleted)
-
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
         const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
@@ -286,7 +302,7 @@
         const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); };
         const reset = () => { stop(); dispatch({ type: 'CLEAR_SESSION' }); localStorage.removeItem('wmebem_sim_state'); };
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, playNibp };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend };
     };
 
     window.useSimulation = useSimulation;
