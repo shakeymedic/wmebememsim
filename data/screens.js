@@ -5,7 +5,7 @@
     const { 
         ALL_SCENARIOS, INTERVENTIONS, HUMAN_FACTOR_CHALLENGES,
         Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton,
-        generateHistory, estimateWeight, calculateWetflag, generateVbg 
+        generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName
     } = window;
 
     // --- SCREEN 1: SETUP ---
@@ -97,9 +97,10 @@
                  const history = generateHistory(patientAge, sex);
                  const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
                  const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
-                 
+                 const randomName = generateName(sex);
+
                  let finalVitals = { 
-                     hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', 
+                     hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, 
                      ...selectedBase.vitalsMod 
                  };
                  if (selectedBase.vitalsMod && selectedBase.vitalsMod.bpSys !== undefined && selectedBase.vitalsMod.bpDia === undefined) { 
@@ -108,6 +109,7 @@
 
                  const generated = { 
                     ...selectedBase, 
+                    patientName: randomName,
                     patientAge, 
                     sex,
                     profile: selectedBase.patientProfileTemplate
@@ -150,6 +152,11 @@
                         <div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div>
                     </div>
                     <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Use as Monitor</Button>
+                </div>
+
+                <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
+                    <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
+                    <p>Select a mode below. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you craft on the fly.</p>
                 </div>
 
                 {savedState && (
@@ -276,8 +283,9 @@
             <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
                 <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
                     <div>
-                        <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
-                        <div className="flex gap-2">
+                        <h2 className="text-3xl font-bold text-white mb-2">{scenario.patientName}</h2>
+                        <div className="text-sm text-slate-400 font-bold uppercase tracking-wider">{scenario.title}</div>
+                        <div className="flex gap-2 mt-2">
                             <span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span>
                             <span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span>
                             <span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span>
@@ -360,6 +368,7 @@
         const [expandRhythm, setExpandRhythm] = useState(false);
         const [customSpeech, setCustomSpeech] = useState("");
         const [showDrugCalc, setShowDrugCalc] = useState(false);
+        const [showLogModal, setShowLogModal] = useState(false);
         const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
         
         // Modal State for Vital Control
@@ -405,7 +414,7 @@
             setModalVital(key);
             setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]);
             if (key === 'bp') setModalTarget2(vitals.bpDia);
-            setTrendDuration(30); // Default 30s
+            setTrendDuration(30); 
         };
 
         const quickAdjust = (amt) => {
@@ -448,6 +457,7 @@
                             ))}
                         </div>
                         <div className="text-right"><div className="text-[10px] text-slate-400 uppercase">Sim Time</div><div className="font-mono text-xl font-bold text-emerald-400 leading-none">{formatTime(time)}</div></div>
+                        <Button onClick={()=>setShowLogModal(true)} variant="secondary" className="h-8 w-8 p-0"><Lucide icon="file-text" className="w-4 h-4" /></Button>
                     </div>
                 </div>
 
@@ -502,8 +512,8 @@
                         
                         <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
                             <div className="text-xs space-y-1 mb-2">
-                                <p><strong className="text-slate-400">Name:</strong> {scenario.title}</p>
-                                <p><strong className="text-slate-400">Details:</strong> {scenario.patientAge}y Male</p>
+                                <p><strong className="text-slate-400">Name:</strong> {scenario.patientName}</p>
+                                <p><strong className="text-slate-400">Details:</strong> {scenario.patientAge}y {scenario.sex}</p>
                                 <p><strong className="text-slate-400">Allergies:</strong> <span className="text-red-400">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></p>
                             </div>
                             <div className="grid grid-cols-3 gap-1">
@@ -518,8 +528,10 @@
                                 <Button onClick={triggerROSC} variant="success" className="h-8 text-xs">ROSC</Button>
                             </div>
                             
-                            <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
-                            {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
+                            <div className="relative">
+                                <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
+                                {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
+                            </div>
                             
                             <Button onClick={() => setArrestMode(!arrestMode)} variant={arrestMode ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestMode ? "Close Arrest Panel" : "Open Arrest Panel"}</Button>
                         </div>
@@ -613,6 +625,26 @@
 
                                 <Button onClick={confirmVitalUpdate} variant="success" className="w-full mt-4 h-12 text-lg font-bold">CONFIRM & SEND</Button>
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- LOG MODAL --- */}
+                {showLogModal && (
+                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
+                        <div className="bg-slate-800 rounded-lg border border-slate-600 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl">
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center">
+                                <h3 className="text-lg font-bold text-white">Simulation Log</h3>
+                                <Button onClick={()=>setShowLogModal(false)} variant="secondary" className="h-8 w-8 p-0"><Lucide icon="x" className="w-4 h-4" /></Button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm">
+                                {log.map((l, i) => (
+                                    <div key={i} className="flex gap-4 border-b border-slate-700/50 pb-1">
+                                        <span className="text-sky-400 w-16 flex-shrink-0">{l.simTime}</span>
+                                        <span className={`${l.type === 'action' ? 'text-emerald-300' : l.type === 'manual' ? 'text-amber-300' : 'text-slate-300'}`}>{l.msg}</span>
+                                    </div>
+                                ))}
                             </div>
                         </div>
                     </div>
