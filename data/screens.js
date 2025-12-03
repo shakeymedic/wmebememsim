@@ -7,23 +7,8 @@
         generateHistory, estimateWeight, calculateWetflag, generateVbg 
     } = window;
 
-    const playNibpSound = () => {
-        const ctx = window.AudioContext || window.webkitAudioContext;
-        if (!ctx) return;
-        const audioCtx = new ctx();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.frequency.setValueAtTime(150, audioCtx.currentTime);
-        osc.frequency.linearRampToValueAtTime(100, audioCtx.currentTime + 1);
-        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-        gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 1);
-    };
-
-    const SetupScreen = ({ onGenerate, savedState, onResume }) => {
+    // --- SCREEN 1: SETUP ---
+    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
         const [mode, setMode] = useState('random'); 
         const [category, setCategory] = useState('Any');
         const [age, setAge] = useState('Any');
@@ -60,6 +45,14 @@
 
         return (
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
+                <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <div className="bg-sky-900/30 p-2 rounded text-center border border-sky-500/50"><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
+                        <div className="text-sm text-slate-400">Share this code to connect remote monitors.</div>
+                    </div>
+                    <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Use as Monitor</Button>
+                </div>
+
                 {savedState && (<div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between"><div><h3 className="font-bold text-emerald-400">Previous Session Found</h3><p className="text-sm text-slate-300">Resume {savedState.scenario.title}?</p></div><Button onClick={onResume} variant="success">Resume</Button></div>)}
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
                     <h2 className="text-xl font-bold text-sky-400 mb-4 flex items-center gap-2"><Lucide icon="settings"/> Simulation Setup</h2>
@@ -72,11 +65,13 @@
         );
     };
 
+    // --- SCREEN 2: JOIN ---
     const JoinScreen = ({ onJoin }) => {
         const [code, setCode] = useState("");
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
+    // --- SCREEN 3: BRIEFING ---
     const BriefingScreen = ({ scenario, onStart, onBack, onNewScenario }) => (
         <div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
             <div className="bg-slate-800 p-6 rounded-lg border-l-4 border-sky-500 shadow-lg"><div className="flex justify-between items-start mb-4"><div><h2 className="text-3xl font-bold text-white">{scenario.title}</h2><span className="inline-block bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded mt-2">{scenario.category}</span></div><div className="text-right"><p className="text-2xl font-mono font-bold text-emerald-400">GCS {scenario.vitals.gcs}</p></div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><h3 className="text-sm font-bold text-slate-500 uppercase mb-1">Patient Profile</h3><p className="text-lg leading-relaxed mb-4">{scenario.profile}</p><div className="space-y-2 mb-4"><div className="p-2 bg-slate-900/50 rounded border border-slate-700"><span className="text-xs text-slate-500 uppercase font-bold block">PMH</span><span className="text-sm text-slate-200">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div><div className="p-2 bg-slate-900/50 rounded border border-slate-700"><span className="text-xs text-slate-500 uppercase font-bold block">Allergies</span><span className="text-sm text-red-300 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'Nil'}</span></div></div></div><div className="space-y-4"><div className="bg-slate-900/50 p-3 rounded border border-slate-600"><h4 className="text-sm font-bold text-amber-400 uppercase mb-2">Progression</h4><p className="text-sm text-slate-300">{scenario.instructorBrief.progression}</p></div></div></div></div>
@@ -84,7 +79,8 @@
         </div>
     );
 
-    const LiveSimScreen = ({ sim, onFinish, onBack }) => {
+    // --- SCREEN 4: LIVE SIM CONTROLLER ---
+    const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
         const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp } = state;
         const [activeTab, setActiveTab] = useState("Common");
@@ -112,7 +108,7 @@
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
-                    <div className="flex gap-2"><Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>{!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={stop} className="h-8 px-4"><Lucide icon="square"/> STOP</Button>}<Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + (new URLSearchParams(window.location.search).get('session') || ''), '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button></div>
+                    <div className="flex gap-2"><Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>{!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={stop} className="h-8 px-4"><Lucide icon="square"/> STOP</Button>}<Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button></div>
                     <div className="text-right hidden md:block"><div className="text-[10px] text-slate-400 uppercase">Sim Time</div><div className="font-mono text-xl font-bold text-emerald-400 leading-none">{formatTime(time)}</div></div>
                 </div>
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
@@ -124,7 +120,6 @@
                         <div className="grid grid-cols-2 gap-2"><div className="bg-slate-800 p-2 rounded border border-slate-600"><h4 className="text-[10px] font-bold text-red-400 uppercase mb-1">NIBP Control</h4><div className="flex gap-1"><Button onClick={() => sim.dispatch({type: 'TRIGGER_NIBP_MEASURE'})} className="h-8 text-[10px] flex-1">Measure Now</Button><Button onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} variant={nibp.mode === 'auto' ? "success" : "secondary"} className="h-8 text-[10px] flex-1">{nibp.mode === 'auto' ? `Auto (${Math.ceil(nibp.timer/60)}m)` : 'Auto Off'}</Button></div></div><div className="bg-slate-800 p-2 rounded border border-slate-600"><h4 className="text-[10px] font-bold text-purple-400 uppercase mb-1">Time Travel</h4><Button onClick={() => setShowTrends(true)} variant="outline" className="h-8 text-[10px] w-full">Set Trends...</Button></div></div>
                         <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10"><h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Cardiac Rhythm</h4><Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>{expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', 'STEMI', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}<div className="flex gap-1 mt-2"><Button onClick={triggerArrest} variant="danger" className="flex-1 h-8 text-[10px]">Arrest</Button><Button onClick={triggerROSC} variant="success" className="flex-1 h-8 text-[10px]">ROSC</Button></div></div>
                         
-                        {/* INCIDENT LOG - COLLAPSIBLE DEFAULT MINIMISED */}
                         <Card title="Incident Log" icon="list" collapsible={true} defaultOpen={false} className="flex-shrink-0 bg-slate-800 flex flex-col shadow-inner">
                             <div className="max-h-48 overflow-y-auto space-y-1 pr-1 text-xs font-mono">{log.map((l, i) => (<div key={i} className={`p-1.5 rounded border-l-2 ${l.type === 'success' ? 'bg-emerald-900/20 border-emerald-500' : l.type === 'action' ? 'bg-sky-900/20 border-sky-500' : l.type === 'danger' ? 'bg-red-900/30 border-red-500' : 'bg-slate-700/30 border-slate-500'}`}><span className="text-slate-500 mr-2">{l.simTime}</span><span className="text-slate-200">{l.msg}</span></div>))}</div>
                         </Card>
@@ -135,18 +130,7 @@
                             {activeTab === 'Handover' ? (
                                 <div className="space-y-4 p-2"><div className="bg-slate-900 p-4 rounded border border-slate-600 font-mono text-sm text-green-400 whitespace-pre-wrap">{generateSBAR()}</div><div className="flex gap-2"><Button onClick={() => speak(generateSBAR())} variant="secondary">Read Aloud</Button><Button onClick={() => navigator.clipboard.writeText(generateSBAR())} variant="outline">Copy</Button></div></div>
                             ) : activeTab === 'Voice' ? (
-                                <div className="space-y-4 p-4">
-                                    <h4 className="text-sm font-bold text-sky-400">Patient Voice Control</h4>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                        {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (
-                                            <Button key={txt} onClick={() => speak(txt)} variant="secondary" className="h-12 text-xs">{txt}</Button>
-                                        ))}
-                                    </div>
-                                    <div className="flex gap-2 pt-4 border-t border-slate-700">
-                                        <input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" />
-                                        <Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button>
-                                    </div>
-                                </div>
+                                <div className="space-y-4 p-4"><h4 className="text-sm font-bold text-sky-400">Patient Voice Control</h4><div className="grid grid-cols-2 md:grid-cols-3 gap-2">{["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(txt)} variant="secondary" className="h-12 text-xs">{txt}</Button>))}</div><div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div></div>
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                     {getInterventionsByCat(activeTab).map(key => {
@@ -174,14 +158,14 @@
     };
 
     const MonitorScreen = ({ sim }) => {
-        const { state, enableAudio } = sim;
+        const { state, enableAudio, playNibp } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const [audioEnabled, setAudioEnabled] = useState(false);
         const wakeLockRef = useRef(null);
 
         useEffect(() => { const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; requestWakeLock(); const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; document.addEventListener('visibilitychange', handleVis); return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; }, []);
-        useEffect(() => { if (nibp.lastTaken && audioEnabled) playNibpSound(); }, [nibp.lastTaken]);
+        useEffect(() => { if (nibp.lastTaken && audioEnabled) playNibp(); }, [nibp.lastTaken]);
 
         return (
             <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -205,7 +189,7 @@
     };
 
     const MonitorContainer = ({ sessionID }) => { const sim = useSimulation(null, true, sessionID); if (!sessionID) return null; if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (<div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn"><Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" /><div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div><div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div></div>); return <MonitorScreen sim={sim} />; };   
-    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart }) => { const { state, stop } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />; return null; };
+    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={onRestart} />; return null; };
 
     window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
 })();
