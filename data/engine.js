@@ -59,14 +59,15 @@
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
             case 'UPDATE_TREND_PROGRESS':
+                // FIXED: Calculates progress properly (0 to 1) and resets elapsed on finish
                 const progress = Math.min(1, (state.trends.elapsed + 3) / state.trends.duration);
-                if (progress >= 1) return { ...state, trends: { ...state.trends, active: false } };
+                if (progress >= 1) return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
                 const interpolated = { ...state.vitals };
                 Object.keys(state.trends.targets).forEach(key => { const startVal = state.trends.startVitals[key] || 0; const endVal = state.trends.targets[key]; interpolated[key] = startVal + (endVal - startVal) * progress; });
                 return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, audioOutput: action.payload.audioOutput || 'monitor' };
+            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, audioOutput: action.payload.audioOutput || 'monitor', trends: action.payload.trends || state.trends };
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -106,7 +107,7 @@
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
-                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, audioOutput: state.audioOutput };
+                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, audioOutput: state.audioOutput, trends: state.trends };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
             }
         }, [state, isMonitorMode, sessionID]);
@@ -203,6 +204,7 @@
 
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
+        // FIXED: Now accepts type correctly for logs and rhythm update
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } });
