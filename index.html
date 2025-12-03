@@ -192,7 +192,15 @@
         );
     };
 
-    ReactDOM.render(<App />, document.getElementById('root'));
+    // Wait for the components to be attached to window
+const startApp = () => {
+    if (window.MonitorContainer && window.SetupScreen) {
+        ReactDOM.render(<App />, document.getElementById('root'));
+    } else {
+        setTimeout(startApp, 50); // Retry in 50ms
+    }
+};
+startApp();
     </script>
 </body>
 </html>
