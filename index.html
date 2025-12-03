@@ -104,8 +104,13 @@
         console.error("Firebase Init Error:", e);
     }
     
-    // --- SETUP HELPERS ---
-    const { generateHistory, getBaseVitals, estimateWeight, calculateWetflag, generateVbg, calculateDynamicVbg, getRandomInt, getRandomFloat, getRandomItem, clamp } = window;
+// --- SETUP HELPERS ---
+    const { 
+        generateHistory, getBaseVitals, estimateWeight, calculateWetflag, generateVbg, calculateDynamicVbg, getRandomInt, getRandomFloat, getRandomItem, clamp,
+        useSimulation,
+        JoinScreen, MonitorScreen, SetupScreen, BriefingScreen, LiveSimContainer,
+        Lucide 
+    } = window;
 
     const INTERVENTIONS = window.INTERVENTIONS;
     const RAW_SCENARIOS = window.RAW_SCENARIOS;
