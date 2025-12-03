@@ -6,26 +6,40 @@
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
         useEffect(() => {
-            if (!ref.current || !window.lucide) return;
-            ref.current.innerHTML = '';
-            const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
-            const iconName = kebabToPascal(icon);
-            
-            if (window.lucide.icons && window.lucide.icons[iconName]) {
-                 const iconNode = window.lucide.icons[iconName];
-                 if (window.lucide.createElement) {
-                     const svg = window.lucide.createElement(iconNode);
-                     if (className) svg.setAttribute('class', className);
-                     ref.current.appendChild(svg);
-                     return;
+            const checkAndRender = () => {
+                 if (!ref.current || !window.lucide) return false;
+                 
+                 ref.current.innerHTML = '';
+                 const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+                 const iconName = kebabToPascal(icon);
+                 
+                 if (window.lucide.icons && window.lucide.icons[iconName]) {
+                      const iconNode = window.lucide.icons[iconName];
+                      if (window.lucide.createElement) {
+                          const svg = window.lucide.createElement(iconNode);
+                          if (className) svg.setAttribute('class', className);
+                          ref.current.appendChild(svg);
+                          return true;
+                      }
                  }
-            }
-            if (window.lucide.createIcons) {
-                const i = document.createElement('i');
-                i.setAttribute('data-lucide', icon);
-                if (className) i.setAttribute('class', className);
-                ref.current.appendChild(i);
-                window.lucide.createIcons({ root: ref.current });
+                 if (window.lucide.createIcons) {
+                     const i = document.createElement('i');
+                     i.setAttribute('data-lucide', icon);
+                     if (className) i.setAttribute('class', className);
+                     ref.current.appendChild(i);
+                     window.lucide.createIcons({ root: ref.current });
+                     return true;
+                 }
+                 return false;
+            };
+
+            // Initial check
+            if (!checkAndRender()) {
+                // If failed, retry briefly (fixes race condition on slower loads)
+                const interval = setInterval(() => {
+                    if (checkAndRender()) clearInterval(interval);
+                }, 100);
+                setTimeout(() => clearInterval(interval), 3000); // Stop checking after 3s
             }
         }, [icon, className]);
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
@@ -106,7 +120,7 @@
         // Pupil Formatting Logic
         const displayValue = () => {
             if (label === "Pupils") {
-                return (typeof value === 'number') ? `${value}mm` : value;
+                return (typeof value === 'number') ? `${Math.round(value)}mm` : value;
             }
             if (value === '?') return isText ? '-?-' : '--';
             return isText ? value : Math.round(value);
