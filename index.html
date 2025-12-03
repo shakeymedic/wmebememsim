@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WMEBEM Sim Generator v15</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
@@ -11,7 +12,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.1.0/chartjs-plugin-annotation.min.js"></script>
+    
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
@@ -24,35 +25,44 @@
     <script type="text/babel" src="data/screens.js"></script>
     
     <style>
+        /* Animation & UI Utilities */
         .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
+        /* Critical Event Flash */
         .flash-red { animation: flashRed 1.5s ease-in-out infinite; }
-        @keyframes flashRed { 0%, 100% { background-color: rgba(30, 41, 59, 1); } 50% { background-color: rgba(127, 29, 29, 0.5); } }
+        @keyframes flashRed { 0%, 100% { background-color: rgba(15, 23, 42, 1); } 50% { background-color: rgba(127, 29, 29, 0.5); } }
+        
         .flash-green { animation: flashGreen 1s ease-in-out; }
         @keyframes flashGreen { 0%, 100% { border-color: #334155; } 50% { border-color: #10b981; } }
         
+        /* Layout Fixes */
         html, body { height: 100%; overflow: hidden; }
         body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; }
         #root { height: 100%; display: flex; flex-direction: column; }
 
-        @keyframes loadProgress { from { width: 0%; } to { width: 100%; } }
-        .loading-bar { position: absolute; bottom: 0; left: 0; height: 100%; background-color: rgba(16, 185, 129, 0.2); animation: loadProgress 2s linear forwards; z-index: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Input Reset */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
     <div id="root"></div>
 
     <script type="text/babel">
+    // --- FIREBASE INIT ---
     const firebaseConfig = {
         apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
         authDomain: "wmebem-sim.firebaseapp.com",
@@ -72,15 +82,18 @@
         }
     } catch (e) { console.error("Firebase Init Error:", e); }
     
+    // --- IMPORT FROM MODULES ---
     const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer, Lucide } = window;
-    const ALL_SCENARIOS = window.ALL_SCENARIOS;
+    const { ALL_SCENARIOS } = window;
 
     const { useState, useEffect } = React;
     
+    // --- MAIN APP ENTRY ---
     const App = () => {
         const [view, setView] = useState('setup'); 
         const [sessionID, setSessionID] = useState(null);
 
+        // Session & Routing Logic
         useEffect(() => {
             const params = new URLSearchParams(window.location.search);
             if (params.get('mode') === 'monitor') {
@@ -88,6 +101,7 @@
                 if (sid) setSessionID(sid);
                 setView('monitor');
             } else {
+                // Restore or Create Session ID
                 const savedID = localStorage.getItem('wmebem_session_id');
                 if (savedID) { setSessionID(savedID); } 
                 else {
@@ -98,13 +112,16 @@
             }
         }, []); 
 
+        // Initialize Simulation Engine
         const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
 
+        // Handlers
         const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
         const handleGenerate = (s) => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: s }); setView('briefing'); };
         const handleResume = (savedState) => { sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); setView('live'); };
         const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); localStorage.removeItem('wmebem_sim_state'); };
 
+        // Crash Recovery Check
         const [resumeAvailable, setResumeAvailable] = useState(null);
         useEffect(() => {
             if (view === 'setup') {
@@ -113,18 +130,21 @@
             }
         }, [view]);
 
+        // --- RENDER VIEWS ---
         if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
         if (view === 'monitor') return <MonitorContainer sessionID={sessionID} />;
 
         return (
             <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
+                {/* GLOBAL HEADER */}
                 <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
                     <div className="flex items-center gap-4">
                         <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-10 md:h-16 object-contain" />
                         <div><h1 className="text-xl md:text-3xl font-bold text-sky-400 tracking-tight">EM Sim Generator v15</h1></div>
                     </div>
+                    
                     <div className="flex flex-col items-end">
-                        <div className="flex items-center gap-2 bg-sky-900/20 border border-sky-500/30 px-3 py-1 rounded cursor-pointer" onClick={() => {navigator.clipboard.writeText(sessionID); alert("Session ID Copied")}}>
+                        <div className="flex items-center gap-2 bg-sky-900/20 border border-sky-500/30 px-3 py-1 rounded cursor-pointer hover:bg-sky-900/40 transition-colors" onClick={() => {navigator.clipboard.writeText(sessionID); alert("Session ID Copied")}}>
                             <span className="text-[10px] text-sky-500 uppercase tracking-widest">Session</span>
                             <span className="font-mono text-xl font-bold text-white tracking-widest">{sessionID || "..."}</span>
                         </div>
@@ -132,26 +152,27 @@
                 </header>
 
                 <main className="flex-grow overflow-hidden relative">
-                    {(view === 'setup' || view === 'setup_regen') && (
+                    {/* 1. SETUP SCREEN */}
+                    {view === 'setup' && (
                         <SetupScreen 
                             onGenerate={handleGenerate} 
-                            initialParams={view === 'setup_regen' ? { autoGenerate: true } : null}
-                            savedState={view === 'setup' ? resumeAvailable : null} 
+                            savedState={resumeAvailable} 
                             onResume={() => handleResume(resumeAvailable)} 
                             sessionID={sessionID}
                             onJoinClick={() => setView('join')}
                         />
                     )}
 
+                    {/* 2. BRIEFING SCREEN */}
                     {view === 'briefing' && sim.state.scenario && (
                         <BriefingScreen 
                             scenario={sim.state.scenario} 
                             onStart={() => { sim.start(); setView('live'); }} 
                             onBack={() => setView('setup')} 
-                            onNewScenario={() => setView('setup_regen')} 
                         />
                     )}
 
+                    {/* 3. LIVE SIM & DEBRIEF */}
                     {(view === 'live' || view === 'debrief') && sim.state.scenario && (
                          <LiveSimContainer 
                             sim={sim} 
