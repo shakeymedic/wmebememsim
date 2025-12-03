@@ -1,196 +1,466 @@
-// data/engine.js
+// data/components.js
 (() => {
-    const { useState, useEffect, useRef, useReducer } = React;
-    const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
+    const { useState, useEffect, useRef } = React;
 
-    const initialState = {
-        scenario: null, time: 0, cycleTimer: 0, isRunning: false,
-        vitals: {}, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
-        investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
-        isMuted: false, etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
-        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 },
-        trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
-        speech: { text: null, timestamp: 0, source: null },
-        audioOutput: 'monitor' // 'monitor', 'controller', 'both'
+    // SAFE LUCIDE COMPONENT - Fixed to prevent React reconciliation crashes
+    const Lucide = React.memo(({ icon, className = "" }) => {
+        const ref = useRef(null);
+
+        useEffect(() => {
+            if (!ref.current || !window.lucide) return;
+            
+            // Convert kebab-case (arrow-left) to PascalCase (ArrowLeft) for lookup if needed,
+            // but lucide.icons usually stores them as PascalCase.
+            // Some versions of Lucide global object have createIcons that scans DOM,
+            // others provide createElement.
+            
+            // Clear container safely
+            ref.current.innerHTML = '';
+
+            const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+            const iconName = kebabToPascal(icon);
+            
+            if (window.lucide.icons && window.lucide.icons[iconName]) {
+                 // Modern UMD approach if available
+                 const iconNode = window.lucide.icons[iconName];
+                 if (window.lucide.createElement) {
+                     const svg = window.lucide.createElement(iconNode);
+                     if (className) svg.setAttribute('class', className);
+                     ref.current.appendChild(svg);
+                     return;
+                 }
+            }
+
+            // Fallback for older UMD or if direct lookup fails
+            if (window.lucide.createIcons) {
+                const i = document.createElement('i');
+                i.setAttribute('data-lucide', icon);
+                if (className) i.setAttribute('class', className);
+                ref.current.appendChild(i);
+                window.lucide.createIcons({ root: ref.current });
+            }
+        }, [icon, className]);
+
+        return <span ref={ref} className="inline-flex items-center justify-center"></span>;
+    });
+
+    const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
+        let variants = {
+            primary: "bg-sky-600 hover:bg-sky-500 text-white",
+            secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200",
+            danger: "bg-red-600 hover:bg-red-500 text-white",
+            success: "bg-emerald-600 hover:bg-emerald-500 text-white",
+            warning: "bg-amber-500 hover:bg-amber-600 text-white",
+            outline: "border border-slate-600 text-slate-300 hover:bg-slate-800"
+        };
+        let base = "px-4 py-3 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm relative overflow-hidden touch-manipulation z-0";
+        if (className.includes("h-16")) { base += " text-xl px-8"; } 
+        else if (className.includes("h-14")) { base += " text-lg px-4"; } 
+        else { base += " text-xs"; }
+
+        return (
+            <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
+                {progress > 0 && (
+                    <div className="absolute top-0 left-0 bottom-0 bg-emerald-500/50 z-[-1] transition-all duration-1000 ease-linear" style={{ width: `${progress}%` }}></div>
+                )}
+                <span className="relative z-10 flex items-center gap-2 whitespace-nowrap w-full justify-center">{children}</span>
+            </button>
+        );
     };
 
-    const simReducer = (state, action) => {
-        switch (action.type) {
-            case 'START_SIM': return { ...state, isRunning: true, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
-            case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
-            case 'STOP_SIM': return { ...state, isRunning: false };
-            case 'CLEAR_SESSION': return { ...initialState };
-            case 'LOAD_SCENARIO':
-                const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 }, processedEvents: new Set(), activeInterventions: new Set() };
-            case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
-            case 'TICK_TIME':
-                const newDurations = { ...state.activeDurations }; let durChanged = false;
-                Object.keys(newDurations).forEach(key => { const elapsed = state.time + 1 - newDurations[key].startTime; if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; } });
-                let newNibp = { ...state.nibp }; if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp };
-            case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
-            case 'UPDATE_VITALS': 
-                if (!state.isRunning) return state;
-                const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
-                return { ...state, vitals: action.payload, history: newHist };
-            case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
-            case 'TRIGGER_IMPROVE':
-                let impScen = { ...state.scenario };
-                if (state.scenario.evolution && state.scenario.evolution.improved) { impScen = { ...impScen, ...state.scenario.evolution.improved }; } else { const currentVitals = state.vitals; impScen.vitals = { ...currentVitals, hr: Math.max(60, currentVitals.hr - 10), bpSys: Math.min(120, currentVitals.bpSys + 10), spO2: Math.min(99, currentVitals.spO2 + 5) }; }
-                return { ...state, scenario: impScen, deterioration: { ...state.scenario.deterioration, active: false }, flash: 'green' };
-            case 'TRIGGER_DETERIORATE':
-                 let detScen = { ...state.scenario };
-                 if (state.scenario.evolution && state.scenario.evolution.deteriorated) { detScen = { ...detScen, ...state.scenario.evolution.deteriorated }; } else { const cur = state.vitals; detScen.vitals = { ...cur, hr: Math.min(160, cur.hr + 15), bpSys: Math.max(60, cur.bpSys - 15), spO2: Math.max(85, cur.spO2 - 5) }; }
-                 return { ...state, scenario: detScen, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 }, flash: 'red' };
-            case 'TRIGGER_NIBP_MEASURE': return { ...state, nibp: { ...state.nibp, sys: state.vitals.bpSys, dia: state.vitals.bpDia, lastTaken: Date.now(), timer: state.nibp.interval } };
-            case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
-            case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
-            case 'UPDATE_TREND_PROGRESS':
-                const progress = Math.min(1, (state.trends.elapsed + 3) / state.trends.duration);
-                if (progress >= 1) return { ...state, trends: { ...state.trends, active: false } };
-                const interpolated = { ...state.vitals };
-                Object.keys(state.trends.targets).forEach(key => { const startVal = state.trends.startVitals[key] || 0; const endVal = state.trends.targets[key]; interpolated[key] = startVal + (endVal - startVal) * progress; });
-                return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
-            case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
-            case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, audioOutput: action.payload.audioOutput || 'monitor' };
-            case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
-            case 'SET_FLASH': return { ...state, flash: action.payload };
-            case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
-            case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
-            case 'SET_PARALYSIS': return { ...state, isParalysed: action.payload };
-            case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
-            case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
-            case 'SET_MUTED': return { ...state, isMuted: action.payload };
-            case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
-            case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
-            case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
-            case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
-            case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
-            case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
-            case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
-            default: return state;
+    const Card = ({ title, icon, children, className = "", collapsible = false, defaultOpen = true }) => {
+        const [isOpen, setIsOpen] = useState(defaultOpen);
+        return (
+            <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg flex flex-col ${className}`}>
+                {title && (
+                    <div 
+                        className={`bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-700/50 transition-colors' : ''}`}
+                        onClick={() => collapsible && setIsOpen(!isOpen)}
+                    >
+                        <div className="flex items-center gap-2">
+                            {icon && <Lucide icon={icon} className="w-5 h-5 text-sky-400" />}
+                            <h3 className="font-bold text-slate-200">{title}</h3>
+                        </div>
+                        {collapsible && (
+                            <Lucide icon="chevron-down" className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                        )}
+                    </div>
+                )}
+                {(!collapsible || isOpen) && (
+                    <div className="p-4 animate-fadeIn flex-grow overflow-auto min-h-0">{children}</div>
+                )}
+            </div>
+        );
+    };
+    
+    // Updated VitalDisplay to handle BP explicitly and interactions
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null }) => {
+        const [isEditing, setIsEditing] = useState(false);
+        const [editVal, setEditVal] = useState(value);
+        useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
+        const handleBlur = () => { setIsEditing(false); if (editVal !== value && onUpdate) onUpdate(isText ? editVal : parseFloat(editVal)); };
+
+        const isBP = label.includes("BP") || label.includes("NIBP") || label.includes("ABP");
+        const getColors = (lbl) => {
+            if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
+            if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
+            if (lbl.includes("BP") || lbl.includes("NIBP") || lbl.includes("ABP")) return "text-red-500";
+            if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
+            if (lbl.includes("CO2")) return "text-yellow-500";
+            return "text-slate-200";
+        };
+        const colorClass = getColors(label);
+
+        // Click Handler: If 'onClick' prop exists (Control Modal), use it. Otherwise toggle inline edit.
+        const handleInteraction = () => {
+            if (onClick) { onClick(); } 
+            else { setEditVal(value); setIsEditing(true); }
+        };
+        
+        // --- MONITOR MODE (LARGE) ---
+        if (isMonitor) {
+            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
+            
+            return (
+                <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
+                    <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
+                    <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{value === '?' ? '-?-' : (isText ? value : Math.round(value))}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}</div></div>
+                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && <span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span>}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
+                </div>
+            );
         }
+
+        // --- CONTROLLER MODE (COMPACT) ---
+        if (!visible) {
+             return (
+                <div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40">
+                    <span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span>
+                    <span className="text-xl font-mono text-slate-700">--</span>
+                </div>
+             );
+        }
+
+        return (
+            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{label}</span>
+                {isEditing ? (
+                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center" autoFocus />
+                ) : (
+                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5" onClick={handleInteraction}>
+                        <span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>
+                            {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
+                            {isBP && <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
+                        </span>
+                        {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
+                    </div>
+                )}
+                <span className="text-[8px] md:text-[9px] text-slate-600 leading-none">{unit}</span>
+            </div>
+        );
     };
 
-    const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
-        const [state, dispatch] = useReducer(simReducer, initialState);
-        const timerRef = useRef(null);
-        const tickRef = useRef(null);
-        const audioCtxRef = useRef(null);
-        const stateRef = useRef(state);
         
-        useEffect(() => { stateRef.current = state; }, [state]);
+    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
+        const canvasRef = useRef(null);
+        const requestRef = useRef(null);
+        
+        const drawState = useRef({
+            x: 0,
+            lastY: 50,
+            beatProgress: 0,
+            breathProgress: 0,
+            lastTime: 0,
+            lastYCO2: 0,
+            lastYPleth: 0,
+            lastYArt: 0
+        });
+
+        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
+
         useEffect(() => {
-            if (!db || !sessionID) return; 
-            const sessionRef = db.ref(`sessions/${sessionID}`);
-            if (isMonitorMode) {
-                const handleUpdate = (snapshot) => { const data = snapshot.val(); if (data) { try { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); } catch (err) { console.error("Sync Error", err); } } };
-                sessionRef.on('value', handleUpdate);
-                return () => sessionRef.off('value', handleUpdate);
+            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel };
+        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
+
+        // --- WAVEFORM GENERATORS ---
+        const getWaveform = (type, t, cpr, baseline) => {
+            const noise = (Math.random() - 0.5) * 1.5;
+            
+            if (cpr) {
+                // Large CPR Artifact
+                const compression = Math.sin(t * 12) * 45; 
+                return baseline + compression + (Math.random() * 10 - 5);
+            }
+
+            if (type === 'Asystole') return baseline + noise;
+            
+            // VF / VT
+            if (type === 'VF' || type === 'Coarse VF') return baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
+            if (type === 'Fine VF') return baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
+            if (type === 'VT') {
+                let y = baseline;
+                if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 50; 
+                else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 50; 
+                return y + noise;
+            }
+
+            // Complex Rhythms
+            let y = baseline;
+            
+            // P-Wave (Skip for AF, SVT, etc)
+            const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type);
+            if (hasP) {
+                if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
+            } else if (type === 'AF') {
+                // Fibrillatory baseline for AF (f-waves)
+                y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
+            }
+
+            // QRS Complex
+            if (t > 0.12 && t < 0.14) y += 3; // Q
+            else if (t >= 0.14 && t < 0.18) y -= 55; // R (Up is negative)
+            else if (t >= 0.18 && t < 0.20) y += 12; // S
+
+            // ST Segment / T Wave
+            if (type === 'STEMI') {
+                // Elevated ST
+                if (t >= 0.20 && t < 0.4) {
+                    y -= 15; // Elevation
+                    y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; // T wave merged
+                }
             } else {
-                if (!state.scenario) return;
-                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, audioOutput: state.audioOutput };
-                sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
+                // Normal ST/T
+                if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
             }
-        }, [state, isMonitorMode, sessionID]);
 
-        useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
-        useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
-        
-        // AUDIO ENGINE
+            return y + noise;
+        };
+
+        const getPlethWave = (t, spO2) => {
+            if (!spO2 || spO2 < 10) return 0;
+            let y = 0;
+            if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI/2); } 
+            else { y = Math.cos(((t - 0.3) / 0.7) * Math.PI/2); }
+            return y * (spO2/100); 
+        };
+
+        const getArtWave = (t) => {
+             // Realistic arterial pressure waveform
+             let y = 0;
+             if (t < 0.15) {
+                 y = Math.sin((t/0.15) * Math.PI/2); // Steep rise
+             } else if (t < 0.4) {
+                 y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; // Fall to notch
+             } else if (t < 0.5) {
+                 y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; // Dicrotic notch
+             } else {
+                 y = 0.2 * (1 - (t-0.5)/0.5); // Diastolic runoff
+             }
+             return y;
+        };
+
+        const getEtco2Wave = (t, pathology, rr) => {
+            if (rr <= 0) return 0; 
+            if (t < 0.1 || t > 0.6) return 0; 
+            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); // Rise
+            if (t >= 0.15 && t < 0.5) {
+                if (pathology === 'respiratory') return 0.5 + ((t - 0.15)/0.35)*0.5; // Shark fin
+                return 1.0; 
+            }
+            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); // Fall
+            return 0;
+        };
+
         useEffect(() => {
-            let timerId;
-            const ctx = audioCtxRef.current;
-            const scheduleBeep = () => {
-                const current = stateRef.current;
-                if (!current.isRunning && !isMonitorMode) return; 
-                if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') return;
-                
-                // IMPORTANT: Monitor sound only if 'Obs' attached
-                if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
-
-                if (!current.isMuted && ctx) {
-                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                    osc.type = 'sine'; const freq = current.vitals.spO2 >= 95 ? 880 : current.vitals.spO2 >= 85 ? 600 : 400;
-                    osc.frequency.value = freq; osc.connect(gain); gain.connect(ctx.destination);
-                    const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15); 
-                    osc.start(now); osc.stop(now + 0.2);
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d');
+            
+            const setSize = () => {
+                const parent = canvas.parentElement;
+                if(parent) {
+                    canvas.width = parent.clientWidth;
+                    canvas.height = parent.clientHeight;
+                    // Calc Y positions dynamically based on height
+                    // ECG at 30% height, CO2 at 60%, Art at 80%, Pleth at 95%
+                    drawState.current.lastY = canvas.height * 0.30;
+                    drawState.current.lastYCO2 = canvas.height * 0.60;
+                    drawState.current.lastYArt = canvas.height * 0.80;
+                    drawState.current.lastYPleth = canvas.height - 10;
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(0,0, canvas.width, canvas.height);
                 }
-                const delay = 60000 / (Math.max(20, current.vitals.hr) || 60); timerId = setTimeout(scheduleBeep, delay);
             };
-            if (state.isRunning || (isMonitorMode && state.vitals.hr > 0)) { if (ctx && ctx.state === 'suspended') ctx.resume(); scheduleBeep(); }
-            return () => clearTimeout(timerId);
-        }, [state.isRunning, isMonitorMode]); 
+            setSize();
+            window.addEventListener('resize', setSize);
 
-        useEffect(() => { if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning) { dispatch({ type: 'TRIGGER_NIBP_MEASURE' }); } }, [state.nibp.timer, state.isRunning]);
+            const animate = (timestamp) => {
+                const state = drawState.current;
+                const props = propsRef.current;
+                
+                if (!state.lastTime) state.lastTime = timestamp;
+                
+                // --- GLITCH FIX ---
+                let dt = (timestamp - state.lastTime) / 1000;
+                if (dt > 0.05) dt = 0.05; 
+                state.lastTime = timestamp;
 
-        // SPEECH ENGINE (Runs independent of Obs)
-        const lastSpeechRef = useRef(0);
-        useEffect(() => {
-            if (state.speech && state.speech.timestamp > lastSpeechRef.current) {
-                lastSpeechRef.current = state.speech.timestamp;
-                const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both'));
-                if (shouldPlay && 'speechSynthesis' in window) {
-                    const utterance = new SpeechSynthesisUtterance(state.speech.text);
-                    window.speechSynthesis.speak(utterance);
+                if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
+
+                // Eraser Bar
+                const ecgSpeed = 150; 
+                const dx = ecgSpeed * dt;
+                const prevX = state.x;
+                state.x += dx;
+                const eraserWidth = 30;
+                
+                ctx.fillStyle = '#000000';
+                if (state.x + eraserWidth < canvas.width) { ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); } 
+                else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, eraserWidth, canvas.height); }
+
+                const baselineECG = canvas.height * 0.30;
+
+                if (!props.showTraces) {
+                    // Draw faint flatline
+                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke();
+                    requestRef.current = requestAnimationFrame(animate);
+                    return;
                 }
-            }
-        }, [state.speech, isMonitorMode, state.audioOutput]);
 
-        const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
-        const applyIntervention = (key) => {
-            const action = INTERVENTIONS[key]; if (!action) return;
-            const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
-            if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
-            if (action.type === 'continuous') { if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } else { newActive.add(key); addLogEntry(action.log, 'action'); } } else { newCounts[key] = count; addLogEntry(action.log, 'action'); }
-            dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
-            if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
-            if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
-            if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
-            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
-            const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
-            if (!isArrest) { if (action.effect.HR) { if (action.effect.HR === 'reset') newVitals.hr = 80; else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); } if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); }
-            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
-            const updatedScenario = { ...state.scenario }; let updateNeeded = false;
-            if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray?.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
-            if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
-            dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
-        };
+                // RHYTHM CALCS
+                let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
+                let currentRate = props.isCPR ? 110 : (props.hr || 60);
+                
+                let beatDuration = 60 / Math.max(10, currentRate);
+                if (['VF', 'Coarse VF', 'Fine VF'].includes(currentRhythm)) beatDuration = 0.2; 
 
-        const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
-        const triggerArrest = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'VF' }); addLogEntry('CARDIAC ARREST - VF', 'manual'); dispatch({ type: 'SET_FLASH', payload: 'red' }); };
-        const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
-        const revealInvestigation = (type) => { if (state.investigationsRevealed[type] || state.loadingInvestigations[type]) return; dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); };
-        const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
-        const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); }; 
-        const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
+                state.beatProgress += dt / beatDuration;
+                if (state.beatProgress >= 1) state.beatProgress = 0;
 
-        const tick = () => {
-            const current = stateRef.current; let next = { ...current.vitals };
-            if (current.trends.active) { dispatch({ type: 'UPDATE_TREND_PROGRESS' }); return; }
-            if (next.hr === 0) { next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); if (current.rhythm !== 'VF' && current.rhythm !== 'Asystole' && current.rhythm !== 'PEA') { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } } 
-            else { 
-                 if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; 
-                 if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; }
-                 if (next.rr < 8 && !current.activeInterventions.has('Bagging') && !current.activeInterventions.has('NIV')) { next.spO2 = Math.max(0, next.spO2 - 2); }
-            }
-            if (current.scenario.vbg) { const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } }
-            if (next.hr > 0) { next.hr += getRandomInt(-1, 1); next.bpSys += getRandomInt(-1, 1); let targetDia = Math.floor(next.bpSys * 0.65); next.bpDia = targetDia + getRandomInt(-2, 2); next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; }
-            next.hr = clamp(next.hr, 0, 250); next.bpSys = clamp(next.bpSys, 0, 300); next.spO2 = clamp(next.spO2, 0, 100);
-            dispatch({ type: 'UPDATE_VITALS', payload: next });
-        };
-        const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
-        const playNibp = () => { if (audioCtxRef.current) { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); osc.frequency.setValueAtTime(150, ctx.currentTime); osc.frequency.linearRampToValueAtTime(100, ctx.currentTime + 1); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); osc.start(); osc.stop(ctx.currentTime + 1); } };
+                let breathDuration = 60 / (Math.max(1, props.rr) || 12);
+                state.breathProgress += dt / breathDuration;
+                if (state.breathProgress >= 1) state.breathProgress = 0;
 
-        const start = () => { if (state.isRunning || isMonitorMode) return; dispatch({ type: 'START_SIM' }); timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); tickRef.current = setInterval(tick, 3000); enableAudio(); };
-        const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
-        const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); };
-        const reset = () => { stop(); dispatch({ type: 'CLEAR_SESSION' }); localStorage.removeItem('wmebem_sim_state'); };
+                if (state.x > canvas.width) {
+                    state.x = 0;
+                    state.lastY = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
+                    state.lastYCO2 = canvas.height * 0.60;
+                    state.lastYArt = canvas.height * 0.80;
+                    state.lastYPleth = canvas.height - 10;
+                }
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, playNibp };
+                // 1. ECG (Green)
+                const yECG = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
+                if (state.x > prevX) {
+                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath();
+                    ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke();
+                }
+                state.lastY = yECG;
+
+                // 2. ETCO2 (Yellow)
+                if (props.showEtco2) {
+                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr);
+                    const co2MaxHeight = canvas.height * 0.12; const co2BaseY = (canvas.height * 0.60); const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
+                    if (state.x > prevX) {
+                         ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5; ctx.beginPath();
+                         ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
+                    }
+                    state.lastYCO2 = yCO2;
+                }
+
+                // 3. ART LINE (Red)
+                if (props.showArt && !props.isCPR && currentRate > 0) {
+                     const normArt = getArtWave(state.beatProgress);
+                     const artHeight = canvas.height * 0.12; const artBaseY = (canvas.height * 0.80); const yArt = artBaseY - (normArt * artHeight);
+                     if (state.x > prevX) {
+                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5; ctx.beginPath();
+                        ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
+                     }
+                     state.lastYArt = yArt;
+                }
+
+                // 4. PLETH (Blue)
+                if (currentRate > 0 && !props.isCPR && props.spO2 > 10) {
+                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
+                    const plethHeight = canvas.height * 0.10; const plethBaseY = canvas.height - 10; const yPleth = plethBaseY - (normPleth * plethHeight);
+                    if (state.x > prevX) {
+                        ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2.5; ctx.beginPath();
+                        ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
+                    }
+                    state.lastYPleth = yPleth;
+                }
+                
+                requestRef.current = requestAnimationFrame(animate);
+            };
+
+            requestRef.current = requestAnimationFrame(animate);
+            return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
+        }, []);
+
+        return (
+            <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className}`}>
+                <canvas ref={canvasRef} className="block w-full h-full"></canvas>
+                
+                {/* NEAT LABELS: Positioned in "Lanes" on the right side with background pills */}
+                
+                {/* Lane 1: ECG (Top) */}
+                {showTraces && (
+                    <div className="absolute top-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-green-500">
+                        <span className="text-lg font-mono text-green-500 font-bold shadow-black drop-shadow-md">
+                            {propsRef.current.rhythmLabel || rhythmType}
+                        </span>
+                    </div>
+                )}
+                
+                {/* Lane 2: ETCO2 (Middle) */}
+                {showEtco2 && showTraces && (
+                    <div className="absolute top-[45%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-yellow-500">
+                        <span className="text-sm font-mono text-yellow-500 font-bold shadow-black drop-shadow-md">ETCO2</span>
+                    </div>
+                )}
+                
+                {/* Lane 3: ABP (Lower Middle) */}
+                {showArt && showTraces && (
+                    <div className="absolute top-[65%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-red-500">
+                        <span className="text-sm font-mono text-red-500 font-bold shadow-black drop-shadow-md">ABP</span>
+                    </div>
+                )}
+                
+                {/* Lane 4: PLETH (Bottom) */}
+                {showTraces && (
+                    <div className="absolute bottom-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-sky-500">
+                        <span className="text-sm font-mono text-sky-500 font-bold shadow-black drop-shadow-md">PLETH</span>
+                    </div>
+                )}
+            </div>
+        );
     };
-
-    window.useSimulation = useSimulation;
+    const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
+        const hasData = (type === 'ECG' && scenario.ecg) || (type === 'X-ray' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct) || (type === 'Urine' && scenario.urine);
+        return (
+            <div className="flex flex-col gap-2">
+                <Button variant={isRevealed ? "secondary" : "outline"} onClick={() => revealInvestigation(type)} disabled={!isRunning || isRevealed || isLoading} className="h-10 text-xs relative overflow-hidden">
+                    {isLoading && <div className="loading-bar"></div>}
+                    <div className="relative z-10 flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3"/> {isLoading ? `Requesting...` : (isRevealed ? `View ${type}` : `Request ${type}`)}</div>
+                </Button>
+                {isRevealed && (
+                    <div className="p-3 bg-slate-700/30 rounded text-xs border-l-2 border-sky-500 animate-fadeIn">
+                        {hasData ? (
+                            type === 'VBG' ? <div className="font-mono space-y-1"><div>pH: {scenario.vbg.pH.toFixed(2)}</div><div>pCO2: {scenario.vbg.pCO2} kPa</div><div>pO2: 12.0 kPa</div><div>HCO3: {scenario.vbg.HCO3}</div><div>BE: {scenario.vbg.BE}</div><div>Lac: {scenario.vbg.Lac}</div><div>K+: {scenario.vbg.K}</div><div className="font-bold text-sky-400">Glu: {scenario.vbg.Glu} mmol/L</div></div> : 
+                            type === 'ECG' ? <div><p className="mb-1 font-bold">{scenario.ecg.findings}</p><p className="italic text-slate-400">See monitor for rhythm.</p></div> : 
+                            type === 'X-ray' ? <div className="text-slate-200">{scenario.chestXray.findings}</div> : 
+                            type === 'POCUS' ? <div className="text-slate-200">{scenario.ultrasound.findings}</div> : 
+                            type === 'Urine' ? <div className="text-slate-200 font-mono">{scenario.urine.findings}</div> :
+                            type === 'CT' ? <div className="text-slate-200">{scenario.ct.findings}</div> : 'Normal / Not Indicated'
+                        ) : 'Normal / Not Indicated'}
+                    </div>
+                )}
+            </div>
+        );
+    };
+// Add this to the very end of data/components.js
+window.Lucide = Lucide;
+window.Button = Button;
+window.Card = Card;
+window.VitalDisplay = VitalDisplay;
+window.ECGMonitor = ECGMonitor;
+window.InvestigationButton = InvestigationButton;
 })();
