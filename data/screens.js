@@ -366,13 +366,11 @@
         const [searchResults, setSearchResults] = useState([]);
         const [arrestMode, setArrestMode] = useState(false);
         const [expandRhythm, setExpandRhythm] = useState(false);
-        const [expandArrest, setExpandArrest] = useState(false); // New arrest menu state
+        const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
         const [showDrugCalc, setShowDrugCalc] = useState(false);
         const [showLogModal, setShowLogModal] = useState(false);
-        const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
         
-        // Modal State for Vital Control
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
@@ -423,7 +421,7 @@
             setModalTarget(current + amt);
             if (modalVital === 'bp') {
                 let currentDia = parseFloat(modalTarget2) || 0;
-                setModalTarget2(currentDia + (amt * 0.6)); // Approx ratio adjustment
+                setModalTarget2(currentDia + (amt * 0.6)); 
             }
         };
 
@@ -431,18 +429,13 @@
             const targets = {};
             if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
             else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); }
-            
-            if (trendDuration === 0) {
-                Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k]));
-            } else {
-                startTrend(targets, trendDuration);
-            }
+            if (trendDuration === 0) { Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k])); } 
+            else { startTrend(targets, trendDuration); }
             setModalVital(null);
         };
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                
                 {/* --- HEADER --- */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2">
@@ -470,12 +463,7 @@
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
                             <div className="flex gap-2 mt-2">
                                 <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
-                                <Button variant="secondary" onClick={() => {
-                                    const remaining = Math.max(0, 120 - cycleTimer);
-                                    if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining});
-                                    sim.dispatch({type: 'RESET_CYCLE_TIMER'});
-                                    addLogEntry("Cycle Skipped / Finished", "system");
-                                }} className="h-8 text-xs">Finish Cycle</Button>
+                                <Button variant="secondary" onClick={() => { const remaining = Math.max(0, 120 - cycleTimer); if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining}); sim.dispatch({type: 'RESET_CYCLE_TIMER'}); addLogEntry("Cycle Skipped / Finished", "system"); }} className="h-8 text-xs">Finish Cycle</Button>
                             </div>
                         </div>
                         <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -486,18 +474,16 @@
                             <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-12 border border-slate-600">Mechanical CPR</Button>
                             <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
                             <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
-                            <Button onClick={() => setShowDrugCalc(true)} variant="secondary" className="h-12 border border-slate-600">Drugs...</Button>
                         </div>
                         <div className="flex-1 flex flex-col gap-2"><h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4><div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div><Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button></div>
                     </div>
                 )}
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
-                    {/* --- LEFT COLUMN: MONITOR & INFO --- */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         <Card className="bg-black border-slate-800 flex-shrink-0">
-                             {/* Controller ALWAYS sees traces (visible=true), monitor logic is handled in MonitorScreen */}
-                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
+                             {/* UPDATED: Traces only show if Obs applied */}
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black">
                                  <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
                                  <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
@@ -526,7 +512,6 @@
                         <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10">
                             <h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Rhythm & Arrest</h4>
                             <div className="grid grid-cols-2 gap-1 mb-2">
-                                {/* CHANGED: Arrest Button is now a menu */}
                                 <div className="relative">
                                      <Button onClick={() => setExpandArrest(!expandArrest)} variant="danger" className="h-8 text-xs w-full justify-between">Trigger Arrest... <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
                                      {expandArrest && (
@@ -549,12 +534,9 @@
                         </div>
                     </div>
                     
-                    {/* --- RIGHT COLUMN: ACTIONS --- */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">{['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice', 'Handover'].map(cat => (<button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>))}</div>
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
-                            
-                            {/* Recommended Actions */}
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
                                     <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
@@ -608,81 +590,39 @@
                                 </div>
                             )}
                         </div>
-                        {/* CHANGED: Improve/Worsen now calculate progress based on trends state */}
                         <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2">
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                            
-                            {/* Improve Button with Progress Bar */}
-                            <Button 
-                                onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} 
-                                className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 relative overflow-hidden"
-                            >
-                                {trends.active && flash === 'green' && (
-                                    <div className="absolute inset-0 bg-emerald-500/30 z-0 transition-all duration-1000" style={{ width: `${Math.min(100, (trends.elapsed / trends.duration) * 100)}%` }}></div>
-                                )}
-                                <span className="relative z-10">Improve</span>
-                            </Button>
-
-                            {/* Worsen Button with Progress Bar */}
-                            <Button 
-                                onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} 
-                                className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100 relative overflow-hidden"
-                            >
-                                {trends.active && flash === 'red' && (
-                                    <div className="absolute inset-0 bg-red-500/30 z-0 transition-all duration-1000" style={{ width: `${Math.min(100, (trends.elapsed / trends.duration) * 100)}%` }}></div>
-                                )}
-                                <span className="relative z-10">Worsen</span>
-                            </Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 relative overflow-hidden">{trends.active && flash === 'green' && (<div className="absolute inset-0 bg-emerald-500/30 z-0 transition-all duration-1000" style={{ width: `${Math.min(100, (trends.elapsed / trends.duration) * 100)}%` }}></div>)}<span className="relative z-10">Improve</span></Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100 relative overflow-hidden">{trends.active && flash === 'red' && (<div className="absolute inset-0 bg-red-500/30 z-0 transition-all duration-1000" style={{ width: `${Math.min(100, (trends.elapsed / trends.duration) * 100)}%` }}></div>)}<span className="relative z-10">Worsen</span></Button>
                         </div>
                     </div>
                 </div>
 
-                {/* --- VITAL CONTROL MODAL --- */}
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
                             <div className="space-y-4">
-                                <div className="flex gap-2 justify-center mb-4">
-                                    <Button onClick={()=>quickAdjust(-20)} variant="secondary" className="w-12">-20</Button>
-                                    <Button onClick={()=>quickAdjust(-10)} variant="secondary" className="w-12">-10</Button>
-                                    <Button onClick={()=>quickAdjust(10)} variant="secondary" className="w-12">+10</Button>
-                                    <Button onClick={()=>quickAdjust(20)} variant="secondary" className="w-12">+20</Button>
-                                </div>
-
+                                <div className="flex gap-2 justify-center mb-4"><Button onClick={()=>quickAdjust(-20)} variant="secondary" className="w-12">-20</Button><Button onClick={()=>quickAdjust(-10)} variant="secondary" className="w-12">-10</Button><Button onClick={()=>quickAdjust(10)} variant="secondary" className="w-12">+10</Button><Button onClick={()=>quickAdjust(20)} variant="secondary" className="w-12">+20</Button></div>
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Target Value</label><input type={modalVital === 'pupils' ? "text" : "number"} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
-                                
                                 <div className="grid grid-cols-4 gap-1 mt-2">
                                     <button onClick={()=>setTrendDuration(0)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===0 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>Instant</button>
                                     <button onClick={()=>setTrendDuration(30)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===30 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>30s</button>
                                     <button onClick={()=>setTrendDuration(120)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===120 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>2m</button>
                                     <button onClick={()=>setTrendDuration(300)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===300 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>5m</button>
                                 </div>
-
                                 <Button onClick={confirmVitalUpdate} variant="success" className="w-full mt-4 h-12 text-lg font-bold">CONFIRM & SEND</Button>
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
                             </div>
                         </div>
                     </div>
                 )}
-
-                {/* --- LOG MODAL --- */}
                 {showLogModal && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 rounded-lg border border-slate-600 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl">
-                            <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-                                <h3 className="text-lg font-bold text-white">Simulation Log</h3>
-                                <Button onClick={()=>setShowLogModal(false)} variant="secondary" className="h-8 w-8 p-0"><Lucide icon="x" className="w-4 h-4" /></Button>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm">
-                                {log.map((l, i) => (
-                                    <div key={i} className="flex gap-4 border-b border-slate-700/50 pb-1">
-                                        <span className="text-sky-400 w-16 flex-shrink-0">{l.simTime}</span>
-                                        <span className={`${l.type === 'action' ? 'text-emerald-300' : l.type === 'manual' ? 'text-amber-300' : 'text-slate-300'}`}>{l.msg}</span>
-                                    </div>
-                                ))}
-                            </div>
+                            <div className="p-4 border-b border-slate-700 flex justify-between items-center"><h3 className="text-lg font-bold text-white">Simulation Log</h3><Button onClick={()=>setShowLogModal(false)} variant="secondary" className="h-8 w-8 p-0"><Lucide icon="x" className="w-4 h-4" /></Button></div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700/50 pb-1"><span className="text-sky-400 w-16 flex-shrink-0">{l.simTime}</span><span className={`${l.type === 'action' ? 'text-emerald-300' : l.type === 'manual' ? 'text-amber-300' : 'text-slate-300'}`}>{l.msg}</span></div>))}</div>
                         </div>
                     </div>
                 )}
@@ -692,27 +632,20 @@
 
     // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
-        const { state, enableAudio, playNibp } = sim;
+        const { state, enableAudio } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const [audioEnabled, setAudioEnabled] = useState(false);
         const wakeLockRef = useRef(null);
 
-        // Ensure audio enabled on first click
-        const handleEnableAudio = () => {
-            enableAudio();
-            setAudioEnabled(true);
-        };
-
+        const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
         useEffect(() => { const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; requestWakeLock(); const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; document.addEventListener('visibilitychange', handleVis); return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; }, []);
-        useEffect(() => { if (nibp.lastTaken && audioEnabled) playNibp(); }, [nibp.lastTaken]);
 
         return (
             <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
-                    {/* HIDE TRACES IF NO OBS */}
                     {hasMonitoring ? (
                         <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
                     ) : (
@@ -723,23 +656,36 @@
                 <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
                     <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     
-                    {/* CHANGED: BP DISPLAY & BIG BUTTON */}
                     {hasArtLine ? (
                         <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
                     ) : (
                         <div className="flex gap-2">
                              <div className="flex-grow">
-                                <VitalDisplay label="NIBP" value={nibp.sys || '?'} value2={nibp.dia || '?'} unit="mmHg" onUpdate={() => {}} alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} isNIBP={false} lastNIBP={nibp.lastTaken} hideTrends={true} />
+                                <VitalDisplay 
+                                    label="NIBP" 
+                                    value={nibp.inflating ? '---' : (nibp.sys || '?')} 
+                                    value2={nibp.inflating ? '---' : (nibp.dia || '?')} 
+                                    unit="mmHg" onUpdate={() => {}} 
+                                    alert={!nibp.inflating && nibp.sys && nibp.sys < 90} 
+                                    visible={hasMonitoring} 
+                                    isMonitor={true} 
+                                    isNIBP={false} 
+                                    lastNIBP={nibp.lastTaken} 
+                                    hideTrends={true} 
+                                />
                              </div>
-                             {/* SEPARATE LARGE NIBP BUTTON */}
                              {hasMonitoring && (
                                  <button 
-                                     onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} 
-                                     className={`w-24 md:w-32 rounded flex flex-col items-center justify-center border-2 ${nibp.mode === 'auto' ? 'bg-sky-900 border-sky-500 text-sky-100' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
+                                     onClick={() => sim.dispatch({type: 'START_NIBP'})} 
+                                     disabled={nibp.inflating}
+                                     className={`w-24 md:w-32 rounded flex flex-col items-center justify-center border-2 ${nibp.inflating ? 'bg-sky-900/50 border-sky-500/50 text-white' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
                                  >
-                                     <Lucide icon="activity" className="w-8 h-8 mb-1" />
-                                     <span className="text-xs font-bold uppercase">{nibp.mode === 'auto' ? 'AUTO' : 'CYCLE'}</span>
-                                     {nibp.mode === 'auto' && <span className="text-[10px] opacity-70">{(nibp.timer/60).toFixed(0)}m</span>}
+                                     {nibp.inflating ? (
+                                         <Lucide icon="loader-2" className="w-8 h-8 mb-1 animate-spin text-sky-400" />
+                                     ) : (
+                                         <Lucide icon="activity" className="w-8 h-8 mb-1" />
+                                     )}
+                                     <span className="text-xs font-bold uppercase">{nibp.inflating ? 'PUMP' : 'START'}</span>
                                  </button>
                              )}
                         </div>
@@ -747,12 +693,16 @@
 
                     <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     
-                    <div className="grid grid-rows-2 gap-2 md:gap-4"><VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />{etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}</div>
+                    <div className="grid grid-rows-2 gap-2 md:gap-4">
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        {etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}
+                    </div>
                 </div>
             </div>
         );
     };
 
+    // --- SCREEN 6: DEBRIEF ---
     const DebriefScreen = ({ sim, onRestart }) => {
         const { state } = sim; const { log, scenario, history } = state; const chartRef = useRef(null);
         if (!scenario) return <div className="p-4 text-white">Error: No scenario data for debrief.</div>;
@@ -790,7 +740,57 @@
             doc.save("sim-debrief.pdf"); 
         };
         
-        return (<div className="max-w-4xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto"><div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4"><h2 className="text-2xl font-bold text-white">Simulation Debrief</h2><div className="flex gap-2"><Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button><Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button></div></div><Card title="Physiological Trends" icon="activity"><div className="bg-slate-900 p-2 rounded h-64 md:h-96 relative"><canvas ref={chartRef}></canvas></div></Card><Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card></div>);
+        return (
+            <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
+                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
+                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
+                    <div className="flex gap-2">
+                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
+                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
+                    </div>
+                </div>
+
+                {/* DIAMOND DEBRIEF MODEL */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card title="1. Description" icon="eye" className="border-sky-500/50">
+                        <div className="p-2 space-y-2">
+                            <p className="text-xs text-slate-400">What happened? (Facts only)</p>
+                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Patient arrived with chest pain, deteriorated into VF..." />
+                        </div>
+                    </Card>
+                    <Card title="2. Analysis" icon="activity" className="border-amber-500/50">
+                         <div className="p-2 space-y-2">
+                            <p className="text-xs text-slate-400">Why did it happen? (CRM/Human Factors)</p>
+                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Communication breakdown during intubation..." />
+                        </div>
+                    </Card>
+                    <Card title="3. Application" icon="arrow-right-circle" className="border-emerald-500/50">
+                         <div className="p-2 space-y-2">
+                            <p className="text-xs text-slate-400">What will we do differently?</p>
+                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Use closed loop communication during arrests..." />
+                        </div>
+                    </Card>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card title="Physiological Trends" icon="activity">
+                        <div className="bg-slate-900 p-2 rounded h-64 md:h-80 relative">
+                            <canvas ref={chartRef}></canvas>
+                        </div>
+                    </Card>
+                    <Card title="Action Timeline" icon="clock">
+                        <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
+                            {log.map((l, i) => (
+                                <div key={i} className="flex gap-4 border-b border-slate-700 pb-1">
+                                    <span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span>
+                                    <span className="text-slate-300">{l.msg}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        );
     };
 
     const MonitorContainer = ({ sessionID }) => { const sim = useSimulation(null, true, sessionID); if (!sessionID) return null; if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (<div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn"><Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" /><div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div><div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div></div>); return <MonitorScreen sim={sim} />; };   
