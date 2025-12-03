@@ -1,4 +1,5 @@
 // data/screens.js
+
 (() => {
     const { useState, useEffect, useRef } = React;
     const { 
@@ -7,16 +8,19 @@
         generateHistory, estimateWeight, calculateWetflag, generateVbg 
     } = window;
 
-    // --- SCREEN 1: SETUP (Restored Full Version) ---
+    // --- SCREEN 1: SETUP (Updated with Premade Tab & Drill-down) ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
         const [mode, setMode] = useState('random'); 
         
-        // Random State
+        // Random Mode State
         const [category, setCategory] = useState('Medical');
         const [age, setAge] = useState('Any');
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
         
+        // Premade Mode State (Drill-down)
+        const [premadeCategory, setPremadeCategory] = useState(null); // 'Medical', 'Trauma', etc.
+
         // Builder State
         const [buildTitle, setBuildTitle] = useState("");
         const [buildAge, setBuildAge] = useState(40);
@@ -26,6 +30,9 @@
         const [buildPMH, setBuildPMH] = useState("Hypertension");
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98 });
         const [customScenarios, setCustomScenarios] = useState([]);
+
+        // Ensure scenarios are loaded
+        const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
         useEffect(() => {
             const saved = localStorage.getItem('wmebem_custom_scenarios');
@@ -59,68 +66,181 @@
         };
 
         const handleGenerate = (base) => {
-             // Logic to filter if random
-             let selectedBase = base;
-             if (!base && mode === 'random') {
-                 let pool = ALL_SCENARIOS.filter(s => 
-                    (category === 'Any' || s.category === category) && 
-                    (age === 'Any' || s.ageRange === age) &&
-                    (acuity === 'Any' || s.acuity === acuity)
-                 );
-                 if (pool.length === 0) { alert("No scenarios match filters."); return; }
-                 selectedBase = pool[Math.floor(Math.random() * pool.length)];
+             if (!scenariosAvailable) {
+                 alert("Scenarios failed to load. Please refresh the page.");
+                 return;
              }
 
-             const patientAge = selectedBase.ageGenerator();
-             const history = generateHistory(patientAge, selectedBase.category === 'Obstetrics & Gynae' ? 'Female' : 'Male');
-             const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
-             const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
-             
-             let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', ...selectedBase.vitalsMod };
-             if (selectedBase.vitalsMod && selectedBase.vitalsMod.bpSys !== undefined && selectedBase.vitalsMod.bpDia === undefined) { finalVitals.bpDia = Math.floor(selectedBase.vitalsMod.bpSys * 0.65); }
+             try {
+                 // 1. Select Base Scenario
+                 let selectedBase = base;
+                 if (!base && mode === 'random') {
+                     let pool = ALL_SCENARIOS.filter(s => 
+                        (category === 'Any' || s.category === category) && 
+                        (age === 'Any' || s.ageRange === age) &&
+                        (acuity === 'Any' || s.acuity === acuity)
+                     );
+                     if (pool.length === 0) { alert("No scenarios match filters."); return; }
+                     selectedBase = pool[Math.floor(Math.random() * pool.length)];
+                 }
 
-             const generated = { 
-                ...selectedBase, patientAge, 
-                profile: selectedBase.patientProfileTemplate.replace('{age}', patientAge).replace('{sex}', 'Male'),
-                vitals: finalVitals, pmh: selectedBase.pmh || history.pmh, dhx: selectedBase.dhx || history.dhx, allergies: selectedBase.allergies || history.allergies,
-                vbg: generateVbg(selectedBase.vbgClinicalState),
-                hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
-                weight, wetflag
-             };
-             onGenerate(generated, {});
+                 // 2. Generate Dynamic Patient Data
+                 const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
+                 
+                 // Determine Sex (Obstetrics must be female, others random)
+                 const isObs = selectedBase.category === 'Obstetrics & Gynae';
+                 const sex = isObs ? 'Female' : (Math.random() > 0.5 ? 'Male' : 'Female');
+                 
+                 const history = generateHistory(patientAge, sex);
+                 const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
+                 const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
+                 
+                 // 3. Merge Vitals
+                 let finalVitals = { 
+                     hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', 
+                     ...selectedBase.vitalsMod 
+                 };
+                 // Auto-calculate Diastolic if only Systolic provided
+                 if (selectedBase.vitalsMod && selectedBase.vitalsMod.bpSys !== undefined && selectedBase.vitalsMod.bpDia === undefined) { 
+                     finalVitals.bpDia = Math.floor(selectedBase.vitalsMod.bpSys * 0.65); 
+                 }
+
+                 // 4. Construct Final Object
+                 const generated = { 
+                    ...selectedBase, 
+                    patientAge, 
+                    sex,
+                    profile: selectedBase.patientProfileTemplate
+                        .replace('{age}', patientAge)
+                        .replace('{sex}', sex),
+                    vitals: finalVitals, 
+                    pmh: selectedBase.pmh || history.pmh, 
+                    dhx: selectedBase.dhx || history.dhx, 
+                    allergies: selectedBase.allergies || history.allergies,
+                    vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
+                    hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
+                    weight, 
+                    wetflag
+                 };
+
+                 onGenerate(generated, {});
+
+             } catch (err) {
+                 console.error("Generator Error:", err);
+                 alert("Error generating scenario: " + err.message);
+             }
         };
+
+        // Drill-down Categories
+        const premadeCategories = [
+            { id: 'Medical', label: 'Adult Medical', icon: 'stethoscope', filter: s => s.category === 'Medical' && s.ageRange === 'Adult' },
+            { id: 'Trauma', label: 'Trauma', icon: 'ambulance', filter: s => s.category === 'Trauma' },
+            { id: 'Paediatric', label: 'Paediatric', icon: 'baby', filter: s => s.ageRange === 'Paediatric' },
+            { id: 'Resus', label: 'Cardiac Arrest', icon: 'heart-pulse', filter: s => s.category === 'Cardiac Arrest' },
+            { id: 'Toxicology', label: 'Toxicology', icon: 'skull', filter: s => s.category === 'Toxicology' },
+            { id: 'ObsGyn', label: 'Obs & Gynae', icon: 'baby', filter: s => s.category === 'Obstetrics & Gynae' },
+            { id: 'Elderly', label: 'Geriatrics', icon: 'user', filter: s => s.ageRange === 'Elderly' },
+            { id: 'Psychiatric', label: 'Psychiatric', icon: 'brain', filter: s => s.category === 'Psychiatric' },
+        ];
 
         return (
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
+                {/* Header Session Info */}
                 <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-center justify-between">
-                    <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
+                    <div>
+                        <div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div>
+                        <div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div>
+                    </div>
                     <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Use as Monitor</Button>
                 </div>
 
-                {savedState && (<div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between"><div><h3 className="font-bold text-emerald-400">Resume Previous?</h3><p className="text-sm text-slate-300">{savedState.scenario.title}</p></div><Button onClick={onResume} variant="success">Resume</Button></div>)}
+                {savedState && (
+                    <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
+                        <div>
+                            <h3 className="font-bold text-emerald-400">Resume Previous?</h3>
+                            <p className="text-sm text-slate-300">{savedState.scenario.title}</p>
+                        </div>
+                        <Button onClick={onResume} variant="success">Resume</Button>
+                    </div>
+                )}
                 
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
-                    <div className="flex gap-2 mb-6 border-b border-slate-700">
-                        {['random', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => setMode(m)} className={`pb-2 px-4 text-sm font-bold uppercase ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500'}`}>{m}</button>
+                    {/* Tab Switcher */}
+                    <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto no-scrollbar">
+                        {['random', 'premade', 'custom', 'builder'].map(m => (
+                            <button 
+                                key={m} 
+                                onClick={() => { setMode(m); setPremadeCategory(null); }} 
+                                className={`pb-2 px-4 text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                {m}
+                            </button>
                         ))}
                     </div>
 
+                    {/* MODE: RANDOM */}
                     {mode === 'random' && (
-                        <div className="space-y-4">
+                        <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-slate-500">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Cardiac Arrest">Cardiac Arrest</option></select></div>
-                                <div><label className="text-xs font-bold text-slate-500">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div>
-                                <div><label className="text-xs font-bold text-slate-500">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
-                                <div><label className="text-xs font-bold text-slate-500">Human Factors</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
+                                <div><label className="text-xs font-bold text-slate-500">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Cardiac Arrest">Cardiac Arrest</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-500">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-500">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-500">Human Factors</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
                             </div>
-                            <Button onClick={() => handleGenerate(null)} className="w-full py-4 text-lg">Generate Scenario</Button>
+                            <Button onClick={() => handleGenerate(null)} className="w-full py-4 text-lg shadow-lg shadow-sky-900/20">Generate Scenario</Button>
                         </div>
                     )}
 
+                    {/* MODE: PREMADE (DRILL DOWN) */}
+                    {mode === 'premade' && (
+                        <div className="animate-fadeIn min-h-[300px]">
+                            {!premadeCategory ? (
+                                // Level 1: Categories
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                    {premadeCategories.map(cat => (
+                                        <button 
+                                            key={cat.id} 
+                                            onClick={() => setPremadeCategory(cat)}
+                                            className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg transition-all active:scale-95 group"
+                                        >
+                                            <Lucide icon={cat.icon} className="w-8 h-8 text-sky-400 group-hover:text-white mb-2" />
+                                            <span className="text-sm font-bold text-slate-200 group-hover:text-white">{cat.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                // Level 2: Scenarios List
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button>
+                                        <h3 className="text-lg font-bold text-sky-400">{premadeCategory.label} Scenarios</h3>
+                                    </div>
+                                    <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
+                                        {ALL_SCENARIOS.filter(premadeCategory.filter).map((s) => (
+                                            <div key={s.id} className="flex justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
+                                                <div>
+                                                    <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">
+                                                        {s.title} 
+                                                        {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>}
+                                                    </div>
+                                                    <div className="text-xs text-slate-400">{s.patientProfileTemplate.substring(0, 60)}...</div>
+                                                </div>
+                                                <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
+                                            </div>
+                                        ))}
+                                        {ALL_SCENARIOS.filter(premadeCategory.filter).length === 0 && (
+                                            <div className="text-center text-slate-500 py-8">No scenarios found in this category.</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* MODE: CUSTOM */}
                     {mode === 'custom' && (
-                        <div className="space-y-2">
-                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic">No custom scenarios saved.</p>}
+                        <div className="space-y-2 animate-fadeIn">
+                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet.</p>}
                              {customScenarios.map((s, i) => (
                                  <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
                                      <div><div className="font-bold text-white">{s.title}</div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div>
@@ -130,14 +250,15 @@
                         </div>
                     )}
 
+                    {/* MODE: BUILDER */}
                     {mode === 'builder' && (
-                        <div className="space-y-4">
-                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white"/>
+                        <div className="space-y-4 animate-fadeIn">
+                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
                             <div className="grid grid-cols-2 gap-2">
-                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"/>
+                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
                                 <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
                             </div>
-                            <textarea placeholder="Description..." value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20"/>
+                            <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
                             <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
                         </div>
                     )}
