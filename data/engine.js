@@ -1,3 +1,4 @@
+// data/engine.js
 (() => {
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
@@ -5,7 +6,7 @@
     const initialState = {
         scenario: null,
         time: 0,
-        cycleTimer: 0, // 2 min cycle timer
+        cycleTimer: 0, 
         isRunning: false,
         vitals: {},
         prevVitals: {},
@@ -24,39 +25,109 @@
         isParalysed: false,
         queuedRhythm: null,
         cprInProgress: false,
+        // NEW: NIBP State
+        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 },
+        // NEW: Trending State
+        trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} }
     };
 
     const simReducer = (state, action) => {
         switch (action.type) {
             case 'START_SIM': return { ...state, isRunning: true, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
+            
             case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
+            
+            case 'STOP_SIM': return { ...state, isRunning: false, scenario: null }; // Strictly stops history updates
+            
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, processedEvents: new Set(), activeInterventions: new Set() };
+                // Reset NIBP and Trends on load
+                return { 
+                    ...initialState, 
+                    scenario: action.payload, 
+                    vitals: {...action.payload.vitals}, 
+                    prevVitals: {...action.payload.vitals}, 
+                    rhythm: initialRhythm,
+                    nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 },
+                    processedEvents: new Set(), 
+                    activeInterventions: new Set() 
+                };
+            
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
+            
             case 'TICK_TIME':
+                // Manage Interventions
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
                 Object.keys(newDurations).forEach(key => {
                     const elapsed = state.time + 1 - newDurations[key].startTime;
                     if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; }
                 });
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations };
+
+                // Manage NIBP Timer
+                let newNibp = { ...state.nibp };
+                if (newNibp.mode === 'auto') {
+                    newNibp.timer -= 1;
+                    // Trigger will happen in useSimulation effect when timer hits 0
+                }
+
+                return { 
+                    ...state, 
+                    time: state.time + 1, 
+                    cycleTimer: state.cycleTimer + 1, 
+                    activeDurations: durChanged ? newDurations : state.activeDurations,
+                    nibp: newNibp
+                };
+            
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
+            
             case 'UPDATE_VITALS': 
+                if (!state.isRunning) return state; // Guard against updates when stopped
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
+            
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
+            
             case 'TRIGGER_IMPROVE':
                 if (!state.scenario.evolution) return state;
                 const improvedScen = { ...state.scenario, ...state.scenario.evolution.improved, deterioration: { ...state.scenario.deterioration, active: false } };
                 return { ...state, scenario: improvedScen, flash: 'green' };
+            
             case 'TRIGGER_DETERIORATE':
                  if (!state.scenario.evolution) return state;
                  const detScen = { ...state.scenario, ...state.scenario.evolution.deteriorated, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 } };
                  return { ...state, scenario: detScen, flash: 'red' };
+
+            // --- NIBP ACTIONS ---
+            case 'TRIGGER_NIBP_MEASURE':
+                return { ...state, nibp: { ...state.nibp, sys: state.vitals.bpSys, dia: state.vitals.bpDia, lastTaken: Date.now(), timer: state.nibp.interval } };
             
-            // --- NEW: SYNC ACTION FOR MONITOR ---
+            case 'TOGGLE_NIBP_MODE':
+                const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual';
+                return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
+
+            // --- TRENDING ACTIONS ---
+            case 'START_TREND':
+                return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
+            
+            case 'UPDATE_TREND_PROGRESS':
+                // Interpolation Logic
+                const progress = Math.min(1, (state.trends.elapsed + 3) / state.trends.duration); // +3 because tick is 3s
+                if (progress >= 1) return { ...state, trends: { ...state.trends, active: false } };
+                
+                const interpolated = { ...state.vitals };
+                Object.keys(state.trends.targets).forEach(key => {
+                    const startVal = state.trends.startVitals[key] || 0;
+                    const endVal = state.trends.targets[key];
+                    interpolated[key] = startVal + (endVal - startVal) * progress;
+                });
+                
+                return { 
+                    ...state, 
+                    vitals: interpolated, 
+                    trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } 
+                };
+
             case 'SYNC_FROM_MASTER':
                 return {
                     ...state,
@@ -66,13 +137,9 @@
                     etco2Enabled: action.payload.etco2Enabled,
                     flash: action.payload.flash,
                     cycleTimer: action.payload.cycleTimer,
-                    scenario: {
-                        ...state.scenario,
-                        title: action.payload.scenarioTitle,
-                        deterioration: { type: action.payload.pathology }
-                    },
-                    // SAFEGUARD: Ensure we handle undefined/null cleanly
-                    activeInterventions: new Set(action.payload.activeInterventions || [])
+                    scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } },
+                    activeInterventions: new Set(action.payload.activeInterventions || []),
+                    nibp: action.payload.nibp || state.nibp // Sync NIBP
                 };
 
             case 'ADD_LOG':
@@ -96,6 +163,7 @@
             default: return state;
         }
     };
+
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [state, dispatch] = useReducer(simReducer, initialState);
         const timerRef = useRef(null);
@@ -103,19 +171,13 @@
         const audioCtxRef = useRef(null);
         const stateRef = useRef(state);
         
-        // Update ref
         useEffect(() => { stateRef.current = state; }, [state]);
         
-        // --- DATA SYNC (Firebase with Session ID) ---
+        // --- DATA SYNC ---
         useEffect(() => {
-            // If no DB or no Session ID yet, do not attempt sync
             if (!db || !sessionID) return; 
-            
-            // Connect to a SPECIFIC session ID path (e.g., sessions/ABCD)
             const sessionRef = db.ref(`sessions/${sessionID}`);
-
             if (isMonitorMode) {
-                // MONITOR MODE: Listen
                 const handleUpdate = (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
@@ -126,9 +188,7 @@
                 sessionRef.on('value', handleUpdate);
                 return () => sessionRef.off('value', handleUpdate);
             } else {
-                // CONTROLLER MODE: Broadcast
                 if (!state.scenario) return;
-
                 const payload = {
                     vitals: state.vitals,
                     rhythm: state.rhythm,
@@ -138,9 +198,9 @@
                     cycleTimer: state.cycleTimer,
                     scenarioTitle: state.scenario.title,
                     pathology: state.scenario.deterioration?.type || 'normal',
-                    activeInterventions: Array.from(state.activeInterventions)
+                    activeInterventions: Array.from(state.activeInterventions),
+                    nibp: state.nibp
                 };
-                // Write to specific session path
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
             }
         }, [state, isMonitorMode, sessionID]);
@@ -154,11 +214,10 @@
 
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
 
-        // AUDIO LOOP
+        // AUDIO LOOP (Pulse Oximetry Beep)
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
-
             const scheduleBeep = () => {
                 const current = stateRef.current;
                 if (!current.isRunning && !isMonitorMode) return; 
@@ -182,13 +241,19 @@
                 const delay = 60000 / (Math.max(20, current.vitals.hr) || 60);
                 timerId = setTimeout(scheduleBeep, delay);
             };
-
             if (state.isRunning || (isMonitorMode && state.vitals.hr > 0)) {
                 if (ctx && ctx.state === 'suspended') ctx.resume();
                 scheduleBeep();
             }
             return () => clearTimeout(timerId);
         }, [state.isRunning, isMonitorMode]); 
+
+        // NIBP AUTO TRIGGER EFFECT
+        useEffect(() => {
+            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning) {
+                dispatch({ type: 'TRIGGER_NIBP_MEASURE' });
+            }
+        }, [state.nibp.timer, state.isRunning]);
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
 
@@ -210,15 +275,10 @@
                 addLogEntry(action.log, 'action');
             }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
-
-            // Auto-progression & Logic
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
-            
-            // ... (Keep your existing detailed clinical logic here if customized, otherwise standard logic below) ...
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
 
-            // Physiological Effects
             if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT')) {
                 if (state.queuedRhythm) {
                     dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm });
@@ -238,7 +298,6 @@
             if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
             if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
 
-            // Dynamic Investigations
             const updatedScenario = { ...state.scenario };
             let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray?.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
@@ -263,15 +322,49 @@
             }
         };
 
+        // AUDIO TTS (Browser Native)
+        const speak = (text) => {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                window.speechSynthesis.speak(utterance);
+            }
+        };
+
+        // NEW: Time-based Trend Function
+        const startTrend = (targets, durationSecs) => {
+            dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } });
+            addLogEntry(`Trending vitals over ${durationSecs}s`, 'system');
+        };
+
         const tick = () => {
             const current = stateRef.current;
             let next = { ...current.vitals };
+
+            // 1. Handle Active Trends (Linear Interpolation)
+            if (current.trends.active) {
+                dispatch({ type: 'UPDATE_TREND_PROGRESS' });
+                // Return early so we don't apply jitter on top of trend immediately
+                return;
+            }
             
-            // Physiology
-            if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; 
-            if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; addLogEntry("Bradycardia (Hypoxia)", 'danger'); }
-            
-            // Dynamic VBG
+            // 2. Physiological Rules (ARREST LOGIC)
+            if (next.hr === 0) {
+                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2);
+                 if (current.rhythm !== 'VF' && current.rhythm !== 'Asystole' && current.rhythm !== 'PEA') {
+                     dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' });
+                 }
+            } else {
+                 // Hypoxia Effect
+                 if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; 
+                 if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; }
+                 
+                 // RR Effect
+                 if (next.rr < 8 && !current.activeInterventions.has('Bagging') && !current.activeInterventions.has('NIV')) {
+                     next.spO2 = Math.max(0, next.spO2 - 2); // Rapid desaturation
+                 }
+            }
+
+            // 3. Dynamic VBG
             if (current.scenario.vbg) {
                 const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3);
                 if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) {
@@ -279,11 +372,8 @@
                 }
             }
 
-            // Jitter
-            if (['Asystole', 'VF', 'Coarse VF', 'Fine VF'].includes(current.rhythm)) { 
-                next.hr = 0; next.bpSys = 0; next.bpDia = 0; 
-                if(!current.cprInProgress) next.spO2 = Math.max(0, next.spO2 - 2); 
-            } else {
+            // 4. Jitter (Random noise)
+            if (next.hr > 0) {
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
                 let targetDia = Math.floor(next.bpSys * 0.65);
@@ -298,19 +388,27 @@
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
 
+        const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
+
         const start = () => { 
             if (state.isRunning || isMonitorMode) return; 
             dispatch({ type: 'START_SIM' }); 
             timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); 
             tickRef.current = setInterval(tick, 3000); 
-            if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); 
+            enableAudio();
         };
         
+        // FIXED: Stop strictly clears intervals to freeze graph/state
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
-        const stop = () => { pause(); addLogEntry("Simulation Ended", 'system'); localStorage.removeItem('wmebem_sim_state'); };
+        const stop = () => { 
+            pause(); 
+            dispatch({ type: 'STOP_SIM' }); 
+            addLogEntry("Simulation Ended", 'system'); 
+            localStorage.removeItem('wmebem_sim_state'); 
+        };
 
-        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle };
+        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend };
     };
-// Add this to the very end of data/engine.js
-window.useSimulation = useSimulation;
+
+    window.useSimulation = useSimulation;
 })();
