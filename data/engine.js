@@ -1,5 +1,6 @@
 (() => {
     const { useState, useEffect, useRef, useReducer } = React;
+    const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
     const initialState = {
         scenario: null,
