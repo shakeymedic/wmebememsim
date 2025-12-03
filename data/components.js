@@ -33,6 +33,7 @@
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
+    // UPDATED: Button with Haptic Feedback
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
         let variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/20",
@@ -49,8 +50,16 @@
         else if (className.includes("h-14")) { base += " text-base px-4"; } 
         else { base += " text-xs"; }
 
+        const handleClick = (e) => {
+            // Haptic Feedback (Vibrate 50ms)
+            if (navigator.vibrate) {
+                try { navigator.vibrate(50); } catch(err) { /* Ignore */ }
+            }
+            if (onClick) onClick(e);
+        };
+
         return (
-            <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
+            <button onClick={handleClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
                 {progress > 0 && (
                     <div className="absolute top-0 left-0 bottom-0 bg-white/10 z-[-1] transition-all duration-1000 ease-linear" style={{ width: `${progress}%` }}></div>
                 )}
@@ -92,12 +101,11 @@
         
         const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
-        // Colors based on parameter type (Philips Standard)
         const getColors = (lbl) => {
             if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
-            if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; // Philips uses Cyan/Blue
+            if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
             if (lbl.includes("BP") || lbl.includes("NIBP") || lbl.includes("ABP")) return "text-red-500";
-            if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; // Sometimes Yellow or White
+            if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
             if (lbl.includes("CO2")) return "text-yellow-500";
             if (lbl.includes("Temp")) return "text-white";
             return "text-slate-200";
@@ -112,14 +120,11 @@
             
             return (
                 <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
-                    {/* Label Top Left */}
                     <div className="flex justify-between items-start">
                         <span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>
-                        {/* Limits Dummy (Static for look) */}
                         {!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}
                     </div>
 
-                    {/* Main Value Center */}
                     <div className="flex-grow flex items-center justify-center">
                          <div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}>
                             <span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>
@@ -133,7 +138,6 @@
                          </div>
                     </div>
 
-                    {/* Footer: Units & NIBP Info */}
                     <div className="flex justify-between items-end mt-1">
                         <span className="text-xs text-slate-400 font-bold">{unit}</span>
                         {isNIBP && (
@@ -155,7 +159,6 @@
         return (
             <div className={`bg-slate-800/80 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-600'}`}>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</span>
-                
                 {isEditing ? (
                     <input 
                         type={isText ? "text" : "number"} 
@@ -200,17 +203,10 @@
             propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel };
         }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
 
-        // --- WAVEFORM GENERATORS ---
         const getWaveform = (type, t, cpr, baseline) => {
             const noise = (Math.random() - 0.5) * 1.5;
-            
-            if (cpr) {
-                const compression = Math.sin(t * 12) * 45; 
-                return baseline + compression + (Math.random() * 10 - 5);
-            }
-
+            if (cpr) { return baseline + Math.sin(t * 12) * 45 + (Math.random() * 10 - 5); }
             if (type === 'Asystole') return baseline + noise;
-            
             if (type === 'VF' || type === 'Coarse VF') return baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
             if (type === 'Fine VF') return baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
             if (type === 'VT') {
@@ -219,28 +215,15 @@
                 else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 50; 
                 return y + noise;
             }
-
             let y = baseline;
             const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type);
-            if (hasP) {
-                if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
-            } else if (type === 'AF') {
-                y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
-            }
-
-            if (t > 0.12 && t < 0.14) y += 3; // Q
-            else if (t >= 0.14 && t < 0.18) y -= 55; // R
-            else if (t >= 0.18 && t < 0.20) y += 12; // S
-
-            if (type === 'STEMI') {
-                if (t >= 0.20 && t < 0.4) {
-                    y -= 15; 
-                    y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; 
-                }
-            } else {
-                if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
-            }
-
+            if (hasP) { if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4; } 
+            else if (type === 'AF') { y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; }
+            if (t > 0.12 && t < 0.14) y += 3;
+            else if (t >= 0.14 && t < 0.18) y -= 55;
+            else if (t >= 0.18 && t < 0.20) y += 12;
+            if (type === 'STEMI') { if (t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } } 
+            else { if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8; }
             return y + noise;
         };
 
@@ -254,15 +237,10 @@
 
         const getArtWave = (t) => {
              let y = 0;
-             if (t < 0.15) {
-                 y = Math.sin((t/0.15) * Math.PI/2); 
-             } else if (t < 0.4) {
-                 y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; 
-             } else if (t < 0.5) {
-                 y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; 
-             } else {
-                 y = 0.2 * (1 - (t-0.5)/0.5); 
-             }
+             if (t < 0.15) { y = Math.sin((t/0.15) * Math.PI/2); } 
+             else if (t < 0.4) { y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; } 
+             else if (t < 0.5) { y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; } 
+             else { y = 0.2 * (1 - (t-0.5)/0.5); }
              return y;
         };
 
@@ -281,13 +259,11 @@
         useEffect(() => {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext('2d');
-            
             const setSize = () => {
                 const parent = canvas.parentElement;
                 if(parent) {
                     canvas.width = parent.clientWidth;
                     canvas.height = parent.clientHeight;
-                    // Philips Layout: Tighter spacing
                     drawState.current.lastY = canvas.height * 0.20;
                     drawState.current.lastYCO2 = canvas.height * 0.45;
                     drawState.current.lastYArt = canvas.height * 0.70;
@@ -302,7 +278,6 @@
             const animate = (timestamp) => {
                 const state = drawState.current;
                 const props = propsRef.current;
-                
                 if (!state.lastTime) state.lastTime = timestamp;
                 let dt = (timestamp - state.lastTime) / 1000;
                 if (dt > 0.05) dt = 0.05; 
@@ -314,14 +289,13 @@
                 const dx = ecgSpeed * dt;
                 const prevX = state.x;
                 state.x += dx;
-                const eraserWidth = 40; // Wider eraser for cleaner look
+                const eraserWidth = 40;
                 
                 ctx.fillStyle = '#000000';
                 if (state.x + eraserWidth < canvas.width) { ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); } 
                 else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, eraserWidth, canvas.height); }
 
                 const baselineECG = canvas.height * 0.20;
-
                 if (!props.showTraces) {
                     ctx.strokeStyle = '#222'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke();
                     requestRef.current = requestAnimationFrame(animate);
@@ -331,13 +305,10 @@
                 // RHYTHM CALCS
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
                 let currentRate = props.isCPR ? 110 : (props.hr || 60);
-                
                 let beatDuration = 60 / Math.max(10, currentRate);
                 if (['VF', 'Coarse VF', 'Fine VF'].includes(currentRhythm)) beatDuration = 0.2; 
-
                 state.beatProgress += dt / beatDuration;
                 if (state.beatProgress >= 1) state.beatProgress = 0;
-
                 let breathDuration = 60 / (Math.max(1, props.rr) || 12);
                 state.breathProgress += dt / breathDuration;
                 if (state.breathProgress >= 1) state.breathProgress = 0;
@@ -350,50 +321,34 @@
                     state.lastYPleth = canvas.height * 0.90;
                 }
 
-                // 1. ECG (Philips Green)
+                // DRAW WAVES
                 const yECG = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
-                if (state.x > prevX) {
-                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
-                    ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke();
-                }
+                if (state.x > prevX) { ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); }
                 state.lastY = yECG;
 
-                // 2. ETCO2 (Philips Yellow)
                 if (props.showEtco2) {
                     const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr);
-                    const co2MaxHeight = canvas.height * 0.10; const co2BaseY = (canvas.height * 0.45); const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
-                    if (state.x > prevX) {
-                         ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath();
-                         ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
-                    }
+                    const yCO2 = (canvas.height * 0.45) - (normCO2 * canvas.height * 0.10);
+                    if (state.x > prevX) { ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke(); }
                     state.lastYCO2 = yCO2;
                 }
 
-                // 3. ART LINE (Philips Red)
                 if (props.showArt && !props.isCPR && currentRate > 0) {
                      const normArt = getArtWave(state.beatProgress);
-                     const artHeight = canvas.height * 0.10; const artBaseY = (canvas.height * 0.70); const yArt = artBaseY - (normArt * artHeight);
-                     if (state.x > prevX) {
-                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath();
-                        ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
-                     }
+                     const yArt = (canvas.height * 0.70) - (normArt * canvas.height * 0.10);
+                     if (state.x > prevX) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke(); }
                      state.lastYArt = yArt;
                 }
 
-                // 4. PLETH (Philips Cyan)
                 if (currentRate > 0 && !props.isCPR && props.spO2 > 10) {
                     const normPleth = getPlethWave(state.beatProgress, props.spO2);
-                    const plethHeight = canvas.height * 0.08; const plethBaseY = canvas.height * 0.95; const yPleth = plethBaseY - (normPleth * plethHeight);
-                    if (state.x > prevX) {
-                        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath();
-                        ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
-                    }
+                    const yPleth = (canvas.height * 0.95) - (normPleth * canvas.height * 0.08);
+                    if (state.x > prevX) { ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke(); }
                     state.lastYPleth = yPleth;
                 }
                 
                 requestRef.current = requestAnimationFrame(animate);
             };
-
             requestRef.current = requestAnimationFrame(animate);
             return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
         }, []);
@@ -401,28 +356,10 @@
         return (
             <div className={`w-full bg-black rounded border border-slate-800 relative overflow-hidden ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
-                
-                {/* PHILIPS STYLE LABELS: Clean text, no boxes */}
-                {showTraces && (
-                    <div className="absolute top-[2%] left-2 font-bold text-green-500 text-sm tracking-wider">
-                        II <span className="text-xs font-normal text-slate-400 ml-1">MONITOR</span>
-                    </div>
-                )}
-                {showEtco2 && showTraces && (
-                    <div className="absolute top-[35%] left-2 font-bold text-yellow-500 text-sm tracking-wider">
-                        CO2
-                    </div>
-                )}
-                {showArt && showTraces && (
-                    <div className="absolute top-[60%] left-2 font-bold text-red-500 text-sm tracking-wider">
-                        ART
-                    </div>
-                )}
-                {showTraces && (
-                    <div className="absolute top-[85%] left-2 font-bold text-cyan-400 text-sm tracking-wider">
-                        PLETH
-                    </div>
-                )}
+                {showTraces && <div className="absolute top-[2%] left-2 font-bold text-green-500 text-sm tracking-wider">II <span className="text-xs font-normal text-slate-400 ml-1">MONITOR</span></div>}
+                {showEtco2 && showTraces && <div className="absolute top-[35%] left-2 font-bold text-yellow-500 text-sm tracking-wider">CO2</div>}
+                {showArt && showTraces && <div className="absolute top-[60%] left-2 font-bold text-red-500 text-sm tracking-wider">ART</div>}
+                {showTraces && <div className="absolute top-[85%] left-2 font-bold text-cyan-400 text-sm tracking-wider">PLETH</div>}
             </div>
         );
     };
@@ -457,5 +394,4 @@
     window.VitalDisplay = VitalDisplay;
     window.ECGMonitor = ECGMonitor;
     window.InvestigationButton = InvestigationButton;
-
 })();
