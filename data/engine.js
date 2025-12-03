@@ -27,7 +27,6 @@
         cprInProgress: false,
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 },
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
-        // NEW: Speech Sync State
         speech: { text: null, timestamp: 0, source: null }
     };
 
@@ -95,7 +94,6 @@
                 return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
 
             case 'TRIGGER_SPEAK':
-                // Update speech state with timestamp to force effect trigger on remote
                 return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
 
             case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech };
@@ -126,8 +124,6 @@
         const stateRef = useRef(state);
         
         useEffect(() => { stateRef.current = state; }, [state]);
-        
-        // --- DATA SYNC ---
         useEffect(() => {
             if (!db || !sessionID) return; 
             const sessionRef = db.ref(`sessions/${sessionID}`);
@@ -170,7 +166,6 @@
 
         useEffect(() => { if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning) { dispatch({ type: 'TRIGGER_NIBP_MEASURE' }); } }, [state.nibp.timer, state.isRunning]);
 
-        // SPEECH EFFECT (Listens to state.speech)
         const lastSpeechRef = useRef(0);
         useEffect(() => {
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) {
@@ -207,7 +202,7 @@
         const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
         const revealInvestigation = (type) => { if (state.investigationsRevealed[type] || state.loadingInvestigations[type]) return; dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); };
         const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
-        const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); }; // UPDATED to dispatch sync event
+        const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); }; 
         const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
 
         const tick = () => {
@@ -225,11 +220,24 @@
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
         const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
+        const playNibp = () => {
+            if (audioCtxRef.current) {
+                const ctx = audioCtxRef.current;
+                const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.setValueAtTime(150, ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(100, ctx.currentTime + 1);
+                gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1);
+                osc.start(); osc.stop(ctx.currentTime + 1);
+            }
+        };
+
         const start = () => { if (state.isRunning || isMonitorMode) return; dispatch({ type: 'START_SIM' }); timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); tickRef.current = setInterval(tick, 3000); enableAudio(); };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); localStorage.removeItem('wmebem_sim_state'); };
 
-        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend };
+        return { state, dispatch, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, playNibp };
     };
 
     window.useSimulation = useSimulation;
