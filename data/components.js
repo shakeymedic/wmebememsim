@@ -1,17 +1,15 @@
 // data/components.js
 (() => {
-    const { useState, useEffect, useRef, useReducer } = React;
+    const { useState, useEffect, useRef } = React;
 
     // SAFE LUCIDE COMPONENT
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
-
         useEffect(() => {
             if (!ref.current || !window.lucide) return;
             ref.current.innerHTML = '';
             const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
             const iconName = kebabToPascal(icon);
-            
             if (window.lucide.icons && window.lucide.icons[iconName]) {
                  const iconNode = window.lucide.icons[iconName];
                  if (window.lucide.createElement) {
@@ -29,11 +27,10 @@
                 window.lucide.createIcons({ root: ref.current });
             }
         }, [icon, className]);
-
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
-    // UPDATED: Button with Haptic Feedback
+    // BUTTON WITH HAPTIC FEEDBACK
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
         let variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/20",
@@ -45,24 +42,18 @@
             ghost: "hover:bg-slate-800 text-slate-400"
         };
         let base = "px-4 py-3 rounded-md font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed relative overflow-hidden touch-manipulation z-0 active:scale-95";
-        
         if (className.includes("h-16")) { base += " text-lg px-6"; } 
         else if (className.includes("h-14")) { base += " text-base px-4"; } 
         else { base += " text-xs"; }
 
         const handleClick = (e) => {
-            // Haptic Feedback (Vibrate 50ms)
-            if (navigator.vibrate) {
-                try { navigator.vibrate(50); } catch(err) { /* Ignore */ }
-            }
+            if (navigator.vibrate) try { navigator.vibrate(50); } catch(err) {}
             if (onClick) onClick(e);
         };
 
         return (
             <button onClick={handleClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
-                {progress > 0 && (
-                    <div className="absolute top-0 left-0 bottom-0 bg-white/10 z-[-1] transition-all duration-1000 ease-linear" style={{ width: `${progress}%` }}></div>
-                )}
+                {progress > 0 && <div className="absolute top-0 left-0 bottom-0 bg-white/10 z-[-1] transition-all duration-1000 ease-linear" style={{ width: `${progress}%` }}></div>}
                 <span className="relative z-10 flex items-center gap-2 whitespace-nowrap w-full justify-center">{children}</span>
             </button>
         );
@@ -73,33 +64,25 @@
         return (
             <div className={`bg-slate-900/80 border border-slate-700/50 rounded-xl overflow-hidden shadow-xl backdrop-blur-sm flex flex-col ${className}`}>
                 {title && (
-                    <div 
-                        className={`bg-slate-900/90 p-3 border-b border-slate-700/50 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-800' : ''}`}
-                        onClick={() => collapsible && setIsOpen(!isOpen)}
-                    >
+                    <div className={`bg-slate-900/90 p-3 border-b border-slate-700/50 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-800' : ''}`} onClick={() => collapsible && setIsOpen(!isOpen)}>
                         <div className="flex items-center gap-2">
                             {icon && <Lucide icon={icon} className="w-5 h-5 text-sky-500" />}
                             <h3 className="font-bold text-slate-100">{title}</h3>
                         </div>
-                        {collapsible && (
-                            <Lucide icon="chevron-down" className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                        )}
+                        {collapsible && <Lucide icon="chevron-down" className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />}
                     </div>
                 )}
-                {(!collapsible || isOpen) && (
-                    <div className="p-4 animate-fadeIn flex-grow overflow-auto min-h-0">{children}</div>
-                )}
+                {(!collapsible || isOpen) && <div className="p-4 animate-fadeIn flex-grow overflow-auto min-h-0">{children}</div>}
             </div>
         );
     };
     
-    // --- PHILIPS STYLE VITAL DISPLAY ---
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null }) => {
+    // UPDATED VITAL DISPLAY: Supports 'onClick' for Control Modal
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
-        
-        const handleBlur = () => { setIsEditing(false); if (editVal !== value) onUpdate(isText ? editVal : parseFloat(editVal)); };
+        const handleBlur = () => { setIsEditing(false); if (editVal !== value && onUpdate) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
         const getColors = (lbl) => {
             if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
@@ -107,74 +90,37 @@
             if (lbl.includes("BP") || lbl.includes("NIBP") || lbl.includes("ABP")) return "text-red-500";
             if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
             if (lbl.includes("CO2")) return "text-yellow-500";
-            if (lbl.includes("Temp")) return "text-white";
             return "text-slate-200";
         };
-
         const colorClass = getColors(label);
         const isBP = label.includes("BP") || label.includes("NIBP") || label.includes("ABP");
 
-        // --- MONITOR MODE (Large, Philips Style) ---
+        // Click Handler: If 'onClick' prop exists (Control Modal), use it. Otherwise toggle inline edit.
+        const handleInteraction = () => {
+            if (onClick) { onClick(); } 
+            else { setEditVal(value); setIsEditing(true); }
+        };
+
         if (isMonitor) {
             if (!visible) return <div className="flex flex-col p-2 h-full bg-black opacity-20"><span className="text-sm font-bold text-slate-600 uppercase">{label}</span></div>;
-            
             return (
                 <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
-                    <div className="flex justify-between items-start">
-                        <span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>
-                        {!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}
-                    </div>
-
-                    <div className="flex-grow flex items-center justify-center">
-                         <div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}>
-                            <span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>
-                                {value === '?' ? '-?-' : (isText ? value : Math.round(value))}
-                            </span>
-                            {isBP && (
-                                <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">
-                                    /{value2 !== undefined ? Math.round(value2) : '--'}
-                                </span>
-                            )}
-                         </div>
-                    </div>
-
-                    <div className="flex justify-between items-end mt-1">
-                        <span className="text-xs text-slate-400 font-bold">{unit}</span>
-                        {isNIBP && (
-                            <span className="text-[10px] text-slate-500 font-mono">
-                                {lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}
-                            </span>
-                        )}
-                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && (
-                            <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>
-                                {value > prev ? '↑' : value < prev ? '↓' : ''}
-                            </span>
-                        )}
-                    </div>
+                    <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
+                    <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{value === '?' ? '-?-' : (isText ? value : Math.round(value))}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}</div></div>
+                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && <span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span>}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
                 </div>
             );
         }
 
-        // --- CONTROLLER MODE (Compact) ---
+        // CONTROLLER MODE
         return (
             <div className={`bg-slate-800/80 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-600'}`}>
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">{label}</span>
                 {isEditing ? (
-                    <input 
-                        type={isText ? "text" : "number"} 
-                        value={editVal} 
-                        onChange={(e) => setEditVal(e.target.value)} 
-                        onBlur={handleBlur} 
-                        onKeyDown={(e) => e.key === 'Enter' && handleBlur()} 
-                        className="text-lg font-mono font-bold text-white bg-slate-700 border border-sky-500 rounded w-full text-center outline-none" 
-                        autoFocus 
-                    />
+                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-700 border border-sky-500 rounded w-full text-center outline-none" autoFocus />
                 ) : (
-                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-700/50 rounded px-2 py-0.5" onClick={() => { setEditVal(value); setIsEditing(true); }}>
-                        <span className={`font-mono font-bold text-white ${isText ? 'text-sm leading-tight' : 'text-2xl'}`}>
-                            {value === '?' ? '--' : (isText ? value : Math.round(value))}
-                            {isBP && <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
-                        </span>
+                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-700/50 rounded px-2 py-0.5" onClick={handleInteraction}>
+                        <span className={`font-mono font-bold text-white ${isText ? 'text-sm leading-tight' : 'text-2xl'}`}>{value === '?' ? '--' : (isText ? value : Math.round(value))}{isBP && <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}</span>
                     </div>
                 )}
                 <span className="text-[8px] text-slate-500 leading-none">{unit}</span>
@@ -185,168 +131,61 @@
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
-        
-        const drawState = useRef({
-            x: 0,
-            lastY: 50,
-            beatProgress: 0,
-            breathProgress: 0,
-            lastTime: 0,
-            lastYCO2: 0,
-            lastYPleth: 0,
-            lastYArt: 0
-        });
-
+        const drawState = useRef({ x: 0, lastY: 50, beatProgress: 0, breathProgress: 0, lastTime: 0, lastYCO2: 0, lastYPleth: 0, lastYArt: 0 });
         const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
 
-        useEffect(() => {
-            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel };
-        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
+        useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
 
         const getWaveform = (type, t, cpr, baseline) => {
             const noise = (Math.random() - 0.5) * 1.5;
-            if (cpr) { return baseline + Math.sin(t * 12) * 45 + (Math.random() * 10 - 5); }
+            if (cpr) return baseline + Math.sin(t * 12) * 45 + (Math.random() * 10 - 5);
             if (type === 'Asystole') return baseline + noise;
             if (type === 'VF' || type === 'Coarse VF') return baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
             if (type === 'Fine VF') return baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
-            if (type === 'VT') {
-                let y = baseline;
-                if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 50; 
-                else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 50; 
-                return y + noise;
-            }
             let y = baseline;
-            const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type);
-            if (hasP) { if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4; } 
-            else if (type === 'AF') { y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; }
-            if (t > 0.12 && t < 0.14) y += 3;
-            else if (t >= 0.14 && t < 0.18) y -= 55;
-            else if (t >= 0.18 && t < 0.20) y += 12;
-            if (type === 'STEMI') { if (t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } } 
-            else { if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8; }
+            if (['VT'].includes(type)) { if (t < 0.2) y += Math.sin(t*5*Math.PI)*50; else if (t < 0.6) y -= Math.sin((t-0.2)*2.5*Math.PI)*50; return y + noise; }
+            if (!['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type)) { if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4; } else if (type === 'AF') { y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; }
+            if (t > 0.12 && t < 0.14) y += 3; else if (t >= 0.14 && t < 0.18) y -= 55; else if (t >= 0.18 && t < 0.20) y += 12;
+            if (type === 'STEMI' && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
             return y + noise;
         };
-
-        const getPlethWave = (t, spO2) => {
-            if (!spO2 || spO2 < 10) return 0;
-            let y = 0;
-            if (t < 0.3) { y = Math.sin((t / 0.3) * Math.PI/2); } 
-            else { y = Math.cos(((t - 0.3) / 0.7) * Math.PI/2); }
-            return y * (spO2/100); 
-        };
-
-        const getArtWave = (t) => {
-             let y = 0;
-             if (t < 0.15) { y = Math.sin((t/0.15) * Math.PI/2); } 
-             else if (t < 0.4) { y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; } 
-             else if (t < 0.5) { y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; } 
-             else { y = 0.2 * (1 - (t-0.5)/0.5); }
-             return y;
-        };
-
-        const getEtco2Wave = (t, pathology, rr) => {
-            if (rr <= 0) return 0; 
-            if (t < 0.1 || t > 0.6) return 0; 
-            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); 
-            if (t >= 0.15 && t < 0.5) {
-                if (pathology === 'respiratory') return 0.5 + ((t - 0.15)/0.35)*0.5;
-                return 1.0; 
-            }
-            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); 
-            return 0;
-        };
+        const getPlethWave = (t, spO2) => { if (!spO2 || spO2 < 10) return 0; return (t < 0.3 ? Math.sin((t / 0.3) * Math.PI/2) : Math.cos(((t - 0.3) / 0.7) * Math.PI/2)) * (spO2/100); };
+        const getArtWave = (t) => { if (t < 0.15) return Math.sin((t/0.15) * Math.PI/2); if (t < 0.4) return Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; if (t < 0.5) return 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; return 0.2 * (1 - (t-0.5)/0.5); };
+        const getEtco2Wave = (t, pathology, rr) => { if (rr <= 0) return 0; if (t < 0.1 || t > 0.6) return 0; if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); if (t >= 0.15 && t < 0.5) return pathology === 'respiratory' ? 0.5 + ((t - 0.15)/0.35)*0.5 : 1.0; return 1.0 - ((t - 0.5) / 0.1); };
 
         useEffect(() => {
-            const canvas = canvasRef.current;
-            const ctx = canvas.getContext('2d');
-            const setSize = () => {
-                const parent = canvas.parentElement;
-                if(parent) {
-                    canvas.width = parent.clientWidth;
-                    canvas.height = parent.clientHeight;
-                    drawState.current.lastY = canvas.height * 0.20;
-                    drawState.current.lastYCO2 = canvas.height * 0.45;
-                    drawState.current.lastYArt = canvas.height * 0.70;
-                    drawState.current.lastYPleth = canvas.height * 0.90;
-                    ctx.fillStyle = '#000000';
-                    ctx.fillRect(0,0, canvas.width, canvas.height);
-                }
-            };
-            setSize();
-            window.addEventListener('resize', setSize);
-
+            const canvas = canvasRef.current; const ctx = canvas.getContext('2d');
+            const setSize = () => { const parent = canvas.parentElement; if(parent) { canvas.width = parent.clientWidth; canvas.height = parent.clientHeight; drawState.current.lastY = canvas.height * 0.20; drawState.current.lastYCO2 = canvas.height * 0.45; drawState.current.lastYArt = canvas.height * 0.70; drawState.current.lastYPleth = canvas.height * 0.90; ctx.fillStyle = '#000000'; ctx.fillRect(0,0, canvas.width, canvas.height); } };
+            setSize(); window.addEventListener('resize', setSize);
             const animate = (timestamp) => {
-                const state = drawState.current;
-                const props = propsRef.current;
+                const state = drawState.current; const props = propsRef.current;
                 if (!state.lastTime) state.lastTime = timestamp;
-                let dt = (timestamp - state.lastTime) / 1000;
-                if (dt > 0.05) dt = 0.05; 
-                state.lastTime = timestamp;
-
+                let dt = (timestamp - state.lastTime) / 1000; if (dt > 0.05) dt = 0.05; state.lastTime = timestamp;
                 if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
-
-                const ecgSpeed = 150; 
-                const dx = ecgSpeed * dt;
-                const prevX = state.x;
-                state.x += dx;
-                const eraserWidth = 40;
+                state.x += 150 * dt;
+                if (state.x + 40 < canvas.width) { ctx.fillStyle = '#000000'; ctx.fillRect(state.x, 0, 45, canvas.height); } else { ctx.fillStyle = '#000000'; ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 40, canvas.height); }
+                if (state.x > canvas.width) { state.x = 0; }
+                if (!props.showTraces) { ctx.strokeStyle = '#222'; ctx.beginPath(); ctx.moveTo(state.x-2, state.lastY); ctx.lineTo(state.x, state.lastY); ctx.stroke(); requestRef.current = requestAnimationFrame(animate); return; }
                 
-                ctx.fillStyle = '#000000';
-                if (state.x + eraserWidth < canvas.width) { ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); } 
-                else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, eraserWidth, canvas.height); }
+                let beatDur = 60 / Math.max(10, props.isCPR ? 110 : (props.hr || 60)); if(['VF','VT','Fine VF','Coarse VF'].includes(props.rhythmType)) beatDur = 0.2;
+                state.beatProgress += dt / beatDur; if (state.beatProgress >= 1) state.beatProgress = 0;
+                state.breathProgress += dt / (60 / (Math.max(1, props.rr) || 12)); if (state.breathProgress >= 1) state.breathProgress = 0;
 
-                const baselineECG = canvas.height * 0.20;
-                if (!props.showTraces) {
-                    ctx.strokeStyle = '#222'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke();
-                    requestRef.current = requestAnimationFrame(animate);
-                    return;
-                }
-
-                // RHYTHM CALCS
-                let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
-                let currentRate = props.isCPR ? 110 : (props.hr || 60);
-                let beatDuration = 60 / Math.max(10, currentRate);
-                if (['VF', 'Coarse VF', 'Fine VF'].includes(currentRhythm)) beatDuration = 0.2; 
-                state.beatProgress += dt / beatDuration;
-                if (state.beatProgress >= 1) state.beatProgress = 0;
-                let breathDuration = 60 / (Math.max(1, props.rr) || 12);
-                state.breathProgress += dt / breathDuration;
-                if (state.breathProgress >= 1) state.breathProgress = 0;
-
-                if (state.x > canvas.width) {
-                    state.x = 0;
-                    state.lastY = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
-                    state.lastYCO2 = canvas.height * 0.45;
-                    state.lastYArt = canvas.height * 0.70;
-                    state.lastYPleth = canvas.height * 0.90;
-                }
-
-                // DRAW WAVES
-                const yECG = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
-                if (state.x > prevX) { ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); }
-                state.lastY = yECG;
+                const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, canvas.height * 0.20);
+                ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(state.x-2, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); state.lastY = yECG;
 
                 if (props.showEtco2) {
-                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr);
-                    const yCO2 = (canvas.height * 0.45) - (normCO2 * canvas.height * 0.10);
-                    if (state.x > prevX) { ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke(); }
-                    state.lastYCO2 = yCO2;
+                    const yCO2 = (canvas.height * 0.45) - (getEtco2Wave(state.breathProgress, props.pathology, props.rr) * canvas.height * 0.10);
+                    ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(state.x-2, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke(); state.lastYCO2 = yCO2;
                 }
-
-                if (props.showArt && !props.isCPR && currentRate > 0) {
-                     const normArt = getArtWave(state.beatProgress);
-                     const yArt = (canvas.height * 0.70) - (normArt * canvas.height * 0.10);
-                     if (state.x > prevX) { ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke(); }
-                     state.lastYArt = yArt;
+                if (props.showArt && !props.isCPR && (props.hr||0) > 0) {
+                    const yArt = (canvas.height * 0.70) - (getArtWave(state.beatProgress) * canvas.height * 0.10);
+                    ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(state.x-2, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke(); state.lastYArt = yArt;
                 }
-
-                if (currentRate > 0 && !props.isCPR && props.spO2 > 10) {
-                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
-                    const yPleth = (canvas.height * 0.95) - (normPleth * canvas.height * 0.08);
-                    if (state.x > prevX) { ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke(); }
-                    state.lastYPleth = yPleth;
+                if ((props.hr||0) > 0 && !props.isCPR && props.spO2 > 10) {
+                    const yPleth = (canvas.height * 0.95) - (getPlethWave(state.beatProgress, props.spO2) * canvas.height * 0.08);
+                    ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(state.x-2, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke(); state.lastYPleth = yPleth;
                 }
-                
                 requestRef.current = requestAnimationFrame(animate);
             };
             requestRef.current = requestAnimationFrame(animate);
@@ -388,10 +227,5 @@
         );
     };
 
-    window.Lucide = Lucide;
-    window.Button = Button;
-    window.Card = Card;
-    window.VitalDisplay = VitalDisplay;
-    window.ECGMonitor = ECGMonitor;
-    window.InvestigationButton = InvestigationButton;
+    window.Lucide = Lucide; window.Button = Button; window.Card = Card; window.VitalDisplay = VitalDisplay; window.ECGMonitor = ECGMonitor; window.InvestigationButton = InvestigationButton;
 })();
