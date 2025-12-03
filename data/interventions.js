@@ -9,6 +9,7 @@ window.INTERVENTIONS = {
     'RSI': { label: 'RSI / Intubation', effect: { SpO2: 99, RR: 'vent', BP: -15, gcs: 'sedated' }, category: 'Airway', log: 'Rapid Sequence Induction performed. Patient intubated.', type: 'continuous', duration: 120 },
     'FONA': { label: 'FONA', effect: { SpO2: 95, RR: 'vent' }, category: 'Airway', log: 'Emergency FONA performed. Airway secured.', type: 'continuous', duration: 60 },
     'Magills': { label: 'Magill Forceps', effect: { SpO2: 10 }, category: 'Airway', log: 'Foreign body removed with Magills.', type: 'bolus', duration: 15 },
+    'ToggleETCO2': { label: 'Toggle ETCO2', effect: {}, category: 'Airway', log: 'ETCO2 monitoring toggled.', type: 'bolus', duration: 0 },
 
     // --- BREATHING ---
     'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Breathing', log: 'High flow oxygen applied.', type: 'continuous', duration: 5 },
