@@ -87,6 +87,7 @@
         
         // --- FIREBASE SYNC ---
         useEffect(() => {
+            const db = window.db; // <--- GRAB FROM WINDOW
             if (!db || !sessionID) return; 
             const sessionRef = db.ref(`sessions/${sessionID}`);
             if (isMonitorMode) {
