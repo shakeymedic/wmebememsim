@@ -1,4 +1,6 @@
-const { useState, useEffect, useRef, useReducer } = React;
+// data/components.js
+(() => {
+    const { useState, useEffect, useRef, useReducer } = React;
 
     // SAFE LUCIDE COMPONENT - Fixed to prevent React reconciliation crashes
     const Lucide = React.memo(({ icon, className = "" }) => {
@@ -6,11 +8,6 @@ const { useState, useEffect, useRef, useReducer } = React;
 
         useEffect(() => {
             if (!ref.current || !window.lucide) return;
-            
-            // Convert kebab-case (arrow-left) to PascalCase (ArrowLeft) for lookup if needed,
-            // but lucide.icons usually stores them as PascalCase.
-            // Some versions of Lucide global object have createIcons that scans DOM,
-            // others provide createElement.
             
             // Clear container safely
             ref.current.innerHTML = '';
@@ -445,10 +442,12 @@ const { useState, useEffect, useRef, useReducer } = React;
             </div>
         );
     };
-// Add this to the very end of data/components.js
-window.Lucide = Lucide;
-window.Button = Button;
-window.Card = Card;
-window.VitalDisplay = VitalDisplay;
-window.ECGMonitor = ECGMonitor;
-window.InvestigationButton = InvestigationButton;
+
+    window.Lucide = Lucide;
+    window.Button = Button;
+    window.Card = Card;
+    window.VitalDisplay = VitalDisplay;
+    window.ECGMonitor = ECGMonitor;
+    window.InvestigationButton = InvestigationButton;
+
+})();
