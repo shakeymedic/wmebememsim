@@ -244,7 +244,7 @@ window.processScenarios = () => {
 
         return {
             ...s,
-            equipment: s.instructorBrief.equipment || kit, 
+equipment: s.instructorBrief.equipment || kit, 
             learningLinks: s.learningLinks || links,
             evolution: { improved, deteriorated }
         };
