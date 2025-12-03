@@ -239,14 +239,12 @@ window.processScenarios = () => {
             const improvePh = (val) => val < 7.35 ? val + 0.1 : val;
             const worsenPh = (val) => val - 0.1;
             improved.vbg = { ...s.vbg, pH: improvePh(s.vbg.pH), Lac: Math.max(1, s.vbg.Lac / 2), K: s.vbg.K > 5.5 ? 5.0 : s.vbg.K };
-            if (s.vbg) {
-    // ... existing logic
-    deteriorated.vbg = { ...s.vbg, pH: worsenPh(s.vbg.pH), Lac: s.vbg.Lac + 2 };
-}
+            deteriorated.vbg = { ...s.vbg, pH: worsenPh(s.vbg.pH), Lac: s.vbg.Lac + 2 };
+        }
 
         return {
             ...s,
-equipment: s.instructorBrief.equipment || kit, 
+            equipment: s.instructorBrief.equipment || kit, 
             learningLinks: s.learningLinks || links,
             evolution: { improved, deteriorated }
         };
