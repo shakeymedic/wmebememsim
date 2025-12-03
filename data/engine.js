@@ -104,19 +104,24 @@
         useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
-        // --- AUDIO ENGINE ---
+        // --- AUDIO ENGINE (FIXED) ---
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
             const scheduleBeep = () => {
                 const current = stateRef.current;
+                
+                // FIX: Check audioOutput setting before deciding to play
+                const shouldPlay = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || 
+                                   (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
+
                 if (!current.isRunning && !isMonitorMode) return; 
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') return;
                 
                 // Monitor sound only if 'Obs' attached
                 if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
 
-                if (!current.isMuted && ctx) {
+                if (!current.isMuted && ctx && shouldPlay) {
                     const osc = ctx.createOscillator(); const gain = ctx.createGain();
                     osc.type = 'sine'; const freq = current.vitals.spO2 >= 95 ? 880 : current.vitals.spO2 >= 85 ? 600 : 400;
                     osc.frequency.value = freq; osc.connect(gain); gain.connect(ctx.destination);
@@ -160,8 +165,10 @@
             const isArrest = state.vitals.bpSys < 10 && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'Asystole');
             if (!isArrest) { if (action.effect.HR) { if (action.effect.HR === 'reset') newVitals.hr = 80; else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); } if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); }
             if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
+            
             const updatedScenario = { ...state.scenario }; let updateNeeded = false;
-            if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray?.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
+            // FIX: Added check for chestXray existence before accessing findings
+            if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
