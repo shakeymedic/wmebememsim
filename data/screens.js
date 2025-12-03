@@ -928,14 +928,15 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
         );
     };;
 
-    const MonitorContainer = ({ sessionID }) => {
+const MonitorContainer = ({ sessionID }) => {
         // Pass sessionID to hook
         const sim = useSimulation(null, true, sessionID);
         
         if (!sessionID) return null;
         
         // Waiting Screen
-        if (!sim.state.vitals.hr) return (
+        // FIXED: Check against undefined so HR 0 (Cardiac Arrest) doesn't trigger the waiting screen
+        if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
             <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
                 <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
                 <div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div>
@@ -943,7 +944,7 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
             </div>
         );
         return <MonitorScreen sim={sim} />;
-    };   
+    };
 
     const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart }) => {
         // CHANGED: We now accept 'sim' as a prop instead of creating a new one.
