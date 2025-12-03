@@ -59,12 +59,30 @@
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
             case 'UPDATE_TREND_PROGRESS':
-                // FIXED: Calculates progress properly (0 to 1) and resets elapsed on finish
                 const progress = Math.min(1, (state.trends.elapsed + 3) / state.trends.duration);
-                if (progress >= 1) return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
+                
+                // Calculate interpolated values first
                 const interpolated = { ...state.vitals };
-                Object.keys(state.trends.targets).forEach(key => { const startVal = state.trends.startVitals[key] || 0; const endVal = state.trends.targets[key]; interpolated[key] = startVal + (endVal - startVal) * progress; });
-                return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
+                Object.keys(state.trends.targets).forEach(key => { 
+                    const startVal = state.trends.startVitals[key] || 0; 
+                    const endVal = state.trends.targets[key]; 
+                    interpolated[key] = startVal + (endVal - startVal) * progress; 
+                });
+
+                // If finished, force targets (snap) and deactivate
+                if (progress >= 1) {
+                    return { 
+                        ...state, 
+                        vitals: { ...state.vitals, ...state.trends.targets }, 
+                        trends: { ...state.trends, active: false, elapsed: 0 } 
+                    };
+                }
+
+                return { 
+                    ...state, 
+                    vitals: interpolated, 
+                    trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } 
+                };
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
             case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, audioOutput: action.payload.audioOutput || 'monitor', trends: action.payload.trends || state.trends };
@@ -204,7 +222,6 @@
 
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
-        // FIXED: Now accepts type correctly for logs and rhythm update
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } });
@@ -218,7 +235,23 @@
         const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
-        const playNibp = () => { if (audioCtxRef.current) { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination); osc.frequency.setValueAtTime(150, ctx.currentTime); osc.frequency.linearRampToValueAtTime(100, ctx.currentTime + 1); gain.gain.setValueAtTime(0.1, ctx.currentTime); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); osc.start(); osc.stop(ctx.currentTime + 1); } };
+        
+        const playNibp = () => { 
+            // FIXED: Safety check for audio context state
+            if (audioCtxRef.current && audioCtxRef.current.state === 'running') { 
+                const ctx = audioCtxRef.current; 
+                const osc = ctx.createOscillator(); 
+                const gain = ctx.createGain(); 
+                osc.connect(gain); 
+                gain.connect(ctx.destination); 
+                osc.frequency.setValueAtTime(150, ctx.currentTime); 
+                osc.frequency.linearRampToValueAtTime(100, ctx.currentTime + 1); 
+                gain.gain.setValueAtTime(0.1, ctx.currentTime); 
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); 
+                osc.start(); 
+                osc.stop(ctx.currentTime + 1); 
+            } 
+        };
 
         const tick = () => {
             const current = stateRef.current; let next = { ...current.vitals };
@@ -233,12 +266,8 @@
             if (next.hr > 0) { next.hr += getRandomInt(-1, 1); next.bpSys += getRandomInt(-1, 1); let targetDia = Math.floor(next.bpSys * 0.65); next.bpDia = targetDia + getRandomInt(-2, 2); next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; }
             next.hr = clamp(next.hr, 0, 250); next.bpSys = clamp(next.bpSys, 0, 300); next.spO2 = clamp(next.spO2, 0, 100);
             
-            // Rounding for whole numbers (Fixes "120.33232")
-            next.hr = Math.round(next.hr);
-            next.bpSys = Math.round(next.bpSys);
-            next.bpDia = Math.round(next.bpDia);
-            next.spO2 = Math.round(next.spO2);
-            next.rr = Math.round(next.rr);
+            // REMOVED: Rounding block to prevent stuttering trends
+            // next.hr = Math.round(next.hr); ... (Deleted)
 
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
