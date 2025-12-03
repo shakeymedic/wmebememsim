@@ -6,6 +6,16 @@ window.getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max
 window.getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 window.clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
+// --- NAME GENERATOR ---
+window.generateName = (sex) => {
+    const male = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "George", "Harry", "Jack", "Oliver", "Noah"];
+    const female = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica", "Sarah", "Karen", "Olivia", "Amelia", "Isla", "Ava", "Mia"];
+    const sur = ["Smith", "Jones", "Williams", "Taylor", "Brown", "Davies", "Evans", "Wilson", "Thomas", "Johnson", "Roberts", "Robinson", "Thompson", "Wright", "Walker"];
+    
+    const first = sex === 'Female' ? window.getRandomItem(female) : window.getRandomItem(male);
+    return `${first} ${window.getRandomItem(sur)}`;
+};
+
 // --- MEDICAL GENERATORS ---
 
 window.generateHistory = (age, sex = 'Male') => {
@@ -17,7 +27,6 @@ window.generateHistory = (age, sex = 'Male') => {
     let pmh = [];
     let dhx = [];
     
-    // Logic for PMH generation
     const pmhCount = age > 60 ? window.getRandomInt(1, 4) : age > 40 ? window.getRandomInt(0, 2) : window.getRandomInt(0, 1);
     
     for(let i=0; i<pmhCount; i++) {
@@ -46,12 +55,13 @@ window.generateHistory = (age, sex = 'Male') => {
 };
 
 window.getBaseVitals = (age) => {
-    let v = { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8, gcs: 15, pupils: '3mm' }; 
-    if (age < 1) v = { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5, gcs: 15, pupils: '3mm' }; 
-    else if (age <= 2) v = { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0, gcs: 15, pupils: '3mm' }; 
-    else if (age <= 5) v = { hr: 110, rr: 25, bpSys: 95, bpDia: 60, temp: 37.0, bm: 5.0, gcs: 15, pupils: '3mm' }; 
-    else if (age <= 12) v = { hr: 90, rr: 20, bpSys: 105, bpDia: 65, temp: 36.8, bm: 5.5, gcs: 15, pupils: '4mm' }; 
-    else if (age > 65) v = { hr: 70, rr: 18, bpSys: 135, bpDia: 80, temp: 36.5, bm: 6.0, gcs: 15, pupils: '3mm' }; 
+    // FIX: Pupils are now number '3' not string '3mm' to fix NaN bug
+    let v = { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8, gcs: 15, pupils: 3 }; 
+    if (age < 1) v = { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5, gcs: 15, pupils: 3 }; 
+    else if (age <= 2) v = { hr: 125, rr: 30, bpSys: 90, bpDia: 55, temp: 37.0, bm: 5.0, gcs: 15, pupils: 3 }; 
+    else if (age <= 5) v = { hr: 110, rr: 25, bpSys: 95, bpDia: 60, temp: 37.0, bm: 5.0, gcs: 15, pupils: 3 }; 
+    else if (age <= 12) v = { hr: 90, rr: 20, bpSys: 105, bpDia: 65, temp: 36.8, bm: 5.5, gcs: 15, pupils: 4 }; 
+    else if (age > 65) v = { hr: 70, rr: 18, bpSys: 135, bpDia: 80, temp: 36.5, bm: 6.0, gcs: 15, pupils: 3 }; 
     return v;
 };
 
@@ -132,7 +142,7 @@ window.HUMAN_FACTOR_CHALLENGES = [
   { id: 'hf0', type: 'Standard Simulation', description: 'Manage effectively.' },
   { id: 'hf1', type: 'Blindfolded Lead', description: 'Leader blindfolded. Tests closed-loop comms.' },
   { id: 'hf2', type: 'Silent Team', description: 'Only leader speaks.' },
-{ id: 'hf3', type: 'New Junior', description: 'Junior member needs explicit instructions.' },
+  { id: 'hf3', type: 'New Junior', description: 'Junior member needs explicit instructions.' },
   { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
   { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
 ];
