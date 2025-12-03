@@ -9,7 +9,7 @@
 
     // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
-        const [mode, setMode] = useState('quick'); // Default to Quick Start
+        const [mode, setMode] = useState('quick'); 
         
         // Library State
         const [selectedCat, setSelectedCat] = useState('Medical');
@@ -132,7 +132,7 @@
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
-    // --- SCREEN 3: BRIEFING (Massively Enhanced) ---
+    // --- SCREEN 3: BRIEFING ---
     const BriefingScreen = ({ scenario, onStart, onBack }) => (
         <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
             <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
@@ -250,7 +250,7 @@
         const getInterventionsByCat = (cat) => {
             if (cat === 'Handover' || cat === 'Voice') return [];
             let keys = [];
-            if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM']; 
+            if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM', 'Blood', 'TXA']; 
             else if (cat === 'Drugs') keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === 'Drugs'); // Fallback
             else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
             return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
@@ -261,7 +261,8 @@
         const handleShock = () => { applyIntervention('Defib'); if (!cprInProgress) toggleCPR(); };
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const generateSBAR = () => `S: ${scenario.title}.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%.\nR: Review.`;
-        
+        const getCatColor = (cat) => { if (cat === 'Airway') return 'bg-sky-700 border-sky-500'; if (cat === 'Breathing') return 'bg-cyan-700 border-cyan-500'; if (cat === 'Circulation') return 'bg-red-700 border-red-500'; if (cat === 'Drugs') return 'bg-yellow-700 border-yellow-500'; if (cat === 'Procedures') return 'bg-emerald-700 border-emerald-500'; return 'bg-slate-700 border-slate-500'; };
+
         // --- CONTROL MODAL LOGIC ---
         const openVitalControl = (key) => {
             setModalVital(key);
@@ -340,16 +341,16 @@
                         <Card className="bg-black border-slate-800 flex-shrink-0">
                              <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black">
-                                 <VitalDisplay label="HR" value={vitals.hr} onUpdate={()=>openVitalControl('hr')} visible={hasMonitoring} />
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onUpdate={()=>openVitalControl('bp')} visible={hasMonitoring} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onUpdate={()=>openVitalControl('spO2')} visible={hasMonitoring} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onUpdate={()=>openVitalControl('rr')} visible={hasMonitoring} />
+                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={hasMonitoring} />
+                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={hasMonitoring} />
+                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={hasMonitoring} />
+                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={hasMonitoring} />
                              </div>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
-                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onUpdate={()=>openVitalControl('temp')} visible={true} />
-                                 <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onUpdate={()=>openVitalControl('bm')} visible={true} />
-                                 <VitalDisplay label="GCS" value={vitals.gcs} unit="" onUpdate={()=>openVitalControl('gcs')} visible={true} />
-                                 <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onUpdate={()=>openVitalControl('pupils')} visible={true} />
+                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
+                                 <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
+                                 <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
+                                 <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
                              </div>
                         </Card>
                         
