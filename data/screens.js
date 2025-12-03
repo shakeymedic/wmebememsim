@@ -1,4 +1,5 @@
-const { useState, useEffect, useRef, useReducer } = React;
+(() => {
+        const { useState, useEffect, useRef, useReducer } = React;
 
 const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
         // Add this immediately inside the SetupScreen function
@@ -971,3 +972,4 @@ window.MonitorScreen = MonitorScreen;
 window.MonitorContainer = MonitorContainer;
 window.LiveSimContainer = LiveSimContainer;
 window.DebriefScreen = DebriefScreen;
+})();
