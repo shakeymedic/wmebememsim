@@ -35,19 +35,12 @@
         switch (action.type) {
             case 'START_SIM': return { ...state, isRunning: true, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
             case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
-            
-            // FIXED: STOP_SIM now keeps the scenario data so Debrief works
-            case 'STOP_SIM': return { ...state, isRunning: false };
-            
-            // NEW: Clears everything for a fresh start
+            case 'STOP_SIM': return { ...state, isRunning: false }; // Keeps scenario for debrief
             case 'CLEAR_SESSION': return { ...initialState };
-
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 }, processedEvents: new Set(), activeInterventions: new Set() };
-            
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
-            
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations };
                 let durChanged = false;
@@ -58,37 +51,22 @@
                 let newNibp = { ...state.nibp };
                 if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
                 return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp };
-            
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
-            
             case 'UPDATE_VITALS': 
                 if (!state.isRunning) return state;
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
-            
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
-            
             case 'TRIGGER_IMPROVE':
                 let impScen = { ...state.scenario };
-                if (state.scenario.evolution && state.scenario.evolution.improved) {
-                     impScen = { ...impScen, ...state.scenario.evolution.improved };
-                } else {
-                     const currentVitals = state.vitals;
-                     impScen.vitals = { ...currentVitals, hr: Math.max(60, currentVitals.hr - 10), bpSys: Math.min(120, currentVitals.bpSys + 10), spO2: Math.min(99, currentVitals.spO2 + 5) };
-                }
+                if (state.scenario.evolution && state.scenario.evolution.improved) { impScen = { ...impScen, ...state.scenario.evolution.improved }; } 
+                else { const currentVitals = state.vitals; impScen.vitals = { ...currentVitals, hr: Math.max(60, currentVitals.hr - 10), bpSys: Math.min(120, currentVitals.bpSys + 10), spO2: Math.min(99, currentVitals.spO2 + 5) }; }
                 return { ...state, scenario: impScen, deterioration: { ...state.scenario.deterioration, active: false }, flash: 'green' };
-            
             case 'TRIGGER_DETERIORATE':
                  let detScen = { ...state.scenario };
-                 let detRate = 0.3;
-                 if (state.scenario.evolution && state.scenario.evolution.deteriorated) {
-                      detScen = { ...detScen, ...state.scenario.evolution.deteriorated };
-                 } else {
-                      const cur = state.vitals;
-                      detScen.vitals = { ...cur, hr: Math.min(160, cur.hr + 15), bpSys: Math.max(60, cur.bpSys - 15), spO2: Math.max(85, cur.spO2 - 5) };
-                 }
-                 return { ...state, scenario: detScen, deterioration: { ...state.scenario.deterioration, active: true, rate: detRate }, flash: 'red' };
-
+                 if (state.scenario.evolution && state.scenario.evolution.deteriorated) { detScen = { ...detScen, ...state.scenario.evolution.deteriorated }; } 
+                 else { const cur = state.vitals; detScen.vitals = { ...cur, hr: Math.min(160, cur.hr + 15), bpSys: Math.max(60, cur.bpSys - 15), spO2: Math.max(85, cur.spO2 - 5) }; }
+                 return { ...state, scenario: detScen, deterioration: { ...state.scenario.deterioration, active: true, rate: 0.3 }, flash: 'red' };
             case 'TRIGGER_NIBP_MEASURE': return { ...state, nibp: { ...state.nibp, sys: state.vitals.bpSys, dia: state.vitals.bpDia, lastTaken: Date.now(), timer: state.nibp.interval } };
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
@@ -98,13 +76,8 @@
                 const interpolated = { ...state.vitals };
                 Object.keys(state.trends.targets).forEach(key => { const startVal = state.trends.startVitals[key] || 0; const endVal = state.trends.targets[key]; interpolated[key] = startVal + (endVal - startVal) * progress; });
                 return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
-
-            case 'TRIGGER_SPEAK':
-                return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
-            
-            case 'SET_AUDIO_OUTPUT':
-                return { ...state, audioOutput: action.payload };
-
+            case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
+            case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
             case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, audioOutput: action.payload.audioOutput || 'monitor' };
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
             case 'SET_FLASH': return { ...state, flash: action.payload };
@@ -154,7 +127,7 @@
         useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
-        // UPDATED AUDIO LOOP: Checks for 'Obs' before playing sound
+        // --- AUDIO ENGINE ---
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
@@ -163,9 +136,9 @@
                 if (!current.isRunning && !isMonitorMode) return; 
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole') return;
                 
-                // ONLY PLAY IF MONITORING IS ATTACHED
+                // IMPORTANT: Sound only plays if 'Obs' are attached
                 if (!current.activeInterventions.has('Obs')) {
-                    timerId = setTimeout(scheduleBeep, 1000); // Check again in 1s
+                    timerId = setTimeout(scheduleBeep, 1000); 
                     return;
                 }
 
