@@ -2,26 +2,16 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // SAFE LUCIDE COMPONENT - Fixed to prevent React reconciliation crashes
+    // SAFE LUCIDE COMPONENT
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
-
         useEffect(() => {
             if (!ref.current || !window.lucide) return;
-            
-            // Convert kebab-case (arrow-left) to PascalCase (ArrowLeft) for lookup if needed,
-            // but lucide.icons usually stores them as PascalCase.
-            // Some versions of Lucide global object have createIcons that scans DOM,
-            // others provide createElement.
-            
-            // Clear container safely
             ref.current.innerHTML = '';
-
             const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
             const iconName = kebabToPascal(icon);
             
             if (window.lucide.icons && window.lucide.icons[iconName]) {
-                 // Modern UMD approach if available
                  const iconNode = window.lucide.icons[iconName];
                  if (window.lucide.createElement) {
                      const svg = window.lucide.createElement(iconNode);
@@ -30,8 +20,6 @@
                      return;
                  }
             }
-
-            // Fallback for older UMD or if direct lookup fails
             if (window.lucide.createIcons) {
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', icon);
@@ -40,7 +28,6 @@
                 window.lucide.createIcons({ root: ref.current });
             }
         }, [icon, className]);
-
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
@@ -111,7 +98,6 @@
         };
         const colorClass = getColors(label);
 
-        // Click Handler: If 'onClick' prop exists (Control Modal), use it. Otherwise toggle inline edit.
         const handleInteraction = () => {
             if (onClick) { onClick(); } 
             else { setEditVal(value); setIsEditing(true); }
@@ -124,8 +110,24 @@
             return (
                 <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
                     <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
-                    <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{value === '?' ? '-?-' : (isText ? value : Math.round(value))}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}</div></div>
-                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && <span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span>}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
+                    <div className="flex-grow flex items-center justify-center">
+                        {isNIBP && (
+                            <button onClick={onClick} className="absolute inset-0 z-10 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>
+                        )}
+                        <div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}>
+                            <span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{value === '?' ? '-?-' : (isText ? value : Math.round(value))}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
+                        </div>
+                    </div>
+                    <div className="flex justify-between items-end mt-1">
+                        <span className="text-xs text-slate-400 font-bold">{unit}</span>
+                        {isNIBP && (
+                            <div className="flex flex-col items-end">
+                                <span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span>
+                                <div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1">CYCLE</div>
+                            </div>
+                        )}
+                        {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}
+                    </div>
                 </div>
             );
         }
@@ -159,7 +161,6 @@
         );
     };
 
-        
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
@@ -186,49 +187,41 @@
             const noise = (Math.random() - 0.5) * 1.5;
             
             if (cpr) {
-                // Large CPR Artifact
                 const compression = Math.sin(t * 12) * 45; 
                 return baseline + compression + (Math.random() * 10 - 5);
             }
-
             if (type === 'Asystole') return baseline + noise;
             
             // VF / VT
             if (type === 'VF' || type === 'Coarse VF') return baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
             if (type === 'Fine VF') return baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
-            if (type === 'VT') {
+            if (type === 'VT' || type === 'pVT') {
                 let y = baseline;
                 if (t < 0.2) y += Math.sin(t * 5 * Math.PI) * 50; 
                 else if (t < 0.6) y -= Math.sin((t-0.2) * 2.5 * Math.PI) * 50; 
                 return y + noise;
             }
 
-            // Complex Rhythms
+            // Normal-ish Rhythms (Sinus, PEA, etc)
+            // Note: For PEA, we draw a rhythm but the Engine sets BP/SpO2 to 0/Low.
             let y = baseline;
+            const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole', 'pVT'].includes(type);
             
-            // P-Wave (Skip for AF, SVT, etc)
-            const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole'].includes(type);
             if (hasP) {
                 if (t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
             } else if (type === 'AF') {
-                // Fibrillatory baseline for AF (f-waves)
                 y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
             }
 
-            // QRS Complex
-            if (t > 0.12 && t < 0.14) y += 3; // Q
-            else if (t >= 0.14 && t < 0.18) y -= 55; // R (Up is negative)
-            else if (t >= 0.18 && t < 0.20) y += 12; // S
+            // QRS
+            if (t > 0.12 && t < 0.14) y += 3; 
+            else if (t >= 0.14 && t < 0.18) y -= 55; 
+            else if (t >= 0.18 && t < 0.20) y += 12; 
 
-            // ST Segment / T Wave
+            // ST/T
             if (type === 'STEMI') {
-                // Elevated ST
-                if (t >= 0.20 && t < 0.4) {
-                    y -= 15; // Elevation
-                    y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; // T wave merged
-                }
+                if (t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; }
             } else {
-                // Normal ST/T
                 if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
             }
 
@@ -244,29 +237,23 @@
         };
 
         const getArtWave = (t) => {
-             // Realistic arterial pressure waveform
              let y = 0;
-             if (t < 0.15) {
-                 y = Math.sin((t/0.15) * Math.PI/2); // Steep rise
-             } else if (t < 0.4) {
-                 y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; // Fall to notch
-             } else if (t < 0.5) {
-                 y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; // Dicrotic notch
-             } else {
-                 y = 0.2 * (1 - (t-0.5)/0.5); // Diastolic runoff
-             }
+             if (t < 0.15) { y = Math.sin((t/0.15) * Math.PI/2); } 
+             else if (t < 0.4) { y = Math.cos(((t-0.15)/0.25) * Math.PI/2) * 0.8 + 0.2; } 
+             else if (t < 0.5) { y = 0.2 + Math.sin(((t-0.4)/0.1) * Math.PI) * 0.1; } 
+             else { y = 0.2 * (1 - (t-0.5)/0.5); }
              return y;
         };
 
         const getEtco2Wave = (t, pathology, rr) => {
             if (rr <= 0) return 0; 
             if (t < 0.1 || t > 0.6) return 0; 
-            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); // Rise
+            if (t >= 0.1 && t < 0.15) return ((t - 0.1) / 0.05); 
             if (t >= 0.15 && t < 0.5) {
-                if (pathology === 'respiratory') return 0.5 + ((t - 0.15)/0.35)*0.5; // Shark fin
+                if (pathology === 'respiratory') return 0.5 + ((t - 0.15)/0.35)*0.5; 
                 return 1.0; 
             }
-            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); // Fall
+            if (t >= 0.5 && t <= 0.6) return 1.0 - ((t - 0.5) / 0.1); 
             return 0;
         };
 
@@ -279,8 +266,6 @@
                 if(parent) {
                     canvas.width = parent.clientWidth;
                     canvas.height = parent.clientHeight;
-                    // Calc Y positions dynamically based on height
-                    // ECG at 30% height, CO2 at 60%, Art at 80%, Pleth at 95%
                     drawState.current.lastY = canvas.height * 0.30;
                     drawState.current.lastYCO2 = canvas.height * 0.60;
                     drawState.current.lastYArt = canvas.height * 0.80;
@@ -297,21 +282,18 @@
                 const props = propsRef.current;
                 
                 if (!state.lastTime) state.lastTime = timestamp;
-                
-                // --- GLITCH FIX ---
                 let dt = (timestamp - state.lastTime) / 1000;
                 if (dt > 0.05) dt = 0.05; 
                 state.lastTime = timestamp;
 
                 if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
 
-                // Eraser Bar
+                // Eraser
                 const ecgSpeed = 150; 
                 const dx = ecgSpeed * dt;
                 const prevX = state.x;
                 state.x += dx;
                 const eraserWidth = 30;
-                
                 ctx.fillStyle = '#000000';
                 if (state.x + eraserWidth < canvas.width) { ctx.fillRect(state.x, 0, eraserWidth + 5, canvas.height); } 
                 else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, eraserWidth, canvas.height); }
@@ -319,7 +301,6 @@
                 const baselineECG = canvas.height * 0.30;
 
                 if (!props.showTraces) {
-                    // Draw faint flatline
                     ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke();
                     requestRef.current = requestAnimationFrame(animate);
                     return;
@@ -327,9 +308,19 @@
 
                 // RHYTHM CALCS
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
-                let currentRate = props.isCPR ? 110 : (props.hr || 60);
                 
-                let beatDuration = 60 / Math.max(10, currentRate);
+                // Handling HR for Arrest Scenarios
+                // If arrest (hr=0), we might still want to draw a rhythm (e.g. PEA)
+                // If HR is 0 but rhythm is PEA/Sinus, we fake a rate for drawing only.
+                let drawRate = props.hr;
+                if (drawRate === 0) {
+                     if (['VF', 'VT', 'pVT', 'PEA'].includes(currentRhythm) || currentRhythm.includes('Sinus')) {
+                         drawRate = 70; // Fake rate for drawing electrical activity
+                     }
+                }
+                if (props.isCPR) drawRate = 110;
+
+                let beatDuration = 60 / Math.max(10, drawRate);
                 if (['VF', 'Coarse VF', 'Fine VF'].includes(currentRhythm)) beatDuration = 0.2; 
 
                 state.beatProgress += dt / beatDuration;
@@ -339,6 +330,7 @@
                 state.breathProgress += dt / breathDuration;
                 if (state.breathProgress >= 1) state.breathProgress = 0;
 
+                // WRAP
                 if (state.x > canvas.width) {
                     state.x = 0;
                     state.lastY = getWaveform(currentRhythm, state.beatProgress, props.isCPR, baselineECG);
@@ -357,7 +349,9 @@
 
                 // 2. ETCO2 (Yellow)
                 if (props.showEtco2) {
-                    const normCO2 = getEtco2Wave(state.breathProgress, props.pathology, props.rr);
+                    // Flatten if HR is 0 and no CPR (No Cardiac Output)
+                    const hasOutput = props.hr > 10 || props.isCPR;
+                    const normCO2 = hasOutput ? getEtco2Wave(state.breathProgress, props.pathology, props.rr) : 0;
                     const co2MaxHeight = canvas.height * 0.12; const co2BaseY = (canvas.height * 0.60); const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
                     if (state.x > prevX) {
                          ctx.strokeStyle = '#facc15'; ctx.lineWidth = 2.5; ctx.beginPath();
@@ -367,8 +361,12 @@
                 }
 
                 // 3. ART LINE (Red)
-                if (props.showArt && !props.isCPR && currentRate > 0) {
-                     const normArt = getArtWave(state.beatProgress);
+                // Only show if Art Line active AND patient has a pulse (HR > 10) AND not CPR artifact (usually blocks art line)
+                if (props.showArt) {
+                     // Check for mechanical pulse
+                     const hasPulse = props.hr > 10; 
+                     // PEA and Arrest = No Pulse
+                     const normArt = (hasPulse && !props.isCPR) ? getArtWave(state.beatProgress) : 0;
                      const artHeight = canvas.height * 0.12; const artBaseY = (canvas.height * 0.80); const yArt = artBaseY - (normArt * artHeight);
                      if (state.x > prevX) {
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2.5; ctx.beginPath();
@@ -378,8 +376,10 @@
                 }
 
                 // 4. PLETH (Blue)
-                if (currentRate > 0 && !props.isCPR && props.spO2 > 10) {
-                    const normPleth = getPlethWave(state.beatProgress, props.spO2);
+                // Needs pulse
+                if (props.spO2 > 10) {
+                    const hasPulse = props.hr > 10;
+                    const normPleth = (hasPulse && !props.isCPR) ? getPlethWave(state.beatProgress, props.spO2) : 0;
                     const plethHeight = canvas.height * 0.10; const plethBaseY = canvas.height - 10; const yPleth = plethBaseY - (normPleth * plethHeight);
                     if (state.x > prevX) {
                         ctx.strokeStyle = '#0ea5e9'; ctx.lineWidth = 2.5; ctx.beginPath();
@@ -399,9 +399,7 @@
             <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
                 
-                {/* NEAT LABELS: Positioned in "Lanes" on the right side with background pills */}
-                
-                {/* Lane 1: ECG (Top) */}
+                {/* LABELS */}
                 {showTraces && (
                     <div className="absolute top-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-green-500">
                         <span className="text-lg font-mono text-green-500 font-bold shadow-black drop-shadow-md">
@@ -409,22 +407,16 @@
                         </span>
                     </div>
                 )}
-                
-                {/* Lane 2: ETCO2 (Middle) */}
                 {showEtco2 && showTraces && (
                     <div className="absolute top-[45%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-yellow-500">
                         <span className="text-sm font-mono text-yellow-500 font-bold shadow-black drop-shadow-md">ETCO2</span>
                     </div>
                 )}
-                
-                {/* Lane 3: ABP (Lower Middle) */}
                 {showArt && showTraces && (
                     <div className="absolute top-[65%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-red-500">
                         <span className="text-sm font-mono text-red-500 font-bold shadow-black drop-shadow-md">ABP</span>
                     </div>
                 )}
-                
-                {/* Lane 4: PLETH (Bottom) */}
                 {showTraces && (
                     <div className="absolute bottom-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-sky-500">
                         <span className="text-sm font-mono text-sky-500 font-bold shadow-black drop-shadow-md">PLETH</span>
@@ -433,6 +425,7 @@
             </div>
         );
     };
+
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const hasData = (type === 'ECG' && scenario.ecg) || (type === 'X-ray' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct) || (type === 'Urine' && scenario.urine);
         return (
@@ -456,11 +449,11 @@
             </div>
         );
     };
-// Add this to the very end of data/components.js
-window.Lucide = Lucide;
-window.Button = Button;
-window.Card = Card;
-window.VitalDisplay = VitalDisplay;
-window.ECGMonitor = ECGMonitor;
-window.InvestigationButton = InvestigationButton;
+
+    window.Lucide = Lucide;
+    window.Button = Button;
+    window.Card = Card;
+    window.VitalDisplay = VitalDisplay;
+    window.ECGMonitor = ECGMonitor;
+    window.InvestigationButton = InvestigationButton;
 })();
