@@ -64,7 +64,7 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
             setMode('custom'); 
         };
 
-        const handleGenerate = () => {
+const handleGenerate = () => {
              // Logic to filter the main array based on dropdowns
              let pool = ALL_SCENARIOS.filter(s => 
                 (category === 'Any' || s.category === category || (category === 'Medical' && (s.category === 'Toxicology' || s.category === 'Psychiatric'))) && 
@@ -86,11 +86,21 @@ const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
              const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
              const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
 
+             // --- FIX: Calculate sensible Diastolic BP if missing ---
+             // Scenarios like Arrests often only have bpSys: 0 or bpSys: 50.
+             // We default bpDia to 80, which creates impossible BPs like 50/80.
+             // This logic ensures if bpDia is missing, it is set to 65% of Systolic.
+             let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', ...base.vitalsMod };
+             
+             if (base.vitalsMod && base.vitalsMod.bpSys !== undefined && base.vitalsMod.bpDia === undefined) {
+                 finalVitals.bpDia = Math.floor(base.vitalsMod.bpSys * 0.65);
+             }
+
              const generated = { 
                 ...base, 
                 patientAge, 
                 profile: base.patientProfileTemplate.replace('{age}', patientAge).replace('{sex}', 'Male'),
-                vitals: { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', ...base.vitalsMod },
+                vitals: finalVitals,
                 pmh: base.pmh || history.pmh, 
                 dhx: base.dhx || history.dhx, 
                 allergies: base.allergies || history.allergies,
@@ -935,7 +945,8 @@ const MonitorContainer = ({ sessionID }) => {
         if (!sessionID) return null;
         
         // Waiting Screen
-        // FIXED: Check against undefined so HR 0 (Cardiac Arrest) doesn't trigger the waiting screen
+        // FIXED: We now check if vitals are undefined, rather than just falsy.
+        // This ensures that if HR is 0 (Cardiac Arrest), the monitor still displays instead of showing the waiting screen.
         if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (
             <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
                 <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
