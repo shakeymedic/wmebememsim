@@ -159,9 +159,17 @@
                 }
                 const delay = 60000 / (Math.max(20, current.vitals.hr) || 60); timerId = setTimeout(scheduleBeep, delay);
             };
-            if (state.isRunning || (isMonitorMode && state.vitals.hr > 0)) { if (ctx && ctx.state === 'suspended') ctx.resume(); scheduleBeep(); }
+            
+            // Start Logic: Runs if Sim is running OR if Monitor Mode has HR (Fixes "Monitor Silent" bug)
+            const shouldStart = state.isRunning || (isMonitorMode && state.vitals && state.vitals.hr > 0);
+            
+            if (shouldStart) {
+                 if (ctx && ctx.state === 'suspended') ctx.resume();
+                 scheduleBeep();
+            }
+            
             return () => clearTimeout(timerId);
-        }, [state.isRunning, isMonitorMode]); 
+        }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]); // HR > 0 dependency restarts loop if ROSC occurs or data arrives
 
         useEffect(() => { if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning) { dispatch({ type: 'TRIGGER_NIBP_MEASURE' }); } }, [state.nibp.timer, state.isRunning]);
 
