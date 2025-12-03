@@ -8,7 +8,7 @@
         generateHistory, estimateWeight, calculateWetflag, generateVbg 
     } = window;
 
-    // --- SCREEN 1: SETUP (Updated with Premade Tab & Drill-down) ---
+    // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
         const [mode, setMode] = useState('random'); 
         
@@ -18,8 +18,8 @@
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
         
-        // Premade Mode State (Drill-down)
-        const [premadeCategory, setPremadeCategory] = useState(null); // 'Medical', 'Trauma', etc.
+        // Premade Mode State
+        const [premadeCategory, setPremadeCategory] = useState(null);
 
         // Builder State
         const [buildTitle, setBuildTitle] = useState("");
@@ -31,7 +31,6 @@
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98 });
         const [customScenarios, setCustomScenarios] = useState([]);
 
-        // Ensure scenarios are loaded
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
         useEffect(() => {
@@ -42,7 +41,6 @@
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
             
-            // FIX: Ensure vitals are parsed as Integers to prevent string concatenation bugs in engine
             const safeVitals = {
                 hr: parseInt(buildVitals.hr) || 80,
                 bpSys: parseInt(buildVitals.bpSys) || 120,
@@ -81,7 +79,6 @@
              }
 
              try {
-                 // 1. Select Base Scenario
                  let selectedBase = base;
                  if (!base && mode === 'random') {
                      let pool = ALL_SCENARIOS.filter(s => 
@@ -93,10 +90,7 @@
                      selectedBase = pool[Math.floor(Math.random() * pool.length)];
                  }
 
-                 // 2. Generate Dynamic Patient Data
                  const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
-                 
-                 // Determine Sex (Obstetrics must be female, others random)
                  const isObs = selectedBase.category === 'Obstetrics & Gynae';
                  const sex = isObs ? 'Female' : (Math.random() > 0.5 ? 'Male' : 'Female');
                  
@@ -104,17 +98,14 @@
                  const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
                  const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
                  
-                 // 3. Merge Vitals
                  let finalVitals = { 
                      hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: '3mm', 
                      ...selectedBase.vitalsMod 
                  };
-                 // Auto-calculate Diastolic if only Systolic provided
                  if (selectedBase.vitalsMod && selectedBase.vitalsMod.bpSys !== undefined && selectedBase.vitalsMod.bpDia === undefined) { 
                      finalVitals.bpDia = Math.floor(selectedBase.vitalsMod.bpSys * 0.65); 
                  }
 
-                 // 4. Construct Final Object
                  const generated = { 
                     ...selectedBase, 
                     patientAge, 
@@ -140,7 +131,6 @@
              }
         };
 
-        // Drill-down Categories
         const premadeCategories = [
             { id: 'Medical', label: 'Adult Medical', icon: 'stethoscope', filter: s => s.category === 'Medical' && s.ageRange === 'Adult' },
             { id: 'Trauma', label: 'Trauma', icon: 'ambulance', filter: s => s.category === 'Trauma' },
@@ -154,7 +144,6 @@
 
         return (
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
-                {/* Header Session Info */}
                 <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-center justify-between">
                     <div>
                         <div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div>
@@ -174,7 +163,6 @@
                 )}
                 
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
-                    {/* Tab Switcher */}
                     <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto no-scrollbar">
                         {['random', 'premade', 'custom', 'builder'].map(m => (
                             <button 
@@ -187,7 +175,6 @@
                         ))}
                     </div>
 
-                    {/* MODE: RANDOM */}
                     {mode === 'random' && (
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">
@@ -200,11 +187,9 @@
                         </div>
                     )}
 
-                    {/* MODE: PREMADE (DRILL DOWN) */}
                     {mode === 'premade' && (
                         <div className="animate-fadeIn min-h-[300px]">
                             {!premadeCategory ? (
-                                // Level 1: Categories
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                                     {premadeCategories.map(cat => (
                                         <button 
@@ -218,7 +203,6 @@
                                     ))}
                                 </div>
                             ) : (
-                                // Level 2: Scenarios List
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 mb-4">
                                         <Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button>
@@ -246,7 +230,6 @@
                         </div>
                     )}
 
-                    {/* MODE: CUSTOM */}
                     {mode === 'custom' && (
                         <div className="space-y-2 animate-fadeIn">
                              {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet.</p>}
@@ -259,7 +242,6 @@
                         </div>
                     )}
 
-                    {/* MODE: BUILDER */}
                     {mode === 'builder' && (
                         <div className="space-y-4 animate-fadeIn">
                             <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
@@ -268,15 +250,12 @@
                                 <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
                             </div>
                             <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
-                            
-                            {/* FIX: Ensure numeric inputs for vitals */}
                             <div className="grid grid-cols-4 gap-2">
                                 <input type="number" placeholder="HR" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
                                 <input type="number" placeholder="BP Sys" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
                                 <input type="number" placeholder="RR" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
                                 <input type="number" placeholder="SpO2" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
                             </div>
-
                             <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
                         </div>
                     )}
@@ -384,11 +363,11 @@
         const [drugCalc, setDrugCalc] = useState({ drug: 'Salbutamol', dose: '', weight: scenario.weight || 70 });
         
         // Modal State for Vital Control
-        const [modalVital, setModalVital] = useState(null); // 'hr', 'bp', 'spO2', 'rr', 'temp', 'gcs', 'bm', 'pupils'
+        const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
-        const [modalTarget2, setModalTarget2] = useState(""); // For BP Dia
+        const [modalTarget2, setModalTarget2] = useState(""); 
+        const [trendDuration, setTrendDuration] = useState(30);
 
-        // DRUG CATEGORIES
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
@@ -409,7 +388,6 @@
         const getInterventionsByCat = (cat) => {
             if (cat === 'Handover' || cat === 'Voice') return [];
             let keys = [];
-            // FIX: Added 'ArtLine' to Common list for visibility
             if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM', 'Blood', 'TXA', 'ArtLine']; 
             else if (cat === 'Drugs') keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === 'Drugs'); 
             else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
@@ -423,23 +401,31 @@
         const generateSBAR = () => `S: ${scenario.title}.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%.\nR: Review.`;
         const getCatColor = (cat) => { if (cat === 'Airway') return 'bg-sky-700 border-sky-500'; if (cat === 'Breathing') return 'bg-cyan-700 border-cyan-500'; if (cat === 'Circulation') return 'bg-red-700 border-red-500'; if (cat === 'Drugs') return 'bg-yellow-700 border-yellow-500'; if (cat === 'Procedures') return 'bg-emerald-700 border-emerald-500'; return 'bg-slate-700 border-slate-500'; };
 
-        // --- CONTROL MODAL LOGIC ---
         const openVitalControl = (key) => {
             setModalVital(key);
             setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]);
             if (key === 'bp') setModalTarget2(vitals.bpDia);
+            setTrendDuration(30); // Default 30s
         };
-        const applyVitalUpdate = (duration) => {
+
+        const quickAdjust = (amt) => {
+            let current = parseFloat(modalTarget) || 0;
+            setModalTarget(current + amt);
+            if (modalVital === 'bp') {
+                let currentDia = parseFloat(modalTarget2) || 0;
+                setModalTarget2(currentDia + (amt * 0.6)); // Approx ratio adjustment
+            }
+        };
+
+        const confirmVitalUpdate = () => {
             const targets = {};
             if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
             else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); }
             
-            if (duration === 0) {
-                // Immediate
+            if (trendDuration === 0) {
                 Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k]));
             } else {
-                // Trend
-                startTrend(targets, duration);
+                startTrend(targets, trendDuration);
             }
             setModalVital(null);
         };
@@ -527,20 +513,14 @@
 
                         <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10">
                             <h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Rhythm & Arrest</h4>
-                            
-                            {/* FIX: Added ETCO2 Toggle Button */}
-                            <Button onClick={() => sim.dispatch({type: 'TOGGLE_ETCO2'})} variant={etco2Enabled ? "success" : "secondary"} className="w-full h-8 mb-2 text-xs border border-slate-500">
-                                {etco2Enabled ? "ETCO2: ON" : "ETCO2: OFF"}
-                            </Button>
-
                             <div className="grid grid-cols-2 gap-1 mb-2">
                                 <Button onClick={triggerArrest} variant="danger" className="h-8 text-xs">VF Arrest</Button>
                                 <Button onClick={triggerROSC} variant="success" className="h-8 text-xs">ROSC</Button>
                             </div>
-
-                            {/* FIX: Removed 'STEMI' from drop down list */}
+                            
                             <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
                             {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
+                            
                             <Button onClick={() => setArrestMode(!arrestMode)} variant={arrestMode ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestMode ? "Close Arrest Panel" : "Open Arrest Panel"}</Button>
                         </div>
                     </div>
@@ -566,7 +546,10 @@
                                 <div className="space-y-4 p-2"><div className="bg-slate-900 p-4 rounded border border-slate-600 font-mono text-sm text-green-400 whitespace-pre-wrap">{generateSBAR()}</div><div className="flex gap-2"><Button onClick={() => speak(generateSBAR())} variant="secondary">Read Aloud</Button><Button onClick={() => navigator.clipboard.writeText(generateSBAR())} variant="outline">Copy</Button></div></div>
                             ) : activeTab === 'Voice' ? (
                                 <div className="space-y-4 p-4">
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">{["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}</div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
+                                        <Button onClick={() => speak("I need Dr Jake Turner, the best doctor I've ever met")} variant="primary" className="h-12 text-xs border border-sky-500 bg-sky-900/50">Dr Turner!</Button>
+                                    </div>
                                     <div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
                                 </div>
                             ) : activeTab === 'Drugs' ? (
@@ -601,7 +584,7 @@
                                 </div>
                             )}
                         </div>
-                        <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2"><input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} /><Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button><Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button></div>
+                        <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2"><input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} /><Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button><Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button></div>
                     </div>
                 </div>
 
@@ -611,16 +594,25 @@
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
                             <div className="space-y-4">
+                                <div className="flex gap-2 justify-center mb-4">
+                                    <Button onClick={()=>quickAdjust(-20)} variant="secondary" className="w-12">-20</Button>
+                                    <Button onClick={()=>quickAdjust(-10)} variant="secondary" className="w-12">-10</Button>
+                                    <Button onClick={()=>quickAdjust(10)} variant="secondary" className="w-12">+10</Button>
+                                    <Button onClick={()=>quickAdjust(20)} variant="secondary" className="w-12">+20</Button>
+                                </div>
+
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Target Value</label><input type={modalVital === 'pupils' ? "text" : "number"} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Button onClick={()=>applyVitalUpdate(0)} variant="danger">Instant</Button>
-                                    <Button onClick={()=>applyVitalUpdate(30)} variant="secondary">30 Secs</Button>
-                                    <Button onClick={()=>applyVitalUpdate(120)} variant="secondary">2 Mins</Button>
-                                    <Button onClick={()=>applyVitalUpdate(300)} variant="secondary">5 Mins</Button>
+                                <div className="grid grid-cols-4 gap-1 mt-2">
+                                    <button onClick={()=>setTrendDuration(0)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===0 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>Instant</button>
+                                    <button onClick={()=>setTrendDuration(30)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===30 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>30s</button>
+                                    <button onClick={()=>setTrendDuration(120)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===120 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>2m</button>
+                                    <button onClick={()=>setTrendDuration(300)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===300 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>5m</button>
                                 </div>
-                                <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full mt-2">Cancel</Button>
+
+                                <Button onClick={confirmVitalUpdate} variant="success" className="w-full mt-4 h-12 text-lg font-bold">CONFIRM & SEND</Button>
+                                <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
                             </div>
                         </div>
                     </div>
@@ -645,7 +637,7 @@
                 <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col"><ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" /></div>
                 <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
                     <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                    {hasArtLine ? (<VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />) : (<VitalDisplay label="NIBP" value={nibp.sys || '?'} value2={nibp.dia || '?'} unit="mmHg" onUpdate={() => {}} alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} isNIBP={true} lastNIBP={nibp.lastTaken} hideTrends={true} />)}
+                    {hasArtLine ? (<VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />) : (<VitalDisplay label="NIBP" value={nibp.sys || '?'} value2={nibp.dia || '?'} unit="mmHg" onUpdate={() => {}} onClick={() => sim.dispatch({type: 'TOGGLE_NIBP_MODE'})} alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} isNIBP={true} lastNIBP={nibp.lastTaken} hideTrends={true} />)}
                     <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     <div className="grid grid-rows-2 gap-2 md:gap-4"><VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />{etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}</div>
                 </div>
@@ -655,8 +647,6 @@
 
     const DebriefScreen = ({ sim, onRestart }) => {
         const { state } = sim; const { log, scenario, history } = state; const chartRef = useRef(null);
-        
-        // Safety check for scenario data
         if (!scenario) return <div className="p-4 text-white">Error: No scenario data for debrief.</div>;
 
         useEffect(() => { 
