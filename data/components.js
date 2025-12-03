@@ -103,19 +103,30 @@
             else { setEditVal(value); setIsEditing(true); }
         };
         
+        // Pupil Formatting Logic
+        const displayValue = () => {
+            if (label === "Pupils") {
+                return (typeof value === 'number') ? `${value}mm` : value;
+            }
+            if (value === '?') return isText ? '-?-' : '--';
+            return isText ? value : Math.round(value);
+        };
+        
         // --- MONITOR MODE (LARGE) ---
         if (isMonitor) {
             if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
             
             return (
                 <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
+                    {/* Big clickable area for NIBP */}
+                    {isNIBP && (
+                        <button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>
+                    )}
+                    
                     <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
                     <div className="flex-grow flex items-center justify-center">
-                        {isNIBP && (
-                            <button onClick={onClick} className="absolute inset-0 z-10 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>
-                        )}
                         <div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}>
-                            <span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{value === '?' ? '-?-' : (isText ? value : Math.round(value))}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
+                            <span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{displayValue()}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
                         </div>
                     </div>
                     <div className="flex justify-between items-end mt-1">
@@ -123,7 +134,7 @@
                         {isNIBP && (
                             <div className="flex flex-col items-end">
                                 <span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span>
-                                <div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1">CYCLE</div>
+                                <div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1 pointer-events-none">CYCLE</div>
                             </div>
                         )}
                         {!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}
@@ -150,7 +161,7 @@
                 ) : (
                     <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5" onClick={handleInteraction}>
                         <span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>
-                            {value === '?' ? '--' : (isText ? value : Math.round(value * 10) / 10)}
+                            {displayValue()}
                             {isBP && <span className="text-lg text-slate-400 ml-0.5">/{value2 !== undefined ? Math.round(value2) : '--'}</span>}
                         </span>
                         {!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}
@@ -203,7 +214,6 @@
             }
 
             // Normal-ish Rhythms (Sinus, PEA, etc)
-            // Note: For PEA, we draw a rhythm but the Engine sets BP/SpO2 to 0/Low.
             let y = baseline;
             const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole', 'pVT'].includes(type);
             
@@ -308,14 +318,10 @@
 
                 // RHYTHM CALCS
                 let currentRhythm = props.rhythmType || 'Sinus Rhythm'; 
-                
-                // Handling HR for Arrest Scenarios
-                // If arrest (hr=0), we might still want to draw a rhythm (e.g. PEA)
-                // If HR is 0 but rhythm is PEA/Sinus, we fake a rate for drawing only.
                 let drawRate = props.hr;
                 if (drawRate === 0) {
                      if (['VF', 'VT', 'pVT', 'PEA'].includes(currentRhythm) || currentRhythm.includes('Sinus')) {
-                         drawRate = 70; // Fake rate for drawing electrical activity
+                         drawRate = 70; 
                      }
                 }
                 if (props.isCPR) drawRate = 110;
@@ -349,7 +355,6 @@
 
                 // 2. ETCO2 (Yellow)
                 if (props.showEtco2) {
-                    // Flatten if HR is 0 and no CPR (No Cardiac Output)
                     const hasOutput = props.hr > 10 || props.isCPR;
                     const normCO2 = hasOutput ? getEtco2Wave(state.breathProgress, props.pathology, props.rr) : 0;
                     const co2MaxHeight = canvas.height * 0.12; const co2BaseY = (canvas.height * 0.60); const yCO2 = co2BaseY - (normCO2 * co2MaxHeight);
@@ -361,11 +366,8 @@
                 }
 
                 // 3. ART LINE (Red)
-                // Only show if Art Line active AND patient has a pulse (HR > 10) AND not CPR artifact (usually blocks art line)
                 if (props.showArt) {
-                     // Check for mechanical pulse
                      const hasPulse = props.hr > 10; 
-                     // PEA and Arrest = No Pulse
                      const normArt = (hasPulse && !props.isCPR) ? getArtWave(state.beatProgress) : 0;
                      const artHeight = canvas.height * 0.12; const artBaseY = (canvas.height * 0.80); const yArt = artBaseY - (normArt * artHeight);
                      if (state.x > prevX) {
@@ -376,7 +378,6 @@
                 }
 
                 // 4. PLETH (Blue)
-                // Needs pulse
                 if (props.spO2 > 10) {
                     const hasPulse = props.hr > 10;
                     const normPleth = (hasPulse && !props.isCPR) ? getPlethWave(state.beatProgress, props.spO2) : 0;
@@ -396,7 +397,7 @@
         }, []);
 
         return (
-            <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className}`}>
+            <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className} min-h-[150px]`}>
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
                 
                 {/* LABELS */}
@@ -420,30 +421,6 @@
                 {showTraces && (
                     <div className="absolute bottom-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-sky-500">
                         <span className="text-sm font-mono text-sky-500 font-bold shadow-black drop-shadow-md">PLETH</span>
-                    </div>
-                )}
-            </div>
-        );
-    };
-
-    const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
-        const hasData = (type === 'ECG' && scenario.ecg) || (type === 'X-ray' && scenario.chestXray) || (type === 'POCUS' && scenario.ultrasound) || (type === 'VBG' && scenario.vbg) || (type === 'CT' && scenario.ct) || (type === 'Urine' && scenario.urine);
-        return (
-            <div className="flex flex-col gap-2">
-                <Button variant={isRevealed ? "secondary" : "outline"} onClick={() => revealInvestigation(type)} disabled={!isRunning || isRevealed || isLoading} className="h-10 text-xs relative overflow-hidden">
-                    {isLoading && <div className="loading-bar"></div>}
-                    <div className="relative z-10 flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3"/> {isLoading ? `Requesting...` : (isRevealed ? `View ${type}` : `Request ${type}`)}</div>
-                </Button>
-                {isRevealed && (
-                    <div className="p-3 bg-slate-700/30 rounded text-xs border-l-2 border-sky-500 animate-fadeIn">
-                        {hasData ? (
-                            type === 'VBG' ? <div className="font-mono space-y-1"><div>pH: {scenario.vbg.pH.toFixed(2)}</div><div>pCO2: {scenario.vbg.pCO2} kPa</div><div>pO2: 12.0 kPa</div><div>HCO3: {scenario.vbg.HCO3}</div><div>BE: {scenario.vbg.BE}</div><div>Lac: {scenario.vbg.Lac}</div><div>K+: {scenario.vbg.K}</div><div className="font-bold text-sky-400">Glu: {scenario.vbg.Glu} mmol/L</div></div> : 
-                            type === 'ECG' ? <div><p className="mb-1 font-bold">{scenario.ecg.findings}</p><p className="italic text-slate-400">See monitor for rhythm.</p></div> : 
-                            type === 'X-ray' ? <div className="text-slate-200">{scenario.chestXray.findings}</div> : 
-                            type === 'POCUS' ? <div className="text-slate-200">{scenario.ultrasound.findings}</div> : 
-                            type === 'Urine' ? <div className="text-slate-200 font-mono">{scenario.urine.findings}</div> :
-                            type === 'CT' ? <div className="text-slate-200">{scenario.ct.findings}</div> : 'Normal / Not Indicated'
-                        ) : 'Normal / Not Indicated'}
                     </div>
                 )}
             </div>
