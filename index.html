@@ -77,7 +77,7 @@
     try {
         if (window.firebase) {
             if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); } else { firebase.app(); }
-            db = firebase.database();
+            window.db = firebase.database();
             console.log("Firebase Connected");
         }
     } catch (e) { console.error("Firebase Init Error:", e); }
