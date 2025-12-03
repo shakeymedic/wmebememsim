@@ -1,5 +1,10 @@
 (() => {
-        const { useState, useEffect, useRef, useReducer } = React;
+    const { useState, useEffect, useRef, useReducer } = React;
+    const { 
+        ALL_SCENARIOS, INTERVENTIONS, HUMAN_FACTOR_CHALLENGES,
+        Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton,
+        generateHistory, getBaseVitals, estimateWeight, calculateWetflag, generateVbg 
+    } = window;
 
 const SetupScreen = ({ onGenerate, initialParams, savedState, onResume }) => {
         // Add this immediately inside the SetupScreen function
