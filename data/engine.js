@@ -26,7 +26,9 @@
         queuedRhythm: null,
         cprInProgress: false,
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60 },
-        trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} }
+        trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
+        // NEW: Speech Sync State
+        speech: { text: null, timestamp: 0, source: null }
     };
 
     const simReducer = (state, action) => {
@@ -66,15 +68,8 @@
                 if (state.scenario.evolution && state.scenario.evolution.improved) {
                      impScen = { ...impScen, ...state.scenario.evolution.improved };
                 } else {
-                     // Generic Improvement Fallback
                      const currentVitals = state.vitals;
-                     const targetHR = Math.max(60, currentVitals.hr - 10);
-                     const targetBP = Math.min(120, currentVitals.bpSys + 10);
-                     const targetSpO2 = Math.min(99, currentVitals.spO2 + 5);
-                     // We don't change vitals directly here, we set them as the new 'scenario' baseline so jitter works around them
-                     // For simplicity in this engine, we can trigger a trend or just nudge current vitals via next tick
-                     // But strictly, this reducer changes the scenario state.
-                     impScen.vitals = { ...currentVitals, hr: targetHR, bpSys: targetBP, spO2: targetSpO2 };
+                     impScen.vitals = { ...currentVitals, hr: Math.max(60, currentVitals.hr - 10), bpSys: Math.min(120, currentVitals.bpSys + 10), spO2: Math.min(99, currentVitals.spO2 + 5) };
                 }
                 return { ...state, scenario: impScen, deterioration: { ...state.scenario.deterioration, active: false }, flash: 'green' };
             
@@ -84,9 +79,7 @@
                  if (state.scenario.evolution && state.scenario.evolution.deteriorated) {
                       detScen = { ...detScen, ...state.scenario.evolution.deteriorated };
                  } else {
-                      // Generic Deterioration Fallback
                       const cur = state.vitals;
-                      // Generic 'shock' pattern
                       detScen.vitals = { ...cur, hr: Math.min(160, cur.hr + 15), bpSys: Math.max(60, cur.bpSys - 15), spO2: Math.max(85, cur.spO2 - 5) };
                  }
                  return { ...state, scenario: detScen, deterioration: { ...state.scenario.deterioration, active: true, rate: detRate }, flash: 'red' };
@@ -101,7 +94,11 @@
                 Object.keys(state.trends.targets).forEach(key => { const startVal = state.trends.startVitals[key] || 0; const endVal = state.trends.targets[key]; interpolated[key] = startVal + (endVal - startVal) * progress; });
                 return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
 
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp };
+            case 'TRIGGER_SPEAK':
+                // Update speech state with timestamp to force effect trigger on remote
+                return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
+
+            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech };
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -129,6 +126,8 @@
         const stateRef = useRef(state);
         
         useEffect(() => { stateRef.current = state; }, [state]);
+        
+        // --- DATA SYNC ---
         useEffect(() => {
             if (!db || !sessionID) return; 
             const sessionRef = db.ref(`sessions/${sessionID}`);
@@ -138,7 +137,11 @@
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
-                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp };
+                const payload = {
+                    vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash,
+                    cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal',
+                    activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech
+                };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
             }
         }, [state, isMonitorMode, sessionID]);
@@ -167,6 +170,18 @@
 
         useEffect(() => { if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning) { dispatch({ type: 'TRIGGER_NIBP_MEASURE' }); } }, [state.nibp.timer, state.isRunning]);
 
+        // SPEECH EFFECT (Listens to state.speech)
+        const lastSpeechRef = useRef(0);
+        useEffect(() => {
+            if (state.speech && state.speech.timestamp > lastSpeechRef.current) {
+                lastSpeechRef.current = state.speech.timestamp;
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(state.speech.text);
+                    window.speechSynthesis.speak(utterance);
+                }
+            }
+        }, [state.speech]);
+
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
         const applyIntervention = (key) => {
             const action = INTERVENTIONS[key]; if (!action) return;
@@ -192,7 +207,7 @@
         const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: '3mm' } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
         const revealInvestigation = (type) => { if (state.investigationsRevealed[type] || state.loadingInvestigations[type]) return; dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); };
         const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
-        const speak = (text) => { if ('speechSynthesis' in window) { const utterance = new SpeechSynthesisUtterance(text); window.speechSynthesis.speak(utterance); } };
+        const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); }; // UPDATED to dispatch sync event
         const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
 
         const tick = () => {
