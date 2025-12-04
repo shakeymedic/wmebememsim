@@ -484,6 +484,7 @@
                 {/* --- ARREST OVERLAY --- */}
                 {arrestMode && (
                     <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
+                        {/* Column 1: Timer */}
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
                             <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
@@ -492,6 +493,8 @@
                                 <Button variant="secondary" onClick={() => { const remaining = Math.max(0, 120 - cycleTimer); if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining}); sim.dispatch({type: 'RESET_CYCLE_TIMER'}); addLogEntry("Cycle Skipped / Finished", "system"); }} className="h-8 text-xs">Finish Cycle</Button>
                             </div>
                         </div>
+
+                        {/* Column 2: Actions */}
                         <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
                             <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">{cprInProgress ? "STOP CPR" : "START CPR"}</Button>
                             <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col"><Lucide icon="zap" /> SHOCK</Button>
@@ -501,35 +504,18 @@
                             <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
                             <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
                         </div>
-                        {arrestMode && (
-    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
-        <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
-            <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
-            <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
-            <div className="flex gap-2 mt-2">
-                <Button variant="secondary" onClick={() => sim.dispatch({type: 'RESET_CYCLE_TIMER'})} className="h-8 text-xs">Reset</Button>
-                <Button variant="secondary" onClick={() => { const remaining = Math.max(0, 120 - cycleTimer); if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining}); sim.dispatch({type: 'RESET_CYCLE_TIMER'}); addLogEntry("Cycle Skipped / Finished", "system"); }} className="h-8 text-xs">Finish Cycle</Button>
-            </div>
-        </div>
-        <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">{cprInProgress ? "STOP CPR" : "START CPR"}</Button>
-            <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col"><Lucide icon="zap" /> SHOCK</Button>
-            <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col"><span>Adrenaline</span><span className="text-[10px] opacity-70">1mg 1:10k</span>{interventionCounts['AdrenalineIV'] > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] px-1 rounded-full">x{interventionCounts['AdrenalineIV']}</span>}</Button>
-            <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col"><span>Amiodarone</span><span className="text-[10px] opacity-70">300mg</span>{interventionCounts['Amiodarone'] > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] px-1 rounded-full">x{interventionCounts['Amiodarone']}</span>}</Button>
-            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-12 border border-slate-600">Mechanical CPR</Button>
-            <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
-            <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
-        </div>
-        <div className="flex-1 flex flex-col gap-2">
-            <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
-            <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div>
-            <Button onClick={() => window.open("https://wmebemdefib.netlify.app", "_blank")} variant="outline" className="mt-2 h-8 text-xs border-yellow-500 text-yellow-500 hover:bg-yellow-900/20">
-                <Lucide icon="external-link" className="w-3 h-3" /> Launch Defib Sim
-            </Button>
-            <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
-        </div>
-    </div>
-)}
+
+                        {/* Column 3: Helper & Links */}
+                        <div className="flex-1 flex flex-col gap-2">
+                            <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
+                            <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div>
+                            <Button onClick={() => window.open("https://wmebemdefib.netlify.app", "_blank")} variant="outline" className="mt-2 h-8 text-xs border-yellow-500 text-yellow-500 hover:bg-yellow-900/20">
+                                <Lucide icon="external-link" className="w-3 h-3" /> Launch Defib Sim
+                            </Button>
+                            <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
+                        </div>
+                    </div>
+                )}
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
