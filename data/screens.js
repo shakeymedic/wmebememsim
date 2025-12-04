@@ -406,7 +406,14 @@
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
             "Trauma": ['TXA', 'Blood', 'Fluids'],
             "Infusions": ['FluidInfusion', 'InsulinInfusion', 'GTNInfusion', 'Noradrenaline'], 
-            "General": ['Paracetamol', 'Ibuprofen', 'Ondansetron', 'Antibiotics', 'Hydrocortisone', 'Dexamethasone', 'Nebs', 'Salbutamol']
+            "General": [
+        'Paracetamol', 
+        'Ondansetron', // Removed Ibuprofen as it's not defined
+        'Antibiotics', 
+        'Hydrocortisone', 
+        'Dexamethasone', 
+        'Nebs', // Changed 'Salbutamol' to 'Nebs' to match interventions.js
+        'AdrenalineIM' // Added this as it's useful in general reactions
         };
 
         const mapVoice = (txt) => {
