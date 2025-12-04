@@ -640,14 +640,33 @@
                     </div>
                 </div>
 
+                // --- PASTE OVER THE MODAL VITAL SECTION IN data/screens.js ---
+
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
                             <div className="space-y-4">
-                                <div className="flex gap-2 justify-center mb-4"><Button onClick={()=>quickAdjust(-20)} variant="secondary" className="w-12">-20</Button><Button onClick={()=>quickAdjust(-10)} variant="secondary" className="w-12">-10</Button><Button onClick={()=>quickAdjust(10)} variant="secondary" className="w-12">+10</Button><Button onClick={()=>quickAdjust(20)} variant="secondary" className="w-12">+20</Button></div>
+                                {/* SMART INCREMENT BUTTONS */}
+                                <div className="flex gap-2 justify-center mb-4">
+                                    {(() => {
+                                        // Determine sensible steps based on vital type
+                                        let steps = [-20, -10, 10, 20];
+                                        if (['temp', 'bm', 'etco2', 'pH', 'K', 'Lac'].includes(modalVital)) steps = [-1, -0.5, 0.5, 1];
+                                        if (['gcs', 'rr', 'pupils'].includes(modalVital)) steps = [-2, -1, 1, 2];
+                                        if (modalVital === 'spO2') steps = [-5, -2, 2, 5];
+
+                                        return steps.map(step => (
+                                            <Button key={step} onClick={()=>quickAdjust(step)} variant="secondary" className="w-12 text-sm font-bold">
+                                                {step > 0 ? `+${step}` : step}
+                                            </Button>
+                                        ));
+                                    })()}
+                                </div>
+                                
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Target Value</label><input type={modalVital === 'pupils' ? "text" : "number"} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
+                                
                                 <div className="grid grid-cols-4 gap-1 mt-2">
                                     <button onClick={()=>setTrendDuration(0)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===0 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>Instant</button>
                                     <button onClick={()=>setTrendDuration(30)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===30 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>30s</button>
