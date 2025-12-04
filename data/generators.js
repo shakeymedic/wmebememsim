@@ -60,39 +60,62 @@ window.estimateWeight = (age) => {
 window.calculateWetflag = (age, weightStr) => {
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight <= 0) return null;
-    return { weight: weight, energy: Math.min(200, Math.round(weight * 4)), tube: age < 1 ? "3.5-4.0" : Math.min(8.0, ((age / 4) + 4)).toFixed(1), fluids: Math.round(weight * 10), lorazepam: Math.min(4, weight * 0.1).toFixed(1), adrenaline: Math.min(10, weight * 0.1).toFixed(1), glucose: Math.round(weight * 2) };
+    
+    // Tube: (Age/4) + 4. Rounded to nearest 0.5.
+    let rawTube = (age / 4) + 4;
+    let tubeSize = Math.round(rawTube * 2) / 2;
+    if (age < 1) tubeSize = "3.5-4.0";
+    else if (tubeSize > 9.0) tubeSize = 9.0;
+    
+    // Adrenaline: 10mcg/kg
+    let adrenalineMcg = Math.round(weight * 10);
+    
+    return { 
+        weight: weight, 
+        energy: Math.min(200, Math.round(weight * 4)), 
+        tube: tubeSize.toString(), 
+        fluids: Math.round(weight * 10), 
+        lorazepam: Math.min(4, weight * 0.1).toFixed(1), 
+        adrenaline: adrenalineMcg, 
+        glucose: Math.round(weight * 2) 
+    };
 };
 
 window.generateVbg = (clinicalState = "normal") => {
-    let vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5 };
+    let vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
     vbg.pH += window.getRandomFloat(-0.03, 0.03, 2);
     switch (clinicalState) {
-        case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0 }; break;
-        case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0 }; break;
-        case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0 }; break;
-        case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0 }; break;
-        case "respiratory_acidosis_acute": vbg = { pH: 7.15, pCO2: 9.5, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2 }; break;
-        case "metabolic_acidosis_severe": vbg = { pH: 6.90, pCO2: 6.0, HCO3: 10, BE: -22, Lac: 12.0, K: 6.5, Glu: 6.0 }; break;
-        case "metabolic_alkalosis": vbg = { pH: 7.50, pCO2: 5.8, HCO3: 30, BE: 6, Lac: 1.0, K: 3.0, Glu: 5.5 }; break;
-        case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0 }; break;
-        case "hyponatremia": vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Na: 115, Glu: 5.5 }; break;
-        case "gi_bleed": vbg = { pH: 7.32, pCO2: 4.8, HCO3: 20, BE: -4, Lac: 3.5, K: 4.1, Glu: 6.5 }; break; 
-        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 3.5, Glu: 5.5 }; break;
-        case "hypothermia": vbg = { pH: 7.30, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 2.5, K: 3.5, Glu: 4.5 }; break;
-        case "co_poisoning": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 18, BE: -6, Lac: 4.0, K: 4.0, Glu: 6.0 }; break;
+        case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0, Ketones: 5.8 }; break;
+        case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0, Ketones: 0.5 }; break;
+        case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0, Ketones: 1.2 }; break;
+        case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
+        case "respiratory_acidosis_acute": vbg = { pH: 7.15, pCO2: 9.5, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2, Ketones: 0.2 }; break;
+        case "metabolic_acidosis_severe": vbg = { pH: 6.90, pCO2: 6.0, HCO3: 10, BE: -22, Lac: 12.0, K: 6.5, Glu: 6.0, Ketones: 0.4 }; break;
+        case "metabolic_alkalosis": vbg = { pH: 7.50, pCO2: 5.8, HCO3: 30, BE: 6, Lac: 1.0, K: 3.0, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0, Ketones: 0.2 }; break;
+        case "hyponatremia": vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Na: 115, Glu: 5.5, Ketones: 0.2 }; break;
+        case "gi_bleed": vbg = { pH: 7.32, pCO2: 4.8, HCO3: 20, BE: -4, Lac: 3.5, K: 4.1, Glu: 6.5, Ketones: 1.5 }; break; 
+        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 3.5, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hypothermia": vbg = { pH: 7.30, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 2.5, K: 3.5, Glu: 4.5, Ketones: 0.3 }; break;
+        case "co_poisoning": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 18, BE: -6, Lac: 4.0, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
         default: break;
     }
     return vbg;
 };
 
 window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, timeSeconds) => {
-    if (!startVbg) return { pH: 7.4, pCO2: 5.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5 };
+    if (!startVbg) return { pH: 7.4, pCO2: 5.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
     let vbg = { ...startVbg };
     const minutes = timeSeconds / 60;
     const isVentilated = activeInterventions.has('Bagging') || activeInterventions.has('RSI') || activeInterventions.has('i-gel') || activeInterventions.has('NIV');
     if (currentVitals.rr < 10 && !isVentilated) { vbg.pCO2 = Math.min(15, vbg.pCO2 + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); }
     if (isVentilated && vbg.pCO2 > 6.0) { vbg.pCO2 = Math.max(4.5, vbg.pCO2 - (0.2 * minutes)); vbg.pH = Math.min(7.4, vbg.pH + (0.02 * minutes)); }
     if (currentVitals.spO2 < 85 || currentVitals.bpSys < 80) { vbg.Lac = Math.min(15, vbg.Lac + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); vbg.HCO3 = Math.max(10, vbg.HCO3 - (0.5 * minutes)); }
+    // Ketone dynamics (slow improvement with insulin)
+    if (activeInterventions.has('InsulinInfusion') || activeInterventions.has('InsulinDextrose')) {
+        vbg.Ketones = Math.max(0.1, vbg.Ketones - (0.05 * minutes));
+        vbg.Glu = Math.max(4.0, vbg.Glu - (0.1 * minutes));
+    }
     return vbg;
 };
 
