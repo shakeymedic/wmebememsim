@@ -616,13 +616,7 @@
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                    {getInterventionsByCat(activeTab).map(key => {
-                                        const action = INTERVENTIONS[key];
-                                        const isActive = activeInterventions.has(key);
-                                        const count = interventionCounts[key] || 0;
-                                        let btnClass = isActive ? "bg-emerald-900/40 border border-emerald-500 text-emerald-100" : `opacity-90 hover:opacity-100 ${getCatColor(activeTab)}`;
-                                        return (
-                                            <button key={key} onClick={() => applyIntervention(key)} disabled={!isRunning} className={`relative h-16 p-2 rounded text-left transition-all active:scale-95 flex flex-col justify-between overflow-hidden shadow-sm ${btnClass}`}>
+                                   v
                                                 <span className="text-xs font-bold leading-tight">{action.label}</span>
                                                 <div className="flex justify-between items-end w-full"><span className="text-[10px] opacity-70 italic truncate">{action.category}</span>{count > 0 && action.type !== 'continuous' && <span className="bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}</div>
                                                 {/* REMOVE BUTTON INDICATOR */}
