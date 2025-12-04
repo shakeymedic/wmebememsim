@@ -56,6 +56,25 @@
         /* Input Reset */
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+        /* --- PASTE INTO index.html <style> BLOCK --- */
+
+/* Flash Animation */
+@keyframes flash-white {
+    0% { background-color: #ffffff; color: #000; transform: scale(1.05); }
+    100% { background-color: inherit; color: inherit; transform: scale(1); }
+}
+
+.flash-active {
+    animation: flash-white 0.15s ease-out !important;
+}
+
+/* Active Button State (Green Border/Text) */
+.btn-active-state {
+    background-color: rgba(6, 78, 59, 0.5) !important; /* emerald-900/50 */
+    border-color: #10b981 !important; /* emerald-500 */
+    color: #d1fae5 !important; /* emerald-100 */
+}
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
