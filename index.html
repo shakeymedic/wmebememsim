@@ -128,7 +128,7 @@
 
         .btn-improve { background-color: #28a745; }
         .btn-worsen { background-color: #dc3545; }
-        
+
         .btn-mute { 
             background-color: #444; 
             border: 1px solid #777;
@@ -152,7 +152,7 @@
     </div>
 
     <div id="obs-grid">
-        
+
         <div class="vital-box">
             <div class="label">HR</div>
             <div class="value" id="val-hr">82</div>
@@ -242,16 +242,16 @@
 
         function playBeep() {
             if (isMuted) return;
-            
+
             // Simple oscillator beep (no external files needed)
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            
+
             osc.type = 'sine';
             osc.frequency.value = 1000; // 1000Hz beep
-            
+
             const now = audioCtx.currentTime;
             osc.start(now);
             gain.gain.setValueAtTime(0.1, now);
@@ -315,10 +315,10 @@
 
                 // Calculate current value
                 const current = startVal + (endVal - startVal) * progress;
-                
+
                 // Update State
                 state[key] = current;
-                
+
                 // Update UI
                 updateFn(current);
 
