@@ -515,7 +515,9 @@
                         <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
                             <div className="text-xs space-y-1 mb-2">
                                 <p><strong className="text-slate-400">Name:</strong> {scenario.patientName}</p>
+                                <p><strong className="text-slate-400">PC:</strong> <span className="text-sky-400 font-bold">{scenario.presentingComplaint}</span></p>
                                 <p><strong className="text-slate-400">Details:</strong> {scenario.patientAge}y {scenario.sex}</p>
+                                <p><strong className="text-slate-400">PMH:</strong> {scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</p>
                                 <p><strong className="text-slate-400">Allergies:</strong> <span className="text-red-400">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></p>
                             </div>
                     {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
