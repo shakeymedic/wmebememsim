@@ -109,13 +109,15 @@
         
         const displayValue = () => {
             if (label === "Pupils") return (typeof value === 'number') ? `${Math.round(value)}mm` : value;
-            if (value === '?') return isText ? '-?-' : '--';
+            if (value === null || value === undefined) return '--';
+            // If passed a string (like '---' or '?'), return it directly to avoid NaN
+            if (typeof value === 'string' && !isText) return value;
             return isText ? value : Math.round(value);
         };
         
-        // FIXED: Handle undefined/NaN for value2 (Diastolic)
         const displayValue2 = () => {
             if (value2 === undefined || value2 === null) return '--';
+            if (typeof value2 === 'string' && !isText) return value2;
             return typeof value2 === 'number' ? Math.round(value2) : value2;
         };
         
@@ -239,9 +241,25 @@
                         const ampArt = 20;
                         const t = state.beatProgress;
                         let wave = 0;
-                        if (t < 0.2) wave = Math.sin(t * 5 * Math.PI); 
-                        else if (t < 0.5) wave = Math.cos((t - 0.2) * 2 * Math.PI) * 0.5 + 0.5; 
-                        else wave = Math.max(0, 1 - (t - 0.5) * 2);
+                        
+                        // Realistic Arterial Waveform Approximation
+                        if (t < 0.15) {
+                            // Systolic Upstroke (Steep)
+                            wave = Math.sin((t / 0.15) * (Math.PI / 2));
+                        } else if (t < 0.4) {
+                            // Systolic Decline
+                            // Decays from 1.0 down to approx 0.5
+                            wave = 1.0 - 0.5 * ((t - 0.15) / 0.25); 
+                        } else if (t < 0.5) {
+                            // Dicrotic Notch (Bump up slightly)
+                            // t 0.4 to 0.5, bump to 0.55
+                            wave = 0.5 + 0.1 * Math.sin(((t - 0.4) / 0.1) * Math.PI);
+                        } else {
+                            // Diastolic Decay
+                            // t 0.5 to 1.0, decay to 0
+                            wave = 0.5 * (1 - ((t - 0.5) / 0.5));
+                        }
+
                         const yArt = baseArt - (wave * ampArt);
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
                         state.lastYArt = yArt;
