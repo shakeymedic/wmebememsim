@@ -38,39 +38,43 @@
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
+            
+            // --- FIXED: Trigger logic now only targets specific vitals ---
             case 'TRIGGER_IMPROVE':
-                let impTargets = { ...state.vitals };
+                let impTargets = {}; 
                 if (state.scenario.evolution && state.scenario.evolution.improved && state.scenario.evolution.improved.vitals) {
-                     impTargets = { ...impTargets, ...state.scenario.evolution.improved.vitals };
+                     impTargets = { ...state.scenario.evolution.improved.vitals };
                 } else {
-                     impTargets.hr = Math.max(60, impTargets.hr - 15);
-                     impTargets.bpSys = Math.min(120, impTargets.bpSys + 15);
-                     impTargets.spO2 = Math.min(99, impTargets.spO2 + 5);
+                     impTargets.hr = Math.max(60, state.vitals.hr - 15);
+                     impTargets.bpSys = Math.min(120, state.vitals.bpSys + 15);
+                     impTargets.spO2 = Math.min(99, state.vitals.spO2 + 5);
                 }
                 return { ...state, trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...state.vitals } }, flash: 'green' };
+            
             case 'TRIGGER_DETERIORATE':
-                 let detTargets = { ...state.vitals };
+                 let detTargets = {};
                  if (state.scenario.evolution && state.scenario.evolution.deteriorated && state.scenario.evolution.deteriorated.vitals) {
-                     detTargets = { ...detTargets, ...state.scenario.evolution.deteriorated.vitals };
+                     detTargets = { ...state.scenario.evolution.deteriorated.vitals };
                  } else {
-                     detTargets.hr = Math.min(170, detTargets.hr + 20);
-                     detTargets.bpSys = Math.max(60, detTargets.bpSys - 20);
-                     detTargets.spO2 = Math.max(80, detTargets.spO2 - 10);
+                     detTargets.hr = Math.min(170, state.vitals.hr + 20);
+                     detTargets.bpSys = Math.max(60, state.vitals.bpSys - 20);
+                     detTargets.spO2 = Math.max(80, state.vitals.spO2 - 10);
                  }
                  return { ...state, trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...state.vitals } }, flash: 'red' };
+
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
             case 'COMMIT_NIBP': 
                 const safeSys = (state.vitals.bpSys !== undefined && state.vitals.bpSys !== null) ? state.vitals.bpSys : 0;
                 const safeDia = (state.vitals.bpDia !== undefined && state.vitals.bpDia !== null) ? state.vitals.bpDia : 0;
                 return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false } };
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
+            
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
-            case 'UPDATE_TREND_PROGRESS':
-                const progress = Math.min(1, (state.trends.elapsed + 3) / state.trends.duration);
-                const interpolated = { ...state.vitals };
-                Object.keys(state.trends.targets).forEach(key => { const startVal = state.trends.startVitals[key] || 0; const endVal = state.trends.targets[key]; interpolated[key] = startVal + (endVal - startVal) * progress; });
-                if (progress >= 1) { return { ...state, vitals: { ...state.vitals, ...state.trends.targets }, trends: { ...state.trends, active: false, elapsed: 0 } }; }
-                return { ...state, vitals: interpolated, trends: { ...state.trends, elapsed: state.trends.elapsed + 3 } };
+            
+            // --- NEW: Separate actions for trend timing ---
+            case 'ADVANCE_TREND': return { ...state, trends: { ...state.trends, elapsed: state.trends.elapsed + action.payload } };
+            case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
+
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
@@ -117,7 +121,6 @@
                 const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, soundEffect: state.soundEffect, audioOutput: state.audioOutput, trends: state.trends, arrestPanelOpen: state.arrestPanelOpen, isFinished: state.isFinished };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
 
-                // Controller: Listen for Commands (like NIBP start) from Monitor
                 const cmdRef = db.ref(`sessions/${sessionID}/command`);
                 cmdRef.on('value', (snap) => {
                     const val = snap.val();
@@ -229,16 +232,64 @@
             else if (type === 'Vomit') { const bufferSize = ctx.sampleRate * 2; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; } const bufferSource = ctx.createBufferSource(); bufferSource.buffer = buffer; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 300; const gain = ctx.createGain(); bufferSource.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.2); gain.gain.exponentialRampToValueAtTime(0.01, t + 1.5); bufferSource.start(t); bufferSource.stop(t+1.5); }
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
+        
+        // --- FIXED: Tick function now mixes noise + trends properly ---
         const tick = () => {
-            const current = stateRef.current; let next = { ...current.vitals };
-            if (current.trends.active) { dispatch({ type: 'UPDATE_TREND_PROGRESS' }); return; }
-            if (next.hr === 0) { next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } } 
-            else { if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; } if (next.rr < 8 && !current.activeInterventions.has('Bagging') && !current.activeInterventions.has('NIV')) { next.spO2 = Math.max(0, next.spO2 - 2); } }
-            if (current.scenario.vbg) { const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } }
-            if (next.hr > 0) { next.hr += getRandomInt(-1, 1); next.bpSys += getRandomInt(-1, 1); let targetDia = Math.floor(next.bpSys * 0.65); next.bpDia = targetDia + getRandomInt(-2, 2); next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; }
-            next.hr = clamp(next.hr, 0, 250); next.bpSys = clamp(next.bpSys, 0, 300); next.spO2 = clamp(next.spO2, 0, 100);
+            const current = stateRef.current; 
+            let next = { ...current.vitals };
+
+            // 1. Apply Natural Fluctuation (Noise) to ALL vitals first
+            if (next.hr === 0) { 
+                next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
+                if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
+            } else { 
+                if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; 
+                if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; } 
+                if (next.rr < 8 && !current.activeInterventions.has('Bagging') && !current.activeInterventions.has('NIV')) { next.spO2 = Math.max(0, next.spO2 - 2); } 
+            }
+            if (next.hr > 0) { 
+                next.hr += getRandomInt(-1, 1); 
+                next.bpSys += getRandomInt(-1, 1); 
+                // Auto-calculate Dia from Sys, unless trending later overrides it
+                let targetDia = Math.floor(next.bpSys * 0.65); 
+                next.bpDia = targetDia + getRandomInt(-2, 2); 
+                next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
+            }
+
+            // 2. Apply Trend Overrides (if active)
+            if (current.trends.active) {
+                const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
+                
+                Object.keys(current.trends.targets).forEach(key => {
+                    const startVal = current.trends.startVitals[key] || 0;
+                    const endVal = current.trends.targets[key];
+                    // Overwrite the noisy value with the precise trend value
+                    next[key] = startVal + (endVal - startVal) * progress;
+                });
+
+                if (progress >= 1) {
+                    dispatch({ type: 'STOP_TREND' });
+                    // Ensure we end exactly on the target
+                    Object.assign(next, current.trends.targets);
+                } else {
+                    dispatch({ type: 'ADVANCE_TREND', payload: 3 });
+                }
+            }
+
+            // Clamping
+            next.hr = clamp(next.hr, 0, 250); 
+            next.bpSys = clamp(next.bpSys, 0, 300); 
+            next.spO2 = clamp(next.spO2, 0, 100);
+
+            // VBG Updates
+            if (current.scenario.vbg) { 
+                const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); 
+                if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } 
+            }
+
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
+
         const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
         const start = () => { if (state.isRunning || isMonitorMode) return; dispatch({ type: 'START_SIM' }); timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); tickRef.current = setInterval(tick, 3000); enableAudio(); };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
