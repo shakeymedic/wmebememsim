@@ -194,10 +194,10 @@
 
     // Wait for the components to be attached to window
 const startApp = () => {
-    if (window.MonitorContainer && window.SetupScreen) {
+    if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
         ReactDOM.render(<App />, document.getElementById('root'));
     } else {
-        setTimeout(startApp, 50); // Retry in 50ms
+        setTimeout(startApp, 50);
     }
 };
 startApp();
