@@ -50,7 +50,18 @@
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
+    // --- PASTE OVER 'const Button = ...' IN data/components.js ---
+
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
+        const [isFlashing, setIsFlashing] = useState(false);
+        
+        const handleClick = (e) => {
+            if (disabled) return;
+            setIsFlashing(true);
+            setTimeout(() => setIsFlashing(false), 150); // Flash duration
+            if (onClick) onClick(e);
+        };
+
         let variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white",
             secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200",
@@ -59,13 +70,17 @@
             warning: "bg-amber-500 hover:bg-amber-600 text-white",
             outline: "border border-slate-600 text-slate-300 hover:bg-slate-800"
         };
+        
         let base = "px-4 py-3 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm relative overflow-hidden touch-manipulation z-0";
         if (className.includes("h-16")) { base += " text-xl px-8"; } 
         else if (className.includes("h-14")) { base += " text-lg px-4"; } 
         else { base += " text-xs"; }
 
+        // Combine classes
+        const finalClass = `${base} ${variants[variant]} ${className} ${isFlashing ? 'flash-active' : ''}`;
+
         return (
-            <button onClick={onClick} disabled={disabled} className={`${base} ${variants[variant]} ${className}`}>
+            <button onClick={handleClick} disabled={disabled} className={finalClass}>
                 {progress > 0 && (
                     <div className="absolute top-0 left-0 bottom-0 bg-emerald-500/50 z-[-1] transition-all duration-1000 ease-linear" style={{ width: `${progress}%` }}></div>
                 )}
