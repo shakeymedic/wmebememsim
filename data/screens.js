@@ -742,7 +742,7 @@
                              </div>
                              {hasMonitoring && (
                                  <button 
-                                     onClick={() => sim.dispatch({type: 'START_NIBP'})} 
+                                     onClick={() => sim.triggerNIBP()} 
                                      disabled={nibp.inflating}
                                      className={`w-24 md:w-32 rounded flex flex-col items-center justify-center border-2 ${nibp.inflating ? 'bg-sky-900/50 border-sky-500/50 text-white' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
                                  >
