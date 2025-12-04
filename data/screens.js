@@ -383,40 +383,26 @@
         const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
         const [showDrugCalc, setShowDrugCalc] = useState(false);
-        const [showLogModal, setShowLogModal] = useState(false);
         
+        // --- FIXED: Only one set of declarations below ---
+        const [showLogModal, setShowLogModal] = useState(false);
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
-        // ... inside LiveSimScreen ...
-    const [showLogModal, setShowLogModal] = useState(false);
-    
-    const [modalVital, setModalVital] = useState(null); 
-    const [modalTarget, setModalTarget] = useState("");
-    const [modalTarget2, setModalTarget2] = useState(""); 
-    const [trendDuration, setTrendDuration] = useState(30);
 
-    // >>> PASTE THE CODE HERE <<<
-    useEffect(() => {
-        const arrestRhythms = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'];
-        // Check if patient is in arrest rhythm AND panel is not already open
-        if (arrestRhythms.includes(rhythm) && !arrestMode) {
-            setArrestMode(true);
-        }
-    }, [rhythm, arrestMode]);
-    // >>> END PASTE <<<
+        useEffect(() => {
+            const arrestRhythms = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'];
+            if (arrestRhythms.includes(rhythm) && !arrestMode) {
+                setArrestMode(true);
+            }
+        }, [rhythm, arrestMode]);
 
-    const drugCats = {
-        "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
-        // ...
-
-        // --- PASTE INTO LiveSimScreen (Update drugCats) ---
+        // --- FIXED: Only one drugCats declaration ---
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
             "Trauma": ['TXA', 'Blood', 'Fluids'],
-            // Added Infusions category here:
             "Infusions": ['FluidInfusion', 'InsulinInfusion', 'GTNInfusion', 'Noradrenaline'], 
             "General": ['Paracetamol', 'Ibuprofen', 'Ondansetron', 'Antibiotics', 'Hydrocortisone', 'Dexamethasone', 'Nebs', 'Salbutamol']
         };
