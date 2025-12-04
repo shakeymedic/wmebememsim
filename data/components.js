@@ -3,6 +3,7 @@
     const { useState, useEffect, useRef } = React;
 
     // SAFE LUCIDE COMPONENT - ROBUST VERSION
+    // This handles the icons for the Setup screen (Ambulance, Stethoscope, etc.)
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
         
@@ -13,10 +14,11 @@
                 // Clean up previous
                 ref.current.innerHTML = '';
                 
+                // Convert kebab-case (arrow-right) to PascalCase (ArrowRight)
                 const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
                 const iconName = kebabToPascal(icon);
                 
-                // Try 1: Direct Icon Node (Best for React)
+                // Method 1: Try creating the SVG directly (Fastest/React way)
                 if (window.lucide.icons && window.lucide.icons[iconName] && window.lucide.createElement) {
                     const svg = window.lucide.createElement(window.lucide.icons[iconName]);
                     if (className) svg.setAttribute('class', className);
@@ -24,11 +26,12 @@
                     return;
                 }
                 
-                // Try 2: createIcons (DOM scan fallback)
+                // Method 2: Fallback to scanning the DOM (Slower but reliable)
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', icon);
                 if (className) i.setAttribute('class', className);
                 ref.current.appendChild(i);
+                
                 if (window.lucide.createIcons) {
                     window.lucide.createIcons({
                         root: ref.current,
@@ -39,7 +42,7 @@
             };
 
             renderIcon();
-            // Retry once in case script loaded late
+            // Retry once after 500ms in case the library loaded slowly
             const timer = setTimeout(renderIcon, 500);
             return () => clearTimeout(timer);
         }, [icon, className]);
