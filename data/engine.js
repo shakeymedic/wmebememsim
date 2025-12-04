@@ -154,10 +154,21 @@
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
             
-            // Paeds Fluid & Drug Logic (WETFLAG)
+            // data/engine.js (Inside applyIntervention)
+
+            // 1. Determine Log Message (Handle Fluids & Paeds Doses)
             let logMsg = action.log;
+
+            if (key === 'Fluids') {
+                if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
+                    logMsg = `Fluid Bolus (${state.scenario.wetflag.fluids}ml) administered.`;
+                } else {
+                    logMsg = `Fluid Bolus (500ml) administered.`; // Default for Adults
+                }
+            }
+            
+            // Paeds Specific Drugs (WETFLAG)
             if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
-                if (key === 'Fluids') logMsg = `Fluid Bolus (${state.scenario.wetflag.fluids}ml) administered.`;
                 if (key === 'AdrenalineIV') logMsg = `IV Adrenaline (${state.scenario.wetflag.adrenaline}mcg) administered.`;
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${state.scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${state.scenario.wetflag.glucose}ml) administered.`;
