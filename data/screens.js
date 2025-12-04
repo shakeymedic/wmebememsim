@@ -699,7 +699,7 @@
     // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
         const { state, enableAudio } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const [audioEnabled, setAudioEnabled] = useState(false);
         const wakeLockRef = useRef(null);
@@ -707,10 +707,61 @@
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
         useEffect(() => { const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; requestWakeLock(); const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; document.addEventListener('visibilitychange', handleVis); return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; }, []);
 
+        // --- POPUP HELPER ---
+        const getPopupContent = (type, scenario) => {
+            if (!scenario) return null;
+            if (type === 'ECG') return { title: '12 Lead ECG', body: <div className="text-xl">{scenario.ecg ? scenario.ecg.findings : "Normal"}</div> };
+            if (type === 'VBG') {
+                const v = scenario.vbg || {};
+                return {
+                    title: 'Venous Blood Gas',
+                    body: (
+                        <div className="font-mono text-xl space-y-1">
+                            <div>pH: <span className={v.pH < 7.35 || v.pH > 7.45 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.pH?.toFixed(2)}</span></div>
+                            <div>pCO2: <span className={v.pCO2 < 4.5 || v.pCO2 > 6.0 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.pCO2?.toFixed(1)}</span> kPa</div>
+                            <div>HCO3: <span className={v.HCO3 < 22 || v.HCO3 > 26 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.HCO3?.toFixed(1)}</span></div>
+                            <div>Lac: <span className={v.Lac > 2 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.Lac?.toFixed(1)}</span></div>
+                            <div>K+: <span className={v.K < 3.5 || v.K > 5.5 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.K?.toFixed(1)}</span></div>
+                            <div>Glu: {v.Glu?.toFixed(1)}</div>
+                        </div>
+                    )
+                };
+            }
+            // Fallback for others
+            let text = "Normal";
+            if (type === 'X-ray') text = scenario.chestXray ? scenario.chestXray.findings : "Normal";
+            if (type === 'Urine') text = scenario.urine ? scenario.urine.findings : "Normal";
+            if (type === 'CT') text = scenario.ct ? scenario.ct.findings : "No acute intracranial abnormality.";
+            if (type === 'POCUS') text = scenario.pocus ? scenario.pocus.findings : "No free fluid.";
+            
+            return { title: type, body: <div className="text-xl">{text}</div> };
+        };
+
+        const showPopup = monitorPopup && monitorPopup.type && (Date.now() - monitorPopup.timestamp < 20000);
+
         return (
-            <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+            <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
+                {/* --- INVESTIGATION POPUP --- */}
+                {showPopup && (
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 z-40 bg-slate-900/95 border-2 border-sky-500 rounded-lg p-6 shadow-2xl max-w-md animate-fadeIn">
+                        {(() => {
+                            const content = getPopupContent(monitorPopup.type, scenario);
+                            const progress = Math.max(0, 100 - ((Date.now() - monitorPopup.timestamp) / 20000 * 100));
+                            return (
+                                <div>
+                                    <h3 className="text-2xl font-bold text-sky-400 mb-4 border-b border-slate-700 pb-2">{content.title}</h3>
+                                    <div className="text-white mb-4">{content.body}</div>
+                                    <div className="h-1 bg-slate-800 rounded overflow-hidden">
+                                        <div className="h-full bg-sky-500 transition-all duration-1000 ease-linear" style={{width: `${progress}%`}}></div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+                    </div>
+                )}
+
                 <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
                     {hasMonitoring ? (
                         <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
