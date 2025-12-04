@@ -220,7 +220,12 @@
             if (!scenario) return "No data";
             if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
             // Updated VBG string to include Ketones
-            if (type === 'VBG') return scenario.vbg ? `pH ${scenario.vbg.pH.toFixed(2)} | pCO2 ${scenario.vbg.pCO2.toFixed(1)} | Lac ${scenario.vbg.Lac.toFixed(1)} | Ket ${scenario.vbg.Ketones ? scenario.vbg.Ketones.toFixed(1) : '0.1'}` : "Normal";
+            if (type === 'VBG') {
+                if (!scenario.vbg) return "Normal";
+                const v = scenario.vbg;
+                // ACTION: Full readout including K+, Base Excess, Glucose, Ketones
+                return `pH: ${v.pH.toFixed(2)} | pCO2: ${v.pCO2.toFixed(1)} | pO2: 5.5 | HCO3: ${v.HCO3.toFixed(1)} | BE: ${v.BE.toFixed(1)} | Lac: ${v.Lac.toFixed(1)} | K+: ${v.K.toFixed(1)} | Glu: ${v.Glu.toFixed(1)} | Ket: ${v.Ketones ? v.Ketones.toFixed(1) : '0.1'}`;
+            }ed(1) : '0.1'}` : "Normal";
             if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
             if (type === 'Urine') return scenario.urine ? scenario.urine.findings : "Normal";
             if (type === 'CT') return scenario.ct ? scenario.ct.findings : "CT Head: No acute intracranial abnormality.";
