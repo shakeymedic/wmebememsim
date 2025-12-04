@@ -302,7 +302,11 @@
         );
     };
 
+    // --- PASTE OVER 'const InvestigationButton = ...' IN data/components.js ---
+
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
+        const [isFlashing, setIsFlashing] = useState(false);
+
         const getResult = () => {
             if (!scenario) return "No data";
             if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
@@ -321,12 +325,19 @@
         const isRepeatable = ['VBG', 'ECG', 'Obs', 'POCUS'].includes(type);
         const isDisabled = !isRunning || isLoading || (!isRepeatable && isRevealed);
 
+        const handleClick = () => {
+            if (isDisabled) return;
+            setIsFlashing(true);
+            setTimeout(() => setIsFlashing(false), 150); // Flash visual feedback
+            if (!isLoading) revealInvestigation(type);
+        };
+
         return (
             <div className="flex flex-col bg-slate-900 border border-slate-700 rounded overflow-hidden">
                 <button 
-                    onClick={() => !isLoading && revealInvestigation(type)}
+                    onClick={handleClick}
                     disabled={isDisabled}
-                    className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors ${(!isRepeatable && isRevealed) ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
+                    className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors duration-100 ${isFlashing ? 'flash-active' : ''} ${(!isRepeatable && isRevealed) ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
                 >
                     <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {isRevealed && isRepeatable ? `Repeat ${label}` : label}</span>
                     {isLoading && <Lucide icon="loader-2" className="w-3 h-3 animate-spin" />}
