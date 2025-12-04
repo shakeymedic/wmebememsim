@@ -637,19 +637,6 @@
                                     })}
                                 </div>
                             )}
-                                                <div className="flex justify-between items-end w-full"><span className="text-[10px] opacity-70 italic truncate">{action.category}</span>{count > 0 && action.type !== 'continuous' && <span className="bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}</div>
-                                                {/* REMOVE BUTTON INDICATOR */}
-                                                {isActive && action.type === 'continuous' && (
-                                                    <div className="absolute top-1 right-1 text-red-500 bg-black/50 rounded-full w-5 h-5 flex items-center justify-center border border-red-500 hover:bg-red-500 hover:text-white transition-colors" title="Remove">
-                                                        <Lucide icon="x" className="w-3 h-3" />
-                                                    </div>
-                                                )}
-                                                {activeDurations[key] && (<div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-1000" style={{width: `${Math.max(0, 100 - ((time - activeDurations[key].startTime)/activeDurations[key].duration*100))}%`}}></div>)}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
                         </div>
                         <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2">
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
@@ -658,8 +645,6 @@
                         </div>
                     </div>
                 </div>
-
-                // --- PASTE OVER THE MODAL VITAL SECTION IN data/screens.js ---
 
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
@@ -942,3 +927,5 @@
 
     window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
 })();
+
+}
