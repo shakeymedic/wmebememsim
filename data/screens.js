@@ -500,6 +500,12 @@
                             <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
                         </div>
                         <div className="flex-1 flex flex-col gap-2"><h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4><div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div><Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button></div>
+                    <Button onClick={() => window.open("https://wmebemdefib.netlify.app", "_blank")} variant="outline" className="mt-2 h-8 text-xs border-yellow-500 text-yellow-500 hover:bg-yellow-900/20">
+                                <Lucide icon="external-link" className="w-3 h-3" /> Launch Defib Sim
+                            </Button>
+
+                            <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
+                        </div>
                     </div>
                 )}
 
