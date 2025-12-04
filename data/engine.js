@@ -13,7 +13,8 @@
         speech: { text: null, timestamp: 0, source: null },
         soundEffect: { type: null, timestamp: 0 },
         audioOutput: 'monitor',
-        arrestPanelOpen: false // NEW STATE
+        arrestPanelOpen: false,
+        isFinished: false // <--- NEW: Track finished state
     };
 
     const simReducer = (state, action) => {
