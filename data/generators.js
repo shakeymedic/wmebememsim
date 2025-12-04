@@ -57,27 +57,36 @@ window.estimateWeight = (age) => {
     return null; 
 };
 
+// --- PASTE INTO data/generators.js (Replace existing calculateWetflag) ---
+
 window.calculateWetflag = (age, weightStr) => {
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight <= 0) return null;
     
-    // Tube: (Age/4) + 4. Rounded to nearest 0.5.
+    // Tube: Formula (Age/4) + 4.
+    // ACTION: Round to nearest 0.5 specifically
     let rawTube = (age / 4) + 4;
     let tubeSize = Math.round(rawTube * 2) / 2;
-    if (age < 1) tubeSize = "3.5-4.0";
-    else if (tubeSize > 9.0) tubeSize = 9.0;
     
-    // Adrenaline: 10mcg/kg
+    // Safety clamps
+    if (age < 1) tubeSize = "3.5-4.0"; 
+    else if (tubeSize > 9.0) tubeSize = 9.0;
+    else if (tubeSize < 3.0) tubeSize = 3.0;
+    
+    // Adrenaline: 10mcg/kg (Standard APLS)
     let adrenalineMcg = Math.round(weight * 10);
     
+    // Glucose: 2ml/kg of 10% Dextrose usually, or simple 2ml/kg rule for sim
+    let glucoseVol = Math.round(weight * 2);
+
     return { 
         weight: weight, 
-        energy: Math.min(200, Math.round(weight * 4)), 
+        energy: Math.round(weight * 4),      // 4 J/kg
         tube: tubeSize.toString(), 
-        fluids: Math.round(weight * 10), 
-        lorazepam: Math.min(4, weight * 0.1).toFixed(1), 
+        fluids: Math.round(weight * 10),     // ACTION: Set to 10ml/kg as requested
+        lorazepam: Math.min(4, weight * 0.1).toFixed(1), // 0.1mg/kg (Max 4mg)
         adrenaline: adrenalineMcg, 
-        glucose: Math.round(weight * 2) 
+        glucose: glucoseVol
     };
 };
 
