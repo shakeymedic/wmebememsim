@@ -2,205 +2,369 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v16.1</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
-    <script src="data/generators.js"></script>
-    <script src="data/interventions.js"></script>
-    <script src="data/scenarios.js"></script>
-
-    <script type="text/babel" src="data/components.js"></script>
-    <script type="text/babel" src="data/engine.js"></script>
-    <script type="text/babel" src="data/screens.js"></script>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WMEBEM Simulation Monitor V3</title>
     <style>
-        /* Animation & UI Utilities */
-        .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
+        /* --- CORE STYLES --- */
+        body {
+            background-color: #000;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
         }
-        
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-        /* Critical Event Flash */
-        .flash-red { animation: flashRed 1.5s ease-in-out infinite; }
-        @keyframes flashRed { 0%, 100% { background-color: rgba(15, 23, 42, 1); } 50% { background-color: rgba(127, 29, 29, 0.5); } }
-        
-        .flash-green { animation: flashGreen 1s ease-in-out; }
-        @keyframes flashGreen { 0%, 100% { border-color: #334155; } 50% { border-color: #10b981; } }
-        
-        /* Layout Fixes */
-        html, body { height: 100%; overflow: hidden; }
-        body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; }
-        #root { height: 100%; display: flex; flex-direction: column; }
+        /* --- GRAPH AREA (Top) --- */
+        #ecg-container {
+            flex: 1;
+            border-bottom: 2px solid #333;
+            position: relative;
+            background-color: #050505;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #555;
+        }
 
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* --- OBS GRID (Bottom) --- */
+        #obs-grid {
+            height: 45vh;
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+            gap: 4px;
+            background-color: #000;
+            padding: 4px;
+        }
+
+        .vital-box {
+            background-color: #0e121a;
+            border: 1px solid #2c3e50;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative; /* Essential for the loading bar positioning */
+            overflow: hidden;   /* Keeps the bar inside the rounded corners */
+        }
+
+        .label {
+            font-size: 1.2rem;
+            color: #6c8cbf;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .value {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .unit {
+            font-size: 0.9rem;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .sub-value {
+            font-size: 1.5rem;
+            color: #aaa;
+        }
+
+        /* --- TREND LOADING BARS (New Feature) --- */
+        .trend-progress-container {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 8px; /* Thick and obvious */
+            background-color: #1a1a1a;
+            z-index: 10;
+        }
+
+        .trend-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #00ffcc; /* Default Improve: Bright Cyan */
+            box-shadow: 0 0 15px #00ffcc; /* Glow effect */
+            transition-timing-function: linear;
+        }
+
+        .trend-bar.worsening {
+            background-color: #ff3333; /* Worsen: Bright Red */
+            box-shadow: 0 0 15px #ff3333;
+        }
+
+        /* --- CONTROLS --- */
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            opacity: 0.2; /* Hidden until hovered */
+            transition: opacity 0.3s;
+        }
+        #controls:hover {
+            opacity: 1;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+        }
+
+        .btn-improve { background-color: #28a745; }
+        .btn-worsen { background-color: #dc3545; }
         
-        /* Input Reset */
-        input[type=number]::-webkit-inner-spin-button, 
-        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .btn-mute { 
+            background-color: #444; 
+            border: 1px solid #777;
+        }
+        .btn-mute.muted {
+            background-color: #ff4444; /* Red when muted */
+        }
+
     </style>
 </head>
-<body class="antialiased selection:bg-sky-500 selection:text-white">
-    <div id="root"></div>
+<body>
 
-    <script type="text/babel">
-    // --- FIREBASE INIT ---
-    const firebaseConfig = {
-        apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
-        authDomain: "wmebem-sim.firebaseapp.com",
-        projectId: "wmebem-sim",
-        storageBucket: "wmebem-sim.firebasestorage.app",
-        messagingSenderId: "143041936940",
-        appId: "1:143041936940:web:4d15c3fc3ce7e10c081b89",
-        measurementId: "G-8C6WW1EWXJ"
-    };
+    <div id="controls">
+        <button class="btn-improve" onclick="triggerScenario('improve')">IMPROVE (10s)</button>
+        <button class="btn-worsen" onclick="triggerScenario('worsen')">WORSEN (10s)</button>
+        <button id="mute-btn" class="btn-mute" onclick="toggleMute()">🔊 Sound On</button>
+    </div>
 
-    let db = null;
-    try {
-        if (window.firebase) {
-            if (!firebase.apps.length) { firebase.initializeApp(firebaseConfig); } else { firebase.app(); }
-            window.db = firebase.database();
-            console.log("Firebase Connected");
-        }
-    } catch (e) { console.error("Firebase Init Error:", e); }
-    
-    // --- IMPORT FROM MODULES ---
-    const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer, Lucide } = window;
-    const { ALL_SCENARIOS } = window;
+    <div id="ecg-container">
+        <h2>ECG WAVEFORM AREA</h2>
+    </div>
 
-    const { useState, useEffect } = React;
-    
-    // --- MAIN APP ENTRY ---
-    const App = () => {
-        const [view, setView] = useState('setup'); 
-        const [sessionID, setSessionID] = useState(null);
+    <div id="obs-grid">
+        
+        <div class="vital-box">
+            <div class="label">HR</div>
+            <div class="value" id="val-hr">82</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-hr"></div></div>
+        </div>
 
-        // Session & Routing Logic
-        useEffect(() => {
-            const params = new URLSearchParams(window.location.search);
-            if (params.get('mode') === 'monitor') {
-                const sid = params.get('session');
-                if (sid) setSessionID(sid);
-                setView('monitor');
+        <div class="vital-box">
+            <div class="label">BP</div>
+            <div class="value">
+                <span id="val-sys">111</span><span class="sub-value">/</span><span class="sub-value" id="val-dia">64</span>
+            </div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-bp"></div></div>
+        </div>
+
+        <div class="vital-box">
+            <div class="label">SPO2</div>
+            <div class="value" id="val-spo2">95</div>
+            <div class="unit">%</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-spo2"></div></div>
+        </div>
+
+        <div class="vital-box">
+            <div class="label">RR</div>
+            <div class="value" id="val-rr">16</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-rr"></div></div>
+        </div>
+
+        <div class="vital-box">
+            <div class="label">TEMP</div>
+            <div class="value" id="val-temp">37.0</div>
+            <div class="unit">°C</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-temp"></div></div>
+        </div>
+
+        <div class="vital-box">
+            <div class="label">BM</div>
+            <div class="value" id="val-bm">5.0</div>
+            <div class="unit">mmol</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-bm"></div></div>
+        </div>
+
+        <div class="vital-box">
+            <div class="label">GCS</div>
+            <div class="value" id="val-gcs">13</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-gcs"></div></div>
+        </div>
+
+        <div class="vital-box">
+            <div class="label">PUPILS</div>
+            <div class="value" style="font-size: 2rem;" id="val-pupils">3mm</div>
+            <div class="trend-progress-container"><div class="trend-bar" id="bar-pupils"></div></div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- 1. GLOBAL STATE ---
+        let state = {
+            hr: 82,
+            sys: 111,
+            dia: 64,
+            spo2: 95,
+            rr: 16,
+            temp: 37.0,
+            bm: 5.0,
+            gcs: 13
+        };
+
+        // --- 2. AUDIO ENGINE (FIXED SYNC) ---
+        let isMuted = false;
+        let beepTimer = null;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('mute-btn');
+            if (isMuted) {
+                btn.innerText = "🔇 Muted";
+                btn.classList.add('muted');
             } else {
-                // Restore or Create Session ID
-                const savedID = localStorage.getItem('wmebem_session_id');
-                if (savedID) { setSessionID(savedID); } 
-                else {
-                    const newID = Math.random().toString(36).substring(2, 6).toUpperCase();
-                    localStorage.setItem('wmebem_session_id', newID);
-                    setSessionID(newID);
+                btn.innerText = "🔊 Sound On";
+                btn.classList.remove('muted');
+                // Restart the loop if we just unmuted
+                if(audioCtx.state === 'suspended') audioCtx.resume();
+            }
+        }
+
+        function playBeep() {
+            if (isMuted) return;
+            
+            // Simple oscillator beep (no external files needed)
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'sine';
+            osc.frequency.value = 1000; // 1000Hz beep
+            
+            const now = audioCtx.currentTime;
+            osc.start(now);
+            gain.gain.setValueAtTime(0.1, now);
+            gain.gain.exponentialRampToValueAtTime(0.00001, now + 0.1);
+            osc.stop(now + 0.1);
+        }
+
+        function monitorLoop() {
+            // 1. Clear previous timer to prevent "Double Beep"
+            if (beepTimer) clearTimeout(beepTimer);
+
+            // 2. Play Sound
+            playBeep();
+
+            // 3. Calculate next beep interval based on CURRENT HR
+            // 60,000 ms / HR = ms per beat
+            const interval = 60000 / state.hr;
+
+            // 4. Set next timer
+            beepTimer = setTimeout(monitorLoop, interval);
+        }
+
+        // Start the heart beat loop immediately
+        monitorLoop();
+
+
+        // --- 3. TREND & ANIMATION LOGIC ---
+
+        /**
+         * Runs the loading bar animation for a specific box
+         */
+        function animateBar(id, duration, isWorsening) {
+            const bar = document.getElementById(id);
+            if(!bar) return;
+
+            // Reset
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+            bar.classList.remove('worsening');
+
+            if(isWorsening) bar.classList.add('worsening');
+
+            // Force reflow
+            void bar.offsetWidth;
+
+            // Animate
+            bar.style.transition = `width ${duration}s linear`;
+            bar.style.width = '100%';
+        }
+
+        /**
+         * Interpolates numbers smoothly over time
+         */
+        function smoothChange(key, startVal, endVal, durationSecs, updateFn) {
+            const startTime = performance.now();
+            const durationMs = durationSecs * 1000;
+
+            function step(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / durationMs, 1); // 0 to 1
+
+                // Calculate current value
+                const current = startVal + (endVal - startVal) * progress;
+                
+                // Update State
+                state[key] = current;
+                
+                // Update UI
+                updateFn(current);
+
+                if (progress < 1) {
+                    requestAnimationFrame(step);
                 }
             }
-        }, []); 
+            requestAnimationFrame(step);
+        }
 
-        // Initialize Simulation Engine
-        const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
+        // --- 4. SCENARIOS (Improve / Worsen) ---
 
-        // Handlers
-        const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
-        const handleGenerate = (s) => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: s }); setView('briefing'); };
-        const handleResume = (savedState) => { sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); setView('live'); };
-        const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); localStorage.removeItem('wmebem_sim_state'); };
+        function triggerScenario(type) {
+            const duration = 10; // Change takes 10 seconds
+            const isWorsening = type === 'worsen';
 
-        // Crash Recovery Check
-        const [resumeAvailable, setResumeAvailable] = useState(null);
-        useEffect(() => {
-            if (view === 'setup') {
-                const saved = localStorage.getItem('wmebem_sim_state');
-                if (saved) { try { setResumeAvailable(JSON.parse(saved)); } catch(e) { console.error(e); } }
+            // Define targets
+            let targets = {};
+            if (isWorsening) {
+                targets = { hr: 130, sys: 80, dia: 40, spo2: 88, rr: 28, temp: 39.5, bm: 2.1 };
+            } else {
+                targets = { hr: 80, sys: 120, dia: 80, spo2: 98, rr: 14, temp: 37.0, bm: 5.0 };
             }
-        }, [view]);
 
-        // --- RENDER VIEWS ---
-        if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
-        if (view === 'monitor') return <MonitorContainer sessionID={sessionID} />;
+            // Trigger Animations
+            const barIds = ['bar-hr', 'bar-bp', 'bar-spo2', 'bar-rr', 'bar-temp', 'bar-bm', 'bar-gcs', 'bar-pupils'];
+            barIds.forEach(id => animateBar(id, duration, isWorsening));
 
-        return (
-            <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
-                {/* GLOBAL HEADER */}
-                <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                    <div className="flex items-center gap-4">
-                        <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-10 md:h-16 object-contain" />
-                        <div><h1 className="text-xl md:text-3xl font-bold text-sky-400 tracking-tight">EM Sim Generator v15</h1></div>
-                    </div>
-                    
-                    <div className="flex flex-col items-end">
-                        <div className="flex items-center gap-2 bg-sky-900/20 border border-sky-500/30 px-3 py-1 rounded cursor-pointer hover:bg-sky-900/40 transition-colors" onClick={() => {navigator.clipboard.writeText(sessionID); alert("Session ID Copied")}}>
-                            <span className="text-[10px] text-sky-500 uppercase tracking-widest">Session</span>
-                            <span className="font-mono text-xl font-bold text-white tracking-widest">{sessionID || "..."}</span>
-                        </div>
-                    </div>
-                </header>
+            // Trigger Number Changes
+            smoothChange('hr', state.hr, targets.hr, duration, (v) => document.getElementById('val-hr').innerText = Math.round(v));
+            smoothChange('sys', state.sys, targets.sys, duration, (v) => document.getElementById('val-sys').innerText = Math.round(v));
+            smoothChange('dia', state.dia, targets.dia, duration, (v) => document.getElementById('val-dia').innerText = Math.round(v));
+            smoothChange('spo2', state.spo2, targets.spo2, duration, (v) => document.getElementById('val-spo2').innerText = Math.round(v));
+            smoothChange('rr', state.rr, targets.rr, duration, (v) => document.getElementById('val-rr').innerText = Math.round(v));
+            smoothChange('temp', state.temp, targets.temp, duration, (v) => document.getElementById('val-temp').innerText = v.toFixed(1));
+            smoothChange('bm', state.bm, targets.bm, duration, (v) => document.getElementById('val-bm').innerText = v.toFixed(1));
+        }
 
-                <main className="flex-grow overflow-hidden relative">
-                    {/* 1. SETUP SCREEN */}
-                    {view === 'setup' && (
-                        <SetupScreen 
-                            onGenerate={handleGenerate} 
-                            savedState={resumeAvailable} 
-                            onResume={() => handleResume(resumeAvailable)} 
-                            sessionID={sessionID}
-                            onJoinClick={() => setView('join')}
-                        />
-                    )}
+        // --- INITIALISE ---
+        // Ensure audio context starts on user interaction (browsers block auto-audio)
+        document.body.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }, { once: true });
 
-                    {/* 2. BRIEFING SCREEN */}
-                    {view === 'briefing' && sim.state.scenario && (
-                        <BriefingScreen 
-                            scenario={sim.state.scenario} 
-                            onStart={() => { sim.start(); setView('live'); }} 
-                            onBack={() => setView('setup')} 
-                        />
-                    )}
-
-                    {/* 3. LIVE SIM & DEBRIEF */}
-                    {(view === 'live' || view === 'debrief') && sim.state.scenario && (
-                         <LiveSimContainer 
-                            sim={sim} 
-                            view={view}
-                            setView={setView}
-                            resumeData={view === 'live' && resumeAvailable ? resumeAvailable : null}
-                            onRestart={handleRestart}
-                            sessionID={sessionID}
-                         />
-                    )}
-                </main>
-
-                <footer className="bg-slate-950 border-t border-slate-800 p-2 text-center text-[10px] text-slate-500 flex-shrink-0">
-                    <p>&copy; {new Date().getFullYear()} West Midlands Evidence Based Emergency Medicine Ltd. Designed by Dr Jake Turner.</p>
-                </footer>
-            </div>
-        );
-    };
-
-    // Wait for the components to be attached to window
-const startApp = () => {
-    if (window.MonitorContainer && window.SetupScreen) {
-        ReactDOM.render(<App />, document.getElementById('root'));
-    } else {
-        setTimeout(startApp, 50); // Retry in 50ms
-    }
-};
-startApp();
     </script>
 </body>
 </html>
