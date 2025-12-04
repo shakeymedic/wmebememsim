@@ -2,41 +2,48 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // SAFE LUCIDE COMPONENT
+    // SAFE LUCIDE COMPONENT - ROBUST VERSION
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
+        
         useEffect(() => {
-            const checkAndRender = () => {
-                 if (!ref.current || !window.lucide) return false;
-                 ref.current.innerHTML = '';
-                 const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
-                 const iconName = kebabToPascal(icon);
-                 if (window.lucide.icons && window.lucide.icons[iconName]) {
-                      const iconNode = window.lucide.icons[iconName];
-                      if (window.lucide.createElement) {
-                          const svg = window.lucide.createElement(iconNode);
-                          if (className) svg.setAttribute('class', className);
-                          ref.current.appendChild(svg);
-                          return true;
-                      }
-                 }
-                 if (window.lucide.createIcons) {
-                     const i = document.createElement('i');
-                     i.setAttribute('data-lucide', icon);
-                     if (className) i.setAttribute('class', className);
-                     ref.current.appendChild(i);
-                     window.lucide.createIcons({ root: ref.current });
-                     return true;
-                 }
-                 return false;
+            const renderIcon = () => {
+                if (!ref.current || !window.lucide) return;
+                
+                // Clean up previous
+                ref.current.innerHTML = '';
+                
+                const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+                const iconName = kebabToPascal(icon);
+                
+                // Try 1: Direct Icon Node (Best for React)
+                if (window.lucide.icons && window.lucide.icons[iconName] && window.lucide.createElement) {
+                    const svg = window.lucide.createElement(window.lucide.icons[iconName]);
+                    if (className) svg.setAttribute('class', className);
+                    ref.current.appendChild(svg);
+                    return;
+                }
+                
+                // Try 2: createIcons (DOM scan fallback)
+                const i = document.createElement('i');
+                i.setAttribute('data-lucide', icon);
+                if (className) i.setAttribute('class', className);
+                ref.current.appendChild(i);
+                if (window.lucide.createIcons) {
+                    window.lucide.createIcons({
+                        root: ref.current,
+                        nameAttr: 'data-lucide',
+                        attrs: { class: className }
+                    });
+                }
             };
-            if (!checkAndRender()) {
-                const interval = setInterval(() => {
-                    if (checkAndRender()) clearInterval(interval);
-                }, 100);
-                setTimeout(() => clearInterval(interval), 3000);
-            }
+
+            renderIcon();
+            // Retry once in case script loaded late
+            const timer = setTimeout(renderIcon, 500);
+            return () => clearTimeout(timer);
         }, [icon, className]);
+
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
@@ -101,7 +108,7 @@
             if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
             if (lbl.includes("BP") || lbl.includes("NIBP") || lbl.includes("ABP")) return "text-red-500";
             if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
-            if (lbl.includes("CO2")) return "text-yellow-500";
+            if (lbl.includes("CO2") || lbl.includes("ETCO2")) return "text-yellow-500";
             return "text-slate-200";
         };
         const colorClass = getColors(label);
@@ -110,7 +117,6 @@
         const displayValue = () => {
             if (label === "Pupils") return (typeof value === 'number') ? `${Math.round(value)}mm` : value;
             if (value === null || value === undefined) return '--';
-            // If passed a string (like '---' or '?'), return it directly to avoid NaN
             if (typeof value === 'string' && !isText) return value;
             return isText ? value : Math.round(value);
         };
@@ -180,7 +186,6 @@
                 if(parent) { 
                     canvas.width = parent.clientWidth; 
                     canvas.height = parent.clientHeight; 
-                    // Set baselines
                     drawState.current.lastY = canvas.height * 0.30; 
                     drawState.current.lastYCO2 = canvas.height * 0.60; 
                     drawState.current.lastYArt = canvas.height * 0.80; 
@@ -241,25 +246,10 @@
                         const ampArt = 20;
                         const t = state.beatProgress;
                         let wave = 0;
-                        
-                        // Realistic Arterial Waveform Approximation
-                        if (t < 0.15) {
-                            // Systolic Upstroke (Steep)
-                            wave = Math.sin((t / 0.15) * (Math.PI / 2));
-                        } else if (t < 0.4) {
-                            // Systolic Decline
-                            // Decays from 1.0 down to approx 0.5
-                            wave = 1.0 - 0.5 * ((t - 0.15) / 0.25); 
-                        } else if (t < 0.5) {
-                            // Dicrotic Notch (Bump up slightly)
-                            // t 0.4 to 0.5, bump to 0.55
-                            wave = 0.5 + 0.1 * Math.sin(((t - 0.4) / 0.1) * Math.PI);
-                        } else {
-                            // Diastolic Decay
-                            // t 0.5 to 1.0, decay to 0
-                            wave = 0.5 * (1 - ((t - 0.5) / 0.5));
-                        }
-
+                        if (t < 0.15) { wave = Math.sin((t / 0.15) * (Math.PI / 2)); } 
+                        else if (t < 0.4) { wave = 1.0 - 0.5 * ((t - 0.15) / 0.25); } 
+                        else if (t < 0.5) { wave = 0.5 + 0.1 * Math.sin(((t - 0.4) / 0.1) * Math.PI); } 
+                        else { wave = 0.5 * (1 - ((t - 0.5) / 0.5)); }
                         const yArt = baseArt - (wave * ampArt);
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
                         state.lastYArt = yArt;
@@ -296,24 +286,20 @@
 
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const getResult = () => {
-    if (!scenario) return "No data";
-    if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
-    
-    if (type === 'VBG') {
-        if (!scenario.vbg) return "Normal";
-        const v = scenario.vbg;
-        // Corrected VBG return string
-        return `pH: ${v.pH.toFixed(2)} | pCO2: ${v.pCO2.toFixed(1)} | pO2: 5.5 | HCO3: ${v.HCO3.toFixed(1)} | BE: ${v.BE.toFixed(1)} | Lac: ${v.Lac.toFixed(1)} | K+: ${v.K.toFixed(1)} | Glu: ${v.Glu.toFixed(1)} | Ket: ${v.Ketones ? v.Ketones.toFixed(1) : '0.1'}`;
-    }
+            if (!scenario) return "No data";
+            if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
+            if (type === 'VBG') {
+                if (!scenario.vbg) return "Normal";
+                const v = scenario.vbg;
+                return `pH: ${v.pH.toFixed(2)} | pCO2: ${v.pCO2.toFixed(1)} | pO2: 5.5 | HCO3: ${v.HCO3.toFixed(1)} | BE: ${v.BE.toFixed(1)} | Lac: ${v.Lac.toFixed(1)} | K+: ${v.K.toFixed(1)} | Glu: ${v.Glu.toFixed(1)} | Ket: ${v.Ketones ? v.Ketones.toFixed(1) : '0.1'}`;
+            }
+            if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
+            if (type === 'Urine') return scenario.urine ? scenario.urine.findings : "Normal";
+            if (type === 'CT') return scenario.ct ? scenario.ct.findings : "CT Head: No acute intracranial abnormality.";
+            if (type === 'POCUS') return scenario.pocus ? scenario.pocus.findings : "No free fluid. Normal lung sliding.";
+            return "No significant abnormalities.";
+        };
 
-    if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
-    if (type === 'Urine') return scenario.urine ? scenario.urine.findings : "Normal";
-    if (type === 'CT') return scenario.ct ? scenario.ct.findings : "CT Head: No acute intracranial abnormality.";
-    if (type === 'POCUS') return scenario.pocus ? scenario.pocus.findings : "No free fluid. Normal lung sliding.";
-    return "No significant abnormalities.";
-};
-
-        // Determine if repeatable
         const isRepeatable = ['VBG', 'ECG', 'Obs', 'POCUS'].includes(type);
         const isDisabled = !isRunning || isLoading || (!isRepeatable && isRevealed);
 
