@@ -336,7 +336,7 @@
                 dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); 
                 dispatch({ type: 'TRIGGER_POPUP', payload: type });
                 addLogEntry(`${type} Result Available`, 'success'); 
-            }, 2000); 
+            }, 100); 
         };
         const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
