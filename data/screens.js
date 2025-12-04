@@ -407,13 +407,14 @@
             "Trauma": ['TXA', 'Blood', 'Fluids'],
             "Infusions": ['FluidInfusion', 'InsulinInfusion', 'GTNInfusion', 'Noradrenaline'], 
             "General": [
-        'Paracetamol', 
-        'Ondansetron', // Removed Ibuprofen as it's not defined
-        'Antibiotics', 
-        'Hydrocortisone', 
-        'Dexamethasone', 
-        'Nebs', // Changed 'Salbutamol' to 'Nebs' to match interventions.js
-        'AdrenalineIM' // Added this as it's useful in general reactions
+                'Paracetamol', 
+                'Ondansetron',
+                'Antibiotics', 
+                'Hydrocortisone', 
+                'Dexamethasone', 
+                'Nebs',
+                'AdrenalineIM' 
+            ]  // <--- ADD THIS BRACKET
         };
 
         const mapVoice = (txt) => {
