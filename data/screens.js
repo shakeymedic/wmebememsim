@@ -851,7 +851,23 @@
         );
     };
 
-    const MonitorContainer = ({ sessionID }) => { const sim = useSimulation(null, true, sessionID); if (!sessionID) return null; if (!sim.state.vitals || sim.state.vitals.hr === undefined) return (<div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn"><Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" /><div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div><div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div></div>); return <MonitorScreen sim={sim} />; };   
+    const MonitorContainer = ({ sessionID }) => { 
+        const sim = useSimulation(null, true, sessionID); 
+        if (!sessionID) return null; 
+        
+        // ADD check for sim.state.isFinished here:
+        if (!sim.state.vitals || sim.state.vitals.hr === undefined || sim.state.isFinished) {
+            return (
+                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
+                    <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
+                    <div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div>
+                    <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
+                </div>
+            ); 
+        }
+        
+        return <MonitorScreen sim={sim} />; 
+    };   
     const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
 
     window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
