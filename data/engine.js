@@ -14,7 +14,8 @@
         soundEffect: { type: null, timestamp: 0 },
         audioOutput: 'monitor',
         arrestPanelOpen: false,
-        isFinished: false 
+        isFinished: false,
+        monitorPopup: { type: null, timestamp: 0 } // <--- NEW STATE
     };
 
     const simReducer = (state, action) => {
@@ -39,7 +40,6 @@
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
             
-            // --- TREND LOGIC ---
             case 'TRIGGER_IMPROVE':
                 let impTargets = {}; 
                 if (state.scenario.evolution && state.scenario.evolution.improved && state.scenario.evolution.improved.vitals) {
@@ -76,7 +76,7 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', trends: action.payload.trends || state.trends, arrestPanelOpen: action.payload.arrestPanelOpen || state.arrestPanelOpen, isFinished: action.payload.isFinished || false };
+            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', trends: action.payload.trends || state.trends, arrestPanelOpen: action.payload.arrestPanelOpen || state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup };
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -84,6 +84,7 @@
             case 'SET_PARALYSIS': return { ...state, isParalysed: action.payload };
             case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
             case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
+            case 'TRIGGER_POPUP': return { ...state, monitorPopup: { type: action.payload, timestamp: Date.now() } }; // <--- NEW ACTION
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
@@ -116,7 +117,7 @@
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
-                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, soundEffect: state.soundEffect, audioOutput: state.audioOutput, trends: state.trends, arrestPanelOpen: state.arrestPanelOpen, isFinished: state.isFinished };
+                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, soundEffect: state.soundEffect, audioOutput: state.audioOutput, trends: state.trends, arrestPanelOpen: state.arrestPanelOpen, isFinished: state.isFinished, monitorPopup: state.monitorPopup };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
 
                 const cmdRef = db.ref(`sessions/${sessionID}/command`);
@@ -134,23 +135,15 @@
         useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
-        // --- FIXED: Heart Rate Beep Logic ---
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
             const scheduleBeep = () => {
                 const current = stateRef.current;
-                
-                // Audio Output check
                 const correctOutput = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
                 
-                // CRITICAL FIX: Strictly check isRunning. If paused, DO NOT play.
                 if (!current.isRunning) return;
-
-                // Stop if rhythm is pulseless
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'pVT' || current.rhythm === 'PEA') return;
-                
-                // Stop if no monitoring attached
                 if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
                 
                 if (!current.isMuted && ctx && correctOutput) {
@@ -163,9 +156,7 @@
                 const delay = 60000 / (Math.max(20, current.vitals.hr) || 60); timerId = setTimeout(scheduleBeep, delay);
             };
 
-            // CRITICAL FIX: The effect start condition is now strict.
             const shouldStart = state.isRunning && state.vitals && state.vitals.hr > 0;
-            
             if (shouldStart) { if (ctx && ctx.state === 'suspended') ctx.resume(); scheduleBeep(); }
             return () => clearTimeout(timerId);
         }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]);
@@ -179,9 +170,7 @@
         useEffect(() => { 
             if (state.soundEffect && state.soundEffect.timestamp > lastSoundRef.current) { 
                 lastSoundRef.current = state.soundEffect.timestamp; 
-                // CRITICAL FIX: Do not play new sounds if paused
                 if (!state.isRunning) return;
-
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
                 if (shouldPlay && audioCtxRef.current) { playMedicalSound(state.soundEffect.type); } 
             } 
@@ -192,10 +181,7 @@
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) { 
                 if (Date.now() - state.speech.timestamp > 8000) { lastSpeechRef.current = state.speech.timestamp; return; } 
                 lastSpeechRef.current = state.speech.timestamp; 
-                
-                // CRITICAL FIX: Do not speak if paused
                 if (!state.isRunning) return;
-
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
                 if (shouldPlay && 'speechSynthesis' in window) { 
                     window.speechSynthesis.cancel(); 
@@ -253,7 +239,11 @@
         const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: 3 } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
         const revealInvestigation = (type) => { 
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); 
-            setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); 
+            setTimeout(() => { 
+                dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); 
+                dispatch({ type: 'TRIGGER_POPUP', payload: type }); // <--- UPDATED: Triggers monitor popup
+                addLogEntry(`${type} Result Available`, 'success'); 
+            }, 2000); 
         };
         const nextCycle = () => { dispatch({ type: 'FAST_FORWARD', payload: 120 }); addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system'); if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm Check: Changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
@@ -275,12 +265,10 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
-        // --- FIXED: Tick function mixes noise + trends properly ---
         const tick = () => {
             const current = stateRef.current; 
             let next = { ...current.vitals };
 
-            // 1. Apply Natural Fluctuation (Noise) to ALL vitals first
             if (next.hr === 0) { 
                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
                 if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
@@ -297,16 +285,13 @@
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
             }
 
-            // 2. Apply Trend Overrides (if active)
             if (current.trends.active) {
                 const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
-                
                 Object.keys(current.trends.targets).forEach(key => {
                     const startVal = current.trends.startVitals[key] || 0;
                     const endVal = current.trends.targets[key];
                     next[key] = startVal + (endVal - startVal) * progress;
                 });
-
                 if (progress >= 1) {
                     dispatch({ type: 'STOP_TREND' });
                     Object.assign(next, current.trends.targets);
