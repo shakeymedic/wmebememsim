@@ -5,7 +5,7 @@
 
     const initialState = {
         scenario: null, time: 0, cycleTimer: 0, isRunning: false,
-        vitals: {}, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
+        vitals: { etco2: 4.5 }, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
         investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
         isMuted: false, etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false },
@@ -15,7 +15,7 @@
         audioOutput: 'monitor',
         arrestPanelOpen: false,
         isFinished: false,
-        monitorPopup: { type: null, timestamp: 0 } // <--- NEW STATE
+        monitorPopup: { type: null, timestamp: 0 } 
     };
 
     const simReducer = (state, action) => {
@@ -26,7 +26,9 @@
             case 'CLEAR_SESSION': return { ...initialState };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                return { ...initialState, scenario: action.payload, vitals: {...action.payload.vitals}, prevVitals: {...action.payload.vitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false };
+                // Ensure etco2 is initialized
+                const initialVitals = { etco2: 4.5, ...action.payload.vitals };
+                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations }; let durChanged = false;
@@ -76,15 +78,47 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, scenario: { ...state.scenario, title: action.payload.scenarioTitle, deterioration: { type: action.payload.pathology } }, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', trends: action.payload.trends || state.trends, arrestPanelOpen: action.payload.arrestPanelOpen || state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup };
+            case 'SYNC_FROM_MASTER': 
+                // Merge investigations into the scenario object so the monitor can display results
+                const syncedScenario = { 
+                    ...state.scenario, 
+                    title: action.payload.scenarioTitle, 
+                    deterioration: { type: action.payload.pathology },
+                    ...action.payload.investigations // Merging investigation data (VBG, ECG findings etc)
+                };
+                return { 
+                    ...state, 
+                    vitals: action.payload.vitals, 
+                    rhythm: action.payload.rhythm, 
+                    cprInProgress: action.payload.cprInProgress, 
+                    etco2Enabled: action.payload.etco2Enabled, 
+                    flash: action.payload.flash, 
+                    cycleTimer: action.payload.cycleTimer, 
+                    scenario: syncedScenario, 
+                    activeInterventions: new Set(action.payload.activeInterventions || []), 
+                    nibp: action.payload.nibp || state.nibp, 
+                    speech: action.payload.speech || state.speech, 
+                    soundEffect: action.payload.soundEffect || state.soundEffect, 
+                    audioOutput: action.payload.audioOutput || 'monitor', 
+                    trends: action.payload.trends || state.trends, 
+                    arrestPanelOpen: action.payload.arrestPanelOpen || state.arrestPanelOpen, 
+                    isFinished: action.payload.isFinished || false, 
+                    monitorPopup: action.payload.monitorPopup || state.monitorPopup 
+                };
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
             case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
+            case 'REMOVE_INTERVENTION': // NEW ACTION
+                const removedActive = new Set(state.activeInterventions);
+                removedActive.delete(action.payload);
+                const removedDurations = { ...state.activeDurations };
+                delete removedDurations[action.payload];
+                return { ...state, activeInterventions: removedActive, activeDurations: removedDurations };
             case 'SET_PARALYSIS': return { ...state, isParalysed: action.payload };
             case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
             case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
-            case 'TRIGGER_POPUP': return { ...state, monitorPopup: { type: action.payload, timestamp: Date.now() } }; // <--- NEW ACTION
+            case 'TRIGGER_POPUP': return { ...state, monitorPopup: { type: action.payload, timestamp: Date.now() } };
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
@@ -117,7 +151,36 @@
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
-                const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, soundEffect: state.soundEffect, audioOutput: state.audioOutput, trends: state.trends, arrestPanelOpen: state.arrestPanelOpen, isFinished: state.isFinished, monitorPopup: state.monitorPopup };
+                // Sync detailed scenario data (vbg, ecg, xray results) so monitor can see them
+                const investigations = {
+                    vbg: state.scenario.vbg || null,
+                    ecg: state.scenario.ecg || null,
+                    chestXray: state.scenario.chestXray || null,
+                    urine: state.scenario.urine || null,
+                    ct: state.scenario.ct || null,
+                    pocus: state.scenario.pocus || null
+                };
+
+                const payload = { 
+                    vitals: state.vitals, 
+                    rhythm: state.rhythm, 
+                    cprInProgress: state.cprInProgress, 
+                    etco2Enabled: state.etco2Enabled, 
+                    flash: state.flash, 
+                    cycleTimer: state.cycleTimer, 
+                    scenarioTitle: state.scenario.title, 
+                    pathology: state.scenario.deterioration?.type || 'normal', 
+                    investigations: investigations, // SEND DATA TO MONITOR
+                    activeInterventions: Array.from(state.activeInterventions), 
+                    nibp: state.nibp, 
+                    speech: state.speech, 
+                    soundEffect: state.soundEffect, 
+                    audioOutput: state.audioOutput, 
+                    trends: state.trends, 
+                    arrestPanelOpen: state.arrestPanelOpen, 
+                    isFinished: state.isFinished, 
+                    monitorPopup: state.monitorPopup 
+                };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
 
                 const cmdRef = db.ref(`sessions/${sessionID}/command`);
@@ -195,9 +258,19 @@
         }, [state.speech, isMonitorMode, state.audioOutput, state.isRunning]);
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
+        
         const applyIntervention = (key) => {
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
+            
+            // Check if removing
+            const isActive = state.activeInterventions.has(key);
+            if (action.type === 'continuous' && isActive) {
+                 dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
+                 addLogEntry(`${action.label} removed.`, 'action');
+                 return;
+            }
+
             let logMsg = action.log;
             if (key === 'Fluids') {
                 if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
@@ -213,15 +286,35 @@
             }
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
-            if (action.type === 'continuous') { if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } else { newActive.add(key); addLogEntry(logMsg, 'action'); } } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
+            if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
+            
             if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
+            
             const isArrest = state.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(state.rhythm));
-            if (!isArrest) { if (action.effect.HR) { if (action.effect.HR === 'reset') newVitals.hr = 80; else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); } if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); if (action.effect.RR && action.effect.RR !== 'vent') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); }
-            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); if (action.effect.gcs) newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
+            if (!isArrest) { 
+                if (action.effect.HR) { 
+                    if (action.effect.HR === 'reset') newVitals.hr = 80; 
+                    else if (action.effect.HR === 'pace') newVitals.hr = 80;
+                    else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); 
+                } 
+                if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); 
+                if (action.effect.RR && typeof action.effect.RR === 'number') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); 
+            }
+            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); 
+            
+            // FIX: RSI CRASH PREVENTION (Handle non-numeric GCS strings)
+            if (action.effect.gcs) {
+                if (typeof action.effect.gcs === 'string') {
+                    if (action.effect.gcs === 'sedated') newVitals.gcs = 3;
+                } else {
+                    newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
+                }
+            }
+
             const updatedScenario = { ...state.scenario }; let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
@@ -241,7 +334,7 @@
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); 
             setTimeout(() => { 
                 dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); 
-                dispatch({ type: 'TRIGGER_POPUP', payload: type }); // <--- UPDATED: Triggers monitor popup
+                dispatch({ type: 'TRIGGER_POPUP', payload: type });
                 addLogEntry(`${type} Result Available`, 'success'); 
             }, 2000); 
         };
