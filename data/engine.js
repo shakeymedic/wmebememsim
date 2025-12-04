@@ -14,19 +14,14 @@
         soundEffect: { type: null, timestamp: 0 },
         audioOutput: 'monitor',
         arrestPanelOpen: false,
-        isFinished: false // <--- NEW: Track finished state
+        isFinished: false 
     };
 
     const simReducer = (state, action) => {
        switch (action.type) {
-            // Update START_SIM to reset isFinished
             case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
-            
             case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
-            
-            // Update STOP_SIM to set isFinished to true
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
-            
             case 'CLEAR_SESSION': return { ...initialState };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
@@ -95,7 +90,7 @@
             case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
             case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
             case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
-            case 'SET_ARREST_PANEL': return { ...state, arrestPanelOpen: action.payload }; // NEW ACTION
+            case 'SET_ARREST_PANEL': return { ...state, arrestPanelOpen: action.payload }; 
             default: return state;
         }
     };
@@ -106,6 +101,7 @@
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
         const stateRef = useRef(state);
+        const lastCmdRef = useRef(0);
         
         useEffect(() => { stateRef.current = state; }, [state]);
         useEffect(() => {
@@ -118,11 +114,22 @@
                 return () => sessionRef.off('value', handleUpdate);
             } else {
                 if (!state.scenario) return;
-                // Add isFinished to the payload below
                 const payload = { vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, scenarioTitle: state.scenario.title, pathology: state.scenario.deterioration?.type || 'normal', activeInterventions: Array.from(state.activeInterventions), nibp: state.nibp, speech: state.speech, soundEffect: state.soundEffect, audioOutput: state.audioOutput, trends: state.trends, arrestPanelOpen: state.arrestPanelOpen, isFinished: state.isFinished };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
+
+                // Controller: Listen for Commands (like NIBP start) from Monitor
+                const cmdRef = db.ref(`sessions/${sessionID}/command`);
+                cmdRef.on('value', (snap) => {
+                    const val = snap.val();
+                    if (val && val.ts > lastCmdRef.current) {
+                        lastCmdRef.current = val.ts;
+                        if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
+                    }
+                });
+                return () => cmdRef.off();
             }
         }, [state, isMonitorMode, sessionID]);
+
         useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         useEffect(() => {
@@ -160,27 +167,19 @@
         const applyIntervention = (key) => {
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
-            
-            // data/engine.js (Inside applyIntervention)
-
-            // 1. Determine Log Message (Handle Fluids & Paeds Doses)
             let logMsg = action.log;
-
             if (key === 'Fluids') {
                 if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
                     logMsg = `Fluid Bolus (${state.scenario.wetflag.fluids}ml) administered.`;
                 } else {
-                    logMsg = `Fluid Bolus (500ml) administered.`; // Default for Adults
+                    logMsg = `Fluid Bolus (500ml) administered.`; 
                 }
             }
-            
-            // Paeds Specific Drugs (WETFLAG)
             if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
                 if (key === 'AdrenalineIV') logMsg = `IV Adrenaline (${state.scenario.wetflag.adrenaline}mcg) administered.`;
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${state.scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${state.scenario.wetflag.glucose}ml) administered.`;
             }
-
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
             if (action.type === 'continuous') { if (newActive.has(key)) { newActive.delete(key); addLogEntry(`${key} removed/stopped.`, 'action'); } else { newActive.add(key); addLogEntry(logMsg, 'action'); } } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
@@ -202,14 +201,12 @@
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } });
             dispatch({ type: 'UPDATE_RHYTHM', payload: newRhythm });
-            dispatch({ type: 'SET_ARREST_PANEL', payload: true }); // AUTO OPEN PANEL
+            dispatch({ type: 'SET_ARREST_PANEL', payload: true }); 
             addLogEntry(`CARDIAC ARREST - ${newRhythm}`, 'manual');
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
         const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: 3 } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
         const revealInvestigation = (type) => { 
-            // Removed check for existing to allow repeats for everything but one-time static results if needed
-            // But since InvestigationButton handles disabled logic, we just trigger load here
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); 
             setTimeout(() => { dispatch({ type: 'REVEAL_INVESTIGATION', payload: type }); addLogEntry(`${type} Result Available`, 'success'); }, 2000); 
         };
@@ -217,6 +214,13 @@
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const playSound = (type) => { dispatch({ type: 'TRIGGER_SOUND', payload: type }); addLogEntry(`Sound: ${type}`, 'manual'); };
         const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
+        const triggerNIBP = () => {
+            if (isMonitorMode && sessionID) {
+                window.db.ref(`sessions/${sessionID}/command`).set({ type: 'START_NIBP', ts: Date.now() });
+            } else {
+                dispatch({ type: 'START_NIBP' });
+            }
+        };
         const playInflationSound = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'running') { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         const playMedicalSound = (type) => {
             if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const t = ctx.currentTime;
@@ -240,7 +244,7 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); };
         const reset = () => { stop(); dispatch({ type: 'CLEAR_SESSION' }); localStorage.removeItem('wmebem_sim_state'); };
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, startTrend };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, startTrend, triggerNIBP };
     };
     window.useSimulation = useSimulation;
 })();
