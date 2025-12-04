@@ -295,6 +295,20 @@
                         <div className="text-4xl font-mono font-bold text-white">{scenario.vitals.gcs}</div>
                     </div>
                 </div>
+        {/* --- START NEW CODE: WETFLAG SECTION --- */}
+                {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
+                    <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
+                        <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
+                        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
+                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Energy (4J)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
+                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Tube</div><div className="font-bold text-white">{scenario.wetflag.tube}</div></div>
+                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Fluids (10ml)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
+                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
+                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
+                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Glucose (2ml)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
+                        </div>
+                    </div>
+                )}
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
                     <div className="space-y-6">
@@ -504,6 +518,19 @@
                                 <p><strong className="text-slate-400">Details:</strong> {scenario.patientAge}y {scenario.sex}</p>
                                 <p><strong className="text-slate-400">Allergies:</strong> <span className="text-red-400">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></p>
                             </div>
+                    {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
+                                <div className="mb-2 p-2 bg-purple-900/30 border border-purple-500/30 rounded">
+                                    <div className="flex justify-between items-center mb-1"><span className="text-[10px] text-purple-400 font-bold uppercase">WETFLAG ({scenario.wetflag.weight}kg)</span></div>
+                                    <div className="grid grid-cols-3 gap-1 text-[9px] text-center">
+                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Energy</span>{scenario.wetflag.energy}J</div>
+                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Tube</span>{scenario.wetflag.tube}</div>
+                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Fluid</span>{scenario.wetflag.fluids}ml</div>
+                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Loraz</span>{scenario.wetflag.lorazepam}mg</div>
+                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Adren</span>{scenario.wetflag.adrenaline}</div>
+                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Gluc</span>{scenario.wetflag.glucose}ml</div>
+                                    </div>
+                                </div>
+                            )}
                             <div className="grid grid-cols-3 gap-1">
                                 {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (<InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>))}
                             </div>
