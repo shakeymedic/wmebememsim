@@ -383,20 +383,22 @@
         const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
         const [showDrugCalc, setShowDrugCalc] = useState(false);
-        
-        // --- FIXED: Only one set of declarations below ---
         const [showLogModal, setShowLogModal] = useState(false);
+        
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
+        // Auto-trigger arrest mode if rhythm is shockable/arrest
         useEffect(() => {
             const arrestRhythms = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'];
             if (arrestRhythms.includes(rhythm) && !arrestMode) {
                 setArrestMode(true);
             }
         }, [rhythm, arrestMode]);
+
+        // ... (Rest of your drugCats and mapVoice code remains here)
 
         // --- FIXED: Only one drugCats declaration ---
         const drugCats = {
