@@ -11,17 +11,11 @@
     // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
         const [mode, setMode] = useState('random'); 
-        
-        // Random Mode State
         const [category, setCategory] = useState('Medical');
         const [age, setAge] = useState('Any');
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
-        
-        // Premade Mode State
         const [premadeCategory, setPremadeCategory] = useState(null);
-
-        // Builder State
         const [buildTitle, setBuildTitle] = useState("");
         const [buildAge, setBuildAge] = useState(40);
         const [buildCat, setBuildCat] = useState("Medical");
@@ -40,14 +34,12 @@
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
-            
             const safeVitals = {
                 hr: parseInt(buildVitals.hr) || 80,
                 bpSys: parseInt(buildVitals.bpSys) || 120,
                 rr: parseInt(buildVitals.rr) || 16,
                 spO2: parseInt(buildVitals.spO2) || 98
             };
-
             const newScen = {
                 id: `CUST_${Date.now()}`,
                 title: buildTitle,
@@ -77,7 +69,6 @@
                  alert("Scenarios failed to load. Please refresh the page.");
                  return;
              }
-
              try {
                  let selectedBase = base;
                  if (!base && mode === 'random') {
@@ -91,8 +82,16 @@
                  }
 
                  const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
-                 const isObs = selectedBase.category === 'Obstetrics & Gynae';
-                 const sex = isObs ? 'Female' : (Math.random() > 0.5 ? 'Male' : 'Female');
+                 
+                 // --- SMART SEX DETERMINATION ---
+                 let sex = Math.random() > 0.5 ? 'Male' : 'Female';
+                 const t = selectedBase.title.toLowerCase();
+                 const p = selectedBase.patientProfileTemplate.toLowerCase();
+                 const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
+                 const forceMale = ["testicular", "prostate", "scrotal"];
+                 
+                 if (forceFemale.some(k => t.includes(k) || p.includes(k)) || selectedBase.category === 'Obstetrics & Gynae') sex = 'Female';
+                 else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
                  
                  const history = generateHistory(patientAge, sex);
                  const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
@@ -295,7 +294,6 @@
                         <div className="text-4xl font-mono font-bold text-white">{scenario.vitals.gcs}</div>
                     </div>
                 </div>
-        {/* --- START NEW CODE: WETFLAG SECTION --- */}
                 {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
                     <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
                         <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
@@ -382,7 +380,6 @@
         const [expandRhythm, setExpandRhythm] = useState(false);
         const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
-        const [showDrugCalc, setShowDrugCalc] = useState(false);
         const [showLogModal, setShowLogModal] = useState(false);
         
         const [modalVital, setModalVital] = useState(null); 
@@ -390,7 +387,6 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
-        // Auto-trigger arrest mode if rhythm is shockable/arrest
         useEffect(() => {
             const arrestRhythms = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'];
             if (arrestRhythms.includes(rhythm) && !arrestMode) {
@@ -398,23 +394,12 @@
             }
         }, [rhythm, arrestMode]);
 
-        // ... (Rest of your drugCats and mapVoice code remains here)
-
-        // --- FIXED: Only one drugCats declaration ---
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
             "Trauma": ['TXA', 'Blood', 'Fluids'],
             "Infusions": ['FluidInfusion', 'InsulinInfusion', 'GTNInfusion', 'Noradrenaline'], 
-            "General": [
-                'Paracetamol', 
-                'Ondansetron',
-                'Antibiotics', 
-                'Hydrocortisone', 
-                'Dexamethasone', 
-                'Nebs',
-                'AdrenalineIM' 
-            ]  // <--- ADD THIS BRACKET
+            "General": ['Paracetamol', 'Ondansetron', 'Antibiotics', 'Hydrocortisone', 'Dexamethasone', 'Nebs', 'AdrenalineIM']
         };
 
         const mapVoice = (txt) => {
@@ -425,7 +410,6 @@
         };
 
         useEffect(() => { if (customLog.length > 1) { const results = Object.keys(INTERVENTIONS).filter(key => (key + INTERVENTIONS[key].label).toLowerCase().includes(customLog.toLowerCase())); setSearchResults(results); } else { setSearchResults([]); } }, [customLog]);
-        const handleSearchSelect = (key) => { applyIntervention(key); setCustomLog(""); setSearchResults([]); };
         
         const getInterventionsByCat = (cat) => {
             if (cat === 'Handover' || cat === 'Voice') return [];
@@ -472,11 +456,15 @@
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 {/* --- HEADER --- */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
                         {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button>}
                         <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
-                        <Button variant="primary" onClick={onFinish} className="h-8 px-4"><Lucide icon="square"/> FINISH</Button>
+                        {/* AGE DISPLAY IN HEADER */}
+                        <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span>
+                            <span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span>
+                        </div>
                     </div>
                     <div className="flex items-center gap-4">
                         <div className="flex bg-slate-900 rounded p-1 border border-slate-600">
@@ -492,7 +480,6 @@
                 {/* --- ARREST OVERLAY --- */}
                 {arrestMode && (
                     <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
-                        {/* Column 1: Timer */}
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
                             <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
@@ -502,24 +489,16 @@
                             </div>
                         </div>
 
-                        {/* Column 2: Actions */}
                         <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
                             <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">{cprInProgress ? "STOP CPR" : "START CPR"}</Button>
                             <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col"><Lucide icon="zap" /> SHOCK</Button>
                             <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col"><span>Adrenaline</span><span className="text-[10px] opacity-70">1mg 1:10k</span>{interventionCounts['AdrenalineIV'] > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] px-1 rounded-full">x{interventionCounts['AdrenalineIV']}</span>}</Button>
                             <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col"><span>Amiodarone</span><span className="text-[10px] opacity-70">300mg</span>{interventionCounts['Amiodarone'] > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] px-1 rounded-full">x{interventionCounts['Amiodarone']}</span>}</Button>
-                            <Button onClick={() => {applyIntervention('Lucas'); if(!cprInProgress) toggleCPR();}} variant={activeInterventions.has('Lucas') ? "success" : "secondary"} className="h-12 border border-slate-600">Mechanical CPR</Button>
-                            <Button onClick={() => applyIntervention('Bagging')} variant={activeInterventions.has('Bagging') ? "success" : "secondary"} className="h-12 border border-slate-600">BVM Ventilation</Button>
-                            <Button onClick={() => applyIntervention('RSI')} variant={activeInterventions.has('RSI') ? "success" : "secondary"} className="h-12 border border-slate-600">Secure Airway</Button>
                         </div>
 
-                        {/* Column 3: Helper & Links */}
                         <div className="flex-1 flex flex-col gap-2">
                             <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
                             <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div>
-                            <Button onClick={() => window.open("https://wmebemdefib.netlify.app", "_blank")} variant="outline" className="mt-2 h-8 text-xs border-yellow-500 text-yellow-500 hover:bg-yellow-900/20">
-                                <Lucide icon="external-link" className="w-3 h-3" /> Launch Defib Sim
-                            </Button>
                             <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
                         </div>
                     </div>
@@ -528,7 +507,6 @@
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         <Card className="bg-black border-slate-800 flex-shrink-0">
-                             {/* UPDATED: Traces only show if Obs applied */}
                              <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black">
                                  <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
@@ -540,7 +518,13 @@
                                  <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
                                  <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
                                  <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
-                                 <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
+                                 
+                                 {/* NEW: Editable ETCO2 Display */}
+                                 {etco2Enabled ? (
+                                    <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />
+                                 ) : (
+                                    <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
+                                 )}
                              </div>
                         </Card>
                         
@@ -548,28 +532,12 @@
                             <div className="text-xs space-y-2 mb-2">
                                 <p><strong className="text-slate-400">Name:</strong> {scenario.patientName}</p>
                                 <p><strong className="text-slate-400">PC:</strong> <span className="text-sky-400 font-bold">{scenario.presentingComplaint}</span></p>
-                                {/* Added Clinical Course / Progression */}
                                 <div className="p-1 bg-slate-900 rounded border border-slate-700">
                                     <strong className="text-amber-500 block text-[10px] uppercase">Clinical Course:</strong>
                                     <span className="text-slate-300">{scenario.instructorBrief.progression}</span>
                                 </div>
                                 <p><strong className="text-slate-400">Details:</strong> {scenario.patientAge}y {scenario.sex}</p>
-                                <p><strong className="text-slate-400">PMH:</strong> {scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</p>
-                                <p><strong className="text-slate-400">Allergies:</strong> <span className="text-red-400">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></p>
                             </div>
-                    {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
-                                <div className="mb-2 p-2 bg-purple-900/30 border border-purple-500/30 rounded">
-                                    <div className="flex justify-between items-center mb-1"><span className="text-[10px] text-purple-400 font-bold uppercase">WETFLAG ({scenario.wetflag.weight}kg)</span></div>
-                                    <div className="grid grid-cols-3 gap-1 text-[9px] text-center">
-                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Energy</span>{scenario.wetflag.energy}J</div>
-                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Tube</span>{scenario.wetflag.tube}</div>
-                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Fluid</span>{scenario.wetflag.fluids}ml</div>
-                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Loraz</span>{scenario.wetflag.lorazepam}mg</div>
-                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Adren</span>{scenario.wetflag.adrenaline}</div>
-                                        <div className="bg-slate-900 rounded p-1"><span className="text-slate-500 block">Gluc</span>{scenario.wetflag.glucose}ml</div>
-                                    </div>
-                                </div>
-                            )}
                             <div className="grid grid-cols-3 gap-1">
                                 {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (<InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>))}
                             </div>
@@ -595,7 +563,6 @@
                                 <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
                                 {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
                             </div>
-                            
                             <Button onClick={() => setArrestMode(!arrestMode)} variant={arrestMode ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestMode ? "Close Arrest Panel" : "Open Arrest Panel"}</Button>
                         </div>
                     </div>
@@ -620,7 +587,6 @@
                                 <div className="space-y-4 p-4">
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
-                                        <Button onClick={() => speak("I need Dr Jake Turner, the best doctor I've ever met")} variant="primary" className="h-12 text-xs border border-sky-500 bg-sky-900/50">Dr Turner!</Button>
                                     </div>
                                     <div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
                                 </div>
@@ -634,8 +600,14 @@
                                                     const action = INTERVENTIONS[key];
                                                     if(!action) return null;
                                                     const count = interventionCounts[key] || 0;
+                                                    const isActive = activeInterventions.has(key);
                                                     return (
-                                                        <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden`}><span className="text-xs font-bold leading-tight">{action.label}</span>{count > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}</button>
+                                                        <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden`}>
+                                                            <span className="text-xs font-bold leading-tight">{action.label}</span>
+                                                            {/* REMOVE BUTTON for Drugs */}
+                                                            {isActive && action.type === 'continuous' && <div className="absolute top-1 right-1 text-red-400 bg-slate-900 rounded-full p-0.5"><Lucide icon="x" className="w-3 h-3"/></div>}
+                                                            {count > 0 && <span className="absolute bottom-1 right-1 bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}
+                                                        </button>
                                                     );
                                                 })}
                                             </div>
@@ -650,7 +622,17 @@
                                         const count = interventionCounts[key] || 0;
                                         let btnClass = isActive ? "bg-emerald-900/40 border border-emerald-500 text-emerald-100" : `opacity-90 hover:opacity-100 ${getCatColor(activeTab)}`;
                                         return (
-                                            <button key={key} onClick={() => applyIntervention(key)} disabled={!isRunning} className={`relative h-16 p-2 rounded text-left transition-all active:scale-95 flex flex-col justify-between overflow-hidden shadow-sm ${btnClass}`}><span className="text-xs font-bold leading-tight">{action.label}</span><div className="flex justify-between items-end w-full"><span className="text-[10px] opacity-70 italic truncate">{action.category}</span>{count > 0 && action.type !== 'continuous' && <span className="bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}</div>{activeDurations[key] && (<div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-1000" style={{width: `${Math.max(0, 100 - ((time - activeDurations[key].startTime)/activeDurations[key].duration*100))}%`}}></div>)}</button>
+                                            <button key={key} onClick={() => applyIntervention(key)} disabled={!isRunning} className={`relative h-16 p-2 rounded text-left transition-all active:scale-95 flex flex-col justify-between overflow-hidden shadow-sm ${btnClass}`}>
+                                                <span className="text-xs font-bold leading-tight">{action.label}</span>
+                                                <div className="flex justify-between items-end w-full"><span className="text-[10px] opacity-70 italic truncate">{action.category}</span>{count > 0 && action.type !== 'continuous' && <span className="bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}</div>
+                                                {/* REMOVE BUTTON INDICATOR */}
+                                                {isActive && action.type === 'continuous' && (
+                                                    <div className="absolute top-1 right-1 text-red-500 bg-black/50 rounded-full w-5 h-5 flex items-center justify-center border border-red-500 hover:bg-red-500 hover:text-white transition-colors" title="Remove">
+                                                        <Lucide icon="x" className="w-3 h-3" />
+                                                    </div>
+                                                )}
+                                                {activeDurations[key] && (<div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-1000" style={{width: `${Math.max(0, 100 - ((time - activeDurations[key].startTime)/activeDurations[key].duration*100))}%`}}></div>)}
+                                            </button>
                                         );
                                     })}
                                 </div>
@@ -710,9 +692,13 @@
         // --- POPUP HELPER ---
         const getPopupContent = (type, scenario) => {
             if (!scenario) return null;
-            if (type === 'ECG') return { title: '12 Lead ECG', body: <div className="text-xl">{scenario.ecg ? scenario.ecg.findings : "Normal"}</div> };
+            
+            // Use investigation data from sync if available, else fallback
+            const inv = scenario.investigations || scenario;
+
+            if (type === 'ECG') return { title: '12 Lead ECG', body: <div className="text-xl">{inv.ecg ? inv.ecg.findings : "Normal"}</div> };
             if (type === 'VBG') {
-                const v = scenario.vbg || {};
+                const v = inv.vbg || {};
                 return {
                     title: 'Venous Blood Gas',
                     body: (
@@ -727,13 +713,11 @@
                     )
                 };
             }
-            // Fallback for others
             let text = "Normal";
-            if (type === 'X-ray') text = scenario.chestXray ? scenario.chestXray.findings : "Normal";
-            if (type === 'Urine') text = scenario.urine ? scenario.urine.findings : "Normal";
-            if (type === 'CT') text = scenario.ct ? scenario.ct.findings : "No acute intracranial abnormality.";
-            if (type === 'POCUS') text = scenario.pocus ? scenario.pocus.findings : "No free fluid.";
-            
+            if (type === 'X-ray') text = inv.chestXray ? inv.chestXray.findings : "Normal";
+            if (type === 'Urine') text = inv.urine ? inv.urine.findings : "Normal";
+            if (type === 'CT') text = inv.ct ? inv.ct.findings : "No acute intracranial abnormality.";
+            if (type === 'POCUS') text = inv.pocus ? inv.pocus.findings : "No free fluid.";
             return { title: type, body: <div className="text-xl">{text}</div> };
         };
 
@@ -741,13 +725,14 @@
 
         return (
             <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative`}>
-                {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
+                {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio} onTouchStart={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 {/* --- INVESTIGATION POPUP --- */}
                 {showPopup && (
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 z-40 bg-slate-900/95 border-2 border-sky-500 rounded-lg p-6 shadow-2xl max-w-md animate-fadeIn">
                         {(() => {
                             const content = getPopupContent(monitorPopup.type, scenario);
+                            if (!content) return null;
                             const progress = Math.max(0, 100 - ((Date.now() - monitorPopup.timestamp) / 20000 * 100));
                             return (
                                 <div>
@@ -802,7 +787,7 @@
                                      ) : (
                                          <Lucide icon="activity" className="w-8 h-8 mb-1" />
                                      )}
-                                     <span className="text-xs font-bold uppercase">{nibp.inflating ? 'PUMP' : 'START'}</span>
+                                     <span className="text-xs font-bold uppercase">{nibp.inflating ? 'INFLATING' : 'START'}</span>
                                  </button>
                              )}
                         </div>
@@ -812,7 +797,7 @@
                     
                     <div className="grid grid-rows-2 gap-2 md:gap-4">
                         <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                        {etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{cprInProgress ? '2.5' : (vitals.hr > 0 ? '4.5' : '1.0')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}
+                        {etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{vitals.etco2 ? vitals.etco2.toFixed(1) : (cprInProgress ? '2.5' : '4.5')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}
                     </div>
                 </div>
             </div>
@@ -866,8 +851,6 @@
                         <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
                     </div>
                 </div>
-
-                {/* DIAMOND DEBRIEF MODEL */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Card title="1. Description" icon="eye" className="border-sky-500/50">
                         <div className="p-2 space-y-2">
@@ -888,7 +871,6 @@
                         </div>
                     </Card>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Card title="Physiological Trends" icon="activity">
                         <div className="bg-slate-900 p-2 rounded h-64 md:h-80 relative">
@@ -913,8 +895,6 @@
     const MonitorContainer = ({ sessionID }) => { 
         const sim = useSimulation(null, true, sessionID); 
         if (!sessionID) return null; 
-        
-        // ADD check for sim.state.isFinished here:
         if (!sim.state.vitals || sim.state.vitals.hr === undefined || sim.state.isFinished) {
             return (
                 <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
@@ -924,7 +904,6 @@
                 </div>
             ); 
         }
-        
         return <MonitorScreen sim={sim} />; 
     };   
     const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
