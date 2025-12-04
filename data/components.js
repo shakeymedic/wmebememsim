@@ -113,11 +113,12 @@
             return isText ? value : Math.round(value);
         };
         
+        // FIXED: Handle undefined/NaN for value2 (Diastolic)
         const displayValue2 = () => {
-            if (value2 === undefined) return '--';
+            if (value2 === undefined || value2 === null) return '--';
             return typeof value2 === 'number' ? Math.round(value2) : value2;
         };
-
+        
         if (isMonitor) {
             if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
             return (
@@ -152,8 +153,6 @@
 
         useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        // ... (Waveform generation logic same as before, abbreviated here for brevity as it's not changed) ...
-        // Re-implementing just the useEffect part to ensure it runs
         const getWaveform = (type, t, cpr, baseline) => {
             const noise = (Math.random() - 0.5) * 1.5;
             if (cpr) return baseline + (Math.sin(t * 12) * 45) + (Math.random() * 10 - 5);
@@ -174,7 +173,20 @@
         useEffect(() => {
             const canvas = canvasRef.current;
             const ctx = canvas.getContext('2d');
-            const setSize = () => { const parent = canvas.parentElement; if(parent) { canvas.width = parent.clientWidth; canvas.height = parent.clientHeight; drawState.current.lastY = canvas.height * 0.30; drawState.current.lastYCO2 = canvas.height * 0.60; drawState.current.lastYArt = canvas.height * 0.80; drawState.current.lastYPleth = canvas.height - 10; ctx.fillStyle = '#000000'; ctx.fillRect(0,0, canvas.width, canvas.height); } };
+            const setSize = () => { 
+                const parent = canvas.parentElement; 
+                if(parent) { 
+                    canvas.width = parent.clientWidth; 
+                    canvas.height = parent.clientHeight; 
+                    // Set baselines
+                    drawState.current.lastY = canvas.height * 0.30; 
+                    drawState.current.lastYCO2 = canvas.height * 0.60; 
+                    drawState.current.lastYArt = canvas.height * 0.80; 
+                    drawState.current.lastYPleth = canvas.height - 20; 
+                    ctx.fillStyle = '#000000'; 
+                    ctx.fillRect(0,0, canvas.width, canvas.height); 
+                } 
+            };
             setSize(); window.addEventListener('resize', setSize);
 
             const animate = (timestamp) => {
@@ -195,16 +207,60 @@
                 state.beatProgress += dt / beatDuration; if (state.beatProgress >= 1) state.beatProgress = 0;
                 let breathDuration = 60 / (Math.max(1, props.rr) || 12); state.breathProgress += dt / breathDuration; if (state.breathProgress >= 1) state.breathProgress = 0;
 
-                if (state.x > canvas.width) { state.x = 0; state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG); }
+                if (state.x > canvas.width) { 
+                    state.x = 0; 
+                    state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG); 
+                }
 
                 const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG);
-                if (state.x > prevX) { ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); }
-                state.lastY = yECG;
+                if (state.x > prevX) { 
+                    // ECG
+                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
 
-                // Simple rendering for other traces to save space in this block, actual logic same as before
-                if (props.showEtco2) { /* ... same etco2 render ... */ }
-                if (props.showArt) { /* ... same art render ... */ }
-                if (props.spO2 > 10) { /* ... same pleth render ... */ }
+                    // ETCO2 (Yellow)
+                    if (props.showEtco2) {
+                        const baseCO2 = canvas.height * 0.60;
+                        const ampCO2 = 25;
+                        let yCO2 = baseCO2;
+                        const bp = state.breathProgress;
+                        if (bp > 0.4 && bp < 0.95) {
+                            yCO2 = baseCO2 - ampCO2 - (Math.random()); 
+                            if (bp < 0.45) yCO2 = baseCO2 - (ampCO2 * ((bp - 0.4) / 0.05)); 
+                        } else if (bp >= 0.95) {
+                            yCO2 = baseCO2 - (ampCO2 * (1 - ((bp - 0.95) / 0.05)));
+                        }
+                        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
+                        state.lastYCO2 = yCO2;
+                    }
+
+                    // Art Line (Red)
+                    if (props.showArt) {
+                        const baseArt = canvas.height * 0.80;
+                        const ampArt = 20;
+                        const t = state.beatProgress;
+                        let wave = 0;
+                        if (t < 0.2) wave = Math.sin(t * 5 * Math.PI); 
+                        else if (t < 0.5) wave = Math.cos((t - 0.2) * 2 * Math.PI) * 0.5 + 0.5; 
+                        else wave = Math.max(0, 1 - (t - 0.5) * 2);
+                        const yArt = baseArt - (wave * ampArt);
+                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
+                        state.lastYArt = yArt;
+                    }
+
+                    // Pleth (Cyan)
+                    if (props.spO2 > 10) {
+                        const basePleth = canvas.height - 15;
+                        const ampPleth = 15;
+                        const t = state.beatProgress;
+                        let wave = Math.sin(t * Math.PI * 2);
+                        if (t > 0.3) wave += 0.3 * Math.sin((t - 0.3) * Math.PI * 4);
+                        wave = (wave + 1) / 2; 
+                        const yPleth = basePleth - (wave * ampPleth);
+                        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
+                        state.lastYPleth = yPleth;
+                    }
+                }
+                state.lastY = yECG;
 
                 requestRef.current = requestAnimationFrame(animate);
             };
