@@ -25,7 +25,7 @@ window.INTERVENTIONS = {
 
     // --- CIRCULATION ---
     'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
-    'Fluids': { label: 'Fluid Bolus (500ml)', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
+    'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
     'Blood': { label: 'Blood (O Neg)', effect: { BP: 12, HR: -5 }, category: 'Circulation', log: 'O-Negative Blood administered.', type: 'bolus', duration: 300 },
     'TXA': { label: 'TXA 1g', effect: {}, category: 'Circulation', log: 'IV Tranexamic Acid administered.', type: 'bolus', duration: 60 },
     'AdrenalineIV': { label: 'Adrenaline 1mg (IV)', effect: { changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Adrenaline administered.', type: 'bolus', duration: 5 },
