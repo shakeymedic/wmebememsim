@@ -389,6 +389,27 @@
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
+        // ... inside LiveSimScreen ...
+    const [showLogModal, setShowLogModal] = useState(false);
+    
+    const [modalVital, setModalVital] = useState(null); 
+    const [modalTarget, setModalTarget] = useState("");
+    const [modalTarget2, setModalTarget2] = useState(""); 
+    const [trendDuration, setTrendDuration] = useState(30);
+
+    // >>> PASTE THE CODE HERE <<<
+    useEffect(() => {
+        const arrestRhythms = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'];
+        // Check if patient is in arrest rhythm AND panel is not already open
+        if (arrestRhythms.includes(rhythm) && !arrestMode) {
+            setArrestMode(true);
+        }
+    }, [rhythm, arrestMode]);
+    // >>> END PASTE <<<
+
+    const drugCats = {
+        "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
+        // ...
 
         // --- PASTE INTO LiveSimScreen (Update drugCats) ---
         const drugCats = {
