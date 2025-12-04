@@ -39,7 +39,7 @@
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
             
-            // --- FIXED: Trigger logic now only targets specific vitals ---
+            // --- TREND LOGIC ---
             case 'TRIGGER_IMPROVE':
                 let impTargets = {}; 
                 if (state.scenario.evolution && state.scenario.evolution.improved && state.scenario.evolution.improved.vitals) {
@@ -70,8 +70,6 @@
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
-            
-            // --- NEW: Separate actions for trend timing ---
             case 'ADVANCE_TREND': return { ...state, trends: { ...state.trends, elapsed: state.trends.elapsed + action.payload } };
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
 
@@ -135,16 +133,27 @@
 
         useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
+        
+        // --- FIXED: Heart Rate Beep Logic ---
         useEffect(() => {
             let timerId;
             const ctx = audioCtxRef.current;
             const scheduleBeep = () => {
                 const current = stateRef.current;
-                const shouldPlay = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
-                if (!current.isRunning && !isMonitorMode) return; 
+                
+                // Audio Output check
+                const correctOutput = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
+                
+                // CRITICAL FIX: Strictly check isRunning. If paused, DO NOT play.
+                if (!current.isRunning) return;
+
+                // Stop if rhythm is pulseless
                 if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'pVT' || current.rhythm === 'PEA') return;
+                
+                // Stop if no monitoring attached
                 if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
-                if (!current.isMuted && ctx && shouldPlay) {
+                
+                if (!current.isMuted && ctx && correctOutput) {
                     const osc = ctx.createOscillator(); const gain = ctx.createGain();
                     osc.type = 'sine'; const freq = current.vitals.spO2 >= 95 ? 880 : current.vitals.spO2 >= 85 ? 600 : 400;
                     osc.frequency.value = freq; osc.connect(gain); gain.connect(ctx.destination);
@@ -153,18 +162,51 @@
                 }
                 const delay = 60000 / (Math.max(20, current.vitals.hr) || 60); timerId = setTimeout(scheduleBeep, delay);
             };
-            const shouldStart = state.isRunning || (isMonitorMode && state.vitals && state.vitals.hr > 0);
+
+            // CRITICAL FIX: The effect start condition is now strict.
+            const shouldStart = state.isRunning && state.vitals && state.vitals.hr > 0;
+            
             if (shouldStart) { if (ctx && ctx.state === 'suspended') ctx.resume(); scheduleBeep(); }
             return () => clearTimeout(timerId);
         }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]);
+
         useEffect(() => { 
             if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating) { dispatch({ type: 'START_NIBP' }); }
             if (state.nibp.inflating) { playInflationSound(); const timeout = setTimeout(() => { dispatch({ type: 'COMMIT_NIBP' }); }, 5000); return () => clearTimeout(timeout); }
         }, [state.nibp.timer, state.isRunning, state.nibp.inflating]);
+        
         const lastSoundRef = useRef(0);
-        useEffect(() => { if (state.soundEffect && state.soundEffect.timestamp > lastSoundRef.current) { lastSoundRef.current = state.soundEffect.timestamp; const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); if (shouldPlay && audioCtxRef.current) { playMedicalSound(state.soundEffect.type); } } }, [state.soundEffect, isMonitorMode, state.audioOutput]);
+        useEffect(() => { 
+            if (state.soundEffect && state.soundEffect.timestamp > lastSoundRef.current) { 
+                lastSoundRef.current = state.soundEffect.timestamp; 
+                // CRITICAL FIX: Do not play new sounds if paused
+                if (!state.isRunning) return;
+
+                const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
+                if (shouldPlay && audioCtxRef.current) { playMedicalSound(state.soundEffect.type); } 
+            } 
+        }, [state.soundEffect, isMonitorMode, state.audioOutput, state.isRunning]);
+        
         const lastSpeechRef = useRef(0);
-        useEffect(() => { if (state.speech && state.speech.timestamp > lastSpeechRef.current) { if (Date.now() - state.speech.timestamp > 8000) { lastSpeechRef.current = state.speech.timestamp; return; } lastSpeechRef.current = state.speech.timestamp; const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); if (shouldPlay && 'speechSynthesis' in window) { window.speechSynthesis.cancel(); if (window.speechSynthesis.paused) window.speechSynthesis.resume(); const utterance = new SpeechSynthesisUtterance(state.speech.text); const voices = window.speechSynthesis.getVoices(); if(voices.length > 0) utterance.voice = voices[0]; window.speechSynthesis.speak(utterance); } } }, [state.speech, isMonitorMode, state.audioOutput]);
+        useEffect(() => { 
+            if (state.speech && state.speech.timestamp > lastSpeechRef.current) { 
+                if (Date.now() - state.speech.timestamp > 8000) { lastSpeechRef.current = state.speech.timestamp; return; } 
+                lastSpeechRef.current = state.speech.timestamp; 
+                
+                // CRITICAL FIX: Do not speak if paused
+                if (!state.isRunning) return;
+
+                const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
+                if (shouldPlay && 'speechSynthesis' in window) { 
+                    window.speechSynthesis.cancel(); 
+                    if (window.speechSynthesis.paused) window.speechSynthesis.resume(); 
+                    const utterance = new SpeechSynthesisUtterance(state.speech.text); 
+                    const voices = window.speechSynthesis.getVoices(); 
+                    if(voices.length > 0) utterance.voice = voices[0]; 
+                    window.speechSynthesis.speak(utterance); 
+                } 
+            } 
+        }, [state.speech, isMonitorMode, state.audioOutput, state.isRunning]);
 
         const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
         const applyIntervention = (key) => {
@@ -233,7 +275,7 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
-        // --- FIXED: Tick function now mixes noise + trends properly ---
+        // --- FIXED: Tick function mixes noise + trends properly ---
         const tick = () => {
             const current = stateRef.current; 
             let next = { ...current.vitals };
@@ -250,7 +292,6 @@
             if (next.hr > 0) { 
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
-                // Auto-calculate Dia from Sys, unless trending later overrides it
                 let targetDia = Math.floor(next.bpSys * 0.65); 
                 next.bpDia = targetDia + getRandomInt(-2, 2); 
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
@@ -263,25 +304,21 @@
                 Object.keys(current.trends.targets).forEach(key => {
                     const startVal = current.trends.startVitals[key] || 0;
                     const endVal = current.trends.targets[key];
-                    // Overwrite the noisy value with the precise trend value
                     next[key] = startVal + (endVal - startVal) * progress;
                 });
 
                 if (progress >= 1) {
                     dispatch({ type: 'STOP_TREND' });
-                    // Ensure we end exactly on the target
                     Object.assign(next, current.trends.targets);
                 } else {
                     dispatch({ type: 'ADVANCE_TREND', payload: 3 });
                 }
             }
 
-            // Clamping
             next.hr = clamp(next.hr, 0, 250); 
             next.bpSys = clamp(next.bpSys, 0, 300); 
             next.spO2 = clamp(next.spO2, 0, 100);
 
-            // VBG Updates
             if (current.scenario.vbg) { 
                 const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); 
                 if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } 
