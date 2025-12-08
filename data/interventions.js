@@ -83,5 +83,52 @@ window.INTERVENTIONS = {
     'Warming': { label: 'Active Warming', effect: { Temp: 1 }, category: 'Procedures', log: 'Bair hugger/Warming blanket applied.', type: 'continuous', duration: 300 },
     'Cooling': { label: 'Active Cooling', effect: { Temp: -1 }, category: 'Procedures', log: 'Active cooling measures started.', type: 'continuous', duration: 300 },
     'Irrigation': { label: 'Irrigation', effect: {}, category: 'Procedures', log: 'Copious irrigation started.', type: 'continuous', duration: 300 },
-    'PacingPads': { label: 'Pacing Pads', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 }
+    'PacingPads': { label: 'Pacing Pads', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 },
+
+    // --- NEW ADDITIONS FOR COMPATIBILITY ---
+    // --- OBSTETRICS & SURGERY ---
+    'Surgery': { label: 'Emergency Surgery', effect: {}, category: 'Procedures', log: 'Patient transferred to theatre.', type: 'bolus', duration: 300 },
+    'Delivery': { label: 'Vaginal Delivery', effect: {}, category: 'Procedures', log: 'Baby delivered.', type: 'bolus', duration: 60 },
+    'Hysterotomy': { label: 'Perimortem C-Section', effect: {}, category: 'Procedures', log: 'Perimortem C-Section performed.', type: 'bolus', duration: 60 },
+    'Manoeuvres': { label: 'Manoeuvres', effect: {}, category: 'Procedures', log: 'Specialist manoeuvres (e.g. McRoberts) performed.', type: 'bolus', duration: 30 },
+    'Oxytocin': { label: 'Oxytocin', effect: { BP: -5 }, category: 'Drugs', log: 'IV Oxytocin administered.', type: 'bolus', duration: 10 },
+    'Ergometrine': { label: 'Ergometrine', effect: { BP: 10 }, category: 'Drugs', log: 'IV Ergometrine administered.', type: 'bolus', duration: 10 },
+    'Carboprost': { label: 'Carboprost', effect: {}, category: 'Drugs', log: 'IM Carboprost administered.', type: 'bolus', duration: 10 },
+    'AntiD': { label: 'Anti-D Ig', effect: {}, category: 'Drugs', log: 'Anti-D Immunoglobulin administered.', type: 'bolus', duration: 10 },
+    'Prostin': { label: 'Dinoprostone (Prostin)', effect: {}, category: 'Drugs', log: 'IV Dinoprostone infusion started.', type: 'continuous', duration: 0 },
+
+    // --- CARDIAC & MEDICAL ---
+    'Labetalol': { label: 'Labetalol', effect: { BP: -20, HR: -10 }, category: 'Drugs', log: 'IV Labetalol administered.', type: 'bolus', duration: 15 },
+    'Phentolamine': { label: 'Phentolamine', effect: { BP: -20 }, category: 'Drugs', log: 'IV Phentolamine administered.', type: 'bolus', duration: 10 },
+    'Digibind': { label: 'Digibind', effect: { HR: 10 }, category: 'Drugs', log: 'Digoxin-specific antibody fragments administered.', type: 'bolus', duration: 60 },
+    'SodiumBicarb': { label: 'Sodium Bicarbonate', effect: { pH: 0.1 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 30 },
+    'HypertonicSaline': { label: 'Hypertonic Saline', effect: { BP: 5, gcs: 1 }, category: 'Drugs', log: 'Hypertonic Saline (3%) administered.', type: 'bolus', duration: 30 },
+    'T3T4': { label: 'Liothyronine (T3)', effect: { HR: 5, Temp: 0.5 }, category: 'Drugs', log: 'IV Liothyronine administered.', type: 'bolus', duration: 30 },
+    'Bisphosphonate': { label: 'Bisphosphonate', effect: {}, category: 'Drugs', log: 'IV Bisphosphonate administered.', type: 'bolus', duration: 60 },
+
+    // --- TOXICOLOGY & MISC ---
+    'Lipid': { label: 'Intralipid 20%', effect: {}, category: 'Drugs', log: 'Intralipid 20% emulsion administered.', type: 'bolus', duration: 60 },
+    'Desferrioxamine': { label: 'Desferrioxamine', effect: {}, category: 'Drugs', log: 'IV Desferrioxamine infusion started.', type: 'continuous', duration: 0 },
+    'Fomepizole': { label: 'Fomepizole', effect: {}, category: 'Drugs', log: 'IV Fomepizole administered.', type: 'bolus', duration: 30 },
+    'Dantrolene': { label: 'Dantrolene', effect: { Temp: -1 }, category: 'Drugs', log: 'IV Dantrolene administered.', type: 'bolus', duration: 30 },
+    'Pralidoxime': { label: 'Pralidoxime', effect: {}, category: 'Drugs', log: 'IV Pralidoxime administered.', type: 'bolus', duration: 30 },
+    'Charcoal': { label: 'Activated Charcoal', effect: {}, category: 'Drugs', log: 'Activated Charcoal administered.', type: 'bolus', duration: 10 },
+    'Lactulose': { label: 'Lactulose', effect: {}, category: 'Drugs', log: 'Lactulose administered.', type: 'bolus', duration: 10 },
+    'Rifaximin': { label: 'Rifaximin', effect: {}, category: 'Drugs', log: 'Rifaximin administered.', type: 'bolus', duration: 10 },
+    'Terlipressin': { label: 'Terlipressin', effect: { BP: 10 }, category: 'Drugs', log: 'IV Terlipressin administered.', type: 'bolus', duration: 10 },
+    'Octaplex': { label: 'Octaplex / PCC', effect: {}, category: 'Drugs', log: 'Prothrombin Complex Concentrate administered.', type: 'bolus', duration: 30 },
+    'VitaminK': { label: 'Vitamin K', effect: {}, category: 'Drugs', log: 'IV Vitamin K administered.', type: 'bolus', duration: 10 },
+    'Rasburicase': { label: 'Rasburicase', effect: {}, category: 'Drugs', log: 'IV Rasburicase administered.', type: 'bolus', duration: 10 },
+    'VitaminA': { label: 'Vitamin A', effect: {}, category: 'Drugs', log: 'Vitamin A administered.', type: 'bolus', duration: 10 },
+    'Acetazolamide': { label: 'Acetazolamide', effect: {}, category: 'Drugs', log: 'IV Acetazolamide administered.', type: 'bolus', duration: 10 },
+
+    // --- PROCEDURES (Continued) ---
+    'NerveBlock': { label: 'Nerve Block (FIB)', effect: { HR: -5 }, category: 'Procedures', log: 'Fascia Iliaca Block performed.', type: 'bolus', duration: 120 },
+    'Canthotomy': { label: 'Lat. Canthotomy', effect: {}, category: 'Procedures', log: 'Lateral Canthotomy performed.', type: 'bolus', duration: 60 },
+    'Escharotomy': { label: 'Escharotomy', effect: {}, category: 'Procedures', log: 'Escharotomy performed.', type: 'bolus', duration: 120 },
+    'AirEnema': { label: 'Air Enema', effect: {}, category: 'Procedures', log: 'Radiological air enema performed.', type: 'bolus', duration: 120 },
+    'Pericardiocentesis': { label: 'Pericardiocentesis', effect: { BP: 20, HR: -10 }, category: 'Procedures', log: 'Needle pericardiocentesis performed.', type: 'bolus', duration: 60 },
+    'Tourniquet': { label: 'Tourniquet', effect: {}, category: 'Procedures', log: 'Tourniquet applied.', type: 'continuous', duration: 10 },
+    'TopicalEyeDrops': { label: 'Topical Eye Drops', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
+    'Plaster': { label: 'Plaster / Backslab', effect: {}, category: 'Procedures', log: 'Plaster backslab applied.', type: 'continuous', duration: 120 },
 };
