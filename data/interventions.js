@@ -85,7 +85,6 @@ window.INTERVENTIONS = {
     'Irrigation': { label: 'Irrigation', effect: {}, category: 'Procedures', log: 'Copious irrigation started.', type: 'continuous', duration: 300 },
     'PacingPads': { label: 'Pacing Pads', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 },
 
-    // --- NEW ADDITIONS FOR COMPATIBILITY ---
     // --- OBSTETRICS & SURGERY ---
     'Surgery': { label: 'Emergency Surgery', effect: {}, category: 'Procedures', log: 'Patient transferred to theatre.', type: 'bolus', duration: 300 },
     'Delivery': { label: 'Vaginal Delivery', effect: {}, category: 'Procedures', log: 'Baby delivered.', type: 'bolus', duration: 60 },
@@ -105,6 +104,8 @@ window.INTERVENTIONS = {
     'HypertonicSaline': { label: 'Hypertonic Saline', effect: { BP: 5, gcs: 1 }, category: 'Drugs', log: 'Hypertonic Saline (3%) administered.', type: 'bolus', duration: 30 },
     'T3T4': { label: 'Liothyronine (T3)', effect: { HR: 5, Temp: 0.5 }, category: 'Drugs', log: 'IV Liothyronine administered.', type: 'bolus', duration: 30 },
     'Bisphosphonate': { label: 'Bisphosphonate', effect: {}, category: 'Drugs', log: 'IV Bisphosphonate administered.', type: 'bolus', duration: 60 },
+    'IVIG': { label: 'IVIG', effect: {}, category: 'Drugs', log: 'Intravenous Immunoglobulin administered.', type: 'bolus', duration: 60 },
+    'Chlorphenamine': { label: 'Chlorphenamine', effect: {}, category: 'Drugs', log: 'IV Chlorphenamine administered.', type: 'bolus', duration: 10 },
 
     // --- TOXICOLOGY & MISC ---
     'Lipid': { label: 'Intralipid 20%', effect: {}, category: 'Drugs', log: 'Intralipid 20% emulsion administered.', type: 'bolus', duration: 60 },
@@ -121,8 +122,11 @@ window.INTERVENTIONS = {
     'Rasburicase': { label: 'Rasburicase', effect: {}, category: 'Drugs', log: 'IV Rasburicase administered.', type: 'bolus', duration: 10 },
     'VitaminA': { label: 'Vitamin A', effect: {}, category: 'Drugs', log: 'Vitamin A administered.', type: 'bolus', duration: 10 },
     'Acetazolamide': { label: 'Acetazolamide', effect: {}, category: 'Drugs', log: 'IV Acetazolamide administered.', type: 'bolus', duration: 10 },
+    'Cyproheptadine': { label: 'Cyproheptadine', effect: {}, category: 'Drugs', log: 'Cyproheptadine administered.', type: 'bolus', duration: 10 },
+    'Antivenom': { label: 'Antivenom', effect: {}, category: 'Drugs', log: 'Antivenom administered.', type: 'bolus', duration: 30 },
+    'ExchangeTransfusion': { label: 'Exchange Transfusion', effect: {}, category: 'Procedures', log: 'Exchange Transfusion started.', type: 'continuous', duration: 300 },
 
-    // --- PROCEDURES (Continued) ---
+    // --- ADDITIONAL PROCEDURES ---
     'NerveBlock': { label: 'Nerve Block (FIB)', effect: { HR: -5 }, category: 'Procedures', log: 'Fascia Iliaca Block performed.', type: 'bolus', duration: 120 },
     'Canthotomy': { label: 'Lat. Canthotomy', effect: {}, category: 'Procedures', log: 'Lateral Canthotomy performed.', type: 'bolus', duration: 60 },
     'Escharotomy': { label: 'Escharotomy', effect: {}, category: 'Procedures', log: 'Escharotomy performed.', type: 'bolus', duration: 120 },
@@ -131,4 +135,5 @@ window.INTERVENTIONS = {
     'Tourniquet': { label: 'Tourniquet', effect: {}, category: 'Procedures', log: 'Tourniquet applied.', type: 'continuous', duration: 10 },
     'TopicalEyeDrops': { label: 'Topical Eye Drops', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
     'Plaster': { label: 'Plaster / Backslab', effect: {}, category: 'Procedures', log: 'Plaster backslab applied.', type: 'continuous', duration: 120 },
+    'ClingFilm': { label: 'Cling Film', effect: { Temp: 0.5 }, category: 'Procedures', log: 'Burns covered with cling film.', type: 'continuous', duration: 30 },
 };
