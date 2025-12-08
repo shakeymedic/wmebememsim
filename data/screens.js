@@ -371,7 +371,7 @@
     // --- SCREEN 4: LIVE SIM CONTROLLER ---
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -478,8 +478,8 @@
                 </div>
 
                 {/* --- ARREST OVERLAY --- */}
-                {arrestMode && (
-                    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
+                {arrestPanelOpen && (
+    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
                             <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
@@ -563,7 +563,7 @@
                                 <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
                                 {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
                             </div>
-                            <Button onClick={() => setArrestMode(!arrestMode)} variant={arrestMode ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestMode ? "Close Arrest Panel" : "Open Arrest Panel"}</Button>
+                            <Button onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} variant={arrestPanelOpen ? "danger" : "outline"} className="w-full h-8 mt-2 text-xs">{arrestPanelOpen ? "Close Arrest Panel" : "Open Arrest Panel"}</Button>
                         </div>
                     </div>
                     
