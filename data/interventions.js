@@ -23,6 +23,15 @@ window.INTERVENTIONS = {
     'SeldingerDrain': { label: 'Chest Drain (Seldinger)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Seldinger chest drain inserted.', type: 'continuous', duration: 450 },
     'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
 
+    // data/interventions.js - Add these to the Drug or Procedure sections
+
+// --- CARDIAC & FLUIDS ---
+'PPCI': { label: 'PPCI Referral', effect: {}, category: 'Procedures', log: 'Urgent transfer for Primary PCI.', type: 'bolus', duration: 300 },
+'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30 },
+'Albumin': { label: 'Human Albumin Solution', effect: { BP: 5 }, category: 'Drugs', log: 'IV Albumin administered.', type: 'bolus', duration: 60 },
+'AsciticTap': { label: 'Ascitic Tap', effect: {}, category: 'Procedures', log: 'Ascitic tap/paracentesis performed.', type: 'bolus', duration: 60 },
+'Hyperbaric': { label: 'Hyperbaric Referral', effect: {}, category: 'Procedures', log: 'Referral to hyperbaric unit made.', type: 'bolus', duration: 10 },
+    
     // --- CIRCULATION ---
     'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
     'Fluids': { label: 'Fluid Bolus', effect: { BP: 8, HR: -3 }, category: 'Circulation', log: 'Fluid bolus administered.', type: 'bolus', duration: 60 },
