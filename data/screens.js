@@ -376,8 +376,7 @@
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
-        const [arrestMode, setArrestMode] = useState(false);
-        const [expandRhythm, setExpandRhythm] = useState(false);
+               const [expandRhythm, setExpandRhythm] = useState(false);
         const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
         const [showLogModal, setShowLogModal] = useState(false);
@@ -387,12 +386,6 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
-        useEffect(() => {
-            const arrestRhythms = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'];
-            if (arrestRhythms.includes(rhythm) && !arrestMode) {
-                setArrestMode(true);
-            }
-        }, [rhythm, arrestMode]);
 
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
