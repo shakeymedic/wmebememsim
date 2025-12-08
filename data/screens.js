@@ -249,22 +249,72 @@
                     )}
 
                     {mode === 'builder' && (
-                        <div className="space-y-4 animate-fadeIn">
-                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
-                            <div className="grid grid-cols-2 gap-2">
-                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
-                                <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
-                            </div>
-                            <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
-                            <div className="grid grid-cols-4 gap-2">
-                                <input type="number" placeholder="HR" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
-                                <input type="number" placeholder="BP Sys" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
-                                <input type="number" placeholder="RR" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
-                                <input type="number" placeholder="SpO2" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="bg-slate-900 border border-slate-600 rounded p-2 text-white text-center"/>
-                            </div>
-                            <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
-                        </div>
-                    )}
+    <div className="space-y-4 animate-fadeIn">
+        <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
+        <div className="grid grid-cols-2 gap-2">
+            <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
+            <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
+        </div>
+        <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+        
+        {/* IMPROVED VITALS GRID */}
+        <div className="grid grid-cols-3 gap-2">
+            <div><label className="text-[10px] text-slate-500 uppercase">Heart Rate</label><input type="number" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+            <div><label className="text-[10px] text-slate-500 uppercase">Sys BP</label><input type="number" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+            <div><label className="text-[10px] text-slate-500 uppercase">Resp Rate</label><input type="number" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+            <div><label className="text-[10px] text-slate-500 uppercase">SpO2 %</label><input type="number" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+            <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs || 15} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
+            <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp || 37} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+        </div>
+
+        {/* RHYTHM SELECTOR */}
+        <div>
+            <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
+            <select 
+                onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} 
+                className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"
+                value={buildVitals.rhythm || "Sinus Rhythm"}
+            >
+                {['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+        </div>
+
+        <Button onClick={() => {
+            // Updated Save Logic
+            if(!buildTitle) return alert("Please add a title");
+            const safeVitals = {
+                hr: parseInt(buildVitals.hr) || 80,
+                bpSys: parseInt(buildVitals.bpSys) || 120,
+                rr: parseInt(buildVitals.rr) || 16,
+                spO2: parseInt(buildVitals.spO2) || 98,
+                gcs: parseInt(buildVitals.gcs) || 15,
+                temp: parseFloat(buildVitals.temp) || 37.0
+            };
+            const selectedRhythm = buildVitals.rhythm || "Sinus Rhythm";
+            
+            const newScen = {
+                id: `CUST_${Date.now()}`,
+                title: buildTitle,
+                category: buildCat,
+                ageRange: buildAge < 18 ? "Paediatric" : "Adult",
+                acuity: 'Majors',
+                ageGenerator: () => parseInt(buildAge),
+                patientProfileTemplate: buildDesc,
+                presentingComplaint: "Custom",
+                vitalsMod: { ...safeVitals, bpDia: Math.floor(safeVitals.bpSys * 0.65), pupils: 3 },
+                pmh: ["Custom PMH"], dhx: ["Nil"], allergies: ["NKDA"],
+                instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom"] },
+                vbgClinicalState: "normal",
+                ecg: { type: selectedRhythm, findings: selectedRhythm }, // Uses selected rhythm
+                chestXray: { findings: "Unremarkable" }
+            };
+            const updated = [...customScenarios, newScen];
+            setCustomScenarios(updated);
+            localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
+            setMode('custom'); 
+        }} variant="primary" className="w-full">Save Custom Scenario</Button>
+    </div>
+)}
                 </div>
             </div>
         );
@@ -581,6 +631,15 @@
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
                                     </div>
+                                           
+        {/* NEW SOUNDS SECTION */}
+        <h4 className="text-[10px] font-bold text-slate-500 uppercase mt-4 border-t border-slate-700 pt-2">Medical Sounds</h4>
+        <div className="grid grid-cols-4 gap-2">
+            <Button onClick={() => playSound('Wheeze')} variant="outline" className="h-8 text-[10px]">Wheeze</Button>
+            <Button onClick={() => playSound('Stridor')} variant="outline" className="h-8 text-[10px]">Stridor</Button>
+            <Button onClick={() => playSound('Vomit')} variant="outline" className="h-8 text-[10px]">Vomit</Button>
+            <Button onClick={() => playSound('Snoring')} variant="outline" className="h-8 text-[10px]">Snore</Button>
+        </div>
                                     <div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
                                 </div>
                             ) : activeTab === 'Drugs' ? (
