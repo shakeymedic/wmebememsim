@@ -499,7 +499,7 @@
                         <div className="flex-1 flex flex-col gap-2">
                             <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
                             <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div>
-                            <Button onClick={() => setArrestMode(false)} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
+                            <Button onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} variant="secondary" className="mt-auto">Exit Arrest Mode</Button>
                         </div>
                     </div>
                 )}
