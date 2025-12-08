@@ -3296,6 +3296,59 @@ function playMetronomeClick() {
         });
    
     }); // End of DOMContentLoaded
+        // --- HYBRID BRIDGE CODE (Add to bottom of defib/index.html) ---
+window.isRemoteControlled = false; // Default to Standalone Mode
+
+window.addEventListener('message', (event) => {
+    const data = event.data;
+    
+    // 1. If we receive vitals, we enter Remote Mode
+    if(data.type === 'SYNC_VITALS') {
+        window.isRemoteControlled = true; // DISABLE INTERNAL LOGIC
+        
+        // Map Engine Rhythm Names -> Defib Rhythm IDs
+        const map = { 
+            'Sinus Rhythm': 'nsr', 
+            'Sinus Tachycardia': 'sinus_tach',
+            'VF': 'vfib', 'VT': 'vt_pulseless', 'pVT': 'vt_pulseless', 
+            'Asystole': 'asystole', 'PEA': 'pea', 'AF': 'afib',
+            '3rd Deg Block': 'chb', 'Sinus Bradycardia': 'sinus_brady'
+        };
+        
+        const targetRhythm = map[data.payload.rhythm] || 'nsr';
+        
+        // Only update if changed to prevent audio glitching
+        if(state.rhythm !== targetRhythm) {
+             // We use a direct state set instead of quickSetRhythm to avoid resetting shock counts in sim
+             setVitals(targetRhythm);
+             state.originalRhythm = targetRhythm; 
+        }
+        
+        // Force Vitals Match
+        state.hr = data.payload.hr;
+        state.spo2 = data.payload.spO2;
+        state.etco2 = data.payload.etco2;
+        state.bpSys = data.payload.bpSys;
+        state.bpDia = data.payload.bpDia;
+        
+        updateDisplays();
+    }
+});
+
+// 2. Broadcast Shock Event
+// We hook into the existing function to notify parent
+const originalDeliverShock = deliverShock;
+deliverShock = function() {
+    originalDeliverShock(); // Run normal visuals/sounds
+    
+    if (window.isRemoteControlled) {
+        window.parent.postMessage({ 
+            type: 'SHOCK_DELIVERED', 
+            energy: state.energy,
+            sync: state.syncMode
+        }, '*');
+    }
+}
     </script>
 </body>
 </html>
