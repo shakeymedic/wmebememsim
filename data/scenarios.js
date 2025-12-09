@@ -201,9 +201,24 @@ window.processScenarios = () => {
         if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust Tools', url: 'https://sepsistrust.org/professional-resources/clinical-tools/' });
         if (s.category === 'Obstetrics & Gynae') links.push({ label: 'RCOG Guidelines', url: 'https://www.rcog.org.uk/guidance/browse-all-guidance/' });
 
+        // --- FIX: Auto-Correct Clinical Keys ---
+        // This ensures buttons in the Live Sim match the logic in interventions.js
+        const mapKeys = (list) => list ? list.map(item => {
+            if (item === 'Adrenaline') return (s.acuity === 'Resus' && !s.title.includes('Anaphylaxis')) ? 'AdrenalineIV' : 'AdrenalineIM';
+            if (item === 'Magnesium') return 'MagSulph';
+            if (item === 'Amio') return 'Amiodarone';
+            if (item === 'Calcium') return 'Calcium';
+            return item;
+        }) : [];
+
+        const safeRecommended = mapKeys(s.recommendedActions || []);
+        const safeStabilisers = mapKeys(s.stabilisers || []);
+
+        // --- Evolution Logic (Trends) ---
         let improved = { ...s, ...(s.evolution ? s.evolution.improved : {}) };
         let deteriorated = { ...s, ...(s.evolution ? s.evolution.deteriorated : {}) };
 
+        // 1. Dynamic Chest X-ray
         if (s.chestXray) {
             let newCXR = s.chestXray.findings;
             if (newCXR.includes("Pneumothorax") || s.title.includes("Pneumothorax") || s.title.includes("Stab")) {
@@ -219,6 +234,7 @@ window.processScenarios = () => {
             deteriorated.chestXray = { findings: s.chestXray.findings + " Worsening appearance." };
         }
 
+        // 2. Dynamic ECG
         if (s.ecg) {
             let newECG = s.ecg.findings;
             let newType = s.ecg.type;
@@ -235,6 +251,7 @@ window.processScenarios = () => {
             deteriorated.ecg = { type: s.ecg.type, findings: "Worsening changes / Arrythmia persistence." };
         }
 
+        // 3. Dynamic VBG
         if (s.vbg) {
             const improvePh = (val) => val < 7.35 ? val + 0.1 : val;
             const worsenPh = (val) => val - 0.1;
@@ -244,6 +261,8 @@ window.processScenarios = () => {
 
         return {
             ...s,
+            recommendedActions: safeRecommended, 
+            stabilisers: safeStabilisers,       
             equipment: s.instructorBrief.equipment || kit, 
             learningLinks: s.learningLinks || links,
             evolution: { improved, deteriorated }
@@ -251,32 +270,6 @@ window.processScenarios = () => {
     });
 };
 
+// THIS MUST BE AT THE END OF THE FILE
+// If this runs before the function above is defined, the app will break.
 window.ALL_SCENARIOS = window.processScenarios();
-window.processScenarios = () => {
-    return window.RAW_SCENARIOS.map(s => {
-        // ... (Existing kit/link logic) ...
-        
-        // --- FIX 1: Auto-Correct Clinical Keys ---
-        const mapKeys = (list) => list.map(item => {
-            if (item === 'Adrenaline') return (s.acuity === 'Resus' && !s.title.includes('Anaphylaxis')) ? 'AdrenalineIV' : 'AdrenalineIM';
-            if (item === 'Magnesium') return 'MagSulph';
-            if (item === 'Amio') return 'Amiodarone';
-            if (item === 'Calcium') return 'Calcium'; // Calcium Gluconate key check
-            return item;
-        });
-
-        const safeRecommended = mapKeys(s.recommendedActions || []);
-        const safeStabilisers = mapKeys(s.stabilisers || []);
-
-        // ... (Existing evolution logic) ...
-
-        return {
-            ...s,
-            recommendedActions: safeRecommended, // Use corrected list
-            stabilisers: safeStabilisers,       // Use corrected list
-            equipment: s.instructorBrief.equipment || kit, 
-            learningLinks: s.learningLinks || links,
-            evolution: { improved, deteriorated }
-        };
-    });
-};
