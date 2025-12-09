@@ -1,7 +1,6 @@
 // data/screens.js
 (() => {
     const { useState, useEffect, useRef } = React;
-    // Removed top-level destructuring of components to prevent loading race condition
 
     // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
@@ -31,7 +30,7 @@
                     setCustomScenarios(JSON.parse(saved));
                 } catch (e) {
                     console.error("Failed to load custom scenarios", e);
-                    localStorage.removeItem('wmebem_custom_scenarios'); // Clear corrupt data
+                    localStorage.removeItem('wmebem_custom_scenarios'); 
                 }
             }
         }, []);
@@ -394,7 +393,7 @@
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton } = window;
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState, notification } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -408,6 +407,16 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
         const [gainVal, setGainVal] = useState(waveformGain || 1.0);
+        
+        // Toast Local State
+        const [showToast, setShowToast] = useState(false);
+        useEffect(() => {
+            if(notification && notification.id) {
+                setShowToast(true);
+                const timer = setTimeout(() => setShowToast(false), 3000);
+                return () => clearTimeout(timer);
+            }
+        }, [notification]);
 
         // --- NEW HELPERS ---
         const handleGhost = (btnId) => {
@@ -455,6 +464,15 @@
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                
+                {/* --- TOAST NOTIFICATION --- */}
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                    <div className="flex items-center gap-3">
+                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
+                        <span className="font-bold text-white">{notification?.msg}</span>
+                    </div>
+                </div>
+
                 {/* --- HEADER --- */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2 items-center">
@@ -529,6 +547,18 @@
                              </div>
                         </Card>
                         
+                        {/* --- WETFLAG HELPER (If Paediatric) --- */}
+                        {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
+                            <div className="bg-purple-900/30 p-2 rounded border border-purple-500/50">
+                                <h4 className="text-[10px] font-bold text-purple-400 uppercase mb-1">WETFLAG Safety (Wt: {scenario.wetflag.weight}kg)</h4>
+                                <div className="grid grid-cols-3 gap-1 text-[10px] text-slate-300">
+                                    <div className="bg-slate-900 px-2 py-1 rounded flex justify-between"><span>Energy</span><span className="font-bold text-white">{scenario.wetflag.energy}J</span></div>
+                                    <div className="bg-slate-900 px-2 py-1 rounded flex justify-between"><span>Fluid</span><span className="font-bold text-white">{scenario.wetflag.fluids}ml</span></div>
+                                    <div className="bg-slate-900 px-2 py-1 rounded flex justify-between"><span>Adren</span><span className="font-bold text-white">{scenario.wetflag.adrenaline}mcg</span></div>
+                                </div>
+                            </div>
+                        )}
+
                         {/* --- NEW: WAVEFORM CONTROLS --- */}
                         <div className="bg-slate-800 p-2 rounded border border-slate-600">
                             <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2">Waveform Control</h4>
@@ -733,11 +763,21 @@
     const MonitorScreen = ({ sim }) => {
         const { Button, Lucide, VitalDisplay, ECGMonitor } = window;
         const { state, enableAudio } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const [audioEnabled, setAudioEnabled] = useState(false);
         const [defibOpen, setDefibOpen] = useState(false);
         const wakeLockRef = useRef(null);
+        
+        // Toast Local State (for Monitor)
+        const [showToast, setShowToast] = useState(false);
+        useEffect(() => {
+            if(notification && notification.id) {
+                setShowToast(true);
+                const timer = setTimeout(() => setShowToast(false), 3000);
+                return () => clearTimeout(timer);
+            }
+        }, [notification]);
 
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
         
@@ -749,36 +789,10 @@
             return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; 
         }, []);
 
-        // --- DEFIB SYNC ---
-        // 1. Sync Vitals to Defib Iframe
-        useEffect(() => {
-            const iframe = document.getElementById('defib-frame');
-            if (defibOpen && iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage({
-                    type: 'SYNC_VITALS',
-                    payload: {
-                        rhythm,
-                        hr: vitals.hr,
-                        spO2: vitals.spO2,
-                        etco2: vitals.etco2,
-                        bpSys: vitals.bpSys,
-                        bpDia: vitals.bpDia
-                    }
-                }, '*');
-            }
-        }, [defibOpen, vitals, rhythm]);
-
-        // 2. Receive Shocks from Defib Iframe
-        useEffect(() => {
-            const handleMsg = (e) => {
-                if (e.data.type === 'SHOCK_DELIVERED') {
-                    // Send to Controller via Firebase
-                    if(sim.triggerAction) sim.triggerAction('Defib'); 
-                }
-            };
-            window.addEventListener('message', handleMsg);
-            return () => window.removeEventListener('message', handleMsg);
-        }, [sim]);
+        // --- DEFIB SYNC REFACTOR ---
+        // Removed complex iframe message passing. 
+        // The App component handles SYNC_VITALS via unified BroadcastChannel.
+        // We just ensure the defib is open visually.
 
         // --- POPUP HELPER ---
         const getPopupContent = (type, scenario) => {
@@ -815,6 +829,14 @@
             <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio} onTouchStart={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
+                {/* --- TOAST NOTIFICATION (Monitor) --- */}
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 border-l-8 rounded shadow-2xl px-8 py-4 transition-all duration-300 scale-150 origin-top ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                    <div className="flex items-center gap-4">
+                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
+                        <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
+                    </div>
+                </div>
+
                 {/* DEFIB OVERLAY */}
                 {defibOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col">
