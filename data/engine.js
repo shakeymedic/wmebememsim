@@ -192,7 +192,6 @@
                     if (val && val.ts > lastCmdRef.current) {
                         lastCmdRef.current = val.ts;
                         if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
-                        // UPDATED: Handle generic actions from Monitor (e.g. Defib Shock)
                         if (val.type === 'TRIGGER_ACTION') {
                             applyIntervention(val.payload);
                         }
@@ -308,7 +307,15 @@
                     else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); 
                 } 
                 if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); 
-                if (action.effect.RR && typeof action.effect.RR === 'number') newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); 
+                
+                // UPDATED: Handle Ventilation Logic ('vent' string vs number)
+                if (action.effect.RR) {
+                    if (action.effect.RR === 'vent') {
+                        newVitals.rr = 14; // Take over ventilation
+                    } else if (typeof action.effect.RR === 'number') {
+                        newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); 
+                    }
+                }
             }
             if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); 
             
@@ -355,7 +362,6 @@
             }
         };
         
-        // NEW: Allow Monitor to trigger generic actions (e.g. Defib Shock)
         const triggerAction = (action) => {
              if (isMonitorMode && sessionID) {
                  window.db.ref(`sessions/${sessionID}/command`).set({ type: 'TRIGGER_ACTION', payload: action, ts: Date.now() });
