@@ -18,11 +18,14 @@
         arrestPanelOpen: false,
         isFinished: false,
         monitorPopup: { type: null, timestamp: 0 },
-        // NEW STATE
         waveformGain: 1.0,
         noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 },
-        notification: null // { msg: "Morphine Given", type: "success", id: 123 }
+        notification: null,
+        // NEW STATE FOR FEATURES
+        pacingThreshold: 70, // Default capture threshold
+        activeLoops: {}, // For continuous audio
+        completedObjectives: new Set()
     };
 
     const simReducer = (state, action) => {
@@ -34,8 +37,8 @@
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 const initialVitals = { etco2: 4.5, ...action.payload.vitals };
-                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false };
-            case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), isRunning: false };
+                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100) };
+            case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations }; let durChanged = false;
                 Object.keys(newDurations).forEach(key => { const elapsed = state.time + 1 - newDurations[key].startTime; if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; } });
@@ -48,11 +51,7 @@
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': 
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(action.payload);
-                return { 
-                    ...state, 
-                    rhythm: action.payload,
-                    arrestPanelOpen: isArrest ? true : state.arrestPanelOpen
-                };
+                return { ...state, rhythm: action.payload, arrestPanelOpen: isArrest ? true : state.arrestPanelOpen };
             
             case 'TRIGGER_IMPROVE':
                 let impTargets = {}; 
@@ -91,7 +90,6 @@
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
             
-            // --- UPDATED SYNC HANDLER ---
             case 'SYNC_FROM_MASTER': 
                 const syncedScenario = { 
                     ...state.scenario, 
@@ -119,7 +117,8 @@
                     monitorPopup: action.payload.monitorPopup || state.monitorPopup,
                     waveformGain: action.payload.waveformGain || 1.0,
                     noise: action.payload.noise || { interference: false },
-                    notification: action.payload.notification || null
+                    notification: action.payload.notification || null,
+                    remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}
                 };
 
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
@@ -145,12 +144,12 @@
             case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
             case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
             case 'SET_ARREST_PANEL': return { ...state, arrestPanelOpen: action.payload };
-            
-            // --- NEW ACTIONS ---
             case 'SET_GAIN': return { ...state, waveformGain: action.payload };
             case 'TOGGLE_INTERFERENCE': return { ...state, noise: { ...state.noise, interference: !state.noise.interference } };
             case 'UPDATE_PACER_STATE': return { ...state, remotePacerState: action.payload };
             case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
+            case 'UPDATE_AUDIO_LOOPS': return { ...state, activeLoops: action.payload };
+            case 'COMPLETE_OBJECTIVE': const newObjs = new Set(state.completedObjectives); newObjs.add(action.payload); return { ...state, completedObjectives: newObjs };
             
             default: return state;
         }
@@ -161,6 +160,7 @@
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
+        const loopNodesRef = useRef({}); // Store oscillators for loops
         const stateRef = useRef(state);
         const lastCmdRef = useRef(0);
         
@@ -168,7 +168,6 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
-        // --- TELEMETRY LISTENER ---
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
@@ -200,7 +199,24 @@
             };
         }, [state.isRunning, state.scenario]);
 
-        // --- FIREBASE SYNC ---
+        useEffect(() => {
+            if (!isMonitorMode) {
+                simChannel.current.postMessage({
+                    type: 'SYNC_VITALS',
+                    payload: {
+                        rhythm: state.rhythm,
+                        hr: state.vitals.hr,
+                        spO2: state.vitals.spO2,
+                        etco2: state.vitals.etco2,
+                        bpSys: state.vitals.bpSys,
+                        bpDia: state.vitals.bpDia,
+                        gain: state.waveformGain,
+                        interference: state.noise.interference
+                    }
+                });
+            }
+        }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
+
         useEffect(() => {
             const db = window.db; 
             if (!db || !sessionID) return; 
@@ -241,7 +257,8 @@
                     monitorPopup: state.monitorPopup,
                     waveformGain: state.waveformGain,
                     noise: state.noise,
-                    notification: state.notification 
+                    notification: state.notification,
+                    remotePacerState: state.remotePacerState
                 };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
 
@@ -260,7 +277,7 @@
             }
         }, [state, isMonitorMode, sessionID]);
 
-        useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
+        useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
         useEffect(() => {
@@ -328,6 +345,16 @@
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
             
+            // --- CONTEXT AWARE INTERVENTION CHECK ---
+            if (action.requires) {
+                const missing = action.requires.filter(req => !state.activeInterventions.has(req));
+                if (missing.length > 0) {
+                    const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
+                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
+                    return; // Block the action
+                }
+            }
+
             const isActive = state.activeInterventions.has(key);
             if (action.type === 'continuous' && isActive) {
                  dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
@@ -354,8 +381,15 @@
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
             
-            // --- TRIGGER NOTIFICATION ---
+            // --- NOTIFICATION ---
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
+
+            // --- CHECKLIST LOGIC ---
+            // If the scenario has generic objectives mapped to this action, auto-complete
+            // Simple approach: Check if scenario title implies sepsis, and action is Antibiotics
+            if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
+            if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
+            if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
 
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
@@ -441,7 +475,67 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
-        // --- IMPROVED TICK FUNCTION ---
+        // --- LOOPING AUDIO (Wheeze/Stridor) ---
+        const toggleAudioLoop = (type) => {
+            if (!audioCtxRef.current) return;
+            const ctx = audioCtxRef.current;
+            if (ctx.state === 'suspended') ctx.resume();
+            
+            // Check if playing
+            if (loopNodesRef.current[type]) {
+                // Stop it
+                loopNodesRef.current[type].stop();
+                delete loopNodesRef.current[type];
+                const newLoops = {...state.activeLoops};
+                delete newLoops[type];
+                dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: newLoops});
+                addLogEntry(`Audio Loop Stopped: ${type}`, 'manual');
+            } else {
+                // Start it (Simple Synthesis for robustness)
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                const lfo = ctx.createOscillator(); // LFO for breathing pattern
+                const lfoGain = ctx.createGain();
+                
+                if (type === 'Wheeze') {
+                    osc.type = 'triangle';
+                    osc.frequency.value = 400;
+                    lfo.frequency.value = 0.25; // 15 breaths/min
+                    lfoGain.gain.value = 200; // Modulate pitch
+                } else if (type === 'Stridor') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.value = 600;
+                    lfo.frequency.value = 0.3; 
+                    lfoGain.gain.value = 100;
+                }
+                
+                lfo.connect(lfoGain);
+                lfoGain.connect(osc.frequency);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                
+                // Breath envelope
+                const now = ctx.currentTime;
+                gain.gain.setValueAtTime(0, now);
+                // Simple looping ramp logic isn't native, so we use LFO for amplitude in a real mixer, 
+                // but here we just let it drone with pitch modulation to simulate breath sounds
+                gain.gain.value = 0.05; 
+                
+                osc.start();
+                lfo.start();
+                
+                loopNodesRef.current[type] = { 
+                    stop: () => { 
+                        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); 
+                        setTimeout(() => { osc.stop(); lfo.stop(); }, 500); 
+                    } 
+                };
+                
+                dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: {...state.activeLoops, [type]: true}});
+                addLogEntry(`Audio Loop Started: ${type}`, 'manual');
+            }
+        };
+
         const tick = () => {
             const current = stateRef.current; 
             let next = { ...current.vitals };
@@ -450,7 +544,6 @@
             if (current.isRunning && current.scenario.deterioration && current.scenario.deterioration.active && !current.trends.active) {
                 const rate = current.scenario.deterioration.rate || 0.05; 
                 const type = current.scenario.deterioration.type;
-                
                 if (type === 'shock' || type === 'haemorrhagic_shock') {
                     if (Math.random() < rate) next.hr += 1;
                     if (Math.random() < rate) next.bpSys -= 1;
@@ -469,21 +562,29 @@
                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
                 if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
             } else {
-                // Hypoxia causes Tachycardia (Compensation)
                 if (next.spO2 < 88 && next.hr < 130 && current.rhythm.includes('Sinus')) {
-                    if (Math.random() > 0.5) next.hr += 1;
+                    if (Math.random() > 0.5) next.hr += 1; // Hypoxic Tachycardia
                 }
-                // Terminal Bradycardia (Decompensation)
                 if (next.spO2 < 50 && next.hr > 40) {
-                    if (Math.random() > 0.6) next.hr -= 2;
+                    if (Math.random() > 0.6) next.hr -= 2; // Terminal Bradycardia
                 }
             }
 
+            // --- ADVANCED PACING LOGIC ---
+            if (current.remotePacerState.output > current.pacingThreshold && current.remotePacerState.rate > 0) {
+                // Capture achieved
+                if (current.rhythm !== 'paced') {
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); // Defib shows 'Paced' beats visually
+                }
+                next.hr = current.remotePacerState.rate;
+            } else if (current.remotePacerState.output > 0) {
+                // Pacing but no capture - maintain native rhythm
+            }
+
             // 3. Noise & Flux
-            if (next.hr > 0) { 
+            if (next.hr > 0 && next.hr !== current.remotePacerState.rate) { 
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
-                // Diastolic should follow Systolic approx 2/3rds but vary slightly
                 let targetDia = Math.floor(next.bpSys * 0.60); 
                 next.bpDia = next.bpDia + (targetDia - next.bpDia) * 0.1 + getRandomInt(-1, 1);
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
@@ -523,7 +624,7 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); };
         const reset = () => { stop(); dispatch({ type: 'CLEAR_SESSION' }); localStorage.removeItem('wmebem_sim_state'); };
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, startTrend, triggerNIBP, triggerAction };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, triggerAction };
     };
     window.useSimulation = useSimulation;
 })();
