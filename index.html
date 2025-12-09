@@ -40,49 +40,15 @@
         </div>
     </div>
 
-    <script>
-        // --- ROBUST ASSET LOADING SEQUENCE ---
-        const scripts = [
-            "data/generators.js",
-            "data/interventions.js",
-            "data/scenarios.js",
-            "data/components.js", 
-            "data/engine.js",     
-            "data/screens.js"     
-        ];
+    <script src="data/generators.js"></script>
+    <script src="data/interventions.js"></script>
+    <script src="data/scenarios.js"></script>
 
-        function loadScripts(list) {
-            if (list.length === 0) {
-                initApp();
-                return;
-            }
-            const src = list[0];
-            const script = document.createElement('script');
-            // Check if file needs Babel compilation (React components)
-            if (src.includes('components.js') || src.includes('engine.js') || src.includes('screens.js')) {
-                script.type = "text/babel";
-                script.setAttribute('data-presets', 'react');
-            }
-            script.src = src;
-            // For Babel scripts, we can't use onload directly on the script tag effectively because Babel processes them asynchronously.
-            // However, Babel Standalone attaches to the DOMContentLoaded or processes manually.
-            // We'll append and rely on Babel's processing speed for the components, but standard JS loads sequentially.
-            script.onload = () => loadScripts(list.slice(1));
-            document.body.appendChild(script);
-        }
+    <script type="text/babel" src="data/components.js"></script>
+    <script type="text/babel" src="data/engine.js"></script>
+    <script type="text/babel" src="data/screens.js"></script>
 
-        function initApp() {
-            // Wait for Babel to finish transpiling and exposing global components
-            const checkReady = setInterval(() => {
-                if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
-                    clearInterval(checkReady);
-                    try {
-                        ReactDOM.render(React.createElement(App), document.getElementById('root'));
-                    } catch(e) { console.error("Render Error:", e); }
-                }
-            }, 100);
-        }
-
+    <script type="text/babel">
         // Firebase Init
         const firebaseConfig = {
             apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
@@ -100,10 +66,7 @@
             }
         } catch (e) { console.error("Firebase Init Error:", e); }
 
-        // Start Loading
-        loadScripts(scripts);
-
-        // --- MAIN APP COMPONENT ---
+        // Main App Component
         const App = () => {
             const { useState, useEffect } = React;
             const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer } = window;
@@ -149,18 +112,18 @@
                             bpDia: sim.state.vitals.bpDia,
                             gain: sim.state.waveformGain,
                             interference: sim.state.noise.interference,
-                            cpr: sim.state.cprInProgress // Sync CPR state for artifact
+                            cpr: sim.state.cprInProgress
                         }
                     });
                 };
 
                 channel.onmessage = (event) => {
                     const data = event.data;
-                    if (data.type === 'REQUEST_SYNC') sendUpdate(); // New device asking for data
+                    if (data.type === 'REQUEST_SYNC') sendUpdate(); 
                     
                     if (data.type === 'SHOCK_DELIVERED') {
                         sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'danger');
-                        sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'shock' }); // Optional audio cue
+                        sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'shock' });
                     }
                     
                     if (data.type === 'PACER_UPDATE') {
@@ -168,8 +131,8 @@
                     }
                 };
 
-                const interval = setInterval(sendUpdate, 1000); // Heartbeat sync
-                sendUpdate(); // Immediate sync
+                const interval = setInterval(sendUpdate, 1000); 
+                sendUpdate(); 
                 
                 return () => { clearInterval(interval); channel.close(); }
             }, [sim.state]); 
@@ -217,6 +180,16 @@
                 </div>
             );
         };
+
+        // Render Loop
+        const checkReady = setInterval(() => {
+            if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
+                clearInterval(checkReady);
+                try {
+                    ReactDOM.render(React.createElement(App), document.getElementById('root'));
+                } catch(e) { console.error("Render Error:", e); }
+            }
+        }, 100);
     </script>
 </body>
 </html>
