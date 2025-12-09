@@ -8,7 +8,7 @@
         vitals: { etco2: 4.5 }, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
         investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
         isMuted: false, etco2Enabled: false, isParalysed: false, 
-        queuedRhythm: null, // <--- THIS stores the next outcome
+        queuedRhythm: null,
         cprInProgress: false,
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false },
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
@@ -21,7 +21,8 @@
         // NEW STATE
         waveformGain: 1.0,
         noise: { interference: false },
-        remotePacerState: { rate: 0, output: 0 }
+        remotePacerState: { rate: 0, output: 0 },
+        notification: null // { msg: "Morphine Given", type: "success", id: 123 }
     };
 
     const simReducer = (state, action) => {
@@ -115,7 +116,10 @@
                     trends: action.payload.trends || state.trends, 
                     arrestPanelOpen: action.payload.arrestPanelOpen || state.arrestPanelOpen, 
                     isFinished: action.payload.isFinished || false, 
-                    monitorPopup: action.payload.monitorPopup || state.monitorPopup 
+                    monitorPopup: action.payload.monitorPopup || state.monitorPopup,
+                    waveformGain: action.payload.waveformGain || 1.0,
+                    noise: action.payload.noise || { interference: false },
+                    notification: action.payload.notification || null
                 };
 
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
@@ -146,6 +150,7 @@
             case 'SET_GAIN': return { ...state, waveformGain: action.payload };
             case 'TOGGLE_INTERFERENCE': return { ...state, noise: { ...state.noise, interference: !state.noise.interference } };
             case 'UPDATE_PACER_STATE': return { ...state, remotePacerState: action.payload };
+            case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
             
             default: return state;
         }
@@ -159,12 +164,11 @@
         const stateRef = useRef(state);
         const lastCmdRef = useRef(0);
         
-        // --- NEW: SIM CHANNEL REFERENCE ---
         const simChannel = useRef(new BroadcastChannel('sim_channel'));
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
-        // --- NEW: TELEMETRY LISTENER ---
+        // --- TELEMETRY LISTENER ---
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
@@ -175,10 +179,12 @@
                 } else if (data.type === 'CHARGE_INIT') {
                     dispatch({ type: 'SET_FLASH', payload: 'yellow' });
                     dispatch({ type: 'ADD_LOG', payload: { msg: `Defib Charging (${data.payload.energy}J)`, type: 'warning' } });
+                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: "Charging...", type: "warning", id: Date.now() } });
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
                 } else if (data.type === 'SHOCK_DELIVERED') {
                     dispatch({ type: 'SET_FLASH', payload: 'red' });
                     dispatch({ type: 'ADD_LOG', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: 'danger' } });
+                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: "danger", id: Date.now() } });
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
                 } else if (data.type === 'ALARM_SILENCE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
@@ -194,26 +200,7 @@
             };
         }, [state.isRunning, state.scenario]);
 
-        // --- NEW: SYNC OUT (FOR REMOTE CONTROL) ---
-        useEffect(() => {
-            if (!isMonitorMode) {
-                simChannel.current.postMessage({
-                    type: 'SYNC_VITALS',
-                    payload: {
-                        rhythm: state.rhythm,
-                        hr: state.vitals.hr,
-                        spO2: state.vitals.spO2,
-                        etco2: state.vitals.etco2,
-                        bpSys: state.vitals.bpSys,
-                        bpDia: state.vitals.bpDia,
-                        gain: state.waveformGain,
-                        interference: state.noise.interference
-                    }
-                });
-            }
-        }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
-
-        // --- FIREBASE SYNC (EXISTING) ---
+        // --- FIREBASE SYNC ---
         useEffect(() => {
             const db = window.db; 
             if (!db || !sessionID) return; 
@@ -251,7 +238,10 @@
                     trends: state.trends, 
                     arrestPanelOpen: state.arrestPanelOpen, 
                     isFinished: state.isFinished, 
-                    monitorPopup: state.monitorPopup 
+                    monitorPopup: state.monitorPopup,
+                    waveformGain: state.waveformGain,
+                    noise: state.noise,
+                    notification: state.notification 
                 };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
 
@@ -342,6 +332,7 @@
             if (action.type === 'continuous' && isActive) {
                  dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
                  addLogEntry(`${action.label} removed.`, 'action');
+                 dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} Removed`, type: 'info', id: Date.now() } });
                  return;
             }
 
@@ -362,6 +353,10 @@
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
+            
+            // --- TRIGGER NOTIFICATION ---
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
+
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
@@ -376,8 +371,6 @@
                     else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); 
                 } 
                 if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); 
-                
-                // UPDATED: Handle RR
                 if (action.effect.RR) {
                     if (action.effect.RR === 'vent') {
                         newVitals.rr = 14; 
@@ -448,30 +441,23 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
-        // data/engine.js - UPDATED TICK LOGIC
-// Replace the previous 'tick' function with this robust one:
-
+        // --- IMPROVED TICK FUNCTION ---
         const tick = () => {
             const current = stateRef.current; 
             let next = { ...current.vitals };
             
             // 1. Automatic Deterioration (Physiological Drift)
-            // If scenario has a deterioration rate and we aren't improving/stabilized
             if (current.isRunning && current.scenario.deterioration && current.scenario.deterioration.active && !current.trends.active) {
-                const rate = current.scenario.deterioration.rate || 0.05; // default 5% drift per minute
-                // Apply subtle random drift downwards based on type
+                const rate = current.scenario.deterioration.rate || 0.05; 
                 const type = current.scenario.deterioration.type;
                 
                 if (type === 'shock' || type === 'haemorrhagic_shock') {
-                    // HR up, BP down
                     if (Math.random() < rate) next.hr += 1;
                     if (Math.random() < rate) next.bpSys -= 1;
                 } else if (type === 'respiratory') {
-                    // SpO2 down, RR up (compensation) then down (fatigue)
                     if (Math.random() < rate) next.spO2 -= 1;
                     if (next.rr < 35 && Math.random() < rate) next.rr += 1;
                 } else if (type === 'neuro') {
-                    // GCS drop, Cushing's (BP up, HR down)
                     if (Math.random() < (rate/2) && next.gcs > 3) next.gcs -= 1;
                     if (Math.random() < rate) next.bpSys += 1;
                     if (Math.random() < rate) next.hr -= 1;
@@ -497,15 +483,13 @@
             if (next.hr > 0) { 
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
-                // Fix: Diastolic should follow Systolic approx 2/3rds but vary slightly
+                // Diastolic should follow Systolic approx 2/3rds but vary slightly
                 let targetDia = Math.floor(next.bpSys * 0.60); 
-                // Smooth drift for diastolic
                 next.bpDia = next.bpDia + (targetDia - next.bpDia) * 0.1 + getRandomInt(-1, 1);
-                
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
             }
 
-            // 4. Trend Application (Interventions)
+            // 4. Trend Application
             if (current.trends.active) {
                 const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
                 Object.keys(current.trends.targets).forEach(key => {
@@ -521,13 +505,11 @@
                 }
             }
 
-            // 5. Clamping
             next.hr = clamp(next.hr, 0, 250); 
             next.bpSys = clamp(next.bpSys, 0, 300); 
             next.spO2 = clamp(next.spO2, 0, 100);
             next.rr = clamp(next.rr, 0, 60);
 
-            // 6. Dynamic VBG Logic
             if (current.scenario.vbg) { 
                 const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); 
                 if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } 
