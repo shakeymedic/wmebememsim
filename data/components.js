@@ -157,10 +157,24 @@
             );
         }
         if (!visible) return (<div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40"><span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span><span className="text-xl font-mono text-slate-700">--</span></div>);
+        
+        // Show edit hint if we are NOT the monitor screen
+        const showEditHint = !isMonitor && visible;
+
         return (
-            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+            <div 
+                className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden group ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'}`}
+                onClick={handleInteraction}
+            >
+                {/* EDIT HINT ICON */}
+                {showEditHint && (
+                    <div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors">
+                        <Lucide icon="settings-2" className="w-3 h-3" />
+                    </div>
+                )}
+
                 {trend && trend.active && (<div className="absolute bottom-0 left-0 h-1.5 bg-sky-500/50 z-0 transition-all duration-1000 ease-linear" style={{ width: `${trend.progress * 100}%` }}></div>)}
-                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 relative z-10">{label}</span>
+                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 relative z-10 group-hover:text-sky-400 transition-colors">{label}</span>
                 {isEditing ? (
                     <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />
                 ) : (
