@@ -3,46 +3,31 @@
     const { useState, useEffect, useRef } = React;
 
     // SAFE LUCIDE COMPONENT - ROBUST VERSION
-    // This handles the icons for the Setup screen (Ambulance, Stethoscope, etc.)
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
         
         useEffect(() => {
             const renderIcon = () => {
                 if (!ref.current || !window.lucide) return;
-                
-                // Clean up previous
                 ref.current.innerHTML = '';
-                
-                // Convert kebab-case (arrow-right) to PascalCase (ArrowRight)
                 const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
                 const iconName = kebabToPascal(icon);
                 
-                // Method 1: Try creating the SVG directly (Fastest/React way)
                 if (window.lucide.icons && window.lucide.icons[iconName] && window.lucide.createElement) {
                     const svg = window.lucide.createElement(window.lucide.icons[iconName]);
                     if (className) svg.setAttribute('class', className);
                     ref.current.appendChild(svg);
                     return;
                 }
-                
-                // Method 2: Fallback to scanning the DOM (Slower but reliable)
                 const i = document.createElement('i');
                 i.setAttribute('data-lucide', icon);
                 if (className) i.setAttribute('class', className);
                 ref.current.appendChild(i);
-                
                 if (window.lucide.createIcons) {
-                    window.lucide.createIcons({
-                        root: ref.current,
-                        nameAttr: 'data-lucide',
-                        attrs: { class: className }
-                    });
+                    window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { class: className } });
                 }
             };
-
             renderIcon();
-            // Retry once after 500ms in case the library loaded slowly
             const timer = setTimeout(renderIcon, 500);
             return () => clearTimeout(timer);
         }, [icon, className]);
@@ -50,18 +35,14 @@
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
-    // --- PASTE OVER 'const Button = ...' IN data/components.js ---
-
     const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
         const [isFlashing, setIsFlashing] = useState(false);
-        
         const handleClick = (e) => {
             if (disabled) return;
             setIsFlashing(true);
-            setTimeout(() => setIsFlashing(false), 150); // Flash duration
+            setTimeout(() => setIsFlashing(false), 150);
             if (onClick) onClick(e);
         };
-
         let variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white",
             secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200",
@@ -70,15 +51,11 @@
             warning: "bg-amber-500 hover:bg-amber-600 text-white",
             outline: "border border-slate-600 text-slate-300 hover:bg-slate-800"
         };
-        
         let base = "px-4 py-3 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm relative overflow-hidden touch-manipulation z-0";
         if (className.includes("h-16")) { base += " text-xl px-8"; } 
         else if (className.includes("h-14")) { base += " text-lg px-4"; } 
         else { base += " text-xs"; }
-
-        // Combine classes
         const finalClass = `${base} ${variants[variant]} ${className} ${isFlashing ? 'flash-active' : ''}`;
-
         return (
             <button onClick={handleClick} disabled={disabled} className={finalClass}>
                 {progress > 0 && (
@@ -94,17 +71,12 @@
         return (
             <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg flex flex-col ${className}`}>
                 {title && (
-                    <div 
-                        className={`bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-700/50 transition-colors' : ''}`}
-                        onClick={() => collapsible && setIsOpen(!isOpen)}
-                    >
+                    <div className={`bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-700/50 transition-colors' : ''}`} onClick={() => collapsible && setIsOpen(!isOpen)}>
                         <div className="flex items-center gap-2">
                             {icon && <Lucide icon={icon} className="w-5 h-5 text-sky-400" />}
                             <h3 className="font-bold text-slate-200">{title}</h3>
                         </div>
-                        {collapsible && (
-                            <Lucide icon="chevron-down" className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                        )}
+                        {collapsible && (<Lucide icon="chevron-down" className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />)}
                     </div>
                 )}
                 {(!collapsible || isOpen) && (
@@ -138,7 +110,6 @@
             if (typeof value === 'string' && !isText) return value;
             return isText ? value : Math.round(value);
         };
-        
         const displayValue2 = () => {
             if (value2 === undefined || value2 === null) return '--';
             if (typeof value2 === 'string' && !isText) return value2;
@@ -157,29 +128,14 @@
             );
         }
         if (!visible) return (<div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40"><span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span><span className="text-xl font-mono text-slate-700">--</span></div>);
-        
-        // Show edit hint if we are NOT the monitor screen
         const showEditHint = !isMonitor && visible;
 
         return (
-            <div 
-                className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden group ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'}`}
-                onClick={handleInteraction}
-            >
-                {/* EDIT HINT ICON */}
-                {showEditHint && (
-                    <div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors">
-                        <Lucide icon="settings-2" className="w-3 h-3" />
-                    </div>
-                )}
-
+            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden group ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'}`} onClick={handleInteraction}>
+                {showEditHint && (<div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors"><Lucide icon="settings-2" className="w-3 h-3" /></div>)}
                 {trend && trend.active && (<div className="absolute bottom-0 left-0 h-1.5 bg-sky-500/50 z-0 transition-all duration-1000 ease-linear" style={{ width: `${trend.progress * 100}%` }}></div>)}
                 <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 relative z-10 group-hover:text-sky-400 transition-colors">{label}</span>
-                {isEditing ? (
-                    <input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />
-                ) : (
-                    <div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5 relative z-10" onClick={handleInteraction}><span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>{displayValue()}{isBP && <span className="text-lg text-slate-400 ml-0.5">/{displayValue2()}</span>}</span>{!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}</div>
-                )}
+                {isEditing ? (<input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />) : (<div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5 relative z-10" onClick={handleInteraction}><span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>{displayValue()}{isBP && <span className="text-lg text-slate-400 ml-0.5">/{displayValue2()}</span>}</span>{!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}</div>)}
                 <span className="text-[8px] md:text-[9px] text-slate-600 leading-none relative z-10">{unit}</span>
             </div>
         );
@@ -195,18 +151,34 @@
         
         const getWaveform = (type, t, cpr, baseline) => {
             const noise = (Math.random() - 0.5) * 1.5;
+            // 1. CPR Noise (Logic Improvement)
             if (cpr) return baseline + (Math.sin(t * 12) * 45) + (Math.random() * 10 - 5);
-            if (type === 'Asystole') return baseline + noise;
-            if (type === 'VF' || type === 'Coarse VF') return baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
-            if (type === 'Fine VF') return baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
-            if (type === 'VT' || type === 'pVT') return baseline + (t < 0.2 ? Math.sin(t * 5 * Math.PI) * 50 : (t < 0.6 ? -Math.sin((t-0.2) * 2.5 * Math.PI) * 50 : 0)) + noise;
+            
             let y = baseline;
-            const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole', 'pVT'].includes(type);
-            if (hasP && t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
-            else if (type === 'AF') y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
-            if (t > 0.12 && t < 0.14) y += 3; else if (t >= 0.14 && t < 0.18) y -= 55; else if (t >= 0.18 && t < 0.20) y += 12; 
-            if (type === 'STEMI' && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } 
-            else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
+            
+            // 2. Underlying Rhythm Logic
+            if (type === 'Asystole') y = baseline;
+            else if (type === 'VF' || type === 'Coarse VF') y = baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
+            else if (type === 'Fine VF') y = baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
+            else if (type === 'VT' || type === 'pVT') y = baseline + (t < 0.2 ? Math.sin(t * 5 * Math.PI) * 50 : (t < 0.6 ? -Math.sin((t-0.2) * 2.5 * Math.PI) * 50 : 0));
+            else {
+                const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole', 'pVT'].includes(type);
+                if (hasP && t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
+                else if (type === 'AF') y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
+                if (t > 0.12 && t < 0.14) y += 3; else if (t >= 0.14 && t < 0.18) y -= 55; else if (t >= 0.18 && t < 0.20) y += 12; 
+                if (type === 'STEMI' && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } 
+                else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
+            }
+
+            // 3. Apply Gain from GLOBAL window settings (syncs with engine)
+            const gain = window.waveformGain || 1.0;
+            y = baseline + ((y - baseline) * gain);
+
+            // 4. Apply 60Hz Interference
+            if (window.noise && window.noise.interference) {
+                y += Math.sin(t * 100) * 5; 
+            }
+
             return y + noise;
         };
 
@@ -230,6 +202,10 @@
 
             const animate = (timestamp) => {
                 const state = drawState.current; const props = propsRef.current;
+                // Sync local gain settings for the drawing function
+                window.waveformGain = window.waveformGain || 1.0; 
+                window.noise = window.noise || {};
+
                 if (!state.lastTime) state.lastTime = timestamp;
                 let dt = Math.min((timestamp - state.lastTime) / 1000, 0.05); state.lastTime = timestamp;
                 if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
@@ -253,10 +229,7 @@
 
                 const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG);
                 if (state.x > prevX) { 
-                    // ECG
                     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
-
-                    // ETCO2 (Yellow)
                     if (props.showEtco2) {
                         const baseCO2 = canvas.height * 0.60;
                         const ampCO2 = 25;
@@ -271,8 +244,6 @@
                         ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
                         state.lastYCO2 = yCO2;
                     }
-
-                    // Art Line (Red)
                     if (props.showArt) {
                         const baseArt = canvas.height * 0.80;
                         const ampArt = 20;
@@ -286,8 +257,6 @@
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
                         state.lastYArt = yArt;
                     }
-
-                    // Pleth (Cyan)
                     if (props.spO2 > 10) {
                         const basePleth = canvas.height - 15;
                         const ampPleth = 15;
@@ -301,7 +270,6 @@
                     }
                 }
                 state.lastY = yECG;
-
                 requestRef.current = requestAnimationFrame(animate);
             };
             requestRef.current = requestAnimationFrame(animate);
@@ -316,11 +284,8 @@
         );
     };
 
-    // --- PASTE OVER 'const InvestigationButton = ...' IN data/components.js ---
-
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const [isFlashing, setIsFlashing] = useState(false);
-
         const getResult = () => {
             if (!scenario) return "No data";
             if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
@@ -335,32 +300,21 @@
             if (type === 'POCUS') return scenario.pocus ? scenario.pocus.findings : "No free fluid. Normal lung sliding.";
             return "No significant abnormalities.";
         };
-
         const isRepeatable = ['VBG', 'ECG', 'Obs', 'POCUS'].includes(type);
         const isDisabled = !isRunning || isLoading || (!isRepeatable && isRevealed);
-
         const handleClick = () => {
             if (isDisabled) return;
             setIsFlashing(true);
-            setTimeout(() => setIsFlashing(false), 150); // Flash visual feedback
+            setTimeout(() => setIsFlashing(false), 150);
             if (!isLoading) revealInvestigation(type);
         };
-
         return (
             <div className="flex flex-col bg-slate-900 border border-slate-700 rounded overflow-hidden">
-                <button 
-                    onClick={handleClick}
-                    disabled={isDisabled}
-                    className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors duration-100 ${isFlashing ? 'flash-active' : ''} ${(!isRepeatable && isRevealed) ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}
-                >
+                <button onClick={handleClick} disabled={isDisabled} className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors duration-100 ${isFlashing ? 'flash-active' : ''} ${(!isRepeatable && isRevealed) ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}>
                     <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {isRevealed && isRepeatable ? `Repeat ${label}` : label}</span>
                     {isLoading && <Lucide icon="loader-2" className="w-3 h-3 animate-spin" />}
                 </button>
-                {isRevealed && (
-                    <div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700 animate-fadeIn">
-                        {getResult()}
-                    </div>
-                )}
+                {isRevealed && (<div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700 animate-fadeIn">{getResult()}</div>)}
             </div>
         );
     };
