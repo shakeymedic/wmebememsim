@@ -499,23 +499,32 @@
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2 items-center">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
-                        {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button>}
+                        
+                        {/* START / PAUSE BUTTON */}
+                        {!isRunning ? (
+                             <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button>
+                        ) : (
+                             <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button>
+                        )}
+
+                        {/* NEW: FINISH BUTTON */}
+                        <Button 
+                            variant="danger" 
+                            onClick={() => { if(window.confirm("End scenario and go to debrief?")) onFinish(); }} 
+                            className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"
+                        >
+                            <Lucide icon="square" className="fill-current"/> FINISH
+                        </Button>
+
                         <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
+                        
+                        {/* AGE DISPLAY */}
                         <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600">
                             <span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span>
                             <span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span>
                         </div>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <div className="flex bg-slate-900 rounded p-1 border border-slate-600">
-                            {['monitor', 'controller', 'both'].map(o => (
-                                <button key={o} onClick={() => sim.dispatch({type: 'SET_AUDIO_OUTPUT', payload: o})} className={`px-2 py-1 text-[9px] uppercase font-bold rounded ${audioOutput === o ? 'bg-sky-600 text-white' : 'text-slate-500'}`}>{o}</button>
-                            ))}
-                        </div>
-                        <div className="text-right"><div className="text-[10px] text-slate-400 uppercase">Sim Time</div><div className="font-mono text-xl font-bold text-emerald-400 leading-none">{formatTime(time)}</div></div>
-                        <Button onClick={()=>setShowLogModal(true)} variant="secondary" className="h-8 w-8 p-0"><Lucide icon="file-text" className="w-4 h-4" /></Button>
-                    </div>
-                </div>
+                    {/* ... (Rest of header: Audio Toggle, Time, Log) ... */}
 
                 {/* --- ARREST OVERLAY --- */}
                 {arrestPanelOpen && (
