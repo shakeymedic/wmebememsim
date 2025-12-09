@@ -67,6 +67,30 @@
             setMode('custom'); 
         };
 
+        const handleExport = () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(customScenarios));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "scenarios.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        };
+
+        const handleImport = (event) => {
+            const fileReader = new FileReader();
+            fileReader.readAsText(event.target.files[0], "UTF-8");
+            fileReader.onload = e => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    const merged = [...customScenarios, ...imported];
+                    setCustomScenarios(merged);
+                    localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(merged));
+                    alert("Import successful!");
+                } catch(err) { alert("Invalid JSON file"); }
+            };
+        };
+
         const handleGenerate = (base) => {
              if (!scenariosAvailable) {
                  alert("Scenarios failed to load. Please refresh the page.");
@@ -240,6 +264,13 @@
 
                     {mode === 'custom' && (
                         <div className="space-y-2 animate-fadeIn">
+                             <div className="flex gap-2 mb-4">
+                                <Button onClick={handleExport} variant="outline" className="h-8 text-xs flex-1">Export JSON</Button>
+                                <label className="flex-1">
+                                    <span className="flex items-center justify-center h-8 px-2 rounded bg-slate-700 text-white text-xs border border-slate-600 cursor-pointer hover:bg-slate-600">Import JSON</span>
+                                    <input type="file" className="hidden" onChange={handleImport} accept=".json"/>
+                                </label>
+                             </div>
                              {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet.</p>}
                              {customScenarios.map((s, i) => (
                                  <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
@@ -392,8 +423,8 @@
     // --- SCREEN 4: LIVE SIM CONTROLLER ---
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton } = window;
-        const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState, notification } = state;
+        const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, toggleAudioLoop, playSound } = sim;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState, notification, activeLoops } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -417,6 +448,18 @@
                 return () => clearTimeout(timer);
             }
         }, [notification]);
+
+        // Keyboard Shortcuts
+        useEffect(() => {
+            const handleKey = (e) => {
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+                if (e.code === 'Space') { e.preventDefault(); /* Could map to Next State/Fast Forward if desired */ }
+                if (e.key === 'm') sim.dispatch({ type: 'SET_MUTED', payload: !isMuted });
+                if (e.key === 'l') setShowLogModal(true);
+            };
+            window.addEventListener('keydown', handleKey);
+            return () => window.removeEventListener('keydown', handleKey);
+        }, [isMuted]);
 
         // --- NEW HELPERS ---
         const handleGhost = (btnId) => {
@@ -445,6 +488,7 @@
             return txt.replace(/\*/g, '');
         };
         useEffect(() => { if (customLog.length > 1) { const results = Object.keys(INTERVENTIONS).filter(key => (key + INTERVENTIONS[key].label).toLowerCase().includes(customLog.toLowerCase())); setSearchResults(results); } else { setSearchResults([]); } }, [customLog]);
+        
         const getInterventionsByCat = (cat) => {
             if (cat === 'Handover' || cat === 'Voice') return [];
             let keys = [];
@@ -453,6 +497,7 @@
             else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
             return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
         };
+        
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         const toggleCPR = () => { sim.dispatch({ type: 'TOGGLE_CPR', payload: !cprInProgress }); addLogEntry(!cprInProgress ? 'CPR Started' : 'CPR Stopped', 'action'); };
         const handleShock = () => { applyIntervention('Defib'); if (!cprInProgress) toggleCPR(); };
@@ -461,6 +506,8 @@
         const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(30); };
         const quickAdjust = (amt) => { let current = parseFloat(modalTarget) || 0; setModalTarget(current + amt); if (modalVital === 'bp') { let currentDia = parseFloat(modalTarget2) || 0; setModalTarget2(currentDia + (amt * 0.6)); } };
         const confirmVitalUpdate = () => { const targets = {}; if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); } else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); } if (trendDuration === 0) { Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k])); } else { startTrend(targets, trendDuration); } setModalVital(null); };
+        const [annotationText, setAnnotationText] = useState("");
+        const addAnnotation = () => { if(annotationText) { addLogEntry(`[NOTE] ${annotationText}`, 'manual'); setAnnotationText(""); } };
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -483,7 +530,7 @@
                         {/* RESTORED CONTROLS */}
                         <div className="h-8 w-px bg-slate-600 mx-1"></div>
                         
-                        <Button onClick={() => sim.dispatch({ type: 'SET_MUTED', payload: !isMuted })} variant={isMuted ? "danger" : "secondary"} className="h-8 px-2" title="Toggle Mute">
+                        <Button onClick={() => sim.dispatch({ type: 'SET_MUTED', payload: !isMuted })} variant={isMuted ? "danger" : "secondary"} className="h-8 px-2" title="Toggle Mute (M)">
                             <Lucide icon={isMuted ? "volume-x" : "volume-2"} />
                         </Button>
 
@@ -495,7 +542,7 @@
                             <span className="truncate">{audioOutput === 'both' ? 'Sound: ALL' : audioOutput === 'controller' ? 'Sound: PAD' : 'Sound: MON'}</span>
                         </Button>
 
-                        <Button onClick={() => setShowLogModal(true)} variant="secondary" className="h-8 px-2" title="View Log">
+                        <Button onClick={() => setShowLogModal(true)} variant="secondary" className="h-8 px-2" title="View Log (L)">
                             <Lucide icon="scroll-text" />
                         </Button>
 
@@ -570,6 +617,19 @@
                                 <input type="checkbox" checked={noise?.interference || false} onChange={() => sim.dispatch({ type: 'TOGGLE_INTERFERENCE' })} className="rounded bg-slate-700 border-slate-500" />
                                 60Hz Interference (Buzz)
                             </label>
+                        </div>
+
+                        {/* --- NEW: CONTINUOUS SOUNDS --- */}
+                        <div className="bg-slate-800 p-2 rounded border border-slate-600">
+                            <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2">Continuous Sounds</h4>
+                            <div className="flex gap-2">
+                                <Button onClick={() => toggleAudioLoop('Wheeze')} variant={activeLoops['Wheeze'] ? "warning" : "outline"} className="flex-1 h-8 text-xs">
+                                    Wheeze {activeLoops['Wheeze'] && <Lucide icon="activity" className="animate-pulse w-3 h-3 ml-2"/>}
+                                </Button>
+                                <Button onClick={() => toggleAudioLoop('Stridor')} variant={activeLoops['Stridor'] ? "warning" : "outline"} className="flex-1 h-8 text-xs">
+                                    Stridor {activeLoops['Stridor'] && <Lucide icon="activity" className="animate-pulse w-3 h-3 ml-2"/>}
+                                </Button>
+                            </div>
                         </div>
 
                         {/* --- NEW: REMOTE DEMO ACTIONS --- */}
@@ -751,6 +811,10 @@
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 rounded-lg border border-slate-600 w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl">
                             <div className="p-4 border-b border-slate-700 flex justify-between items-center"><h3 className="text-lg font-bold text-white">Simulation Log</h3><Button onClick={()=>setShowLogModal(false)} variant="secondary" className="h-8 w-8 p-0"><Lucide icon="x" className="w-4 h-4" /></Button></div>
+                            <div className="p-2 border-b border-slate-700 flex gap-2">
+                                <input type="text" value={annotationText} onChange={e=>setAnnotationText(e.target.value)} placeholder="Add annotation..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-2 text-white" />
+                                <Button onClick={addAnnotation} variant="primary" className="h-8 text-xs">Add Note</Button>
+                            </div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono text-sm">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700/50 pb-1"><span className="text-sky-400 w-16 flex-shrink-0">{l.simTime}</span><span className={`${l.type === 'action' ? 'text-emerald-300' : l.type === 'manual' ? 'text-amber-300' : 'text-slate-300'}`}>{l.msg}</span></div>))}</div>
                         </div>
                     </div>
@@ -788,11 +852,6 @@
             document.addEventListener('visibilitychange', handleVis); 
             return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; 
         }, []);
-
-        // --- DEFIB SYNC REFACTOR ---
-        // Removed complex iframe message passing. 
-        // The App component handles SYNC_VITALS via unified BroadcastChannel.
-        // We just ensure the defib is open visually.
 
         // --- POPUP HELPER ---
         const getPopupContent = (type, scenario) => {
@@ -950,88 +1009,48 @@
     // --- SCREEN 6: DEBRIEF ---
     const DebriefScreen = ({ sim, onRestart }) => {
         const { Button, Lucide, Card } = window;
-        const { state } = sim; const { log, scenario, history } = state; const chartRef = useRef(null);
-        if (!scenario) return <div className="p-4 text-white">Error: No scenario data for debrief.</div>;
+        const { state } = sim; const { log, scenario, history, completedObjectives } = state; const chartRef = useRef(null);
+        
+        // Auto-Checklist Logic
+        const defaultObjectives = ["Airway Assessment", "Breathing Assessment", "Circulation Assessment", "Disability Assessment", "Exposure"];
+        const scenarioObjectives = scenario?.instructorBrief?.learningObjectives || defaultObjectives;
 
         useEffect(() => { 
             if (!chartRef.current || !history.length) return; 
-            if (!window.Chart) { console.error("Chart.js not loaded"); return; }
+            if (!window.Chart) return;
             const ctx = chartRef.current.getContext('2d'); 
             if (window.myChart) window.myChart.destroy(); 
-            
-            window.myChart = new window.Chart(ctx, { 
-                type: 'line', 
-                data: { 
-                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), 
-                    datasets: [ 
-                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' } 
-                    ] 
-                }, 
-                options: { 
-                    responsive: true, maintainAspectRatio: false, animation: false, 
-                    scales: { y: { min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } } 
-                } 
-            }); 
+            window.myChart = new window.Chart(ctx, { type: 'line', data: { labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), datasets: [ { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0 } } } }); 
             return () => { if (window.myChart) window.myChart.destroy(); }; 
         }, [history]);
         
-        const handleExport = () => { 
-            if (!window.jspdf) { alert("PDF export library not loaded"); return; }
-            const doc = new window.jspdf.jsPDF(); 
-            doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10); doc.setFontSize(10); 
-            let y = 30; 
-            log.forEach(l => { if (y > 280) { doc.addPage(); y = 10; } doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; }); 
-            doc.save("sim-debrief.pdf"); 
-        };
+        const handleExport = () => { if (!window.jspdf) return; const doc = new window.jspdf.jsPDF(); doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10); doc.setFontSize(10); let y = 30; log.forEach(l => { if (y > 280) { doc.addPage(); y = 10; } doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; }); doc.save("sim-debrief.pdf"); };
         
         return (
             <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
-                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
+                <div className="flex justify-between bg-slate-800 p-4 rounded-lg border border-slate-700">
                     <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
-                    <div className="flex gap-2">
-                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
-                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
-                    </div>
+                    <div className="flex gap-2"><Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button><Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button></div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card title="1. Description" icon="eye" className="border-sky-500/50">
+                    <Card title="Performance Checklist" icon="check-square" className="border-emerald-500/50">
                         <div className="p-2 space-y-2">
-                            <p className="text-xs text-slate-400">What happened? (Facts only)</p>
-                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Patient arrived with chest pain, deteriorated into VF..." />
+                            {scenarioObjectives.map((obj, i) => {
+                                // Basic auto-check logic based on keywords
+                                const isDone = completedObjectives.has(obj) || (obj.includes('Fluid') && completedObjectives.has('Fluids')) || (obj.includes('Antibiotic') && completedObjectives.has('Antibiotics')); 
+                                return (
+                                    <div key={i} className="flex items-center gap-2 text-sm text-slate-300">
+                                        <div className={`w-4 h-4 border rounded flex items-center justify-center ${isDone ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>{isDone && <Lucide icon="check" className="w-3 h-3 text-white"/>}</div>
+                                        <span>{obj}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </Card>
-                    <Card title="2. Analysis" icon="activity" className="border-amber-500/50">
-                         <div className="p-2 space-y-2">
-                            <p className="text-xs text-slate-400">Why did it happen? (CRM/Human Factors)</p>
-                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Communication breakdown during intubation..." />
-                        </div>
-                    </Card>
-                    <Card title="3. Application" icon="arrow-right-circle" className="border-emerald-500/50">
-                         <div className="p-2 space-y-2">
-                            <p className="text-xs text-slate-400">What will we do differently?</p>
-                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Use closed loop communication during arrests..." />
-                        </div>
-                    </Card>
+                    <Card title="Analysis" icon="activity" className="border-amber-500/50"><div className="p-2"><textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="Why did it happen? (CRM/Human Factors)" /></div></Card>
+                    <Card title="Application" icon="arrow-right-circle" className="border-sky-500/50"><div className="p-2"><textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="What will we do differently?" /></div></Card>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Card title="Physiological Trends" icon="activity">
-                        <div className="bg-slate-900 p-2 rounded h-64 md:h-80 relative">
-                            <canvas ref={chartRef}></canvas>
-                        </div>
-                    </Card>
-                    <Card title="Action Timeline" icon="clock">
-                        <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
-                            {log.map((l, i) => (
-                                <div key={i} className="flex gap-4 border-b border-slate-700 pb-1">
-                                    <span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span>
-                                    <span className="text-slate-300">{l.msg}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Card title="Physiological Trends" icon="activity"><div className="bg-slate-900 p-2 rounded h-64 relative"><canvas ref={chartRef}></canvas></div></Card><Card title="Action Timeline" icon="clock"><div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">{log.map((l, i) => (<div key={i} className="flex gap-4 border-b border-slate-700 pb-1"><span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span><span className="text-slate-300">{l.msg}</span></div>))}</div></Card></div>
             </div>
         );
     };
