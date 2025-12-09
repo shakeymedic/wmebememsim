@@ -420,7 +420,7 @@
 
     // --- SCREEN 4: LIVE SIM CONTROLLER ---
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
-        const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
+        const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, playSound } = sim;
         const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
