@@ -133,6 +133,40 @@
 
         // Initialize Simulation Engine
         const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
+        // --- PASTE THIS BLOCK IN index.html ---
+        // BROADCAST CHANNEL: Sync with Defib
+        useEffect(() => {
+            const channel = new BroadcastChannel('sim_channel');
+
+            const sendUpdate = () => {
+                if (!sim.state || !sim.state.vitals) return;
+                
+                channel.postMessage({
+                    type: 'SYNC_VITALS',
+                    payload: {
+                        rhythm: sim.state.rhythm,
+                        hr: sim.state.vitals.hr,
+                        spO2: sim.state.vitals.spO2,
+                        etco2: sim.state.vitals.etco2,
+                        bpSys: sim.state.vitals.bpSys,
+                        bpDia: sim.state.vitals.bpDia
+                    }
+                });
+            };
+
+            // 1. Send update whenever state changes
+            sendUpdate();
+
+            // 2. Listen for "REQUEST_SYNC" from a newly opened Defib
+            channel.onmessage = (event) => {
+                if (event.data.type === 'REQUEST_SYNC') {
+                    sendUpdate();
+                }
+            };
+
+            return () => channel.close();
+        }, [sim.state]); // Re-run whenever simulation state changes
+        // --------------------------------------
 
         // Handlers
         const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
