@@ -7,7 +7,9 @@
         scenario: null, time: 0, cycleTimer: 0, isRunning: false,
         vitals: { etco2: 4.5 }, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
         investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
-        isMuted: false, etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
+        isMuted: false, etco2Enabled: false, isParalysed: false, 
+        queuedRhythm: null, // <--- THIS stores the next outcome
+        cprInProgress: false,
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false },
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         speech: { text: null, timestamp: 0, source: null },
@@ -297,7 +299,35 @@
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
-            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
+            // --- UPDATED DEFIB LOGIC WITH QUEUED OUTCOME SUPPORT ---
+            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { 
+                if (state.queuedRhythm) { 
+                    // Handle outcome selected by controller
+                    if (state.queuedRhythm === 'ROSC') {
+                        triggerROSC();
+                    } else if (state.queuedRhythm === 'PEA') {
+                        triggerArrest('PEA');
+                        addLogEntry('Rhythm changed to PEA', 'warning');
+                    } else if (state.queuedRhythm === 'Asystole') {
+                        triggerArrest('Asystole');
+                        addLogEntry('Rhythm changed to Asystole', 'warning');
+                    } else if (state.queuedRhythm === 'VF') {
+                        dispatch({ type: 'UPDATE_RHYTHM', payload: 'VF' });
+                        addLogEntry('Refractory VF', 'warning');
+                    } else {
+                        // Direct rhythm set (e.g. Sinus Tachy)
+                        dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm });
+                        addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); 
+                    }
+                    dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); // Clear queue
+                } else if (Math.random() < 0.6) { 
+                    addLogEntry('Defib: No change in rhythm.', 'warning'); 
+                } else { 
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); 
+                    addLogEntry('Rhythm changed to Asystole', 'warning'); 
+                } 
+            }
+            // -------------------------------------------------------
             
             const isArrest = state.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(state.rhythm));
             if (!isArrest) { 
