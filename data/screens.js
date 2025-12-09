@@ -1,15 +1,12 @@
 // data/screens.js
-
 (() => {
     const { useState, useEffect, useRef } = React;
-    const { 
-        ALL_SCENARIOS, INTERVENTIONS, HUMAN_FACTOR_CHALLENGES,
-        Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton,
-        generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName
-    } = window;
+    // Removed top-level destructuring of components to prevent loading race condition
 
     // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
+        const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName, getRandomInt } = window;
+        
         const [mode, setMode] = useState('random'); 
         const [category, setCategory] = useState('Medical');
         const [age, setAge] = useState('Any');
@@ -29,7 +26,14 @@
 
         useEffect(() => {
             const saved = localStorage.getItem('wmebem_custom_scenarios');
-            if (saved) setCustomScenarios(JSON.parse(saved));
+            if (saved) {
+                try {
+                    setCustomScenarios(JSON.parse(saved));
+                } catch (e) {
+                    console.error("Failed to load custom scenarios", e);
+                    localStorage.removeItem('wmebem_custom_scenarios'); // Clear corrupt data
+                }
+            }
         }, []);
 
         const saveCustomScenario = () => {
@@ -55,7 +59,7 @@
                 allergies: ["NKDA"],
                 instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom Objective"] },
                 vbgClinicalState: "normal",
-                ecg: { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm" },
+                ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: buildVitals.rhythm || "Normal" },
                 chestXray: { findings: "Unremarkable" }
             };
             const updated = [...customScenarios, newScen];
@@ -83,7 +87,6 @@
 
                  const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
                  
-                 // --- SMART SEX DETERMINATION ---
                  let sex = Math.random() > 0.5 ? 'Male' : 'Female';
                  const t = selectedBase.title.toLowerCase();
                  const p = selectedBase.patientProfileTemplate.toLowerCase();
@@ -249,72 +252,37 @@
                     )}
 
                     {mode === 'builder' && (
-    <div className="space-y-4 animate-fadeIn">
-        <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
-        <div className="grid grid-cols-2 gap-2">
-            <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
-            <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
-        </div>
-        <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
-        
-        {/* IMPROVED VITALS GRID */}
-        <div className="grid grid-cols-3 gap-2">
-            <div><label className="text-[10px] text-slate-500 uppercase">Heart Rate</label><input type="number" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-            <div><label className="text-[10px] text-slate-500 uppercase">Sys BP</label><input type="number" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-            <div><label className="text-[10px] text-slate-500 uppercase">Resp Rate</label><input type="number" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-            <div><label className="text-[10px] text-slate-500 uppercase">SpO2 %</label><input type="number" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-            <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs || 15} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
-            <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp || 37} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-        </div>
+                        <div className="space-y-4 animate-fadeIn">
+                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
+                                <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select>
+                            </div>
+                            <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+                            
+                            <div className="grid grid-cols-3 gap-2">
+                                <div><label className="text-[10px] text-slate-500 uppercase">Heart Rate</label><input type="number" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Sys BP</label><input type="number" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Resp Rate</label><input type="number" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">SpO2 %</label><input type="number" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs || 15} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp || 37} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                            </div>
 
-        {/* RHYTHM SELECTOR */}
-        <div>
-            <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
-            <select 
-                onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} 
-                className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"
-                value={buildVitals.rhythm || "Sinus Rhythm"}
-            >
-                {['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-        </div>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
+                                <select 
+                                    onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} 
+                                    className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"
+                                    value={buildVitals.rhythm || "Sinus Rhythm"}
+                                >
+                                    {['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}
+                                </select>
+                            </div>
 
-        <Button onClick={() => {
-            // Updated Save Logic
-            if(!buildTitle) return alert("Please add a title");
-            const safeVitals = {
-                hr: parseInt(buildVitals.hr) || 80,
-                bpSys: parseInt(buildVitals.bpSys) || 120,
-                rr: parseInt(buildVitals.rr) || 16,
-                spO2: parseInt(buildVitals.spO2) || 98,
-                gcs: parseInt(buildVitals.gcs) || 15,
-                temp: parseFloat(buildVitals.temp) || 37.0
-            };
-            const selectedRhythm = buildVitals.rhythm || "Sinus Rhythm";
-            
-            const newScen = {
-                id: `CUST_${Date.now()}`,
-                title: buildTitle,
-                category: buildCat,
-                ageRange: buildAge < 18 ? "Paediatric" : "Adult",
-                acuity: 'Majors',
-                ageGenerator: () => parseInt(buildAge),
-                patientProfileTemplate: buildDesc,
-                presentingComplaint: "Custom",
-                vitalsMod: { ...safeVitals, bpDia: Math.floor(safeVitals.bpSys * 0.65), pupils: 3 },
-                pmh: ["Custom PMH"], dhx: ["Nil"], allergies: ["NKDA"],
-                instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom"] },
-                vbgClinicalState: "normal",
-                ecg: { type: selectedRhythm, findings: selectedRhythm }, // Uses selected rhythm
-                chestXray: { findings: "Unremarkable" }
-            };
-            const updated = [...customScenarios, newScen];
-            setCustomScenarios(updated);
-            localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
-            setMode('custom'); 
-        }} variant="primary" className="w-full">Save Custom Scenario</Button>
-    </div>
-)}
+                            <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
+                        </div>
+                    )}
                 </div>
             </div>
         );
@@ -322,105 +290,110 @@
 
     // --- SCREEN 2: JOIN ---
     const JoinScreen = ({ onJoin }) => {
+        const { Button, Lucide } = window;
         const [code, setCode] = useState("");
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
     // --- SCREEN 3: BRIEFING ---
-    const BriefingScreen = ({ scenario, onStart, onBack }) => (
-        <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
-            <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
-                <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
-                    <div>
-                        <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
-                        <div className="flex gap-2 mt-2">
-                            <span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span>
-                            <span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span>
-                            <span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span>
-                        </div>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-[10px] text-slate-500 uppercase font-bold">Initial GCS</div>
-                        <div className="text-4xl font-mono font-bold text-white">{scenario.vitals.gcs}</div>
-                    </div>
-                </div>
-                {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
-                    <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
-                        <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
-                        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
-                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Energy (4J)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
-                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Tube</div><div className="font-bold text-white">{scenario.wetflag.tube}</div></div>
-                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Fluids (10ml)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
-                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
-                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
-                            <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Glucose (2ml)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
-                        </div>
-                    </div>
-                )}
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-                    <div className="space-y-6">
-                        <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-                            <h3 className="text-sm font-bold text-sky-400 uppercase mb-2 border-b border-slate-700 pb-1">Patient Brief</h3>
-                            <p className="text-sm text-slate-400 mb-2"><strong className="text-slate-300 uppercase text-xs">Patient Name:</strong> {scenario.patientName}</p>
-                            <p className="text-lg leading-relaxed text-slate-200 mb-4">{scenario.profile}</p>
-                            <div className="space-y-2 text-sm">
-                                <div className="flex"><span className="w-24 text-slate-500 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
-                                <div className="flex"><span className="w-24 text-slate-500 font-bold">Rx:</span><span className="text-slate-300">{scenario.dhx ? scenario.dhx.join(", ") : 'Nil'}</span></div>
-                                <div className="flex"><span className="w-24 text-slate-500 font-bold">Allergies:</span><span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></div>
+    const BriefingScreen = ({ scenario, onStart, onBack }) => {
+        const { Button, Lucide, InvestigationButton } = window;
+        return (
+            <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
+                <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
+                    <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
+                            <div className="flex gap-2 mt-2">
+                                <span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span>
+                                <span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span>
+                                <span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span>
                             </div>
                         </div>
-                        
-                        <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 border-b border-slate-700 pb-1">Required Equipment</h3>
-                            <div className="flex flex-wrap gap-2">
-                                {scenario.equipment && scenario.equipment.map((item, i) => (
-                                    <span key={i} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-600">{item}</span>
-                                ))}
-                            </div>
+                        <div className="text-right">
+                            <div className="text-[10px] text-slate-500 uppercase font-bold">Initial GCS</div>
+                            <div className="text-4xl font-mono font-bold text-white">{scenario.vitals.gcs}</div>
                         </div>
                     </div>
+                    {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
+                        <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
+                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
+                            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Energy (4J)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Tube</div><div className="font-bold text-white">{scenario.wetflag.tube}</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Fluids (10ml)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Glucose (2ml)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+                        <div className="space-y-6">
+                            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
+                                <h3 className="text-sm font-bold text-sky-400 uppercase mb-2 border-b border-slate-700 pb-1">Patient Brief</h3>
+                                <p className="text-sm text-slate-400 mb-2"><strong className="text-slate-300 uppercase text-xs">Patient Name:</strong> {scenario.patientName}</p>
+                                <p className="text-lg leading-relaxed text-slate-200 mb-4">{scenario.profile}</p>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">Rx:</span><span className="text-slate-300">{scenario.dhx ? scenario.dhx.join(", ") : 'Nil'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">Allergies:</span><span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
+                                <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 border-b border-slate-700 pb-1">Required Equipment</h3>
+                                <div className="flex flex-wrap gap-2">
+                                    {scenario.equipment && scenario.equipment.map((item, i) => (
+                                        <span key={i} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-600">{item}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
 
-                    <div className="space-y-4">
-                        <div className="p-3 bg-amber-900/20 rounded border border-amber-600/30">
-                            <h4 className="text-sm font-bold text-amber-400 uppercase mb-1">Clinical Progression</h4>
-                            <p className="text-sm text-slate-300 leading-snug">{scenario.instructorBrief.progression}</p>
-                        </div>
-                        <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30">
-                            <h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4>
-                            <ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">
-                                {scenario.instructorBrief.interventions && scenario.instructorBrief.interventions.map((l, i) => <li key={i}>{l}</li>)}
-                            </ul>
-                        </div>
-                        <div className="p-3 bg-slate-900/50 rounded border border-slate-600">
-                            <h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4>
-                            <div className="flex flex-col gap-1">
-                                {scenario.learningLinks && scenario.learningLinks.map((link, i) => (
-                                    <a key={i} href={link.url} target="_blank" className="flex items-center gap-2 text-xs text-sky-400 hover:underline">
-                                        <Lucide icon="external-link" className="w-3 h-3"/> {link.label}
-                                    </a>
-                                ))}
+                        <div className="space-y-4">
+                            <div className="p-3 bg-amber-900/20 rounded border border-amber-600/30">
+                                <h4 className="text-sm font-bold text-amber-400 uppercase mb-1">Clinical Progression</h4>
+                                <p className="text-sm text-slate-300 leading-snug">{scenario.instructorBrief.progression}</p>
                             </div>
-                        </div>
-                        <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30">
-                            <h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Debrief Points</h4>
-                            <ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">
-                                {scenario.instructorBrief.debriefPoints && scenario.instructorBrief.debriefPoints.map((l, i) => <li key={i}>{l}</li>)}
-                            </ul>
+                            <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30">
+                                <h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4>
+                                <ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">
+                                    {scenario.instructorBrief.interventions && scenario.instructorBrief.interventions.map((l, i) => <li key={i}>{l}</li>)}
+                                </ul>
+                            </div>
+                            <div className="p-3 bg-slate-900/50 rounded border border-slate-600">
+                                <h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4>
+                                <div className="flex flex-col gap-1">
+                                    {scenario.learningLinks && scenario.learningLinks.map((link, i) => (
+                                        <a key={i} href={link.url} target="_blank" className="flex items-center gap-2 text-xs text-sky-400 hover:underline">
+                                            <Lucide icon="external-link" className="w-3 h-3"/> {link.label}
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30">
+                                <h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Debrief Points</h4>
+                                <ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">
+                                    {scenario.instructorBrief.debriefPoints && scenario.instructorBrief.debriefPoints.map((l, i) => <li key={i}>{l}</li>)}
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>
+                <div className="flex flex-col md:flex-row gap-4">
+                    <Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button>
+                    <Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button>
+                </div>
             </div>
-            <div className="flex flex-col md:flex-row gap-4">
-                <Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button>
-                <Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button>
-            </div>
-        </div>
-    );
+        );
+    };
 
     // --- SCREEN 4: LIVE SIM CONTROLLER ---
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
-        const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, playSound } = sim;
+        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton } = window;
+        const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
         const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
@@ -754,6 +727,7 @@
 
     // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
+        const { Button, Lucide, VitalDisplay, ECGMonitor } = window;
         const { state, enableAudio } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
@@ -949,6 +923,7 @@
 
     // --- SCREEN 6: DEBRIEF ---
     const DebriefScreen = ({ sim, onRestart }) => {
+        const { Button, Lucide, Card } = window;
         const { state } = sim; const { log, scenario, history } = state; const chartRef = useRef(null);
         if (!scenario) return <div className="p-4 text-white">Error: No scenario data for debrief.</div>;
 
@@ -1036,6 +1011,7 @@
     };
 
     const MonitorContainer = ({ sessionID }) => { 
+        const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
         if (!sessionID) return null; 
         if (!sim.state.vitals || sim.state.vitals.hr === undefined || sim.state.isFinished) {
@@ -1049,7 +1025,7 @@
         }
         return <MonitorScreen sim={sim} />; 
     };   
-    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
+    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; const { Lucide } = window; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
 
     window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
 })();
