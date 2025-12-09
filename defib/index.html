@@ -542,7 +542,19 @@ window.drawECGGrid = function(ctx, w, h) {
 }
 #closeModalBtn:hover { background: #c0392b; }
 
-/* --- Custom Scenario Creator Styles --- */
+/* 12-LEAD OVERLAY */
+#paperOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+#paperOverlay.hidden { display: none; }
+#paperImage { max-width: 100%; max-height: 80%; border: 5px solid white; box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+
+/* GHOST MODE BUTTON FEEDBACK */
+.side-btn.active-ghost, .btn-analyze.active-ghost, .btn-charge.active-ghost, .btn-sync.active-ghost, .btn-shock.active-ghost {
+    background-color: #3498db !important;
+    border-color: #2980b9 !important;
+    transform: scale(0.95);
+    box-shadow: 0 0 15px rgba(52, 152, 219, 0.8);
+}
+        /* --- Custom Scenario Creator Styles --- */
 .scenario-cycle { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; background: #2c3e50; padding: 20px; border-radius: 8px; }
 .scenario-cycle > div { display: flex; flex-direction: column; gap: 5px; }
 .scenario-cycle label { color: #bdc3c7; font-size: 14px; font-weight: bold; }
