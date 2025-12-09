@@ -396,6 +396,7 @@
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
         const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen } = state;
         
+        // ... (state vars: activeTab, customLog etc. remain same) ...
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
@@ -409,6 +410,7 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
+        // ... (drugCats, mapVoice, useEffect for search, getInterventionsByCat etc. remain same) ...
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
@@ -468,41 +470,28 @@
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                {/* --- HEADER --- */}
+                {/* ... (Header remains same) ... */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2 items-center">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
-                        
-                        {/* START / PAUSE BUTTON */}
                         {!isRunning ? (
                              <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button>
                         ) : (
                              <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button>
                         )}
-
-                        {/* NEW: FINISH BUTTON */}
-                        <Button 
-                            variant="danger" 
-                            onClick={() => { if(window.confirm("End scenario and go to debrief?")) onFinish(); }} 
-                            className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"
-                        >
-                            <Lucide icon="square" className="fill-current"/> FINISH
-                        </Button>
-
+                        <Button variant="danger" onClick={() => { if(window.confirm("End scenario and go to debrief?")) onFinish(); }} className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"><Lucide icon="square" className="fill-current"/> FINISH</Button>
                         <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
-                        
-                        {/* AGE DISPLAY */}
                         <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600">
                             <span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span>
                             <span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span>
                         </div>
                     </div>
-                    {/* ... (Rest of header: Audio Toggle, Time, Log) ... */}
-</div>  {/* <--- ADD THIS CLOSING DIV */}
+                </div>
 
                 {/* --- ARREST OVERLAY --- */}
                 {arrestPanelOpen && (
                     <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
+                        {/* ... (Arrest panel internals remain same) ... */}
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
                             <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
@@ -511,14 +500,12 @@
                                 <Button variant="secondary" onClick={() => { const remaining = Math.max(0, 120 - cycleTimer); if(remaining > 0) sim.dispatch({type: 'FAST_FORWARD', payload: remaining}); sim.dispatch({type: 'RESET_CYCLE_TIMER'}); addLogEntry("Cycle Skipped / Finished", "system"); }} className="h-8 text-xs">Finish Cycle</Button>
                             </div>
                         </div>
-
                         <div className="flex-[3] grid grid-cols-2 md:grid-cols-4 gap-3">
                             <Button onClick={toggleCPR} variant={cprInProgress ? "warning" : "danger"} className="h-16 text-xl font-bold border-4 border-double">{cprInProgress ? "STOP CPR" : "START CPR"}</Button>
                             <Button onClick={handleShock} variant="warning" className="h-16 text-xl font-bold flex flex-col"><Lucide icon="zap" /> SHOCK</Button>
                             <Button onClick={() => applyIntervention('AdrenalineIV')} variant={interventionCounts['AdrenalineIV'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col"><span>Adrenaline</span><span className="text-[10px] opacity-70">1mg 1:10k</span>{interventionCounts['AdrenalineIV'] > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] px-1 rounded-full">x{interventionCounts['AdrenalineIV']}</span>}</Button>
                             <Button onClick={() => applyIntervention('Amiodarone')} variant={interventionCounts['Amiodarone'] > 0 ? "success" : "outline"} className="h-16 font-bold flex flex-col"><span>Amiodarone</span><span className="text-[10px] opacity-70">300mg</span>{interventionCounts['Amiodarone'] > 0 && <span className="absolute top-1 right-1 bg-white text-black text-[9px] px-1 rounded-full">x{interventionCounts['Amiodarone']}</span>}</Button>
                         </div>
-
                         <div className="flex-1 flex flex-col gap-2">
                             <h4 className="text-xs font-bold text-red-400 uppercase">4 H's & 4 T's</h4>
                             <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-300"><div>Hypoxia</div><div>Thrombosis</div><div>Hypovolaemia</div><div>Tension #</div><div>Hyper/Hypo-K</div><div>Tamponade</div><div>Hypothermia</div><div>Toxins</div></div>
@@ -531,6 +518,7 @@
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         <Card className="bg-black border-slate-800 flex-shrink-0">
                              <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
+                             {/* ... (Vital grid remains same) ... */}
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black">
                                  <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
                                  <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
@@ -541,16 +529,12 @@
                                  <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
                                  <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
                                  <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
-                                 
-                                 {etco2Enabled ? (
-                                    <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />
-                                 ) : (
-                                    <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
-                                 )}
+                                 {etco2Enabled ? (<VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />) : (<VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />)}
                              </div>
                         </Card>
                         
                         <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
+                            {/* ... (Patient info body remains same) ... */}
                             <div className="text-xs space-y-2 mb-2">
                                 <p><strong className="text-slate-400">Name:</strong> {scenario.patientName}</p>
                                 <p><strong className="text-slate-400">PC:</strong> <span className="text-sky-400 font-bold">{scenario.presentingComplaint}</span></p>
@@ -581,6 +565,19 @@
                                 <Button onClick={triggerROSC} variant="success" className="h-8 text-xs">ROSC</Button>
                             </div>
                             
+                            {/* --- NEW: NEXT SHOCK OUTCOME CONTROL --- */}
+                            <div className="bg-slate-900/50 p-2 rounded border border-slate-700 mb-2">
+                                <h5 className="text-[9px] font-bold text-slate-400 uppercase mb-1">Next Shock Outcome</h5>
+                                <div className="grid grid-cols-2 gap-1">
+                                    <button onClick={() => sim.dispatch({type: 'SET_QUEUED_RHYTHM', payload: 'ROSC'})} className={`text-[10px] p-1 rounded border ${queuedRhythm === 'ROSC' ? 'bg-green-700 border-green-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Convert (ROSC)</button>
+                                    <button onClick={() => sim.dispatch({type: 'SET_QUEUED_RHYTHM', payload: 'VF'})} className={`text-[10px] p-1 rounded border ${queuedRhythm === 'VF' ? 'bg-red-700 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Fail (Refractory)</button>
+                                    <button onClick={() => sim.dispatch({type: 'SET_QUEUED_RHYTHM', payload: 'Asystole'})} className={`text-[10px] p-1 rounded border ${queuedRhythm === 'Asystole' ? 'bg-slate-700 border-slate-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>To Asystole</button>
+                                    <button onClick={() => sim.dispatch({type: 'SET_QUEUED_RHYTHM', payload: 'PEA'})} className={`text-[10px] p-1 rounded border ${queuedRhythm === 'PEA' ? 'bg-amber-700 border-amber-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>To PEA</button>
+                                </div>
+                                {queuedRhythm && <div className="text-[9px] text-sky-400 text-center mt-1">Pending: {queuedRhythm}</div>}
+                            </div>
+                            {/* --------------------------------------- */}
+
                             <div className="relative">
                                 <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
                                 {expandRhythm && (<div className="absolute top-full left-0 w-full bg-slate-800 border border-slate-500 rounded shadow-xl max-h-60 overflow-y-auto mt-1 z-50">{['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'AF', 'SVT', 'VT', 'VF', 'Asystole', 'PEA', '1st Deg Block', '3rd Deg Block'].map(r => (<button key={r} onClick={() => {sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); setExpandRhythm(false);}} className="block w-full text-left px-3 py-2 text-xs text-white hover:bg-sky-600 border-b border-slate-700">{r}</button>))}</div>)}
@@ -591,6 +588,7 @@
                     
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">{['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice', 'Handover'].map(cat => (<button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>))}</div>
+                        {/* ... (Rest of panel remains identical) ... */}
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
@@ -676,7 +674,6 @@
                         </div>
                     </div>
                 </div>
-
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
@@ -725,6 +722,116 @@
             </div>
         );
     };
+
+    // ... (MonitorContainer, LiveSimContainer, etc. remain the same) ...
+    // --- SCREEN 6: DEBRIEF ---
+    const DebriefScreen = ({ sim, onRestart }) => {
+        const { Button, Lucide, Card } = window;
+        const { state } = sim; const { log, scenario, history } = state; const chartRef = useRef(null);
+        if (!scenario) return <div className="p-4 text-white">Error: No scenario data for debrief.</div>;
+
+        useEffect(() => { 
+            if (!chartRef.current || !history.length) return; 
+            if (!window.Chart) { console.error("Chart.js not loaded"); return; }
+            const ctx = chartRef.current.getContext('2d'); 
+            if (window.myChart) window.myChart.destroy(); 
+            
+            window.myChart = new window.Chart(ctx, { 
+                type: 'line', 
+                data: { 
+                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), 
+                    datasets: [ 
+                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
+                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
+                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' } 
+                    ] 
+                }, 
+                options: { 
+                    responsive: true, maintainAspectRatio: false, animation: false, 
+                    scales: { y: { min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } } 
+                } 
+            }); 
+            return () => { if (window.myChart) window.myChart.destroy(); }; 
+        }, [history]);
+        
+        const handleExport = () => { 
+            if (!window.jspdf) { alert("PDF export library not loaded"); return; }
+            const doc = new window.jspdf.jsPDF(); 
+            doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10); doc.setFontSize(10); 
+            let y = 30; 
+            log.forEach(l => { if (y > 280) { doc.addPage(); y = 10; } doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; }); 
+            doc.save("sim-debrief.pdf"); 
+        };
+        
+        return (
+            <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
+                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
+                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
+                    <div className="flex gap-2">
+                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
+                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <Card title="1. Description" icon="eye" className="border-sky-500/50">
+                        <div className="p-2 space-y-2">
+                            <p className="text-xs text-slate-400">What happened? (Facts only)</p>
+                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Patient arrived with chest pain, deteriorated into VF..." />
+                        </div>
+                    </Card>
+                    <Card title="2. Analysis" icon="activity" className="border-amber-500/50">
+                         <div className="p-2 space-y-2">
+                            <p className="text-xs text-slate-400">Why did it happen? (CRM/Human Factors)</p>
+                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Communication breakdown during intubation..." />
+                        </div>
+                    </Card>
+                    <Card title="3. Application" icon="arrow-right-circle" className="border-emerald-500/50">
+                         <div className="p-2 space-y-2">
+                            <p className="text-xs text-slate-400">What will we do differently?</p>
+                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Use closed loop communication during arrests..." />
+                        </div>
+                    </Card>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card title="Physiological Trends" icon="activity">
+                        <div className="bg-slate-900 p-2 rounded h-64 md:h-80 relative">
+                            <canvas ref={chartRef}></canvas>
+                        </div>
+                    </Card>
+                    <Card title="Action Timeline" icon="clock">
+                        <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
+                            {log.map((l, i) => (
+                                <div key={i} className="flex gap-4 border-b border-slate-700 pb-1">
+                                    <span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span>
+                                    <span className="text-slate-300">{l.msg}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
+            </div>
+        );
+    };
+
+    const MonitorContainer = ({ sessionID }) => { 
+        const { Lucide } = window;
+        const sim = useSimulation(null, true, sessionID); 
+        if (!sessionID) return null; 
+        if (!sim.state.vitals || sim.state.vitals.hr === undefined || sim.state.isFinished) {
+            return (
+                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
+                    <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
+                    <div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div>
+                    <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
+                </div>
+            ); 
+        }
+        return <MonitorScreen sim={sim} />; 
+    };   
+    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; const { Lucide } = window; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
+
+    window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
+})();
 
     // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
