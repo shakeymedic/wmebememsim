@@ -6,6 +6,13 @@
     <title>WMEBEM Sim Generator v17.0</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: {} },
+            plugins: [],
+        }
+    </script>
+
     <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -49,7 +56,20 @@
     <script type="text/babel" src="data/screens.js"></script>
 
     <script type="text/babel">
-        // Firebase Init
+        // Safe Storage Helper
+        const safeStorage = {
+            getItem: (key) => {
+                try { return localStorage.getItem(key); } catch(e) { console.warn('Storage blocked'); return null; }
+            },
+            setItem: (key, val) => {
+                try { localStorage.setItem(key, val); } catch(e) { console.warn('Storage blocked'); }
+            },
+            removeItem: (key) => {
+                try { localStorage.removeItem(key); } catch(e) { console.warn('Storage blocked'); }
+            }
+        };
+
+        // Firebase Init (Wrapped to prevent crashes if blocked)
         const firebaseConfig = {
             apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
             authDomain: "wmebem-sim.firebaseapp.com",
@@ -64,9 +84,8 @@
                 firebase.initializeApp(firebaseConfig); 
                 window.db = firebase.database();
             }
-        } catch (e) { console.error("Firebase Init Error:", e); }
+        } catch (e) { console.error("Firebase Init blocked:", e); }
 
-        // Main App Component
         const App = () => {
             const { useState, useEffect } = React;
             const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer } = window;
@@ -82,11 +101,12 @@
                     if (sid) setSessionID(sid);
                     setView('monitor');
                 } else {
-                    const savedID = localStorage.getItem('wmebem_session_id');
+                    // Uses safe storage helper to prevent crash
+                    const savedID = safeStorage.getItem('wmebem_session_id');
                     if (savedID) { setSessionID(savedID); } 
                     else {
                         const newID = Math.random().toString(36).substring(2, 6).toUpperCase();
-                        localStorage.setItem('wmebem_session_id', newID);
+                        safeStorage.setItem('wmebem_session_id', newID);
                         setSessionID(newID);
                     }
                 }
@@ -95,7 +115,7 @@
             // Init Engine
             const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
             
-            // --- TELEMETRY HUB (BroadcastChannel) ---
+            // Telemetry Hub
             useEffect(() => {
                 const channel = new BroadcastChannel('sim_channel');
                 
@@ -120,12 +140,10 @@
                 channel.onmessage = (event) => {
                     const data = event.data;
                     if (data.type === 'REQUEST_SYNC') sendUpdate(); 
-                    
                     if (data.type === 'SHOCK_DELIVERED') {
                         sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'danger');
                         sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'shock' });
                     }
-                    
                     if (data.type === 'PACER_UPDATE') {
                         sim.dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                     }
@@ -141,13 +159,13 @@
             const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
             const handleGenerate = (s) => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: s }); setView('briefing'); };
             const handleResume = (savedState) => { sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); setView('live'); };
-            const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); localStorage.removeItem('wmebem_sim_state'); };
+            const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); safeStorage.removeItem('wmebem_sim_state'); };
 
-            // Recovery Logic
+            // Recovery Logic (Safe Storage)
             const [resumeAvailable, setResumeAvailable] = useState(null);
             useEffect(() => {
                 if (view === 'setup') {
-                    const saved = localStorage.getItem('wmebem_sim_state');
+                    const saved = safeStorage.getItem('wmebem_sim_state');
                     if (saved) { try { setResumeAvailable(JSON.parse(saved)); } catch(e) {} }
                 }
             }, [view]);
@@ -181,7 +199,7 @@
             );
         };
 
-        // Render Loop
+        // Loop to check if scripts are loaded before rendering
         const checkReady = setInterval(() => {
             if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
                 clearInterval(checkReady);
