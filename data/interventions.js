@@ -23,14 +23,12 @@ window.INTERVENTIONS = {
     'SeldingerDrain': { label: 'Chest Drain (Seldinger)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Seldinger chest drain inserted.', type: 'continuous', duration: 450 },
     'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
 
-    // data/interventions.js - Add these to the Drug or Procedure sections
-
-// --- CARDIAC & FLUIDS ---
-'PPCI': { label: 'PPCI Referral', effect: {}, category: 'Procedures', log: 'Urgent transfer for Primary PCI.', type: 'bolus', duration: 300 },
-'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30 },
-'Albumin': { label: 'Human Albumin Solution', effect: { BP: 5 }, category: 'Drugs', log: 'IV Albumin administered.', type: 'bolus', duration: 60 },
-'AsciticTap': { label: 'Ascitic Tap', effect: {}, category: 'Procedures', log: 'Ascitic tap/paracentesis performed.', type: 'bolus', duration: 60 },
-'Hyperbaric': { label: 'Hyperbaric Referral', effect: {}, category: 'Procedures', log: 'Referral to hyperbaric unit made.', type: 'bolus', duration: 10 },
+    // --- CARDIAC & FLUIDS ---
+    'PPCI': { label: 'PPCI Referral', effect: {}, category: 'Procedures', log: 'Urgent transfer for Primary PCI.', type: 'bolus', duration: 300 },
+    'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30 },
+    'Albumin': { label: 'Human Albumin Solution', effect: { BP: 5 }, category: 'Drugs', log: 'IV Albumin administered.', type: 'bolus', duration: 60 },
+    'AsciticTap': { label: 'Ascitic Tap', effect: {}, category: 'Procedures', log: 'Ascitic tap/paracentesis performed.', type: 'bolus', duration: 60 },
+    'Hyperbaric': { label: 'Hyperbaric Referral', effect: {}, category: 'Procedures', log: 'Referral to hyperbaric unit made.', type: 'bolus', duration: 10 },
     
     // --- CIRCULATION ---
     'IV Access': { label: 'IV/IO Access', effect: {}, category: 'Circulation', log: 'IV/IO access secured.', type: 'continuous', duration: 30 },
@@ -67,7 +65,8 @@ window.INTERVENTIONS = {
     'Cyclizine': { label: 'Cyclizine', effect: { HR: 5 }, category: 'Drugs', log: 'IV Cyclizine administered.', type: 'bolus', duration: 10 },
     'MagSulph': { label: 'Magnesium Sulphate', effect: { BP: -5, RR: -2 }, category: 'Drugs', log: 'IV Magnesium Sulphate administered.', type: 'bolus', duration: 600 },
     'Calcium': { label: 'Calcium Gluconate', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Gluconate administered.', type: 'bolus', duration: 30 },
-    'InsulinDextrose': { label: 'Insulin/Dextrose', effect: { BM: -5 }, category: 'Drugs', log: 'Insulin/Dextrose bolus started.', type: 'bolus', duration: 60 },
+    'InsulinDextrose': { label: 'Insulin/Dextrose', effect: { BM: 0 }, category: 'Drugs', log: 'Insulin/Dextrose bolus started (Hyperkalaemia).', type: 'bolus', duration: 60 },
+    'Dextrose': { label: 'Glucose 10%', effect: { BM: 8 }, category: 'Drugs', log: 'IV Glucose/Dextrose administered.', type: 'bolus', duration: 60 },
     'InsulinInfusion': { label: 'Insulin Infusion', effect: { BM: -2 }, category: 'Drugs', log: 'Fixed rate Insulin infusion started (0.1 u/kg/hr).', type: 'continuous', duration: 0 },
     'Hydrocortisone': { label: 'Hydrocortisone', effect: { BP: 5 }, category: 'Drugs', log: 'IV Hydrocortisone administered.', type: 'bolus', duration: 10 },
     'Dexamethasone': { label: 'Dexamethasone', effect: {}, category: 'Drugs', log: 'IV Dexamethasone administered.', type: 'bolus', duration: 10 },
@@ -75,11 +74,11 @@ window.INTERVENTIONS = {
     'Clopidogrel': { label: 'Clopidogrel', effect: {}, category: 'Drugs', log: 'Clopidogrel PO administered.', type: 'bolus', duration: 10 },
     'Ticagrelor': { label: 'Ticagrelor', effect: {}, category: 'Drugs', log: 'Ticagrelor PO administered.', type: 'bolus', duration: 10 },
     'Heparin': { label: 'Heparin / LMWH', effect: {}, category: 'Drugs', log: 'Anticoagulation administered.', type: 'bolus', duration: 10 },
-    'Roc': { label: 'Rocuronium', effect: { RR: 0, paralysed: true }, category: 'Drugs', log: 'IV Rocuronium administered.', type: 'bolus', duration: 10 },
-    'Sux': { label: 'Suxamethonium', effect: { RR: 0, paralysed: true }, category: 'Drugs', log: 'IV Suxamethonium administered.', type: 'bolus', duration: 10 },
+    'Roc': { label: 'Rocuronium', effect: { RR: -50, paralysed: true }, category: 'Drugs', log: 'IV Rocuronium administered.', type: 'bolus', duration: 10 },
+    'Sux': { label: 'Suxamethonium', effect: { RR: -50, paralysed: true }, category: 'Drugs', log: 'IV Suxamethonium administered.', type: 'bolus', duration: 10 },
     'Propofol': { label: 'Propofol', effect: { gcs: -5, BP: -10, RR: -5 }, category: 'Drugs', log: 'IV Propofol administered.', type: 'bolus', duration: 10 },
     'Pabrinex': { label: 'Pabrinex', effect: {}, category: 'Drugs', log: 'IV Pabrinex administered.', type: 'bolus', duration: 30 },
-    'Glucagon': { label: 'Glucagon', effect: { HR: 15, BP: 5 }, category: 'Drugs', log: 'IV Glucagon administered.', type: 'bolus', duration: 10 },
+    'Glucagon': { label: 'Glucagon', effect: { HR: 15, BP: 5, BM: 3 }, category: 'Drugs', log: 'IV Glucagon administered.', type: 'bolus', duration: 10 },
     'AdrenalineIM': { label: 'Adrenaline 500mcg (IM)', effect: { HR: 20, BP: 15 }, category: 'Drugs', log: 'IM Adrenaline administered.', type: 'bolus', duration: 5 },
 
     // --- PROCEDURES ---
