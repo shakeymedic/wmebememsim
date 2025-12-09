@@ -1173,13 +1173,38 @@ button, .menu-option, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-bt
         window.isRemoteControlled = false;
         const simChannel = new BroadcastChannel('sim_channel');
 
+        // MAP: Controller Rhythm Names -> Defib Internal Names
+        const rhythmMap = {
+            'Sinus Rhythm': 'nsr',
+            'Sinus Tachycardia': 'sinus_tach',
+            'Sinus Bradycardia': 'sinus_brady',
+            'AF': 'afib',
+            'SVT': 'svt',
+            'VT': 'vtach',
+            'VF': 'vfib',
+            'Coarse VF': 'vfib',
+            'Fine VF': 'vfib',
+            'Asystole': 'asystole',
+            'PEA': 'pea',
+            '1st Deg Block': 'nsr',
+            '3rd Deg Block': 'chb',
+            'pVT': 'vt_pulseless',
+            'Agonal Rhythm': 'pea'
+        };
+
+        const mapRhythm = (r) => rhythmMap[r] || 'nsr';
+
         simChannel.onmessage = (event) => {
             const data = event.data;
             if (data.type === 'SYNC_VITALS') {
                 window.isRemoteControlled = true;
-                if(state.rhythm !== data.payload.rhythm) {
-                     setVitals(data.payload.rhythm);
-                     state.originalRhythm = data.payload.rhythm; 
+                
+                // TRANSLATE THE RHYTHM HERE
+                const mappedRhythm = mapRhythm(data.payload.rhythm);
+                
+                if(state.rhythm !== mappedRhythm) {
+                     setVitals(mappedRhythm);
+                     state.originalRhythm = mappedRhythm; 
                 }
                 state.hr = data.payload.hr;
                 state.spo2 = data.payload.spO2;
