@@ -461,9 +461,29 @@
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
                         {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                         <Button variant="danger" onClick={() => { if(window.confirm("End scenario and go to debrief?")) onFinish(); }} className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"><Lucide icon="square" className="fill-current"/> FINISH</Button>
+                        
+                        {/* RESTORED CONTROLS */}
+                        <div className="h-8 w-px bg-slate-600 mx-1"></div>
+                        
+                        <Button onClick={() => sim.dispatch({ type: 'SET_MUTED', payload: !isMuted })} variant={isMuted ? "danger" : "secondary"} className="h-8 px-2" title="Toggle Mute">
+                            <Lucide icon={isMuted ? "volume-x" : "volume-2"} />
+                        </Button>
+
+                        <Button onClick={() => {
+                            const modes = ['monitor', 'controller', 'both'];
+                            const next = modes[(modes.indexOf(audioOutput || 'monitor') + 1) % modes.length];
+                            sim.dispatch({ type: 'SET_AUDIO_OUTPUT', payload: next });
+                        }} variant="outline" className="h-8 px-2 text-[10px] w-24" title="Audio Output Source">
+                            <span className="truncate">{audioOutput === 'both' ? 'Sound: ALL' : audioOutput === 'controller' ? 'Sound: PAD' : 'Sound: MON'}</span>
+                        </Button>
+
+                        <Button onClick={() => setShowLogModal(true)} variant="secondary" className="h-8 px-2" title="View Log">
+                            <Lucide icon="scroll-text" />
+                        </Button>
+
                         <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
-                        <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600"><span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span><span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span></div>
                     </div>
+                    <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600"><span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span><span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span></div>
                 </div>
 
                 {/* --- ARREST OVERLAY --- */}
