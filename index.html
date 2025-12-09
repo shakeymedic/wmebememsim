@@ -57,24 +57,22 @@
         input[type=number]::-webkit-inner-spin-button, 
         input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
-        /* --- PASTE INTO index.html <style> BLOCK --- */
+        /* Flash Animation */
+        @keyframes flash-white {
+            0% { background-color: #ffffff; color: #000; transform: scale(1.05); }
+            100% { background-color: inherit; color: inherit; transform: scale(1); }
+        }
 
-/* Flash Animation */
-@keyframes flash-white {
-    0% { background-color: #ffffff; color: #000; transform: scale(1.05); }
-    100% { background-color: inherit; color: inherit; transform: scale(1); }
-}
+        .flash-active {
+            animation: flash-white 0.15s ease-out !important;
+        }
 
-.flash-active {
-    animation: flash-white 0.15s ease-out !important;
-}
-
-/* Active Button State (Green Border/Text) */
-.btn-active-state {
-    background-color: rgba(6, 78, 59, 0.5) !important; /* emerald-900/50 */
-    border-color: #10b981 !important; /* emerald-500 */
-    color: #d1fae5 !important; /* emerald-100 */
-}
+        /* Active Button State (Green Border/Text) */
+        .btn-active-state {
+            background-color: rgba(6, 78, 59, 0.5) !important; /* emerald-900/50 */
+            border-color: #10b981 !important; /* emerald-500 */
+            color: #d1fae5 !important; /* emerald-100 */
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
@@ -101,14 +99,15 @@
         }
     } catch (e) { console.error("Firebase Init Error:", e); }
     
-    // --- IMPORT FROM MODULES ---
-    const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer, Lucide } = window;
-    const { ALL_SCENARIOS } = window;
-
-    const { useState, useEffect } = React;
-    
     // --- MAIN APP ENTRY ---
     const App = () => {
+        const { useState, useEffect } = React;
+        
+        // --- FIX: IMPORT FROM WINDOW INSIDE COMPONENT ---
+        // This ensures these variables exist when App renders, not just when the file loads
+        const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer, Lucide } = window;
+        const { ALL_SCENARIOS } = window;
+
         const [view, setView] = useState('setup'); 
         const [sessionID, setSessionID] = useState(null);
 
@@ -133,7 +132,6 @@
 
         // Initialize Simulation Engine
         const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
-        // --- PASTE THIS BLOCK IN index.html (inside the App component) ---
         
         // 1. BROADCAST CHANNEL: Sync Controller <-> Defib
         useEffect(() => {
@@ -258,15 +256,18 @@
         );
     };
 
-    // Wait for the components to be attached to window
-const startApp = () => {
-    if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
-        ReactDOM.render(<App />, document.getElementById('root'));
-    } else {
-        setTimeout(startApp, 50);
-    }
-};
-startApp();
+    // --- FIX: SAFE STARTUP FUNCTION ---
+    // This waits for the other files (components.js, screens.js, etc.) to finish loading 
+    // before trying to render the App. This prevents the "Invalid Element Type" error.
+    const startApp = () => {
+        if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
+            ReactDOM.render(<App />, document.getElementById('root'));
+        } else {
+            // Keep checking every 50ms until variables exist
+            setTimeout(startApp, 50);
+        }
+    };
+    startApp();
     </script>
 </body>
 </html>
