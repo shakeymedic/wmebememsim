@@ -2351,36 +2351,39 @@ function chargeDefib() {
                 
                 // --- SMART ALS LOGIC ---
                 setTimeout(() => {
-                    let success = false;
-                    let failReason = "";
+                    // Only run internal logic if NOT remote controlled
+                    if (!window.isRemoteControlled) { 
+                        let success = false;
+                        let failReason = "";
 
-                    // 1. VF / pVT Criteria
-                    if (rhythm === 'vfib' || rhythm === 'vt_pulseless') {
-                        if (energy >= 120) success = true; 
-                        else failReason = "ENERGY TOO LOW";
-                    }
-                    // 2. Unstable SVT / AFib / VT Criteria
-                    else if (rhythm === 'svt' || rhythm === 'afib' || rhythm === 'vtach') {
-                        if (sync && energy >= 70) success = true; 
-                        else if (!sync) failReason = "R-ON-T HAZARD (NO SYNC)";
-                        else failReason = "ENERGY TOO LOW";
-                    }
+                        // 1. VF / pVT Criteria
+                        if (rhythm === 'vfib' || rhythm === 'vt_pulseless') {
+                            if (energy >= 120) success = true; 
+                            else failReason = "ENERGY TOO LOW";
+                        }
+                        // 2. Unstable SVT / AFib / VT Criteria
+                        else if (rhythm === 'svt' || rhythm === 'afib' || rhythm === 'vtach') {
+                            if (sync && energy >= 70) success = true; 
+                            else if (!sync) failReason = "R-ON-T HAZARD (NO SYNC)";
+                            else failReason = "ENERGY TOO LOW";
+                        }
 
-                    if (success) {
-                        setMessage('RHYTHM CONVERTING...', 'ready');
-                        setTimeout(() => {
-                            quickSetRhythm('nsr');
-                            state.roscAchieved = true;
-                            updateDisplays();
-                        }, 1000);
+                        if (success) {
+                            setMessage('RHYTHM CONVERTING...', 'ready');
+                            setTimeout(() => {
+                                quickSetRhythm('nsr');
+                                state.roscAchieved = true;
+                                updateDisplays();
+                            }, 1000);
+                            
+                            if (state.customScenarioActive) checkScenarioTrigger('shock');
+                        } else {
+                            if (failReason) setMessage(`SHOCK FAILED: ${failReason}`, 'alert');
+                            else setMessage('SHOCK DELIVERED - NO CHANGE', 'ready');
+                        }
                         
-                        if (state.customScenarioActive) checkScenarioTrigger('shock');
-                    } else {
-                        if (failReason) setMessage(`SHOCK FAILED: ${failReason}`, 'alert');
-                        else setMessage('SHOCK DELIVERED - NO CHANGE', 'ready');
+                        startCPRTimer();
                     }
-                    
-                    startCPRTimer();
                 }, 2000);
             }, delay);
         }
