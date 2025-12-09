@@ -448,26 +448,64 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
+        // data/engine.js - UPDATED TICK LOGIC
+// Replace the previous 'tick' function with this robust one:
+
         const tick = () => {
             const current = stateRef.current; 
             let next = { ...current.vitals };
+            
+            // 1. Automatic Deterioration (Physiological Drift)
+            // If scenario has a deterioration rate and we aren't improving/stabilized
+            if (current.isRunning && current.scenario.deterioration && current.scenario.deterioration.active && !current.trends.active) {
+                const rate = current.scenario.deterioration.rate || 0.05; // default 5% drift per minute
+                // Apply subtle random drift downwards based on type
+                const type = current.scenario.deterioration.type;
+                
+                if (type === 'shock' || type === 'haemorrhagic_shock') {
+                    // HR up, BP down
+                    if (Math.random() < rate) next.hr += 1;
+                    if (Math.random() < rate) next.bpSys -= 1;
+                } else if (type === 'respiratory') {
+                    // SpO2 down, RR up (compensation) then down (fatigue)
+                    if (Math.random() < rate) next.spO2 -= 1;
+                    if (next.rr < 35 && Math.random() < rate) next.rr += 1;
+                } else if (type === 'neuro') {
+                    // GCS drop, Cushing's (BP up, HR down)
+                    if (Math.random() < (rate/2) && next.gcs > 3) next.gcs -= 1;
+                    if (Math.random() < rate) next.bpSys += 1;
+                    if (Math.random() < rate) next.hr -= 1;
+                }
+            }
 
+            // 2. Physiological Constraints (Compensatory Mechanisms)
             if (next.hr === 0) { 
                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
                 if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
-            } else { 
-                if (next.spO2 < 85 && next.hr > 0 && next.hr < 160 && current.rhythm.includes('Sinus')) next.hr += 1; 
-                if (next.spO2 < 60 && next.hr > 60 && Math.random() > 0.7) { next.hr -= 2; } 
-                if (next.rr < 8 && !current.activeInterventions.has('Bagging') && !current.activeInterventions.has('NIV')) { next.spO2 = Math.max(0, next.spO2 - 2); } 
+            } else {
+                // Hypoxia causes Tachycardia (Compensation)
+                if (next.spO2 < 88 && next.hr < 130 && current.rhythm.includes('Sinus')) {
+                    if (Math.random() > 0.5) next.hr += 1;
+                }
+                // Terminal Bradycardia (Decompensation)
+                if (next.spO2 < 50 && next.hr > 40) {
+                    if (Math.random() > 0.6) next.hr -= 2;
+                }
             }
+
+            // 3. Noise & Flux
             if (next.hr > 0) { 
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
-                let targetDia = Math.floor(next.bpSys * 0.65); 
-                next.bpDia = targetDia + getRandomInt(-2, 2); 
+                // Fix: Diastolic should follow Systolic approx 2/3rds but vary slightly
+                let targetDia = Math.floor(next.bpSys * 0.60); 
+                // Smooth drift for diastolic
+                next.bpDia = next.bpDia + (targetDia - next.bpDia) * 0.1 + getRandomInt(-1, 1);
+                
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
             }
 
+            // 4. Trend Application (Interventions)
             if (current.trends.active) {
                 const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
                 Object.keys(current.trends.targets).forEach(key => {
@@ -483,10 +521,13 @@
                 }
             }
 
+            // 5. Clamping
             next.hr = clamp(next.hr, 0, 250); 
             next.bpSys = clamp(next.bpSys, 0, 300); 
             next.spO2 = clamp(next.spO2, 0, 100);
+            next.rr = clamp(next.rr, 0, 60);
 
+            // 6. Dynamic VBG Logic
             if (current.scenario.vbg) { 
                 const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); 
                 if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } 
