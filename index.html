@@ -133,11 +133,13 @@
 
         // Initialize Simulation Engine
         const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
-        // --- PASTE THIS BLOCK IN index.html ---
-        // BROADCAST CHANNEL: Sync with Defib
+        // --- PASTE THIS BLOCK IN index.html (inside the App component) ---
+        
+        // 1. BROADCAST CHANNEL: Sync Controller <-> Defib
         useEffect(() => {
             const channel = new BroadcastChannel('sim_channel');
 
+            // Function to broadcast current state to Defib
             const sendUpdate = () => {
                 if (!sim.state || !sim.state.vitals) return;
                 
@@ -154,19 +156,30 @@
                 });
             };
 
-            // 1. Send update whenever state changes
-            sendUpdate();
-
-            // 2. Listen for "REQUEST_SYNC" from a newly opened Defib
+            // 2. Listen for events FROM the Defib (e.g., Shock Delivered)
             channel.onmessage = (event) => {
-                if (event.data.type === 'REQUEST_SYNC') {
+                const data = event.data;
+
+                if (data.type === 'REQUEST_SYNC') {
+                    // Defib just opened -> Send data immediately
                     sendUpdate();
+                }
+                
+                if (data.type === 'SHOCK_DELIVERED') {
+                    // Defib fired a shock -> Log it in the Controller
+                    sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'action');
+                    
+                    // Optional: Trigger engine logic if you have a 'Defib' intervention
+                    // sim.applyIntervention('Defib'); 
                 }
             };
 
+            // 3. Send update whenever simulation state changes
+            sendUpdate();
+
             return () => channel.close();
-        }, [sim.state]); // Re-run whenever simulation state changes
-        // --------------------------------------
+        }, [sim.state]); 
+        // ------------------------------------------------------------------
 
         // Handlers
         const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
