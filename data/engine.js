@@ -39,8 +39,6 @@
                 if (!state.isRunning && action.payload.source !== 'manual') return state;
                 const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
-            
-            // UPDATED: Automatically open arrest panel on arrest rhythm
             case 'UPDATE_RHYTHM': 
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(action.payload);
                 return { 
@@ -194,6 +192,10 @@
                     if (val && val.ts > lastCmdRef.current) {
                         lastCmdRef.current = val.ts;
                         if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
+                        // UPDATED: Handle generic actions from Monitor (e.g. Defib Shock)
+                        if (val.type === 'TRIGGER_ACTION') {
+                            applyIntervention(val.payload);
+                        }
                     }
                 });
                 return () => cmdRef.off();
@@ -352,6 +354,16 @@
                 dispatch({ type: 'START_NIBP' });
             }
         };
+        
+        // NEW: Allow Monitor to trigger generic actions (e.g. Defib Shock)
+        const triggerAction = (action) => {
+             if (isMonitorMode && sessionID) {
+                 window.db.ref(`sessions/${sessionID}/command`).set({ type: 'TRIGGER_ACTION', payload: action, ts: Date.now() });
+             } else {
+                 applyIntervention(action);
+             }
+        }
+        
         const playInflationSound = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'running') { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         const playMedicalSound = (type) => {
             if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const t = ctx.currentTime;
@@ -413,7 +425,7 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
         const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); };
         const reset = () => { stop(); dispatch({ type: 'CLEAR_SESSION' }); localStorage.removeItem('wmebem_sim_state'); };
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, startTrend, triggerNIBP };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, startTrend, triggerNIBP, triggerAction };
     };
     window.useSimulation = useSimulation;
 })();
