@@ -687,41 +687,7 @@ button, .menu-option, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-bt
         </button>
     </div>
 
-    <div class="quick-rhythm-panel">
-        <h4>Quick Rhythm Select</h4>
-        
-        <div class="rhythm-grid-primary">
-            <button class="rhythm-btn active" data-rhythm="nsr">NSR</button>
-            
-            <button class="rhythm-btn btn-red" data-rhythm="vfib">VF</button>
-            <button class="rhythm-btn btn-red" data-rhythm="vt_pulseless">pVT</button>
-            <button class="rhythm-btn btn-red" data-rhythm="asystole">ASY</button>
-            <button class="rhythm-btn btn-red" data-rhythm="pea">PEA</button>
-            
-            <button class="rhythm-btn btn-orange" data-rhythm="svt">SVT</button>
-            <button class="rhythm-btn btn-orange" data-rhythm="vtach">VT (Pulse)</button>
-            <button class="rhythm-btn btn-orange" data-rhythm="chb">CHB</button>
-        </div>
-
-        <button class="toggle-secondary-btn" id="toggleSecondaryBtn">▼ Show More Rhythms</button>
-        
-        <div id="secondaryRhythms">
-            <button class="rhythm-btn" data-rhythm="afib">AFib</button>
-            <button class="rhythm-btn" data-rhythm="sinus_brady">Sinus Brady</button>
-            <button class="rhythm-btn" data-rhythm="sinus_tach">Sinus Tach</button>
-            <button class="rhythm-btn" data-rhythm="paced">Paced</button>
-            <button class="rhythm-btn" data-rhythm="idioventricular">Idioventricular</button>
-            <button class="rhythm-btn" data-rhythm="brady">Junctional Brady</button>
-        </div>
-    </div>
-
-    <div class="guideline-hints-panel">
-        <button class="hint-btn" data-guideline="shockable">RCUK Hint: Shockable Arrest</button>
-        <button class="hint-btn" data-guideline="nonshockable">RCUK Hint: Non-Shockable Arrest</button>
-        <button class="hint-btn" data-guideline="tachy">RCUK Hint: Tachycardia</button>
-        <button class="hint-btn" data-guideline="brady">RCUK Hint: Bradycardia</button>
-    </div>
-
+    
     <div class="menu-wrapper hidden" id="menuWrapper">
         
         <div class="menu-screen hidden" id="scenarioCreatorScreen" style="max-width: 900px;">
@@ -3352,6 +3318,50 @@ deliverShock = function() {
         }, '*');
     }
 }
+    // --- PASTE THIS AT THE BOTTOM OF THE SCRIPT IN defib/index.html ---
+
+const simChannel = new BroadcastChannel('sim_channel');
+
+simChannel.onmessage = (event) => {
+    if (event.data.type === 'SYNC_VITALS') {
+        window.isRemoteControlled = true;
+        
+        // Map Controller Rhythm Names -> Defib Rhythm IDs
+        const map = { 
+            'Sinus Rhythm': 'nsr', 
+            'Sinus Tachycardia': 'sinus_tach',
+            'VF': 'vfib', 
+            'VT': 'vt_pulseless', 
+            'pVT': 'vt_pulseless', 
+            'Asystole': 'asystole', 
+            'PEA': 'pea', 
+            'AF': 'afib',
+            '3rd Deg Block': 'chb', 
+            'Sinus Bradycardia': 'sinus_brady'
+        };
+        
+        const targetRhythm = map[event.data.payload.rhythm] || 'nsr';
+        
+        // Update Defib Rhythm only if it changed
+        if(state.rhythm !== targetRhythm) {
+             setVitals(targetRhythm);
+             state.originalRhythm = targetRhythm; 
+        }
+        
+        // Force update numeric vitals
+        state.hr = event.data.payload.hr;
+        state.spo2 = event.data.payload.spO2;
+        state.etco2 = event.data.payload.etco2;
+        state.bpSys = event.data.payload.bpSys;
+        state.bpDia = event.data.payload.bpDia;
+        
+        updateDisplays();
+    }
+};
+
+// Immediately ask the Controller for the current rhythm on load
+simChannel.postMessage({ type: 'REQUEST_SYNC' });
+// ------------------------------------------------------------------
     </script>
 </body>
 </html>
