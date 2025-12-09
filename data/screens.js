@@ -63,7 +63,12 @@ useEffect(() => {
             };
             const updated = [...customScenarios, newScen];
             setCustomScenarios(updated);
-            localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
+            try {
+    localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
+} catch (e) {
+    console.warn("Could not save custom scenario to storage");
+    alert("Scenario active, but could not be saved permanently due to browser privacy settings.");
+}
             setMode('custom'); 
         };
 
