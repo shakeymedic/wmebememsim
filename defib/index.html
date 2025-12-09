@@ -682,10 +682,7 @@ button, .menu-option, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-bt
             </div>
         </div>
         
-        <button class="menu-option" id="openScenarioCreatorBtn" style="padding: 20px 30px; font-size: 16px; margin: 0;">
-            Create Custom Scenario
-        </button>
-    </div>
+        </div>
 
     
     <div class="menu-wrapper hidden" id="menuWrapper">
@@ -1190,6 +1187,78 @@ button, .menu-option, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-bt
             });
         }
         // ------------------------------------
+
+        // --- HYBRID BRIDGE CODE (Moved inside DOMContentLoaded) ---
+        window.isRemoteControlled = false; // Default to Standalone Mode
+
+        const simChannel = new BroadcastChannel('sim_channel');
+
+        simChannel.onmessage = (event) => {
+            if (event.data.type === 'SYNC_VITALS') {
+                window.isRemoteControlled = true;
+                
+                // Map Controller Rhythm Names -> Defib Rhythm IDs
+                const map = { 
+                    'Sinus Rhythm': 'nsr', 
+                    'Sinus Tachycardia': 'sinus_tach',
+                    'VF': 'vfib', 
+                    'VT': 'vt_pulseless', 
+                    'pVT': 'vt_pulseless', 
+                    'Asystole': 'asystole', 
+                    'PEA': 'pea', 
+                    'AF': 'afib',
+                    '3rd Deg Block': 'chb', 
+                    'Sinus Bradycardia': 'sinus_brady'
+                };
+                
+                const targetRhythm = map[event.data.payload.rhythm] || 'nsr';
+                
+                // Update Defib Rhythm only if it changed
+                if(state.rhythm !== targetRhythm) {
+                     setVitals(targetRhythm);
+                     state.originalRhythm = targetRhythm; 
+                }
+                
+                // Force update numeric vitals
+                state.hr = event.data.payload.hr;
+                state.spo2 = event.data.payload.spO2;
+                state.etco2 = event.data.payload.etco2;
+                state.bpSys = event.data.payload.bpSys;
+                state.bpDia = event.data.payload.bpDia;
+                
+                updateDisplays();
+            }
+        };
+
+        // Immediately ask the Controller for the current rhythm on load
+        simChannel.postMessage({ type: 'REQUEST_SYNC' });
+
+        // Listen for iframe messages too
+        window.addEventListener('message', (event) => {
+            const data = event.data;
+            if(data.type === 'SYNC_VITALS') {
+                window.isRemoteControlled = true; 
+                const map = { 
+                    'Sinus Rhythm': 'nsr', 
+                    'Sinus Tachycardia': 'sinus_tach',
+                    'VF': 'vfib', 'VT': 'vt_pulseless', 'pVT': 'vt_pulseless', 
+                    'Asystole': 'asystole', 'PEA': 'pea', 'AF': 'afib',
+                    '3rd Deg Block': 'chb', 'Sinus Bradycardia': 'sinus_brady'
+                };
+                const targetRhythm = map[data.payload.rhythm] || 'nsr';
+                if(state.rhythm !== targetRhythm) {
+                     setVitals(targetRhythm);
+                     state.originalRhythm = targetRhythm; 
+                }
+                state.hr = data.payload.hr;
+                state.spo2 = data.payload.spO2;
+                state.etco2 = data.payload.etco2;
+                state.bpSys = data.payload.bpSys;
+                state.bpDia = data.payload.bpDia;
+                updateDisplays();
+            }
+        });
+        // -----------------------------------------------------------
 
         const scenarios = {
             'vf-arrest': {
@@ -2277,21 +2346,18 @@ function chargeDefib() {
             }, 2000);
         }
 
+        // --- NEW: Handle Shocks (Local & Remote) ---
         function deliverShock() {
             if (state.machineState !== APP_STATES.READY) return;
             
-            // Clear safety timer if it exists
             if (state.chargeTimer) clearTimeout(state.chargeTimer);
 
             const energy = state.energy;
             const sync = state.syncMode;
             const rhythm = state.rhythm;
 
-            // --- REALISTIC SYNC DELAY ---
-            // If in SYNC mode, simulate the delay while waiting for R-wave
             let delay = 0;
             if (sync) {
-                // Random delay between 200ms and 800ms to mimic waiting for next QRS
                 delay = Math.floor(Math.random() * 600) + 200;
                 setMessage('SYNC... WAITING FOR R-WAVE...', 'alert');
             }
@@ -2301,7 +2367,6 @@ function chargeDefib() {
                 playSound('shock');
                 logAction(`Shock ${state.shockCount} delivered`, `${energy}J (${sync ? 'SYNC' : 'UNSYNC'})`);
                 
-                // --- AUTO-RESET CYCLE TIMER ---
                 if (typeof startCycleCountdown === 'function') {
                     startCycleCountdown();
                     logAction('Shock Delivered', 'Cycle Timer Reset');
@@ -2315,42 +2380,53 @@ function chargeDefib() {
                 setMessage(`SHOCK DELIVERED`, 'alert');
                 transitionTo(APP_STATES.IDLE);
                 
-                // --- SMART ALS LOGIC ---
-                setTimeout(() => {
-                    // Only run internal logic if NOT remote controlled
-                    if (!window.isRemoteControlled) { 
-                        let success = false;
-                        let failReason = "";
+                // 1. Notify Controller (If Remote)
+                if (window.isRemoteControlled) {
+                    const channel = new BroadcastChannel('sim_channel');
+                    channel.postMessage({ 
+                        type: 'SHOCK_DELIVERED', 
+                        energy: energy,
+                        sync: sync
+                    });
+                    
+                    // Also notify parent if iframe
+                    window.parent.postMessage({ 
+                        type: 'SHOCK_DELIVERED', 
+                        energy: energy,
+                        sync: sync
+                    }, '*');
+                } 
+                // 2. Handle Local Logic (If Standalone)
+                else { 
+                    let success = false;
+                    let failReason = "";
 
-                        // 1. VF / pVT Criteria
-                        if (rhythm === 'vfib' || rhythm === 'vt_pulseless') {
-                            if (energy >= 120) success = true; 
-                            else failReason = "ENERGY TOO LOW";
-                        }
-                        // 2. Unstable SVT / AFib / VT Criteria
-                        else if (rhythm === 'svt' || rhythm === 'afib' || rhythm === 'vtach') {
-                            if (sync && energy >= 70) success = true; 
-                            else if (!sync) failReason = "R-ON-T HAZARD (NO SYNC)";
-                            else failReason = "ENERGY TOO LOW";
-                        }
-
-                        if (success) {
-                            setMessage('RHYTHM CONVERTING...', 'ready');
-                            setTimeout(() => {
-                                quickSetRhythm('nsr');
-                                state.roscAchieved = true;
-                                updateDisplays();
-                            }, 1000);
-                            
-                            if (state.customScenarioActive) checkScenarioTrigger('shock');
-                        } else {
-                            if (failReason) setMessage(`SHOCK FAILED: ${failReason}`, 'alert');
-                            else setMessage('SHOCK DELIVERED - NO CHANGE', 'ready');
-                        }
-                        
-                        startCPRTimer();
+                    if (rhythm === 'vfib' || rhythm === 'vt_pulseless') {
+                        if (energy >= 120) success = true; 
+                        else failReason = "ENERGY TOO LOW";
                     }
-                }, 2000);
+                    else if (rhythm === 'svt' || rhythm === 'afib' || rhythm === 'vtach') {
+                        if (sync && energy >= 70) success = true; 
+                        else if (!sync) failReason = "R-ON-T HAZARD (NO SYNC)";
+                        else failReason = "ENERGY TOO LOW";
+                    }
+
+                    if (success) {
+                        setMessage('RHYTHM CONVERTING...', 'ready');
+                        setTimeout(() => {
+                            quickSetRhythm('nsr');
+                            state.roscAchieved = true;
+                            updateDisplays();
+                        }, 1000);
+                        
+                        if (state.customScenarioActive) checkScenarioTrigger('shock');
+                    } else {
+                        if (failReason) setMessage(`SHOCK FAILED: ${failReason}`, 'alert');
+                        else setMessage('SHOCK DELIVERED - NO CHANGE', 'ready');
+                    }
+                    
+                    startCPRTimer();
+                }
             }, delay);
         }
 
@@ -2781,7 +2857,7 @@ function quickSetRhythm(rhythm) {
 
 
         // --- New Scenario Creator Listeners ---
-        document.getElementById('openScenarioCreatorBtn').addEventListener('click', () => {
+        document.getElementById('openScenarioCreatorBtn')?.addEventListener('click', () => {
             menuWrapper.classList.remove('hidden');
             scenarioCreatorScreen.classList.remove('hidden');
             scenarioScreen.classList.add('hidden'); // Hide other menus
