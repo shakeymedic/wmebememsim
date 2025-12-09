@@ -394,9 +394,8 @@
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton } = window;
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState } = state;
         
-        // ... (state vars: activeTab, customLog etc. remain same) ...
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
@@ -404,13 +403,26 @@
         const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
         const [showLogModal, setShowLogModal] = useState(false);
-        
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
+        const [gainVal, setGainVal] = useState(waveformGain || 1.0);
 
-        // ... (drugCats, mapVoice, useEffect for search, getInterventionsByCat etc. remain same) ...
+        // --- NEW HELPERS ---
+        const handleGhost = (btnId) => {
+            const channel = new BroadcastChannel('sim_channel');
+            channel.postMessage({ type: 'GHOST_PRESS', payload: btnId });
+        };
+
+        const updateGain = (e) => {
+            const v = parseFloat(e.target.value);
+            setGainVal(v);
+            sim.dispatch({ type: 'SET_GAIN', payload: v });
+        };
+        // -------------------
+
+        // ... (Existing helper functions: drugCats, mapVoice, getInterventionsByCat, formatTime, toggleCPR, handleShock, hasMonitoring, generateSBAR, openVitalControl, quickAdjust, confirmVitalUpdate) ...
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
@@ -418,16 +430,13 @@
             "Infusions": ['FluidInfusion', 'InsulinInfusion', 'GTNInfusion', 'Noradrenaline'], 
             "General": ['Paracetamol', 'Ondansetron', 'Antibiotics', 'Hydrocortisone', 'Dexamethasone', 'Nebs', 'AdrenalineIM']
         };
-
         const mapVoice = (txt) => {
             if (txt.includes('Cough')) return 'Cough, cough, cough';
             if (txt.includes('Scream')) return 'Ahhhhh! Help me!';
             if (txt.includes('Moan')) return 'Ohhhhhh...';
             return txt.replace(/\*/g, '');
         };
-
         useEffect(() => { if (customLog.length > 1) { const results = Object.keys(INTERVENTIONS).filter(key => (key + INTERVENTIONS[key].label).toLowerCase().includes(customLog.toLowerCase())); setSearchResults(results); } else { setSearchResults([]); } }, [customLog]);
-        
         const getInterventionsByCat = (cat) => {
             if (cat === 'Handover' || cat === 'Voice') return [];
             let keys = [];
@@ -436,62 +445,31 @@
             else keys = Object.keys(INTERVENTIONS).filter(key => INTERVENTIONS[key].category === cat);
             return keys.sort((a, b) => INTERVENTIONS[a].label.localeCompare(INTERVENTIONS[b].label));
         };
-
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         const toggleCPR = () => { sim.dispatch({ type: 'TOGGLE_CPR', payload: !cprInProgress }); addLogEntry(!cprInProgress ? 'CPR Started' : 'CPR Stopped', 'action'); };
         const handleShock = () => { applyIntervention('Defib'); if (!cprInProgress) toggleCPR(); };
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const generateSBAR = () => `S: ${scenario.title}.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%.\nR: Review.`;
-        
-        const openVitalControl = (key) => {
-            setModalVital(key);
-            setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]);
-            if (key === 'bp') setModalTarget2(vitals.bpDia);
-            setTrendDuration(30); 
-        };
-
-        const quickAdjust = (amt) => {
-            let current = parseFloat(modalTarget) || 0;
-            setModalTarget(current + amt);
-            if (modalVital === 'bp') {
-                let currentDia = parseFloat(modalTarget2) || 0;
-                setModalTarget2(currentDia + (amt * 0.6)); 
-            }
-        };
-
-        const confirmVitalUpdate = () => {
-            const targets = {};
-            if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
-            else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); }
-            if (trendDuration === 0) { Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k])); } 
-            else { startTrend(targets, trendDuration); }
-            setModalVital(null);
-        };
+        const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(30); };
+        const quickAdjust = (amt) => { let current = parseFloat(modalTarget) || 0; setModalTarget(current + amt); if (modalVital === 'bp') { let currentDia = parseFloat(modalTarget2) || 0; setModalTarget2(currentDia + (amt * 0.6)); } };
+        const confirmVitalUpdate = () => { const targets = {}; if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); } else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); } if (trendDuration === 0) { Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k])); } else { startTrend(targets, trendDuration); } setModalVital(null); };
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                {/* ... (Header remains same) ... */}
+                {/* --- HEADER (Preserved) --- */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2 items-center">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
-                        {!isRunning ? (
-                             <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button>
-                        ) : (
-                             <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button>
-                        )}
+                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                         <Button variant="danger" onClick={() => { if(window.confirm("End scenario and go to debrief?")) onFinish(); }} className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"><Lucide icon="square" className="fill-current"/> FINISH</Button>
                         <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
-                        <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600">
-                            <span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span>
-                            <span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span>
-                        </div>
+                        <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600"><span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span><span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span></div>
                     </div>
                 </div>
 
-                {/* --- ARREST OVERLAY --- */}
+                {/* --- ARREST OVERLAY (Preserved) --- */}
                 {arrestPanelOpen && (
                     <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
-                        {/* ... (Arrest panel internals remain same) ... */}
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
                             <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
@@ -518,7 +496,6 @@
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         <Card className="bg-black border-slate-800 flex-shrink-0">
                              <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
-                             {/* ... (Vital grid remains same) ... */}
                              <div className="grid grid-cols-4 gap-1 p-1 bg-black">
                                  <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
                                  <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
@@ -533,21 +510,38 @@
                              </div>
                         </Card>
                         
-                        <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
-                            {/* ... (Patient info body remains same) ... */}
-                            <div className="text-xs space-y-2 mb-2">
-                                <p><strong className="text-slate-400">Name:</strong> {scenario.patientName}</p>
-                                <p><strong className="text-slate-400">PC:</strong> <span className="text-sky-400 font-bold">{scenario.presentingComplaint}</span></p>
-                                <div className="p-1 bg-slate-900 rounded border border-slate-700">
-                                    <strong className="text-amber-500 block text-[10px] uppercase">Clinical Course:</strong>
-                                    <span className="text-slate-300">{scenario.instructorBrief.progression}</span>
-                                </div>
-                                <p><strong className="text-slate-400">Details:</strong> {scenario.patientAge}y {scenario.sex}</p>
+                        {/* --- NEW: WAVEFORM CONTROLS --- */}
+                        <div className="bg-slate-800 p-2 rounded border border-slate-600">
+                            <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2">Waveform Control</h4>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs w-12 text-slate-400">Gain: {gainVal}x</span>
+                                <input type="range" min="0.5" max="2.0" step="0.1" value={gainVal} onChange={updateGain} className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
                             </div>
-                            <div className="grid grid-cols-3 gap-1">
-                                {['ECG', 'VBG', 'X-ray', 'POCUS', 'CT', 'Urine'].map(t => (<InvestigationButton key={t} type={t} icon="activity" label={t} isRevealed={state.investigationsRevealed[t]} isLoading={state.loadingInvestigations[t]} revealInvestigation={revealInvestigation} isRunning={isRunning} scenario={scenario}/>))}
+                            <label className="flex items-center gap-2 text-xs cursor-pointer select-none text-slate-300 hover:text-white">
+                                <input type="checkbox" checked={noise?.interference || false} onChange={() => sim.dispatch({ type: 'TOGGLE_INTERFERENCE' })} className="rounded bg-slate-700 border-slate-500" />
+                                60Hz Interference (Buzz)
+                            </label>
+                        </div>
+
+                        {/* --- NEW: REMOTE DEMO ACTIONS --- */}
+                        <div className="bg-slate-800 p-2 rounded border border-slate-600">
+                            <h4 className="text-[10px] font-bold text-purple-400 uppercase mb-2">Remote Demo (Ghost)</h4>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => handleGhost('chargeBtn')} className="bg-slate-700 hover:bg-slate-600 text-xs py-1 rounded border border-slate-500 transition-colors">Press Charge</button>
+                                <button onClick={() => handleGhost('shockBtn')} className="bg-slate-700 hover:bg-slate-600 text-xs py-1 rounded border border-slate-500 transition-colors">Press Shock</button>
+                                <button onClick={() => handleGhost('syncBtn')} className="bg-slate-700 hover:bg-slate-600 text-xs py-1 rounded border border-slate-500 transition-colors">Toggle Sync</button>
+                                <button onClick={() => handleGhost('analyseBtn')} className="bg-slate-700 hover:bg-slate-600 text-xs py-1 rounded border border-slate-500 transition-colors">Press Analyse</button>
                             </div>
-                        </Card>
+                        </div>
+
+                        {/* --- NEW: PACER FEEDBACK --- */}
+                        <div className="bg-slate-900/50 p-2 rounded border border-slate-700">
+                            <h4 className="text-[10px] font-bold text-slate-500 uppercase">Remote Pacer State</h4>
+                            <div className="flex justify-between text-xs font-mono text-green-400 mt-1">
+                                <span>Rate: {remotePacerState?.rate || 0} ppm</span>
+                                <span>Output: {remotePacerState?.output || 0} mA</span>
+                            </div>
+                        </div>
 
                         <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10">
                             <h4 className="text-[10px] font-bold text-green-400 uppercase mb-1">Rhythm & Arrest</h4>
@@ -565,7 +559,7 @@
                                 <Button onClick={triggerROSC} variant="success" className="h-8 text-xs">ROSC</Button>
                             </div>
                             
-                            {/* --- NEW: NEXT SHOCK OUTCOME CONTROL --- */}
+                            {/* --- NEXT SHOCK OUTCOME --- */}
                             <div className="bg-slate-900/50 p-2 rounded border border-slate-700 mb-2">
                                 <h5 className="text-[9px] font-bold text-slate-400 uppercase mb-1">Next Shock Outcome</h5>
                                 <div className="grid grid-cols-2 gap-1">
@@ -576,7 +570,6 @@
                                 </div>
                                 {queuedRhythm && <div className="text-[9px] text-sky-400 text-center mt-1">Pending: {queuedRhythm}</div>}
                             </div>
-                            {/* --------------------------------------- */}
 
                             <div className="relative">
                                 <Button onClick={() => setExpandRhythm(!expandRhythm)} variant="secondary" className="w-full h-8 text-xs justify-between">{rhythm} <Lucide icon="chevron-down" className="w-3 h-3"/></Button>
@@ -588,7 +581,7 @@
                     
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">{['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice', 'Handover'].map(cat => (<button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>))}</div>
-                        {/* ... (Rest of panel remains identical) ... */}
+                        {/* ... (Interventions panel body - unchanged) ... */}
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
@@ -609,7 +602,6 @@
                                         {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
                                     </div>
                                            
-                                    {/* NEW SOUNDS SECTION */}
                                     <h4 className="text-[10px] font-bold text-slate-500 uppercase mt-4 border-t border-slate-700 pt-2">Medical Sounds</h4>
                                     <div className="grid grid-cols-4 gap-2">
                                         <Button onClick={() => playSound('Wheeze')} variant="outline" className="h-8 text-[10px]">Wheeze</Button>
@@ -633,7 +625,6 @@
                                                     return (
                                                         <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden`}>
                                                             <span className="text-xs font-bold leading-tight">{action.label}</span>
-                                                            {/* REMOVE BUTTON for Drugs */}
                                                             {isActive && action.type === 'continuous' && <div className="absolute top-1 right-1 text-red-400 bg-slate-900 rounded-full p-0.5"><Lucide icon="x" className="w-3 h-3"/></div>}
                                                             {count > 0 && <span className="absolute bottom-1 right-1 bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}
                                                         </button>
@@ -654,7 +645,6 @@
                                             <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden`}>
                                                 <span className="text-xs font-bold leading-tight">{action.label}</span>
                                                 <div className="flex justify-between items-end w-full"><span className="text-[10px] opacity-70 italic truncate">{action.category}</span>{count > 0 && action.type !== 'continuous' && <span className="bg-white text-black text-[9px] font-bold px-1.5 rounded-full">x{count}</span>}</div>
-                                                {/* REMOVE BUTTON INDICATOR */}
                                                 {isActive && action.type === 'continuous' && (
                                                     <div className="absolute top-1 right-1 text-red-500 bg-black/50 rounded-full w-5 h-5 flex items-center justify-center border border-red-500 hover:bg-red-500 hover:text-white transition-colors" title="Remove">
                                                         <Lucide icon="x" className="w-3 h-3" />
@@ -674,31 +664,26 @@
                         </div>
                     </div>
                 </div>
+
+                {/* --- MODAL VITAL CONTROL (Preserved) --- */}
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
                             <div className="space-y-4">
-                                {/* SMART INCREMENT BUTTONS */}
                                 <div className="flex gap-2 justify-center mb-4">
                                     {(() => {
-                                        // Determine sensible steps based on vital type
                                         let steps = [-20, -10, 10, 20];
                                         if (['temp', 'bm', 'etco2', 'pH', 'K', 'Lac'].includes(modalVital)) steps = [-1, -0.5, 0.5, 1];
                                         if (['gcs', 'rr', 'pupils'].includes(modalVital)) steps = [-2, -1, 1, 2];
                                         if (modalVital === 'spO2') steps = [-5, -2, 2, 5];
-
                                         return steps.map(step => (
-                                            <Button key={step} onClick={()=>quickAdjust(step)} variant="secondary" className="w-12 text-sm font-bold">
-                                                {step > 0 ? `+${step}` : step}
-                                            </Button>
+                                            <Button key={step} onClick={()=>quickAdjust(step)} variant="secondary" className="w-12 text-sm font-bold">{step > 0 ? `+${step}` : step}</Button>
                                         ));
                                     })()}
                                 </div>
-                                
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Target Value</label><input type={modalVital === 'pupils' ? "text" : "number"} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
-                                
                                 <div className="grid grid-cols-4 gap-1 mt-2">
                                     <button onClick={()=>setTrendDuration(0)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===0 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>Instant</button>
                                     <button onClick={()=>setTrendDuration(30)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===30 ? 'bg-sky-600 text-white border-sky-400' : 'bg-slate-700 text-slate-400 border-slate-600'}`}>30s</button>
