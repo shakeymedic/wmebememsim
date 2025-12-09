@@ -236,7 +236,7 @@ window.processScenarios = () => {
 
         // 2. Dynamic ECG
         if (s.ecg) {
-            let newECG = s.ecg.findings;
+            let newECG = s.ecg ? s.ecg.findings : "Normal";
             let newType = s.ecg.type;
             if (s.ecg.type === "STEMI") {
                 newECG = "ST segments resolving. Q waves developing.";
