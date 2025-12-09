@@ -651,7 +651,19 @@ button, .menu-option, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-bt
     }
     #cprPanel.active { bottom: 0 !important; }
 }
-    </style>
+    
+    /* 12-LEAD OVERLAY */
+#paperOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+#paperOverlay.hidden { display: none; }
+#paperImage { max-width: 100%; max-height: 80%; border: 5px solid white; box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+
+/* GHOST MODE BUTTON FEEDBACK */
+.side-btn.active-ghost, .btn-analyze.active-ghost, .btn-charge.active-ghost, .btn-sync.active-ghost, .btn-shock.active-ghost {
+    background-color: #3498db !important;
+    border-color: #2980b9 !important;
+    transform: scale(0.95);
+    box-shadow: 0 0 15px rgba(52, 152, 219, 0.8);
+}</style>
 </head>
 <body>
     <div class="main-header" style="display: flex; justify-content: space-between; align-items: center; max-width: 1600px; margin: 0 auto 20px auto; padding: 10px 20px; background: linear-gradient(135deg,#2c3e50 0%,#34495e 100%); border-radius: 10px; border: 3px solid #1a252f;">
@@ -1157,1571 +1169,75 @@ button, .menu-option, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-bt
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-
-        const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-
-        // --- FIX: VISIBILITY FOR DROPDOWN ---
-        const toggleBtn = document.getElementById('toggleSecondaryBtn');
-        const secondaryMenu = document.getElementById('secondaryRhythms');
-
-        if(toggleBtn && secondaryMenu) {
-            toggleBtn.addEventListener('click', function() {
-                secondaryMenu.classList.toggle('open');
-                this.textContent = secondaryMenu.classList.contains('open') 
-                    ? "▲ Hide Rhythms" 
-                    : "▼ Show More Rhythms";
-            });
-        }
-        // ------------------------------------
-
-        // --- HYBRID BRIDGE CODE (Moved inside DOMContentLoaded) ---
-        window.isRemoteControlled = false; // Default to Standalone Mode
-
+        // --- BRIDGE & TELEMETRY ---
+        window.isRemoteControlled = false;
         const simChannel = new BroadcastChannel('sim_channel');
 
         simChannel.onmessage = (event) => {
-            if (event.data.type === 'SYNC_VITALS') {
-                window.isRemoteControlled = true;
-                
-                // Map Controller Rhythm Names -> Defib Rhythm IDs
-                const map = { 
-                    'Sinus Rhythm': 'nsr', 
-                    'Sinus Tachycardia': 'sinus_tach',
-                    'VF': 'vfib', 
-                    'VT': 'vt_pulseless', 
-                    'pVT': 'vt_pulseless', 
-                    'Asystole': 'asystole', 
-                    'PEA': 'pea', 
-                    'AF': 'afib',
-                    '3rd Deg Block': 'chb', 
-                    'Sinus Bradycardia': 'sinus_brady'
-                };
-                
-                const targetRhythm = map[event.data.payload.rhythm] || 'nsr';
-                
-                // Update Defib Rhythm only if it changed
-                if(state.rhythm !== targetRhythm) {
-                     setVitals(targetRhythm);
-                     state.originalRhythm = targetRhythm; 
-                }
-                
-                // Force update numeric vitals
-                state.hr = event.data.payload.hr;
-                state.spo2 = event.data.payload.spO2;
-                state.etco2 = event.data.payload.etco2;
-                state.bpSys = event.data.payload.bpSys;
-                state.bpDia = event.data.payload.bpDia;
-                
-                updateDisplays();
-            }
-        };
-
-        // Immediately ask the Controller for the current rhythm on load
-        simChannel.postMessage({ type: 'REQUEST_SYNC' });
-
-        // Listen for iframe messages too
-        window.addEventListener('message', (event) => {
             const data = event.data;
-            if(data.type === 'SYNC_VITALS') {
-                window.isRemoteControlled = true; 
-                const map = { 
-                    'Sinus Rhythm': 'nsr', 
-                    'Sinus Tachycardia': 'sinus_tach',
-                    'VF': 'vfib', 'VT': 'vt_pulseless', 'pVT': 'vt_pulseless', 
-                    'Asystole': 'asystole', 'PEA': 'pea', 'AF': 'afib',
-                    '3rd Deg Block': 'chb', 'Sinus Bradycardia': 'sinus_brady'
-                };
-                const targetRhythm = map[data.payload.rhythm] || 'nsr';
-                if(state.rhythm !== targetRhythm) {
-                     setVitals(targetRhythm);
-                     state.originalRhythm = targetRhythm; 
+            if (data.type === 'SYNC_VITALS') {
+                window.isRemoteControlled = true;
+                if(state.rhythm !== data.payload.rhythm) {
+                     setVitals(data.payload.rhythm);
+                     state.originalRhythm = data.payload.rhythm; 
                 }
                 state.hr = data.payload.hr;
                 state.spo2 = data.payload.spO2;
                 state.etco2 = data.payload.etco2;
                 state.bpSys = data.payload.bpSys;
                 state.bpDia = data.payload.bpDia;
+                
+                // NEW: Waveform Control
+                if(data.payload.gain !== undefined) window.waveformGain = data.payload.gain;
+                if(data.payload.interference !== undefined) window.interferenceActive = data.payload.interference;
+                
                 updateDisplays();
-            }
-        });
-        // -----------------------------------------------------------
-
-        const scenarios = {
-            'vf-arrest': {
-                name: 'Ventricular Fibrillation',
-                description: 'Patient in cardiac arrest. Monitor shows coarse VF. No pulse, not breathing. Requires immediate defibrillation.',
-                category: 'defibrillation',
-                initialRhythm: 'vfib',
-                initialVitals: { hr: 0, spo2: 0, etco2: 0, bpSys: 0, bpDia: 0 },
-                hasPulse: false,
-                shockable: true,
-                recommendedEnergy: 150,
-                successEnergy: 150,
-                successRhythm: 'nsr',
-                successVitals: { hr: 82, spo2: 94, etco2: 4.7, bpSys: 110, bpDia: 70 },
-                requiresSync: false,
-                shockToConvert: 3
-            },
-            'pulseless-vt': {
-                name: 'Pulseless Ventricular Tachycardia',
-                description: 'Patient in cardiac arrest. Monitor shows broad complex tachycardia. CONFIRM NO PULSE - this is a shockable arrest.',
-                category: 'defibrillation',
-                initialRhythm: 'vt_pulseless',
-                initialVitals: { hr: 0, spo2: 0, etco2: 0, bpSys: 0, bpDia: 0 },
-                hasPulse: false,
-                shockable: true,
-                recommendedEnergy: 150,
-                successEnergy: 150,
-                successRhythm: 'nsr',
-                successVitals: { hr: 78, spo2: 93, etco2: 4.5, bpSys: 108, bpDia: 68 },
-                requiresSync: false,
-                shockToConvert: 3
-            },
-            'unstable-vt': {
-                name: 'VT with Pulse - Unstable',
-                description: 'Patient conscious but severely unwell. Broad complex tachycardia at 180/min. Pulse present. BP 82/48. Requires SYNCHRONISED cardioversion.',
-                category: 'cardioversion',
-                initialRhythm: 'vtach',
-                initialVitals: { hr: 180, spo2: 88, etco2: 3.7, bpSys: 82, bpDia: 48 },
-                hasPulse: true,
-                shockable: true,
-                recommendedEnergy: 120,
-                successEnergy: 120,
-                successRhythm: 'nsr',
-                successVitals: { hr: 76, spo2: 97, etco2: 4.8, bpSys: 118, bpDia: 74 },
-                requiresSync: true,
-                shockToConvert: 1
-            },
-            'unstable-svt': {
-                name: 'SVT with Adverse Features',
-                description: 'Patient with palpitations and chest pain. Narrow complex tachycardia at 190/min. BP 80/54. Requires SYNCHRONISED cardioversion.',
-                category: 'cardioversion',
-                initialRhythm: 'svt',
-                initialVitals: { hr: 190, spo2: 90, etco2: 3.5, bpSys: 80, bpDia: 54 },
-                hasPulse: true,
-                shockable: true,
-                recommendedEnergy: 100,
-                successEnergy: 100,
-                successRhythm: 'nsr',
-                successVitals: { hr: 74, spo2: 98, etco2: 4.8, bpSys: 120, bpDia: 76 },
-                requiresSync: true,
-                shockToConvert: 1
-            },
-            'fast-af': {
-                name: 'Fast AF with Adverse Features',
-                description: 'Patient with fast irregular rhythm. Atrial fibrillation at 155/min. BP 82/48, pulmonary oedema developing. Requires SYNCHRONISED cardioversion.',
-                category: 'cardioversion',
-                initialRhythm: 'afib',
-                initialVitals: { hr: 155, spo2: 88, etco2: 4.0, bpSys: 82, bpDia: 48 },
-                hasPulse: true,
-                shockable: true,
-                recommendedEnergy: 120,
-                successEnergy: 120,
-                successRhythm: 'nsr',
-                successVitals: { hr: 80, spo2: 96, etco2: 4.7, bpSys: 118, bpDia: 72 },
-                requiresSync: true,
-                shockToConvert: 1
-            },
-            'complete-hb': {
-                name: 'Complete Heart Block',
-                description: 'Patient syncopal and hypotensive. Complete dissociation between P waves and QRS. HR 32/min. BP 86/50. Requires transcutaneous pacing.',
-                category: 'pacing',
-                initialRhythm: 'chb',
-                initialVitals: { hr: 32, spo2: 92, etco2: 4.0, bpSys: 86, bpDia: 50 },
-                hasPulse: true,
-                shockable: false,
-                captureThreshold: 60,
-                successRate: 70,
-                successVitals: { hr: 70, spo2: 97, etco2: 4.8, bpSys: 115, bpDia: 72 },
-                requiresPacing: true
-            },
-            'symptomatic-brady': {
-                name: 'Symptomatic Bradycardia',
-                description: 'Patient unwell with dizziness and hypotension. Bradycardia at 38/min. BP 84/52. Failed atropine. Requires pacing.',
-                category: 'pacing',
-                initialRhythm: 'brady',
-                initialVitals: { hr: 38, spo2: 93, etco2: 4.1, bpSys: 84, bpDia: 52 },
-                hasPulse: true,
-                shockable: false,
-                captureThreshold: 60,
-                successRate: 70,
-                successVitals: { hr: 70, spo2: 97, etco2: 4.7, bpSys: 112, bpDia: 70 },
-                requiresPacing: true
+            } else if (data.type === 'SHOW_12LEAD') {
+                const overlay = document.getElementById('paperOverlay');
+                const img = document.getElementById('paperImage');
+                if(overlay && img && data.payload) {
+                    img.src = data.payload; 
+                    overlay.classList.remove('hidden');
+                }
+            } else if (data.type === 'GHOST_PRESS') {
+                handleGhostPress(data.payload); 
             }
         };
+        simChannel.postMessage({ type: 'REQUEST_SYNC' });
 
-        const APP_STATES = {
-            IDLE: 'IDLE',           // Off or Monitor Mode
-            ANALYSING: 'ANALYSING', // Hands off
-            CHARGING: 'CHARGING',   // Building energy
-            READY: 'READY',         // Shock button active
-            PACING: 'PACING'        // Pacer active
-        };
+        function broadcast(type, payload) {
+            simChannel.postMessage({ type, payload });
+        }
 
+        // --- GHOST MODE ---
+        function handleGhostPress(elementId) {
+            const el = document.getElementById(elementId);
+            if(el) {
+                // Visual feedback
+                el.classList.add('active-ghost'); 
+                setTimeout(() => el.classList.remove('active-ghost'), 200);
+                el.click(); // Trigger actual logic
+            }
+        }
+
+        // --- STATE & UTILS ---
+        const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
         const state = {
-            machineState: APP_STATES.IDLE, 
-            selectedMode: null,
-            selectedScenario: null,
-            scenarioActive: false,
-            scenarioStartTime: null,
-            deviceMode: 'off', 
-            rhythm: 'nsr',
-            hr: 75,
-            spo2: 98,
-            etco2: 5.1,
-            bpSys: 120,
-            bpDia: 80,
-            energy: 120,
-            energyLevels: [50, 70, 85, 100, 120, 150, 170, 200],
-            charged: false,
-            syncMode: false,
-            shockCount: 0,
-            pacerOutput: 0,
-            pacerRate: 60,
-            pacingActive: false,
-            isCaptured: false,
-            originalRhythm: null,
-            lastCardiacEvent: -1000, 
-            actions: [],
-            hasPulse: true,
-            roscAchieved: false,
-            noise: {
-                movement: false,
-                cpr: false,
-                leadoff: false
-            },
-            lastSensedQRS_X: -1000,
-            firedSpikes: [], 
-            pacerStartTime: 0, 
-            syncMarkers: [], 
-            customScenario: [],
-            customScenarioActive: false,
-            currentScenarioStep: 0,
+            deviceMode: 'off', rhythm: 'nsr', hr: 75, spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80,
+            energy: 120, energyLevels: [50, 70, 85, 100, 120, 150, 170, 200], charged: false, syncMode: false, shockCount: 0,
+            pacerOutput: 0, pacerRate: 60, pacingActive: false, isCaptured: false, originalRhythm: null,
+            chargeTimer: null, noise: {}
         };
-        window.state = state; 
+        window.state = state;
 
-        // --- HELPER: Global Timer Cleanup ---
-        function clearAllTimers() {
-            // Clear Animation Loops
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-                animationId = null;
-            }
-            // Clear Intervals
-            if (typeof cycleInterval !== 'undefined' && cycleInterval) clearInterval(cycleInterval);
-            if (typeof metronomeInterval !== 'undefined' && metronomeInterval) clearInterval(metronomeInterval);
-            if (typeof window.arrestTimerInterval !== 'undefined' && window.arrestTimerInterval) clearInterval(window.arrestTimerInterval);
-            if (state.chargeTimer) clearTimeout(state.chargeTimer);
-            
-            // Reset Interval Variables to null so checks fail safely
-            cycleInterval = null;
-            metronomeInterval = null;
-            window.arrestTimerInterval = null;
-            state.chargeTimer = null;
-
-            // Reset Audio Visuals
-            const metronomeBtn = document.getElementById('metronomeBtn');
-            if(metronomeBtn) metronomeBtn.style.background = "#2c3e50";
-        }
-        
-        // --- STATE MACHINE LOGIC ---
-        function transitionTo(newState) {
-            console.log(`State Transition: ${state.machineState} -> ${newState}`);
-            
-            // Exit Logic (Clean up old state)
-            if (state.machineState === APP_STATES.READY) {
-                document.getElementById('shockBtn').disabled = true;
-                state.charged = false;
-            }
-
-            state.machineState = newState;
-
-            // Entry Logic (Setup new state)
-            if (newState === APP_STATES.READY) {
-                document.getElementById('shockBtn').disabled = false;
-                playSound('charged');
-                setMessage(`${state.energy}J READY - ${state.syncMode ? 'SYNC' : 'UNSYNC'}`, 'alert');
-            }
-            
-            if (newState === APP_STATES.IDLE) {
-                setMessage('SIMULATOR READY', 'ready');
-                state.charged = false;
-                document.getElementById('shockBtn').disabled = true;
-            }
-        }
-
-        let canvas, ctx, animationId; 
-        let lastTimestamp = 0;
-        const ecgSpeed = 125; 
-
-        const menuWrapper = document.getElementById('menuWrapper');
-        const scenarioScreen = document.getElementById('scenarioScreen');
-        const summaryScreen = document.getElementById('summaryScreen');
-        const certificateScreen = document.getElementById('certificateScreen');
-        const scenarioCreatorScreen = document.getElementById('scenarioCreatorScreen'); 
-        const simulatorContainer = document.getElementById('simulatorContainer');
-        const instructorPanel = document.getElementById('instructorPanel');
-        const endScenarioBtn = document.getElementById('endScenarioBtn');
-        const resetScenarioBtn = document.getElementById('resetScenarioBtn');
-        const zollDevice = document.getElementById('zollDevice');
-
-        const modalOverlay = document.getElementById('modalOverlay');
-        const modalTitle = document.getElementById('modalTitle');
-        const modalBody = document.getElementById('modalBody');
-        const closeModalBtn = document.getElementById('closeModalBtn');
-        const hintButtons = document.querySelectorAll('.hint-btn');
-        
-        const guidelineData = {
-            'shockable': {
-                title: 'Shockable Arrest (VF / pVT)',
-                content: `
-                    <ul>
-                        <li><strong>1.</strong> Confirm arrest. Start CPR (30:2) and attach pads.</li>
-                        <li><strong>2.</strong> Analyse rhythm. If shockable (VF/pVT), continue CPR.</li>
-                        <li><strong>3.</strong> Charge and deliver <strong>1 Shock</strong> (e.g., 150J biphasic).</li>
-                        <li><strong>4.</strong> Immediately resume <strong>2 minutes</strong> of CPR. Do not check rhythm.</li>
-                        <li><strong>5.</strong> Repeat cycle (Analyse, Shock, 2 min CPR).</li>
-                        <li><strong>6.</strong> Give <strong>Amiodarone 300mg</strong> after the 3rd shock.</li>
-                    </ul>
-                `
-            },
-            'nonshockable': {
-                title: 'Non-Shockable Arrest (Asystole / PEA)',
-                content: `
-                    <ul>
-                        <li><strong>1.</strong> Confirm arrest. Start CPR (30:2) and attach pads.</li>
-                        <li><strong>2.</strong> Analyse rhythm. If non-shockable (Asystole/PEA), do <strong>NOT</strong> shock.</li>
-                        <li><strong>3.</strong> Immediately resume <strong>2 minutes</strong> of CPR.</li>
-                        <li><strong>4.</strong> Give <strong>Adrenaline 1mg IV/IO</strong> as soon as possible.</li>
-                        <li><strong>5.</strong> Repeat cycle (Analyse, 2 min CPR).</li>
-                        <li><strong>6.</strong> Repeat Adrenaline 1mg every 3-5 minutes (every 2 cycles).</li>
-                        <li><strong>7.</strong> Search for and treat reversible causes (4 H's, 4 T's).</li>
-                    </ul>
-                `
-            },
-            'tachy': {
-                title: 'Tachycardia Algorithm (Pulse)',
-                content: `
-                    <ul>
-                        <li><strong>1.</strong> Assess patient. Check for <strong>Adverse Features</strong>:
-                            <br>(Shock, Syncope, Myocardial Ischaemia, Heart Failure)</li>
-                        <li><strong>2. IF UNSTABLE (Adverse Features):</strong>
-                            <br>• <strong>Synchronised DC Shock</strong> (Cardioversion).
-                            <br>• Start at 100-120J (SVT/AF) or 120-150J (VT).</li>
-                        <li><strong>3. IF STABLE:</strong>
-                            <br>• <strong>Narrow QRS:</strong> Vagal manoeuvres, then Adenosine.
-                            <br>• <strong>Broad QRS:</strong> Treat as VT. Amiodarone 300mg.</li>
-                    </ul>
-                `
-            },
-            'brady': {
-                title: 'Bradycardia Algorithm (Pulse)',
-                content: `
-                    <ul>
-                        <li><strong>1.</strong> Assess patient. Check for <strong>Adverse Features</strong>:
-                            <br>(Shock, Syncope, Myocardial Ischaemia, Heart Failure)</li>
-                        <li><strong>2. IF UNSTABLE (Adverse Features):</strong>
-                            <br>• Give <strong>Atropine 500mcg IV</strong> (repeat up to 3mg).</li>
-                        <li><strong>3. IF ATROPINE FAILS (or high-risk block):</strong>
-                            <br>• Start <strong>Transcutaneous Pacing (TCP)</strong>.
-                            <br>• Set rate to 60-70/min, increase output (mA) until capture.
-                            <br>• Consider interim drugs (e.g., Adrenaline/Dopamine infusion).</li>
-                        <li><strong>4. IF STABLE:</strong> Monitor and investigate.</li>
-                    </ul>
-                `
-            }
-        };
-
-        function resizeCanvas() {
-            if (!canvas || !ctx) return;
-            
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.getBoundingClientRect();
-            
-            const newWidth = Math.round(rect.width * dpr);
-            const newHeight = Math.round(rect.height * dpr);
-
-            if (canvas.width !== newWidth || canvas.height !== newHeight) {
-                canvas.width = newWidth;
-                canvas.height = newHeight;
-                ctx.scale(dpr, dpr);
-
-                ctx.lineJoin = 'round';
-                ctx.lineCap = 'round';
-                ctx.imageSmoothingEnabled = false;
-            }
-            canvas.style.width = '100%';
-            canvas.style.height = '100%';
-        }
-
-        function initCanvas() {
-            canvas = document.getElementById('ecgCanvas');
-            if (!canvas) {
-                console.error('Canvas element not found!');
-                return;
-            }
-            window.__ecgCanvas = canvas;
-            ctx = canvas.getContext('2d');
-            resizeCanvas(); 
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-                animationId = null;
-            }
-            lastTimestamp = 0;
-            window.waveformX = 0; // Use global
-        }
-
-        const rhythmVitals = {
-            nsr:             { hr: 75,  spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80, hasPulse: true },
-            pea:             { hr: 70,  spo2: 0,  etco2: 2.5, bpSys: 0,   bpDia: 0,  hasPulse: false }, 
-            vfib:            { hr: 0,   spo2: 0,  etco2: 0,   bpSys: 0,   bpDia: 0,  hasPulse: false },
-            vtach:           { hr: 180, spo2: 88, etco2: 3.7, bpSys: 82,  bpDia: 48, hasPulse: true },
-            vt_pulseless:    { hr: 0,   spo2: 0,  etco2: 0,   bpSys: 0,   bpDia: 0,  hasPulse: false },
-            svt:             { hr: 190, spo2: 90, etco2: 3.5, bpSys: 80,  bpDia: 54, hasPulse: true },
-            afib:            { hr: 155, spo2: 88, etco2: 4.0, bpSys: 82,  bpDia: 48, hasPulse: true },
-            sinus_brady:     { hr: 45,  spo2: 96, etco2: 4.7, bpSys: 90,  bpDia: 50, hasPulse: true },
-            sinus_tach:      { hr: 120, spo2: 97, etco2: 4.8, bpSys: 110, bpDia: 70, hasPulse: true },
-            asystole:        { hr: 0,   spo2: 0,  etco2: 0,   bpSys: 0,   bpDia: 0,  hasPulse: false },
-            chb:             { hr: 32,  spo2: 92, etco2: 4.0, bpSys: 86,  bpDia: 50, hasPulse: true },
-            paced:           { hr: 70,  spo2: 97, etco2: 4.8, bpSys: 115, bpDia: 72, hasPulse: true },
-            idioventricular: { hr: 40,  spo2: 93, etco2: 4.3, bpSys: 88,  bpDia: 50, hasPulse: true },
-            brady:           { hr: 38,  spo2: 93, etco2: 4.1, bpSys: 84,  bpDia: 52, hasPulse: true }
-        };
-        const treatmentGuides = {
-        vf: "<h3>Shockable Arrest (VF/pVT)</h3><ul><li><b>CPR:</b> 30:2 immediately.</li><li><b>Shock:</b> >120J Biphasic (150J recommended).</li><li><b>Drugs:</b> Adrenaline 1mg every 3-5min. Amiodarone 300mg after 3 shocks.</li></ul>",
-        nonshock: "<h3>Non-Shockable (PEA/Asystole)</h3><ul><li><b>CPR:</b> 30:2 immediately.</li><li><b>Shock:</b> DO NOT SHOCK.</li><li><b>Drugs:</b> Adrenaline 1mg immediately. Treat reversible causes (4Hs 4Ts).</li></ul>",
-        tachy: "<h3>Tachycardia Algorithm</h3><ul><li><b>Unstable:</b> Synchronised Cardioversion (up to 3 attempts). Sedation/GA if conscious.</li><li><b>Stable:</b> Vagal manoeuvres -> Adenosine (SVT) or Amiodarone (VT).</li></ul>",
-        brady: "<h3>Bradycardia Algorithm</h3><ul><li><b>Drugs:</b> Atropine 500mcg IV (Max 3mg).</li><li><b>Pacing:</b> Indicated for Mobitz II, CHB, or Pause >3s. Set rate 60-90. Increase mA until capture.</li></ul>"
-    };
-        // Map PEA to Sinus visual
-        window.rhythms.pea = window.rhythms.nsr;
-
-        function setVitals(rhythm) {
-            const vitals = rhythmVitals[rhythm] || rhythmVitals['nsr'];
-            state.rhythm = rhythm;
-            state.hr = vitals.hr;
-            state.spo2 = vitals.spo2;
-            state.etco2 = vitals.etco2;
-            state.bpSys = vitals.bpSys;
-            state.bpDia = vitals.bpDia;
-            state.hasPulse = vitals.hasPulse;
-            state.lastSensedQRS_X = -1000;
-        }
-
-        function animate(timestamp) {
-            if (!canvas || !ctx) { requestAnimationFrame(animate); return; }
-            
-            if (lastTimestamp === 0) lastTimestamp = timestamp;
-            const deltaTime = (timestamp - lastTimestamp) / 1000;
-            lastTimestamp = timestamp;
-
-            const dpr = window.devicePixelRatio || 1;
-            const logicalW = canvas.width / dpr;
-            const logicalH = canvas.height / dpr;
-
-            // 1. Draw Grid
-            if (window.drawECGGrid) {
-                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                window.drawECGGrid(ctx, logicalW, logicalH);
-            } else {
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, logicalW, logicalH);
-            }
-
-            // 2. Draw Trace
-            const simTime = state.scenarioStartTime ? (Date.now() - state.scenarioStartTime)/1000 : 0;
-            const baselineY = logicalH / 2;
-            
-            ctx.strokeStyle = '#39ff14'; 
-            ctx.lineWidth = 2.5;
-            ctx.lineJoin = 'round';
-            ctx.lineCap = 'round';
-            ctx.shadowBlur = 10;          
-            ctx.shadowColor = 'rgba(57, 255, 20, 0.8)'; 
-            
-            ctx.beginPath();
-
-            const rhythmFn = window.rhythms && window.rhythms[state.rhythm];
-            
-            if (rhythmFn) {
-                if (typeof window.waveformX === 'undefined') window.waveformX = 0;
-
-                const step = 0.5;
-                const startGlobalX = Math.floor(window.waveformX / step) * step;
-                const endGlobalX = window.waveformX + logicalW;
-                
-                let firstPoint = true;
-                
-                // --- PASS 1: DRAW GREEN TRACE ---
-                for (let gx = startGlobalX; gx <= endGlobalX + step; gx += step) {
-                    const screenX = gx - window.waveformX;
-                    let yVal = rhythmFn(gx, state.hr, simTime, {height: logicalH});
-                    
-                    if (!isFinite(yVal)) yVal = baselineY;
-                    
-                    if (firstPoint) {
-                        ctx.moveTo(screenX, yVal);
-                        firstPoint = false;
-                    } else {
-                        ctx.lineTo(screenX, yVal);
-                    }
-                }
-                ctx.stroke(); 
-
-                // --- PASS 2: OVERLAYS (Pacer & Sync) ---
-                for (let gx = startGlobalX; gx <= endGlobalX + step; gx += step) {
-                    const screenX = gx - window.waveformX;
-                    
-                    // 1. Pacer Spikes (Pink Line)
-                    if (state.pacingActive) {
-                        const pacerCycle = (60 / state.pacerRate) * window.ecgSpeed;
-                        const pacerPhase = (gx % pacerCycle) / pacerCycle;
-                        
-                        if (pacerPhase < (step/pacerCycle)) {
-                            ctx.save();
-                            ctx.strokeStyle = '#ff00ff'; 
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            ctx.moveTo(screenX, baselineY - 60); 
-                            ctx.lineTo(screenX, baselineY + 60);
-                            ctx.stroke();
-                            ctx.restore();
-                        }
-                    }
-
-                    // 2. Sync Markers (White Bar at Top of Screen)
-                    if (state.syncMode && state.hasPulse && state.rhythm !== 'vfib' && state.rhythm !== 'asystole') {
-                        let peakT = 0.25; 
-                        
-                        // FIX: Use the EXACT BPMs defined in the rhythm generator functions to prevent drift
-                        let syncBPM = state.hr || 75; 
-
-                        if (state.rhythm === 'svt') { 
-                            peakT = 0.15; 
-                            syncBPM = 180; // Matches svt() function
-                        } else if (state.rhythm === 'vtach') {
-                            syncBPM = 160; // Matches vtach() function
-                        } else if (state.rhythm === 'afib') {
-                            peakT = 0.25;
-                            syncBPM = 140; // Matches afib() function
-                        } else if (state.rhythm === 'paced') {
-                            peakT = 0.12;
-                            syncBPM = state.pacerRate; 
-                        }
-
-                        const cycle = (60 / syncBPM) * window.ecgSpeed;
-                        const t = (gx % cycle) / cycle;
-                        
-                        // Check if we are at the peak phase
-                        if (t >= peakT && (t - (step/cycle)) < peakT) {
-                            ctx.save();
-                            ctx.fillStyle = '#ffffff'; // Pure White
-                            ctx.shadowBlur = 5;
-                            ctx.shadowColor = 'white';
-                            
-                            // Draw Rect at TOP of screen (y=30), centered on X
-                            ctx.beginPath();
-                            ctx.fillRect(screenX - 3, 30, 6, 20); 
-                            ctx.restore();
-                        }
-                    }
-                }
-            }
-            
-            // 3. Move Paper
-            const speed = window.ecgSpeed || 125;
-            const logicalMove = speed * deltaTime;
-            
-            if (typeof window.waveformX !== 'undefined') {
-                window.waveformX += logicalMove;
-            }
-
-            animationId = requestAnimationFrame(animate);
-        }
-
-        function updateDisplays() {
-            if (state.deviceMode === 'off') return; 
-
-            const scenario = scenarios[state.selectedScenario];
-            let displayHR = state.hr;
-            
-            if (state.isCaptured) {
-                displayHR = state.pacerRate; 
-            } else if (state.customScenarioActive) { 
-                 displayHR = state.hr; 
-            } else if (scenario && state.scenarioActive && !scenario.hasPulse && !state.roscAchieved) {
-                displayHR = 0; 
-            } else if (!state.hasPulse && !state.roscAchieved) {
-                displayHR = 0; 
-            } else {
-                displayHR = state.hr; 
-            }
-            
-            document.getElementById('hrDisplay').textContent = displayHR;
-            document.getElementById('spo2Display').textContent = state.spo2;
-
-            // --- ETCO2 LOGIC UPDATE ---
-            let displayEtco2 = state.etco2;
-            // If CPR is active and no ROSC, simulate perfusion boost (2.8 - 3.0 range)
-            if (state.cprActive && !state.roscAchieved && displayEtco2 < 2.5) {
-                displayEtco2 = 2.8 + (Math.random() * 0.2);
-            }
-            document.getElementById('etco2Display').textContent = displayEtco2.toFixed(1);
-            // --------------------------
-
-            document.getElementById('bpDisplay').textContent = `${state.bpSys}/${state.bpDia}`;
-            document.getElementById('energyDisplay').textContent = state.energy;
-            document.getElementById('outputDisplay').textContent = state.pacerOutput;
-            document.getElementById('rateDisplay').textContent = state.pacerRate;
-            document.getElementById('modeInfo').textContent = `MODE: ${state.deviceMode.toUpperCase()}`;
-            
-            document.getElementById('syncIndicator').textContent = state.syncMode ? 'SYNC' : '';
-            document.getElementById('syncIndicator').className = state.syncMode ? 'screen-info sync-indicator' : 'screen-info';
-            
-            const hrEl = document.getElementById('hrDisplay');
-            hrEl.className = 'vital-value';
-            if (displayHR === 0 || (state.hasPulse === false && !state.roscAchieved)) {
-                hrEl.classList.add('critical');
-            }
-            
-            const spo2El = document.getElementById('spo2Display');
-            spo2El.className = 'vital-value';
-            if (state.spo2 === 0) {
-                spo2El.classList.add('critical');
-            }
-            
-            if (document.getElementById('shockCounter')) {
-                document.getElementById('shockCounter').textContent = state.shockCount;
-            }
-            if (document.getElementById('syncStatus')) {
-                document.getElementById('syncStatus').textContent = state.syncMode ? 'ON' : 'OFF';
-            }
-            if (document.getElementById('pacingStatus')) {
-                document.getElementById('pacingStatus').textContent = state.pacingActive ? 'ACTIVE' : 'OFF';
-
-            }
-        }
-
-        function setMessage(text, type = 'ready') {
-            if (state.deviceMode === 'off') return;
-            const msgEl = document.getElementById('messageBar');
-            if (!msgEl) return;
-            msgEl.textContent = text;
-            msgEl.className = 'message-bar ' + type;
-        }
-
-        function logAction(action, details = '') {
-            const timestamp = state.scenarioStartTime ? 
-                Math.floor((Date.now() - state.scenarioStartTime) / 1000) : 0;
-            state.actions.push({
-                time: timestamp,
-                action: action,
-                details: details
-            });
-            console.log(`[${timestamp}s] ${action}${details ? ': ' + details : ''}`);
-
-            // Update Visual Log in CPR Panel
-            const cprLog = document.getElementById('cprLog');
-            if (cprLog) {
-                const timeStr = document.getElementById('cprTimerDisplay').textContent || "00:00";
-                const entry = document.createElement('div');
-                entry.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
-                entry.style.padding = '2px 0';
-                entry.innerHTML = `<span style="color:#f1c40f; font-weight:bold;">[${timeStr}]</span> ${action} <span style="opacity:0.7">${details}</span>`;
-                // Insert at the beginning so it stays at the top (due to flex-direction: column-reverse)
-                cprLog.prepend(entry); 
-            }
-        }
-
-        function backToModeSelect() {
-            scenarioScreen.classList.add('hidden');
-            menuWrapper.classList.add('hidden'); 
-            state.selectedMode = null;
-            
-            endScenarioBtn.classList.add('hidden');
-            resetScenarioBtn.classList.add('hidden');
-        }
-
-function selectScenario(scenarioId) {
-    clearAllTimers();
-            const scenario = scenarios[scenarioId];
-            if (!scenario) return;
-            
-            state.selectedScenario = scenarioId;
-            state.actions = [];
-            state.shockCount = 0;
-            state.syncMode = false;
-            state.pacingActive = false;
-            state.charged = false;
-            state.roscAchieved = false;
-            state.customScenarioActive = false; 
-            
-            // --- NEW: RANDOMISE CAPTURE THRESHOLD ---
-            // Adds variance (+/- 15mA) to the scenario default so students must "hunt"
-            if (scenario.captureThreshold) {
-                const variance = Math.floor(Math.random() * 30) - 15; 
-                scenario.currentThreshold = Math.max(30, scenario.captureThreshold + variance);
-                console.log("Sim Capture Threshold set to:", scenario.currentThreshold); // For debugging
-            }
-            // ----------------------------------------
-
-            setVitals(scenario.initialRhythm);
-            state.hr = scenario.initialVitals.hr;
-            state.spo2 = scenario.initialVitals.spo2;
-            state.etco2 = scenario.initialVitals.etco2;
-            state.bpSys = scenario.initialVitals.bpSys;
-            state.bpDia = scenario.initialVitals.bpDia;
-            state.hasPulse = scenario.hasPulse;
-            
-            scenarioScreen.classList.add('hidden');
-            menuWrapper.classList.add('hidden'); 
-            simulatorContainer.classList.remove('hidden');
-            
-            if (state.selectedMode === 'education') {
-                const btn = document.getElementById('minimiseBtn');
-                instructorPanel.classList.remove('hidden');
-                instructorPanel.classList.add('minimised');
-                if (btn) btn.textContent = '▼ Show';
-                document.getElementById('instructorSubtitle').textContent = scenario.name;
-            } else {
-                instructorPanel.classList.add('hidden');
-            }
-
-            setMode('monitor'); 
-
-            state.scenarioActive = false;
-            let countdown = 3;
-            setMessage(`SCENARIO STARTING IN ${countdown}...`, 'ready');
-
-            const countdownInterval = setInterval(() => {
-                countdown--;
-                if (countdown > 0) {
-                    setMessage(`SCENARIO STARTING IN ${countdown}...`, 'ready');
-                } else {
-                    clearInterval(countdownInterval);
-                    state.scenarioStartTime = Date.now();
-                    state.scenarioActive = true;
-
-                    let msg = scenario.description.toUpperCase();
-                    if (!scenario.hasPulse) {
-                        setMessage(msg, 'alert');
-                    } else {
-                        setMessage(msg, 'ready');
-                    }
-                    logAction('Scenario started', scenario.name);
-                }
-            }, 1000);
-        }
-
-        function endScenario() {
-            if (!state.scenarioActive) {
-                returnToMenu();
-                return;
-            }
-            
-            if (!window.confirm('End the current scenario?')) {
-                 return;
-            }
-            
-            state.scenarioActive = false;
-            logAction('Scenario ended');
-            
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-                animationId = null;
-            }
-            
-            if (state.selectedScenario) {
-                showSummary();
-            } else {
-                returnToMenu(); 
-            }
-        }
-
-        function resetScenario() {
-            if (state.customScenarioActive) {
-                if (!window.confirm('Reset this custom scenario?')) return;
-                startCustomScenario(); 
-            } else if (state.selectedScenario) {
-                if (!window.confirm('Reset this scenario?')) return;
-                selectScenario(state.selectedScenario);
-            }
-        }
-
-        function showSummary() {
-            const scenario = scenarios[state.selectedScenario];
-            if (!scenario) {
-                returnToMenu();
-                return;
-            }
-            
-            simulatorContainer.classList.add('hidden');
-            menuWrapper.classList.remove('hidden');
-            summaryScreen.classList.remove('hidden');
-            
-            document.getElementById('summaryScenarioName').textContent = scenario.name;
-            document.getElementById('summaryScenarioDesc').textContent = scenario.description;
-            
-            let actionsHTML = '';
-            if (state.actions.length > 0) {
-                actionsHTML = '<div style="display: grid; gap: 8px;">';
-                state.actions.forEach(action => {
-                    const timestamp = action.time ? `${Math.floor(action.time / 60)}:${String(action.time % 60).padStart(2, '0')}` : '0:00';
-                    actionsHTML += `<div style="padding: 10px; background: #34495e; border-radius: 5px;">
-                        <strong style="color: #3498db;">${timestamp}</strong> - ${action.action}${action.details ? ': ' + action.details : ''}
-                    </div>`;
-                });
-                actionsHTML += '</div>';
-            } else {
-                actionsHTML = '<div style="color: #e74c3c;">No actions recorded</div>';
-            }
-            document.getElementById('summaryActions').innerHTML = actionsHTML;
-            
-            const feedback = generateFeedback(scenario);
-            document.getElementById('summaryFeedback').innerHTML = feedback;
-            
-            const outcome = generateOutcome(scenario);
-            document.getElementById('summaryOutcome').innerHTML = outcome;
-        }
-
-        function generateFeedback(scenario) {
-            let html = '';
-            const goodPoints = [];
-            const improvementPoints = [];
-            
-            const modeChanges = state.actions.filter(a => a.action === 'Mode changed');
-            const shocks = state.actions.filter(a => a.action.includes('delivered'));
-            const syncActivated = state.actions.find(a => a.action === 'Sync mode activated');
-            const pacingActions = state.actions.filter(a => a.action.includes('Pacing'));
-            const pulseChecks = state.actions.filter(a => a.action === 'Pulse check performed');
-            
-            if (pulseChecks.length > 0) {
-                goodPoints.push(`✓ Pulse checked ${pulseChecks.length} time(s)`);
-                
-                if (pulseChecks[0].time <= 30) {
-                    goodPoints.push('✓ Early pulse assessment performed');
-                }
-            } else {
-                improvementPoints.push('⚠ No pulse check documented - critical for choosing correct intervention');
-            }
-            
-            if (scenario.category === 'defibrillation') {
-                const defibMode = modeChanges.find(m => m.details === 'DEFIB');
-                if (defibMode) {
-                    goodPoints.push('✓ Defibrillator mode selected correctly');
-                } else {
-                    improvementPoints.push('✗ Should switch to DEFIB mode for cardiac arrest');
-                }
-                
-                if (syncActivated) {
-                    improvementPoints.push('✗ Sync mode should NOT be used for cardiac arrest (no pulse)');
-                } else {
-                    goodPoints.push('✓ Correctly used unsynchronised shocks (no sync)');
-                }
-                
-                if (shocks.length > 0) {
-                    goodPoints.push(`✓ ${shocks.length} shock(s) delivered`);
-                    
-                    const firstShock = shocks[0];
-                    if (firstShock.details.includes(`${scenario.recommendedEnergy}J`) || 
-                        firstShock.details.includes('150J') || 
-                        firstShock.details.includes('200J')) {
-                        goodPoints.push('✓ Appropriate energy level selected');
-                    } else {
-                        improvementPoints.push(`⚠ Recommended energy: ${scenario.recommendedEnergy}J or higher`);
-                    }
-                    
-                    const timeToShock = firstShock.time;
-                    if (timeToShock <= 60) {
-                        goodPoints.push(`✓ Rapid defibrillation (${timeToShock}s) - excellent`);
-                    } else if (timeToShock <= 180) {
-                        goodPoints.push(`✓ Timely defibrillation (${timeToShock}s)`);
-                    } else {
-                        improvementPoints.push(`⚠ Delay to first shock: ${timeToShock}s (aim for <60s in witnessed arrest)`);
-                    }
-                } else {
-                    improvementPoints.push('✗ No shocks delivered - shockable rhythm requires defibrillation');
-                }
-                
-            } else if (scenario.category === 'cardioversion') {
-                if (syncActivated) {
-                    goodPoints.push('✓ Sync mode activated correctly');
-                } else {
-                    improvementPoints.push('✗ CRITICAL: Must use SYNC mode for cardioversion (patient has pulse)');
-                }
-                
-                const defibMode = modeChanges.find(m => m.details === 'DEFIB');
-                if (defibMode) {
-                    goodPoints.push('✓ Defibrillator mode selected');
-                }
-                
-                if (shocks.length > 0) {
-                    goodPoints.push('✓ Cardioversion attempted');
-                    
-                    const firstShock = shocks[0];
-                    const energyUsed = parseInt(firstShock.details.match(/(\d+)J/)?.[1] || '0');
-                    if (Math.abs(energyUsed - scenario.recommendedEnergy) <= 30) {
-                        goodPoints.push(`✓ Appropriate energy used (${energyUsed}J)`);
-                    } else {
-                        improvementPoints.push(`⚠ Recommended energy: ${scenario.recommendedEnergy}J for this rhythm`);
-                    }
-                    
-                    const timeToShock = firstShock.time;
-                    if (timeToShock <= 60) {
-                        goodPoints.push(`✓ Rapid cardioversion (${timeToShock}s)`);
-                    } else {
-                        improvementPoints.push(`⚠ Time to cardioversion: ${timeToShock}s (aim for <60s when unstable)`);
-                    }
-                } else {
-                    improvementPoints.push('✗ No cardioversion attempted - patient has adverse features');
-                }
-                
-            } else if (scenario.category === 'pacing') {
-                const pacerMode = modeChanges.find(m => m.details === 'PACER');
-                if (pacerMode) {
-                    goodPoints.push('✓ Pacing mode selected');
-                } else {
-                    improvementPoints.push('✗ Should switch to PACER mode');
-                }
-                
-                const outputAdjusted = pacingActions.find(a => a.action.includes('output'));
-                if (outputAdjusted) {
-                    goodPoints.push('✓ Pacing output adjusted');
-                    
-                    const captureAchieved = pacingActions.find(a => a.action.includes('capture'));
-                    if (captureAchieved) {
-                        goodPoints.push('✓ Electrical and mechanical capture achieved');
-                    } else {
-                        improvementPoints.push('⚠ Increase output until capture achieved (check for palpable pulse)');
-                    }
-                }
-                
-                const rateAdjusted = pacingActions.find(a => a.action.includes('rate'));
-                if (rateAdjusted) {
-                    goodPoints.push('✓ Pacing rate set appropriately');
-                }
-            }
-            
-            if (goodPoints.length > 0) {
-                html += '<div style="background: rgba(39, 174, 96, 0.1); border-left: 4px solid #27ae60; padding: 15px; margin: 10px 0; border-radius: 5px;">';
-                html += '<strong style="color: #27ae60;">Good Practice:</strong><ul style="margin: 10px 0; padding-left: 20px; color: #ecf0f1;">';
-                goodPoints.forEach(p => html += `<li style="margin: 5px 0;">${p}</li>`);
-                html += '</ul></div>';
-            }
-            
-            if (improvementPoints.length > 0) {
-                html += '<div style="background: rgba(231, 76, 60, 0.1); border-left: 4px solid #e74c3c; padding: 15px; margin: 10px 0; border-radius: 5px;">';
-                html += '<strong style="color: #e74c3c;">Areas for Improvement:</strong><ul style="margin: 10px 0; padding-left: 20px; color: #ecf0f1;">';
-                improvementPoints.forEach(i => html += `<li style="margin: 5px 0;">${i}</li>`);
-                html += '</ul></div>';
-            }
-            
-            if (html === '') {
-                html = '<div style="color: #f39c12;">No device actions performed</div>';
-            }
-            
-            return html;
-        }
-
-        function generateOutcome(scenario) {
-            let html = '';
-            
-            if (scenario.category === 'defibrillation' || scenario.category === 'cardioversion') {
-                const converted = state.rhythm === 'nsr' || state.hr < 100 || state.roscAchieved;
-                if (converted) {
-                    html = `<div style="color: #27ae60; font-size: 18px; font-weight: bold;">✓ RHYTHM CONVERTED</div>
-                        <div style="color: #ecf0f1; margin-top: 10px;">Patient now in sinus rhythm. Vital signs improving.</div>`;
-                } else {
-                    html = `<div style="color: #f39c12; font-size: 18px; font-weight: bold;">⚠ Rhythm not converted</div>
-                        <div style="color: #ecf0f1; margin-top: 10px;">Patient remains in abnormal rhythm. Continue management.</div>`;
-                }
-            } else if (scenario.category === 'pacing') {
-                const captureAchieved = state.actions.find(a => a.action.includes('capture'));
-                if (captureAchieved) {
-                    html = `<div style="color: #27ae60; font-size: 18px; font-weight: bold;">✓ PACING SUCCESSFUL</div>
-                        <div style="color: #ecf0f1; margin-top: 10px;">Electrical and mechanical capture achieved. Patient stabilised.</div>`;
-                } else {
-                    html = `<div style="color: #f39c12; font-size: 18px; font-weight: bold;">⚠ Pacing not successful</div>
-                        <div style="color: #ecf0f1; margin-top: 10px;">Capture not yet achieved. Continue to increase output.</div>`;
-                }
-            }
-            
-            return html;
-        }
-
-        function returnToMenu() {
-            clearAllTimers();
-            summaryScreen.classList.add('hidden');
-            certificateScreen.classList.add('hidden');
-            scenarioScreen.classList.add('hidden');
-            menuWrapper.classList.add('hidden');
-            simulatorContainer.classList.remove('hidden');
-            
-            endScenarioBtn.classList.add('hidden');
-            resetScenarioBtn.classList.add('hidden');
-            
-            state.scenarioActive = false;
-            state.syncMode = false;
-            state.pacingActive = false;
-            state.charged = false;
-            state.shockCount = 0;
-            state.selectedMode = null;
-            state.selectedScenario = null;
-            state.actions = [];
-            state.roscAchieved = false;
-            
-            state.customScenario = [];
-            state.customScenarioActive = false;
-            state.currentScenarioStep = 0;
-            
-            setMode('off'); 
-        }
-
-        function showSplashScreen(callback) {
-            const splash = document.getElementById('splashScreen');
-            const screenEl = document.querySelector('.screen');
-            if (!splash || !screenEl) {
-                callback();
-                return;
-            }
-            
-            screenEl.classList.add('screen-off');
-            splash.style.display = 'flex';
-            
-            setTimeout(() => {
-                splash.style.display = 'none';
-                screenEl.classList.remove('screen-off');
-                callback();
-            }, 1000); 
-        }
-
-        function setMode(mode) {
-            const labels = document.querySelectorAll('.mode-label');
-            labels.forEach(l => l.classList.remove('active'));
-            const activeLabel = document.querySelector(`.mode-label[data-mode="${mode}"]`);
-            if(activeLabel) activeLabel.classList.add('active');
-            
-            const rotations = { monitor: 0, defib: 90, pacer: 180, off: 270 };
-            document.getElementById('modeDial').style.setProperty('--dial-rotation', `${rotations[mode]}deg`);
-
-            // NEW: Toggle Pacing Cover
-            const cover = document.getElementById('pacingCover');
-            if (cover) {
-                if (mode === 'pacer') {
-                    cover.classList.add('open');
-                } else {
-                    cover.classList.remove('open');
-                    state.isCaptured = false; 
-                }
-            }
-
-            const screenEl = document.querySelector('.screen');
-            state.deviceMode = mode; 
-            
-            if (mode === 'off') {
-                if (animationId) {
-                    cancelAnimationFrame(animationId);
-                    animationId = null;
-                }
-                screenEl.classList.add('screen-off');
-                document.getElementById('hrDisplay').textContent = '--';
-                document.getElementById('spo2Display').textContent = '--';
-                document.getElementById('etco2Display').textContent = '--';
-                document.getElementById('bpDisplay').textContent = '--/--';
-                document.getElementById('messageBar').textContent = '';
-                document.getElementById('messageBar').className = 'message-bar';
-                document.getElementById('leadInfo').textContent = 'LEAD: II';
-                document.getElementById('syncIndicator').textContent = '';
-                document.getElementById('modeInfo').textContent = 'MODE: OFF';
-                
-                if (ctx) {
-                    const dpr = window.devicePixelRatio || 1;
-                    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
-                }
-                logAction('Mode changed', 'OFF');
-            } else {
-                screenEl.classList.remove('screen-off');
-                logAction('Mode changed', mode.toUpperCase());
-                updateDisplays();
-                if (!animationId) { 
-                    lastTimestamp = 0;
-                    window.waveformX = 0;
-                    animationId = requestAnimationFrame(animate);
-                }
-            }
-            
-            if (mode === 'pacer') {
-                state.pacingActive = true;
-                if (!state.originalRhythm) state.originalRhythm = state.rhythm;
-                state.pacerStartTime = window.waveformX; 
-            } else {
-                state.pacingActive = false;
-                if (state.isCaptured) {
-                    setVitals(state.originalRhythm || 'nsr');
-                    updateDisplays();
-                }
-                state.originalRhythm = null;
-                state.isCaptured = false;
-            }
-            if (mode !== 'off') updateDisplays();
-        }
-
-        function toggleSync() {
-            if (state.deviceMode === 'off') return;
-            state.syncMode = !state.syncMode;
-            const btn = document.getElementById('syncBtn');
-            if (state.syncMode) {
-                btn.classList.add('active');
-                setMessage('SYNC MODE ON - SYNCHRONISED CARDIOVERSION', 'ready');
-                logAction('Sync mode activated');
-            } else {
-                btn.classList.remove('active');
-                setMessage('SYNC MODE OFF', 'ready');
-                logAction('Sync mode deactivated');
-                state.syncMarkers = []; 
-            }
-            updateDisplays();
-        }
-
-        function adjustEnergy(dir) {
-            if (state.deviceMode === 'off') return;
-            const idx = state.energyLevels.indexOf(state.energy);
-            if (dir > 0 && idx < state.energyLevels.length - 1) {
-                state.energy = state.energyLevels[idx + 1];
-            } else if (dir < 0 && idx > 0) {
-                state.energy = state.energyLevels[idx - 1];
-            }
-            state.charged = false;
-            document.getElementById('shockBtn').disabled = true;
-            logAction('Energy adjusted', `${state.energy}J`);
-            updateDisplays();
-        }
-
-function chargeDefib() {
-            if (state.deviceMode !== 'defib') {
-                setMessage('SWITCH TO DEFIB MODE', '');
-                return;
-            }
-            if (state.machineState === APP_STATES.CHARGING || state.machineState === APP_STATES.READY) return;
-            
-            transitionTo(APP_STATES.CHARGING);
-            setMessage('CHARGING...', 'alert');
-            logAction('Charge initiated', `${state.energy}J`);
-            playSound('charging');
-            
-            setTimeout(() => {
-                state.charged = true; 
-                transitionTo(APP_STATES.READY);
-                logAction('Charged', `${state.energy}J ready`);
-                
-                // --- SAFETY DUMP TIMER ---
-                // Auto-disarm after 60 seconds if shock not delivered
-                if (state.chargeTimer) clearTimeout(state.chargeTimer);
-                state.chargeTimer = setTimeout(() => {
-                    if (state.charged) {
-                        state.charged = false;
-                        document.getElementById('shockBtn').disabled = true;
-                        transitionTo(APP_STATES.IDLE);
-                        setMessage('CHARGE DUMPED - SAFETY TIMEOUT', 'ready');
-                        logAction('Safety', 'Charge dumped (Timeout)');
-                        playSound('alarm');
-                    }
-                }, 60000);
-                // -------------------------
-                
-            }, 2000);
-        }
-
-        // --- NEW: Handle Shocks (Local & Remote) ---
-        function deliverShock() {
-            if (state.machineState !== APP_STATES.READY) return;
-            
-            if (state.chargeTimer) clearTimeout(state.chargeTimer);
-
-            const energy = state.energy;
-            const sync = state.syncMode;
-            const rhythm = state.rhythm;
-
-            let delay = 0;
-            if (sync) {
-                delay = Math.floor(Math.random() * 600) + 200;
-                setMessage('SYNC... WAITING FOR R-WAVE...', 'alert');
-            }
-
-            setTimeout(() => {
-                state.shockCount++;
-                playSound('shock');
-                logAction(`Shock ${state.shockCount} delivered`, `${energy}J (${sync ? 'SYNC' : 'UNSYNC'})`);
-                
-                if (typeof startCycleCountdown === 'function') {
-                    startCycleCountdown();
-                    logAction('Shock Delivered', 'Cycle Timer Reset');
-                }
-
-                if (canvas) {
-                    canvas.style.background = '#fff';
-                    setTimeout(() => canvas.style.background = '#000', 100);
-                }
-                
-                setMessage(`SHOCK DELIVERED`, 'alert');
-                transitionTo(APP_STATES.IDLE);
-                
-                // 1. Notify Controller (If Remote)
-                if (window.isRemoteControlled) {
-                    const channel = new BroadcastChannel('sim_channel');
-                    channel.postMessage({ 
-                        type: 'SHOCK_DELIVERED', 
-                        energy: energy,
-                        sync: sync
-                    });
-                    
-                    // Also notify parent if iframe
-                    window.parent.postMessage({ 
-                        type: 'SHOCK_DELIVERED', 
-                        energy: energy,
-                        sync: sync
-                    }, '*');
-                } 
-                // 2. Handle Local Logic (If Standalone)
-                else { 
-                    let success = false;
-                    let failReason = "";
-
-                    if (rhythm === 'vfib' || rhythm === 'vt_pulseless') {
-                        if (energy >= 120) success = true; 
-                        else failReason = "ENERGY TOO LOW";
-                    }
-                    else if (rhythm === 'svt' || rhythm === 'afib' || rhythm === 'vtach') {
-                        if (sync && energy >= 70) success = true; 
-                        else if (!sync) failReason = "R-ON-T HAZARD (NO SYNC)";
-                        else failReason = "ENERGY TOO LOW";
-                    }
-
-                    if (success) {
-                        setMessage('RHYTHM CONVERTING...', 'ready');
-                        setTimeout(() => {
-                            quickSetRhythm('nsr');
-                            state.roscAchieved = true;
-                            updateDisplays();
-                        }, 1000);
-                        
-                        if (state.customScenarioActive) checkScenarioTrigger('shock');
-                    } else {
-                        if (failReason) setMessage(`SHOCK FAILED: ${failReason}`, 'alert');
-                        else setMessage('SHOCK DELIVERED - NO CHANGE', 'ready');
-                    }
-                    
-                    startCPRTimer();
-                }
-            }, delay);
-        }
-
-        function analyseRhythm() {
-            if (state.deviceMode === 'off') return;
-            if (state.machineState !== APP_STATES.IDLE && state.machineState !== undefined) return;
-
-            if (state.customScenarioActive) {
-                logAction('Analyse pressed (Cycle ' + (state.currentScenarioStep + 1) + ')');
-                state.currentScenarioStep++;
-                if (state.currentScenarioStep >= state.customScenario.length) {
-                    setMessage('CUSTOM SCENARIO COMPLETE', 'ready');
-                    logAction('Custom Scenario complete');
-                    state.scenarioActive = false; 
-                    state.customScenarioActive = false;
-                    return;
-                }
-                const nextRhythm = state.customScenario[state.currentScenarioStep].initial;
-                setVitals(nextRhythm);
-                logAction('Custom Scenario: Cycle ' + (state.currentScenarioStep + 1), 'Rhythm: ' + nextRhythm);
-                
-                transitionTo(APP_STATES.ANALYSING);
-                setMessage('ANALYSING... CYCLE ' + (state.currentScenarioStep + 1), '');
-                
-                setTimeout(() => {
-                    const vitals = rhythmVitals[nextRhythm];
-                    if (!vitals.hasPulse || nextRhythm === 'vtach' || nextRhythm === 'svt' || nextRhythm === 'afib') {
-                        setMessage('SHOCKABLE RHYTHM DETECTED', 'alert');
-                    } else {
-                        setMessage('ORGANISED RHYTHM', 'ready');
-                    }
-                    transitionTo(APP_STATES.IDLE);
-                }, 1500); 
-                return;
-            }
-
-            transitionTo(APP_STATES.ANALYSING);
-            setMessage('ANALYSING... STAND CLEAR', 'alert');
-            logAction('Rhythm analysed');
-            
-            setTimeout(() => {
-                let currentRhythm = state.rhythm;
-                let currentPulse = state.hasPulse;
-                if (state.selectedScenario && state.scenarioActive) {
-                    const scenario = scenarios[state.selectedScenario];
-                    currentPulse = scenario.hasPulse || state.roscAchieved;
-                }
-                
-                if (currentRhythm === 'vfib' || (currentRhythm === 'vtach' && !currentPulse) || currentRhythm === 'vt_pulseless') {
-                    setMessage('SHOCKABLE RHYTHM DETECTED', 'alert');
-                } else {
-                    setMessage('ORGANISED RHYTHM', 'ready');
-                }
-                transitionTo(APP_STATES.IDLE);
-            }, 2500);
-        }
-
-        function adjustPacer(param, change) {
-    if (state.deviceMode === 'off') return;
-    if (state.deviceMode !== 'pacer') {
-        setMessage('Switch to PACER mode to adjust pacing', '');
-        return;
-    }
-    const scenario = scenarios[state.selectedScenario];
-    
-    if (param === 'output') {
-        // Update State
-        state.pacerOutput = Math.max(0, Math.min(140, state.pacerOutput + change));
-        logAction('Pacing output adjusted', `${state.pacerOutput}mA`);
-        
-        // --- VISUAL FIX: Target the correct dial (2nd child, because 1st is the cover) ---
-        const rotation = (state.pacerOutput / 140) * 270;
-        const dial = document.querySelector('.pacing-controls > div:nth-child(2) .pacer-dial');
-        if (dial) dial.style.setProperty('--dial-rotation', `${rotation}deg`);
-        // ---------------------------------------------------------------------------------
-        
-        let captureThreshold = 60; 
-        let isPacingScenario = false;
-        if (scenario && state.scenarioActive && scenario.requiresPacing) {
-            captureThreshold = scenario.currentThreshold || scenario.captureThreshold;
-            isPacingScenario = true;
-        } else {
-            isPacingScenario = (state.originalRhythm === 'chb' || state.originalRhythm === 'brady' || state.originalRhythm === 'sinus_brady');
-        }
-
-        const nowCaptured = (state.pacerOutput >= captureThreshold) && isPacingScenario;
-
-        if (nowCaptured !== state.isCaptured) { 
-            state.isCaptured = nowCaptured;
-            
-            if (nowCaptured) {
-                const successVitals = (scenario && scenario.requiresPacing) ? scenario.successVitals : rhythmVitals['paced'];
-                logAction('Pacing capture achieved', `at ${state.pacerOutput}mA`);
-                state.rhythm = 'paced'; 
-                state.hr = state.pacerRate; 
-                
-                if(successVitals) {
-                    state.spo2 = successVitals.spo2;
-                    state.etco2 = successVitals.etco2;
-                    state.bpSys = successVitals.bpSys;
-                    state.bpDia = successVitals.bpDia;
-                }
-                setMessage(`CAPTURE ACHIEVED AT ${state.pacerOutput}mA`, 'ready');
-                if (state.customScenarioActive) checkScenarioTrigger('pacing');
-                
-            } else {
-                logAction('Pacing capture lost');
-                setVitals(state.originalRhythm || 'nsr'); 
-                setMessage('CAPTURE LOST', 'alert');
-            }
-            updateDisplays(); 
-        }
-        updateDisplays();
-        
-    } else if (param === 'rate') {
-        // Update State
-        state.pacerRate = Math.max(30, Math.min(180, state.pacerRate + change));
-        logAction('Pacing rate adjusted', `${state.pacerRate}ppm`);
-        
-        // --- VISUAL FIX: Target the correct dial (3rd child) ---
-        const rotation = ((state.pacerRate - 30) / 150) * 270;
-        const dial = document.querySelector('.pacing-controls > div:nth-child(3) .pacer-dial');
-        if (dial) dial.style.setProperty('--dial-rotation', `${rotation}deg`);
-        // -------------------------------------------------------
-
-        if (state.isCaptured) {
-            state.hr = state.pacerRate;
-        }
-        updateDisplays();
-    }
-}
-
-
-function quickSetRhythm(rhythm) {
-            if (state.scenarioActive) {
-                setMessage('Cannot change rhythm during active scenario', '');
-                return;
-            }
-
-            setVitals(rhythm); 
-            state.syncMarkers = []; 
-            state.originalRhythm = rhythm;
-            state.isCaptured = false; 
-            state.roscAchieved = false;
-            state.shockCount = 0;
-            
-            // If switching to an arrest rhythm manually, assume arrest (reset ROSC state)
-            const vitals = rhythmVitals[rhythm];
-            if (vitals && !vitals.hasPulse) {
-                state.roscAchieved = false; 
-            }
-
-            if (state.deviceMode === 'off') {
-                setMode('monitor');
-            } else {
-                updateDisplays();
-            }
-
-            const allButtons = document.querySelectorAll('.rhythm-btn');
-            allButtons.forEach(btn => {
-                btn.classList.remove('active');
-                if (btn.dataset.rhythm === rhythm) {
-                    btn.classList.add('active');
-                }
-            });
-
-            // Trigger Arrest Panel Check immediately
-            if (typeof updateArrestPanel === 'function') {
-                updateArrestPanel();
-            }
-        }
-
-        function toggleInstructorPanel() {
-            if (!instructorPanel) return;
-            const btn = document.getElementById('minimiseBtn');
-            
-            instructorPanel.classList.toggle('minimised');
-            if (instructorPanel.classList.contains('minimised')) {
-                btn.textContent = '▼ Show';
-            } else {
-                btn.textContent = '▲ Hide';
-            }
-        }
-
-        function toggleArtefact(type, isOn) {
-            if (!state.noise.hasOwnProperty(type)) return;
-            state.noise[type] = isOn;
-        }
-
-        function checkPulse() {
-            if (state.deviceMode === 'off') return;
-            
-            let currentPulseState = state.hasPulse;
-            
-            if (state.customScenarioActive) {
-                currentPulseState = rhythmVitals[state.rhythm].hasPulse;
-            } else if (state.selectedScenario && state.scenarioActive) {
-                const scenario = scenarios[state.selectedScenario];
-                currentPulseState = scenario.hasPulse || state.roscAchieved;
-            }
-            
-            logAction('Pulse check performed');
-            setMessage('CHECKING FOR PULSE...', '');
-
-            setTimeout(() => {
-                if (currentPulseState) {
-                    setMessage('PULSE PRESENT - CAROTID PULSE PALPABLE', 'ready');
-                    logAction('Pulse check result', 'Pulse present');
-                } else {
-                    setMessage('NO PULSE DETECTED - CARDIAC ARREST CONFIRMED', 'alert');
-                    logAction('Pulse check result', 'No pulse - cardiac arrest');
-                }
-            }, 1500);
-        }
-
-        function tryAgain() {
-            const scenarioId = state.selectedScenario;
-            if (!scenarioId) {
-                returnToMenu();
-                return;
-            }
-            summaryScreen.classList.add('hidden');
-            menuWrapper.classList.add('hidden');
-            selectScenario(scenarioId);
-        }
-
-        function printCertificate() {
-            const scenario = scenarios[state.selectedScenario];
-            if (!scenario) return;
-            
-            summaryScreen.classList.add('hidden');
-            certificateScreen.classList.remove('hidden');
-            
-            document.getElementById('certScenarioName').textContent = scenario.name;
-            
-            const now = new Date();
-            document.getElementById('certDate').textContent = now.toLocaleDateString('en-GB', {
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric'
-            });
-            
-            let perfHTML = '<div style="display: grid; gap: 10px;">';
-            
-            const shocks = state.actions.filter(a => a.action.includes('delivered'));
-            const syncUsed = state.actions.find(a => a.action === 'Sync mode activated');
-            const pulseChecks = state.actions.filter(a => a.action === 'Pulse check performed');
-            const pacingActions = state.actions.filter(a => a.action.includes('Pacing'));
-            
-            if (shocks.length > 0) {
-                perfHTML += `<div><strong>Shocks Delivered:</strong> ${shocks.length}</div>`;
-            }
-            
-            if (scenario.requiresSync) {
-                perfHTML += `<div><strong>Sync Mode:</strong> ${syncUsed ? '✓ Used correctly' : '✗ Not used'}</div>`;
-            }
-            
-            if (pulseChecks.length > 0) {
-                perfHTML += `<div><strong>Pulse Checks:</strong> ${pulseChecks.length} performed</div>`;
-            }
-            
-            if (scenario.category === 'pacing') {
-                const captureAchieved = pacingActions.find(a => a.action.includes('capture'));
-                perfHTML += `<div><strong>Pacing:</strong> ${captureAchieved ? '✓ Capture achieved' : 'Attempted'}</div>`;
-            }
-            
-            const converted = state.rhythm === 'nsr' || state.hr < 100 || state.roscAchieved;
-            if (scenario.category === 'defibrillation' || scenario.category === 'cardioversion') {
-                perfHTML += `<div><strong>Outcome:</strong> ${converted ? '✓ Rhythm converted' : 'Rhythm not converted'}</div>`;
-            }
-            
-            perfHTML += `<div><strong>Total Actions:</strong> ${state.actions.length}</div>`;
-            
-            let firstIntervention = null;
-            if (shocks.length > 0) {
-                firstIntervention = shocks[0];
-            } else if (pacingActions.length > 0) {
-                firstIntervention = pacingActions[0];
-            }
-            
-            if (firstIntervention) {
-                const timeToIntervention = firstIntervention.time;
-                const minutes = Math.floor(timeToIntervention / 60);
-                const seconds = timeToIntervention % 60;
-                perfHTML += `<div><strong>Time to First Intervention:</strong> ${minutes}:${String(seconds).padStart(2, '0')}</div>`;
-            }
-            
-            perfHTML += '</div>';
-            
-            document.getElementById('certPerformance').innerHTML = perfHTML;
-        }
-
-        function backToSummary() {
-            certificateScreen.classList.add('hidden');
-            summaryScreen.classList.remove('hidden');
-        }
-
-// --- AUDIO CONTEXT MANAGER ---
+        // --- AUDIO ---
         let audioCtx;
         function getAudioContext() {
             if (!audioCtx) {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (AudioCtx) {
-                    audioCtx = new AudioCtx();
-                }
+                if (AudioCtx) audioCtx = new AudioCtx();
             }
-            if (audioCtx && audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
             return audioCtx;
         }
 
@@ -2731,7 +1247,6 @@ function quickSetRhythm(rhythm) {
             
             const oscillator = ctx.createOscillator();
             const gainNode = ctx.createGain();
-            
             oscillator.connect(gainNode);
             gainNode.connect(ctx.destination);
             
@@ -2745,7 +1260,6 @@ function quickSetRhythm(rhythm) {
                     oscillator.start(now);
                     oscillator.stop(now + 2);
                     break;
-                    
                 case 'charged':
                     oscillator.frequency.setValueAtTime(1000, now);
                     gainNode.gain.setValueAtTime(0.4, now);
@@ -2753,7 +1267,6 @@ function quickSetRhythm(rhythm) {
                     oscillator.start(now);
                     oscillator.stop(now + 0.5);
                     break;
-                    
                 case 'shock':
                     oscillator.frequency.setValueAtTime(800, now);
                     gainNode.gain.setValueAtTime(0.5, now);
@@ -2761,7 +1274,6 @@ function quickSetRhythm(rhythm) {
                     oscillator.start(now);
                     oscillator.stop(now + 0.3);
                     break;
-
                 case 'alarm':
                     oscillator.frequency.setValueAtTime(1200, now);
                     oscillator.type = 'square';
@@ -2772,658 +1284,191 @@ function quickSetRhythm(rhythm) {
             }
         }
 
-        function cycleMode() {
-            const order = ['monitor', 'defib', 'pacer', 'off'];
-            let idx = order.indexOf(state.deviceMode);
-            if (idx === -1) idx = 0;
-            const next = order[(idx + 1) % order.length];
-            setMode(next);
+        function setMessage(text, type='ready') { 
+            if(state.deviceMode==='off')return; 
+            const m=document.getElementById('messageBar'); 
+            m.textContent=text; m.className='message-bar '+type; 
         }
 
-        // --- Keyboard Shortcuts ---
-        document.addEventListener('keydown', (e) => {
-            const key = e.key.toLowerCase();
+        function setMode(mode) {
+            document.querySelectorAll('.mode-label').forEach(l=>l.classList.remove('active'));
+            document.querySelector(`.mode-label[data-mode="${mode}"]`)?.classList.add('active');
+            const rotations = { monitor: 0, defib: 90, pacer: 180, off: 270 };
+            document.getElementById('modeDial').style.setProperty('--dial-rotation', `${rotations[mode]}deg`);
+            
+            const cover = document.getElementById('pacingCover');
+            if(cover) { if(mode === 'pacer') cover.classList.add('open'); else cover.classList.remove('open'); }
 
-            if (key === 'c') {
-                e.preventDefault();
-                chargeDefib();
-            } else if (key === 's') {
-                e.preventDefault();
-                deliverShock();
-            } else if (key === 'p') {
-                e.preventDefault();
-                checkPulse();
-            } else if (key === 'm') {
-                e.preventDefault();
-                cycleMode();
-            } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                adjustEnergy(1);
-            } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                adjustEnergy(-1);
+            state.deviceMode = mode;
+            if(mode==='off') {
+                document.querySelector('.screen').classList.add('screen-off');
+                document.getElementById('hrDisplay').textContent = '--';
+                document.getElementById('spo2Display').textContent = '--';
+                document.getElementById('etco2Display').textContent = '--';
+                document.getElementById('bpDisplay').textContent = '--/--';
+                if (ctx) {
+                    const dpr = window.devicePixelRatio || 1;
+                    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+                }
+            } else {
+                document.querySelector('.screen').classList.remove('screen-off');
+                updateDisplays();
+                requestAnimationFrame(animate);
             }
-        });
+        }
 
-        // --- Timers ---
-        setInterval(() => {
-            const now = new Date();
-            const timeEl = document.getElementById('timeInfo');
-            if (timeEl) {
-                timeEl.textContent = now.toTimeString().split(' ')[0];
+        function updateDisplays() {
+            if(state.deviceMode==='off') return;
+            document.getElementById('hrDisplay').textContent = state.hr;
+            document.getElementById('spo2Display').textContent = state.spo2;
+            document.getElementById('etco2Display').textContent = state.etco2;
+            document.getElementById('bpDisplay').textContent = `${state.bpSys}/${state.bpDia}`;
+            document.getElementById('energyDisplay').textContent = state.energy;
+            document.getElementById('outputDisplay').textContent = state.pacerOutput;
+            document.getElementById('rateDisplay').textContent = state.pacerRate;
+            document.getElementById('syncIndicator').textContent = state.syncMode ? 'SYNC' : '';
+            document.getElementById('modeInfo').textContent = `MODE: ${state.deviceMode.toUpperCase()}`;
+        }
+
+        function adjustPacer(param, change) {
+            if(state.deviceMode!=='pacer') return;
+            if(param === 'output') {
+                state.pacerOutput = clamp(state.pacerOutput + change, 0, 140);
+            } else {
+                state.pacerRate = clamp(state.pacerRate + change, 30, 180);
             }
-        }, 1000);
+            // NEW: Broadcast changes
+            broadcast('PACER_UPDATE', { output: state.pacerOutput, rate: state.pacerRate });
+            
+            // Dial Visuals
+            if(param === 'output') {
+                const rot = (state.pacerOutput/140)*270;
+                const d = document.querySelector('.pacing-controls > div:nth-child(2) .pacer-dial');
+                if(d) d.style.setProperty('--dial-rotation', rot+'deg');
+            } else {
+                const rot = ((state.pacerRate-30)/150)*270;
+                const d = document.querySelector('.pacing-controls > div:nth-child(3) .pacer-dial');
+                if(d) d.style.setProperty('--dial-rotation', rot+'deg');
+            }
+            updateDisplays();
+        }
+
+        function chargeDefib() {
+            if(state.deviceMode!=='defib') return;
+            if(state.charged) return;
+            setMessage('CHARGING...', 'alert');
+            playSound('charging');
+            // NEW: Alert controller
+            broadcast('CHARGE_INIT', { energy: state.energy });
+            setTimeout(()=>{
+                state.charged=true;
+                document.getElementById('shockBtn').disabled = false;
+                setMessage(`${state.energy}J READY`, 'alert');
+                playSound('charged');
+            }, 2000);
+        }
+
+        function deliverShock() {
+            if(!state.charged) return;
+            state.charged = false;
+            document.getElementById('shockBtn').disabled = true;
+            setMessage('SHOCK DELIVERED', 'alert');
+            playSound('shock');
+            broadcast('SHOCK_DELIVERED', { energy: state.energy, sync: state.syncMode });
+        }
+
+        function toggleSync() {
+            state.syncMode = !state.syncMode;
+            updateDisplays();
+        }
+        
+        function adjustEnergy(dir) {
+            const idx = state.energyLevels.indexOf(state.energy);
+            if (dir > 0 && idx < state.energyLevels.length - 1) state.energy = state.energyLevels[idx + 1];
+            else if (dir < 0 && idx > 0) state.energy = state.energyLevels[idx - 1];
+            state.charged = false;
+            document.getElementById('shockBtn').disabled = true;
+            updateDisplays();
+        }
+
+        // --- NEW FEATURE HANDLERS ---
+        function markerPress() {
+            broadcast('MARKER_EVENT', { timestamp: Date.now() });
+            setMessage('EVENT MARKED', 'ready');
+            setTimeout(()=>setMessage('SIMULATOR READY', 'ready'), 1000);
+        }
+
+        function alarmSuspend() {
+            broadcast('ALARM_SILENCE', { timestamp: Date.now() });
+            const btn = document.getElementById('alarmSuspendBtn');
+            btn.style.background = '#e67e22'; 
+            setTimeout(() => btn.style.background = '', 500);
+        }
+
+        function recorderPress() {
+            broadcast('REQUEST_12LEAD', {});
+            setMessage('REQUESTING 12-LEAD...', 'ready');
+        }
 
         // --- EVENT LISTENERS ---
-        
-        // --- NEW: Guideline Modal Listeners ---
-        hintButtons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                const guidelineKey = btn.dataset.guideline;
-                const data = guidelineData[guidelineKey];
-                
-                if (data) {
-                    modalTitle.textContent = data.title;
-                    modalBody.innerHTML = data.content;
-                    modalOverlay.classList.remove('hidden');
-                }
-            });
-        });
-
-        closeModalBtn.addEventListener('click', () => {
-            modalOverlay.classList.add('hidden');
-        });
-
-        modalOverlay.addEventListener('click', (e) => {
-            if (e.target === modalOverlay) {
-                modalOverlay.classList.add('hidden');
-            }
-        });
-        // --- End of Modal Listeners ---
-
-
-        // --- New Scenario Creator Listeners ---
-        document.getElementById('openScenarioCreatorBtn')?.addEventListener('click', () => {
-            menuWrapper.classList.remove('hidden');
-            scenarioCreatorScreen.classList.remove('hidden');
-            scenarioScreen.classList.add('hidden'); // Hide other menus
-            summaryScreen.classList.add('hidden');
-            certificateScreen.classList.add('hidden');
-            simulatorContainer.classList.add('hidden'); // <<< THIS IS THE FIX
-        });
-        document.getElementById('cancelCustomScenarioBtn').addEventListener('click', () => {
-            menuWrapper.classList.add('hidden');
-            scenarioCreatorScreen.classList.add('hidden');
-            simulatorContainer.classList.remove('hidden'); // <<< THIS IS THE FIX
-        });
-
-        // Quick Rhythm Panel
-        document.querySelectorAll('.quick-rhythm-panel .rhythm-btn').forEach(btn => {
-            btn.addEventListener('click', () => quickSetRhythm(btn.dataset.rhythm));
-        });
-
-        // Scenario Screen
-        document.querySelectorAll('#scenarioScreen .menu-option').forEach(btn => {
-            btn.addEventListener('click', () => selectScenario(btn.dataset.scenario));
-        });
-        document.getElementById('backToModeSelectBtn').addEventListener('click', backToModeSelect);
-
-        // Summary Screen
-        document.getElementById('tryAgainBtn').addEventListener('click', tryAgain);
-        document.getElementById('printCertBtn').addEventListener('click', printCertificate);
-        document.getElementById('returnToMenuBtn').addEventListener('click', returnToMenu);
-
-        // Certificate Screen
-        document.getElementById('printBtn').addEventListener('click', () => window.print());
-        document.getElementById('backToSummaryBtn').addEventListener('click', backToSummary);
-
-        // Simulator Container Buttons
-        document.getElementById('endScenarioBtn').addEventListener('click', endScenario);
-        document.getElementById('resetScenarioBtn').addEventListener('click', resetScenario);
-
-        // Instructor Panel
-        document.getElementById('minimiseBtn').addEventListener('click', toggleInstructorPanel);
-        document.querySelectorAll('#instructorPanel .rhythm-btn').forEach(btn => {
-            btn.addEventListener('click', () => quickSetRhythm(btn.dataset.rhythm));
-        });
-        document.querySelectorAll('#instructorPanel input[type="checkbox"]').forEach(box => {
-            box.addEventListener('change', (e) => toggleArtefact(e.target.dataset.artefact, e.target.checked));
-        });
-
-        // Device Controls - Softkeys
-        document.getElementById('checkPulseBtn').addEventListener('click', checkPulse);
-
-        // Device Controls - Main Buttons
-        document.getElementById('syncBtn').addEventListener('click', toggleSync);
-        document.getElementById('shockBtn').addEventListener('click', deliverShock);
-        document.getElementById('analyseBtn').addEventListener('click', analyseRhythm);
+        document.querySelectorAll('.mode-label').forEach(l=>l.addEventListener('click', ()=>setMode(l.dataset.mode)));
+        document.querySelectorAll('.pacer-btn').forEach(b=>b.addEventListener('click', ()=>adjustPacer(b.dataset.pacerParam, parseInt(b.dataset.pacerDir))));
         document.getElementById('chargeBtn').addEventListener('click', chargeDefib);
+        document.getElementById('shockBtn').addEventListener('click', deliverShock);
+        document.getElementById('syncBtn').addEventListener('click', toggleSync);
+        document.getElementById('analyseBtn').addEventListener('click', () => setMessage('ANALYSING...', 'alert'));
+        document.querySelectorAll('.energy-arrow').forEach(b=>b.addEventListener('click', ()=>adjustEnergy(parseInt(b.dataset.energyDir))));
         
-        // Device Controls - Energy
-        document.querySelectorAll('.energy-arrow').forEach(btn => {
-            btn.addEventListener('click', () => adjustEnergy(parseInt(btn.dataset.energyDir)));
-        });
+        // New Buttons
+        document.getElementById('markerBtn').addEventListener('click', markerPress);
+        document.getElementById('alarmSuspendBtn').addEventListener('click', alarmSuspend);
+        document.getElementById('recorderBtn').addEventListener('click', recorderPress);
 
-        // Device Controls - Mode Dial
-        document.querySelectorAll('.mode-label').forEach(label => {
-            label.addEventListener('click', () => setMode(label.dataset.mode));
-        });
-
-        // Device Controls - Pacer
-        document.querySelectorAll('.pacer-btn').forEach(btn => {
-            btn.addEventListener('click', () => adjustPacer(btn.dataset.pacerParam, parseInt(btn.dataset.pacerDir)));
-        });
-
-        // --- INITIALISATION ---
-                // --- NEW: Custom Scenario Logic ---
-        function getScenarioStepHTML(index) {
-            // Clone the existing select options so we don't have to hardcode them
-            const rhythmOpts = document.querySelector('.rhythm-btn') ? 
-                `<option value="nsr">NSR</option>
-                 <option value="vfib">VF</option>
-                 <option value="vt_pulseless">pVT</option>
-                 <option value="svt">SVT</option>
-                 <option value="chb">CHB</option>
-                 <option value="asystole">Asystole</option>` 
-                 : "";
-
-            return `
-            <div class="scenario-step-card" id="step-${index}">
-                <h5>Step ${index + 1}</h5>
-                <div>
-                    <label style="color:#bdc3c7; font-size:10px;">Rhythm</label>
-                    <select class="scenario-rhythm-select step-rhythm">
-                        ${rhythmOpts}
-                    </select>
-                </div>
-                <div>
-                    <label style="color:#bdc3c7; font-size:10px;">Trigger to Next</label>
-                    <select class="step-trigger" style="width:100%; padding:5px;">
-                        <option value="manual">Manual Only</option>
-                        <option value="shock">On Shock Success</option>
-                        <option value="pacing">On Pacing Capture</option>
-                        <option value="timer_30">Timer: 30s</option>
-                        <option value="timer_60">Timer: 60s</option>
-                        <option value="timer_120">Timer: 2m</option>
-                    </select>
-                </div>
-            </div>`;
+        // --- CANVAS INIT ---
+        const canvas = document.getElementById('ecgCanvas');
+        const ctx = canvas.getContext('2d');
+        let lastTime = 0;
+        function resize() { 
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
         }
+        window.addEventListener('resize', resize); resize();
 
-        const addStepBtn = document.getElementById('addStepBtn');
-        if(addStepBtn) {
-            addStepBtn.addEventListener('click', () => {
-                const container = document.getElementById('customScenarioSteps');
-                const count = container.children.length;
-                if (count >= 5) return;
-                
-                const div = document.createElement('div');
-                div.innerHTML = getScenarioStepHTML(count);
-                container.appendChild(div);
-            });
-        }
-
-        const startScenBtn = document.getElementById('startCustomScenarioBtn');
-        if(startScenBtn) {
-            startScenBtn.addEventListener('click', () => {
-                state.customScenario = [];
-                document.querySelectorAll('.scenario-step-card').forEach(card => {
-                    state.customScenario.push({
-                        rhythm: card.querySelector('.step-rhythm').value,
-                        trigger: card.querySelector('.step-trigger').value
-                    });
-                });
-
-                if (state.customScenario.length === 0) return;
-
-                state.customScenarioActive = true;
-                state.currentScenarioStep = 0;
-                
-                activateScenarioStep(0);
-                
-                menuWrapper.classList.add('hidden');
-                scenarioCreatorScreen.classList.add('hidden');
-                simulatorContainer.classList.remove('hidden');
-            });
-        }
-
-        function activateScenarioStep(index) {
-            if (index >= state.customScenario.length) {
-                setMessage('SCENARIO COMPLETE', 'ready');
-                return;
+        function animate(time) {
+            if(state.deviceMode==='off') return;
+            if(lastTime===0) lastTime=time;
+            let dt = (time - lastTime)/1000;
+            lastTime = time;
+            
+            // Draw Grid (logical dimensions)
+            const width = canvas.width / (window.devicePixelRatio || 1);
+            const height = canvas.height / (window.devicePixelRatio || 1);
+            window.drawECGGrid(ctx, width, height);
+            
+            // Draw Trace
+            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(57, 255, 20, 0.8)';
+            ctx.beginPath();
+            
+            const rhythmFn = window.rhythms[state.rhythm] || window.rhythms['nsr'];
+            let startX = Math.floor(window.waveformX);
+            // Render logic simplified for snippet
+            for(let x=0; x<width; x+=1) {
+                let y = rhythmFn(x + window.waveformX, state.hr, Date.now()/1000, {height: height});
+                if(x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
             }
-            const step = state.customScenario[index];
-            quickSetRhythm(step.rhythm);
-            setMessage(`SCENARIO STEP ${index+1}/${state.customScenario.length}`, 'ready');
+            ctx.stroke();
             
-            if (step.trigger.startsWith('timer_')) {
-                const seconds = parseInt(step.trigger.split('_')[1]);
-                setTimeout(() => {
-                    if (state.customScenarioActive && state.currentScenarioStep === index) {
-                        state.currentScenarioStep++;
-                        activateScenarioStep(state.currentScenarioStep);
-                    }
-                }, seconds * 1000);
-            }
-        }
-
- function checkScenarioTrigger(actionType) {
-            if (!state.customScenarioActive) return;
-            const currentStep = state.customScenario[state.currentScenarioStep];
-            if (currentStep && currentStep.trigger === actionType) {
-                state.currentScenarioStep++;
-                activateScenarioStep(state.currentScenarioStep);
-            }
-        }
-
-        // --- NEW: Info Icon Listeners ---
-
-        // --- NEW: Info Icon Listeners ---
-        document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('info-icon')) {
-                e.stopPropagation(); 
-                const guideKey = e.target.dataset.guide;
-                const content = treatmentGuides[guideKey];
-                if (content) {
-                    document.getElementById('modalTitle').textContent = "Treatment Guideline";
-                    document.getElementById('modalBody').innerHTML = content;
-                    document.getElementById('modalOverlay').classList.remove('hidden');
-                }
-            }
-        });
-
-// --- INSTRUCTOR / ASSESSOR PANEL LOGIC ---
-        let cycleTime = 120; // 2 minutes in seconds
-        let cycleInterval = null;
-        let metronomeInterval = null;
-        
-        function startCycleCountdown() {
-            if (cycleInterval) clearInterval(cycleInterval);
-            cycleTime = 120; 
-            
-            const display = document.getElementById('cycleTimerDisplay');
-            const container = document.getElementById('cycleTimerContainer');
-            
-            // Reset visuals
-            if (container) container.classList.remove('cycle-warning');
-            if (display) display.textContent = "02:00";
-            
-            cycleInterval = setInterval(() => {
-                cycleTime--;
-                
-                // Format MM:SS
-                const m = Math.floor(cycleTime / 60);
-                const s = cycleTime % 60;
-                if (display) display.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                
-                // Warning at 10 seconds
-                if (cycleTime <= 10 && container) {
-                    container.classList.add('cycle-warning');
-                }
-                
-                // Time Up
-                if (cycleTime <= 0) {
-                    clearInterval(cycleInterval);
-                    playSound('alarm'); // Use existing beep
-                    logAction('CYCLE ENDED', 'Assess Rhythm');
-                }
-            }, 1000);
-        }
-
-        function toggleMetronome() {
-            const btn = document.getElementById('metronomeBtn');
-            
-            if (metronomeInterval) {
-                clearInterval(metronomeInterval);
-                metronomeInterval = null;
-                btn.style.background = "#2c3e50";
-                logAction('Metronome', 'OFF');
-            } else {
-                logAction('Metronome', 'ON (110 bpm)');
-                btn.style.background = "#27ae60"; 
-                
-                // 110 BPM = 545ms interval
-                metronomeInterval = setInterval(() => {
-                    playMetronomeClick();
-                }, 545);
-            }
-        }
-
-function playMetronomeClick() {
-            const ctx = getAudioContext();
-            if (!ctx) return;
-            
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            
-            osc.frequency.value = 1000;
-            osc.type = 'square';
-            gain.gain.value = 0.05;
-            
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            
-            osc.start();
-            osc.stop(ctx.currentTime + 0.05);
-        }
-
-        // LISTENERS
-        const nextCycleBtn = document.getElementById('nextCycleBtn');
-        if (nextCycleBtn) {
-            nextCycleBtn.addEventListener('click', function() {
-                startCycleCountdown();
-                this.classList.remove('highlight-btn'); // Stop flashing
-                logAction('CYCLE RESET', '2 Minutes');
-            });
-        }
-
-        const metronomeBtn = document.getElementById('metronomeBtn');
-        if (metronomeBtn) metronomeBtn.addEventListener('click', toggleMetronome);
-
-        document.querySelectorAll('.cause-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                this.classList.toggle('checked');
-                const causeName = this.dataset.cause;
-                const status = this.classList.contains('checked') ? 'CONSIDERED' : 'UNCHECKED';
-                logAction('Differential', `${causeName} ${status}`);
-            });
-        });
-
- // --- OPTIMISED ROSC LISTENER ---
-        const roscBtn = document.getElementById('roscBtn');
-        if (roscBtn) {
-            roscBtn.addEventListener('click', () => {
-                clearAllTimers(); // Use our new helper!
-
-                // State Updates
-                state.roscAchieved = true;
-                state.hasPulse = true;
-                state.cprActive = false;
-                state.arrestStartTime = null; 
-                
-                updateCprButton();
-                quickSetRhythm('nsr'); 
-                
-                // ROSC SPIKE LOGIC (Simulate CO2 washout)
-                state.etco2 = 6.8; 
-                logAction('ROSC CONFIRMED', 'ETCO2 Spike > 6.0kPa');
-                
-                // Settle ETCO2 logic
-                const settleInterval = setInterval(() => {
-                    if (state.etco2 > 5.1) {
-                        state.etco2 -= 0.05; 
-                    } else {
-                        state.etco2 = 5.1;
-                        clearInterval(settleInterval);
-                    }
-                }, 200);
-
-                setMessage('ROSC ACHIEVED - START POST-RESUS CARE', 'ready');
-                updateDisplays();
-                document.getElementById('cprPanel').classList.remove('active');
-            });
-        }
-        // ------------------------------------------
-        
-        initCanvas(); 
-        setMode('off'); 
-
-        // --- MOBILE ENHANCEMENT: Add window resize listener ---
-        window.addEventListener('resize', resizeCanvas);
-        // --- UPDATED CARDIAC ARREST LOGIC ---
-        
-        // Ensure cprActive is tracked
-        state.cprActive = false;
-
-        // --- IMPROVED ARREST LOGIC ---
-
-// 1. Check for Arrest on Rhythm Change
-        function updateArrestPanel() {
-            const currentRhythm = state.rhythm;
-            const vitals = rhythmVitals[currentRhythm];
-            
-            // Check if this is an arrest rhythm (No pulse)
-            const isArrestRhythm = vitals && vitals.hasPulse === false;
-            
-            // If we are in arrest AND we haven't achieved ROSC
-            if (isArrestRhythm && !state.roscAchieved) {
-                const panel = document.getElementById('cprPanel');
-                panel.classList.remove('hidden');
-                
-                // Add active class slightly later for CSS transition
-                setTimeout(() => {
-                    if (!panel.classList.contains('active')) {
-                        panel.classList.add('active');
-                        // Highlight the reset button
-                        const btn = document.getElementById('nextCycleBtn');
-                        if (btn) btn.classList.add('highlight-btn');
-                    }
-                }, 50);
-
-                if (!state.arrestStartTime) {
-                    state.arrestStartTime = Date.now();
-                    logAction('Cardiac Arrest Detected', 'Timer Started');
-                    
-                    // --- AUTO-START CYCLE TIMER ---
-                    if (typeof startCycleCountdown === 'function') {
-                        startCycleCountdown();
-                        logAction('CPR Cycle', '2 Minute Timer Auto-Started');
-                    }
-                }
-                
-                if (!window.arrestTimerInterval) {
-                    startArrestTimer();
-                }
-            } else {
-                document.getElementById('cprPanel').classList.remove('active');
-                state.cprActive = false;
-                updateCprButton();
-            }
-        }
-
-// 2. Timer Logic (Timestamp based)
-        function startArrestTimer() {
-            if (window.arrestTimerInterval) clearInterval(window.arrestTimerInterval);
-            
-            const timerDisplay = document.getElementById('cprTimerDisplay');
-            
-            window.arrestTimerInterval = setInterval(() => {
-                if (!state.arrestStartTime) return;
-                
-                const diff = Date.now() - state.arrestStartTime;
-                const totalSeconds = Math.floor(diff / 1000);
-                
-                const m = Math.floor(totalSeconds / 60);
-                const s = totalSeconds % 60;
-                
-                // Format: 02:30
-                if (timerDisplay) {
-                    timerDisplay.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                }
-            }, 100); // Update frequently for accuracy
+            window.waveformX += window.ecgSpeed * dt;
+            requestAnimationFrame(animate);
         }
         
-        // Helper for metronome sound
-        function playMetronomeTick() {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            // Use the global audioCtx we fixed earlier
-            if (!AudioCtx || !audioCtx) return; 
-            
-            // Short high-pitched beep
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.frequency.value = 1200;
-            gain.gain.value = 0.1;
-            
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.05);
-        }
-
-        function updateCprButton() {
-            const btn = document.getElementById('cprToggleBtn');
-            const span = btn.querySelector('span');
-            if (state.cprActive) {
-                btn.style.background = "#e74c3c"; // Red for STOP
-                btn.style.borderColor = "#c0392b";
-                span.textContent = "STOP CPR";
-            } else {
-                btn.style.background = ""; // Default
-                btn.style.borderColor = "";
-                span.textContent = "START CPR";
-            }
-        }
-
-        // --- NEW: CPR Panel Minimise Logic ---
-        const cprPanel = document.getElementById('cprPanel');
-        const cprMinBtn = document.getElementById('cprMinimiseBtn');
-
-        if (cprMinBtn && cprPanel) {
-            cprMinBtn.addEventListener('click', () => {
-                cprPanel.classList.toggle('minimised');
-                const isMin = cprPanel.classList.contains('minimised');
-                cprMinBtn.textContent = isMin ? "◀" : "▶";
-            });
-        }
-
-        // 3. New Listeners for Panel Buttons
-
-        // 3. New Listeners for Panel Buttons
-        document.querySelectorAll('.cpr-action-btn').forEach(btn => {
-            btn.addEventListener('click', function() {
-                const action = this.dataset.action;
-                const time = document.getElementById('cprTimerDisplay').textContent;
-                
-                if (action === 'cpr-toggle') {
-                    state.cprActive = !state.cprActive;
-                    updateCprButton();
-                    const status = state.cprActive ? "Started" : "Stopped";
-                    logAction(`CPR ${status}`, `Time: ${time}`);
-                    return; // Don't do the visual flash for toggle
-                }
-
-                // Visual click feedback for momentary buttons
-                const originalSpan = this.querySelector('span').textContent;
-                const originalBg = this.style.background;
-                this.querySelector('span').textContent = "DONE";
-                this.style.background = "#27ae60"; 
-                setTimeout(() => {
-                    this.querySelector('span').textContent = originalSpan;
-                    this.style.background = originalBg;
-                }, 800);
-
-                if (action === 'adrenaline') {
-                    logAction(`Adrenaline 1mg Given`, `Time: ${time}`);
-                } else if (action === 'amiodarone') {
-                    logAction(`Amiodarone 300mg Given`, `Time: ${time}`);
-                } else if (action === 'next-cycle') {
-                    // Reset Timer Logic
-                    if (window.arrestTimerInterval) clearInterval(window.arrestTimerInterval);
-                    startArrestTimer(); // Restart from 0
-                    logAction(`Cycle Advanced`, `Timer Reset`);
-                }
-            });
-        });
-   
-    }); // End of DOMContentLoaded
-        // --- HYBRID BRIDGE CODE (Add to bottom of defib/index.html) ---
-window.isRemoteControlled = false; // Default to Standalone Mode
-
-window.addEventListener('message', (event) => {
-    const data = event.data;
-    
-    // 1. If we receive vitals, we enter Remote Mode
-    if(data.type === 'SYNC_VITALS') {
-        window.isRemoteControlled = true; // DISABLE INTERNAL LOGIC
-        
-        // Map Engine Rhythm Names -> Defib Rhythm IDs
-        const map = { 
-            'Sinus Rhythm': 'nsr', 
-            'Sinus Tachycardia': 'sinus_tach',
-            'VF': 'vfib', 'VT': 'vt_pulseless', 'pVT': 'vt_pulseless', 
-            'Asystole': 'asystole', 'PEA': 'pea', 'AF': 'afib',
-            '3rd Deg Block': 'chb', 'Sinus Bradycardia': 'sinus_brady'
-        };
-        
-        const targetRhythm = map[data.payload.rhythm] || 'nsr';
-        
-        // Only update if changed to prevent audio glitching
-        if(state.rhythm !== targetRhythm) {
-             // We use a direct state set instead of quickSetRhythm to avoid resetting shock counts in sim
-             setVitals(targetRhythm);
-             state.originalRhythm = targetRhythm; 
-        }
-        
-        // Force Vitals Match
-        state.hr = data.payload.hr;
-        state.spo2 = data.payload.spO2;
-        state.etco2 = data.payload.etco2;
-        state.bpSys = data.payload.bpSys;
-        state.bpDia = data.payload.bpDia;
-        
-        updateDisplays();
-    }
-});
-
-// 2. Broadcast Shock Event
-// We hook into the existing function to notify parent
-const originalDeliverShock = deliverShock;
-deliverShock = function() {
-    originalDeliverShock(); // Run normal visuals/sounds
-    
-    if (window.isRemoteControlled) {
-        window.parent.postMessage({ 
-            type: 'SHOCK_DELIVERED', 
-            energy: state.energy,
-            sync: state.syncMode
-        }, '*');
-    }
-}
-    // --- PASTE THIS AT THE BOTTOM OF THE SCRIPT IN defib/index.html ---
-
-const simChannel = new BroadcastChannel('sim_channel');
-
-simChannel.onmessage = (event) => {
-    if (event.data.type === 'SYNC_VITALS') {
-        window.isRemoteControlled = true;
-        
-        // Map Controller Rhythm Names -> Defib Rhythm IDs
-        const map = { 
-            'Sinus Rhythm': 'nsr', 
-            'Sinus Tachycardia': 'sinus_tach',
-            'VF': 'vfib', 
-            'VT': 'vt_pulseless', 
-            'pVT': 'vt_pulseless', 
-            'Asystole': 'asystole', 
-            'PEA': 'pea', 
-            'AF': 'afib',
-            '3rd Deg Block': 'chb', 
-            'Sinus Bradycardia': 'sinus_brady'
-        };
-        
-        const targetRhythm = map[event.data.payload.rhythm] || 'nsr';
-        
-        // Update Defib Rhythm only if it changed
-        if(state.rhythm !== targetRhythm) {
-             setVitals(targetRhythm);
-             state.originalRhythm = targetRhythm; 
-        }
-        
-        // Force update numeric vitals
-        state.hr = event.data.payload.hr;
-        state.spo2 = event.data.payload.spO2;
-        state.etco2 = event.data.payload.etco2;
-        state.bpSys = event.data.payload.bpSys;
-        state.bpDia = event.data.payload.bpDia;
-        
-        updateDisplays();
-    }
-};
-
-// Immediately ask the Controller for the current rhythm on load
-simChannel.postMessage({ type: 'REQUEST_SYNC' });
-// ------------------------------------------------------------------
+        setMode('off');
+        window.setVitals = function(r) { state.rhythm = r; }
+    });
     </script>
 </body>
 </html>
