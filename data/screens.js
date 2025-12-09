@@ -422,7 +422,6 @@
         };
         // -------------------
 
-        // ... (Existing helper functions: drugCats, mapVoice, getInterventionsByCat, formatTime, toggleCPR, handleShock, hasMonitoring, generateSBAR, openVitalControl, quickAdjust, confirmVitalUpdate) ...
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
@@ -456,7 +455,7 @@
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                {/* --- HEADER (Preserved) --- */}
+                {/* --- HEADER --- */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2 items-center">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
@@ -467,7 +466,7 @@
                     </div>
                 </div>
 
-                {/* --- ARREST OVERLAY (Preserved) --- */}
+                {/* --- ARREST OVERLAY --- */}
                 {arrestPanelOpen && (
                     <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
@@ -581,7 +580,7 @@
                     
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">{['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice', 'Handover'].map(cat => (<button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>))}</div>
-                        {/* ... (Interventions panel body - unchanged) ... */}
+                        
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
@@ -667,7 +666,7 @@
                     </div>
                 </div>
 
-                {/* --- MODAL VITAL CONTROL (Preserved) --- */}
+                {/* --- MODAL VITAL CONTROL --- */}
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fadeIn">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
@@ -709,116 +708,6 @@
             </div>
         );
     };
-
-    // ... (MonitorContainer, LiveSimContainer, etc. remain the same) ...
-    // --- SCREEN 6: DEBRIEF ---
-    const DebriefScreen = ({ sim, onRestart }) => {
-        const { Button, Lucide, Card } = window;
-        const { state } = sim; const { log, scenario, history } = state; const chartRef = useRef(null);
-        if (!scenario) return <div className="p-4 text-white">Error: No scenario data for debrief.</div>;
-
-        useEffect(() => { 
-            if (!chartRef.current || !history.length) return; 
-            if (!window.Chart) { console.error("Chart.js not loaded"); return; }
-            const ctx = chartRef.current.getContext('2d'); 
-            if (window.myChart) window.myChart.destroy(); 
-            
-            window.myChart = new window.Chart(ctx, { 
-                type: 'line', 
-                data: { 
-                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), 
-                    datasets: [ 
-                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#10b981', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' } 
-                    ] 
-                }, 
-                options: { 
-                    responsive: true, maintainAspectRatio: false, animation: false, 
-                    scales: { y: { min: 0 }, y1: { position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} } } 
-                } 
-            }); 
-            return () => { if (window.myChart) window.myChart.destroy(); }; 
-        }, [history]);
-        
-        const handleExport = () => { 
-            if (!window.jspdf) { alert("PDF export library not loaded"); return; }
-            const doc = new window.jspdf.jsPDF(); 
-            doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10); doc.setFontSize(10); 
-            let y = 30; 
-            log.forEach(l => { if (y > 280) { doc.addPage(); y = 10; } doc.text(`[${l.simTime}] ${l.msg}`, 10, y); y += 6; }); 
-            doc.save("sim-debrief.pdf"); 
-        };
-        
-        return (
-            <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn p-4 h-full overflow-y-auto">
-                <div className="flex flex-col md:flex-row justify-between items-center bg-slate-800 p-4 rounded-lg border border-slate-700 gap-4">
-                    <h2 className="text-2xl font-bold text-white">Simulation Debrief</h2>
-                    <div className="flex gap-2">
-                        <Button onClick={handleExport} variant="secondary"><Lucide icon="download"/> PDF</Button>
-                        <Button onClick={onRestart} variant="primary"><Lucide icon="rotate-ccw"/> New Sim</Button>
-                    </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card title="1. Description" icon="eye" className="border-sky-500/50">
-                        <div className="p-2 space-y-2">
-                            <p className="text-xs text-slate-400">What happened? (Facts only)</p>
-                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Patient arrived with chest pain, deteriorated into VF..." />
-                        </div>
-                    </Card>
-                    <Card title="2. Analysis" icon="activity" className="border-amber-500/50">
-                         <div className="p-2 space-y-2">
-                            <p className="text-xs text-slate-400">Why did it happen? (CRM/Human Factors)</p>
-                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Communication breakdown during intubation..." />
-                        </div>
-                    </Card>
-                    <Card title="3. Application" icon="arrow-right-circle" className="border-emerald-500/50">
-                         <div className="p-2 space-y-2">
-                            <p className="text-xs text-slate-400">What will we do differently?</p>
-                            <textarea className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-24 text-sm" placeholder="e.g. Use closed loop communication during arrests..." />
-                        </div>
-                    </Card>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Card title="Physiological Trends" icon="activity">
-                        <div className="bg-slate-900 p-2 rounded h-64 md:h-80 relative">
-                            <canvas ref={chartRef}></canvas>
-                        </div>
-                    </Card>
-                    <Card title="Action Timeline" icon="clock">
-                        <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
-                            {log.map((l, i) => (
-                                <div key={i} className="flex gap-4 border-b border-slate-700 pb-1">
-                                    <span className="text-sky-400 w-12 flex-shrink-0">{l.simTime}</span>
-                                    <span className="text-slate-300">{l.msg}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </Card>
-                </div>
-            </div>
-        );
-    };
-
-    const MonitorContainer = ({ sessionID }) => { 
-        const { Lucide } = window;
-        const sim = useSimulation(null, true, sessionID); 
-        if (!sessionID) return null; 
-        if (!sim.state.vitals || sim.state.vitals.hr === undefined || sim.state.isFinished) {
-            return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
-                    <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
-                    <div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div>
-                    <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
-                </div>
-            ); 
-        }
-        return <MonitorScreen sim={sim} />; 
-    };   
-    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => { const { state, stop, reset } = sim; const { scenario } = state; const { Lucide } = window; useEffect(() => { if (view === 'resume' && resumeData) { sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData }); } else if (!scenario) { setView('setup'); } }, []); if (!scenario) return <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse"><Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" /></div>; if (view === 'live' || view === 'resume') return <LiveSimScreen sim={sim} onFinish={() => { stop(); setView('debrief'); }} onBack={() => setView('briefing')} sessionID={sessionID} />; if (view === 'debrief') return <DebriefScreen sim={sim} onRestart={() => { reset(); setView('setup'); }} />; return null; };
-
-    window.SetupScreen = SetupScreen; window.JoinScreen = JoinScreen; window.BriefingScreen = BriefingScreen; window.MonitorScreen = MonitorScreen; window.MonitorContainer = MonitorContainer; window.LiveSimContainer = LiveSimContainer; window.DebriefScreen = DebriefScreen;
-})();
 
     // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
