@@ -35,8 +35,7 @@
             case 'TOGGLE_INTERFERENCE': return { ...state, noise: { ...state.noise, interference: !state.noise.interference } };
             case 'UPDATE_PACER_STATE': return { ...state, remotePacerState: action.payload };
             
-            // ... existing cases (SYNC_FROM_MASTER, etc) ...
-            case 'SYNC_FROM_MASTER': return { ...state, ...action.payload }; // simplified for brevity
+            case 'SYNC_FROM_MASTER': return { ...state, ...action.payload };
             default: return state;
         }
     };
@@ -54,9 +53,8 @@
 
                 if (data.type === 'PACER_UPDATE') {
                     dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
-                    // Optional: Log significant changes?
                 } else if (data.type === 'CHARGE_INIT') {
-                    dispatch({ type: 'SET_FLASH', payload: 'yellow' }); // Visual alert
+                    dispatch({ type: 'SET_FLASH', payload: 'yellow' });
                     dispatch({ type: 'ADD_LOG', payload: { msg: `Defib Charging (${data.payload.energy}J)`, type: 'warning' } });
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
                 } else if (data.type === 'SHOCK_DELIVERED') {
@@ -69,10 +67,7 @@
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual' } });
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
-                    // Push if available
                     if (state.scenario && state.scenario.investigations && state.scenario.investigations.ecg) {
-                        // Assuming ecg.image is a URL. If not, use a placeholder or handle accordingly.
-                        // Ideally your scenario data has an image URL.
                         const imgUrl = state.scenario.investigations.ecg.image || "https://placeholder.com/ecg.png"; 
                         simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: imgUrl });
                     }
@@ -83,7 +78,6 @@
         // --- SYNC OUT ---
         useEffect(() => {
             if (!isMonitorMode) {
-                // Broadcast vital/waveform updates to Defib
                 simChannel.current.postMessage({
                     type: 'SYNC_VITALS',
                     payload: {
@@ -100,12 +94,9 @@
             }
         }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
 
-        // ... start/stop/tick functions ...
         const start = () => { if (state.isRunning) return; dispatch({ type: 'START_SIM' }); timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); };
-        
-        // ... expose utils ...
-        const triggerAction = (act) => dispatch({type: 'TRIGGER_ACTION', payload: act}); // Generic handler
+        const triggerAction = (act) => dispatch({type: 'TRIGGER_ACTION', payload: act});
 
         return { state, dispatch, start, pause, triggerAction };
     };
