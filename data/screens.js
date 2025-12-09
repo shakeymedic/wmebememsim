@@ -436,39 +436,6 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
-        // --- DEFIB INTEGRATION ---
-        const [defibOpen, setDefibOpen] = useState(false);
-
-        // 1. Send Vitals to Defib Iframe
-        useEffect(() => {
-            const iframe = document.getElementById('defib-frame');
-            if (defibOpen && iframe && iframe.contentWindow) {
-                iframe.contentWindow.postMessage({
-                    type: 'SYNC_VITALS',
-                    payload: {
-                        rhythm,
-                        hr: vitals.hr,
-                        spO2: vitals.spO2,
-                        etco2: vitals.etco2,
-                        bpSys: vitals.bpSys,
-                        bpDia: vitals.bpDia
-                    }
-                }, '*');
-            }
-        }, [defibOpen, vitals, rhythm]);
-
-        // 2. Receive Shocks from Defib Iframe
-        useEffect(() => {
-            const handleMsg = (e) => {
-                if (e.data.type === 'SHOCK_DELIVERED') {
-                    sim.applyIntervention('Defib'); 
-                    sim.addLogEntry(`Defib Shock: ${e.data.energy}J`, 'action');
-                }
-            };
-            window.addEventListener('message', handleMsg);
-            return () => window.removeEventListener('message', handleMsg);
-        }, []);
-
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
             "Sedation": ['Midazolam', 'Lorazepam', 'Ketamine', 'Morphine', 'Fentanyl', 'Roc', 'Sux', 'Propofol'],
@@ -579,51 +546,25 @@
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
-                        {/* TOGGLABLE MONITOR / DEFIB CARD */}
-                        <Card className="bg-black border-slate-800 flex-shrink-0 relative overflow-hidden" style={{ minHeight: defibOpen ? '500px' : 'auto' }}>
-                            
-                            {/* Toggle Button (Always Visible) */}
-                            <div className="absolute top-2 right-2 z-50">
-                                <Button 
-                                    onClick={() => setDefibOpen(!defibOpen)} 
-                                    variant={defibOpen ? "secondary" : "destructive"} 
-                                    className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20"
-                                >
-                                    {defibOpen ? "Exit Defib" : "Open Defib"}
-                                </Button>
-                            </div>
-
-                            {defibOpen ? (
-                                /* DEFIB FRAME */
-                                <iframe 
-                                    id="defib-frame"
-                                    src="defib/index.html" 
-                                    className="w-full h-full border-0 absolute inset-0 bg-slate-900"
-                                    title="Defibrillator"
-                                />
-                            ) : (
-                                /* STANDARD MONITOR */
-                                <>
-                                    <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
-                                    <div className="grid grid-cols-4 gap-1 p-1 bg-black">
-                                        <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
-                                        <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
-                                        <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
-                                        <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
-                                    </div>
-                                    <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
-                                        <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
-                                        <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
-                                        <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
-                                        
-                                        {etco2Enabled ? (
-                                            <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />
-                                        ) : (
-                                            <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
-                                        )}
-                                    </div>
-                                </>
-                            )}
+                        <Card className="bg-black border-slate-800 flex-shrink-0">
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
+                             <div className="grid grid-cols-4 gap-1 p-1 bg-black">
+                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
+                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
+                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
+                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
+                             </div>
+                             <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
+                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
+                                 <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
+                                 <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
+                                 
+                                 {etco2Enabled ? (
+                                    <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />
+                                 ) : (
+                                    <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
+                                 )}
+                             </div>
                         </Card>
                         
                         <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
@@ -686,6 +627,8 @@
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
                                     </div>
+                                           
+                                    {/* NEW SOUNDS SECTION */}
                                     <h4 className="text-[10px] font-bold text-slate-500 uppercase mt-4 border-t border-slate-700 pt-2">Medical Sounds</h4>
                                     <div className="grid grid-cols-4 gap-2">
                                         <Button onClick={() => playSound('Wheeze')} variant="outline" className="h-8 text-[10px]">Wheeze</Button>
@@ -801,24 +744,59 @@
     };
 
     // --- SCREEN 5: MONITOR ---
-// ... (MonitorScreen component remains similar but is not the target of modification)
     const MonitorScreen = ({ sim }) => {
         const { state, enableAudio } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const [audioEnabled, setAudioEnabled] = useState(false);
+        const [defibOpen, setDefibOpen] = useState(false);
         const wakeLockRef = useRef(null);
 
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
-        useEffect(() => { const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; requestWakeLock(); const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; document.addEventListener('visibilitychange', handleVis); return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; }, []);
+        
+        useEffect(() => { 
+            const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; 
+            requestWakeLock(); 
+            const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; 
+            document.addEventListener('visibilitychange', handleVis); 
+            return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; 
+        }, []);
+
+        // --- DEFIB SYNC ---
+        // 1. Sync Vitals to Defib Iframe
+        useEffect(() => {
+            const iframe = document.getElementById('defib-frame');
+            if (defibOpen && iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({
+                    type: 'SYNC_VITALS',
+                    payload: {
+                        rhythm,
+                        hr: vitals.hr,
+                        spO2: vitals.spO2,
+                        etco2: vitals.etco2,
+                        bpSys: vitals.bpSys,
+                        bpDia: vitals.bpDia
+                    }
+                }, '*');
+            }
+        }, [defibOpen, vitals, rhythm]);
+
+        // 2. Receive Shocks from Defib Iframe
+        useEffect(() => {
+            const handleMsg = (e) => {
+                if (e.data.type === 'SHOCK_DELIVERED') {
+                    // Send to Controller via Firebase
+                    if(sim.triggerAction) sim.triggerAction('Defib'); 
+                }
+            };
+            window.addEventListener('message', handleMsg);
+            return () => window.removeEventListener('message', handleMsg);
+        }, [sim]);
 
         // --- POPUP HELPER ---
         const getPopupContent = (type, scenario) => {
             if (!scenario) return null;
-            
-            // Use investigation data from sync if available, else fallback
             const inv = scenario.investigations || scenario;
-
             if (type === 'ECG') return { title: '12 Lead ECG', body: <div className="text-xl">{inv.ecg ? inv.ecg.findings : "Normal"}</div> };
             if (type === 'VBG') {
                 const v = inv.vbg || {};
@@ -850,8 +828,29 @@
             <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio} onTouchStart={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
+                {/* DEFIB OVERLAY */}
+                {defibOpen && (
+                    <div className="absolute inset-0 z-[100] bg-black flex flex-col">
+                         <div className="absolute top-4 right-4 z-[110]">
+                            <Button 
+                                onClick={() => setDefibOpen(false)} 
+                                variant="destructive" 
+                                className="h-10 text-sm uppercase font-bold shadow-xl border border-white/20"
+                            >
+                                Close Defib
+                            </Button>
+                        </div>
+                        <iframe 
+                            id="defib-frame"
+                            src="defib/index.html" 
+                            className="w-full h-full border-0 bg-slate-900"
+                            title="Defibrillator"
+                        />
+                    </div>
+                )}
+                
                 {/* --- INVESTIGATION POPUP --- */}
-                {showPopup && (
+                {showPopup && !defibOpen && (
                     <div className="absolute right-4 top-1/2 -translate-y-1/2 z-40 bg-slate-900/95 border-2 border-sky-500 rounded-lg p-6 shadow-2xl max-w-md animate-fadeIn">
                         {(() => {
                             const content = getPopupContent(monitorPopup.type, scenario);
@@ -871,6 +870,18 @@
                 )}
 
                 <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
+                    
+                    {/* DEFIB OPEN BUTTON (Monitor Only) */}
+                    <div className="absolute top-2 right-2 z-30">
+                        <Button 
+                            onClick={() => setDefibOpen(true)} 
+                            variant="destructive" 
+                            className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20 opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                            Open Defib
+                        </Button>
+                    </div>
+
                     {hasMonitoring ? (
                         <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
                     ) : (
