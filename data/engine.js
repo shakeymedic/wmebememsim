@@ -277,7 +277,17 @@
             }
         }, [state, isMonitorMode, sessionID]);
 
-        useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
+       // NEW CODE
+useEffect(() => { 
+    if (!isMonitorMode && state.scenario && state.log.length > 0) { 
+        const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; 
+        try {
+            localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); 
+        } catch (e) {
+            // Storage full or blocked - silently ignore to keep sim running
+        }
+    } 
+}, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
         useEffect(() => {
