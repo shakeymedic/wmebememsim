@@ -23,17 +23,17 @@
 
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
-        useEffect(() => {
-            const saved = localStorage.getItem('wmebem_custom_scenarios');
-            if (saved) {
-                try {
-                    setCustomScenarios(JSON.parse(saved));
-                } catch (e) {
-                    console.error("Failed to load custom scenarios", e);
-                    localStorage.removeItem('wmebem_custom_scenarios'); 
-                }
-            }
-        }, []);
+        // NEW CODE (Safe)
+useEffect(() => {
+    try {
+        const saved = localStorage.getItem('wmebem_custom_scenarios');
+        if (saved) {
+            setCustomScenarios(JSON.parse(saved));
+        }
+    } catch (e) {
+        console.warn("Storage access blocked - Custom scenarios disabled");
+    }
+}, []);
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
