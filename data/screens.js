@@ -498,6 +498,7 @@
                         </div>
                     </div>
                     {/* ... (Rest of header: Audio Toggle, Time, Log) ... */}
+</div>  {/* <--- ADD THIS CLOSING DIV */}
 
                 {/* --- ARREST OVERLAY --- */}
                 {arrestPanelOpen && (
