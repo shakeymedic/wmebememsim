@@ -33,24 +33,24 @@
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
-    <div id="root" class="flex items-center justify-center text-slate-500">
+    <div id="root" class="flex h-full items-center justify-center text-slate-500">
         <div class="flex flex-col items-center gap-4">
             <svg class="animate-spin h-8 w-8 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-            <span>Loading Clinical Assets...</span>
+            <span class="font-mono text-sm tracking-widest uppercase">Initialising WMEBEM Sim Engine...</span>
         </div>
     </div>
 
     <script>
+        // --- ROBUST ASSET LOADING SEQUENCE ---
         const scripts = [
             "data/generators.js",
             "data/interventions.js",
             "data/scenarios.js",
-            "data/components.js", // Needs React
-            "data/engine.js",     // Needs generators
-            "data/screens.js"     // Needs components & engine
+            "data/components.js", 
+            "data/engine.js",     
+            "data/screens.js"     
         ];
 
-        // Sequential Loader to ensure dependencies exist
         function loadScripts(list) {
             if (list.length === 0) {
                 initApp();
@@ -58,22 +58,29 @@
             }
             const src = list[0];
             const script = document.createElement('script');
+            // Check if file needs Babel compilation (React components)
             if (src.includes('components.js') || src.includes('engine.js') || src.includes('screens.js')) {
                 script.type = "text/babel";
+                script.setAttribute('data-presets', 'react');
             }
             script.src = src;
+            // For Babel scripts, we can't use onload directly on the script tag effectively because Babel processes them asynchronously.
+            // However, Babel Standalone attaches to the DOMContentLoaded or processes manually.
+            // We'll append and rely on Babel's processing speed for the components, but standard JS loads sequentially.
             script.onload = () => loadScripts(list.slice(1));
             document.body.appendChild(script);
         }
 
         function initApp() {
-            // Check if Babel has finished transpiling
-            const checkBabel = setInterval(() => {
+            // Wait for Babel to finish transpiling and exposing global components
+            const checkReady = setInterval(() => {
                 if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
-                    clearInterval(checkBabel);
-                    ReactDOM.render(React.createElement(App), document.getElementById('root'));
+                    clearInterval(checkReady);
+                    try {
+                        ReactDOM.render(React.createElement(App), document.getElementById('root'));
+                    } catch(e) { console.error("Render Error:", e); }
                 }
-            }, 50);
+            }, 100);
         }
 
         // Firebase Init
@@ -93,10 +100,10 @@
             }
         } catch (e) { console.error("Firebase Init Error:", e); }
 
-        // Start loading
+        // Start Loading
         loadScripts(scripts);
 
-        // --- MAIN APP COMPONENT (Moved here to ensure it's available after Babel) ---
+        // --- MAIN APP COMPONENT ---
         const App = () => {
             const { useState, useEffect } = React;
             const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer } = window;
@@ -104,6 +111,7 @@
             const [view, setView] = useState('setup'); 
             const [sessionID, setSessionID] = useState(null);
 
+            // Session Management
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
                 if (params.get('mode') === 'monitor') {
@@ -121,11 +129,13 @@
                 }
             }, []); 
 
+            // Init Engine
             const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
             
-            // --- UNIFIED BROADCAST CHANNEL ---
+            // --- TELEMETRY HUB (BroadcastChannel) ---
             useEffect(() => {
                 const channel = new BroadcastChannel('sim_channel');
+                
                 const sendUpdate = () => {
                     if (!sim.state || !sim.state.vitals) return;
                     channel.postMessage({
@@ -137,29 +147,40 @@
                             etco2: sim.state.vitals.etco2,
                             bpSys: sim.state.vitals.bpSys,
                             bpDia: sim.state.vitals.bpDia,
-                            // Send config settings too
                             gain: sim.state.waveformGain,
-                            interference: sim.state.noise.interference
+                            interference: sim.state.noise.interference,
+                            cpr: sim.state.cprInProgress // Sync CPR state for artifact
                         }
                     });
                 };
 
                 channel.onmessage = (event) => {
                     const data = event.data;
-                    if (data.type === 'REQUEST_SYNC') sendUpdate();
-                    if (data.type === 'SHOCK_DELIVERED') sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'action');
+                    if (data.type === 'REQUEST_SYNC') sendUpdate(); // New device asking for data
+                    
+                    if (data.type === 'SHOCK_DELIVERED') {
+                        sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'danger');
+                        sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'shock' }); // Optional audio cue
+                    }
+                    
+                    if (data.type === 'PACER_UPDATE') {
+                        sim.dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
+                    }
                 };
 
-                const interval = setInterval(sendUpdate, 1000); // Sync fallback
-                sendUpdate(); // Immediate
+                const interval = setInterval(sendUpdate, 1000); // Heartbeat sync
+                sendUpdate(); // Immediate sync
+                
                 return () => { clearInterval(interval); channel.close(); }
             }, [sim.state]); 
 
+            // View Routing
             const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
             const handleGenerate = (s) => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: s }); setView('briefing'); };
             const handleResume = (savedState) => { sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); setView('live'); };
             const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); localStorage.removeItem('wmebem_sim_state'); };
 
+            // Recovery Logic
             const [resumeAvailable, setResumeAvailable] = useState(null);
             useEffect(() => {
                 if (view === 'setup') {
