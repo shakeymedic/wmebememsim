@@ -252,3 +252,31 @@ window.processScenarios = () => {
 };
 
 window.ALL_SCENARIOS = window.processScenarios();
+window.processScenarios = () => {
+    return window.RAW_SCENARIOS.map(s => {
+        // ... (Existing kit/link logic) ...
+        
+        // --- FIX 1: Auto-Correct Clinical Keys ---
+        const mapKeys = (list) => list.map(item => {
+            if (item === 'Adrenaline') return (s.acuity === 'Resus' && !s.title.includes('Anaphylaxis')) ? 'AdrenalineIV' : 'AdrenalineIM';
+            if (item === 'Magnesium') return 'MagSulph';
+            if (item === 'Amio') return 'Amiodarone';
+            if (item === 'Calcium') return 'Calcium'; // Calcium Gluconate key check
+            return item;
+        });
+
+        const safeRecommended = mapKeys(s.recommendedActions || []);
+        const safeStabilisers = mapKeys(s.stabilisers || []);
+
+        // ... (Existing evolution logic) ...
+
+        return {
+            ...s,
+            recommendedActions: safeRecommended, // Use corrected list
+            stabilisers: safeStabilisers,       // Use corrected list
+            equipment: s.instructorBrief.equipment || kit, 
+            learningLinks: s.learningLinks || links,
+            evolution: { improved, deteriorated }
+        };
+    });
+};
