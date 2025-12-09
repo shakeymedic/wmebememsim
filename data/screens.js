@@ -426,7 +426,7 @@
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [searchResults, setSearchResults] = useState([]);
-               const [expandRhythm, setExpandRhythm] = useState(false);
+        const [expandRhythm, setExpandRhythm] = useState(false);
         const [expandArrest, setExpandArrest] = useState(false); 
         const [customSpeech, setCustomSpeech] = useState("");
         const [showLogModal, setShowLogModal] = useState(false);
@@ -436,6 +436,38 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
+        // --- DEFIB INTEGRATION ---
+        const [defibOpen, setDefibOpen] = useState(false);
+
+        // 1. Send Vitals to Defib Iframe
+        useEffect(() => {
+            const iframe = document.getElementById('defib-frame');
+            if (defibOpen && iframe && iframe.contentWindow) {
+                iframe.contentWindow.postMessage({
+                    type: 'SYNC_VITALS',
+                    payload: {
+                        rhythm,
+                        hr: vitals.hr,
+                        spO2: vitals.spO2,
+                        etco2: vitals.etco2,
+                        bpSys: vitals.bpSys,
+                        bpDia: vitals.bpDia
+                    }
+                }, '*');
+            }
+        }, [defibOpen, vitals, rhythm]);
+
+        // 2. Receive Shocks from Defib Iframe
+        useEffect(() => {
+            const handleMsg = (e) => {
+                if (e.data.type === 'SHOCK_DELIVERED') {
+                    sim.applyIntervention('Defib'); 
+                    sim.addLogEntry(`Defib Shock: ${e.data.energy}J`, 'action');
+                }
+            };
+            window.addEventListener('message', handleMsg);
+            return () => window.removeEventListener('message', handleMsg);
+        }, []);
 
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
@@ -468,8 +500,7 @@
         const handleShock = () => { applyIntervention('Defib'); if (!cprInProgress) toggleCPR(); };
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const generateSBAR = () => `S: ${scenario.title}.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%.\nR: Review.`;
-        const getCatColor = (cat) => { if (cat === 'Airway') return 'bg-sky-700 border-sky-500'; if (cat === 'Breathing') return 'bg-cyan-700 border-cyan-500'; if (cat === 'Circulation') return 'bg-red-700 border-red-500'; if (cat === 'Drugs') return 'bg-yellow-700 border-yellow-500'; if (cat === 'Procedures') return 'bg-emerald-700 border-emerald-500'; return 'bg-slate-700 border-slate-500'; };
-
+        
         const openVitalControl = (key) => {
             setModalVital(key);
             setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]);
@@ -503,7 +534,6 @@
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
                         {!isRunning ? <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> : <Button variant="danger" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button>}
                         <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
-                        {/* AGE DISPLAY IN HEADER */}
                         <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600">
                             <span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span>
                             <span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span>
@@ -522,7 +552,7 @@
 
                 {/* --- ARREST OVERLAY --- */}
                 {arrestPanelOpen && (
-    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
+                    <div className="lg:col-span-3 bg-red-900/20 border border-red-500 p-4 rounded-lg flex flex-col md:flex-row gap-4 animate-fadeIn mb-2 shadow-2xl">
                         <div className="flex-1 flex flex-col justify-center items-center bg-slate-900/80 p-4 rounded border border-red-500/50">
                             <h3 className="text-red-500 font-bold uppercase tracking-widest mb-1">Cycle Timer</h3>
                             <div className={`text-5xl font-mono font-bold ${cycleTimer > 120 ? 'text-red-500 animate-pulse' : 'text-white'}`}>{formatTime(cycleTimer)}</div>
@@ -549,26 +579,51 @@
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
-                        <Card className="bg-black border-slate-800 flex-shrink-0">
-                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
-                             <div className="grid grid-cols-4 gap-1 p-1 bg-black">
-                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
-                             </div>
-                             <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
-                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
-                                 <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
-                                 <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
-                                 
-                                 {/* NEW: Editable ETCO2 Display */}
-                                 {etco2Enabled ? (
-                                    <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />
-                                 ) : (
-                                    <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
-                                 )}
-                             </div>
+                        {/* TOGGLABLE MONITOR / DEFIB CARD */}
+                        <Card className="bg-black border-slate-800 flex-shrink-0 relative overflow-hidden" style={{ minHeight: defibOpen ? '500px' : 'auto' }}>
+                            
+                            {/* Toggle Button (Always Visible) */}
+                            <div className="absolute top-2 right-2 z-50">
+                                <Button 
+                                    onClick={() => setDefibOpen(!defibOpen)} 
+                                    variant={defibOpen ? "secondary" : "destructive"} 
+                                    className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20"
+                                >
+                                    {defibOpen ? "Exit Defib" : "Open Defib"}
+                                </Button>
+                            </div>
+
+                            {defibOpen ? (
+                                /* DEFIB FRAME */
+                                <iframe 
+                                    id="defib-frame"
+                                    src="defib/index.html" 
+                                    className="w-full h-full border-0 absolute inset-0 bg-slate-900"
+                                    title="Defibrillator"
+                                />
+                            ) : (
+                                /* STANDARD MONITOR */
+                                <>
+                                    <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
+                                    <div className="grid grid-cols-4 gap-1 p-1 bg-black">
+                                        <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
+                                        <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
+                                        <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
+                                        <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
+                                        <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
+                                        <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
+                                        <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
+                                        
+                                        {etco2Enabled ? (
+                                            <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />
+                                        ) : (
+                                            <VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />
+                                        )}
+                                    </div>
+                                </>
+                            )}
                         </Card>
                         
                         <Card title="Patient Info" icon="user" collapsible={true} className="flex-shrink-0 bg-slate-800">
@@ -631,15 +686,13 @@
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
                                     </div>
-                                           
-        {/* NEW SOUNDS SECTION */}
-        <h4 className="text-[10px] font-bold text-slate-500 uppercase mt-4 border-t border-slate-700 pt-2">Medical Sounds</h4>
-        <div className="grid grid-cols-4 gap-2">
-            <Button onClick={() => playSound('Wheeze')} variant="outline" className="h-8 text-[10px]">Wheeze</Button>
-            <Button onClick={() => playSound('Stridor')} variant="outline" className="h-8 text-[10px]">Stridor</Button>
-            <Button onClick={() => playSound('Vomit')} variant="outline" className="h-8 text-[10px]">Vomit</Button>
-            <Button onClick={() => playSound('Snoring')} variant="outline" className="h-8 text-[10px]">Snore</Button>
-        </div>
+                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase mt-4 border-t border-slate-700 pt-2">Medical Sounds</h4>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <Button onClick={() => playSound('Wheeze')} variant="outline" className="h-8 text-[10px]">Wheeze</Button>
+                                        <Button onClick={() => playSound('Stridor')} variant="outline" className="h-8 text-[10px]">Stridor</Button>
+                                        <Button onClick={() => playSound('Vomit')} variant="outline" className="h-8 text-[10px]">Vomit</Button>
+                                        <Button onClick={() => playSound('Snoring')} variant="outline" className="h-8 text-[10px]">Snore</Button>
+                                    </div>
                                     <div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
                                 </div>
                             ) : activeTab === 'Drugs' ? (
@@ -748,6 +801,7 @@
     };
 
     // --- SCREEN 5: MONITOR ---
+// ... (MonitorScreen component remains similar but is not the target of modification)
     const MonitorScreen = ({ sim }) => {
         const { state, enableAudio } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup } = state;
