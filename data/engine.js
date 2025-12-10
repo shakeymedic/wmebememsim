@@ -29,8 +29,8 @@
 
     const simReducer = (state, action) => {
        switch (action.type) {
-            case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
-            case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
+            case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system', timeSeconds: 0 }] };
+            case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system', timeSeconds: state.time }] };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
             case 'CLEAR_SESSION': return { ...initialState };
             case 'LOAD_SCENARIO':
@@ -52,7 +52,7 @@
                     bp: action.payload.bpSys, 
                     spo2: action.payload.spO2, 
                     rr: action.payload.rr, 
-                    etco2: action.payload.etco2, // Added ETCO2 tracking
+                    etco2: action.payload.etco2, 
                     actions: [] 
                 }];
                 return { ...state, vitals: action.payload, history: newHist };
@@ -175,12 +175,10 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
-        // LINK CONTROLLER TO DEFIB
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
-                // Removed !state.isRunning check so defib can connect anytime
-                
+                // Defib sync logic - allowed even if paused
                 if (data.type === 'PACER_UPDATE') {
                     dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                 } else if (data.type === 'CHARGE_INIT') {
@@ -362,6 +360,7 @@
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
             
+            // --- CONTEXT AWARE INTERVENTION CHECK ---
             if (action.requires) {
                 const missing = action.requires.filter(req => !state.activeInterventions.has(req));
                 if (missing.length > 0) {
@@ -409,31 +408,33 @@
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
-            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
+            if (action.effect && action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
             
+            // --- FIX: SAFE ACCESS TO EFFECTS ---
+            const effect = action.effect || {};
             const isArrest = state.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(state.rhythm));
             if (!isArrest) { 
-                if (action.effect.HR) { 
-                    if (action.effect.HR === 'reset') newVitals.hr = 80; 
-                    else if (action.effect.HR === 'pace') newVitals.hr = 80;
-                    else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); 
+                if (effect.HR) { 
+                    if (effect.HR === 'reset') newVitals.hr = 80; 
+                    else if (effect.HR === 'pace') newVitals.hr = 80;
+                    else newVitals.hr = clamp(newVitals.hr + effect.HR, 0, 250); 
                 } 
-                if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); 
-                if (action.effect.RR) {
-                    if (action.effect.RR === 'vent') {
+                if (effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + effect.BP, 0, 300); 
+                if (effect.RR) {
+                    if (effect.RR === 'vent') {
                         newVitals.rr = 14; 
-                    } else if (typeof action.effect.RR === 'number') {
-                        newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); 
+                    } else if (typeof effect.RR === 'number') {
+                        newVitals.rr = clamp(newVitals.rr + effect.RR, 0, 60); 
                     }
                 }
             }
-            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); 
+            if (effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + effect.SpO2, 0, 100); 
             
-            if (action.effect.gcs) {
-                if (typeof action.effect.gcs === 'string') {
-                    if (action.effect.gcs === 'sedated') newVitals.gcs = 3;
+            if (effect.gcs) {
+                if (typeof effect.gcs === 'string') {
+                    if (effect.gcs === 'sedated') newVitals.gcs = 3;
                 } else {
-                    newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
+                    newVitals.gcs = clamp(newVitals.gcs + effect.gcs, 3, 15);
                 }
             }
 
