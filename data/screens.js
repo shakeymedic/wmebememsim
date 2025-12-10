@@ -273,39 +273,60 @@
             const ctx = chartRef.current.getContext('2d'); 
             if (window.myChart) window.myChart.destroy(); 
             
-            // Generate annotations for vertical lines
-            const actionPoints = log.filter(l => l.type === 'action').map(l => ({
-                type: 'line',
-                mode: 'vertical',
-                scaleID: 'x',
-                value: l.simTime,
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-                borderWidth: 1,
-                label: { content: l.msg, enabled: true, position: "top" }
-            }));
-
-            const labels = history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`);
+            // Prepare Data
+            const vitalData = {
+                hr: history.map(h => ({x: h.time, y: h.hr})),
+                bp: history.map(h => ({x: h.time, y: h.bp})),
+                spo2: history.map(h => ({x: h.time, y: h.spo2})),
+                etco2: history.map(h => ({x: h.time, y: h.etco2})),
+                rr: history.map(h => ({x: h.time, y: h.rr}))
+            };
+            
+            const interventionData = log
+                .filter(l => l.type === 'action' || l.type === 'manual')
+                .map(l => ({ x: l.timeSeconds, y: 10, label: l.msg })); 
 
             window.myChart = new window.Chart(ctx, { 
                 type: 'line', 
                 data: { 
-                    labels: labels, 
                     datasets: [ 
-                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y' }, 
-                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y' },
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y' },
-                        { label: 'RR', data: history.map(h => h.rr), borderColor: '#facc15', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' },
-                        { label: 'ETCO2', data: history.map(h => h.etco2 || null), borderColor: '#fbbf24', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, tension: 0.1, yAxisID: 'y1' }
+                        { label: 'HR', data: vitalData.hr, borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y' }, 
+                        { label: 'Sys BP', data: vitalData.bp, borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y' },
+                        { label: 'SpO2', data: vitalData.spo2, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y' },
+                        { label: 'RR', data: vitalData.rr, borderColor: '#facc15', borderWidth: 2, pointRadius: 0, tension: 0.1, yAxisID: 'y1' },
+                        { label: 'ETCO2', data: vitalData.etco2, borderColor: '#fbbf24', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, tension: 0.1, yAxisID: 'y1' },
+                        { label: 'Interventions', data: interventionData, showLine: false, pointStyle: 'triangle', pointRadius: 6, backgroundColor: 'white', yAxisID: 'y' }
                     ] 
                 }, 
                 options: { 
                     responsive: true, 
                     maintainAspectRatio: false, 
-                    interaction: { mode: 'index', intersect: false },
+                    interaction: { mode: 'nearest', intersect: false },
                     scales: { 
+                        x: {
+                            type: 'linear',
+                            position: 'bottom',
+                            ticks: {
+                                callback: function(value) {
+                                    return `${Math.floor(value/60).toString().padStart(2,'0')}:${(value%60).toString().padStart(2,'0')}`;
+                                }
+                            }
+                        },
                         y: { type: 'linear', display: true, position: 'left', min: 0, max: 220 },
                         y1: { type: 'linear', display: true, position: 'right', min: 0, max: 60, grid: { drawOnChartArea: false } }
-                    } 
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label === 'Interventions') {
+                                        return context.raw.label;
+                                    }
+                                    return `${context.dataset.label}: ${context.raw.y}`;
+                                }
+                            }
+                        }
+                    }
                 } 
             }); 
             return () => { if (window.myChart) window.myChart.destroy(); }; 
