@@ -175,10 +175,11 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
+        // LINK CONTROLLER TO DEFIB (Improved)
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
-                // Defib sync logic - allowed even if paused
+                
                 if (data.type === 'PACER_UPDATE') {
                     dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                 } else if (data.type === 'CHARGE_INIT') {
@@ -188,7 +189,8 @@
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
                 } else if (data.type === 'SHOCK_DELIVERED') {
                     dispatch({ type: 'SET_FLASH', payload: 'red' });
-                    dispatch({ type: 'ADD_LOG', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: 'danger' } });
+                    // CRITICAL FIX: Actually trigger the intervention so rhythm logic runs
+                    applyIntervention('Defib'); 
                     dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: "danger", id: Date.now() } });
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
                 } else if (data.type === 'ALARM_SILENCE') {
@@ -362,11 +364,21 @@
             
             // --- CONTEXT AWARE INTERVENTION CHECK ---
             if (action.requires) {
-                const missing = action.requires.filter(req => !state.activeInterventions.has(req));
-                if (missing.length > 0) {
-                    const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
-                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
-                    return; // Block the action
+                // Special check for Defib pads if coming from remote
+                if (key === 'Defib' && !state.activeInterventions.has('PacingPads')) {
+                    // Auto-apply pads if defib requested
+                    dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { 
+                        active: new Set([...state.activeInterventions, 'PacingPads']), 
+                        counts: state.interventionCounts 
+                    }});
+                    addLogEntry("Pads applied automatically for shock.", "system");
+                } else {
+                    const missing = action.requires.filter(req => !state.activeInterventions.has(req));
+                    if (missing.length > 0) {
+                        const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
+                        dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
+                        return; // Block the action
+                    }
                 }
             }
 
@@ -379,6 +391,7 @@
             }
 
             let logMsg = action.log;
+            // ... (Clinical adjustments for Fluid/Drugs based on weight - same as before)
             if (key === 'Fluids') {
                 if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
                     logMsg = `Fluid Bolus (${state.scenario.wetflag.fluids}ml) administered.`;
@@ -391,6 +404,7 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${state.scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${state.scenario.wetflag.glucose}ml) administered.`;
             }
+
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
@@ -408,9 +422,22 @@
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
-            if (action.effect && action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
+            // --- DEFIB LOGIC ---
+            if (action.effect && action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { 
+                if (state.queuedRhythm) { 
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); 
+                    if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); 
+                    else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); 
+                    dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); 
+                } else if (Math.random() < 0.6) { 
+                    addLogEntry('Defib: No change in rhythm.', 'warning'); 
+                } else { 
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); 
+                    addLogEntry('Rhythm changed to Asystole', 'warning'); 
+                } 
+            }
             
-            // --- FIX: SAFE ACCESS TO EFFECTS ---
+            // --- VITAL SIGNS CHANGE LOGIC ---
             const effect = action.effect || {};
             const isArrest = state.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(state.rhythm));
             if (!isArrest) { 
@@ -441,8 +468,11 @@
             const updatedScenario = { ...state.scenario }; let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+            
+            // COMMIT VITAL UPDATES
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
+
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
@@ -490,15 +520,12 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
-        // --- LOOPING AUDIO (Wheeze/Stridor) ---
         const toggleAudioLoop = (type) => {
             if (!audioCtxRef.current) return;
             const ctx = audioCtxRef.current;
             if (ctx.state === 'suspended') ctx.resume();
             
-            // Check if playing
             if (loopNodesRef.current[type]) {
-                // Stop it
                 loopNodesRef.current[type].stop();
                 delete loopNodesRef.current[type];
                 const newLoops = {...state.activeLoops};
@@ -506,17 +533,16 @@
                 dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: newLoops});
                 addLogEntry(`Audio Loop Stopped: ${type}`, 'manual');
             } else {
-                // Start it (Simple Synthesis for robustness)
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                const lfo = ctx.createOscillator(); // LFO for breathing pattern
+                const lfo = ctx.createOscillator();
                 const lfoGain = ctx.createGain();
                 
                 if (type === 'Wheeze') {
                     osc.type = 'triangle';
                     osc.frequency.value = 400;
-                    lfo.frequency.value = 0.25; // 15 breaths/min
-                    lfoGain.gain.value = 200; // Modulate pitch
+                    lfo.frequency.value = 0.25; 
+                    lfoGain.gain.value = 200; 
                 } else if (type === 'Stridor') {
                     osc.type = 'sawtooth';
                     osc.frequency.value = 600;
@@ -529,11 +555,8 @@
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 
-                // Breath envelope
                 const now = ctx.currentTime;
                 gain.gain.setValueAtTime(0, now);
-                // Simple looping ramp logic isn't native, so we use LFO for amplitude in a real mixer, 
-                // but here we just let it drone with pitch modulation to simulate breath sounds
                 gain.gain.value = 0.05; 
                 
                 osc.start();
@@ -555,7 +578,7 @@
             const current = stateRef.current; 
             let next = { ...current.vitals };
             
-            // 1. Automatic Deterioration (Physiological Drift)
+            // Automatic Deterioration
             if (current.isRunning && current.scenario.deterioration && current.scenario.deterioration.active && !current.trends.active) {
                 const rate = current.scenario.deterioration.rate || 0.05; 
                 const type = current.scenario.deterioration.type;
@@ -572,7 +595,7 @@
                 }
             }
 
-            // 2. Physiological Constraints (Compensatory Mechanisms)
+            // Physiological Constraints
             if (next.hr === 0) { 
                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
                 if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
@@ -585,18 +608,15 @@
                 }
             }
 
-            // --- ADVANCED PACING LOGIC ---
+            // Pacing Logic
             if (current.remotePacerState.output > current.pacingThreshold && current.remotePacerState.rate > 0) {
-                // Capture achieved
                 if (current.rhythm !== 'paced') {
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); // Defib shows 'Paced' beats visually
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); 
                 }
                 next.hr = current.remotePacerState.rate;
-            } else if (current.remotePacerState.output > 0) {
-                // Pacing but no capture - maintain native rhythm
             }
 
-            // 3. Noise & Flux
+            // Noise
             if (next.hr > 0 && next.hr !== current.remotePacerState.rate) { 
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
@@ -605,7 +625,7 @@
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
             }
 
-            // 4. Trend Application
+            // Trend Application
             if (current.trends.active) {
                 const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
                 Object.keys(current.trends.targets).forEach(key => {
