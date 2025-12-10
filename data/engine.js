@@ -22,9 +22,8 @@
         noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 },
         notification: null,
-        // NEW STATE FOR FEATURES
-        pacingThreshold: 70, // Default capture threshold
-        activeLoops: {}, // For continuous audio
+        pacingThreshold: 70, 
+        activeLoops: {}, 
         completedObjectives: new Set()
     };
 
@@ -47,7 +46,15 @@
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_VITALS': 
                 if (!state.isRunning && action.payload.source !== 'manual') return state;
-                const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
+                const newHist = [...state.history, { 
+                    time: state.time, 
+                    hr: action.payload.hr, 
+                    bp: action.payload.bpSys, 
+                    spo2: action.payload.spO2, 
+                    rr: action.payload.rr, 
+                    etco2: action.payload.etco2, // Added ETCO2 tracking
+                    actions: [] 
+                }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': 
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(action.payload);
@@ -160,7 +167,7 @@
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
-        const loopNodesRef = useRef({}); // Store oscillators for loops
+        const loopNodesRef = useRef({}); 
         const stateRef = useRef(state);
         const lastCmdRef = useRef(0);
         
@@ -168,11 +175,12 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
+        // LINK CONTROLLER TO DEFIB
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
-                if (!state.isRunning) return;
-
+                // Removed !state.isRunning check so defib can connect anytime
+                
                 if (data.type === 'PACER_UPDATE') {
                     dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                 } else if (data.type === 'CHARGE_INIT') {
@@ -192,12 +200,12 @@
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
                     if (state.scenario && state.scenario.investigations && state.scenario.investigations.ecg) {
-                        const imgUrl = state.scenario.investigations.ecg.image || "https://placeholder.com/ecg.png"; 
+                        const imgUrl = state.scenario.investigations.ecg.image || ""; 
                         simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: imgUrl });
                     }
                 }
             };
-        }, [state.isRunning, state.scenario]);
+        }, [state.scenario]); 
 
         useEffect(() => {
             if (!isMonitorMode) {
@@ -211,11 +219,12 @@
                         bpSys: state.vitals.bpSys,
                         bpDia: state.vitals.bpDia,
                         gain: state.waveformGain,
-                        interference: state.noise.interference
+                        interference: state.noise.interference,
+                        cpr: state.cprInProgress
                     }
                 });
             }
-        }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
+        }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.cprInProgress]);
 
         useEffect(() => {
             const db = window.db; 
@@ -277,17 +286,15 @@
             }
         }, [state, isMonitorMode, sessionID]);
 
-       // NEW CODE
-useEffect(() => { 
-    if (!isMonitorMode && state.scenario && state.log.length > 0) { 
-        const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; 
-        try {
-            localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); 
-        } catch (e) {
-            // Storage full or blocked - silently ignore to keep sim running
-        }
-    } 
-}, [state.vitals, state.log, isMonitorMode]);
+        useEffect(() => { 
+            if (!isMonitorMode && state.scenario && state.log.length > 0) { 
+                const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; 
+                try {
+                    localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); 
+                } catch (e) {}
+            } 
+        }, [state.vitals, state.log, isMonitorMode]);
+
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
         useEffect(() => {
@@ -355,7 +362,6 @@ useEffect(() => {
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
             
-            // --- CONTEXT AWARE INTERVENTION CHECK ---
             if (action.requires) {
                 const missing = action.requires.filter(req => !state.activeInterventions.has(req));
                 if (missing.length > 0) {
@@ -395,8 +401,6 @@ useEffect(() => {
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
             // --- CHECKLIST LOGIC ---
-            // If the scenario has generic objectives mapped to this action, auto-complete
-            // Simple approach: Check if scenario title implies sepsis, and action is Antibiotics
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
             if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
             if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
