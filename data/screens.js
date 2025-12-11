@@ -442,6 +442,10 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
         const [gainVal, setGainVal] = useState(waveformGain || 1.0);
+        // Sync gain state to window global for the canvas drawer
+useEffect(() => {
+    window.waveformGain = waveformGain;
+}, [waveformGain]);
         
         // Toast Local State
         const [showToast, setShowToast] = useState(false);
