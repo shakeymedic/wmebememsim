@@ -22,15 +22,16 @@
         noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 },
         notification: null,
-        pacingThreshold: 70, 
-        activeLoops: {}, 
+        // NEW STATE FOR FEATURES
+        pacingThreshold: 70, // Default capture threshold
+        activeLoops: {}, // For continuous audio
         completedObjectives: new Set()
     };
 
     const simReducer = (state, action) => {
        switch (action.type) {
-            case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system', timeSeconds: 0 }] };
-            case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system', timeSeconds: state.time }] };
+            case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
+            case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
             case 'CLEAR_SESSION': return { ...initialState };
             case 'LOAD_SCENARIO':
@@ -46,15 +47,7 @@
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_VITALS': 
                 if (!state.isRunning && action.payload.source !== 'manual') return state;
-                const newHist = [...state.history, { 
-                    time: state.time, 
-                    hr: action.payload.hr, 
-                    bp: action.payload.bpSys, 
-                    spo2: action.payload.spO2, 
-                    rr: action.payload.rr, 
-                    etco2: action.payload.etco2, 
-                    actions: [] 
-                }];
+                const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
                 return { ...state, vitals: action.payload, history: newHist };
             case 'UPDATE_RHYTHM': 
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(action.payload);
@@ -167,7 +160,7 @@
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
-        const loopNodesRef = useRef({}); 
+        const loopNodesRef = useRef({}); // Store oscillators for loops
         const stateRef = useRef(state);
         const lastCmdRef = useRef(0);
         
@@ -175,11 +168,11 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
-        // LINK CONTROLLER TO DEFIB (Improved)
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
-                
+                if (!state.isRunning) return;
+
                 if (data.type === 'PACER_UPDATE') {
                     dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                 } else if (data.type === 'CHARGE_INIT') {
@@ -189,8 +182,7 @@
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
                 } else if (data.type === 'SHOCK_DELIVERED') {
                     dispatch({ type: 'SET_FLASH', payload: 'red' });
-                    // CRITICAL FIX: Actually trigger the intervention so rhythm logic runs
-                    applyIntervention('Defib'); 
+                    dispatch({ type: 'ADD_LOG', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: 'danger' } });
                     dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: "danger", id: Date.now() } });
                     setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
                 } else if (data.type === 'ALARM_SILENCE') {
@@ -200,12 +192,12 @@
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
                     if (state.scenario && state.scenario.investigations && state.scenario.investigations.ecg) {
-                        const imgUrl = state.scenario.investigations.ecg.image || ""; 
+                        const imgUrl = state.scenario.investigations.ecg.image || "https://placeholder.com/ecg.png"; 
                         simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: imgUrl });
                     }
                 }
             };
-        }, [state.scenario]); 
+        }, [state.isRunning, state.scenario]);
 
         useEffect(() => {
             if (!isMonitorMode) {
@@ -219,12 +211,11 @@
                         bpSys: state.vitals.bpSys,
                         bpDia: state.vitals.bpDia,
                         gain: state.waveformGain,
-                        interference: state.noise.interference,
-                        cpr: state.cprInProgress
+                        interference: state.noise.interference
                     }
                 });
             }
-        }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.cprInProgress]);
+        }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
 
         useEffect(() => {
             const db = window.db; 
@@ -286,15 +277,7 @@
             }
         }, [state, isMonitorMode, sessionID]);
 
-        useEffect(() => { 
-            if (!isMonitorMode && state.scenario && state.log.length > 0) { 
-                const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; 
-                try {
-                    localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); 
-                } catch (e) {}
-            } 
-        }, [state.vitals, state.log, isMonitorMode]);
-
+        useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
         useEffect(() => {
@@ -364,21 +347,11 @@
             
             // --- CONTEXT AWARE INTERVENTION CHECK ---
             if (action.requires) {
-                // Special check for Defib pads if coming from remote
-                if (key === 'Defib' && !state.activeInterventions.has('PacingPads')) {
-                    // Auto-apply pads if defib requested
-                    dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { 
-                        active: new Set([...state.activeInterventions, 'PacingPads']), 
-                        counts: state.interventionCounts 
-                    }});
-                    addLogEntry("Pads applied automatically for shock.", "system");
-                } else {
-                    const missing = action.requires.filter(req => !state.activeInterventions.has(req));
-                    if (missing.length > 0) {
-                        const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
-                        dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
-                        return; // Block the action
-                    }
+                const missing = action.requires.filter(req => !state.activeInterventions.has(req));
+                if (missing.length > 0) {
+                    const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
+                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
+                    return; // Block the action
                 }
             }
 
@@ -391,7 +364,6 @@
             }
 
             let logMsg = action.log;
-            // ... (Clinical adjustments for Fluid/Drugs based on weight - same as before)
             if (key === 'Fluids') {
                 if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
                     logMsg = `Fluid Bolus (${state.scenario.wetflag.fluids}ml) administered.`;
@@ -404,7 +376,6 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${state.scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${state.scenario.wetflag.glucose}ml) administered.`;
             }
-
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
@@ -414,6 +385,8 @@
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
             // --- CHECKLIST LOGIC ---
+            // If the scenario has generic objectives mapped to this action, auto-complete
+            // Simple approach: Check if scenario title implies sepsis, and action is Antibiotics
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
             if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
             if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
@@ -422,57 +395,39 @@
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
             
-            // --- DEFIB LOGIC ---
-            if (action.effect && action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { 
-                if (state.queuedRhythm) { 
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); 
-                    if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); 
-                    else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); 
-                    dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); 
-                } else if (Math.random() < 0.6) { 
-                    addLogEntry('Defib: No change in rhythm.', 'warning'); 
-                } else { 
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); 
-                    addLogEntry('Rhythm changed to Asystole', 'warning'); 
-                } 
-            }
+            if (action.effect.changeRhythm === 'defib' && (state.rhythm === 'VF' || state.rhythm === 'VT' || state.rhythm === 'pVT')) { if (state.queuedRhythm) { dispatch({ type: 'UPDATE_RHYTHM', payload: state.queuedRhythm }); if (state.queuedRhythm === 'Sinus Rhythm') triggerROSC(); else addLogEntry(`Rhythm changed to ${state.queuedRhythm}`, 'manual'); dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); } else if (Math.random() < 0.6) { addLogEntry('Defib: No change in rhythm.', 'warning'); } else { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); addLogEntry('Rhythm changed to Asystole', 'warning'); } }
             
-            // --- VITAL SIGNS CHANGE LOGIC ---
-            const effect = action.effect || {};
             const isArrest = state.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(state.rhythm));
             if (!isArrest) { 
-                if (effect.HR) { 
-                    if (effect.HR === 'reset') newVitals.hr = 80; 
-                    else if (effect.HR === 'pace') newVitals.hr = 80;
-                    else newVitals.hr = clamp(newVitals.hr + effect.HR, 0, 250); 
+                if (action.effect.HR) { 
+                    if (action.effect.HR === 'reset') newVitals.hr = 80; 
+                    else if (action.effect.HR === 'pace') newVitals.hr = 80;
+                    else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250); 
                 } 
-                if (effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + effect.BP, 0, 300); 
-                if (effect.RR) {
-                    if (effect.RR === 'vent') {
+                if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300); 
+                if (action.effect.RR) {
+                    if (action.effect.RR === 'vent') {
                         newVitals.rr = 14; 
-                    } else if (typeof effect.RR === 'number') {
-                        newVitals.rr = clamp(newVitals.rr + effect.RR, 0, 60); 
+                    } else if (typeof action.effect.RR === 'number') {
+                        newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); 
                     }
                 }
             }
-            if (effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + effect.SpO2, 0, 100); 
+            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100); 
             
-            if (effect.gcs) {
-                if (typeof effect.gcs === 'string') {
-                    if (effect.gcs === 'sedated') newVitals.gcs = 3;
+            if (action.effect.gcs) {
+                if (typeof action.effect.gcs === 'string') {
+                    if (action.effect.gcs === 'sedated') newVitals.gcs = 3;
                 } else {
-                    newVitals.gcs = clamp(newVitals.gcs + effect.gcs, 3, 15);
+                    newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15);
                 }
             }
 
             const updatedScenario = { ...state.scenario }; let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
-            
-            // COMMIT VITAL UPDATES
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
-
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
@@ -520,12 +475,15 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
+        // --- LOOPING AUDIO (Wheeze/Stridor) ---
         const toggleAudioLoop = (type) => {
             if (!audioCtxRef.current) return;
             const ctx = audioCtxRef.current;
             if (ctx.state === 'suspended') ctx.resume();
             
+            // Check if playing
             if (loopNodesRef.current[type]) {
+                // Stop it
                 loopNodesRef.current[type].stop();
                 delete loopNodesRef.current[type];
                 const newLoops = {...state.activeLoops};
@@ -533,16 +491,17 @@
                 dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: newLoops});
                 addLogEntry(`Audio Loop Stopped: ${type}`, 'manual');
             } else {
+                // Start it (Simple Synthesis for robustness)
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                const lfo = ctx.createOscillator();
+                const lfo = ctx.createOscillator(); // LFO for breathing pattern
                 const lfoGain = ctx.createGain();
                 
                 if (type === 'Wheeze') {
                     osc.type = 'triangle';
                     osc.frequency.value = 400;
-                    lfo.frequency.value = 0.25; 
-                    lfoGain.gain.value = 200; 
+                    lfo.frequency.value = 0.25; // 15 breaths/min
+                    lfoGain.gain.value = 200; // Modulate pitch
                 } else if (type === 'Stridor') {
                     osc.type = 'sawtooth';
                     osc.frequency.value = 600;
@@ -555,8 +514,11 @@
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 
+                // Breath envelope
                 const now = ctx.currentTime;
                 gain.gain.setValueAtTime(0, now);
+                // Simple looping ramp logic isn't native, so we use LFO for amplitude in a real mixer, 
+                // but here we just let it drone with pitch modulation to simulate breath sounds
                 gain.gain.value = 0.05; 
                 
                 osc.start();
@@ -578,7 +540,7 @@
             const current = stateRef.current; 
             let next = { ...current.vitals };
             
-            // Automatic Deterioration
+            // 1. Automatic Deterioration (Physiological Drift)
             if (current.isRunning && current.scenario.deterioration && current.scenario.deterioration.active && !current.trends.active) {
                 const rate = current.scenario.deterioration.rate || 0.05; 
                 const type = current.scenario.deterioration.type;
@@ -595,7 +557,7 @@
                 }
             }
 
-            // Physiological Constraints
+            // 2. Physiological Constraints (Compensatory Mechanisms)
             if (next.hr === 0) { 
                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
                 if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
@@ -608,15 +570,18 @@
                 }
             }
 
-            // Pacing Logic
+            // --- ADVANCED PACING LOGIC ---
             if (current.remotePacerState.output > current.pacingThreshold && current.remotePacerState.rate > 0) {
+                // Capture achieved
                 if (current.rhythm !== 'paced') {
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); 
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); // Defib shows 'Paced' beats visually
                 }
                 next.hr = current.remotePacerState.rate;
+            } else if (current.remotePacerState.output > 0) {
+                // Pacing but no capture - maintain native rhythm
             }
 
-            // Noise
+            // 3. Noise & Flux
             if (next.hr > 0 && next.hr !== current.remotePacerState.rate) { 
                 next.hr += getRandomInt(-1, 1); 
                 next.bpSys += getRandomInt(-1, 1); 
@@ -625,7 +590,7 @@
                 next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
             }
 
-            // Trend Application
+            // 4. Trend Application
             if (current.trends.active) {
                 const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
                 Object.keys(current.trends.targets).forEach(key => {
