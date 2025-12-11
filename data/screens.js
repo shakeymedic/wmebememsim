@@ -854,6 +854,55 @@
         );
     };
 
+    // --- SCREEN 5: MONITOR (MISSING COMPONENT) ---
+    const MonitorScreen = ({ sim }) => {
+        const { Card, VitalDisplay, ECGMonitor, Lucide } = window;
+        const { state } = sim;
+        const { scenario, rhythm, vitals, isRunning, etco2Enabled, cprInProgress, activeInterventions, time } = state;
+        
+        const hasMonitoring = activeInterventions.has('Obs');
+        const hasArtLine = activeInterventions.has('ArtLine');
+
+        return (
+            <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 md:gap-4 animate-fadeIn overflow-hidden">
+                <div className="flex justify-between items-center bg-slate-900/50 p-2 rounded border border-slate-800">
+                    <div className="flex items-center gap-4">
+                        <div className="text-right">
+                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Elapsed</div>
+                            <div className="text-xl md:text-3xl font-mono font-bold text-sky-500">{Math.floor(time/60).toString().padStart(2,'0')}:{(time%60).toString().padStart(2,'0')}</div>
+                        </div>
+                    </div>
+                    {cprInProgress && <div className="bg-red-600 text-white px-4 py-2 rounded font-bold animate-pulse">CPR IN PROGRESS</div>}
+                </div>
+
+                <div className="flex-grow flex flex-col min-h-0 bg-black rounded border border-slate-800 overflow-hidden relative">
+                     <ECGMonitor 
+                        rhythmType={rhythm} 
+                        hr={vitals.hr} 
+                        rr={vitals.rr} 
+                        spO2={vitals.spO2} 
+                        isPaused={!isRunning} 
+                        showEtco2={etco2Enabled} 
+                        pathology={scenario?.deterioration?.type} 
+                        showTraces={hasMonitoring} 
+                        showArt={hasArtLine} 
+                        isCPR={cprInProgress} 
+                        className="flex-grow" 
+                    />
+                     
+                     <div className="grid grid-cols-4 gap-1 md:gap-2 p-1 md:p-2 bg-black h-32 md:h-48 flex-shrink-0 border-t border-slate-900 z-10">
+                         <VitalDisplay label="Heart Rate" value={vitals.hr} unit="bpm" isMonitor={true} visible={hasMonitoring} alert={vitals.hr < 40 || vitals.hr > 140} />
+                         <VitalDisplay label="NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" isMonitor={true} visible={hasMonitoring} isNIBP={true} alert={vitals.bpSys < 90} />
+                         <VitalDisplay label="SpO2" value={vitals.spO2} unit="%" isMonitor={true} visible={hasMonitoring} alert={vitals.spO2 < 90} />
+                         {etco2Enabled ? 
+                            <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" isMonitor={true} visible={true} /> : 
+                            <VitalDisplay label="Resp Rate" value={vitals.rr} unit="rpm" isMonitor={true} visible={hasMonitoring} alert={vitals.rr < 8 || vitals.rr > 30} />
+                         }
+                     </div>
+                </div>
+            </div>
+        );
+    };
     // --- SCREEN 6: DEBRIEF ---
     const DebriefScreen = ({ sim, onRestart }) => {
         const { Button, Lucide, Card } = window;
