@@ -863,48 +863,127 @@ useEffect(() => {
     const MonitorScreen = ({ sim }) => {
         const { Card, VitalDisplay, ECGMonitor, Lucide } = window;
         const { state } = sim;
-        // Destructure notification, waveformGain, and noise from state
-        const { scenario, rhythm, vitals, isRunning, etco2Enabled, cprInProgress, activeInterventions, time, notification, waveformGain, noise } = state;
+        const { 
+            scenario, rhythm, vitals, isRunning, etco2Enabled, cprInProgress, 
+            activeInterventions, time, notification, waveformGain, noise,
+            monitorPopup, investigationsRevealed, isMuted 
+        } = state;
         
         const [showToast, setShowToast] = useState(false);
+        const [showPopup, setShowPopup] = useState(null);
 
-        // 1. Sync Window Globals for Canvas (Crucial for remote waveform control)
+        // 1. Sync Window Globals for Canvas
         useEffect(() => {
             window.waveformGain = waveformGain || 1.0;
             window.noise = noise || {};
         }, [waveformGain, noise]);
 
-        // 2. Handle Flash Notifications
+        // 2. Handle Flash Notifications (Interventions)
         useEffect(() => {
             if(notification && notification.id) {
                 setShowToast(true);
-                const timer = setTimeout(() => setShowToast(false), 3000);
+                const timer = setTimeout(() => setShowToast(false), 4000);
                 return () => clearTimeout(timer);
             }
         }, [notification]);
 
+        // 3. Handle Investigation Popups (New Feature)
+        useEffect(() => {
+            if (monitorPopup && monitorPopup.timestamp) {
+                // Only show if the popup is recent (< 10 seconds ago) to avoid showing old popups on join
+                if (Date.now() - monitorPopup.timestamp < 10000) {
+                    setShowPopup(monitorPopup.type);
+                    // Auto-hide after 15 seconds
+                    const timer = setTimeout(() => setShowPopup(null), 15000);
+                    return () => clearTimeout(timer);
+                }
+            }
+        }, [monitorPopup]);
+
         const hasMonitoring = activeInterventions.has('Obs');
         const hasArtLine = activeInterventions.has('ArtLine');
 
+        // Helper to get result text
+        const getResultContent = (type) => {
+            if (!scenario) return "No Data";
+            if (type === 'VBG' && scenario.vbg) {
+                const v = scenario.vbg;
+                return (
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-2xl font-mono text-emerald-400">
+                        <div>pH: <span className="text-white">{v.pH.toFixed(2)}</span></div>
+                        <div>pCO2: <span className="text-white">{v.pCO2.toFixed(1)}</span></div>
+                        <div>HCO3: <span className="text-white">{v.HCO3.toFixed(1)}</span></div>
+                        <div>Lac: <span className="text-red-400">{v.Lac.toFixed(1)}</span></div>
+                        <div>K+: <span className={v.K > 5.5 || v.K < 3.5 ? "text-red-400" : "text-white"}>{v.K.toFixed(1)}</span></div>
+                        <div>Glu: <span className="text-white">{v.Glu.toFixed(1)}</span></div>
+                    </div>
+                );
+            }
+            if (type === 'X-ray') return <div className="text-xl text-white">{scenario.chestXray?.findings || "Normal"}</div>;
+            if (type === 'CT') return <div className="text-xl text-white">{scenario.ct?.findings || "No acute abnormality"}</div>;
+            return <div className="text-xl text-slate-300">Result Available on Controller</div>;
+        };
+
+        const formatSimTime = (s) => {
+            const m = Math.floor(s / 60).toString().padStart(2, '0');
+            const sec = (s % 60).toString().padStart(2, '0');
+            return `${m}:${sec}`;
+        };
+
         return (
-            <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 md:gap-4 animate-fadeIn overflow-hidden relative">
+            <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 relative overflow-hidden font-sans select-none">
                 
-                {/* --- TOAST NOTIFICATION OVERLAY --- */}
-                <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-8 py-4 transition-all duration-300 transform ${showToast ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-10 opacity-0 scale-95 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                {/* --- TOAST NOTIFICATION --- */}
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-4 flex items-center gap-4 transition-all duration-500 transform ${showToast ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-10 opacity-0 scale-90 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : 'border-sky-500'}`}>
+                    <Lucide icon={notification?.type === 'danger' ? 'alert-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : 'text-sky-500'}`} />
+                    <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
+                </div>
+
+                {/* --- INVESTIGATION POPUP --- */}
+                {showPopup && (
+                    <div className="absolute inset-0 z-40 bg-black/80 flex items-center justify-center p-8 backdrop-blur-sm animate-fadeIn" onClick={() => setShowPopup(null)}>
+                        <div className="bg-slate-900 border-2 border-slate-600 rounded-xl p-6 max-w-3xl w-full shadow-2xl relative">
+                            <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
+                                <h2 className="text-3xl font-bold text-sky-400 flex items-center gap-3">
+                                    <Lucide icon="file-text" className="w-8 h-8" />
+                                    New Result: {showPopup}
+                                </h2>
+                                <div className="text-slate-500 text-sm uppercase font-bold tracking-widest">Tap to Dismiss</div>
+                            </div>
+                            <div className="p-4 bg-black/50 rounded border border-slate-800 min-h-[150px] flex items-center justify-center">
+                                {getResultContent(showPopup)}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* --- HEADER --- */}
+                <div className="flex justify-between items-center bg-slate-900/50 px-4 py-2 rounded border border-slate-800 flex-shrink-0">
+                    <div className="flex items-center gap-6">
+                        {scenario && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Patient</span>
+                                <span className="text-slate-300 font-bold text-lg leading-none">{scenario.patientName || "Unknown"}</span>
+                            </div>
+                        )}
+                        {scenario && (
+                            <div className="flex flex-col">
+                                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Age/Sex</span>
+                                <span className="text-slate-300 font-bold text-lg leading-none">{scenario.patientAge} {scenario.sex === 'Male' ? 'M' : 'F'}</span>
+                            </div>
+                        )}
+                    </div>
+                    
                     <div className="flex items-center gap-4">
-                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
-                        <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
+                        {cprInProgress && <div className="bg-red-600 text-white px-6 py-1 rounded font-bold animate-pulse tracking-widest text-xl shadow-[0_0_15px_rgba(220,38,38,0.7)]">CPR IN PROGRESS</div>}
+                        {isMuted && <div className="text-red-500 flex items-center gap-1 font-bold bg-red-900/20 px-2 rounded"><Lucide icon="volume-x" className="w-4 h-4"/> MUTED</div>}
+                        <div className="bg-black/40 px-3 py-1 rounded text-sky-500 font-mono text-xl font-bold border border-slate-700">
+                            {formatSimTime(time)}
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex justify-between items-center bg-slate-900/50 p-2 rounded border border-slate-800">
-                    <div className="flex items-center gap-4">
-                        {/* Patient Name for Context */}
-                        {scenario && <div className="text-slate-600 font-mono text-sm tracking-widest uppercase">{scenario.patientName}</div>}
-                    </div>
-                    {cprInProgress && <div className="bg-red-600 text-white px-4 py-2 rounded font-bold animate-pulse tracking-widest">CPR IN PROGRESS</div>}
-                </div>
-
+                {/* --- MAIN DISPLAY --- */}
                 <div className="flex-grow flex flex-col min-h-0 bg-black rounded border border-slate-800 overflow-hidden relative">
                      <ECGMonitor 
                         rhythmType={rhythm} 
@@ -920,15 +999,40 @@ useEffect(() => {
                         className="flex-grow" 
                     />
                      
-                     <div className="grid grid-cols-4 gap-1 md:gap-2 p-1 md:p-2 bg-black h-32 md:h-48 flex-shrink-0 border-t border-slate-900 z-10">
+                     <div className="grid grid-cols-4 gap-1 md:gap-2 p-1 md:p-2 bg-black h-36 md:h-48 flex-shrink-0 border-t border-slate-900 z-10">
                          <VitalDisplay label="Heart Rate" value={vitals.hr} unit="bpm" isMonitor={true} visible={hasMonitoring} alert={vitals.hr < 40 || vitals.hr > 140} />
-                         <VitalDisplay label="NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" isMonitor={true} visible={hasMonitoring} isNIBP={true} alert={vitals.bpSys < 90} />
+                         <VitalDisplay label="NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" isMonitor={true} visible={hasMonitoring} isNIBP={true} lastNIBP={sim.state.nibp?.lastTaken} alert={vitals.bpSys < 90 && vitals.bpSys > 0} />
                          <VitalDisplay label="SpO2" value={vitals.spO2} unit="%" isMonitor={true} visible={hasMonitoring} alert={vitals.spO2 < 90} />
                          {etco2Enabled ? 
                             <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" isMonitor={true} visible={true} /> : 
                             <VitalDisplay label="Resp Rate" value={vitals.rr} unit="rpm" isMonitor={true} visible={hasMonitoring} alert={vitals.rr < 8 || vitals.rr > 30} />
                          }
                      </div>
+                </div>
+
+                {/* --- SECONDARY VITALS FOOTER (New Feature) --- */}
+                <div className="flex gap-2 h-16 flex-shrink-0">
+                    <div className="flex-1 bg-slate-900/80 rounded border border-slate-700 flex items-center justify-between px-4">
+                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Temp</span>
+                        <div className="flex items-baseline gap-1">
+                            <span className={`text-3xl font-mono font-bold ${vitals.temp > 38 || vitals.temp < 36 ? 'text-red-400' : 'text-white'}`}>{vitals.temp}</span>
+                            <span className="text-slate-500 text-sm">°C</span>
+                        </div>
+                    </div>
+                    <div className="flex-1 bg-slate-900/80 rounded border border-slate-700 flex items-center justify-between px-4">
+                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Glucose</span>
+                        <div className="flex items-baseline gap-1">
+                            <span className={`text-3xl font-mono font-bold ${vitals.bm < 4 || vitals.bm > 20 ? 'text-red-400' : 'text-white'}`}>{vitals.bm}</span>
+                            <span className="text-slate-500 text-sm">mmol/L</span>
+                        </div>
+                    </div>
+                    <div className="flex-1 bg-slate-900/80 rounded border border-slate-700 flex items-center justify-between px-4">
+                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">GCS</span>
+                        <div className="flex items-baseline gap-1">
+                            <span className={`text-3xl font-mono font-bold ${vitals.gcs < 15 ? 'text-amber-400' : 'text-white'}`}>{vitals.gcs}</span>
+                            <span className="text-slate-500 text-sm">/15</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
