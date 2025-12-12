@@ -578,7 +578,8 @@ useEffect(() => {
                             <Lucide icon="scroll-text" />
                         </Button>
 
-                        <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
+                        {/* FIXED: Changed to ensure full width window */}
+                        <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'width=1280,height=720')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
                     </div>
                     <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600"><span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span><span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span></div>
                 </div>
@@ -858,7 +859,7 @@ useEffect(() => {
         );
     };
 
-    // --- SCREEN 5: MONITOR (MISSING COMPONENT) ---
+    // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
         const { Card, VitalDisplay, ECGMonitor, Lucide } = window;
         const { state } = sim;
@@ -871,10 +872,7 @@ useEffect(() => {
             <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 md:gap-4 animate-fadeIn overflow-hidden">
                 <div className="flex justify-between items-center bg-slate-900/50 p-2 rounded border border-slate-800">
                     <div className="flex items-center gap-4">
-                        <div className="text-right">
-                            <div className="text-[10px] text-slate-500 uppercase tracking-widest">Elapsed</div>
-                            <div className="text-xl md:text-3xl font-mono font-bold text-sky-500">{Math.floor(time/60).toString().padStart(2,'0')}:{(time%60).toString().padStart(2,'0')}</div>
-                        </div>
+                        {/* REMOVED TIME ELAPSED DISPLAY */}
                     </div>
                     {cprInProgress && <div className="bg-red-600 text-white px-4 py-2 rounded font-bold animate-pulse">CPR IN PROGRESS</div>}
                 </div>
