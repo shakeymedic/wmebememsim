@@ -1,29 +1,14 @@
 // data/engine.js
 (() => {
     const { useState, useEffect, useRef, useReducer } = React;
-    // Ensure we access global data safely
+    // Access global data safely
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
     const initialState = {
-        scenario: null, 
-        time: 0, 
-        cycleTimer: 0, 
-        isRunning: false,
-        vitals: { etco2: 4.5 }, 
-        prevVitals: {}, 
-        rhythm: "Sinus Rhythm", 
-        log: [], 
-        flash: null, 
-        history: [],
-        investigationsRevealed: {}, 
-        loadingInvestigations: {}, 
-        activeInterventions: new Set(), 
-        interventionCounts: {}, 
-        activeDurations: {}, 
-        processedEvents: new Set(),
-        isMuted: false, 
-        etco2Enabled: false, 
-        isParalysed: false, 
+        scenario: null, time: 0, cycleTimer: 0, isRunning: false,
+        vitals: { etco2: 4.5 }, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
+        investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
+        isMuted: false, etco2Enabled: false, isParalysed: false, 
         queuedRhythm: null,
         cprInProgress: false,
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
@@ -42,7 +27,7 @@
         activeLoops: {}, 
         completedObjectives: new Set(),
         lastUpdate: 0,
-        isOffline: false // ADDED: Offline state
+        isOffline: false // Added for error handling
     };
 
     const simReducer = (state, action) => {
@@ -50,8 +35,8 @@
             case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
             case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
-            case 'CLEAR_SESSION': return { ...initialState, isOffline: state.isOffline }; // Preserve offline status
-            case 'SET_OFFLINE': return { ...state, isOffline: action.payload }; // ADDED: Offline reducer
+            case 'CLEAR_SESSION': return { ...initialState, isOffline: state.isOffline };
+            case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 const initialVitals = { etco2: 4.5, ...action.payload.vitals };
@@ -191,22 +176,6 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
-        // --- OFFLINE DETECTION ---
-        useEffect(() => {
-            try {
-                if (window.firebase && !window.db) {
-                    window.db = firebase.database();
-                    window.db.ref('.info/connected').on('value', (snap) => {
-                        if (snap.val() === false) dispatch({ type: 'SET_OFFLINE', payload: true });
-                        else dispatch({ type: 'SET_OFFLINE', payload: false });
-                    });
-                }
-            } catch (e) {
-                console.warn("Firebase failed to load - Offline Mode Active");
-                dispatch({ type: 'SET_OFFLINE', payload: true });
-            }
-        }, []);
-
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
@@ -256,6 +225,21 @@
                 });
             }
         }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
+
+        useEffect(() => {
+            try {
+                if (window.firebase && !window.db) {
+                    window.db = firebase.database();
+                    window.db.ref('.info/connected').on('value', (snap) => {
+                        if (snap.val() === false) dispatch({ type: 'SET_OFFLINE', payload: true });
+                        else dispatch({ type: 'SET_OFFLINE', payload: false });
+                    });
+                }
+            } catch (e) {
+                console.warn("Firebase failed to load - Offline Mode Active");
+                dispatch({ type: 'SET_OFFLINE', payload: true });
+            }
+        }, []);
 
         useEffect(() => {
             const db = window.db; 
@@ -391,13 +375,12 @@
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
             
-            // --- CONTEXT AWARE INTERVENTION CHECK ---
             if (action.requires) {
                 const missing = action.requires.filter(req => !state.activeInterventions.has(req));
                 if (missing.length > 0) {
                     const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
                     dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
-                    return; // Block the action
+                    return; 
                 }
             }
 
@@ -427,10 +410,8 @@
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
             
-            // --- NOTIFICATION ---
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
-            // --- CHECKLIST LOGIC ---
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
             if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
             if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
@@ -573,87 +554,7 @@
             }
         };
 
-        const tick = () => {
-            const current = stateRef.current; 
-            let next = { ...current.vitals };
-            
-            // 1. Automatic Deterioration (Physiological Drift)
-            if (current.isRunning && current.scenario.deterioration && current.scenario.deterioration.active && !current.trends.active) {
-                const rate = current.scenario.deterioration.rate || 0.05; 
-                const type = current.scenario.deterioration.type;
-                if (type === 'shock' || type === 'haemorrhagic_shock') {
-                    if (Math.random() < rate) next.hr += 1;
-                    if (Math.random() < rate) next.bpSys -= 1;
-                } else if (type === 'respiratory') {
-                    if (Math.random() < rate) next.spO2 -= 1;
-                    if (next.rr < 35 && Math.random() < rate) next.rr += 1;
-                } else if (type === 'neuro') {
-                    if (Math.random() < (rate/2) && next.gcs > 3) next.gcs -= 1;
-                    if (Math.random() < rate) next.bpSys += 1;
-                    if (Math.random() < rate) next.hr -= 1;
-                }
-            }
-
-            // 2. Physiological Constraints
-            if (next.hr === 0) { 
-                next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
-                if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
-            } else {
-                if (next.spO2 < 88 && next.hr < 130 && current.rhythm.includes('Sinus')) {
-                    if (Math.random() > 0.5) next.hr += 1; 
-                }
-                if (next.spO2 < 50 && next.hr > 40) {
-                    if (Math.random() > 0.6) next.hr -= 2; 
-                }
-            }
-
-            // --- ADVANCED PACING LOGIC ---
-            if (current.remotePacerState.output > current.pacingThreshold && current.remotePacerState.rate > 0) {
-                if (current.rhythm !== 'paced') {
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); 
-                }
-                next.hr = current.remotePacerState.rate;
-            }
-
-            // 3. Noise & Flux
-            if (next.hr > 0 && next.hr !== current.remotePacerState.rate) { 
-                next.hr += getRandomInt(-1, 1); 
-                next.bpSys += getRandomInt(-1, 1); 
-                let targetDia = Math.floor(next.bpSys * 0.60); 
-                next.bpDia = next.bpDia + (targetDia - next.bpDia) * 0.1 + getRandomInt(-1, 1);
-                next.spO2 += Math.random() > 0.8 ? getRandomInt(-1, 1) : 0; 
-            }
-
-            // 4. Trend Application
-            if (current.trends.active) {
-                const progress = Math.min(1, (current.trends.elapsed + 3) / current.trends.duration);
-                Object.keys(current.trends.targets).forEach(key => {
-                    const startVal = current.trends.startVitals[key] || 0;
-                    const endVal = current.trends.targets[key];
-                    next[key] = startVal + (endVal - startVal) * progress;
-                });
-                if (progress >= 1) {
-                    dispatch({ type: 'STOP_TREND' });
-                    Object.assign(next, current.trends.targets);
-                } else {
-                    dispatch({ type: 'ADVANCE_TREND', payload: 3 });
-                }
-            }
-
-            next.hr = clamp(next.hr, 0, 250); 
-            next.bpSys = clamp(next.bpSys, 0, 300); 
-            next.spO2 = clamp(next.spO2, 0, 100);
-            next.rr = clamp(next.rr, 0, 60);
-
-            if (current.scenario.vbg) { 
-                const newVbg = calculateDynamicVbg(current.scenario.vbg, next, current.activeInterventions, 3); 
-                if (Math.abs(newVbg.pH - current.scenario.vbg.pH) > 0.001) { dispatch({ type: 'UPDATE_SCENARIO', payload: { ...current.scenario, vbg: newVbg } }); } 
-            }
-
-            dispatch({ type: 'UPDATE_VITALS', payload: next });
-        };
-
-        // --- DEFINED CONTROL FUNCTIONS ---
+        // --- DEFINED START/STOP FUNCTIONS ---
         const start = () => {
             if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
                 audioCtxRef.current.resume();
