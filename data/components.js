@@ -2,7 +2,7 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // SAFE LUCIDE COMPONENT - ROBUST VERSION
+    // SAFE LUCIDE COMPONENT
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
         
@@ -86,7 +86,8 @@
         );
     };
     
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null, trend = null }) => {
+    // UPDATED VITAL DISPLAY (with NIBP History support)
+    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null, trend = null, history = [] }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
@@ -123,7 +124,17 @@
                     {isNIBP && (<button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>)}
                     <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
                     <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{displayValue()}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{displayValue2()}</span>}</div></div>
-                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && (<div className="flex flex-col items-end"><span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span><div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1 pointer-events-none">CYCLE</div></div>)}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
+                    
+                    {/* NEW: NIBP History List */}
+                    {isNIBP && history.length > 0 && (
+                        <div className="absolute bottom-1 left-2 text-[10px] font-mono text-slate-500 leading-tight pointer-events-none">
+                            {history.map((h, i) => (
+                                <div key={i}>{h.sys}/{h.dia} <span className="opacity-60">({h.time})</span></div>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && (<div className="flex flex-col items-end"><span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m` : 'MANUAL'}</span><div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1 pointer-events-none">CYCLE</div></div>)}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
                 </div>
             );
         }
@@ -141,6 +152,7 @@
         );
     };
 
+    // UPDATED ECG MONITOR (With Labels for Trace Identification)
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
@@ -151,12 +163,8 @@
         
         const getWaveform = (type, t, cpr, baseline) => {
             const noise = (Math.random() - 0.5) * 1.5;
-            // 1. CPR Noise (Logic Improvement)
             if (cpr) return baseline + (Math.sin(t * 12) * 45) + (Math.random() * 10 - 5);
-            
             let y = baseline;
-            
-            // 2. Underlying Rhythm Logic
             if (type === 'Asystole') y = baseline;
             else if (type === 'VF' || type === 'Coarse VF') y = baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
             else if (type === 'Fine VF') y = baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
@@ -169,16 +177,9 @@
                 if (type === 'STEMI' && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } 
                 else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
             }
-
-            // 3. Apply Gain from GLOBAL window settings (syncs with engine)
             const gain = window.waveformGain || 1.0;
             y = baseline + ((y - baseline) * gain);
-
-            // 4. Apply 60Hz Interference
-            if (window.noise && window.noise.interference) {
-                y += Math.sin(t * 100) * 5; 
-            }
-
+            if (window.noise && window.noise.interference) { y += Math.sin(t * 100) * 5; }
             return y + noise;
         };
 
@@ -202,7 +203,6 @@
 
             const animate = (timestamp) => {
                 const state = drawState.current; const props = propsRef.current;
-                // Sync local gain settings for the drawing function
                 window.waveformGain = window.waveformGain || 1.0; 
                 window.noise = window.noise || {};
 
@@ -215,6 +215,14 @@
                 if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
                 
                 const baselineECG = canvas.height * 0.30;
+                
+                // NEW: Trace Labels (drawn constantly to ensure visibility)
+                ctx.font = "bold 12px monospace";
+                if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 30); }
+                if (props.showEtco2) { ctx.fillStyle = '#fbbf24'; ctx.fillText("CO2", 5, canvas.height * 0.60 - 20); }
+                if (props.showArt) { ctx.fillStyle = '#ef4444'; ctx.fillText("ABP", 5, canvas.height * 0.80 - 20); }
+                if (props.spO2 > 10) { ctx.fillStyle = '#22d3ee'; ctx.fillText("Pleth", 5, canvas.height - 40); }
+
                 if (!props.showTraces) { ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); requestRef.current = requestAnimationFrame(animate); return; }
 
                 let drawRate = props.isCPR ? 110 : (props.hr === 0 ? (['VF','VT','pVT','PEA'].includes(props.rhythmType) ? 70 : 0) : props.hr);
@@ -222,48 +230,28 @@
                 state.beatProgress += dt / beatDuration; if (state.beatProgress >= 1) state.beatProgress = 0;
                 let breathDuration = 60 / (Math.max(1, props.rr) || 12); state.breathProgress += dt / breathDuration; if (state.breathProgress >= 1) state.breathProgress = 0;
 
-                if (state.x > canvas.width) { 
-                    state.x = 0; 
-                    state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG); 
-                }
+                if (state.x > canvas.width) { state.x = 0; state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG); }
 
                 const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG);
                 if (state.x > prevX) { 
                     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
                     if (props.showEtco2) {
-                        const baseCO2 = canvas.height * 0.60;
-                        const ampCO2 = 25;
-                        let yCO2 = baseCO2;
-                        const bp = state.breathProgress;
-                        if (bp > 0.4 && bp < 0.95) {
-                            yCO2 = baseCO2 - ampCO2 - (Math.random()); 
-                            if (bp < 0.45) yCO2 = baseCO2 - (ampCO2 * ((bp - 0.4) / 0.05)); 
-                        } else if (bp >= 0.95) {
-                            yCO2 = baseCO2 - (ampCO2 * (1 - ((bp - 0.95) / 0.05)));
-                        }
+                        const baseCO2 = canvas.height * 0.60; const ampCO2 = 25; let yCO2 = baseCO2; const bp = state.breathProgress;
+                        if (bp > 0.4 && bp < 0.95) { yCO2 = baseCO2 - ampCO2 - (Math.random()); if (bp < 0.45) yCO2 = baseCO2 - (ampCO2 * ((bp - 0.4) / 0.05)); } 
+                        else if (bp >= 0.95) { yCO2 = baseCO2 - (ampCO2 * (1 - ((bp - 0.95) / 0.05))); }
                         ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
                         state.lastYCO2 = yCO2;
                     }
                     if (props.showArt) {
-                        const baseArt = canvas.height * 0.80;
-                        const ampArt = 20;
-                        const t = state.beatProgress;
-                        let wave = 0;
-                        if (t < 0.15) { wave = Math.sin((t / 0.15) * (Math.PI / 2)); } 
-                        else if (t < 0.4) { wave = 1.0 - 0.5 * ((t - 0.15) / 0.25); } 
-                        else if (t < 0.5) { wave = 0.5 + 0.1 * Math.sin(((t - 0.4) / 0.1) * Math.PI); } 
-                        else { wave = 0.5 * (1 - ((t - 0.5) / 0.5)); }
+                        const baseArt = canvas.height * 0.80; const ampArt = 20; const t = state.beatProgress; let wave = 0;
+                        if (t < 0.15) { wave = Math.sin((t / 0.15) * (Math.PI / 2)); } else if (t < 0.4) { wave = 1.0 - 0.5 * ((t - 0.15) / 0.25); } else if (t < 0.5) { wave = 0.5 + 0.1 * Math.sin(((t - 0.4) / 0.1) * Math.PI); } else { wave = 0.5 * (1 - ((t - 0.5) / 0.5)); }
                         const yArt = baseArt - (wave * ampArt);
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
                         state.lastYArt = yArt;
                     }
                     if (props.spO2 > 10) {
-                        const basePleth = canvas.height - 15;
-                        const ampPleth = 15;
-                        const t = state.beatProgress;
-                        let wave = Math.sin(t * Math.PI * 2);
-                        if (t > 0.3) wave += 0.3 * Math.sin((t - 0.3) * Math.PI * 4);
-                        wave = (wave + 1) / 2; 
+                        const basePleth = canvas.height - 15; const ampPleth = 15; const t = state.beatProgress; let wave = Math.sin(t * Math.PI * 2);
+                        if (t > 0.3) wave += 0.3 * Math.sin((t - 0.3) * Math.PI * 4); wave = (wave + 1) / 2; 
                         const yPleth = basePleth - (wave * ampPleth);
                         ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
                         state.lastYPleth = yPleth;
