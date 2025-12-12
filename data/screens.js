@@ -859,22 +859,50 @@ useEffect(() => {
         );
     };
 
-    // --- SCREEN 5: MONITOR ---
+   // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
         const { Card, VitalDisplay, ECGMonitor, Lucide } = window;
         const { state } = sim;
-        const { scenario, rhythm, vitals, isRunning, etco2Enabled, cprInProgress, activeInterventions, time } = state;
+        // Destructure notification, waveformGain, and noise from state
+        const { scenario, rhythm, vitals, isRunning, etco2Enabled, cprInProgress, activeInterventions, time, notification, waveformGain, noise } = state;
         
+        const [showToast, setShowToast] = useState(false);
+
+        // 1. Sync Window Globals for Canvas (Crucial for remote waveform control)
+        useEffect(() => {
+            window.waveformGain = waveformGain || 1.0;
+            window.noise = noise || {};
+        }, [waveformGain, noise]);
+
+        // 2. Handle Flash Notifications
+        useEffect(() => {
+            if(notification && notification.id) {
+                setShowToast(true);
+                const timer = setTimeout(() => setShowToast(false), 3000);
+                return () => clearTimeout(timer);
+            }
+        }, [notification]);
+
         const hasMonitoring = activeInterventions.has('Obs');
         const hasArtLine = activeInterventions.has('ArtLine');
 
         return (
-            <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 md:gap-4 animate-fadeIn overflow-hidden">
+            <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 md:gap-4 animate-fadeIn overflow-hidden relative">
+                
+                {/* --- TOAST NOTIFICATION OVERLAY --- */}
+                <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-8 py-4 transition-all duration-300 transform ${showToast ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-10 opacity-0 scale-95 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                    <div className="flex items-center gap-4">
+                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
+                        <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
+                    </div>
+                </div>
+
                 <div className="flex justify-between items-center bg-slate-900/50 p-2 rounded border border-slate-800">
                     <div className="flex items-center gap-4">
-                        {/* REMOVED TIME ELAPSED DISPLAY */}
+                        {/* Patient Name for Context */}
+                        {scenario && <div className="text-slate-600 font-mono text-sm tracking-widest uppercase">{scenario.patientName}</div>}
                     </div>
-                    {cprInProgress && <div className="bg-red-600 text-white px-4 py-2 rounded font-bold animate-pulse">CPR IN PROGRESS</div>}
+                    {cprInProgress && <div className="bg-red-600 text-white px-4 py-2 rounded font-bold animate-pulse tracking-widest">CPR IN PROGRESS</div>}
                 </div>
 
                 <div className="flex-grow flex flex-col min-h-0 bg-black rounded border border-slate-800 overflow-hidden relative">
