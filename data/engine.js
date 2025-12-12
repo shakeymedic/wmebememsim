@@ -10,7 +10,8 @@
         isMuted: false, etco2Enabled: false, isParalysed: false, 
         queuedRhythm: null,
         cprInProgress: false,
-        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false },
+        // UPDATED: Added history array to nibp
+        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         speech: { text: null, timestamp: 0, source: null },
         soundEffect: { type: null, timestamp: 0 },
@@ -22,10 +23,10 @@
         noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 },
         notification: null,
-        // NEW STATE FOR FEATURES
-        pacingThreshold: 70, // Default capture threshold
-        activeLoops: {}, // For continuous audio
-        completedObjectives: new Set()
+        pacingThreshold: 70, 
+        activeLoops: {}, 
+        completedObjectives: new Set(),
+        lastUpdate: 0 // ADDED: For connection health tracking
     };
 
     const simReducer = (state, action) => {
@@ -37,7 +38,7 @@
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 const initialVitals = { etco2: 4.5, ...action.payload.vitals };
-                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100) };
+                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100) };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations }; let durChanged = false;
@@ -79,7 +80,12 @@
             case 'COMMIT_NIBP': 
                 const safeSys = (state.vitals.bpSys !== undefined && state.vitals.bpSys !== null) ? state.vitals.bpSys : 0;
                 const safeDia = (state.vitals.bpDia !== undefined && state.vitals.bpDia !== null) ? state.vitals.bpDia : 0;
-                return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false } };
+                // UPDATED: NIBP History Logic
+                const now = new Date();
+                const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                const newEntry = { sys: safeSys, dia: safeDia, time: timeStr };
+                const newHistory = [newEntry, ...(state.nibp.history || [])].slice(0, 3);
+                return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false, history: newHistory } };
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
@@ -118,7 +124,8 @@
                     waveformGain: action.payload.waveformGain || 1.0,
                     noise: action.payload.noise || { interference: false },
                     notification: action.payload.notification || null,
-                    remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}
+                    remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0},
+                    lastUpdate: Date.now() // UPDATED: Connection tracking
                 };
 
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
@@ -160,7 +167,7 @@
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
-        const loopNodesRef = useRef({}); // Store oscillators for loops
+        const loopNodesRef = useRef({}); 
         const stateRef = useRef(state);
         const lastCmdRef = useRef(0);
         
@@ -211,7 +218,8 @@
                         bpSys: state.vitals.bpSys,
                         bpDia: state.vitals.bpDia,
                         gain: state.waveformGain,
-                        interference: state.noise.interference
+                        interference: state.noise.interference,
+                        cpr: state.cprInProgress
                     }
                 });
             }
@@ -293,8 +301,18 @@
                 
                 if (!current.isMuted && ctx && correctOutput) {
                     const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                    osc.type = 'sine'; const freq = current.vitals.spO2 >= 95 ? 880 : current.vitals.spO2 >= 85 ? 600 : 400;
-                    osc.frequency.value = freq; osc.connect(gain); gain.connect(ctx.destination);
+                    osc.type = 'sine'; 
+                    
+                    // UPDATED: Pitch Modulation based on SpO2
+                    // 100% = 800Hz, drops to 400Hz at 85%
+                    const spO2 = current.vitals.spO2;
+                    let freq = 800;
+                    if (spO2 < 100) {
+                        freq = Math.max(400, 400 + ((spO2 - 85) * (400/15)));
+                    }
+                    
+                    osc.frequency.value = freq; 
+                    osc.connect(gain); gain.connect(ctx.destination);
                     const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15); 
                     osc.start(now); osc.stop(now + 0.2);
                 }
@@ -385,8 +403,6 @@
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
             // --- CHECKLIST LOGIC ---
-            // If the scenario has generic objectives mapped to this action, auto-complete
-            // Simple approach: Check if scenario title implies sepsis, and action is Antibiotics
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
             if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
             if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
@@ -475,15 +491,12 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
-        // --- LOOPING AUDIO (Wheeze/Stridor) ---
         const toggleAudioLoop = (type) => {
             if (!audioCtxRef.current) return;
             const ctx = audioCtxRef.current;
             if (ctx.state === 'suspended') ctx.resume();
             
-            // Check if playing
             if (loopNodesRef.current[type]) {
-                // Stop it
                 loopNodesRef.current[type].stop();
                 delete loopNodesRef.current[type];
                 const newLoops = {...state.activeLoops};
@@ -491,7 +504,6 @@
                 dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: newLoops});
                 addLogEntry(`Audio Loop Stopped: ${type}`, 'manual');
             } else {
-                // Start it (Simple Synthesis for robustness)
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 const lfo = ctx.createOscillator(); // LFO for breathing pattern
@@ -514,11 +526,8 @@
                 osc.connect(gain);
                 gain.connect(ctx.destination);
                 
-                // Breath envelope
                 const now = ctx.currentTime;
                 gain.gain.setValueAtTime(0, now);
-                // Simple looping ramp logic isn't native, so we use LFO for amplitude in a real mixer, 
-                // but here we just let it drone with pitch modulation to simulate breath sounds
                 gain.gain.value = 0.05; 
                 
                 osc.start();
@@ -557,28 +566,25 @@
                 }
             }
 
-            // 2. Physiological Constraints (Compensatory Mechanisms)
+            // 2. Physiological Constraints
             if (next.hr === 0) { 
                 next.bpSys = 0; next.bpDia = 0; next.spO2 = Math.max(0, next.spO2 - 2); 
                 if (!['VF','Asystole','PEA','pVT'].includes(current.rhythm)) { dispatch({ type: 'UPDATE_RHYTHM', payload: 'Asystole' }); } 
             } else {
                 if (next.spO2 < 88 && next.hr < 130 && current.rhythm.includes('Sinus')) {
-                    if (Math.random() > 0.5) next.hr += 1; // Hypoxic Tachycardia
+                    if (Math.random() > 0.5) next.hr += 1; 
                 }
                 if (next.spO2 < 50 && next.hr > 40) {
-                    if (Math.random() > 0.6) next.hr -= 2; // Terminal Bradycardia
+                    if (Math.random() > 0.6) next.hr -= 2; 
                 }
             }
 
             // --- ADVANCED PACING LOGIC ---
             if (current.remotePacerState.output > current.pacingThreshold && current.remotePacerState.rate > 0) {
-                // Capture achieved
                 if (current.rhythm !== 'paced') {
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); // Defib shows 'Paced' beats visually
+                    dispatch({ type: 'UPDATE_RHYTHM', payload: '1st Deg Block' }); 
                 }
                 next.hr = current.remotePacerState.rate;
-            } else if (current.remotePacerState.output > 0) {
-                // Pacing but no capture - maintain native rhythm
             }
 
             // 3. Noise & Flux
@@ -619,11 +625,6 @@
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
 
-        const enableAudio = () => { if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume(); };
-        const start = () => { if (state.isRunning || isMonitorMode) return; dispatch({ type: 'START_SIM' }); timerRef.current = setInterval(() => dispatch({ type: 'TICK_TIME' }), 1000); tickRef.current = setInterval(tick, 3000); enableAudio(); };
-        const pause = () => { dispatch({ type: 'PAUSE_SIM' }); clearInterval(timerRef.current); clearInterval(tickRef.current); };
-        const stop = () => { pause(); dispatch({ type: 'STOP_SIM' }); addLogEntry("Simulation Ended", 'system'); };
-        const reset = () => { stop(); dispatch({ type: 'CLEAR_SESSION' }); localStorage.removeItem('wmebem_sim_state'); };
         return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, triggerAction };
     };
     window.useSimulation = useSimulation;
