@@ -1,16 +1,31 @@
 // data/engine.js
 (() => {
     const { useState, useEffect, useRef, useReducer } = React;
+    // Ensure we access global data safely
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
     const initialState = {
-        scenario: null, time: 0, cycleTimer: 0, isRunning: false,
-        vitals: { etco2: 4.5 }, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
-        investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
-        isMuted: false, etco2Enabled: false, isParalysed: false, 
+        scenario: null, 
+        time: 0, 
+        cycleTimer: 0, 
+        isRunning: false,
+        vitals: { etco2: 4.5 }, 
+        prevVitals: {}, 
+        rhythm: "Sinus Rhythm", 
+        log: [], 
+        flash: null, 
+        history: [],
+        investigationsRevealed: {}, 
+        loadingInvestigations: {}, 
+        activeInterventions: new Set(), 
+        interventionCounts: {}, 
+        activeDurations: {}, 
+        processedEvents: new Set(),
+        isMuted: false, 
+        etco2Enabled: false, 
+        isParalysed: false, 
         queuedRhythm: null,
         cprInProgress: false,
-        // UPDATED: Added history array to nibp
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         speech: { text: null, timestamp: 0, source: null },
@@ -26,7 +41,8 @@
         pacingThreshold: 70, 
         activeLoops: {}, 
         completedObjectives: new Set(),
-        lastUpdate: 0 // ADDED: For connection health tracking
+        lastUpdate: 0,
+        isOffline: false // ADDED: Offline state
     };
 
     const simReducer = (state, action) => {
@@ -34,11 +50,12 @@
             case 'START_SIM': return { ...state, isRunning: true, isFinished: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
             case 'PAUSE_SIM': return { ...state, isRunning: false, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: `${Math.floor(state.time/60)}:${(state.time%60).toString().padStart(2,'0')}`, msg: "Simulation Paused", type: 'system' }] };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
-            case 'CLEAR_SESSION': return { ...initialState };
+            case 'CLEAR_SESSION': return { ...initialState, isOffline: state.isOffline }; // Preserve offline status
+            case 'SET_OFFLINE': return { ...state, isOffline: action.payload }; // ADDED: Offline reducer
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 const initialVitals = { etco2: 4.5, ...action.payload.vitals };
-                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100) };
+                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100), isOffline: state.isOffline };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations }; let durChanged = false;
@@ -80,7 +97,6 @@
             case 'COMMIT_NIBP': 
                 const safeSys = (state.vitals.bpSys !== undefined && state.vitals.bpSys !== null) ? state.vitals.bpSys : 0;
                 const safeDia = (state.vitals.bpDia !== undefined && state.vitals.bpDia !== null) ? state.vitals.bpDia : 0;
-                // UPDATED: NIBP History Logic
                 const now = new Date();
                 const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
                 const newEntry = { sys: safeSys, dia: safeDia, time: timeStr };
@@ -125,7 +141,7 @@
                     noise: action.payload.noise || { interference: false },
                     notification: action.payload.notification || null,
                     remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0},
-                    lastUpdate: Date.now() // UPDATED: Connection tracking
+                    lastUpdate: Date.now()
                 };
 
             case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
@@ -174,6 +190,22 @@
         const simChannel = useRef(new BroadcastChannel('sim_channel'));
 
         useEffect(() => { stateRef.current = state; }, [state]);
+
+        // --- OFFLINE DETECTION ---
+        useEffect(() => {
+            try {
+                if (window.firebase && !window.db) {
+                    window.db = firebase.database();
+                    window.db.ref('.info/connected').on('value', (snap) => {
+                        if (snap.val() === false) dispatch({ type: 'SET_OFFLINE', payload: true });
+                        else dispatch({ type: 'SET_OFFLINE', payload: false });
+                    });
+                }
+            } catch (e) {
+                console.warn("Firebase failed to load - Offline Mode Active");
+                dispatch({ type: 'SET_OFFLINE', payload: true });
+            }
+        }, []);
 
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
@@ -302,15 +334,11 @@
                 if (!current.isMuted && ctx && correctOutput) {
                     const osc = ctx.createOscillator(); const gain = ctx.createGain();
                     osc.type = 'sine'; 
-                    
-                    // UPDATED: Pitch Modulation based on SpO2
-                    // 100% = 800Hz, drops to 400Hz at 85%
                     const spO2 = current.vitals.spO2;
                     let freq = 800;
                     if (spO2 < 100) {
                         freq = Math.max(400, 400 + ((spO2 - 85) * (400/15)));
                     }
-                    
                     osc.frequency.value = freq; 
                     osc.connect(gain); gain.connect(ctx.destination);
                     const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15); 
@@ -624,6 +652,45 @@
 
             dispatch({ type: 'UPDATE_VITALS', payload: next });
         };
+
+        // --- DEFINED CONTROL FUNCTIONS ---
+        const start = () => {
+            if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+                audioCtxRef.current.resume();
+            }
+            dispatch({ type: 'START_SIM' });
+        };
+
+        const pause = () => {
+            dispatch({ type: 'PAUSE_SIM' });
+        };
+
+        const stop = () => {
+            dispatch({ type: 'STOP_SIM' });
+        };
+
+        const reset = () => {
+            dispatch({ type: 'CLEAR_SESSION' });
+        };
+
+        const enableAudio = () => {
+            if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+                audioCtxRef.current.resume();
+            }
+        };
+
+        // --- TIMER LOOP ---
+        useEffect(() => {
+            if (state.isRunning) {
+                timerRef.current = setInterval(() => {
+                    tick(); 
+                    dispatch({ type: 'TICK_TIME' }); 
+                }, 1000);
+            } else {
+                if (timerRef.current) clearInterval(timerRef.current);
+            }
+            return () => { if (timerRef.current) clearInterval(timerRef.current); };
+        }, [state.isRunning]);
 
         return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, triggerAction };
     };
