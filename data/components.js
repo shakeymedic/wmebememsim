@@ -156,31 +156,86 @@
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
-        const drawState = useRef({ x: 0, lastY: 50, beatProgress: 0, breathProgress: 0, lastTime: 0, lastYCO2: 0, lastYPleth: 0, lastYArt: 0 });
+        const drawState = useRef({ x: 0, lastY: 50, lastYCO2: 0, lastYPleth: 0, lastYArt: 0, lastTime: 0 });
         const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
 
         useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        const getWaveform = (type, t, cpr, baseline) => {
-            const noise = (Math.random() - 0.5) * 1.5;
-            if (cpr) return baseline + (Math.sin(t * 12) * 45) + (Math.random() * 10 - 5);
-            let y = baseline;
-            if (type === 'Asystole') y = baseline;
-            else if (type === 'VF' || type === 'Coarse VF') y = baseline + Math.sin(t * 20) * 25 + Math.sin(t * 7) * 30 + noise * 3;
-            else if (type === 'Fine VF') y = baseline + Math.sin(t * 25) * 8 + Math.sin(t * 10) * 10 + noise;
-            else if (type === 'VT' || type === 'pVT') y = baseline + (t < 0.2 ? Math.sin(t * 5 * Math.PI) * 50 : (t < 0.6 ? -Math.sin((t-0.2) * 2.5 * Math.PI) * 50 : 0));
-            else {
-                const hasP = !['AF', 'SVT', 'VT', 'VF', 'Asystole', 'pVT'].includes(type);
-                if (hasP && t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
-                else if (type === 'AF') y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
-                if (t > 0.12 && t < 0.14) y += 3; else if (t >= 0.14 && t < 0.18) y -= 55; else if (t >= 0.18 && t < 0.20) y += 12; 
-                if (type === 'STEMI' && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } 
-                else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
+        // --- SOPHISTICATED RHYTHM GENERATORS (Ported from Defib Unit) ---
+        const PX_PER_MV = 35; // Scaled slightly for smaller controller screen
+        const SPEED = 125;
+        
+        const gaussian = (t, center, width, amp) => {
+            const x = (t - center);
+            return -amp * Math.exp(-0.5 * (x * x) / (width * width));
+        }
+        
+        const getP = (t) => gaussian(t, 0.15, 0.04, PX_PER_MV * 0.15);
+        const getQRSNarrow = (t) => {
+            return gaussian(t, 0.23, 0.008, -PX_PER_MV * 0.1) + // Q
+                   gaussian(t, 0.25, 0.015, PX_PER_MV * 1.5) +  // R
+                   gaussian(t, 0.27, 0.010, -PX_PER_MV * 0.3);  // S
+        };
+        const getQRSWide = (t) => gaussian(t, 0.25, 0.05, PX_PER_MV * 1.2);
+        const getT = (t) => gaussian(t, 0.55, 0.09, PX_PER_MV * 0.3);
+
+        const getWaveform = (type, x, hr, cpr, baseline) => {
+             // CPR Artifact
+            if (cpr) {
+                const cprWave = (Math.sin(x * 0.05) - 0.4 * Math.sin(x * 0.1)) * (PX_PER_MV * 1.5);
+                const noise = (Math.random() - 0.5) * (PX_PER_MV * 0.4);
+                return baseline + cprWave + noise;
             }
-            const gain = window.waveformGain || 1.0;
-            y = baseline + ((y - baseline) * gain);
-            if (window.noise && window.noise.interference) { y += Math.sin(t * 100) * 5; }
-            return y + noise;
+
+            const bpm = hr || 75;
+            const cyclePx = (60 / Math.max(10, bpm)) * SPEED;
+            const t = (x % cyclePx) / cyclePx;
+            let y = 0;
+
+            if (type === 'Asystole') {
+                y = Math.sin(x * 0.002) * 4;
+            } else if (type === 'VF' || type === 'vfib' || type === 'Coarse VF' || type === 'Fine VF') {
+                y += Math.sin(x * 0.15) * 3.0;
+                y += Math.sin(x * 0.22) * 2.0;
+                y += Math.sin(x * 0.09) * 1.5;
+                const ampWander = (Math.sin(x * 0.002) * 0.2) + 0.6; 
+                y = y * (PX_PER_MV/15) * ampWander;
+            } else if (type === 'VT' || type === 'vtach' || type === 'pVT') {
+                 // VT Logic
+                 const vtCycle = (60 / 160) * SPEED;
+                 const vtT = (x % vtCycle) / vtCycle;
+                 const val = Math.sin(2 * Math.PI * vtT) - 0.2 * Math.sin(4 * Math.PI * vtT - 0.2);
+                 y = -(val * PX_PER_MV * 1.4);
+            } else if (type === 'AF' || type === 'afib') {
+                const fWaves = Math.sin(x * 0.15) * 1.5 + Math.sin(x * 0.08) * 1.0;
+                const phaseNoise = Math.sin(x * 0.005) * cyclePx * 0.6; 
+                const afT = ((x + phaseNoise) % cyclePx) / cyclePx;
+                let qrs = 0;
+                if(afT > 0.2 && afT < 0.4) {
+                    const localT = (afT - 0.2) / 0.2;
+                    qrs = -PX_PER_MV * 1.0 * Math.exp(-0.5 * Math.pow(localT - 0.5, 2) / 0.005);
+                }
+                y = fWaves + qrs;
+            } else if (type === '3rd Deg Block' || type === 'chb') {
+                const aCycle = (60 / 75) * SPEED;
+                const vCycle = (60 / 35) * SPEED;
+                const aT = (x % aCycle) / aCycle;
+                const vT = (x % vCycle) / vCycle;
+                y = getP(aT) + getQRSWide(vT) + getT(vT);
+            } else {
+                // Default Sinus / Sinus Tach / Brady / SVT
+                const isSVT = bpm > 150;
+                if (!isSVT) y += getP(t);
+                y += isSVT ? gaussian(t, 0.15, 0.02, PX_PER_MV * 1.1) : getQRSNarrow(t); // Narrow QRS
+                y += gaussian(t, isSVT ? 0.50 : 0.55, 0.09, PX_PER_MV * (isSVT ? 0.2 : 0.3)); // T Wave
+            }
+            
+            // Add interference if enabled globally
+            if (window.noise && window.noise.interference) {
+                y += Math.sin(x * 0.8) * (PX_PER_MV * 0.2);
+            }
+
+            return baseline + y;
         };
 
         useEffect(() => {
@@ -203,57 +258,78 @@
 
             const animate = (timestamp) => {
                 const state = drawState.current; const props = propsRef.current;
-                window.waveformGain = window.waveformGain || 1.0; 
-                window.noise = window.noise || {};
-
+                
                 if (!state.lastTime) state.lastTime = timestamp;
                 let dt = Math.min((timestamp - state.lastTime) / 1000, 0.05); state.lastTime = timestamp;
                 if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
 
-                const ecgSpeed = 150; state.x += ecgSpeed * dt;
-                const prevX = state.x - (ecgSpeed * dt);
-                if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
+                state.x += SPEED * dt;
+                const prevX = state.x - (SPEED * dt);
                 
-                const baselineECG = canvas.height * 0.30;
+                // Draw Eraser Bar
+                if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); 
+                else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
                 
-                // NEW: Trace Labels (drawn constantly to ensure visibility)
+                const baselineECG = canvas.height * 0.40;
+                
+                // Draw Trace Labels
                 ctx.font = "bold 12px monospace";
-                if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 30); }
+                if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 40); }
                 if (props.showEtco2) { ctx.fillStyle = '#fbbf24'; ctx.fillText("CO2", 5, canvas.height * 0.60 - 20); }
                 if (props.showArt) { ctx.fillStyle = '#ef4444'; ctx.fillText("ABP", 5, canvas.height * 0.80 - 20); }
                 if (props.spO2 > 10) { ctx.fillStyle = '#22d3ee'; ctx.fillText("Pleth", 5, canvas.height - 40); }
 
-                if (!props.showTraces) { ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); requestRef.current = requestAnimationFrame(animate); return; }
+                if (!props.showTraces) { 
+                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); 
+                    requestRef.current = requestAnimationFrame(animate); return; 
+                }
 
-                let drawRate = props.isCPR ? 110 : (props.hr === 0 ? (['VF','VT','pVT','PEA'].includes(props.rhythmType) ? 70 : 0) : props.hr);
-                let beatDuration = 60 / Math.max(10, drawRate); if (['VF','Coarse VF','Fine VF'].includes(props.rhythmType)) beatDuration = 0.2;
-                state.beatProgress += dt / beatDuration; if (state.beatProgress >= 1) state.beatProgress = 0;
-                let breathDuration = 60 / (Math.max(1, props.rr) || 12); state.breathProgress += dt / breathDuration; if (state.breathProgress >= 1) state.breathProgress = 0;
+                if (state.x > canvas.width) { state.x = 0; state.lastY = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG); }
 
-                if (state.x > canvas.width) { state.x = 0; state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG); }
-
-                const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG);
+                // Calculate Y
+                const yECG = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG);
+                
                 if (state.x > prevX) { 
-                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
+                    // Draw ECG
+                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; 
+                    ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
+                    
+                    // Draw ETCO2 (Simulated Square Wave)
                     if (props.showEtco2) {
-                        const baseCO2 = canvas.height * 0.60; const ampCO2 = 25; let yCO2 = baseCO2; const bp = state.breathProgress;
-                        if (bp > 0.4 && bp < 0.95) { yCO2 = baseCO2 - ampCO2 - (Math.random()); if (bp < 0.45) yCO2 = baseCO2 - (ampCO2 * ((bp - 0.4) / 0.05)); } 
-                        else if (bp >= 0.95) { yCO2 = baseCO2 - (ampCO2 * (1 - ((bp - 0.95) / 0.05))); }
-                        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
+                        const baseCO2 = canvas.height * 0.60;
+                        const rrInterval = (60 / (Math.max(1, props.rr) || 12)) * SPEED;
+                        const breathT = (state.x % rrInterval) / rrInterval;
+                        let yCO2 = baseCO2;
+                        if (breathT > 0.4 && breathT < 0.9) yCO2 = baseCO2 - 25; // Exhale
+                        else if (breathT >= 0.9) yCO2 = baseCO2 - (25 * (1 - ((breathT - 0.9)/0.1))); // Return
+                        else if (breathT < 0.1) yCO2 = baseCO2 - (25 * (breathT/0.1)); // Rise
+                        
+                        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
+                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
                         state.lastYCO2 = yCO2;
                     }
+                    
+                    // Draw Art / Pleth (Simple pulses synced to HR)
+                    const beatCycle = (60 / Math.max(10, props.hr || 75)) * SPEED;
+                    const pulseT = (state.x % beatCycle) / beatCycle;
+                    
                     if (props.showArt) {
-                        const baseArt = canvas.height * 0.80; const ampArt = 20; const t = state.beatProgress; let wave = 0;
-                        if (t < 0.15) { wave = Math.sin((t / 0.15) * (Math.PI / 2)); } else if (t < 0.4) { wave = 1.0 - 0.5 * ((t - 0.15) / 0.25); } else if (t < 0.5) { wave = 0.5 + 0.1 * Math.sin(((t - 0.4) / 0.1) * Math.PI); } else { wave = 0.5 * (1 - ((t - 0.5) / 0.5)); }
-                        const yArt = baseArt - (wave * ampArt);
-                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
+                        const baseArt = canvas.height * 0.80;
+                        let wave = 0;
+                        if (pulseT < 0.3) wave = Math.sin(pulseT * Math.PI * 3.3) * (1 - pulseT*2);
+                        const yArt = baseArt - (wave * 20);
+                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; 
+                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
                         state.lastYArt = yArt;
                     }
                     if (props.spO2 > 10) {
-                        const basePleth = canvas.height - 15; const ampPleth = 15; const t = state.beatProgress; let wave = Math.sin(t * Math.PI * 2);
-                        if (t > 0.3) wave += 0.3 * Math.sin((t - 0.3) * Math.PI * 4); wave = (wave + 1) / 2; 
-                        const yPleth = basePleth - (wave * ampPleth);
-                        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
+                        const basePleth = canvas.height - 15;
+                        let wave = Math.sin(pulseT * Math.PI * 2);
+                        if (pulseT > 0.3) wave += 0.3 * Math.sin((pulseT - 0.3) * Math.PI * 4); 
+                        wave = (wave + 1) / 2; 
+                        const yPleth = basePleth - (wave * 15);
+                        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; 
+                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
                         state.lastYPleth = yPleth;
                     }
                 }
