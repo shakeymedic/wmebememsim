@@ -434,6 +434,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             const cover = document.getElementById('pacingCover');
             if(cover) { if(mode === 'pacer') cover.classList.add('open'); else cover.classList.remove('open'); }
             state.deviceMode = mode;
+            
+            // Broadcast Mode Change to Controller
+            broadcast('DEVICE_MODE', { mode: mode });
+
             if(mode==='off') {
                 document.querySelector('.screen').classList.add('screen-off');
                 document.getElementById('hrDisplay').textContent = '--';
