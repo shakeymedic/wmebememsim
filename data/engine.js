@@ -203,6 +203,11 @@
                         const imgUrl = state.scenario.investigations.ecg.image || "https://placeholder.com/ecg.png"; 
                         simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: imgUrl });
                     }
+                } else if (data.type === 'DEVICE_MODE') {
+                    // Auto-open Arrest Panel when Monitor switches to Defib or Pacer
+                    if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
+                        dispatch({ type: 'SET_ARREST_PANEL', payload: true });
+                    }
                 }
             };
         }, [state.isRunning, state.scenario]);
@@ -584,7 +589,7 @@
         useEffect(() => {
             if (state.isRunning) {
                 timerRef.current = setInterval(() => {
-                    tick(); 
+                    tickRef.current = Date.now();
                     dispatch({ type: 'TICK_TIME' }); 
                 }, 1000);
             } else {
