@@ -10,7 +10,7 @@
         
         const [instructorNotes, setInstructorNotes] = useState("");
 
-        // Calculation of Performance Metrics
+        // 8. Calculate Performance Metrics
         const startTime = log.find(l => l.msg === "Simulation Started")?.timeSeconds || 0;
         
         const getFirstTime = (searchTerms) => {
@@ -29,7 +29,7 @@
             cprCycles: Math.floor(state.cycleTimer / 120) // Approximation
         };
 
-        // Chart with Observations AND Interventions
+        // 7. Chart with Observations AND Interventions
         useEffect(() => { 
             if (!chartRef.current || !history.length) return; 
             if (!window.Chart) return;
@@ -48,6 +48,7 @@
                             label: 'Interventions',
                             type: 'scatter',
                             data: history.map(h => {
+                                // Mark intervention if log timestamp matches history timestamp within ~4s
                                 const hasAction = log.some(l => (l.type === 'action' || l.type === 'manual') && Math.abs(l.timeSeconds - h.time) <= 4);
                                 return hasAction ? h.hr : null; // Plot marker on the HR line
                             }),
@@ -131,6 +132,7 @@
                         </div>
                     </Card>
 
+                    {/* 8. Expanded Metrics Section */}
                     <Card title="Performance Metrics" icon="zap" className="md:col-span-1 border-sky-500/50">
                         <div className="p-4 grid grid-cols-1 gap-4 text-sm">
                             <div className="flex justify-between border-b border-slate-700 pb-1"><span>Total Duration</span><span className="font-mono font-bold text-white">{metrics.duration}</span></div>
@@ -159,6 +161,7 @@
                     </div>
                 </Card>
 
+                {/* 8. Action Timeline */}
                 <Card title="Action Timeline" icon="clock">
                     <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
                         {log.map((l, i) => (
