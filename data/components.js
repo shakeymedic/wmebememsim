@@ -86,14 +86,12 @@
         );
     };
     
-    // UPDATED VITAL DISPLAY (with NIBP History support)
     const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null, trend = null, history = [] }) => {
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value && onUpdate) onUpdate(isText ? editVal : parseFloat(editVal)); };
 
-        const isBP = label.includes("BP") || label.includes("NIBP") || label.includes("ABP");
         const getColors = (lbl) => {
             if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
             if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
@@ -119,13 +117,13 @@
         
         if (isMonitor) {
             if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
+            const isBP = label.includes("BP") || label.includes("NIBP");
             return (
                 <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
                     {isNIBP && (<button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>)}
                     <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
                     <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{displayValue()}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{displayValue2()}</span>}</div></div>
                     
-                    {/* NEW: NIBP History List */}
                     {isNIBP && history.length > 0 && (
                         <div className="absolute bottom-1 left-2 text-[10px] font-mono text-slate-500 leading-tight pointer-events-none">
                             {history.map((h, i) => (
@@ -139,6 +137,8 @@
             );
         }
         if (!visible) return (<div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40"><span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span><span className="text-xl font-mono text-slate-700">--</span></div>);
+        
+        const isBP = label.includes("BP");
         const showEditHint = !isMonitor && visible;
 
         return (
@@ -152,7 +152,7 @@
         );
     };
 
-    // UPDATED ECG MONITOR (With Labels for Trace Identification)
+    // UPDATED ECG MONITOR
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
@@ -161,8 +161,7 @@
 
         useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        // --- SOPHISTICATED RHYTHM GENERATORS (Ported from Defib Unit) ---
-        const PX_PER_MV = 35; // Scaled slightly for smaller controller screen
+        const PX_PER_MV = 35; 
         const SPEED = 125;
         
         const gaussian = (t, center, width, amp) => {
@@ -180,7 +179,6 @@
         const getT = (t) => gaussian(t, 0.55, 0.09, PX_PER_MV * 0.3);
 
         const getWaveform = (type, x, hr, cpr, baseline) => {
-             // CPR Artifact
             if (cpr) {
                 const cprWave = (Math.sin(x * 0.05) - 0.4 * Math.sin(x * 0.1)) * (PX_PER_MV * 1.5);
                 const noise = (Math.random() - 0.5) * (PX_PER_MV * 0.4);
@@ -191,22 +189,23 @@
             const cyclePx = (60 / Math.max(10, bpm)) * SPEED;
             const t = (x % cyclePx) / cyclePx;
             let y = 0;
+            
+            const rLow = type ? type.toLowerCase() : "nsr";
 
-            if (type === 'Asystole') {
+            if (rLow.includes('asystole')) {
                 y = Math.sin(x * 0.002) * 4;
-            } else if (type === 'VF' || type === 'vfib' || type === 'Coarse VF' || type === 'Fine VF') {
+            } else if (rLow.includes('vf')) {
                 y += Math.sin(x * 0.15) * 3.0;
                 y += Math.sin(x * 0.22) * 2.0;
                 y += Math.sin(x * 0.09) * 1.5;
                 const ampWander = (Math.sin(x * 0.002) * 0.2) + 0.6; 
                 y = y * (PX_PER_MV/15) * ampWander;
-            } else if (type === 'VT' || type === 'vtach' || type === 'pVT') {
-                 // VT Logic
+            } else if (rLow.includes('vt') && !rLow.includes('svt')) {
                  const vtCycle = (60 / 160) * SPEED;
                  const vtT = (x % vtCycle) / vtCycle;
                  const val = Math.sin(2 * Math.PI * vtT) - 0.2 * Math.sin(4 * Math.PI * vtT - 0.2);
                  y = -(val * PX_PER_MV * 1.4);
-            } else if (type === 'AF' || type === 'afib') {
+            } else if (rLow.includes('af')) {
                 const fWaves = Math.sin(x * 0.15) * 1.5 + Math.sin(x * 0.08) * 1.0;
                 const phaseNoise = Math.sin(x * 0.005) * cyclePx * 0.6; 
                 const afT = ((x + phaseNoise) % cyclePx) / cyclePx;
@@ -216,21 +215,32 @@
                     qrs = -PX_PER_MV * 1.0 * Math.exp(-0.5 * Math.pow(localT - 0.5, 2) / 0.005);
                 }
                 y = fWaves + qrs;
-            } else if (type === '3rd Deg Block' || type === 'chb') {
+            } else if (rLow.includes('3rd') || rLow === 'chb') {
                 const aCycle = (60 / 75) * SPEED;
                 const vCycle = (60 / 35) * SPEED;
                 const aT = (x % aCycle) / aCycle;
                 const vT = (x % vCycle) / vCycle;
                 y = getP(aT) + getQRSWide(vT) + getT(vT);
+            } else if (rLow.includes('1st')) {
+                // 1st Deg Block - Delayed P Wave
+                // P wave usually at 0.15. QRS at 0.25. 
+                // We want P wave earlier (relative to QRS) to show gap.
+                // Or shift QRS later? Easier to shift P earlier in the cycle 
+                // but T is usually 0.0-1.0. 
+                // Let's put P at 0.05 (very early), QRS at 0.25.
+                y += gaussian(t, 0.08, 0.04, PX_PER_MV * 0.15); // Early P
+                y += getQRSNarrow(t);
+                y += getT(t);
             } else {
-                // Default Sinus / Sinus Tach / Brady / SVT
-                const isSVT = bpm > 150;
+                // Default Sinus / SVT
+                // SVT: No P waves visible, narrow QRS
+                const isSVT = rLow.includes('svt') || bpm > 150;
+                
                 if (!isSVT) y += getP(t);
-                y += isSVT ? gaussian(t, 0.15, 0.02, PX_PER_MV * 1.1) : getQRSNarrow(t); // Narrow QRS
-                y += gaussian(t, isSVT ? 0.50 : 0.55, 0.09, PX_PER_MV * (isSVT ? 0.2 : 0.3)); // T Wave
+                y += isSVT ? gaussian(t, 0.15, 0.02, PX_PER_MV * 1.1) : getQRSNarrow(t); 
+                y += gaussian(t, isSVT ? 0.50 : 0.55, 0.09, PX_PER_MV * (isSVT ? 0.2 : 0.3));
             }
             
-            // Add interference if enabled globally
             if (window.noise && window.noise.interference) {
                 y += Math.sin(x * 0.8) * (PX_PER_MV * 0.2);
             }
@@ -266,13 +276,11 @@
                 state.x += SPEED * dt;
                 const prevX = state.x - (SPEED * dt);
                 
-                // Draw Eraser Bar
                 if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); 
                 else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
                 
                 const baselineECG = canvas.height * 0.40;
                 
-                // Draw Trace Labels
                 ctx.font = "bold 12px monospace";
                 if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 40); }
                 if (props.showEtco2) { ctx.fillStyle = '#fbbf24'; ctx.fillText("CO2", 5, canvas.height * 0.60 - 20); }
@@ -286,30 +294,26 @@
 
                 if (state.x > canvas.width) { state.x = 0; state.lastY = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG); }
 
-                // Calculate Y
                 const yECG = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG);
                 
                 if (state.x > prevX) { 
-                    // Draw ECG
                     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; 
                     ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
                     
-                    // Draw ETCO2 (Simulated Square Wave)
                     if (props.showEtco2) {
                         const baseCO2 = canvas.height * 0.60;
                         const rrInterval = (60 / (Math.max(1, props.rr) || 12)) * SPEED;
                         const breathT = (state.x % rrInterval) / rrInterval;
                         let yCO2 = baseCO2;
-                        if (breathT > 0.4 && breathT < 0.9) yCO2 = baseCO2 - 25; // Exhale
-                        else if (breathT >= 0.9) yCO2 = baseCO2 - (25 * (1 - ((breathT - 0.9)/0.1))); // Return
-                        else if (breathT < 0.1) yCO2 = baseCO2 - (25 * (breathT/0.1)); // Rise
+                        if (breathT > 0.4 && breathT < 0.9) yCO2 = baseCO2 - 25; 
+                        else if (breathT >= 0.9) yCO2 = baseCO2 - (25 * (1 - ((breathT - 0.9)/0.1)));
+                        else if (breathT < 0.1) yCO2 = baseCO2 - (25 * (breathT/0.1));
                         
                         ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
                         ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
                         state.lastYCO2 = yCO2;
                     }
                     
-                    // Draw Art / Pleth (Simple pulses synced to HR)
                     const beatCycle = (60 / Math.max(10, props.hr || 75)) * SPEED;
                     const pulseT = (state.x % beatCycle) / beatCycle;
                     
@@ -378,7 +382,7 @@
                     <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {isRevealed && isRepeatable ? `Repeat ${label}` : label}</span>
                     {isLoading && <Lucide icon="loader-2" className="w-3 h-3 animate-spin" />}
                 </button>
-                {isRevealed && (<div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700 animate-fadeIn">{getResult()}</div>)}
+                {isRevealed && (<div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700 animate-fadeIn">{getResultContent(type)}</div>)}
             </div>
         );
     };
