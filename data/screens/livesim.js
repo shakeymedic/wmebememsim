@@ -7,7 +7,7 @@
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, trends } = sim;
         const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification } = state;
 
-        // Tabs - "Sounds" removed as requested
+        // 5. Tabs - "Continuous Sounds" removed
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [modalVital, setModalVital] = useState(null); 
@@ -65,7 +65,7 @@
             setModalVital(null); 
         };
 
-        // Loading bar calculation for vitals
+        // 10. Loading bar calculation for vitals (passed as prop to VitalDisplay)
         const trendProp = trends.active ? { active: true, progress: trends.elapsed / trends.duration } : null;
 
         return (
@@ -89,7 +89,7 @@
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         
-                         {/* Patient Details Box (Point 9) */}
+                         {/* 9. Patient Details Box */}
                          <div className="bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -100,8 +100,9 @@
                             </div>
                          </div>
 
-                        {/* Obs Controller (Point 10 - includes loading bars via trendProp) */}
+                        {/* 10. Obs Controller (With Loading Bar) */}
                         <div className="bg-black border border-slate-800 rounded relative overflow-hidden">
+                             {/* Global Trend Loading Bar */}
                              {trends.active && (
                                  <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800 z-20">
                                      <div className="h-full bg-sky-500 transition-all duration-1000 ease-linear" style={{ width: `${(trends.elapsed / trends.duration) * 100}%` }}></div>
@@ -117,7 +118,7 @@
                              </div>
                         </div>
 
-                        {/* Defib Controls - Minimized Logic (Point 4) */}
+                        {/* 4. Defib Controls - Minimized Logic */}
                         {arrestPanelOpen && (
                              <div className="bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
@@ -134,16 +135,16 @@
                                  </div>
                              </div>
                         )}
-                        {/* Hidden button to open logic, user interaction or monitor interaction triggers panel */}
+                        {/* 4. Minimized Indicator */}
                         {!arrestPanelOpen && (
-                             <div className="text-center p-2 opacity-50 text-[10px] text-slate-500 uppercase tracking-widest">
-                                 Defib Panel Minimized
+                             <div className="text-center p-2 opacity-50 text-[10px] text-slate-500 uppercase tracking-widest border border-dashed border-slate-700 rounded">
+                                 Defib Panel Minimized (Open on Monitor)
                              </div>
                         )}
                     </div>
                     
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
-                        {/* Tabs - Continuous Sounds removed (Point 5) */}
+                        {/* 3 & 5. Waveform & Continuous Sounds Removed from UI */}
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
                              {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
                                  <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>
@@ -151,7 +152,7 @@
                         </div>
                         
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
-                            {/* Recommended Actions - Green Flash & Counts (Point 6) */}
+                            {/* 6. Recommended Actions - Green Flash & Counts */}
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
                                     <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
@@ -159,8 +160,12 @@
                                         {scenario.recommendedActions.map(key => {
                                             const action = INTERVENTIONS[key];
                                             const count = interventionCounts[key] || 0;
+                                            const isActive = activeInterventions.has(key);
+                                            // Check both count (bolus) and active (infusion) for green status
+                                            const isUsed = count > 0 || isActive;
+                                            
                                             return (
-                                                <Button key={key} onClick={() => applyIntervention(key)} variant={count > 0 ? "success" : "outline"} className="h-6 text-[10px] px-2 transition-colors duration-200">
+                                                <Button key={key} onClick={() => applyIntervention(key)} variant={isUsed ? "success" : "outline"} className="h-6 text-[10px] px-2 transition-colors duration-200">
                                                     {action?.label || key} {count > 0 && <span className="ml-1 bg-white/20 px-1 rounded-full font-bold">{count}</span>}
                                                 </Button>
                                             );
