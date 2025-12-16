@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v17.1</title>
+    <title>WMEBEM Sim Generator v17.0</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -50,11 +50,11 @@
     <script src="data/data.js"></script> 
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
-    <script type="text/babel" src="data/screens/Setup.js"></script>
-    <script type="text/babel" src="data/screens/Phases.js"></script>
-    <script type="text/babel" src="data/screens/LiveSim.js"></script>
-    <script type="text/babel" src="data/screens/Monitor.js"></script>
-    <script type="text/babel" src="data/screens/Containers.js"></script>
+    <script type="text/babel" src="data/screens/setup.js"></script>
+    <script type="text/babel" src="data/screens/phases.js"></script>
+    <script type="text/babel" src="data/screens/livesim.js"></script>
+    <script type="text/babel" src="data/screens/monitor.js"></script>
+    <script type="text/babel" src="data/screens/containers.js"></script>
 
     <script type="text/babel">
         // Safe Storage Helper
@@ -200,7 +200,7 @@
         };
 
         const checkReady = setInterval(() => {
-            if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
+            if (window.MonitorContainer && window.SetupScreen && window.useSimulation) {
                 clearInterval(checkReady);
                 try {
                     ReactDOM.render(React.createElement(App), document.getElementById('root'));
