@@ -171,9 +171,6 @@
             }, [view]);
 
             if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
-            
-            // *** CRITICAL UPDATE HERE ***
-            // Passing 'sim' prop to MonitorContainer
             if (view === 'monitor') return <MonitorContainer sim={sim} sessionID={sessionID} />;
 
             return (
