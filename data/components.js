@@ -149,7 +149,7 @@
 
         useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        const getWaveform = (type, t, cpr, baseline) => {
+        const getWaveform = (type, t, cpr, baseline, pathology) => {
             const noise = (Math.random() - 0.5) * 1.5;
             // 1. CPR Noise (Logic Improvement)
             if (cpr) return baseline + (Math.sin(t * 12) * 45) + (Math.random() * 10 - 5);
@@ -166,7 +166,10 @@
                 if (hasP && t < 0.1) y -= Math.sin(t/0.1 * Math.PI) * 4;
                 else if (type === 'AF') y += Math.sin(t * 60) * 2 + Math.sin(t * 37) * 1.5; 
                 if (t > 0.12 && t < 0.14) y += 3; else if (t >= 0.14 && t < 0.18) y -= 55; else if (t >= 0.18 && t < 0.20) y += 12; 
-                if (type === 'STEMI' && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } 
+                
+                // FIXED: Check pathology OR type for STEMI logic
+                const isSTEMI = type === 'STEMI' || (pathology === 'STEMI' && type === 'Sinus Rhythm');
+                if (isSTEMI && t >= 0.20 && t < 0.4) { y -= 15; y -= Math.sin((t-0.20)/0.2 * Math.PI) * 8; } 
                 else if (t > 0.3 && t < 0.5) y -= Math.sin((t-0.3)/0.2 * Math.PI) * 8;
             }
 
@@ -222,12 +225,14 @@
                 state.beatProgress += dt / beatDuration; if (state.beatProgress >= 1) state.beatProgress = 0;
                 let breathDuration = 60 / (Math.max(1, props.rr) || 12); state.breathProgress += dt / breathDuration; if (state.breathProgress >= 1) state.breathProgress = 0;
 
+                // FIXED: Pass props.pathology to getWaveform calls
                 if (state.x > canvas.width) { 
                     state.x = 0; 
-                    state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG); 
+                    state.lastY = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG, props.pathology); 
                 }
 
-                const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG);
+                const yECG = getWaveform(props.rhythmType, state.beatProgress, props.isCPR, baselineECG, props.pathology);
+                
                 if (state.x > prevX) { 
                     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
                     if (props.showEtco2) {
