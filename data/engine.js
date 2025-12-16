@@ -1,7 +1,6 @@
 // data/engine.js
 (() => {
     const { useState, useEffect, useRef, useReducer } = React;
-    // Access global data safely
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
     const initialState = {
@@ -27,7 +26,7 @@
         activeLoops: {}, 
         completedObjectives: new Set(),
         lastUpdate: 0,
-        isOffline: false // Added for error handling
+        isOffline: false 
     };
 
     const simReducer = (state, action) => {
@@ -42,11 +41,59 @@
                 const initialVitals = { etco2: 4.5, ...action.payload.vitals };
                 return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100), isOffline: state.isOffline };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
+            
             case 'TICK_TIME':
-                const newDurations = { ...state.activeDurations }; let durChanged = false;
-                Object.keys(newDurations).forEach(key => { const elapsed = state.time + 1 - newDurations[key].startTime; if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; } });
-                let newNibp = { ...state.nibp }; if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp };
+                // 1. Handle Duration Timers
+                const newDurations = { ...state.activeDurations }; 
+                let durChanged = false;
+                Object.keys(newDurations).forEach(key => { 
+                    const elapsed = state.time + 1 - newDurations[key].startTime; 
+                    if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; } 
+                });
+                
+                // 2. Handle NIBP Auto Timer
+                let newNibp = { ...state.nibp }; 
+                if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
+
+                // 3. Handle Trends (Interpolate Vitals)
+                let newTrends = { ...state.trends };
+                let currentVitals = { ...state.vitals };
+                let vitalsChanged = false;
+
+                if (newTrends.active) {
+                    newTrends.elapsed += 1;
+                    const progress = Math.min(1, newTrends.elapsed / newTrends.duration);
+                    
+                    Object.keys(newTrends.targets).forEach(key => {
+                        const startVal = newTrends.startVitals[key];
+                        const targetVal = newTrends.targets[key];
+                        if (startVal !== undefined && targetVal !== undefined) {
+                            currentVitals[key] = startVal + ((targetVal - startVal) * progress);
+                        }
+                    });
+
+                    if (newTrends.elapsed >= newTrends.duration) {
+                        newTrends.active = false; // Trend complete
+                    }
+                    vitalsChanged = true;
+                }
+
+                // 4. Update History periodically (every 5s) to prevent chart bloat, or on vital change?
+                // For now, let's rely on manual history pushes or specific events, OR push here if needed.
+                // Existing code pushes history in 'UPDATE_VITALS', let's stick to that if possible, 
+                // BUT since we are modifying vitals here, we should probably record history if it's significant.
+                // For simplicity, we won't spam history here, relying on the 'debrief' chart to just use available points.
+                
+                return { 
+                    ...state, 
+                    time: state.time + 1, 
+                    cycleTimer: state.cycleTimer + 1, 
+                    activeDurations: durChanged ? newDurations : state.activeDurations, 
+                    nibp: newNibp,
+                    trends: newTrends,
+                    vitals: vitalsChanged ? currentVitals : state.vitals
+                };
+
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_VITALS': 
                 if (!state.isRunning && action.payload.source !== 'manual') return state;
@@ -90,7 +137,6 @@
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
-            case 'ADVANCE_TREND': return { ...state, trends: { ...state.trends, elapsed: state.trends.elapsed + action.payload } };
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
 
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
@@ -204,7 +250,6 @@
                         simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: imgUrl });
                     }
                 } else if (data.type === 'DEVICE_MODE') {
-                    // Auto-open Arrest Panel when Monitor switches to Defib or Pacer
                     if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
                         dispatch({ type: 'SET_ARREST_PANEL', payload: true });
                     }
@@ -559,33 +604,12 @@
             }
         };
 
-        // --- DEFINED START/STOP FUNCTIONS ---
-        const start = () => {
-            if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-                audioCtxRef.current.resume();
-            }
-            dispatch({ type: 'START_SIM' });
-        };
+        const start = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } dispatch({ type: 'START_SIM' }); };
+        const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
+        const stop = () => { dispatch({ type: 'STOP_SIM' }); };
+        const reset = () => { dispatch({ type: 'CLEAR_SESSION' }); };
+        const enableAudio = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } };
 
-        const pause = () => {
-            dispatch({ type: 'PAUSE_SIM' });
-        };
-
-        const stop = () => {
-            dispatch({ type: 'STOP_SIM' });
-        };
-
-        const reset = () => {
-            dispatch({ type: 'CLEAR_SESSION' });
-        };
-
-        const enableAudio = () => {
-            if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-                audioCtxRef.current.resume();
-            }
-        };
-
-        // --- TIMER LOOP ---
         useEffect(() => {
             if (state.isRunning) {
                 timerRef.current = setInterval(() => {
