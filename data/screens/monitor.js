@@ -12,20 +12,20 @@
         const [defibOpen, setDefibOpen] = useState(false);
         const [showToast, setShowToast] = useState(false);
 
-        // 2. Monitor Toast Notification Logic with Timeout
-        // Ensure robust cleanup to prevent sticking
+        // Request 2: Monitor Toast Notification Logic with Timeout
+        // Logic: Listen for notification object. If ID changes, show toast, then hide after 3s.
         useEffect(() => {
             if(notification && notification.id) {
                 setShowToast(true);
                 const timer = setTimeout(() => {
                     setShowToast(false);
-                }, 3000); // Disappear after 3 seconds
+                }, 3000); // Strict 3 second timeout
                 return () => clearTimeout(timer);
             }
         }, [notification]);
 
-        // 4. Sync Defib State with Global "Arrest Panel" State
-        // This ensures if the controller triggers it (or an event does), the monitor opens it.
+        // Request 4: Sync Defib Panel with Global State
+        // This ensures the monitor opens the defib if the controller triggers it
         useEffect(() => {
              if (arrestPanelOpen && !defibOpen) setDefibOpen(true);
              if (!arrestPanelOpen && defibOpen) setDefibOpen(false);
@@ -38,7 +38,7 @@
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 {/* TOAST NOTIFICATION */}
-                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 border-l-8 rounded shadow-2xl px-8 py-4 transition-all duration-300 scale-150 origin-top ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 border-l-8 rounded shadow-2xl px-8 py-4 transition-all duration-300 scale-150 origin-top flex flex-col items-center ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-4">
                         <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
                         <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
