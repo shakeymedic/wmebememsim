@@ -152,17 +152,18 @@
         );
     };
 
-    // UPDATED ECG MONITOR
+    // UPDATED ECG MONITOR - Fixed for High DPI & Visibility
     const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
+        const containerRef = useRef(null);
         const requestRef = useRef(null);
-        const drawState = useRef({ x: 0, lastY: 50, lastYCO2: 0, lastYPleth: 0, lastYArt: 0, lastTime: 0 });
+        const drawState = useRef({ x: 0, lastY: 0, lastYCO2: 0, lastYPleth: 0, lastYArt: 0, lastTime: 0 });
         const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
 
         useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        const PX_PER_MV = 35; 
-        const SPEED = 125;
+        const PX_PER_MV = 40; 
+        const SPEED = 150;
         
         const gaussian = (t, center, width, amp) => {
             const x = (t - center);
@@ -222,20 +223,11 @@
                 const vT = (x % vCycle) / vCycle;
                 y = getP(aT) + getQRSWide(vT) + getT(vT);
             } else if (rLow.includes('1st')) {
-                // 1st Deg Block - Delayed P Wave
-                // P wave usually at 0.15. QRS at 0.25. 
-                // We want P wave earlier (relative to QRS) to show gap.
-                // Or shift QRS later? Easier to shift P earlier in the cycle 
-                // but T is usually 0.0-1.0. 
-                // Let's put P at 0.05 (very early), QRS at 0.25.
                 y += gaussian(t, 0.08, 0.04, PX_PER_MV * 0.15); // Early P
                 y += getQRSNarrow(t);
                 y += getT(t);
             } else {
-                // Default Sinus / SVT
-                // SVT: No P waves visible, narrow QRS
                 const isSVT = rLow.includes('svt') || bpm > 150;
-                
                 if (!isSVT) y += getP(t);
                 y += isSVT ? gaussian(t, 0.15, 0.02, PX_PER_MV * 1.1) : getQRSNarrow(t); 
                 y += gaussian(t, isSVT ? 0.50 : 0.55, 0.09, PX_PER_MV * (isSVT ? 0.2 : 0.3));
@@ -247,62 +239,136 @@
 
             return baseline + y;
         };
+        
+        const drawGrid = (ctx, w, h) => {
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            // Verticals
+            for(let i=0; i<w; i+=25) { ctx.moveTo(i, 0); ctx.lineTo(i, h); }
+            // Horizontals
+            for(let i=0; i<h; i+=25) { ctx.moveTo(0, i); ctx.lineTo(w, i); }
+            ctx.stroke();
+        };
 
         useEffect(() => {
             const canvas = canvasRef.current;
-            const ctx = canvas.getContext('2d');
+            const parent = containerRef.current;
+            
             const setSize = () => { 
-                const parent = canvas.parentElement; 
-                if(parent) { 
-                    canvas.width = parent.clientWidth; 
-                    canvas.height = parent.clientHeight; 
-                    drawState.current.lastY = canvas.height * 0.30; 
-                    drawState.current.lastYCO2 = canvas.height * 0.60; 
-                    drawState.current.lastYArt = canvas.height * 0.80; 
-                    drawState.current.lastYPleth = canvas.height - 20; 
-                    ctx.fillStyle = '#000000'; 
-                    ctx.fillRect(0,0, canvas.width, canvas.height); 
-                } 
+                if (parent && canvas) {
+                    const dpr = window.devicePixelRatio || 1;
+                    const rect = parent.getBoundingClientRect();
+                    
+                    if (rect.width === 0 || rect.height === 0) return;
+
+                    // Set actual display size
+                    canvas.style.width = `${rect.width}px`;
+                    canvas.style.height = `${rect.height}px`;
+
+                    // Set buffer size
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    
+                    // Normalize coordinate system
+                    const ctx = canvas.getContext('2d');
+                    ctx.scale(dpr, dpr);
+
+                    // Reset internal logical height for baselines
+                    const logicalHeight = rect.height;
+                    const state = drawState.current;
+                    state.lastY = logicalHeight * 0.35;
+                    state.lastYCO2 = logicalHeight * 0.60; 
+                    state.lastYArt = logicalHeight * 0.80; 
+                    state.lastYPleth = logicalHeight - 20;
+                }
             };
-            setSize(); window.addEventListener('resize', setSize);
+
+            // Use ResizeObserver for robust sizing
+            const observer = new ResizeObserver(() => setSize());
+            if (parent) observer.observe(parent);
+            setSize();
 
             const animate = (timestamp) => {
-                const state = drawState.current; const props = propsRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const dpr = window.devicePixelRatio || 1;
+                const logicalWidth = canvas.width / dpr;
+                const logicalHeight = canvas.height / dpr;
+
+                const state = drawState.current; 
+                const props = propsRef.current;
                 
                 if (!state.lastTime) state.lastTime = timestamp;
-                let dt = Math.min((timestamp - state.lastTime) / 1000, 0.05); state.lastTime = timestamp;
-                if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
+                let dt = Math.min((timestamp - state.lastTime) / 1000, 0.05); 
+                state.lastTime = timestamp;
 
-                state.x += SPEED * dt;
-                const prevX = state.x - (SPEED * dt);
-                
-                if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); 
-                else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
-                
-                const baselineECG = canvas.height * 0.40;
-                
-                ctx.font = "bold 12px monospace";
-                if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 40); }
-                if (props.showEtco2) { ctx.fillStyle = '#fbbf24'; ctx.fillText("CO2", 5, canvas.height * 0.60 - 20); }
-                if (props.showArt) { ctx.fillStyle = '#ef4444'; ctx.fillText("ABP", 5, canvas.height * 0.80 - 20); }
-                if (props.spO2 > 10) { ctx.fillStyle = '#22d3ee'; ctx.fillText("Pleth", 5, canvas.height - 40); }
-
-                if (!props.showTraces) { 
-                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); 
-                    requestRef.current = requestAnimationFrame(animate); return; 
+                if (props.isPaused) { 
+                    requestRef.current = requestAnimationFrame(animate); 
+                    return; 
                 }
 
-                if (state.x > canvas.width) { state.x = 0; state.lastY = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG); }
-
-                const yECG = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG);
+                const speed = SPEED; // Logical pixels per second
+                const moveAmt = speed * dt;
                 
+                const prevX = state.x;
+                state.x += moveAmt;
+                
+                // Clear bar ahead
+                const clearWidth = 40;
+                ctx.fillStyle = '#000000';
+                
+                // Handle Wrap-around
+                if (state.x >= logicalWidth) {
+                    state.x = 0;
+                    // Reset paths to avoid drawing across screen
+                    ctx.beginPath();
+                    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
+                    drawGrid(ctx, logicalWidth, logicalHeight);
+                } else {
+                    // Standard clear
+                    ctx.fillRect(state.x, 0, clearWidth, logicalHeight);
+                    // Redraw grid in cleared area
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.rect(state.x, 0, clearWidth, logicalHeight);
+                    ctx.clip();
+                    drawGrid(ctx, logicalWidth, logicalHeight);
+                    ctx.restore();
+                }
+
+                // Baselines
+                const baselineECG = logicalHeight * 0.35;
+                const baseCO2 = logicalHeight * 0.60;
+                const baseArt = logicalHeight * 0.80;
+                const basePleth = logicalHeight - 15;
+
+                // Draw Text
+                ctx.font = "bold 12px monospace";
+                if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 40); }
+                if (props.showEtco2) { ctx.fillStyle = '#fbbf24'; ctx.fillText("CO2", 5, baseCO2 - 20); }
+                if (props.showArt) { ctx.fillStyle = '#ef4444'; ctx.fillText("ABP", 5, baseArt - 20); }
+                if (props.spO2 > 10) { ctx.fillStyle = '#22d3ee'; ctx.fillText("Pleth", 5, logicalHeight - 35); }
+
+                // Flatline if traces off
+                if (!props.showTraces) { 
+                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); 
+                    requestRef.current = requestAnimationFrame(animate); 
+                    return; 
+                }
+
+                // Calculate Y
+                const yECG = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG);
+
+                // Draw Lines
                 if (state.x > prevX) { 
-                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; 
+                    // ECG
+                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
                     ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
                     
+                    // CO2
                     if (props.showEtco2) {
-                        const baseCO2 = canvas.height * 0.60;
-                        const rrInterval = (60 / (Math.max(1, props.rr) || 12)) * SPEED;
+                        const rrInterval = (60 / (Math.max(1, props.rr) || 12)) * speed;
                         const breathT = (state.x % rrInterval) / rrInterval;
                         let yCO2 = baseCO2;
                         if (breathT > 0.4 && breathT < 0.9) yCO2 = baseCO2 - 25; 
@@ -314,11 +380,11 @@
                         state.lastYCO2 = yCO2;
                     }
                     
-                    const beatCycle = (60 / Math.max(10, props.hr || 75)) * SPEED;
+                    // Pulse/Art
+                    const beatCycle = (60 / Math.max(10, props.hr || 75)) * speed;
                     const pulseT = (state.x % beatCycle) / beatCycle;
                     
                     if (props.showArt) {
-                        const baseArt = canvas.height * 0.80;
                         let wave = 0;
                         if (pulseT < 0.3) wave = Math.sin(pulseT * Math.PI * 3.3) * (1 - pulseT*2);
                         const yArt = baseArt - (wave * 20);
@@ -327,7 +393,6 @@
                         state.lastYArt = yArt;
                     }
                     if (props.spO2 > 10) {
-                        const basePleth = canvas.height - 15;
                         let wave = Math.sin(pulseT * Math.PI * 2);
                         if (pulseT > 0.3) wave += 0.3 * Math.sin((pulseT - 0.3) * Math.PI * 4); 
                         wave = (wave + 1) / 2; 
@@ -337,15 +402,20 @@
                         state.lastYPleth = yPleth;
                     }
                 }
+                
                 state.lastY = yECG;
                 requestRef.current = requestAnimationFrame(animate);
             };
+
             requestRef.current = requestAnimationFrame(animate);
-            return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
+            return () => { 
+                observer.disconnect();
+                if (requestRef.current) cancelAnimationFrame(requestRef.current); 
+            };
         }, []);
 
         return (
-            <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className} min-h-[150px]`}>
+            <div ref={containerRef} className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className} min-h-[150px]`}>
                 <canvas ref={canvasRef} className="block w-full h-full"></canvas>
                 {showTraces && <div className="absolute top-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-green-500"><span className="text-lg font-mono text-green-500 font-bold shadow-black drop-shadow-md">{propsRef.current.rhythmLabel || rhythmType}</span></div>}
             </div>
