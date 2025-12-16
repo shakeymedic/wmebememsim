@@ -12,8 +12,8 @@
         const [defibOpen, setDefibOpen] = useState(false);
         const [showToast, setShowToast] = useState(false);
 
-        // Request 2: Monitor Toast Notification Logic with Timeout
-        // This listens for a NEW notification object from engine.js
+        // 2. Monitor Toast Notification Logic with Timeout
+        // Ensure robust cleanup to prevent sticking
         useEffect(() => {
             if(notification && notification.id) {
                 setShowToast(true);
@@ -24,7 +24,8 @@
             }
         }, [notification]);
 
-        // Sync Defib State: If the engine says arrest panel is open (e.g. from Controller), open our defib
+        // 4. Sync Defib State with Global "Arrest Panel" State
+        // This ensures if the controller triggers it (or an event does), the monitor opens it.
         useEffect(() => {
              if (arrestPanelOpen && !defibOpen) setDefibOpen(true);
              if (!arrestPanelOpen && defibOpen) setDefibOpen(false);
