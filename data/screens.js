@@ -688,19 +688,6 @@
                             </div>
                         )}
 
-                        {/* --- NEW: WAVEFORM CONTROLS --- */}
-                        <div className="bg-slate-800 p-2 rounded border border-slate-600">
-                            <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2">Waveform Control</h4>
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs w-12 text-slate-400">Gain: {gainVal}x</span>
-                                <input type="range" min="0.5" max="2.0" step="0.1" value={gainVal} onChange={updateGain} className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
-                            </div>
-                            <label className="flex items-center gap-2 text-xs cursor-pointer select-none text-slate-300 hover:text-white">
-                                <input type="checkbox" checked={noise?.interference || false} onChange={() => sim.dispatch({ type: 'TOGGLE_INTERFERENCE' })} className="rounded bg-slate-700 border-slate-500" />
-                                60Hz Interference (Buzz)
-                            </label>
-                        </div>
-
                         {/* --- NEW: CONTINUOUS SOUNDS --- */}
                         <div className="bg-slate-800 p-2 rounded border border-slate-600">
                             <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2">Continuous Sounds</h4>
@@ -984,7 +971,7 @@
         };
 
         return (
-            <div className="h-full bg-black p-2 md:p-4 flex flex-col gap-2 relative overflow-hidden font-sans select-none">
+            <div className="w-full h-full bg-black p-2 md:p-4 flex flex-col gap-2 relative overflow-hidden font-sans select-none">
                 
                 {/* --- TOAST --- */}
                 <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-4 flex items-center gap-4 transition-all duration-500 transform ${showToast ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-10 opacity-0 scale-90 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : 'border-sky-500'}`}>
