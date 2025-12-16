@@ -2,7 +2,7 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // --- HELPERS ---
+    // --- HELPERS (Must be first) ---
     const getColors = (lbl) => {
         if (!lbl) return "text-slate-200";
         if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
@@ -79,9 +79,9 @@
         );
     };
 
-    // --- HYBRID VITAL DISPLAY ---
+    // --- HYBRID VITAL DISPLAY (Monitor & Controller) ---
     const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null, trend = null, history = [] }) => {
-        // Monitor Mode (Large Display)
+        // Monitor View
         if (isMonitor) {
             if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
             return (
@@ -100,7 +100,7 @@
             );
         }
 
-        // Controller Mode (Interactive)
+        // Controller View
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
@@ -126,27 +126,23 @@
         const canvasRef = useRef(null);
         const containerRef = useRef(null);
         const reqRef = useRef(null);
-        
-        // Internal state for drawing
         const state = useRef({ x: 0, lastY: 0, lastTime: 0 });
 
         useEffect(() => {
             const canvas = canvasRef.current;
             const container = containerRef.current;
             if(!canvas || !container) return;
-
             const ctx = canvas.getContext('2d');
             
             const updateSize = () => {
                 const rect = container.getBoundingClientRect();
                 canvas.width = rect.width * window.devicePixelRatio;
                 canvas.height = rect.height * window.devicePixelRatio;
-                state.current.lastY = canvas.height / 2; // Reset Y to middle
+                state.current.lastY = canvas.height / 2;
                 ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
                 canvas.style.width = `${rect.width}px`;
                 canvas.style.height = `${rect.height}px`;
             };
-            
             const observer = new ResizeObserver(updateSize);
             observer.observe(container);
             updateSize();
@@ -155,27 +151,19 @@
                 if (!state.current.lastTime) state.current.lastTime = time;
                 const dt = Math.min((time - state.current.lastTime) / 1000, 0.1);
                 state.current.lastTime = time;
-
                 const width = canvas.width / window.devicePixelRatio;
                 const height = canvas.height / window.devicePixelRatio;
                 const baseline = height / 2;
-                
-                // Pixels per second
                 const pxSpeed = 150 * speed;
                 const dx = pxSpeed * dt;
-                
                 const prevX = state.current.x;
                 state.current.x += dx;
 
-                // Wrap around
                 if (state.current.x > width) {
                     state.current.x = 0;
-                    // Draw a full blank rect to restart cleanly
-                    ctx.fillStyle = '#000'; // BG Color
-                    ctx.fillRect(0, 0, 20, height); // Clear small start strip
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, 20, height);
                 }
-
-                // Clear ahead bar (Sweeping effect like real monitor)
                 const clearBarWidth = 30;
                 ctx.fillStyle = '#000';
                 ctx.fillRect(state.current.x, 0, clearBarWidth, height);
@@ -187,73 +175,46 @@
                     ctx.lineCap = 'round';
                     ctx.shadowBlur = 4;
                     ctx.shadowColor = color;
-
                     ctx.beginPath();
-                    // If wrapped, move to start
-                    if (state.current.x < prevX) {
-                        ctx.moveTo(state.current.x, baseline);
-                    } else {
-                        ctx.moveTo(prevX, state.current.lastY);
-                    }
+                    if (state.current.x < prevX) ctx.moveTo(state.current.x, baseline);
+                    else ctx.moveTo(prevX, state.current.lastY);
 
-                    // GENERATE WAVEFORM Y
                     let y = 0;
-                    if (flatline) {
-                        y = 0;
-                    } else if (isCPR) {
-                        y = Math.sin(time * 0.01) * 30 + (Math.random() - 0.5) * 10;
-                    } else {
-                        // Rhythm Logic
+                    if (flatline) y = 0;
+                    else if (isCPR) y = Math.sin(time * 0.01) * 30 + (Math.random() - 0.5) * 10;
+                    else {
                         const rate = Math.max(1, hr || 75); // Prevent divide by zero
                         const beatDur = 60 / rate; 
-                        const t = (time / 1000) % beatDur; // normalized time in beat
-                        const amp = 40; // Amplitude (px)
-
+                        const t = (time / 1000) % beatDur;
+                        const amp = 40; 
                         const rLow = rhythmType ? rhythmType.toLowerCase() : 'nsr';
-
-                        if (rLow.includes('vf')) {
-                            y = (Math.sin(time * 0.01) + Math.sin(time * 0.023) * 0.5) * amp;
-                        } else if (rLow.includes('vt') && !rLow.includes('pvt')) {
-                            y = Math.sin(time * 0.015) * amp * 1.5;
-                        } else if (rLow.includes('asystole')) {
-                            y = Math.sin(time * 0.005) * 2;
-                        } else {
-                            // Sinus Complex
-                            // P wave (0.1s), QRS (0.1s), T (0.2s)
+                        if (rLow.includes('vf')) y = (Math.sin(time * 0.01) + Math.sin(time * 0.023) * 0.5) * amp;
+                        else if (rLow.includes('vt') && !rLow.includes('pvt')) y = Math.sin(time * 0.015) * amp * 1.5;
+                        else if (rLow.includes('asystole')) y = Math.sin(time * 0.005) * 2;
+                        else {
                             const pLoc = 0.1 * beatDur;
                             const qrsLoc = 0.2 * beatDur;
                             const tLoc = 0.5 * beatDur;
-                            
-                            // Gaussian function for bumps
                             const gauss = (x, c, w, h) => h * Math.exp(-Math.pow(x - c, 2) / (2 * w * w));
-                            
-                            y -= gauss(t, pLoc, 0.02, amp * 0.15); // P
-                            y += gauss(t, qrsLoc, 0.01, amp * 1.5); // R
-                            y -= gauss(t, qrsLoc - 0.02, 0.005, amp * 0.3); // Q
-                            y -= gauss(t, qrsLoc + 0.02, 0.005, amp * 0.5); // S
-                            y -= gauss(t, tLoc, 0.05, amp * 0.25); // T
+                            y -= gauss(t, pLoc, 0.02, amp * 0.15);
+                            y += gauss(t, qrsLoc, 0.01, amp * 1.5);
+                            y -= gauss(t, qrsLoc - 0.02, 0.005, amp * 0.3);
+                            y -= gauss(t, qrsLoc + 0.02, 0.005, amp * 0.5);
+                            y -= gauss(t, tLoc, 0.05, amp * 0.25);
                         }
                     }
-
                     const targetY = baseline - y;
                     ctx.lineTo(state.current.x, targetY);
                     ctx.stroke();
                     state.current.lastY = targetY;
                 }
-
                 reqRef.current = requestAnimationFrame(draw);
             };
-
             reqRef.current = requestAnimationFrame(draw);
-            return () => {
-                observer.disconnect();
-                cancelAnimationFrame(reqRef.current);
-            };
+            return () => { observer.disconnect(); cancelAnimationFrame(reqRef.current); };
         }, [rhythmType, hr, isCPR, showTraces, color, speed, flatline]);
 
-        return <div ref={containerRef} className={className}>
-            <canvas ref={canvasRef} className="block" />
-        </div>;
+        return <div ref={containerRef} className={className}><canvas ref={canvasRef} className="block" /></div>;
     };
 
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
