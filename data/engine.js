@@ -77,12 +77,6 @@
                     }
                     vitalsChanged = true;
                 }
-
-                // 4. Update History periodically (every 5s) to prevent chart bloat, or on vital change?
-                // For now, let's rely on manual history pushes or specific events, OR push here if needed.
-                // Existing code pushes history in 'UPDATE_VITALS', let's stick to that if possible, 
-                // BUT since we are modifying vitals here, we should probably record history if it's significant.
-                // For simplicity, we won't spam history here, relying on the 'debrief' chart to just use available points.
                 
                 return { 
                     ...state, 
@@ -460,6 +454,7 @@
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
             
+            // Generate notification with ID for timeout
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
