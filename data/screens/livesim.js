@@ -27,7 +27,6 @@
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         
-        // --- Interventions Logic (With Counts & Flashing) ---
         const getInterventionsByCat = (cat) => {
             let keys = [];
             if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM', 'Blood', 'TXA', 'ArtLine']; 
@@ -40,16 +39,12 @@
              if (!action) return null;
              const count = interventionCounts[key] || 0;
              const isActive = activeInterventions.has(key);
-             
-             // Request 6: Flashing green if count > 0 (via variant='success') and showing count badge
              const variant = (count > 0 || isActive) ? "success" : "outline";
-             
              return (
                  <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
                         <span className="text-[10px] opacity-70 italic truncate">{action.category}</span>
-                        {/* Count Badge */}
                         {count > 0 && action.type !== 'continuous' && <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 rounded-full shadow-md">x{count}</span>}
                      </div>
                      {isActive && action.type === 'continuous' && <div className="absolute top-1 right-1 text-red-400 bg-slate-900 rounded-full p-0.5"><Lucide icon="x" className="w-3 h-3"/></div>}
@@ -58,7 +53,6 @@
              );
         }
 
-        // --- Vital Control Modal ---
         const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(30); };
         const confirmVitalUpdate = () => { 
             const targets = {}; 
@@ -71,10 +65,11 @@
             setModalVital(null); 
         };
 
+        // FIXED: Added active:true to trend object
+        const trendProp = trends.active ? { active: true, progress: trends.elapsed / trends.duration } : null;
+
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                
-                {/* --- TOAST NOTIFICATION --- */}
                 <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
                         <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
@@ -82,7 +77,6 @@
                     </div>
                 </div>
 
-                {/* --- HEADER --- */}
                 <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex gap-2 items-center">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
@@ -93,11 +87,7 @@
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
-                    
-                    {/* LEFT COLUMN: Vitals & Patient Info */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
-                        
-                         {/* Request 9: Patient Details Box */}
                          <div className="bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -108,12 +98,7 @@
                             </div>
                          </div>
 
-                        {/* Request 3: Waveform Control REMOVED */}
-                        {/* Request 5: Continuous Sounds REMOVED */}
-
-                        {/* Vitals Grid with Loading Animation (Request 10) */}
                         <div className="bg-black border border-slate-800 rounded relative overflow-hidden">
-                             {/* Request 10: Trend Loading Bar */}
                              {trends.active && (
                                  <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800 z-20">
                                      <div className="h-full bg-sky-500 transition-all duration-1000 ease-linear" style={{ width: `${(trends.elapsed / trends.duration) * 100}%` }}></div>
@@ -122,14 +107,13 @@
                              
                              <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={true} className="h-24"/>
                              <div className="grid grid-cols-2 gap-1 p-1 bg-black">
-                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={trends.active ? {progress: trends.elapsed/trends.duration} : null} />
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={trends.active ? {progress: trends.elapsed/trends.duration} : null} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={trends.active ? {progress: trends.elapsed/trends.duration} : null} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={trends.active ? {progress: trends.elapsed/trends.duration} : null} />
+                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={trendProp} />
+                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={trendProp} />
+                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={trendProp} />
+                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={trendProp} />
                              </div>
                         </div>
 
-                        {/* Request 4: Defib Minimised (Only shows if arrestPanelOpen is true) */}
                         {arrestPanelOpen && (
                              <div className="bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn">
                                  <div className="flex justify-between items-center mb-2">
@@ -151,7 +135,6 @@
                         )}
                     </div>
                     
-                    {/* RIGHT COLUMN: Actions */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
                              {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
@@ -160,7 +143,6 @@
                         </div>
                         
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
-                            {/* Request 6: Recommended Actions with Flash/Count */}
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
                                     <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
@@ -183,7 +165,6 @@
                             </div>
                         </div>
 
-                        {/* Log Input & Trend Triggers */}
                         <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2">
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search / Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button>
@@ -192,7 +173,6 @@
                     </div>
                 </div>
 
-                {/* MODAL (Vital Control) - Kept same logic */}
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
