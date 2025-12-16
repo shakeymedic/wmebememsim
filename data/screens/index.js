@@ -1,10 +1,50 @@
 // data/screens/index.js
 (() => {
-    // This file now serves as the entry point to load individual screen components.
-    // Ensure index.html loads: setup.js, livesim.js, monitor.js, debrief.js BEFORE this file.
-    
-    // The specific screen components are defined in their respective files
-    // and attached to the window object.
-    
-    console.log("Screens module loaded. Components should be available on window.");
+    const { useEffect } = React;
+    const { LiveSimScreen, DebriefScreen, Lucide } = window;
+
+    const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => {
+        const { state, stop, reset } = sim;
+        const { scenario } = state;
+        
+        useEffect(() => {
+            if (view === 'resume' && resumeData) {
+                sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData });
+            } else if (!scenario) {
+                setView('setup');
+            }
+        }, []);
+
+        if (!scenario) {
+            return (
+                <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse">
+                    <Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" />
+                </div>
+            );
+        }
+
+        if (view === 'live' || view === 'resume') {
+            return (
+                <LiveSimScreen 
+                    sim={sim} 
+                    onFinish={() => { stop(); setView('debrief'); }} 
+                    onBack={() => setView('briefing')} 
+                    sessionID={sessionID} 
+                />
+            );
+        }
+
+        if (view === 'debrief') {
+            return (
+                <DebriefScreen 
+                    sim={sim} 
+                    onRestart={() => { reset(); setView('setup'); }} 
+                />
+            );
+        }
+
+        return null;
+    };
+
+    window.LiveSimContainer = LiveSimContainer;
 })();
