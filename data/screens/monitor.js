@@ -9,7 +9,7 @@
         if (!sim) return <div className="h-full flex items-center justify-center text-red-500 font-bold bg-black">ERROR: Simulation Data Not Connected (Check index.html)</div>;
 
         const { state } = sim;
-        const { vitals, rhythm, etco2Enabled, scenario, arrestPanelOpen, cprInProgress, cycleTimer, isOffline, connectionStatus } = state;
+        const { vitals, rhythm, etco2Enabled, arrestPanelOpen, cprInProgress, cycleTimer, isOffline } = state;
 
         // Flash effect for critical alarms
         const isCritical = vitals.hr === 0 || (vitals.hr < 40 && vitals.hr > 0) || vitals.spO2 < 85 || vitals.bpSys < 70;
@@ -87,7 +87,6 @@
                             <div className="h-32 bg-zinc-900/50 rounded border border-zinc-800 relative overflow-hidden flex flex-col">
                                 <div className="absolute top-2 left-2 text-yellow-400 font-bold text-sm z-10">CO2</div>
                                 <div className="flex-1 relative">
-                                    {/* Simplified CO2 wave via ECGMonitor for now, or dedicated component */}
                                     <ECGMonitor 
                                         rhythmType="sinus" // Placeholder for resp wave
                                         hr={vitals.rr * 4} // Fake rate for visualization 
