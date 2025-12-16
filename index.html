@@ -47,14 +47,13 @@
         </div>
     </div>
 
-    <script src="data/data.js"></script> 
+    <script src="data/generators.js"></script>
+    <script src="data/interventions.js"></script>
+    <script src="data/scenarios.js"></script>
+
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
-    <script type="text/babel" src="data/screens/setup.js"></script>
-    <script type="text/babel" src="data/screens/phases.js"></script>
-    <script type="text/babel" src="data/screens/livesim.js"></script>
-    <script type="text/babel" src="data/screens/monitor.js"></script>
-    <script type="text/babel" src="data/screens/containers.js"></script>
+    <script type="text/babel" src="data/screens.js"></script>
 
     <script type="text/babel">
         // Safe Storage Helper
@@ -102,6 +101,7 @@
                     if (sid) setSessionID(sid);
                     setView('monitor');
                 } else {
+                    // Uses safe storage helper to prevent crash
                     const savedID = safeStorage.getItem('wmebem_session_id');
                     if (savedID) { setSessionID(savedID); } 
                     else {
@@ -171,7 +171,7 @@
             }, [view]);
 
             if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
-            if (view === 'monitor') return <MonitorContainer sim={sim} sessionID={sessionID} />;
+            if (view === 'monitor') return <MonitorContainer sessionID={sessionID} />;
 
             return (
                 <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
@@ -199,8 +199,9 @@
             );
         };
 
+        // Loop to check if scripts are loaded before rendering
         const checkReady = setInterval(() => {
-            if (window.MonitorContainer && window.SetupScreen && window.useSimulation) {
+            if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
                 clearInterval(checkReady);
                 try {
                     ReactDOM.render(React.createElement(App), document.getElementById('root'));
