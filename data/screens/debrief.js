@@ -10,14 +10,13 @@
         
         const [instructorNotes, setInstructorNotes] = useState("");
 
-        // Request 7: Debrief Screen Chart with all Obs
+        // Request 7: Debrief Screen Chart with all Obs AND Intervention Markers
         useEffect(() => { 
             if (!chartRef.current || !history.length) return; 
             if (!window.Chart) return;
             const ctx = chartRef.current.getContext('2d'); 
             if (window.myChart) window.myChart.destroy(); 
             
-            // Map history to datasets
             window.myChart = new window.Chart(ctx, { 
                 type: 'line', 
                 data: { 
@@ -25,7 +24,21 @@
                     datasets: [ 
                         { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
                         { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 },
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.1 }
+                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.1 },
+                        { 
+                            label: 'Interventions',
+                            type: 'scatter',
+                            data: history.map(h => {
+                                // Find if an action log exists within 2 seconds of this history point
+                                const hasAction = log.some(l => (l.type === 'action' || l.type === 'manual') && Math.abs(l.timeSeconds - h.time) <= 2);
+                                return hasAction ? h.hr : null; // Plot marker on the HR line
+                            }),
+                            backgroundColor: 'white',
+                            borderColor: 'white',
+                            pointStyle: 'triangle',
+                            pointRadius: 6,
+                            showLine: false
+                        }
                     ] 
                 }, 
                 options: { 
@@ -80,10 +93,7 @@
                     </div>
                 </div>
 
-                {/* Request 8: Expanded Debrief Details */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    
-                    {/* Column 1: Objectives Checklist */}
                     <Card title="Clinical Objectives" icon="check-square" className="border-emerald-500/50">
                         <div className="p-2 space-y-3">
                             {objectives.map((obj, i) => {
@@ -100,7 +110,6 @@
                         </div>
                     </Card>
 
-                    {/* Column 2: Instructor Notes (Expanded) */}
                     <Card title="Instructor Feedback" icon="edit-3" className="border-amber-500/50">
                         <div className="p-2 flex flex-col h-full gap-2">
                             <textarea 
@@ -112,7 +121,6 @@
                         </div>
                     </Card>
                     
-                    {/* Column 3: Key Stats */}
                     <Card title="Scenario Stats" icon="bar-chart-2" className="border-sky-500/50">
                         <div className="grid grid-cols-2 gap-2 p-2 text-center">
                             <div className="bg-slate-900 p-2 rounded"><div className="text-xs text-slate-500">Total Interventions</div><div className="text-xl font-bold">{state.activeInterventions.size}</div></div>
@@ -123,14 +131,12 @@
                     </Card>
                 </div>
 
-                {/* Physiological Graph */}
                 <Card title="Physiological Trends & Events" icon="activity">
                     <div className="bg-slate-900 p-2 rounded h-80 relative">
                         <canvas ref={chartRef}></canvas>
                     </div>
                 </Card>
 
-                {/* Timeline Log */}
                 <Card title="Action Timeline" icon="clock">
                     <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
                         {log.map((l, i) => (
