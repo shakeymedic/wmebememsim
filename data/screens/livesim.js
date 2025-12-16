@@ -7,7 +7,7 @@
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, trends } = sim;
         const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification } = state;
 
-        // 5. Tabs - "Continuous Sounds" removed
+        // Tabs - "Continuous Sounds" removed
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
         const [modalVital, setModalVital] = useState(null); 
@@ -15,7 +15,6 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
 
-        // Toast Notification Local Logic
         const [showToast, setShowToast] = useState(false);
         useEffect(() => {
             if(notification && notification.id) {
@@ -65,11 +64,12 @@
             setModalVital(null); 
         };
 
-        // 10. Loading bar calculation for vitals (passed as prop to VitalDisplay)
+        // Request 10: Loading bar logic
         const trendProp = trends.active ? { active: true, progress: trends.elapsed / trends.duration } : null;
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                {/* Controller Toast */}
                 <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
                         <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
@@ -87,9 +87,10 @@
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
+                    {/* LEFT COLUMN: Patient Info, Obs, Defib */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         
-                         {/* 9. Patient Details Box */}
+                         {/* Request 9: Patient Details Box */}
                          <div className="bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -100,7 +101,7 @@
                             </div>
                          </div>
 
-                        {/* 10. Obs Controller (With Loading Bar) */}
+                        {/* Request 10: Obs Controller (with loading bar) */}
                         <div className="bg-black border border-slate-800 rounded relative overflow-hidden">
                              {/* Global Trend Loading Bar */}
                              {trends.active && (
@@ -118,7 +119,7 @@
                              </div>
                         </div>
 
-                        {/* 4. Defib Controls - Minimized Logic */}
+                        {/* Request 4: Defib Controls - Minimized Logic */}
                         {arrestPanelOpen && (
                              <div className="bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
@@ -135,16 +136,16 @@
                                  </div>
                              </div>
                         )}
-                        {/* 4. Minimized Indicator */}
                         {!arrestPanelOpen && (
-                             <div className="text-center p-2 opacity-50 text-[10px] text-slate-500 uppercase tracking-widest border border-dashed border-slate-700 rounded">
-                                 Defib Panel Minimized (Open on Monitor)
+                             <div className="text-center p-2 opacity-50 text-[10px] text-slate-500 uppercase tracking-widest border border-dashed border-slate-700 rounded select-none">
+                                 Defib Panel Minimized
                              </div>
                         )}
                     </div>
                     
+                    {/* RIGHT COLUMN: Interventions */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
-                        {/* 3 & 5. Waveform & Continuous Sounds Removed from UI */}
+                        {/* Request 3 & 5: Waveform and Continuous Sounds REMOVED */}
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
                              {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
                                  <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>
@@ -152,7 +153,7 @@
                         </div>
                         
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
-                            {/* 6. Recommended Actions - Green Flash & Counts */}
+                            {/* Request 6: Recommended Actions - Green Flash & Counts */}
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
                                     <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
@@ -161,7 +162,6 @@
                                             const action = INTERVENTIONS[key];
                                             const count = interventionCounts[key] || 0;
                                             const isActive = activeInterventions.has(key);
-                                            // Check both count (bolus) and active (infusion) for green status
                                             const isUsed = count > 0 || isActive;
                                             
                                             return (
