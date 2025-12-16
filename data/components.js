@@ -2,36 +2,18 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // SAFE LUCIDE COMPONENT
+    // --- UTILITIES ---
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
-        
         useEffect(() => {
-            const renderIcon = () => {
-                if (!ref.current || !window.lucide) return;
-                ref.current.innerHTML = '';
-                const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
-                const iconName = kebabToPascal(icon);
-                
-                if (window.lucide.icons && window.lucide.icons[iconName] && window.lucide.createElement) {
-                    const svg = window.lucide.createElement(window.lucide.icons[iconName]);
-                    if (className) svg.setAttribute('class', className);
-                    ref.current.appendChild(svg);
-                    return;
-                }
-                const i = document.createElement('i');
-                i.setAttribute('data-lucide', icon);
-                if (className) i.setAttribute('class', className);
-                ref.current.appendChild(i);
-                if (window.lucide.createIcons) {
-                    window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { class: className } });
-                }
-            };
-            renderIcon();
-            const timer = setTimeout(renderIcon, 500);
-            return () => clearTimeout(timer);
+            if (!ref.current || !window.lucide) return;
+            ref.current.innerHTML = '';
+            const i = document.createElement('i');
+            i.setAttribute('data-lucide', icon);
+            if (className) i.setAttribute('class', className);
+            ref.current.appendChild(i);
+            if(window.lucide.createIcons) window.lucide.createIcons({ root: ref.current });
         }, [icon, className]);
-
         return <span ref={ref} className="inline-flex items-center justify-center"></span>;
     });
 
@@ -85,377 +67,183 @@
             </div>
         );
     };
-    
+
+    // --- HYBRID VITAL DISPLAY (Monitor & Controller) ---
     const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null, trend = null, history = [] }) => {
+        
+        // Monitor Mode (Big, No Inputs)
+        if (isMonitor) {
+            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
+            return (
+                <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
+                    {isNIBP && (<button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>)}
+                    <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${getColors(label)} uppercase tracking-tight`}>{label}</span></div>
+                    <div className="flex-grow flex items-center justify-center">
+                        <div className={`flex items-baseline ${getColors(label)} font-mono font-bold leading-none`}>
+                            <span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{value === null ? '--' : value}</span>
+                            {value2 !== undefined && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{value2}</span>}
+                        </div>
+                    </div>
+                    {isNIBP && history.length > 0 && <div className="absolute bottom-1 left-2 text-[10px] font-mono text-slate-500">{history[0].sys}/{history[0].dia} ({history[0].time})</div>}
+                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span></div>
+                </div>
+            );
+        }
+
+        // Controller Mode (Small, Interactive)
         const [isEditing, setIsEditing] = useState(false);
         const [editVal, setEditVal] = useState(value);
         useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
         const handleBlur = () => { setIsEditing(false); if (editVal !== value && onUpdate) onUpdate(isText ? editVal : parseFloat(editVal)); };
-
-        const getColors = (lbl) => {
-            if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
-            if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
-            if (lbl.includes("BP") || lbl.includes("NIBP") || lbl.includes("ABP")) return "text-red-500";
-            if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
-            if (lbl.includes("CO2") || lbl.includes("ETCO2")) return "text-yellow-500";
-            return "text-slate-200";
-        };
-        const colorClass = getColors(label);
-        const handleInteraction = () => { if (onClick) { onClick(); } else { setEditVal(value); setIsEditing(true); } };
         
-        const displayValue = () => {
-            if (label === "Pupils") return (typeof value === 'number') ? `${Math.round(value)}mm` : value;
-            if (value === null || value === undefined) return '--';
-            if (typeof value === 'string' && !isText) return value;
-            return isText ? value : Math.round(value);
-        };
-        const displayValue2 = () => {
-            if (value2 === undefined || value2 === null) return '--';
-            if (typeof value2 === 'string' && !isText) return value2;
-            return typeof value2 === 'number' ? Math.round(value2) : value2;
-        };
-        
-        if (isMonitor) {
-            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
-            const isBP = label.includes("BP") || label.includes("NIBP");
-            return (
-                <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
-                    {isNIBP && (<button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>)}
-                    <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
-                    <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{displayValue()}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{displayValue2()}</span>}</div></div>
-                    
-                    {isNIBP && history.length > 0 && (
-                        <div className="absolute bottom-1 left-2 text-[10px] font-mono text-slate-500 leading-tight pointer-events-none">
-                            {history.map((h, i) => (
-                                <div key={i}>{h.sys}/{h.dia} <span className="opacity-60">({h.time})</span></div>
-                            ))}
-                        </div>
-                    )}
-
-                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && (<div className="flex flex-col items-end"><span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m` : 'MANUAL'}</span><div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1 pointer-events-none">CYCLE</div></div>)}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
-                </div>
-            );
-        }
         if (!visible) return (<div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40"><span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span><span className="text-xl font-mono text-slate-700">--</span></div>);
         
-        const isBP = label.includes("BP");
-        const showEditHint = !isMonitor && visible;
-
+        const handleInteraction = () => { if (onClick) { onClick(); } else { setEditVal(value); setIsEditing(true); } };
+        
         return (
             <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden group ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'}`} onClick={handleInteraction}>
-                {showEditHint && (<div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors"><Lucide icon="settings-2" className="w-3 h-3" /></div>)}
+                <div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors"><Lucide icon="settings-2" className="w-3 h-3" /></div>
                 {trend && trend.active && (<div className="absolute bottom-0 left-0 h-1.5 bg-sky-500/50 z-0 transition-all duration-1000 ease-linear" style={{ width: `${trend.progress * 100}%` }}></div>)}
                 <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 relative z-10 group-hover:text-sky-400 transition-colors">{label}</span>
-                {isEditing ? (<input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />) : (<div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5 relative z-10" onClick={handleInteraction}><span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>{displayValue()}{isBP && <span className="text-lg text-slate-400 ml-0.5">/{displayValue2()}</span>}</span>{!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}</div>)}
+                {isEditing ? (<input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />) : (<div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5 relative z-10"><span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>{value}{value2 !== undefined && <span className="text-lg text-slate-400 ml-0.5">/{value2}</span>}</span></div>)}
                 <span className="text-[8px] md:text-[9px] text-slate-600 leading-none relative z-10">{unit}</span>
             </div>
         );
     };
 
-    // UPDATED ECG MONITOR - Fixed for High DPI & Visibility
-    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
+    const getColors = (lbl) => {
+        if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
+        if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
+        if (lbl.includes("BP") || lbl.includes("NIBP")) return "text-red-500";
+        if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
+        if (lbl.includes("CO2")) return "text-yellow-500";
+        return "text-slate-200";
+    };
+
+    // --- ENHANCED ECG MONITOR (Rolling/Sweep) ---
+    const ECGMonitor = ({ rhythmType, hr, isCPR, showTraces, className = "h-40", color = "#00ff00", speed = 1.0, flatline = false }) => {
         const canvasRef = useRef(null);
         const containerRef = useRef(null);
-        const requestRef = useRef(null);
-        const drawState = useRef({ x: 0, lastY: 0, lastYCO2: 0, lastYPleth: 0, lastYArt: 0, lastTime: 0 });
-        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
-
-        useEffect(() => { propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
-        
-        const PX_PER_MV = 40; 
-        const SPEED = 150;
-        
-        const gaussian = (t, center, width, amp) => {
-            const x = (t - center);
-            return -amp * Math.exp(-0.5 * (x * x) / (width * width));
-        }
-        
-        const getP = (t) => gaussian(t, 0.15, 0.04, PX_PER_MV * 0.15);
-        const getQRSNarrow = (t) => {
-            return gaussian(t, 0.23, 0.008, -PX_PER_MV * 0.1) + // Q
-                   gaussian(t, 0.25, 0.015, PX_PER_MV * 1.5) +  // R
-                   gaussian(t, 0.27, 0.010, -PX_PER_MV * 0.3);  // S
-        };
-        const getQRSWide = (t) => gaussian(t, 0.25, 0.05, PX_PER_MV * 1.2);
-        const getT = (t) => gaussian(t, 0.55, 0.09, PX_PER_MV * 0.3);
-
-        const getWaveform = (type, x, hr, cpr, baseline) => {
-            if (cpr) {
-                const cprWave = (Math.sin(x * 0.05) - 0.4 * Math.sin(x * 0.1)) * (PX_PER_MV * 1.5);
-                const noise = (Math.random() - 0.5) * (PX_PER_MV * 0.4);
-                return baseline + cprWave + noise;
-            }
-
-            const bpm = hr || 75;
-            const cyclePx = (60 / Math.max(10, bpm)) * SPEED;
-            const t = (x % cyclePx) / cyclePx;
-            let y = 0;
-            
-            const rLow = type ? type.toLowerCase() : "nsr";
-
-            if (rLow.includes('asystole')) {
-                y = Math.sin(x * 0.002) * 4;
-            } else if (rLow.includes('vf')) {
-                y += Math.sin(x * 0.15) * 3.0;
-                y += Math.sin(x * 0.22) * 2.0;
-                y += Math.sin(x * 0.09) * 1.5;
-                const ampWander = (Math.sin(x * 0.002) * 0.2) + 0.6; 
-                y = y * (PX_PER_MV/15) * ampWander;
-            } else if (rLow.includes('vt') && !rLow.includes('svt')) {
-                 const vtCycle = (60 / 160) * SPEED;
-                 const vtT = (x % vtCycle) / vtCycle;
-                 const val = Math.sin(2 * Math.PI * vtT) - 0.2 * Math.sin(4 * Math.PI * vtT - 0.2);
-                 y = -(val * PX_PER_MV * 1.4);
-            } else if (rLow.includes('af')) {
-                const fWaves = Math.sin(x * 0.15) * 1.5 + Math.sin(x * 0.08) * 1.0;
-                const phaseNoise = Math.sin(x * 0.005) * cyclePx * 0.6; 
-                const afT = ((x + phaseNoise) % cyclePx) / cyclePx;
-                let qrs = 0;
-                if(afT > 0.2 && afT < 0.4) {
-                    const localT = (afT - 0.2) / 0.2;
-                    qrs = -PX_PER_MV * 1.0 * Math.exp(-0.5 * Math.pow(localT - 0.5, 2) / 0.005);
-                }
-                y = fWaves + qrs;
-            } else if (rLow.includes('3rd') || rLow === 'chb') {
-                const aCycle = (60 / 75) * SPEED;
-                const vCycle = (60 / 35) * SPEED;
-                const aT = (x % aCycle) / aCycle;
-                const vT = (x % vCycle) / vCycle;
-                y = getP(aT) + getQRSWide(vT) + getT(vT);
-            } else if (rLow.includes('1st')) {
-                y += gaussian(t, 0.08, 0.04, PX_PER_MV * 0.15); // Early P
-                y += getQRSNarrow(t);
-                y += getT(t);
-            } else {
-                const isSVT = rLow.includes('svt') || bpm > 150;
-                if (!isSVT) y += getP(t);
-                y += isSVT ? gaussian(t, 0.15, 0.02, PX_PER_MV * 1.1) : getQRSNarrow(t); 
-                y += gaussian(t, isSVT ? 0.50 : 0.55, 0.09, PX_PER_MV * (isSVT ? 0.2 : 0.3));
-            }
-            
-            if (window.noise && window.noise.interference) {
-                y += Math.sin(x * 0.8) * (PX_PER_MV * 0.2);
-            }
-
-            return baseline + y;
-        };
-        
-        const drawGrid = (ctx, w, h) => {
-            ctx.strokeStyle = '#222';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            // Verticals
-            for(let i=0; i<w; i+=25) { ctx.moveTo(i, 0); ctx.lineTo(i, h); }
-            // Horizontals
-            for(let i=0; i<h; i+=25) { ctx.moveTo(0, i); ctx.lineTo(w, i); }
-            ctx.stroke();
-        };
+        const reqRef = useRef(null);
+        const state = useRef({ x: 0, lastY: 0, lastTime: 0 });
 
         useEffect(() => {
             const canvas = canvasRef.current;
-            const parent = containerRef.current;
+            const container = containerRef.current;
+            if(!canvas || !container) return;
+            const ctx = canvas.getContext('2d');
             
-            const setSize = () => { 
-                if (parent && canvas) {
-                    const dpr = window.devicePixelRatio || 1;
-                    const rect = parent.getBoundingClientRect();
-                    
-                    if (rect.width === 0 || rect.height === 0) return;
-
-                    // Set actual display size
-                    canvas.style.width = `${rect.width}px`;
-                    canvas.style.height = `${rect.height}px`;
-
-                    // Set buffer size
-                    canvas.width = rect.width * dpr;
-                    canvas.height = rect.height * dpr;
-                    
-                    // Normalize coordinate system
-                    const ctx = canvas.getContext('2d');
-                    ctx.scale(dpr, dpr);
-
-                    // Reset internal logical height for baselines
-                    const logicalHeight = rect.height;
-                    const state = drawState.current;
-                    state.lastY = logicalHeight * 0.35;
-                    state.lastYCO2 = logicalHeight * 0.60; 
-                    state.lastYArt = logicalHeight * 0.80; 
-                    state.lastYPleth = logicalHeight - 20;
-                }
+            const updateSize = () => {
+                const rect = container.getBoundingClientRect();
+                canvas.width = rect.width * window.devicePixelRatio;
+                canvas.height = rect.height * window.devicePixelRatio;
+                state.current.lastY = canvas.height / 2;
+                ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+                canvas.style.width = `${rect.width}px`;
+                canvas.style.height = `${rect.height}px`;
             };
+            const observer = new ResizeObserver(updateSize);
+            observer.observe(container);
+            updateSize();
 
-            // Use ResizeObserver for robust sizing
-            const observer = new ResizeObserver(() => setSize());
-            if (parent) observer.observe(parent);
-            setSize();
+            const draw = (time) => {
+                if (!state.current.lastTime) state.current.lastTime = time;
+                const dt = Math.min((time - state.current.lastTime) / 1000, 0.1);
+                state.current.lastTime = time;
+                const width = canvas.width / window.devicePixelRatio;
+                const height = canvas.height / window.devicePixelRatio;
+                const baseline = height / 2;
+                const pxSpeed = 150 * speed;
+                const dx = pxSpeed * dt;
+                const prevX = state.current.x;
+                state.current.x += dx;
 
-            const animate = (timestamp) => {
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                const dpr = window.devicePixelRatio || 1;
-                const logicalWidth = canvas.width / dpr;
-                const logicalHeight = canvas.height / dpr;
-
-                const state = drawState.current; 
-                const props = propsRef.current;
-                
-                if (!state.lastTime) state.lastTime = timestamp;
-                let dt = Math.min((timestamp - state.lastTime) / 1000, 0.05); 
-                state.lastTime = timestamp;
-
-                if (props.isPaused) { 
-                    requestRef.current = requestAnimationFrame(animate); 
-                    return; 
+                if (state.current.x > width) {
+                    state.current.x = 0;
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, 20, height);
                 }
+                const clearBarWidth = 30;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(state.current.x, 0, clearBarWidth, height);
 
-                const speed = SPEED; // Logical pixels per second
-                const moveAmt = speed * dt;
-                
-                const prevX = state.x;
-                state.x += moveAmt;
-                
-                // Clear bar ahead
-                const clearWidth = 40;
-                ctx.fillStyle = '#000000';
-                
-                // Handle Wrap-around
-                if (state.x >= logicalWidth) {
-                    state.x = 0;
-                    // Reset paths to avoid drawing across screen
+                if (showTraces) {
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2.5;
+                    ctx.lineJoin = 'round';
+                    ctx.lineCap = 'round';
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = color;
                     ctx.beginPath();
-                    ctx.fillRect(0, 0, logicalWidth, logicalHeight);
-                    drawGrid(ctx, logicalWidth, logicalHeight);
-                } else {
-                    // Standard clear
-                    ctx.fillRect(state.x, 0, clearWidth, logicalHeight);
-                    // Redraw grid in cleared area
-                    ctx.save();
-                    ctx.beginPath();
-                    ctx.rect(state.x, 0, clearWidth, logicalHeight);
-                    ctx.clip();
-                    drawGrid(ctx, logicalWidth, logicalHeight);
-                    ctx.restore();
-                }
+                    if (state.current.x < prevX) ctx.moveTo(state.current.x, baseline);
+                    else ctx.moveTo(prevX, state.current.lastY);
 
-                // Baselines
-                const baselineECG = logicalHeight * 0.35;
-                const baseCO2 = logicalHeight * 0.60;
-                const baseArt = logicalHeight * 0.80;
-                const basePleth = logicalHeight - 15;
-
-                // Draw Text
-                ctx.font = "bold 12px monospace";
-                if (props.showTraces) { ctx.fillStyle = '#22c55e'; ctx.fillText("II", 5, baselineECG - 40); }
-                if (props.showEtco2) { ctx.fillStyle = '#fbbf24'; ctx.fillText("CO2", 5, baseCO2 - 20); }
-                if (props.showArt) { ctx.fillStyle = '#ef4444'; ctx.fillText("ABP", 5, baseArt - 20); }
-                if (props.spO2 > 10) { ctx.fillStyle = '#22d3ee'; ctx.fillText("Pleth", 5, logicalHeight - 35); }
-
-                // Flatline if traces off
-                if (!props.showTraces) { 
-                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); 
-                    requestRef.current = requestAnimationFrame(animate); 
-                    return; 
-                }
-
-                // Calculate Y
-                const yECG = getWaveform(props.rhythmType, state.x, props.hr, props.isCPR, baselineECG);
-
-                // Draw Lines
-                if (state.x > prevX) { 
-                    // ECG
-                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-                    ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
-                    
-                    // CO2
-                    if (props.showEtco2) {
-                        const rrInterval = (60 / (Math.max(1, props.rr) || 12)) * speed;
-                        const breathT = (state.x % rrInterval) / rrInterval;
-                        let yCO2 = baseCO2;
-                        if (breathT > 0.4 && breathT < 0.9) yCO2 = baseCO2 - 25; 
-                        else if (breathT >= 0.9) yCO2 = baseCO2 - (25 * (1 - ((breathT - 0.9)/0.1)));
-                        else if (breathT < 0.1) yCO2 = baseCO2 - (25 * (breathT/0.1));
-                        
-                        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
-                        state.lastYCO2 = yCO2;
+                    let y = 0;
+                    if (flatline) y = 0;
+                    else if (isCPR) y = Math.sin(time * 0.01) * 30 + (Math.random() - 0.5) * 10;
+                    else {
+                        const rate = hr || 75;
+                        const beatDur = 60 / rate; 
+                        const t = (time / 1000) % beatDur;
+                        const amp = 40; 
+                        if (rhythmType && rhythmType.toLowerCase().includes('vf')) y = (Math.sin(time * 0.01) + Math.sin(time * 0.023) * 0.5) * amp;
+                        else if (rhythmType && rhythmType.toLowerCase().includes('vt') && !rhythmType.toLowerCase().includes('pvt')) y = Math.sin(time * 0.015) * amp * 1.5;
+                        else if (rhythmType && rhythmType.toLowerCase().includes('asystole')) y = Math.sin(time * 0.005) * 2;
+                        else {
+                            const pLoc = 0.1 * beatDur;
+                            const qrsLoc = 0.2 * beatDur;
+                            const tLoc = 0.5 * beatDur;
+                            const gauss = (x, c, w, h) => h * Math.exp(-Math.pow(x - c, 2) / (2 * w * w));
+                            y -= gauss(t, pLoc, 0.02, amp * 0.15);
+                            y += gauss(t, qrsLoc, 0.01, amp * 1.5);
+                            y -= gauss(t, qrsLoc - 0.02, 0.005, amp * 0.3);
+                            y -= gauss(t, qrsLoc + 0.02, 0.005, amp * 0.5);
+                            y -= gauss(t, tLoc, 0.05, amp * 0.25);
+                        }
                     }
-                    
-                    // Pulse/Art
-                    const beatCycle = (60 / Math.max(10, props.hr || 75)) * speed;
-                    const pulseT = (state.x % beatCycle) / beatCycle;
-                    
-                    if (props.showArt) {
-                        let wave = 0;
-                        if (pulseT < 0.3) wave = Math.sin(pulseT * Math.PI * 3.3) * (1 - pulseT*2);
-                        const yArt = baseArt - (wave * 20);
-                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
-                        state.lastYArt = yArt;
-                    }
-                    if (props.spO2 > 10) {
-                        let wave = Math.sin(pulseT * Math.PI * 2);
-                        if (pulseT > 0.3) wave += 0.3 * Math.sin((pulseT - 0.3) * Math.PI * 4); 
-                        wave = (wave + 1) / 2; 
-                        const yPleth = basePleth - (wave * 15);
-                        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
-                        state.lastYPleth = yPleth;
-                    }
+                    const targetY = baseline - y;
+                    ctx.lineTo(state.current.x, targetY);
+                    ctx.stroke();
+                    state.current.lastY = targetY;
                 }
-                
-                state.lastY = yECG;
-                requestRef.current = requestAnimationFrame(animate);
+                reqRef.current = requestAnimationFrame(draw);
             };
+            reqRef.current = requestAnimationFrame(draw);
+            return () => { observer.disconnect(); cancelAnimationFrame(reqRef.current); };
+        }, [rhythmType, hr, isCPR, showTraces, color, speed, flatline]);
 
-            requestRef.current = requestAnimationFrame(animate);
-            return () => { 
-                observer.disconnect();
-                if (requestRef.current) cancelAnimationFrame(requestRef.current); 
-            };
-        }, []);
-
-        return (
-            <div ref={containerRef} className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className} min-h-[150px]`}>
-                <canvas ref={canvasRef} className="block w-full h-full"></canvas>
-                {showTraces && <div className="absolute top-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-green-500"><span className="text-lg font-mono text-green-500 font-bold shadow-black drop-shadow-md">{propsRef.current.rhythmLabel || rhythmType}</span></div>}
-            </div>
-        );
+        return <div ref={containerRef} className={className}><canvas ref={canvasRef} className="block" /></div>;
     };
 
     const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
         const [isFlashing, setIsFlashing] = useState(false);
-        const getResult = () => {
-            if (!scenario) return "No data";
-            if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
-            if (type === 'VBG') {
-                if (!scenario.vbg) return "Normal";
-                const v = scenario.vbg;
-                return `pH: ${v.pH.toFixed(2)} | pCO2: ${v.pCO2.toFixed(1)} | pO2: 5.5 | HCO3: ${v.HCO3.toFixed(1)} | BE: ${v.BE.toFixed(1)} | Lac: ${v.Lac.toFixed(1)} | K+: ${v.K.toFixed(1)} | Glu: ${v.Glu.toFixed(1)} | Ket: ${v.Ketones ? v.Ketones.toFixed(1) : '0.1'}`;
-            }
-            if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
-            if (type === 'Urine') return scenario.urine ? scenario.urine.findings : "Normal";
-            if (type === 'CT') return scenario.ct ? scenario.ct.findings : "CT Head: No acute intracranial abnormality.";
-            if (type === 'POCUS') return scenario.pocus ? scenario.pocus.findings : "No free fluid. Normal lung sliding.";
-            return "No significant abnormalities.";
-        };
-        const isRepeatable = ['VBG', 'ECG', 'Obs', 'POCUS'].includes(type);
-        const isDisabled = !isRunning || isLoading || (!isRepeatable && isRevealed);
         const handleClick = () => {
-            if (isDisabled) return;
-            setIsFlashing(true);
-            setTimeout(() => setIsFlashing(false), 150);
-            if (!isLoading) revealInvestigation(type);
+            if (!isRunning) return;
+            setIsFlashing(true); setTimeout(() => setIsFlashing(false), 150);
+            revealInvestigation(type);
         };
+        const getResult = () => {
+             if (!scenario) return "No data";
+             if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
+             if (type === 'VBG') return scenario.vbg ? `pH: ${scenario.vbg.pH.toFixed(2)} Lac: ${scenario.vbg.Lac}` : "Normal";
+             if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
+             return "Result Available";
+        }
         return (
             <div className="flex flex-col bg-slate-900 border border-slate-700 rounded overflow-hidden">
-                <button onClick={handleClick} disabled={isDisabled} className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors duration-100 ${isFlashing ? 'flash-active' : ''} ${(!isRepeatable && isRevealed) ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}>
-                    <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {isRevealed && isRepeatable ? `Repeat ${label}` : label}</span>
+                <button onClick={handleClick} className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors ${isFlashing ? 'flash-active' : ''} bg-slate-700 hover:bg-slate-600 text-white`}>
+                    <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {label}</span>
                     {isLoading && <Lucide icon="loader-2" className="w-3 h-3 animate-spin" />}
                 </button>
-                {isRevealed && (<div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700 animate-fadeIn">{getResultContent(type)}</div>)}
+                {isRevealed && <div className="p-2 text-[10px] text-slate-300 bg-slate-800/50">{getResult()}</div>}
             </div>
         );
     };
 
-    window.Lucide = Lucide; window.Button = Button; window.Card = Card; window.VitalDisplay = VitalDisplay; window.ECGMonitor = ECGMonitor; window.InvestigationButton = InvestigationButton;
+    window.Lucide = Lucide; 
+    window.Button = Button; 
+    window.Card = Card; 
+    window.VitalDisplay = VitalDisplay; 
+    window.ECGMonitor = ECGMonitor; 
+    window.InvestigationButton = InvestigationButton;
 })();
