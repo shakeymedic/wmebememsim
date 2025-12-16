@@ -24,13 +24,14 @@
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
         useEffect(() => {
-            try {
-                const saved = localStorage.getItem('wmebem_custom_scenarios');
-                if (saved) {
+            const saved = localStorage.getItem('wmebem_custom_scenarios');
+            if (saved) {
+                try {
                     setCustomScenarios(JSON.parse(saved));
+                } catch (e) {
+                    console.error("Failed to load custom scenarios", e);
+                    localStorage.removeItem('wmebem_custom_scenarios'); 
                 }
-            } catch (e) {
-                console.warn("Storage access blocked - Custom scenarios disabled");
             }
         }, []);
 
@@ -62,12 +63,7 @@
             };
             const updated = [...customScenarios, newScen];
             setCustomScenarios(updated);
-            try {
-                localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
-            } catch (e) {
-                console.warn("Could not save custom scenario to storage");
-                alert("Scenario active, but could not be saved permanently due to browser privacy settings.");
-            }
+            localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
             setMode('custom'); 
         };
 
@@ -428,7 +424,7 @@
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, InvestigationButton } = window;
         const { state, start, pause, stop, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, startTrend, toggleAudioLoop, playSound } = sim;
-        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState, notification, activeLoops, isOffline } = state;
+        const { scenario, time, cycleTimer, isRunning, vitals, prevVitals, log, flash, activeInterventions, interventionCounts, activeDurations, isMuted, rhythm, etco2Enabled, queuedRhythm, cprInProgress, nibp, audioOutput, trends, arrestPanelOpen, waveformGain, noise, remotePacerState, notification, activeLoops } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -442,22 +438,6 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
         const [gainVal, setGainVal] = useState(waveformGain || 1.0);
-        const [showEcg, setShowEcg] = useState(true);
-
-        const tabs = [
-            { id: 'Common', icon: 'star' },
-            { id: 'Airway', icon: 'wind' },
-            { id: 'Breathing', icon: 'activity' }, 
-            { id: 'Circulation', icon: 'heart' },
-            { id: 'Drugs', icon: 'pill' },
-            { id: 'Procedures', icon: 'syringe' },
-            { id: 'Voice', icon: 'mic' },
-            { id: 'Handover', icon: 'clipboard' }
-        ];
-
-        useEffect(() => {
-            window.waveformGain = waveformGain;
-        }, [waveformGain]);
         
         // Toast Local State
         const [showToast, setShowToast] = useState(false);
@@ -473,7 +453,7 @@
         useEffect(() => {
             const handleKey = (e) => {
                 if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-                if (e.code === 'Space') { e.preventDefault(); }
+                if (e.code === 'Space') { e.preventDefault(); /* Could map to Next State/Fast Forward if desired */ }
                 if (e.key === 'm') sim.dispatch({ type: 'SET_MUTED', payload: !isMuted });
                 if (e.key === 'l') setShowLogModal(true);
             };
@@ -481,6 +461,7 @@
             return () => window.removeEventListener('keydown', handleKey);
         }, [isMuted]);
 
+        // --- NEW HELPERS ---
         const handleGhost = (btnId) => {
             const channel = new BroadcastChannel('sim_channel');
             channel.postMessage({ type: 'GHOST_PRESS', payload: btnId });
@@ -491,6 +472,7 @@
             setGainVal(v);
             sim.dispatch({ type: 'SET_GAIN', payload: v });
         };
+        // -------------------
 
         const drugCats = {
             "Arrest": ['AdrenalineIV', 'Amiodarone', 'Calcium', 'MagSulph', 'SodiumBicarb', 'Atropine'],
@@ -522,31 +504,8 @@
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         const generateSBAR = () => `S: ${scenario.title}.\nB: ${scenario.patientProfileTemplate.replace('{age}', scenario.patientAge)}.\nA: HR ${vitals.hr}, BP ${vitals.bpSys}/${vitals.bpDia}, SpO2 ${vitals.spO2}%.\nR: Review.`;
         const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(30); };
-        
         const quickAdjust = (amt) => { let current = parseFloat(modalTarget) || 0; setModalTarget(current + amt); if (modalVital === 'bp') { let currentDia = parseFloat(modalTarget2) || 0; setModalTarget2(currentDia + (amt * 0.6)); } };
-        
-        const confirmVitalUpdate = () => { 
-            const targets = {}; 
-            const isFloat = ['temp', 'bm', 'etco2', 'pH', 'K', 'Lac'].includes(modalVital);
-            
-            if (modalVital === 'bp') { 
-                targets.bpSys = Math.round(parseFloat(modalTarget)); 
-                targets.bpDia = Math.round(parseFloat(modalTarget2)); 
-            } else if (modalVital === 'pupils' || modalVital === 'gcs') {
-                targets[modalVital] = modalTarget; 
-            } else { 
-                const raw = parseFloat(modalTarget);
-                targets[modalVital] = isFloat ? parseFloat(raw.toFixed(1)) : Math.round(raw); 
-            } 
-            
-            if (trendDuration === 0) { 
-                Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k])); 
-            } else { 
-                startTrend(targets, trendDuration); 
-            } 
-            setModalVital(null); 
-        };
-        
+        const confirmVitalUpdate = () => { const targets = {}; if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); } else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); } if (trendDuration === 0) { Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k])); } else { startTrend(targets, trendDuration); } setModalVital(null); };
         const [annotationText, setAnnotationText] = useState("");
         const addAnnotation = () => { if(annotationText) { addLogEntry(`[NOTE] ${annotationText}`, 'manual'); setAnnotationText(""); } };
 
@@ -554,22 +513,11 @@
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
                 
                 {/* --- TOAST NOTIFICATION --- */}
-                <div className={`absolute top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-10 opacity-0 scale-90'}`}>
-                    {notification && (
-                        <div className={`
-                            px-8 py-4 rounded-xl shadow-2xl flex items-center gap-4 border-2
-                            ${notification.type === 'danger' ? 'bg-red-900/90 border-red-500 text-red-100' : 
-                              notification.type === 'success' ? 'bg-emerald-900/90 border-emerald-400 text-emerald-100' : 
-                              'bg-slate-800/90 border-sky-500 text-sky-100'}
-                        `}>
-                            {notification.type === 'success' && <Lucide icon="check-circle" className="w-10 h-10 text-emerald-400" />}
-                            {notification.type === 'danger' && <Lucide icon="alert-triangle" className="w-10 h-10 text-red-500" />}
-                            <div>
-                                <div className="text-[10px] uppercase font-bold opacity-80 tracking-widest">System Notification</div>
-                                <div className="text-3xl font-bold font-mono tracking-tight">{notification.msg}</div>
-                            </div>
-                        </div>
-                    )}
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                    <div className="flex items-center gap-3">
+                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
+                        <span className="font-bold text-white">{notification?.msg}</span>
+                    </div>
                 </div>
 
                 {/* --- HEADER --- */}
@@ -579,6 +527,7 @@
                         {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                         <Button variant="danger" onClick={() => { if(window.confirm("End scenario and go to debrief?")) onFinish(); }} className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"><Lucide icon="square" className="fill-current"/> FINISH</Button>
                         
+                        {/* RESTORED CONTROLS */}
                         <div className="h-8 w-px bg-slate-600 mx-1"></div>
                         
                         <Button onClick={() => sim.dispatch({ type: 'SET_MUTED', payload: !isMuted })} variant={isMuted ? "danger" : "secondary"} className="h-8 px-2" title="Toggle Mute (M)">
@@ -597,14 +546,7 @@
                             <Lucide icon="scroll-text" />
                         </Button>
 
-                        <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'width=1280,height=720')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
-                        
-                        {/* Offline Indicator */}
-                        {isOffline && (
-                            <div className="flex items-center gap-1 bg-red-500/20 text-red-400 px-2 py-1 rounded border border-red-500/50 text-[10px] font-bold uppercase animate-pulse">
-                                <Lucide icon="wifi-off" className="w-3 h-3" /> OFFLINE
-                            </div>
-                        )}
+                        <Button variant="outline" onClick={() => window.open(window.location.href.split('?')[0] + '?mode=monitor&session=' + sessionID, '_blank', 'popup=yes')} className="h-8 px-2 text-xs"><Lucide icon="external-link"/> Monitor</Button>
                     </div>
                     <div className="hidden md:flex flex-col ml-4 px-3 border-l border-slate-600"><span className="text-[10px] text-slate-400 uppercase font-bold">Patient</span><span className="text-white font-bold">{scenario.patientAge}y {scenario.sex}</span></div>
                 </div>
@@ -636,45 +578,21 @@
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
-                        
-                        {/* --- PATIENT INFO CARD --- */}
-                        <div className="bg-slate-800 p-2 rounded border border-slate-600 flex-shrink-0">
-                            <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> {scenario.patientName} ({scenario.patientAge} {scenario.sex})</h4>
-                            <div className="grid grid-cols-1 gap-1 text-[10px] text-slate-300">
-                                <div className="truncate"><span className="text-slate-500 font-bold">PMH:</span> {scenario.pmh ? scenario.pmh.join(', ') : 'Nil'}</div>
-                                <div className="truncate"><span className="text-slate-500 font-bold">Rx:</span> {scenario.dhx ? scenario.dhx.join(', ') : 'Nil'}</div>
-                                <div className="truncate"><span className="text-slate-500 font-bold">All:</span> <span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(', ') : 'NKDA'}</span></div>
-                            </div>
-                        </div>
-
-                        {/* --- MONITOR CARD (Collapsible) --- */}
-                        <div className="bg-slate-800 p-2 rounded border border-slate-600 relative z-10 flex-shrink-0">
-                            <div className="flex justify-between items-center mb-1">
-                                <h4 className="text-[10px] font-bold text-sky-400 uppercase flex items-center gap-2">
-                                    <Lucide icon="activity" className="w-3 h-3"/> Monitor
-                                </h4>
-                                <button onClick={() => setShowEcg(!showEcg)} className="text-slate-400 hover:text-white">
-                                    <Lucide icon={showEcg ? "minimize-2" : "maximize-2"} className="w-3 h-3" />
-                                </button>
-                            </div>
-                            
-                            <div className={`transition-all duration-300 overflow-hidden ${showEcg ? 'h-32 opacity-100' : 'h-0 opacity-0'}`}>
-                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-full"/>
-                            </div>
-
-                            <div className="grid grid-cols-4 gap-1 p-1 bg-black rounded mt-1">
-                                <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
-                                <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
-                                <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
-                                <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
-                            </div>
-                            <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
-                                <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
-                                <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
-                                <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
-                                {etco2Enabled ? (<VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />) : (<VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />)}
-                            </div>
-                        </div>
+                        <Card className="bg-black border-slate-800 flex-shrink-0">
+                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} showArt={hasArtLine} isCPR={cprInProgress} className="h-32"/>
+                             <div className="grid grid-cols-4 gap-1 p-1 bg-black">
+                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} />
+                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} />
+                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} />
+                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} />
+                             </div>
+                             <div className="grid grid-cols-4 gap-1 p-1 bg-black border-t border-slate-900">
+                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} />
+                                 <VitalDisplay label="BM" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} />
+                                 <VitalDisplay label="GCS" value={vitals.gcs} unit="" onClick={()=>openVitalControl('gcs')} visible={true} />
+                                 {etco2Enabled ? (<VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} />) : (<VitalDisplay label="Pupils" value={vitals.pupils} unit="" isText={true} onClick={()=>openVitalControl('pupils')} visible={true} />)}
+                             </div>
+                        </Card>
                         
                         {/* --- WETFLAG HELPER (If Paediatric) --- */}
                         {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
@@ -687,6 +605,19 @@
                                 </div>
                             </div>
                         )}
+
+                        {/* --- NEW: WAVEFORM CONTROLS --- */}
+                        <div className="bg-slate-800 p-2 rounded border border-slate-600">
+                            <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-2">Waveform Control</h4>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs w-12 text-slate-400">Gain: {gainVal}x</span>
+                                <input type="range" min="0.5" max="2.0" step="0.1" value={gainVal} onChange={updateGain} className="flex-1 h-2 bg-slate-600 rounded-lg appearance-none cursor-pointer" />
+                            </div>
+                            <label className="flex items-center gap-2 text-xs cursor-pointer select-none text-slate-300 hover:text-white">
+                                <input type="checkbox" checked={noise?.interference || false} onChange={() => sim.dispatch({ type: 'TOGGLE_INTERFERENCE' })} className="rounded bg-slate-700 border-slate-500" />
+                                60Hz Interference (Buzz)
+                            </label>
+                        </div>
 
                         {/* --- NEW: CONTINUOUS SOUNDS --- */}
                         <div className="bg-slate-800 p-2 rounded border border-slate-600">
@@ -758,19 +689,7 @@
                     </div>
                     
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
-                        {/* --- NEW TAB BAR --- */}
-                        <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
-                            {tabs.map(tab => (
-                                <button 
-                                    key={tab.id} 
-                                    onClick={() => setActiveTab(tab.id)} 
-                                    className={`flex-1 min-w-[80px] py-3 flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === tab.id ? 'bg-slate-800 text-sky-400 border-t-4 border-sky-400' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}`}
-                                >
-                                    <Lucide icon={tab.icon} className={`w-5 h-5 ${activeTab === tab.id ? 'stroke-2' : 'stroke-1'}`} />
-                                    <span className="text-[10px] font-bold uppercase tracking-wider">{tab.id}</span>
-                                </button>
-                            ))}
-                        </div>
+                        <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">{['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice', 'Handover'].map(cat => (<button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>))}</div>
                         
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
                             {scenario.recommendedActions && (
@@ -791,7 +710,15 @@
                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                                         {["I can't breathe", "My chest hurts", "I feel sick", "My head hurts", "I'm scared", "Can I have some water?", "Yes", "No", "I don't know", "*Coughing*", "*Screaming*", "*Moaning*"].map(txt => (<Button key={txt} onClick={() => speak(mapVoice(txt))} variant="secondary" className="h-12 text-xs">{txt}</Button>))}
                                     </div>
-                                    <div className="flex gap-2 pt-4 border-t border-slate-700 mt-4"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
+                                           
+                                    <h4 className="text-[10px] font-bold text-slate-500 uppercase mt-4 border-t border-slate-700 pt-2">Medical Sounds</h4>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <Button onClick={() => playSound('Wheeze')} variant="outline" className="h-8 text-[10px]">Wheeze</Button>
+                                        <Button onClick={() => playSound('Stridor')} variant="outline" className="h-8 text-[10px]">Stridor</Button>
+                                        <Button onClick={() => playSound('Vomit')} variant="outline" className="h-8 text-[10px]">Vomit</Button>
+                                        <Button onClick={() => playSound('Snoring')} variant="outline" className="h-8 text-[10px]">Snore</Button>
+                                    </div>
+                                    <div className="flex gap-2 pt-4 border-t border-slate-700"><input type="text" value={customSpeech} onChange={e => setCustomSpeech(e.target.value)} placeholder="Type custom phrase..." className="flex-1 bg-slate-900 border border-slate-600 rounded px-3 text-white" /><Button onClick={() => { speak(customSpeech); setCustomSpeech(""); }}>Speak</Button></div>
                                 </div>
                             ) : activeTab === 'Drugs' ? (
                                 <div className="space-y-4">
@@ -898,173 +825,193 @@
 
     // --- SCREEN 5: MONITOR ---
     const MonitorScreen = ({ sim }) => {
-        const { Card, VitalDisplay, ECGMonitor, Lucide } = window;
-        const { state } = sim;
-        const { 
-            scenario, rhythm, vitals, isRunning, etco2Enabled, cprInProgress, 
-            activeInterventions, time, notification, waveformGain, noise,
-            monitorPopup, investigationsRevealed, isMuted, lastUpdate 
-        } = state;
+        const { Button, Lucide, VitalDisplay, ECGMonitor } = window;
+        const { state, enableAudio } = sim;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification } = state;
+        const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
+        const [audioEnabled, setAudioEnabled] = useState(false);
+        const [defibOpen, setDefibOpen] = useState(false);
+        const wakeLockRef = useRef(null);
         
+        // Toast Local State (for Monitor)
         const [showToast, setShowToast] = useState(false);
-        const [showPopup, setShowPopup] = useState(null);
-        const [isConnected, setIsConnected] = useState(true);
-
-        useEffect(() => {
-            window.waveformGain = waveformGain || 1.0;
-            window.noise = noise || {};
-        }, [waveformGain, noise]);
-
         useEffect(() => {
             if(notification && notification.id) {
                 setShowToast(true);
-                const timer = setTimeout(() => setShowToast(false), 4000);
+                const timer = setTimeout(() => setShowToast(false), 3000);
                 return () => clearTimeout(timer);
             }
         }, [notification]);
 
-        useEffect(() => {
-            if (monitorPopup && monitorPopup.timestamp) {
-                if (Date.now() - monitorPopup.timestamp < 10000) {
-                    setShowPopup(monitorPopup.type);
-                    const timer = setTimeout(() => setShowPopup(null), 15000);
-                    return () => clearTimeout(timer);
-                }
+        const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
+        
+        useEffect(() => { 
+            const requestWakeLock = async () => { if ('wakeLock' in navigator) { try { wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.log(err); } } }; 
+            requestWakeLock(); 
+            const handleVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); }; 
+            document.addEventListener('visibilitychange', handleVis); 
+            return () => { if(wakeLockRef.current) wakeLockRef.current.release(); document.removeEventListener('visibilitychange', handleVis); }; 
+        }, []);
+
+        // --- POPUP HELPER ---
+        const getPopupContent = (type, scenario) => {
+            if (!scenario) return null;
+            const inv = scenario.investigations || scenario;
+            if (type === 'ECG') return { title: '12 Lead ECG', body: <div className="text-xl">{inv.ecg ? inv.ecg.findings : "Normal"}</div> };
+            if (type === 'VBG') {
+                const v = inv.vbg || {};
+                return {
+                    title: 'Venous Blood Gas',
+                    body: (
+                        <div className="font-mono text-xl space-y-1">
+                            <div>pH: <span className={v.pH < 7.35 || v.pH > 7.45 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.pH?.toFixed(2)}</span></div>
+                            <div>pCO2: <span className={v.pCO2 < 4.5 || v.pCO2 > 6.0 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.pCO2?.toFixed(1)}</span> kPa</div>
+                            <div>HCO3: <span className={v.HCO3 < 22 || v.HCO3 > 26 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.HCO3?.toFixed(1)}</span></div>
+                            <div>Lac: <span className={v.Lac > 2 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.Lac?.toFixed(1)}</span></div>
+                            <div>K+: <span className={v.K < 3.5 || v.K > 5.5 ? 'text-red-400 font-bold' : 'text-green-400'}>{v.K?.toFixed(1)}</span></div>
+                            <div>Glu: {v.Glu?.toFixed(1)}</div>
+                        </div>
+                    )
+                };
             }
-        }, [monitorPopup]);
-
-        useEffect(() => {
-            const interval = setInterval(() => {
-                const connected = Date.now() - (lastUpdate || 0) < 5000;
-                setIsConnected(connected);
-            }, 1000);
-            return () => clearInterval(interval);
-        }, [lastUpdate]);
-
-        const hasMonitoring = activeInterventions.has('Obs');
-        const hasArtLine = activeInterventions.has('ArtLine');
-
-        const getResultContent = (type) => {
-            if (!scenario) return "No Data";
-            if (type === 'VBG' && scenario.vbg) {
-                const v = scenario.vbg;
-                return (
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-2xl font-mono text-emerald-400">
-                        <div>pH: <span className="text-white">{v.pH.toFixed(2)}</span></div>
-                        <div>pCO2: <span className="text-white">{v.pCO2.toFixed(1)}</span></div>
-                        <div>HCO3: <span className="text-white">{v.HCO3.toFixed(1)}</span></div>
-                        <div>Lac: <span className="text-red-400">{v.Lac.toFixed(1)}</span></div>
-                        <div>K+: <span className={v.K > 5.5 || v.K < 3.5 ? "text-red-400" : "text-white"}>{v.K.toFixed(1)}</span></div>
-                        <div>Glu: <span className="text-white">{v.Glu.toFixed(1)}</span></div>
-                    </div>
-                );
-            }
-            if (type === 'X-ray') return <div className="text-xl text-white">{scenario.chestXray?.findings || "Normal"}</div>;
-            if (type === 'CT') return <div className="text-xl text-white">{scenario.ct?.findings || "No acute abnormality"}</div>;
-            return <div className="text-xl text-slate-300">Result Available on Controller</div>;
+            let text = "Normal";
+            if (type === 'X-ray') text = inv.chestXray ? inv.chestXray.findings : "Normal";
+            if (type === 'Urine') text = inv.urine ? inv.urine.findings : "Normal";
+            if (type === 'CT') text = inv.ct ? inv.ct.findings : "No acute intracranial abnormality.";
+            if (type === 'POCUS') text = inv.pocus ? inv.pocus.findings : "No free fluid.";
+            return { title: type, body: <div className="text-xl">{text}</div> };
         };
 
-        const formatSimTime = (s) => {
-            const m = Math.floor(s / 60).toString().padStart(2, '0');
-            const sec = (s % 60).toString().padStart(2, '0');
-            return `${m}:${sec}`;
-        };
+        const showPopup = monitorPopup && monitorPopup.type && (Date.now() - monitorPopup.timestamp < 20000);
 
         return (
-            <div className="w-full h-full bg-black p-2 md:p-4 flex flex-col gap-2 relative overflow-hidden font-sans select-none">
+            <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative`}>
+                {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio} onTouchStart={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
-                {/* --- TOAST --- */}
-                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-4 flex items-center gap-4 transition-all duration-500 transform ${showToast ? 'translate-y-0 opacity-100 scale-100' : '-translate-y-10 opacity-0 scale-90 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : 'border-sky-500'}`}>
-                    <Lucide icon={notification?.type === 'danger' ? 'alert-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : 'text-sky-500'}`} />
-                    <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
+                {/* --- TOAST NOTIFICATION (Monitor) --- */}
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 border-l-8 rounded shadow-2xl px-8 py-4 transition-all duration-300 scale-150 origin-top ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                    <div className="flex items-center gap-4">
+                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
+                        <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
+                    </div>
                 </div>
 
-                {/* --- POPUP --- */}
-                {showPopup && (
-                    <div className="absolute inset-0 z-40 bg-black/80 flex items-center justify-center p-8 backdrop-blur-sm animate-fadeIn" onClick={() => setShowPopup(null)}>
-                        <div className="bg-slate-900 border-2 border-slate-600 rounded-xl p-6 max-w-3xl w-full shadow-2xl relative">
-                            <div className="flex justify-between items-center mb-6 border-b border-slate-700 pb-4">
-                                <h2 className="text-3xl font-bold text-sky-400 flex items-center gap-3"><Lucide icon="file-text" className="w-8 h-8" /> New Result: {showPopup}</h2>
-                                <div className="text-slate-500 text-sm uppercase font-bold tracking-widest">Tap to Dismiss</div>
-                            </div>
-                            <div className="p-4 bg-black/50 rounded border border-slate-800 min-h-[150px] flex items-center justify-center">{getResultContent(showPopup)}</div>
+                {/* DEFIB OVERLAY */}
+                {defibOpen && (
+                    <div className="absolute inset-0 z-[100] bg-black flex flex-col">
+                         <div className="absolute top-4 right-4 z-[110]">
+                            <Button 
+                                onClick={() => setDefibOpen(false)} 
+                                variant="destructive" 
+                                className="h-10 text-sm uppercase font-bold shadow-xl border border-white/20"
+                            >
+                                Close Defib
+                            </Button>
                         </div>
+                        <iframe 
+                            id="defib-frame"
+                            src="defib/index.html" 
+                            className="w-full h-full border-0 bg-slate-900"
+                            title="Defibrillator"
+                        />
+                    </div>
+                )}
+                
+                {/* --- INVESTIGATION POPUP --- */}
+                {showPopup && !defibOpen && (
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 z-40 bg-slate-900/95 border-2 border-sky-500 rounded-lg p-6 shadow-2xl max-w-md animate-fadeIn">
+                        {(() => {
+                            const content = getPopupContent(monitorPopup.type, scenario);
+                            if (!content) return null;
+                            const progress = Math.max(0, 100 - ((Date.now() - monitorPopup.timestamp) / 20000 * 100));
+                            return (
+                                <div>
+                                    <h3 className="text-2xl font-bold text-sky-400 mb-4 border-b border-slate-700 pb-2">{content.title}</h3>
+                                    <div className="text-white mb-4">{content.body}</div>
+                                    <div className="h-1 bg-slate-800 rounded overflow-hidden">
+                                        <div className="h-full bg-sky-500 transition-all duration-1000 ease-linear" style={{width: `${progress}%`}}></div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
                     </div>
                 )}
 
-                {/* --- HEADER --- */}
-                <div className="flex justify-between items-center bg-slate-900/50 px-4 py-2 rounded border border-slate-800 flex-shrink-0">
-                    <div className="flex items-center gap-6">
-                        <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_10px_#10b981]' : 'bg-red-500 animate-pulse'}`} title={isConnected ? "Connected" : "Disconnected"}></div>
-                        
-                        {scenario && (
-                            <div className="flex flex-col">
-                                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Patient</span>
-                                <span className="text-slate-300 font-bold text-lg leading-none">{scenario.patientName || "Unknown"}</span>
-                            </div>
-                        )}
-                        {scenario && (
-                            <div className="flex flex-col">
-                                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Age/Sex</span>
-                                <span className="text-slate-300 font-bold text-lg leading-none">{scenario.patientAge} {scenario.sex === 'Male' ? 'M' : 'F'}</span>
-                            </div>
-                        )}
-                    </div>
+                <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
                     
-                    <div className="flex items-center gap-4">
-                        {cprInProgress && <div className="bg-red-600 text-white px-6 py-1 rounded font-bold animate-pulse tracking-widest text-xl shadow-[0_0_15px_rgba(220,38,38,0.7)]">CPR IN PROGRESS</div>}
-                        {isMuted && <div className="text-red-500 flex items-center gap-1 font-bold bg-red-900/20 px-2 rounded"><Lucide icon="volume-x" className="w-4 h-4"/> MUTED</div>}
+                    {/* DEFIB OPEN BUTTON (Monitor Only) */}
+                    <div className="absolute top-2 right-2 z-30">
+                        <Button 
+                            onClick={() => setDefibOpen(true)} 
+                            variant="destructive" 
+                            className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20 opacity-60 hover:opacity-100 transition-opacity"
+                        >
+                            Open Defib
+                        </Button>
                     </div>
+
+                    {hasMonitoring ? (
+                        <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type || 'normal'} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
+                    ) : (
+                        <div className="flex items-center justify-center h-full text-slate-600 font-mono text-xl">NO SENSOR DETECTED</div>
+                    )}
                 </div>
 
-                {/* --- MAIN DISPLAY --- */}
-                <div className="flex-grow flex flex-col min-h-0 bg-black rounded border border-slate-800 overflow-hidden relative">
-                     <ECGMonitor 
-                        rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} 
-                        showEtco2={etco2Enabled} pathology={scenario?.deterioration?.type} showTraces={hasMonitoring} 
-                        showArt={hasArtLine} isCPR={cprInProgress} className="flex-grow" 
-                    />
-                     
-                     <div className="grid grid-cols-4 gap-1 md:gap-2 p-1 md:p-2 bg-black h-36 md:h-48 flex-shrink-0 border-t border-slate-900 z-10">
-                         <VitalDisplay label="Heart Rate" value={vitals.hr} unit="bpm" isMonitor={true} visible={hasMonitoring} alert={vitals.hr < 40 || vitals.hr > 140} />
-                         <VitalDisplay 
-                            label="NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" 
-                            isMonitor={true} visible={hasMonitoring} isNIBP={true} 
-                            lastNIBP={sim.state.nibp?.lastTaken} 
-                            history={sim.state.nibp?.history}
-                            alert={vitals.bpSys < 90 && vitals.bpSys > 0} 
-                         />
-                         <VitalDisplay label="SpO2" value={vitals.spO2} unit="%" isMonitor={true} visible={hasMonitoring} alert={vitals.spO2 < 90} />
-                         {etco2Enabled ? 
-                            <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" isMonitor={true} visible={true} /> : 
-                            <VitalDisplay label="Resp Rate" value={vitals.rr} unit="rpm" isMonitor={true} visible={hasMonitoring} alert={vitals.rr < 8 || vitals.rr > 30} />
-                         }
-                     </div>
-                </div>
+                <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
+                    <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" lowIsBad={false} onUpdate={() => {}} alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    
+                    {hasArtLine ? (
+                        <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} prev={prevVitals.bpSys} unit="mmHg" onUpdate={() => {}} alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
+                    ) : (
+                        <div className="flex gap-2">
+                             <div className="flex-grow">
+                                <VitalDisplay 
+                                    label="NIBP" 
+                                    value={nibp.inflating ? '---' : (nibp.sys || '?')} 
+                                    value2={nibp.inflating ? '---' : (nibp.dia || '?')} 
+                                    unit="mmHg" onUpdate={() => {}} 
+                                    alert={!nibp.inflating && nibp.sys && nibp.sys < 90} 
+                                    visible={hasMonitoring} 
+                                    isMonitor={true} 
+                                    isNIBP={false} 
+                                    lastNIBP={nibp.lastTaken} 
+                                    hideTrends={true} 
+                                />
+                             </div>
+                             {hasMonitoring && (
+                                 <button 
+                                     onClick={() => sim.triggerNIBP()} 
+                                     disabled={nibp.inflating}
+                                     className={`w-24 md:w-32 rounded flex flex-col items-center justify-center border-2 ${nibp.inflating ? 'bg-sky-900/50 border-sky-500/50 text-white' : 'bg-slate-800 border-slate-600 text-slate-400 hover:bg-slate-700'}`}
+                                 >
+                                     {nibp.inflating ? (
+                                         <Lucide icon="loader-2" className="w-8 h-8 mb-1 animate-spin text-sky-400" />
+                                     ) : (
+                                         <Lucide icon="activity" className="w-8 h-8 mb-1" />
+                                     )}
+                                     <span className="text-xs font-bold uppercase">{nibp.inflating ? 'INFLATING' : 'START'}</span>
+                                 </button>
+                             )}
+                        </div>
+                    )}
 
-                {/* --- SECONDARY VITALS --- */}
-                <div className="flex gap-2 h-16 flex-shrink-0">
-                    <div className="flex-1 bg-slate-900/80 rounded border border-slate-700 flex items-center justify-between px-4">
-                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Temp</span>
-                        <div className="flex items-baseline gap-1"><span className={`text-3xl font-mono font-bold ${vitals.temp > 38 || vitals.temp < 36 ? 'text-red-400' : 'text-white'}`}>{vitals.temp}</span><span className="text-slate-500 text-sm">°C</span></div>
-                    </div>
-                    <div className="flex-1 bg-slate-900/80 rounded border border-slate-700 flex items-center justify-between px-4">
-                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">Glucose</span>
-                        <div className="flex items-baseline gap-1"><span className={`text-3xl font-mono font-bold ${vitals.bm < 4 || vitals.bm > 20 ? 'text-red-400' : 'text-white'}`}>{vitals.bm}</span><span className="text-slate-500 text-sm">mmol/L</span></div>
-                    </div>
-                    <div className="flex-1 bg-slate-900/80 rounded border border-slate-700 flex items-center justify-between px-4">
-                        <span className="text-slate-500 text-xs font-bold uppercase tracking-wider">GCS</span>
-                        <div className="flex items-baseline gap-1"><span className={`text-3xl font-mono font-bold ${vitals.gcs < 15 ? 'text-amber-400' : 'text-white'}`}>{vitals.gcs}</span><span className="text-slate-500 text-sm">/15</span></div>
+                    <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" onUpdate={() => {}} alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    
+                    <div className="grid grid-rows-2 gap-2 md:gap-4">
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" lowIsBad={false} onUpdate={() => {}} alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        {etco2Enabled && hasMonitoring ? (<div className="flex flex-col items-center justify-center h-full bg-slate-900/40 rounded border border-yellow-500/50"><span className="text-sm font-bold text-yellow-500">ETCO2</span><span className="text-4xl font-mono font-bold text-yellow-500">{vitals.etco2 ? vitals.etco2.toFixed(1) : (cprInProgress ? '2.5' : '4.5')} <span className="text-sm">kPa</span></span></div>) : (<div className="flex items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-30"><span className="font-bold text-slate-600">ETCO2 OFF</span></div>)}
                     </div>
                 </div>
             </div>
         );
     };
+
     // --- SCREEN 6: DEBRIEF ---
     const DebriefScreen = ({ sim, onRestart }) => {
         const { Button, Lucide, Card } = window;
         const { state } = sim; const { log, scenario, history, completedObjectives } = state; const chartRef = useRef(null);
         
+        // Auto-Checklist Logic
         const defaultObjectives = ["Airway Assessment", "Breathing Assessment", "Circulation Assessment", "Disability Assessment", "Exposure"];
         const scenarioObjectives = scenario?.instructorBrief?.learningObjectives || defaultObjectives;
 
@@ -1073,57 +1020,7 @@
             if (!window.Chart) return;
             const ctx = chartRef.current.getContext('2d'); 
             if (window.myChart) window.myChart.destroy(); 
-            
-            const eventPoints = history.map(h => {
-                const event = log.find(l => l.type === 'action' && Math.abs(l.timeSeconds - h.time) < 2);
-                return event ? 10 : null;
-            });
-
-            window.myChart = new window.Chart(ctx, { 
-                type: 'line', 
-                data: { 
-                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), 
-                    datasets: [ 
-                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, 
-                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 },
-                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.1 },
-                        { label: 'RR', data: history.map(h => h.rr), borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0, tension: 0.1 },
-                        { 
-                            label: 'Interventions', 
-                            data: history.map(h => {
-                                const e = log.find(l => l.type === 'action' && Math.abs(l.timeSeconds - h.time) < 3);
-                                return e ? 5 : null; 
-                            }),
-                            borderColor: '#ffffff',
-                            backgroundColor: '#ffffff',
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            showLine: false,
-                            pointStyle: 'triangle'
-                        }
-                    ] 
-                }, 
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
-                    scales: { y: { min: 0 } },
-                    plugins: {
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    if (context.dataset.label === 'Interventions') {
-                                        const idx = context.dataIndex;
-                                        const time = history[idx].time;
-                                        const e = log.find(l => l.type === 'action' && Math.abs(l.timeSeconds - time) < 3);
-                                        return e ? e.msg : '';
-                                    }
-                                    return context.dataset.label + ': ' + context.raw;
-                                }
-                            }
-                        }
-                    }
-                } 
-            }); 
+            window.myChart = new window.Chart(ctx, { type: 'line', data: { labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), datasets: [ { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.1 }, { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { min: 0 } } } }); 
             return () => { if (window.myChart) window.myChart.destroy(); }; 
         }, [history]);
         
@@ -1139,6 +1036,7 @@
                     <Card title="Performance Checklist" icon="check-square" className="border-emerald-500/50">
                         <div className="p-2 space-y-2">
                             {scenarioObjectives.map((obj, i) => {
+                                // Basic auto-check logic based on keywords
                                 const isDone = completedObjectives.has(obj) || (obj.includes('Fluid') && completedObjectives.has('Fluids')) || (obj.includes('Antibiotic') && completedObjectives.has('Antibiotics')); 
                                 return (
                                     <div key={i} className="flex items-center gap-2 text-sm text-slate-300">
