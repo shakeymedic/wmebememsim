@@ -2,6 +2,7 @@
 (() => {
     const { useState, useEffect } = React;
 
+    // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName } = window;
         
@@ -11,25 +12,33 @@
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
         const [premadeCategory, setPremadeCategory] = useState(null);
-        
-        // Builder State
         const [buildTitle, setBuildTitle] = useState("");
         const [buildAge, setBuildAge] = useState(40);
         const [buildCat, setBuildCat] = useState("Medical");
         const [buildDesc, setBuildDesc] = useState("A 40-year-old male with chest pain.");
+        const [buildPC, setBuildPC] = useState("Chest Pain");
+        const [buildPMH, setBuildPMH] = useState("Hypertension");
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98 });
         const [customScenarios, setCustomScenarios] = useState([]);
 
-        // Load custom scenarios
+        const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
+
         useEffect(() => {
             const saved = localStorage.getItem('wmebem_custom_scenarios');
             if (saved) {
-                try { setCustomScenarios(JSON.parse(saved)); } catch (e) { console.error(e); }
+                try { setCustomScenarios(JSON.parse(saved)); } 
+                catch (e) { console.error("Failed to load custom scenarios", e); localStorage.removeItem('wmebem_custom_scenarios'); }
             }
         }, []);
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
+            const safeVitals = {
+                hr: parseInt(buildVitals.hr) || 80,
+                bpSys: parseInt(buildVitals.bpSys) || 120,
+                rr: parseInt(buildVitals.rr) || 16,
+                spO2: parseInt(buildVitals.spO2) || 98
+            };
             const newScen = {
                 id: `CUST_${Date.now()}`,
                 title: buildTitle,
@@ -38,12 +47,14 @@
                 acuity: 'Majors',
                 ageGenerator: () => parseInt(buildAge),
                 patientProfileTemplate: buildDesc,
-                presentingComplaint: "Custom Complaint",
-                vitalsMod: { ...buildVitals, bpDia: Math.floor(buildVitals.bpSys * 0.65), gcs: 15, temp: 37 },
-                pmh: ["Custom PMH"], dhx: ["As per history"], allergies: ["NKDA"],
+                presentingComplaint: buildPC,
+                vitalsMod: { ...safeVitals, bpDia: Math.floor(safeVitals.bpSys * 0.65), gcs: 15, temp: 37 },
+                pmh: buildPMH.split(','),
+                dhx: ["As per history"],
+                allergies: ["NKDA"],
                 instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom Objective"] },
                 vbgClinicalState: "normal",
-                ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: "Normal" },
+                ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: buildVitals.rhythm || "Normal" },
                 chestXray: { findings: "Unremarkable" }
             };
             const updated = [...customScenarios, newScen];
@@ -52,25 +63,54 @@
             setMode('custom'); 
         };
 
+        const handleExport = () => {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(customScenarios));
+            const downloadAnchorNode = document.createElement('a');
+            downloadAnchorNode.setAttribute("href", dataStr);
+            downloadAnchorNode.setAttribute("download", "scenarios.json");
+            document.body.appendChild(downloadAnchorNode);
+            downloadAnchorNode.click();
+            downloadAnchorNode.remove();
+        };
+
+        const handleImport = (event) => {
+            const fileReader = new FileReader();
+            fileReader.readAsText(event.target.files[0], "UTF-8");
+            fileReader.onload = e => {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    const merged = [...customScenarios, ...imported];
+                    setCustomScenarios(merged);
+                    localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(merged));
+                    alert("Import successful!");
+                } catch(err) { alert("Invalid JSON file"); }
+            };
+        };
+
         const handleGenerate = (base) => {
-             // ... [Logic kept identical to original for brevity, just extracted] ...
-             // Logic handles selecting base scenario, randomizing age/sex, calculating weight/wetflag
+             if (!scenariosAvailable) { alert("Scenarios failed to load. Please refresh the page."); return; }
              try {
                  let selectedBase = base;
                  if (!base && mode === 'random') {
-                     let pool = ALL_SCENARIOS.filter(s => (category === 'Any' || s.category === category) && (age === 'Any' || s.ageRange === age) && (acuity === 'Any' || s.acuity === acuity));
+                     let pool = ALL_SCENARIOS.filter(s => 
+                        (category === 'Any' || s.category === category) && 
+                        (age === 'Any' || s.ageRange === age) &&
+                        (acuity === 'Any' || s.acuity === acuity)
+                     );
                      if (pool.length === 0) { alert("No scenarios match filters."); return; }
                      selectedBase = pool[Math.floor(Math.random() * pool.length)];
                  }
 
                  const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
                  let sex = Math.random() > 0.5 ? 'Male' : 'Female';
-                 // Force sex logic...
-                 const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric"];
-                 const forceMale = ["testicular", "prostate"];
-                 if (forceFemale.some(k => selectedBase.title.toLowerCase().includes(k) || selectedBase.category === 'Obstetrics & Gynae')) sex = 'Female';
-                 else if (forceMale.some(k => selectedBase.title.toLowerCase().includes(k))) sex = 'Male';
-
+                 const t = selectedBase.title.toLowerCase();
+                 const p = selectedBase.patientProfileTemplate.toLowerCase();
+                 const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
+                 const forceMale = ["testicular", "prostate", "scrotal"];
+                 
+                 if (forceFemale.some(k => t.includes(k) || p.includes(k)) || selectedBase.category === 'Obstetrics & Gynae') sex = 'Female';
+                 else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
+                 
                  const history = generateHistory(patientAge, sex);
                  const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
                  const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
@@ -82,15 +122,20 @@
                  }
 
                  const generated = { 
-                    ...selectedBase, patientName: randomName, patientAge, sex,
+                    ...selectedBase, 
+                    patientName: randomName, patientAge, sex,
                     profile: selectedBase.patientProfileTemplate.replace('{age}', patientAge).replace('{sex}', sex),
-                    vitals: finalVitals, pmh: selectedBase.pmh || history.pmh, dhx: selectedBase.dhx || history.dhx, allergies: selectedBase.allergies || history.allergies,
+                    vitals: finalVitals, 
+                    pmh: selectedBase.pmh || history.pmh, 
+                    dhx: selectedBase.dhx || history.dhx, 
+                    allergies: selectedBase.allergies || history.allergies,
                     vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
                     hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
                     weight, wetflag
                  };
+
                  onGenerate(generated, {});
-             } catch (err) { console.error(err); alert("Error: " + err.message); }
+             } catch (err) { console.error("Generator Error:", err); alert("Error generating scenario: " + err.message); }
         };
 
         const premadeCategories = [
@@ -110,7 +155,16 @@
                     <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
                     <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Use as Monitor</Button>
                 </div>
-                {savedState && (<div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex justify-between"><div><h3 className="font-bold text-emerald-400">Resume Previous?</h3><p className="text-sm text-slate-300">{savedState.scenario.title}</p></div><Button onClick={onResume} variant="success">Resume</Button></div>)}
+                <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
+                    <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
+                    <p>Select a mode below. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you craft on the fly.</p>
+                </div>
+                {savedState && (
+                    <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
+                        <div><h3 className="font-bold text-emerald-400">Resume Previous?</h3><p className="text-sm text-slate-300">{savedState.scenario.title}</p></div>
+                        <Button onClick={onResume} variant="success">Resume</Button>
+                    </div>
+                )}
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
                     <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto no-scrollbar">
                         {['random', 'premade', 'custom', 'builder'].map(m => (
@@ -149,6 +203,7 @@
                                                 <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
                                             </div>
                                         ))}
+                                        {ALL_SCENARIOS.filter(premadeCategory.filter).length === 0 && (<div className="text-center text-slate-500 py-8">No scenarios found in this category.</div>)}
                                     </div>
                                 </div>
                             )}
@@ -156,27 +211,102 @@
                     )}
                     {mode === 'custom' && (
                         <div className="space-y-2 animate-fadeIn">
-                            <h3 className="text-sm font-bold text-white mb-2">Saved Custom Scenarios</h3>
-                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic">No custom scenarios saved yet.</p>}
+                             <div className="flex gap-2 mb-4"><Button onClick={handleExport} variant="outline" className="h-8 text-xs flex-1">Export JSON</Button><label className="flex-1"><span className="flex items-center justify-center h-8 px-2 rounded bg-slate-700 text-white text-xs border border-slate-600 cursor-pointer hover:bg-slate-600">Import JSON</span><input type="file" className="hidden" onChange={handleImport} accept=".json"/></label></div>
+                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet.</p>}
                              {customScenarios.map((s, i) => (
-                                 <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
-                                     <div><div className="font-bold text-white">{s.title}</div></div>
-                                     <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
-                                 </div>
+                                 <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600"><div><div className="font-bold text-white">{s.title}</div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div><Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button></div>
                              ))}
                         </div>
                     )}
                     {mode === 'builder' && (
-                         <div className="space-y-4 animate-fadeIn">
-                             <p className="text-xs text-slate-400">Quickly build a scenario on the fly.</p>
-                             <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
-                             <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save & View in Custom</Button>
-                         </div>
+                        <div className="space-y-4 animate-fadeIn">
+                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
+                            <div className="grid grid-cols-2 gap-2"><input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select></div>
+                            <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div><label className="text-[10px] text-slate-500 uppercase">Heart Rate</label><input type="number" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Sys BP</label><input type="number" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Resp Rate</label><input type="number" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">SpO2 %</label><input type="number" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs || 15} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp || 37} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
+                                <select onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}</select>
+                            </div>
+                            <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
+                        </div>
                     )}
                 </div>
             </div>
         );
     };
 
+    // --- SCREEN 2: JOIN ---
+    const JoinScreen = ({ onJoin }) => {
+        const { Button } = window;
+        const [code, setCode] = useState("");
+        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
+    };
+
+    // --- SCREEN 3: BRIEFING ---
+    const BriefingScreen = ({ scenario, onStart, onBack }) => {
+        const { Button, Lucide } = window;
+        return (
+            <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
+                <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
+                    <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
+                            <div className="flex gap-2 mt-2"><span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span><span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span><span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span></div>
+                        </div>
+                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold">Initial GCS</div><div className="text-4xl font-mono font-bold text-white">{scenario.vitals.gcs}</div></div>
+                    </div>
+                    {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
+                        <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
+                            <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
+                            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Energy (4J)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Tube</div><div className="font-bold text-white">{scenario.wetflag.tube}</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Fluids (10ml)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Glucose (2ml)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
+                            </div>
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
+                        <div className="space-y-6">
+                            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
+                                <h3 className="text-sm font-bold text-sky-400 uppercase mb-2 border-b border-slate-700 pb-1">Patient Brief</h3>
+                                <p className="text-sm text-slate-400 mb-2"><strong className="text-slate-300 uppercase text-xs">Patient Name:</strong> {scenario.patientName}</p>
+                                <p className="text-lg leading-relaxed text-slate-200 mb-4">{scenario.profile}</p>
+                                <div className="space-y-2 text-sm">
+                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">Rx:</span><span className="text-slate-300">{scenario.dhx ? scenario.dhx.join(", ") : 'Nil'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">Allergies:</span><span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></div>
+                                </div>
+                            </div>
+                            <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
+                                <h3 className="text-sm font-bold text-purple-400 uppercase mb-2 border-b border-slate-700 pb-1">Required Equipment</h3>
+                                <div className="flex flex-wrap gap-2">{scenario.equipment && scenario.equipment.map((item, i) => (<span key={i} className="text-xs bg-slate-700 text-slate-200 px-2 py-1 rounded border border-slate-600">{item}</span>))}</div>
+                            </div>
+                        </div>
+                        <div className="space-y-4">
+                            <div className="p-3 bg-amber-900/20 rounded border border-amber-600/30"><h4 className="text-sm font-bold text-amber-400 uppercase mb-1">Clinical Progression</h4><p className="text-sm text-slate-300 leading-snug">{scenario.instructorBrief.progression}</p></div>
+                            <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30"><h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{scenario.instructorBrief.interventions && scenario.instructorBrief.interventions.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+                            <div className="p-3 bg-slate-900/50 rounded border border-slate-600"><h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4><div className="flex flex-col gap-1">{scenario.learningLinks && scenario.learningLinks.map((link, i) => (<a key={i} href={link.url} target="_blank" className="flex items-center gap-2 text-xs text-sky-400 hover:underline"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</a>))}</div></div>
+                            <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30"><h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Debrief Points</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{scenario.instructorBrief.debriefPoints && scenario.instructorBrief.debriefPoints.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
+            </div>
+        );
+    };
+
     window.SetupScreen = SetupScreen;
+    window.JoinScreen = JoinScreen;
+    window.BriefingScreen = BriefingScreen;
 })();
