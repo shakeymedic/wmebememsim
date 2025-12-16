@@ -24,6 +24,12 @@
             }
         }, [notification]);
 
+        // Sync Defib State: If the engine says arrest panel is open (e.g. from Controller), open our defib
+        useEffect(() => {
+             if (arrestPanelOpen && !defibOpen) setDefibOpen(true);
+             if (!arrestPanelOpen && defibOpen) setDefibOpen(false);
+        }, [arrestPanelOpen]);
+
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
 
         return (
@@ -38,9 +44,9 @@
                     </div>
                 </div>
 
-                {/* --- DEFIB FRAME (Using existing logic) --- */}
+                {/* --- DEFIB FRAME --- */}
                 {defibOpen && (
-                    <div className="absolute inset-0 z-[100] bg-black flex flex-col">
+                    <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
                          <div className="absolute top-4 right-4 z-[110]">
                             <Button onClick={() => {setDefibOpen(false); sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})}} variant="destructive" className="h-10 text-sm uppercase font-bold shadow-xl border border-white/20">Close Defib</Button>
                         </div>
@@ -50,9 +56,11 @@
 
                 {/* --- MAIN LAYOUT --- */}
                 <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
-                    <div className="absolute top-2 right-2 z-30">
-                        <Button onClick={() => {setDefibOpen(true); sim.dispatch({type: 'SET_ARREST_PANEL', payload: true})}} variant="destructive" className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20 opacity-60 hover:opacity-100 transition-opacity">Open Defib</Button>
-                    </div>
+                    {!defibOpen && (
+                        <div className="absolute top-2 right-2 z-30">
+                            <Button onClick={() => {setDefibOpen(true); sim.dispatch({type: 'SET_ARREST_PANEL', payload: true})}} variant="destructive" className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20 opacity-60 hover:opacity-100 transition-opacity">Open Defib</Button>
+                        </div>
+                    )}
 
                     {hasMonitoring ? (
                         <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
