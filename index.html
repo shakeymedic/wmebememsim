@@ -172,7 +172,7 @@
             }, [view]);
 
             if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
-            if (view === 'monitor') return <MonitorContainer sessionID={sessionID} />;
+            if (view === 'monitor') return <MonitorContainer sim={sim} sessionID={sessionID} />;
 
             return (
                 <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
