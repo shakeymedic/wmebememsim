@@ -1014,7 +1014,6 @@
                     <div className="flex items-center gap-4">
                         {cprInProgress && <div className="bg-red-600 text-white px-6 py-1 rounded font-bold animate-pulse tracking-widest text-xl shadow-[0_0_15px_rgba(220,38,38,0.7)]">CPR IN PROGRESS</div>}
                         {isMuted && <div className="text-red-500 flex items-center gap-1 font-bold bg-red-900/20 px-2 rounded"><Lucide icon="volume-x" className="w-4 h-4"/> MUTED</div>}
-                        <div className="bg-black/40 px-3 py-1 rounded text-sky-500 font-mono text-xl font-bold border border-slate-700">{formatSimTime(time)}</div>
                     </div>
                 </div>
 
