@@ -4,7 +4,7 @@
 
     const MonitorScreen = ({ sim }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
-        const { state, enableAudio } = sim;
+        const { state, enableAudio, triggerNIBP, toggleNIBPMode } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         
@@ -12,20 +12,18 @@
         const [defibOpen, setDefibOpen] = useState(false);
         const [showToast, setShowToast] = useState(false);
 
-        // Request 2: Monitor Toast Notification Logic with Timeout
-        // Logic: Listen for notification object. If ID changes, show toast, then hide after 3s.
+        // Toast Logic
         useEffect(() => {
             if(notification && notification.id) {
                 setShowToast(true);
                 const timer = setTimeout(() => {
                     setShowToast(false);
-                }, 3000); // Strict 3 second timeout
+                }, 3000); 
                 return () => clearTimeout(timer);
             }
         }, [notification]);
 
-        // Request 4: Sync Defib Panel with Global State
-        // This ensures the monitor opens the defib if the controller triggers it
+        // Sync Defib Panel
         useEffect(() => {
              if (arrestPanelOpen && !defibOpen) setDefibOpen(true);
              if (!arrestPanelOpen && defibOpen) setDefibOpen(false);
@@ -72,7 +70,18 @@
 
                 <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
                     <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                    <VitalDisplay label="ABP/NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    
+                    {/* BP DISPLAY WITH CONTROLS */}
+                    <div className="relative h-full">
+                        <VitalDisplay label="ABP/NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        {hasMonitoring && (
+                            <div className="absolute bottom-2 right-2 flex gap-1 z-20">
+                                <button onClick={triggerNIBP} className="bg-slate-700 hover:bg-slate-600 text-white text-[10px] px-2 py-1 rounded border border-slate-500 uppercase font-bold tracking-wide">{nibp.inflating ? 'Inflating...' : 'Cycle'}</button>
+                                <button onClick={toggleNIBPMode} className={`text-[10px] px-2 py-1 rounded border uppercase font-bold tracking-wide ${nibp.mode === 'auto' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
+                            </div>
+                        )}
+                    </div>
+
                     <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                     <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                 </div>
