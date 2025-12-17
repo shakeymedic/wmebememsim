@@ -138,13 +138,10 @@
         );
     };
 
-    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
+    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, co2Pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
         const canvasRef = useRef(null);
         const requestRef = useRef(null);
-        
-        // Use a jitter value for AF to prevent smooth P/QRS timing
         const jitterRef = useRef(0);
-
         const drawState = useRef({ 
             x: 0, 
             lastY: 50, 
@@ -156,97 +153,74 @@
             lastYArt: 0 
         });
 
-        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
+        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
 
         useEffect(() => { 
-            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; 
-        }, [rhythmType, hr, rr, showEtco2, pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
+            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; 
+        }, [rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        // --- REALISTIC WAVEFORM GENERATORS ---
-        
+        // --- WAVEFORM GENERATORS ---
         const getECGValue = (t, type, pathology, cpr) => {
             if (cpr) return (Math.sin(t * 12 * Math.PI) * 45) + (Math.random() * 15 - 7.5);
-            let y = (Math.random() - 0.5) * 1.5; // Baseline noise
-
+            let y = (Math.random() - 0.5) * 1.5; 
             if (type === 'Asystole') return y;
             if (type === 'VF' || type === 'Coarse VF') return (Math.sin(t * 50) * 20 + Math.sin(t * 13) * 15 + (Math.random() - 0.5) * 10);
             if (type === 'Fine VF') return (Math.sin(t * 60) * 5 + Math.sin(t * 20) * 5 + (Math.random() - 0.5) * 5);
-            if (type === 'VT' || type === 'pVT') return Math.sin(t * Math.PI * 2) * 45; // Broad complex
+            if (type === 'VT' || type === 'pVT') return Math.sin(t * Math.PI * 2) * 45; 
             
-            // Standard Complex (Sinus, AF, etc)
-            // t is 0..1 beat cycle
-            
-            // P Wave (Gaussian) - Absent in AF/SVT/VT
             if (!['AF', 'SVT', 'VT', 'VF', 'pVT', 'Asystole'].includes(type)) {
                 y += 4 * Math.exp(-Math.pow(t - 0.15, 2) / 0.0015);
             }
-
-            // QRS Complex
-            // Q (small dip)
             y -= 5 * Math.exp(-Math.pow(t - 0.38, 2) / 0.0003);
-            // R (large spike)
             y += 55 * Math.exp(-Math.pow(t - 0.40, 2) / 0.0006);
-            // S (dip)
             y -= 12 * Math.exp(-Math.pow(t - 0.43, 2) / 0.0004);
-
-            // T Wave
             let tAmp = 8;
             if (type === 'STEMI' || pathology === 'STEMI') {
-                // ST Elevation logic: Lift the segment between S and T
-                if (t > 0.43 && t < 0.65) {
-                    y += 12 * Math.exp(-Math.pow(t - 0.55, 2) / 0.02);
-                }
-                tAmp = 14; // Hyperacute T
+                if (t > 0.43 && t < 0.65) { y += 12 * Math.exp(-Math.pow(t - 0.55, 2) / 0.02); }
+                tAmp = 14; 
             }
             y += tAmp * Math.exp(-Math.pow(t - 0.70, 2) / 0.015);
-
-            // AF Fibrillatory waves
             if (type === 'AF') y += Math.sin(t * 40) * 1.5 + (Math.random() - 0.5) * 2;
-            
             return y;
         };
 
         const getPlethValue = (t) => {
-            // Pulse wave: Steep upstroke, dicrotic notch
-            // t = 0..1
             let y = 0;
-            // Systolic Upstroke (0.0 to 0.15)
-            if (t < 0.15) {
-                y = 30 * Math.sin((t / 0.15) * (Math.PI / 2));
-            } else {
-                // Diastolic Decay
-                y = 30 * Math.exp(-(t - 0.15) * 2.5);
-                // Dicrotic Notch at ~0.4
-                y += 4 * Math.exp(-Math.pow(t - 0.4, 2) / 0.008);
-            }
+            if (t < 0.15) { y = 30 * Math.sin((t / 0.15) * (Math.PI / 2)); } 
+            else { y = 30 * Math.exp(-(t - 0.15) * 2.5); y += 4 * Math.exp(-Math.pow(t - 0.4, 2) / 0.008); }
             return y;
         };
 
         const getArtValue = (t) => {
-            // Sharper than Pleth
             let y = 0;
-            if (t < 0.12) {
-                y = 40 * Math.sin((t / 0.12) * (Math.PI / 2));
-            } else {
-                y = 40 * Math.exp(-(t - 0.12) * 2.0);
-                // Dicrotic notch
-                y += 6 * Math.exp(-Math.pow(t - 0.38, 2) / 0.005);
-            }
+            if (t < 0.12) { y = 40 * Math.sin((t / 0.12) * (Math.PI / 2)); } 
+            else { y = 40 * Math.exp(-(t - 0.12) * 2.0); y += 6 * Math.exp(-Math.pow(t - 0.38, 2) / 0.005); }
             return y;
         };
 
-        const getCO2Value = (t) => {
+        const getCO2Value = (t, pathology) => {
             // t is breath cycle 0..1
-            // 0-0.3: Inspiration (Baseline)
-            // 0.3-0.35: Expiratory Upstroke
-            // 0.35-0.85: Alveolar Plateau (slight rise)
-            // 0.85-0.95: Inspiratory Downstroke
             let y = 0;
-            if (t < 0.3) y = 0;
-            else if (t < 0.35) y = 35 * ((t - 0.3) / 0.05);
-            else if (t < 0.85) y = 35 + (2 * (t - 0.35)); // Slight slope on plateau
-            else if (t < 0.95) y = 37 * (1 - ((t - 0.85) / 0.1));
-            else y = 0;
+            const isBronchospasm = pathology === 'bronchospastic' || pathology === 'obstructive';
+
+            if (isBronchospasm) {
+                // Shark Fin: Slow rise (obstruction), no plateau, sharp drop
+                if (t < 0.3) y = 0; // Inspiration
+                else if (t < 0.9) {
+                     // Curved upstroke (exponential rise)
+                     // Map 0.3->0.9 to 0->1
+                     const phase = (t - 0.3) / 0.6;
+                     y = 35 * (1 - Math.exp(-phase * 3)); // Shark fin curve
+                }
+                else y = 0; // Rapid drop
+            } else {
+                // Normal Square Wave
+                if (t < 0.3) y = 0;
+                else if (t < 0.35) y = 35 * ((t - 0.3) / 0.05); // Upstroke
+                else if (t < 0.85) y = 35 + (2 * (t - 0.35)); // Plateau
+                else if (t < 0.95) y = 37 * (1 - ((t - 0.85) / 0.1)); // Downstroke
+                else y = 0;
+            }
             return y;
         };
 
@@ -271,8 +245,6 @@
             const animate = (timestamp) => {
                 const state = drawState.current; 
                 const props = propsRef.current;
-                
-                // Globals
                 window.waveformGain = window.waveformGain || 1.0; 
                 window.noise = window.noise || {};
 
@@ -286,29 +258,24 @@
                 state.x += ecgSpeed * dt;
                 const prevX = state.x - (ecgSpeed * dt);
                 
-                // Wrap around with clearing bar
                 if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); 
                 else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
                 
                 const baselineECG = canvas.height * 0.30;
                 
-                // Flatline if traces off
                 if (!props.showTraces) { 
                     ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); 
                     requestRef.current = requestAnimationFrame(animate); return; 
                 }
 
-                // --- PROGRESS CALCULATION ---
                 let effectiveHR = props.hr;
-                // If AF, randomize the effective HR slightly every beat to create R-R irregularity
                 if (props.rhythmType === 'AF' && state.beatProgress < 0.05) {
-                    // Update jitter only at start of beat
                      if (Math.random() < 0.1) jitterRef.current = (Math.random() - 0.5) * 30;
                 }
                 if (props.rhythmType === 'AF') effectiveHR += jitterRef.current;
                 
                 if (props.isCPR) effectiveHR = 110;
-                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; // Intrinsic rate of arrhythmia
+                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; 
                 
                 let beatDuration = 60 / Math.max(10, effectiveHR); 
                 state.beatProgress += dt / beatDuration; 
@@ -318,52 +285,38 @@
                 state.breathProgress += dt / breathDuration; 
                 if (state.breathProgress >= 1) state.breathProgress = 0;
 
-                // --- DRAWING ---
                 if (state.x > canvas.width) { state.x = 0; state.lastY = baselineECG; }
 
-                // 1. ECG
                 let rawECG = getECGValue(state.beatProgress, props.rhythmType, props.pathology, props.isCPR);
-                
-                // Apply gain & interference
                 const gain = window.waveformGain;
                 let yECG = baselineECG - (rawECG * gain);
                 if (window.noise.interference) yECG += Math.sin(timestamp / 20) * 5;
 
                 if (state.x > prevX) { 
-                    // ECG Line
                     ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; 
                     ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
                     
-                    // 2. ETCO2
                     if (props.showEtco2) {
                         const baseCO2 = canvas.height * 0.60;
-                        const rawCO2 = getCO2Value(state.breathProgress);
+                        const rawCO2 = getCO2Value(state.breathProgress, props.co2Pathology);
                         const yCO2 = baseCO2 - rawCO2;
-                        
                         ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
                         ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
                         state.lastYCO2 = yCO2;
                     }
-
-                    // 3. Arterial Line
                     if (props.showArt) {
                         const baseArt = canvas.height * 0.80;
                         const rawArt = getArtValue(state.beatProgress);
                         const yArt = baseArt - rawArt;
-                        
                         ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; 
                         ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
                         state.lastYArt = yArt;
                     }
-
-                    // 4. Pleth / SpO2
                     if (props.spO2 > 10) {
                         const basePleth = canvas.height - 15;
                         const rawPleth = getPlethValue(state.beatProgress);
-                        // Scale amplitude by SpO2 value (lower SpO2 = weaker pulse trace)
                         const ampScale = Math.max(0.3, props.spO2 / 100); 
                         const yPleth = basePleth - (rawPleth * ampScale);
-                        
                         ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; 
                         ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
                         state.lastYPleth = yPleth;
