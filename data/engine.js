@@ -5,7 +5,8 @@
 
     const initialState = {
         scenario: null, time: 0, cycleTimer: 0, isRunning: false,
-        vitals: { etco2: 4.5 }, prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
+        vitals: { etco2: 4.5, temp: 36.5, bm: 5.5, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16 }, // Ensure defaults
+        prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
         investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
         isMuted: false, etco2Enabled: false, isParalysed: false, 
         queuedRhythm: null,
@@ -38,7 +39,7 @@
             case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                const initialVitals = { etco2: 4.5, ...action.payload.vitals };
+                const initialVitals = { etco2: 4.5, temp: 36.5, bm: 5.5, ...action.payload.vitals };
                 return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100), isOffline: state.isOffline };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
             
@@ -78,6 +79,18 @@
                     vitalsChanged = true;
                 }
                 
+                // 4. Update History (Every 5 seconds for chart data)
+                let newHistory = state.history;
+                if (state.time % 5 === 0) {
+                    newHistory = [...state.history, { 
+                        time: state.time, 
+                        hr: currentVitals.hr, 
+                        bp: currentVitals.bpSys, 
+                        spo2: currentVitals.spO2, 
+                        rr: currentVitals.rr 
+                    }];
+                }
+                
                 return { 
                     ...state, 
                     time: state.time + 1, 
@@ -85,14 +98,14 @@
                     activeDurations: durChanged ? newDurations : state.activeDurations, 
                     nibp: newNibp,
                     trends: newTrends,
-                    vitals: vitalsChanged ? currentVitals : state.vitals
+                    vitals: vitalsChanged ? currentVitals : state.vitals,
+                    history: newHistory
                 };
 
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_VITALS': 
                 if (!state.isRunning && action.payload.source !== 'manual') return state;
-                const newHist = [...state.history, { time: state.time, hr: action.payload.hr, bp: action.payload.bpSys, spo2: action.payload.spO2, rr: action.payload.rr, actions: [] }];
-                return { ...state, vitals: action.payload, history: newHist };
+                return { ...state, vitals: action.payload };
             case 'UPDATE_RHYTHM': 
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(action.payload);
                 return { ...state, rhythm: action.payload, arrestPanelOpen: isArrest ? true : state.arrestPanelOpen };
@@ -126,8 +139,8 @@
                 const now = new Date();
                 const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
                 const newEntry = { sys: safeSys, dia: safeDia, time: timeStr };
-                const newHistory = [newEntry, ...(state.nibp.history || [])].slice(0, 3);
-                return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false, history: newHistory } };
+                const newHistoryArr = [newEntry, ...(state.nibp.history || [])].slice(0, 3);
+                return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false, history: newHistoryArr } };
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             
             case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
@@ -336,6 +349,7 @@
                     if (val && val.ts > lastCmdRef.current) {
                         lastCmdRef.current = val.ts;
                         if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
+                        if (val.type === 'TOGGLE_NIBP_MODE') dispatch({ type: 'TOGGLE_NIBP_MODE' });
                         if (val.type === 'TRIGGER_ACTION') {
                             applyIntervention(val.payload);
                         }
@@ -527,6 +541,13 @@
                 dispatch({ type: 'START_NIBP' });
             }
         };
+        const toggleNIBPMode = () => {
+             if (isMonitorMode && sessionID) {
+                 window.db.ref(`sessions/${sessionID}/command`).set({ type: 'TOGGLE_NIBP_MODE', ts: Date.now() });
+             } else {
+                 dispatch({ type: 'TOGGLE_NIBP_MODE' });
+             }
+        };
         
         const triggerAction = (action) => {
              if (isMonitorMode && sessionID) {
@@ -617,7 +638,7 @@
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
         }, [state.isRunning]);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, triggerAction };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction };
     };
     window.useSimulation = useSimulation;
 })();
