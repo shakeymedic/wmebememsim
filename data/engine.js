@@ -5,7 +5,7 @@
 
     const initialState = {
         scenario: null, time: 0, cycleTimer: 0, isRunning: false,
-        vitals: { etco2: 4.5, temp: 36.5, bm: 5.5, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16 }, // Ensure defaults
+        vitals: { etco2: 4.5, temp: 36.5, bm: 5.5, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16 }, 
         prevVitals: {}, rhythm: "Sinus Rhythm", log: [], flash: null, history: [],
         investigationsRevealed: {}, loadingInvestigations: {}, activeInterventions: new Set(), interventionCounts: {}, activeDurations: {}, processedEvents: new Set(),
         isMuted: false, etco2Enabled: false, isParalysed: false, 
@@ -44,7 +44,6 @@
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
             
             case 'TICK_TIME':
-                // 1. Handle Duration Timers
                 const newDurations = { ...state.activeDurations }; 
                 let durChanged = false;
                 Object.keys(newDurations).forEach(key => { 
@@ -52,11 +51,9 @@
                     if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; } 
                 });
                 
-                // 2. Handle NIBP Auto Timer
                 let newNibp = { ...state.nibp }; 
                 if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
 
-                // 3. Handle Trends (Interpolate Vitals)
                 let newTrends = { ...state.trends };
                 let currentVitals = { ...state.vitals };
                 let vitalsChanged = false;
@@ -64,7 +61,6 @@
                 if (newTrends.active) {
                     newTrends.elapsed += 1;
                     const progress = Math.min(1, newTrends.elapsed / newTrends.duration);
-                    
                     Object.keys(newTrends.targets).forEach(key => {
                         const startVal = newTrends.startVitals[key];
                         const targetVal = newTrends.targets[key];
@@ -72,14 +68,12 @@
                             currentVitals[key] = startVal + ((targetVal - startVal) * progress);
                         }
                     });
-
                     if (newTrends.elapsed >= newTrends.duration) {
-                        newTrends.active = false; // Trend complete
+                        newTrends.active = false; 
                     }
                     vitalsChanged = true;
                 }
                 
-                // 4. Update History (Every 5 seconds for chart data)
                 let newHistory = state.history;
                 if (state.time % 5 === 0) {
                     newHistory = [...state.history, { 
@@ -468,7 +462,6 @@
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
             
-            // Generate notification with ID for timeout
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
@@ -521,7 +514,14 @@
             addLogEntry(`CARDIAC ARREST - ${newRhythm}`, 'manual');
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
-        const triggerROSC = () => { dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 90, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 6, pupils: 3 } }); dispatch({ type: 'UPDATE_RHYTHM', payload: 'Sinus Rhythm' }); const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); addLogEntry('ROSC achieved.', 'success'); dispatch({ type: 'SET_FLASH', payload: 'green' }); };
+        const triggerROSC = (rhythm = 'Sinus Rhythm') => { 
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 80, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 8, pupils: 3 } }); 
+            dispatch({ type: 'UPDATE_RHYTHM', payload: rhythm }); 
+            const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; 
+            dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); 
+            addLogEntry(`ROSC achieved (${rhythm}).`, 'success'); 
+            dispatch({ type: 'SET_FLASH', payload: 'green' }); 
+        };
         const revealInvestigation = (type) => { 
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type }); 
             setTimeout(() => { 
@@ -581,14 +581,14 @@
             } else {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                const lfo = ctx.createOscillator(); // LFO for breathing pattern
+                const lfo = ctx.createOscillator(); 
                 const lfoGain = ctx.createGain();
                 
                 if (type === 'Wheeze') {
                     osc.type = 'triangle';
                     osc.frequency.value = 400;
-                    lfo.frequency.value = 0.25; // 15 breaths/min
-                    lfoGain.gain.value = 200; // Modulate pitch
+                    lfo.frequency.value = 0.25; 
+                    lfoGain.gain.value = 200; 
                 } else if (type === 'Stridor') {
                     osc.type = 'sawtooth';
                     osc.frequency.value = 600;
