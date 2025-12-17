@@ -6,16 +6,18 @@
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak } = sim; 
 
-        const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends } = state;
+        const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
-        const [speechText, setSpeechText] = useState(""); 
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
         
+        // ETCO2 Shape Control
+        const [etco2Shape, setEtco2Shape] = useState("normal"); // normal, bronchospastic
+
         const [showRhythmModal, setShowRhythmModal] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
@@ -23,6 +25,7 @@
         const RHYTHMS = ["Sinus Rhythm", "Sinus Tachycardia", "Sinus Bradycardia", "AF", "Atrial Flutter", "SVT", "VT", "VF", "PEA", "Asystole", "1st Deg Heart Block", "Complete Heart Block"];
         const ARREST_RHYTHMS = ["VF", "pVT", "PEA", "Asystole"];
         const ROSC_RHYTHMS = ["Sinus Rhythm", "Sinus Tachycardia", "Sinus Bradycardia", "AF", "SVT"];
+        const VOICE_PHRASES = ["My chest hurts", "I can't breathe", "I feel sick", "Who are you?", "My tummy hurts", "I feel dizzy", "Am I going to die?", "Yes", "No", "I'm thirsty", "Where am I?", "Please help me"];
 
         const [showToast, setShowToast] = useState(false);
         useEffect(() => {
@@ -35,6 +38,9 @@
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         
+        // Logic to hide traces if no monitoring applied
+        const isMonitoringApplied = activeInterventions.has('Obs'); 
+
         const getInterventionsByCat = (cat) => {
             let keys = [];
             if (cat === 'Common') keys = ['Obs', 'Oxygen', 'IV Access', 'Fluids', 'Analgesia', 'Antiemetic', 'Antibiotics', 'Nebs', 'AdrenalineIM', 'Blood', 'TXA', 'ArtLine']; 
@@ -92,7 +98,7 @@
                         <div className="relative">
                             <Button variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="h-8 px-4 font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST</Button>
                             {showArrestMenu && (
-                                <div className="absolute top-10 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-40 flex flex-col p-1">
+                                <div className="absolute top-10 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-40 flex flex-col p-1 z-50">
                                     {ARREST_RHYTHMS.map(r => (
                                         <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
                                     ))}
@@ -104,7 +110,7 @@
                         <div className="relative">
                             <Button variant="success" onClick={()=>setShowROSCMenu(!showROSCMenu)} className="h-8 px-4 font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC</Button>
                             {showROSCMenu && (
-                                <div className="absolute top-10 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-40 flex flex-col p-1">
+                                <div className="absolute top-10 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-40 flex flex-col p-1 z-50">
                                     {ROSC_RHYTHMS.map(r => (
                                         <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
                                     ))}
@@ -120,6 +126,7 @@
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
+                    {/* LEFT COL */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                          <div className="bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
@@ -139,7 +146,13 @@
                              )}
                              
                              <div className="relative">
-                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={true} className="h-24"/>
+                                 {/* Only show traces if monitoring is applied */}
+                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} co2Pathology={etco2Shape} className="h-24"/>
+                                 {!isMonitoringApplied && (
+                                     <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">
+                                         No Monitoring
+                                     </div>
+                                 )}
                                  <button onClick={()=>setShowRhythmModal(true)} className="absolute top-1 right-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded z-30 font-bold uppercase tracking-wider backdrop-blur-sm">Change Rhythm</button>
                              </div>
 
@@ -178,49 +191,73 @@
                         )}
                     </div>
                     
+                    {/* RIGHT COL */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
+                        
+                        {/* SEARCH / LOG BAR - Moved to Top */}
+                        <div className="bg-slate-900 p-2 border-b border-slate-700 flex gap-2">
+                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 h-9 text-sm flex-1 text-white focus:border-sky-500 outline-none" placeholder="Search Actions / Log Note..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-9 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-9 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button>
+                        </div>
+
+                        {/* TABS */}
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
-                             {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
+                             {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures', 'Voice'].map(cat => (
                                  <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>
                              ))}
                         </div>
                         
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
-                            {scenario.recommendedActions && (
-                                <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
-                                    <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
-                                    <div className="flex flex-wrap gap-1">
-                                        {scenario.recommendedActions.map(key => {
-                                            const action = INTERVENTIONS[key];
-                                            const count = interventionCounts[key] || 0;
-                                            const isActive = activeInterventions.has(key);
-                                            const isUsed = count > 0 || isActive;
-                                            return (
-                                                <Button key={key} onClick={() => applyIntervention(key)} variant={isUsed ? "success" : "outline"} className="h-6 text-[10px] px-2 transition-colors duration-200">
-                                                    {action?.label || key} {count > 0 && <span className="ml-1 bg-white/20 px-1 rounded-full font-bold">{count}</span>}
-                                                </Button>
-                                            );
-                                        })}
+                            {/* VOICE TAB CONTENT */}
+                            {activeTab === 'Voice' ? (
+                                <div className="space-y-4">
+                                    <div className="bg-slate-900 p-3 rounded border border-slate-700">
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="settings" className="w-3 h-3"/> Audio Settings</h3>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-sm text-white">Output:</span>
+                                            <div className="flex bg-slate-800 rounded overflow-hidden border border-slate-600">
+                                                {['controller', 'monitor', 'both'].map(opt => (
+                                                    <button key={opt} onClick={() => sim.dispatch({type: 'SET_AUDIO_OUTPUT', payload: opt})} className={`px-3 py-1 text-xs uppercase font-bold ${audioOutput === opt ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>{opt}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                        {VOICE_PHRASES.map(phrase => (
+                                            <Button key={phrase} onClick={() => speak(phrase)} variant="secondary" className="h-12 text-sm normal-case justify-start px-4 text-left border border-slate-600 bg-slate-800">
+                                                <Lucide icon="message-square" className="w-4 h-4 mr-2 opacity-50"/> "{phrase}"
+                                            </Button>
+                                        ))}
                                     </div>
                                 </div>
+                            ) : (
+                                <>
+                                    {scenario.recommendedActions && (
+                                        <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
+                                            <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
+                                            <div className="flex flex-wrap gap-1">
+                                                {scenario.recommendedActions.map(key => {
+                                                    const action = INTERVENTIONS[key];
+                                                    const count = interventionCounts[key] || 0;
+                                                    const isActive = activeInterventions.has(key);
+                                                    const isUsed = count > 0 || isActive;
+                                                    return (
+                                                        <Button key={key} onClick={() => applyIntervention(key)} variant={isUsed ? "success" : "outline"} className="h-6 text-[10px] px-2 transition-colors duration-200">
+                                                            {action?.label || key} {count > 0 && <span className="ml-1 bg-white/20 px-1 rounded-full font-bold">{count}</span>}
+                                                        </Button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                        {getInterventionsByCat(activeTab).map(key => renderActionBtn(key))}
+                                    </div>
+                                </>
                             )}
-
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                {getInterventionsByCat(activeTab).map(key => renderActionBtn(key))}
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-900 p-2 border-t border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-2">
-                             <div className="flex gap-2">
-                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search / Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button>
-                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button>
-                             </div>
-                             
-                             <div className="flex gap-2">
-                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Text to Speech..." value={speechText} onChange={e=>setSpeechText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (speak(speechText) || setSpeechText(""))} />
-                                <Button onClick={() => { speak(speechText); setSpeechText(""); }} className="h-8 text-xs px-2 bg-slate-700 border border-slate-500"><Lucide icon="mic" className="w-3 h-3 mr-1"/> Speak</Button>
-                             </div>
                         </div>
                     </div>
                 </div>
@@ -232,6 +269,18 @@
                             <div className="space-y-4">
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Target</label><input type="number" value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
+                                
+                                {/* ETCO2 WAVEFORM SELECTOR */}
+                                {modalVital === 'etco2' && (
+                                    <div>
+                                        <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Waveform Shape</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button onClick={()=>setEtco2Shape('normal')} className={`p-2 rounded border text-xs font-bold ${etco2Shape==='normal' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Normal</button>
+                                            <button onClick={()=>setEtco2Shape('bronchospastic')} className={`p-2 rounded border text-xs font-bold ${etco2Shape==='bronchospastic' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Obstructive</button>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-4 gap-1 mt-2">
                                     {[0, 30, 120, 300].map(d => <button key={d} onClick={()=>setTrendDuration(d)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===d ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{d}s</button>)}
                                 </div>
