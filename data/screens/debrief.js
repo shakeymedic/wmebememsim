@@ -10,7 +10,6 @@
         
         const [instructorNotes, setInstructorNotes] = useState("");
 
-        // Request 8: Calculate Performance Metrics
         const startTime = log.find(l => l.msg === "Simulation Started")?.timeSeconds || 0;
         
         const getFirstTime = (searchTerms) => {
@@ -29,17 +28,19 @@
             cprCycles: Math.floor(state.cycleTimer / 120) 
         };
 
-        // Request 7: Chart with Observations AND Interventions
         useEffect(() => { 
-            if (!chartRef.current || !history.length) return; 
+            if (!chartRef.current || !history || history.length === 0) return; 
             if (!window.Chart) return;
             const ctx = chartRef.current.getContext('2d'); 
             if (window.myChart) window.myChart.destroy(); 
             
+            // Format labels from seconds to MM:SS
+            const labels = history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`);
+            
             window.myChart = new window.Chart(ctx, { 
                 type: 'line', 
                 data: { 
-                    labels: history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`), 
+                    labels: labels, 
                     datasets: [ 
                         { label: 'HR (bpm)', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' }, 
                         { label: 'Sys BP (mmHg)', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
@@ -48,7 +49,8 @@
                             label: 'Interventions',
                             type: 'scatter',
                             data: history.map(h => {
-                                const hasAction = log.some(l => (l.type === 'action' || l.type === 'manual') && Math.abs(l.timeSeconds - h.time) <= 4);
+                                // Find if any action happened near this time point (within 5 seconds)
+                                const hasAction = log.some(l => (l.type === 'action' || l.type === 'manual') && Math.abs(l.timeSeconds - h.time) <= 2);
                                 return hasAction ? h.hr : null; 
                             }),
                             backgroundColor: 'white',
@@ -64,7 +66,7 @@
                     responsive: true, 
                     maintainAspectRatio: false, 
                     scales: { 
-                        y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'HR / BP'} },
+                        y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'HR / BP'}, min: 0, max: 250 },
                         y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false}, title: {display: true, text: 'SpO2'} }
                     },
                     interaction: { intersect: false, mode: 'index' },
@@ -131,7 +133,6 @@
                         </div>
                     </Card>
 
-                    {/* Request 8: Metrics */}
                     <Card title="Performance Metrics" icon="zap" className="md:col-span-1 border-sky-500/50">
                         <div className="p-4 grid grid-cols-1 gap-4 text-sm">
                             <div className="flex justify-between border-b border-slate-700 pb-1"><span>Total Duration</span><span className="font-mono font-bold text-white">{metrics.duration}</span></div>
@@ -160,7 +161,6 @@
                     </div>
                 </Card>
 
-                {/* Request 8: Timeline */}
                 <Card title="Action Timeline" icon="clock">
                     <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
                         {log.map((l, i) => (
