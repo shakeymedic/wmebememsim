@@ -4,18 +4,22 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
-        // Removed 'trends' from here
-const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend } = sim; 
+        // Added speak to destructured sim
+        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak } = sim; 
 
-// Added 'trends' here
-const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends } = state;
-        // Tabs - "Continuous Sounds" removed
+        const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends } = state;
+        
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
+        const [speechText, setSpeechText] = useState(""); // State for TTS
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
+        
+        // Modal for Rhythm Selection
+        const [showRhythmModal, setShowRhythmModal] = useState(false);
+        const RHYTHMS = ["Sinus Rhythm", "Sinus Tachycardia", "Sinus Bradycardia", "AF", "Atrial Flutter", "SVT", "VT", "VF", "PEA", "Asystole", "1st Deg Heart Block", "Complete Heart Block"];
 
         const [showToast, setShowToast] = useState(false);
         useEffect(() => {
@@ -66,7 +70,6 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
             setModalVital(null); 
         };
 
-        // Request 10: Loading bar logic
         const trendProp = trends.active ? { active: true, progress: trends.elapsed / trends.duration } : null;
 
         return (
@@ -85,14 +88,18 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                         {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                         <Button variant="danger" onClick={() => { if(window.confirm("End scenario?")) onFinish(); }} className="h-8 px-4 font-bold border border-red-500 bg-red-900/50 hover:bg-red-800"><Lucide icon="square" className="fill-current"/> FINISH</Button>
                     </div>
-                    <div className="font-mono text-2xl font-bold text-white">{formatTime(time)}</div>
+                    {/* Monitor Launch Button */}
+                    <div className="flex items-center gap-4">
+                        <Button variant="outline" onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank')} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
+                        <div className="font-mono text-2xl font-bold text-white">{formatTime(time)}</div>
+                    </div>
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     {/* LEFT COLUMN: Patient Info, Obs, Defib */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
                         
-                         {/* Request 9: Patient Details Box */}
+                         {/* Patient Details Box */}
                          <div className="bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -103,7 +110,7 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                             </div>
                          </div>
 
-                        {/* Request 10: Obs Controller (with loading bar) */}
+                        {/* Obs Controller (with Rhythm Button) */}
                         <div className="bg-black border border-slate-800 rounded relative overflow-hidden">
                              {/* Global Trend Loading Bar */}
                              {trends.active && (
@@ -112,16 +119,26 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                                  </div>
                              )}
                              
-                             <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={true} className="h-24"/>
+                             <div className="relative">
+                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={true} className="h-24"/>
+                                 {/* RHYTHM CONTROL OVERLAY BUTTON */}
+                                 <button onClick={()=>setShowRhythmModal(true)} className="absolute top-1 right-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded z-30 font-bold uppercase tracking-wider backdrop-blur-sm">Change Rhythm</button>
+                             </div>
+
                              <div className="grid grid-cols-2 gap-1 p-1 bg-black">
                                  <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={trendProp} />
                                  <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={trendProp} />
                                  <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={trendProp} />
                                  <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={trendProp} />
+                                 {/* RESTORED EXTRA OBS */}
+                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={trendProp} />
+                                 <VitalDisplay label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={trendProp} />
+                                 <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={trendProp} />
+                                 <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={trendProp} />
                              </div>
                         </div>
 
-                        {/* Request 4: Defib Controls - Minimized Logic */}
+                        {/* Defib Controls */}
                         {arrestPanelOpen && (
                              <div className="bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
@@ -147,7 +164,6 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                     
                     {/* RIGHT COLUMN: Interventions */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
-                        {/* Request 3 & 5: Waveform and Continuous Sounds REMOVED */}
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
                              {['Common', 'Airway', 'Breathing', 'Circulation', 'Drugs', 'Procedures'].map(cat => (
                                  <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{cat}</button>
@@ -155,7 +171,7 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                         </div>
                         
                         <div className="flex-1 p-2 overflow-y-auto bg-slate-800 relative">
-                            {/* Request 6: Recommended Actions - Green Flash & Counts */}
+                            {/* Recommended Actions */}
                             {scenario.recommendedActions && (
                                 <div className="mb-2 p-2 bg-sky-900/20 border border-sky-600/30 rounded">
                                     <h4 className="text-[10px] font-bold text-sky-400 uppercase mb-1">Recommended Actions</h4>
@@ -181,14 +197,25 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                             </div>
                         </div>
 
-                        <div className="bg-slate-900 p-2 border-t border-slate-700 flex gap-2">
-                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search / Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button>
-                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button>
+                        {/* Bottom Bar: Log, Speech, Trends */}
+                        <div className="bg-slate-900 p-2 border-t border-slate-700 grid grid-cols-1 md:grid-cols-2 gap-2">
+                             {/* Log Input */}
+                             <div className="flex gap-2">
+                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Search / Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-8 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100">Improve</Button>
+                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-8 text-xs px-2 bg-red-900 border border-red-500 text-red-100">Worsen</Button>
+                             </div>
+                             
+                             {/* Speech / TTS Input */}
+                             <div className="flex gap-2">
+                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-3 text-xs flex-1 text-white" placeholder="Text to Speech..." value={speechText} onChange={e=>setSpeechText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (speak(speechText) || setSpeechText(""))} />
+                                <Button onClick={() => { speak(speechText); setSpeechText(""); }} className="h-8 text-xs px-2 bg-slate-700 border border-slate-500"><Lucide icon="mic" className="w-3 h-3 mr-1"/> Speak</Button>
+                             </div>
                         </div>
                     </div>
                 </div>
 
+                {/* Vital Control Modal */}
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
@@ -202,6 +229,23 @@ const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, inte
                                 <Button onClick={confirmVitalUpdate} variant="success" className="w-full mt-4 h-12 text-lg font-bold">CONFIRM</Button>
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Rhythm Selection Modal */}
+                {showRhythmModal && (
+                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl">
+                            <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Select Rhythm</h3>
+                            <div className="grid grid-cols-3 gap-2">
+                                {RHYTHMS.map(r => (
+                                    <button key={r} onClick={() => { sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); addLogEntry(`Rhythm changed to ${r}`, 'manual'); setShowRhythmModal(false); }} className={`p-3 text-sm font-bold rounded border ${state.rhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
+                                        {r}
+                                    </button>
+                                ))}
+                            </div>
+                            <Button onClick={()=>setShowRhythmModal(false)} variant="outline" className="w-full mt-4">Cancel</Button>
                         </div>
                     </div>
                 )}
