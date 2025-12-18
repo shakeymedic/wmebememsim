@@ -31,8 +31,10 @@
 
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
 
+        const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
+
         return (
-            <div className={`h-full w-full flex flex-col bg-black text-white p-2 md:p-4 transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative`}>
+            <div className={`h-full w-full flex bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 {/* TOAST NOTIFICATION */}
@@ -46,48 +48,66 @@
                 {/* --- DEFIB FRAME --- */}
                 {defibOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
-                         <div className="absolute top-4 right-4 z-[110]">
-                            <Button onClick={() => {setDefibOpen(false); sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})}} variant="destructive" className="h-10 text-sm uppercase font-bold shadow-xl border border-white/20">Close Defib</Button>
-                        </div>
                         <iframe id="defib-frame" src="defib/index.html" className="w-full h-full border-0 bg-slate-900" title="Defibrillator" />
                     </div>
                 )}
 
-                {/* --- MAIN LAYOUT --- */}
-                <div className="flex-grow relative border border-slate-800 rounded mb-2 overflow-hidden flex flex-col">
-                    {!defibOpen && (
-                        <div className="absolute top-2 right-2 z-30">
-                            <Button onClick={() => {setDefibOpen(true); sim.dispatch({type: 'SET_ARREST_PANEL', payload: true})}} variant="destructive" className="h-8 text-[10px] uppercase font-bold shadow-xl border border-white/20 opacity-60 hover:opacity-100 transition-opacity">Open Defib</Button>
-                        </div>
-                    )}
-
-                    {hasMonitoring ? (
-                        <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-slate-600 font-mono text-xl">NO SENSOR DETECTED</div>
-                    )}
-                </div>
-
-                <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
-                    <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                    
-                    {/* BP DISPLAY WITH CONTROLS */}
-                    <div className="relative h-full">
-                        <VitalDisplay label="ABP/NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                        {hasMonitoring && (
-                            <div className="absolute bottom-2 right-2 flex gap-1 z-20">
-                                <button onClick={triggerNIBP} className="bg-slate-700 hover:bg-slate-600 text-white text-[10px] px-2 py-1 rounded border border-slate-500 uppercase font-bold tracking-wide">{nibp.inflating ? 'Inflating...' : 'Cycle'}</button>
-                                <button onClick={toggleNIBPMode} className={`text-[10px] px-2 py-1 rounded border uppercase font-bold tracking-wide ${nibp.mode === 'auto' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
-                            </div>
+                {/* --- MAIN MONITOR LAYOUT --- */}
+                <div className="flex-grow flex flex-col p-2 md:p-4 gap-2 h-full">
+                    <div className="flex-grow relative border border-slate-800 rounded overflow-hidden flex flex-col">
+                        {hasMonitoring ? (
+                            <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
+                        ) : (
+                            <div className="flex items-center justify-center h-full text-slate-600 font-mono text-xl">NO SENSOR DETECTED</div>
                         )}
                     </div>
 
-                    <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                    <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
+                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        
+                        {/* BP DISPLAY WITH CONTROLS */}
+                        <div className="relative h-full">
+                            <VitalDisplay label="ABP/NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                            {hasMonitoring && (
+                                <div className="absolute bottom-2 right-2 flex gap-1 z-20">
+                                    <button onClick={triggerNIBP} className="bg-slate-700 hover:bg-slate-600 text-white text-[10px] px-2 py-1 rounded border border-slate-500 uppercase font-bold tracking-wide">{nibp.inflating ? 'Inflating...' : 'Cycle'}</button>
+                                    <button onClick={toggleNIBPMode} className={`text-[10px] px-2 py-1 rounded border uppercase font-bold tracking-wide ${nibp.mode === 'auto' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
+                                </div>
+                            )}
+                        </div>
+
+                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                    </div>
                 </div>
+
+                {/* --- WETFLAG SIDEBAR (PAEDS) --- */}
+                {isPaeds && scenario.wetflag && (
+                    <div className="w-48 bg-slate-900 border-l border-slate-700 p-2 flex flex-col gap-2 shadow-2xl z-40">
+                         <div className="bg-purple-900/20 border border-purple-500/50 p-2 rounded mb-2">
+                             <h3 className="text-purple-400 font-bold text-center text-sm">WETFLAG</h3>
+                             <div className="text-center text-white font-mono text-xl font-bold">{scenario.wetflag.weight}kg</div>
+                         </div>
+                         <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
+                             <WetFlagItem label="Energy" value={`${scenario.wetflag.energy}J`} />
+                             <WetFlagItem label="Tube" value={scenario.wetflag.tube} />
+                             <WetFlagItem label="Fluids" value={`${scenario.wetflag.fluids}ml`} />
+                             <WetFlagItem label="Loraz" value={`${scenario.wetflag.lorazepam}mg`} />
+                             <WetFlagItem label="Adren" value={`${scenario.wetflag.adrenaline}mcg`} />
+                             <WetFlagItem label="Gluc" value={`${scenario.wetflag.glucose}ml`} />
+                         </div>
+                    </div>
+                )}
             </div>
         );
     };
+
+    const WetFlagItem = ({label, value}) => (
+        <div className="bg-slate-800 p-2 rounded flex flex-col items-center justify-center">
+            <span className="text-[10px] text-slate-500 uppercase font-bold">{label}</span>
+            <span className="font-mono text-lg font-bold text-white">{value}</span>
+        </div>
+    );
 
     const MonitorContainer = ({ sessionID }) => { 
         const { Lucide } = window;
