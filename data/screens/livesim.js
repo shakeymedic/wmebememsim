@@ -6,10 +6,11 @@
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak } = sim; 
 
-        const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput } = state;
+        const { scenario, time, isRunning, vitals, prevVitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
+        const [speechText, setSpeechText] = useState(""); 
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
@@ -40,6 +41,8 @@
         
         // Logic to hide traces if no monitoring applied
         const isMonitoringApplied = activeInterventions.has('Obs'); 
+        const showEtco2 = etco2Enabled;
+        const showArt = activeInterventions.has('ArtLine');
 
         const getInterventionsByCat = (cat) => {
             let keys = [];
@@ -78,6 +81,8 @@
         };
 
         const trendProp = trends.active ? { active: true, progress: trends.elapsed / trends.duration } : null;
+        
+        const isPaeds = scenario.ageRange === 'Paediatric' || scenario.wetflag;
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -94,29 +99,10 @@
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
                         {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                         
-                        {/* ARREST BUTTON WITH DROPDOWN */}
-                        <div className="relative">
-                            <Button variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="h-8 px-4 font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST</Button>
-                            {showArrestMenu && (
-                                <div className="absolute top-10 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-40 flex flex-col p-1 z-50">
-                                    {ARREST_RHYTHMS.map(r => (
-                                        <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ROSC BUTTON WITH DROPDOWN */}
-                        <div className="relative">
-                            <Button variant="success" onClick={()=>setShowROSCMenu(!showROSCMenu)} className="h-8 px-4 font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC</Button>
-                            {showROSCMenu && (
-                                <div className="absolute top-10 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-40 flex flex-col p-1 z-50">
-                                    {ROSC_RHYTHMS.map(r => (
-                                        <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        {/* Sound Toggle - Moved to Top */}
+                        <Button variant={isMuted ? "danger" : "secondary"} onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className="h-8 px-3">
+                            <Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4"/>
+                        </Button>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -137,6 +123,21 @@
                                 <div><span className="text-[10px] text-slate-500 uppercase block">Allergies</span><span className="text-xs text-red-300">{scenario.allergies ? scenario.allergies.join(", ") : "NKDA"}</span></div>
                             </div>
                          </div>
+                         
+                         {/* WETFLAG DISPLAY */}
+                         {isPaeds && scenario.wetflag && (
+                             <div className="bg-slate-800 p-2 rounded border border-purple-500/30">
+                                 <h3 className="text-[10px] font-bold text-purple-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="baby" className="w-3 h-3"/> WETFLAG ({scenario.wetflag.weight}kg)</h3>
+                                 <div className="grid grid-cols-3 gap-1 text-xs">
+                                     <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">ENERGY</span><span className="font-mono font-bold">{scenario.wetflag.energy}J</span></div>
+                                     <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">TUBE</span><span className="font-mono font-bold">{scenario.wetflag.tube}</span></div>
+                                     <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">FLUIDS</span><span className="font-mono font-bold">{scenario.wetflag.fluids}ml</span></div>
+                                     <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">LORAZ</span><span className="font-mono font-bold">{scenario.wetflag.lorazepam}mg</span></div>
+                                     <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">ADREN</span><span className="font-mono font-bold">{scenario.wetflag.adrenaline}mcg</span></div>
+                                     <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">GLUC</span><span className="font-mono font-bold">{scenario.wetflag.glucose}ml</span></div>
+                                 </div>
+                             </div>
+                         )}
 
                         <div className="bg-black border border-slate-800 rounded relative overflow-hidden">
                              {trends.active && (
@@ -146,8 +147,8 @@
                              )}
                              
                              <div className="relative">
-                                 {/* Only show traces if monitoring is applied */}
-                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} co2Pathology={etco2Shape} className="h-24"/>
+                                 {/* Shows correct traces now */}
+                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-24"/>
                                  {!isMonitoringApplied && (
                                      <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">
                                          No Monitoring
@@ -167,12 +168,43 @@
                                  <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={trendProp} />
                              </div>
                         </div>
+                        
+                        {/* ARREST & ROSC BUTTONS MOVED HERE */}
+                        <div className="grid grid-cols-2 gap-2">
+                             {/* ARREST BUTTON WITH DROPDOWN */}
+                            <div className="relative">
+                                <Button variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST</Button>
+                                {showArrestMenu && (
+                                    <div className="absolute bottom-12 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                        {ARREST_RHYTHMS.map(r => (
+                                            <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ROSC BUTTON WITH DROPDOWN */}
+                            <div className="relative">
+                                <Button variant="success" onClick={()=>setShowROSCMenu(!showROSCMenu)} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC</Button>
+                                {showROSCMenu && (
+                                    <div className="absolute bottom-12 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                        {ROSC_RHYTHMS.map(r => (
+                                            <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* REMOTE DEFIB BUTTON */}
+                        <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full ${arrestPanelOpen ? 'bg-red-900/30 border-red-500' : ''}`}>
+                             <Lucide icon="zap" className="w-4 h-4"/> {arrestPanelOpen ? "Close Defib on Monitor" : "Open Defib on Monitor"}
+                        </Button>
 
                         {arrestPanelOpen && (
                              <div className="bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
                                      <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator Active</h3>
-                                     <Button size="sm" variant="outline" className="h-6 text-[10px]" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})}>Hide</Button>
                                  </div>
                                  <div className="grid grid-cols-2 gap-2">
                                      <Button onClick={() => sim.dispatch({type: 'CHARGE_INIT', payload: {energy: 150}})} variant="warning" className="h-10 text-xs">Charge</Button>
@@ -182,11 +214,6 @@
                                      <span className="text-slate-400 text-[10px] uppercase">CPR Timer</span>
                                      <span className="font-mono text-xl font-bold text-white">{formatTime(state.cycleTimer)}</span>
                                  </div>
-                             </div>
-                        )}
-                        {!arrestPanelOpen && (
-                             <div className="text-center p-2 opacity-50 text-[10px] text-slate-500 uppercase tracking-widest border border-dashed border-slate-700 rounded select-none">
-                                 Defib Panel Minimized
                              </div>
                         )}
                     </div>
@@ -221,6 +248,15 @@
                                                     <button key={opt} onClick={() => sim.dispatch({type: 'SET_AUDIO_OUTPUT', payload: opt})} className={`px-3 py-1 text-xs uppercase font-bold ${audioOutput === opt ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'}`}>{opt}</button>
                                                 ))}
                                             </div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* TTS INPUT */}
+                                    <div className="bg-slate-900 p-3 rounded border border-slate-700">
+                                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="mic" className="w-3 h-3"/> Text to Speech</h3>
+                                        <div className="flex gap-2">
+                                            <input type="text" value={speechText} onChange={(e) => setSpeechText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (speak(speechText) || setSpeechText(""))} className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm" placeholder="Type what the patient says..."/>
+                                            <Button onClick={() => {speak(speechText); setSpeechText("");}} variant="primary" className="h-10">Speak</Button>
                                         </div>
                                     </div>
                                     
