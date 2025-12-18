@@ -1,4 +1,15 @@
+{
+type: uploaded file
+fileName: shakeymedic/wmebememsim/wmebememsim-50b771d71ae134485d013db7ad403c8741ca0f07/data/scenarios.js
+fullContent:
 // data/scenarios.js
+// RAW_SCENARIOS is assumed to be defined before this script or concatenated. 
+// However, based on the previous file content, the full array was there. 
+// I will just override the processScenarios function to include the investigation logic.
+
+// RE-INJECTING THE RAW SCENARIOS IS NECESSARY IF THIS FILE REPLACES THE PREVIOUS ONE COMPLETELY.
+// I WILL INCLUDE THE FULL CONTENT TO BE SAFE.
+
 window.RAW_SCENARIOS = [
   { id: 'AM001', title: 'Acute STEMI', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(45, 75), patientProfileTemplate: "A {age}-year-old {sex}. Crushing chest pain > 1 hr.", presentingComplaint: 'Chest Pain', instructorBrief: { progression: "Classic STEMI. Risk of VF.", interventions: ["PPCI", "Aspirin", "Ticagrelor/Clopidogrel", "Heparin"], learningObjectives: ["Identify STEMI", "Manage ACS"] }, vitalsMod: { hr: 95, bpSys: 145, spO2: 96 }, deterioration: { active: true, rate: 0.05, type: 'cardiac' }, ecg: { type: "STEMI", findings: "Anterior ST Elevation" }, recommendedActions: ['Obs', 'IV Access', 'Aspirin', 'Clopidogrel', 'GTN', 'Analgesia', 'Oxygen'] },
       { id: 'AM002', title: 'Severe Sepsis (Pneumonia)', category: 'Medical', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(60, 90), patientProfileTemplate: "A {age}-year-old. Productive cough, confusion, fever.", presentingComplaint: 'Confusion & Fever', instructorBrief: { progression: "Septic shock. Needs Sepsis 6.", interventions: ["Oxygen", "Fluids", "Antibiotics"], learningObjectives: ["Sepsis 6", "Fluid Resus"] }, vitalsMod: { hr: 125, bpSys: 85, spO2: 88, temp: 39.2 }, deterioration: { active: true, rate: 0.1, type: 'shock' }, ecg: { type: "Sinus Tachy", findings: "Sinus Tachycardia" }, recommendedActions: ['Obs', 'IV Access', 'Oxygen', 'Fluids', 'Antibiotics'] },
@@ -179,8 +190,12 @@ window.RAW_SCENARIOS = [
     { id: 'CA_O04', title: 'Obstetric - Asystole', category: 'Cardiac Arrest', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), patientProfileTemplate: "Pregnant. Eclamptic seizure then arrest.", presentingComplaint: 'Maternal Arrest', instructorBrief: { progression: "Hypoxia/Intracranial bleed.", interventions: ["CPR", "Airway", "Hysterotomy"], learningObjectives: ["Eclampsia arrest"] }, vitalsMod: { hr: 0, bpSys: 0, spO2: 0, gcs: 3 }, deterioration: { active: false }, ecg: { type: "Asystole", findings: "Asystole" }, recommendedActions: ['Obs', 'CPR', 'Hysterotomy', 'MagSulph'] },
     { id: 'CA_O05', title: 'Obstetric - Traumatic Arrest', category: 'Cardiac Arrest', ageRange: 'Adult', acuity: 'Resus', ageGenerator: () => getRandomInt(20, 40), patientProfileTemplate: "Pregnant (34 weeks). RTC steering wheel injury.", presentingComplaint: 'Traumatic Maternal Arrest', instructorBrief: { progression: "Uterine rupture/Splenic rupture.", interventions: ["Hysterotomy", "Massive Transfusion"], learningObjectives: ["Trauma in pregnancy"] }, vitalsMod: { hr: 0, bpSys: 0, spO2: 0, gcs: 3 }, deterioration: { active: false }, ecg: { type: "PEA", findings: "PEA" }, recommendedActions: ['Obs', 'CPR', 'Blood', 'Hysterotomy'] },
     ];
+
 window.processScenarios = () => {
-    return window.RAW_SCENARIOS.map(s => {
+    const scenarios = window.RAW_SCENARIOS || [];
+    const { generateUrine, generatePocus, generateCT } = window; // Ensure these are available
+
+    return scenarios.map(s => {
         let kit = ['Monitoring', 'IV Access'];
         let links = [];
 
@@ -202,7 +217,6 @@ window.processScenarios = () => {
         if (s.category === 'Obstetrics & Gynae') links.push({ label: 'RCOG Guidelines', url: 'https://www.rcog.org.uk/guidance/browse-all-guidance/' });
 
         // --- FIX: Auto-Correct Clinical Keys ---
-        // This ensures buttons in the Live Sim match the logic in interventions.js
         const mapKeys = (list) => list ? list.map(item => {
             if (item === 'Adrenaline') return (s.acuity === 'Resus' && !s.title.includes('Anaphylaxis')) ? 'AdrenalineIV' : 'AdrenalineIM';
             if (item === 'Magnesium') return 'MagSulph';
@@ -213,6 +227,42 @@ window.processScenarios = () => {
 
         const safeRecommended = mapKeys(s.recommendedActions || []);
         const safeStabilisers = mapKeys(s.stabilisers || []);
+
+        // --- INTELLIGENT INVESTIGATIONS GENERATION ---
+        let baseUrine = "normal";
+        if (s.title.includes("Sepsis") || s.title.includes("UTI") || s.title.includes("Pyelo")) baseUrine = "uti";
+        if (s.title.includes("DKA") || s.title.includes("HHS")) baseUrine = "dka";
+        if (s.title.includes("Rhabdo")) baseUrine = "rhabdo";
+        if (s.category === 'Obstetrics & Gynae' || s.title.includes("Ectopic")) baseUrine = "pregnancy";
+
+        let basePocus = "normal";
+        if (s.title.includes("Tamponade")) basePocus = "tamponade";
+        if (s.title.includes("Pneumothorax") || s.title.includes("Stab")) basePocus = "pneumothorax";
+        if (s.title.includes("Oedema") || s.title.includes("Failure")) basePocus = "pulmonary_oedema";
+        if (s.title.includes("AAA")) basePocus = "ruptured_aaa";
+        if (s.title.includes("Ectopic")) basePocus = "ectopic";
+        if (s.title.includes("Embolism")) basePocus = "pe";
+
+        let baseCT = "normal";
+        if (s.title.includes("Subarachnoid")) baseCT = "sah";
+        if (s.title.includes("Stroke") && s.title.includes("Isch")) baseCT = "stroke_isch";
+        if (s.title.includes("Stroke") && !s.title.includes("Isch")) baseCT = "stroke_haem"; // Fallback
+        if (s.title.includes("Subdural")) baseCT = "subdural";
+        if (s.title.includes("Extradural") || (s.title.includes("Head") && s.category === 'Trauma')) baseCT = "extradural";
+        if (s.title.includes("Embolism")) baseCT = "pe";
+        if (s.title.includes("Dissection")) baseCT = "dissection";
+        if (s.title.includes("Pancreatitis")) baseCT = "pancreatitis";
+        if (s.title.includes("Perforation") || s.title.includes("Ischaemia")) baseCT = "perf";
+
+        // Override existing or generate new
+        const investigations = {
+            urine: s.urine || (generateUrine ? generateUrine(baseUrine) : { findings: "Normal" }),
+            pocus: s.pocus || (generatePocus ? generatePocus(basePocus) : { findings: "Normal" }),
+            ct: s.ct || (generateCT ? { findings: generateCT(baseCT) } : { findings: "No acute pathology." }),
+            ecg: s.ecg || { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm" },
+            chestXray: s.chestXray || { findings: "Lung fields clear. No cardiomegaly." },
+            vbg: s.vbgClinicalState ? null : { pH: 7.4, Lac: 1.0 } // Will be generated dynamic if state exists
+        };
 
         // --- Evolution Logic (Trends) ---
         let improved = { ...s, ...(s.evolution ? s.evolution.improved : {}) };
@@ -265,11 +315,12 @@ window.processScenarios = () => {
             stabilisers: safeStabilisers,       
             equipment: s.instructorBrief.equipment || kit, 
             learningLinks: s.learningLinks || links,
+            investigations: investigations, // ATTACH GENERATED INVESTIGATIONS
             evolution: { improved, deteriorated }
         };
     });
 };
 
-// THIS MUST BE AT THE END OF THE FILE
-// If this runs before the function above is defined, the app will break.
 window.ALL_SCENARIOS = window.processScenarios();
+
+}
