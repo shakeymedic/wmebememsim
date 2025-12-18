@@ -155,4 +155,3 @@ window.HUMAN_FACTOR_CHALLENGES = [
   { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
   { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
 ];
-}
