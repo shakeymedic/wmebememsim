@@ -5,7 +5,7 @@
     const MonitorScreen = ({ sim }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, trends } = state;
         const hasMonitoring = activeInterventions.has('Obs'); const hasArtLine = activeInterventions.has('ArtLine');
         
         const [audioEnabled, setAudioEnabled] = useState(false);
@@ -32,6 +32,8 @@
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
 
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
+        
+        const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration } : null;
 
         return (
             <div className={`h-full w-full flex bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
@@ -63,11 +65,11 @@
                     </div>
 
                     <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 h-auto md:h-[30vh]">
-                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} trend={getTrend('hr')} />
                         
                         {/* BP DISPLAY WITH CONTROLS */}
                         <div className="relative h-full">
-                            <VitalDisplay label="ABP/NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                            <VitalDisplay label="ABP/NIBP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} trend={getTrend('bpSys')} />
                             {hasMonitoring && (
                                 <div className="absolute bottom-2 right-2 flex gap-1 z-20">
                                     <button onClick={triggerNIBP} className="bg-slate-700 hover:bg-slate-600 text-white text-[10px] px-2 py-1 rounded border border-slate-500 uppercase font-bold tracking-wide">{nibp.inflating ? 'Inflating...' : 'Cycle'}</button>
@@ -76,8 +78,8 @@
                             )}
                         </div>
 
-                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} trend={getTrend('spO2')} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} trend={getTrend('rr')} />
                     </div>
                 </div>
 
