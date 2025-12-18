@@ -5,10 +5,11 @@
     const DebriefScreen = ({ sim, onRestart }) => {
         const { Button, Lucide, Card } = window;
         const { state } = sim; 
-        const { log, scenario, history, completedObjectives } = state; 
+        const { log, scenario, history, completedObjectives, assessments } = state; 
         const chartRef = useRef(null);
         
         const [instructorNotes, setInstructorNotes] = useState("");
+        const flaggedEvents = log.filter(l => l.flagged);
 
         const startTime = log.find(l => l.msg === "Simulation Started")?.timeSeconds || 0;
         
@@ -24,7 +25,6 @@
             timeToAdrenaline: getFirstTime(['Adrenaline', 'Epinephrine']),
             timeToDefib: getFirstTime(['Shock Delivered', 'Defib']),
             timeToIV: getFirstTime(['IV Access', 'Cannula']),
-            totalInterventions: state.activeInterventions.size,
             cprCycles: Math.floor(state.cycleTimer / 120) 
         };
 
@@ -34,7 +34,6 @@
             const ctx = chartRef.current.getContext('2d'); 
             if (window.myChart) window.myChart.destroy(); 
             
-            // Format labels from seconds to MM:SS
             const labels = history.map(h => `${Math.floor(h.time/60)}:${(h.time%60).toString().padStart(2,'0')}`);
             
             window.myChart = new window.Chart(ctx, { 
@@ -42,32 +41,16 @@
                 data: { 
                     labels: labels, 
                     datasets: [ 
-                        { label: 'HR (bpm)', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' }, 
-                        { label: 'Sys BP (mmHg)', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
-                        { label: 'SpO2 (%)', data: history.map(h => h.spo2), borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y1' },
-                        { 
-                            label: 'Interventions',
-                            type: 'scatter',
-                            data: history.map(h => {
-                                // Find if any action happened near this time point (within 5 seconds)
-                                const hasAction = log.some(l => (l.type === 'action' || l.type === 'manual') && Math.abs(l.timeSeconds - h.time) <= 2);
-                                return hasAction ? h.hr : null; 
-                            }),
-                            backgroundColor: 'white',
-                            borderColor: 'white',
-                            pointStyle: 'triangle',
-                            pointRadius: 6,
-                            showLine: false,
-                            yAxisID: 'y'
-                        }
+                        { label: 'HR', data: history.map(h => h.hr), borderColor: '#ef4444', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' }, 
+                        { label: 'Sys BP', data: history.map(h => h.bp), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
+                        { label: 'SpO2', data: history.map(h => h.spo2), borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y1' }
                     ] 
                 }, 
                 options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false, 
+                    responsive: true, maintainAspectRatio: false, 
                     scales: { 
-                        y: { type: 'linear', display: true, position: 'left', title: {display: true, text: 'HR / BP'}, min: 0, max: 250 },
-                        y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false}, title: {display: true, text: 'SpO2'} }
+                        y: { type: 'linear', display: true, position: 'left', min: 0, max: 250 },
+                        y1: { type: 'linear', display: true, position: 'right', min: 0, max: 100, grid: {drawOnChartArea: false} }
                     },
                     interaction: { intersect: false, mode: 'index' },
                     plugins: { legend: { labels: { color: '#cbd5e1' } } }
@@ -82,27 +65,29 @@
             doc.setFontSize(16); doc.text(`Simulation Debrief: ${scenario.title}`, 10, 10); 
             doc.setFontSize(12); doc.text(`Date: ${new Date().toLocaleDateString()}`, 10, 20);
             
+            let y = 40;
+            // Add Assessments
+            if (assessments) {
+                doc.setFontSize(14); doc.text("Instructor Assessment", 10, y); y += 10;
+                doc.setFontSize(10);
+                Object.entries(assessments).forEach(([skill, res]) => {
+                    const status = res === true ? "Good" : (res === false ? "Needs Improvement" : "Not Observed");
+                    doc.text(`${skill}: ${status}`, 10, y); y+=6;
+                });
+                y += 10;
+            }
+
+            // Add Log
+            doc.setFontSize(14); doc.text("Log", 10, y); y += 10;
             doc.setFontSize(10); 
-            let y = 40; 
-            
             log.forEach(l => { 
                 if (y > 280) { doc.addPage(); y = 10; } 
                 doc.text(`[${l.simTime}] ${l.msg}`, 10, y); 
                 y += 6; 
             }); 
-            
-            if(instructorNotes) {
-                doc.addPage();
-                doc.text("Instructor Notes:", 10, 10);
-                const splitNotes = doc.splitTextToSize(instructorNotes, 180);
-                doc.text(splitNotes, 10, 20);
-            }
-            
             doc.save("sim-debrief.pdf"); 
         };
         
-        const objectives = scenario?.instructorBrief?.learningObjectives || ["Initial Assessment", "Primary Survey", "Interventions", "Re-evaluation"];
-
         return (
             <div className="max-w-7xl mx-auto space-y-4 animate-fadeIn p-4 h-full overflow-y-auto bg-slate-900 text-slate-200">
                 <div className="flex justify-between bg-slate-800 p-4 rounded-lg border border-slate-700 items-center">
@@ -116,23 +101,36 @@
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <Card title="Clinical Objectives" icon="check-square" className="md:col-span-1 border-emerald-500/50">
-                        <div className="p-2 space-y-3">
-                            {objectives.map((obj, i) => {
-                                const isDone = completedObjectives.has(obj); 
-                                return (
-                                    <div key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                                        <div className={`w-5 h-5 mt-0.5 border rounded flex-shrink-0 flex items-center justify-center ${isDone ? 'bg-emerald-500 border-emerald-500' : 'border-slate-500'}`}>
-                                            {isDone && <Lucide icon="check" className="w-3 h-3 text-white"/>}
-                                        </div>
-                                        <span>{obj}</span>
-                                    </div>
-                                );
-                            })}
+                {/* --- NEW: FLAGGED EVENTS & ASSESSMENT --- */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Card title="Assessment Checklist" icon="clipboard-check" className="border-sky-500/50">
+                        <div className="p-2 grid grid-cols-2 gap-2">
+                             {assessments && Object.entries(assessments).map(([skill, result]) => (
+                                 <div key={skill} className={`p-2 rounded border flex items-center justify-between ${result === true ? 'bg-emerald-900/20 border-emerald-500/50' : (result === false ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-800 border-slate-700 opacity-50')}`}>
+                                     <span className="text-sm font-bold">{skill}</span>
+                                     {result === true ? <Lucide icon="check" className="text-emerald-500 w-4 h-4"/> : (result === false ? <Lucide icon="x" className="text-red-500 w-4 h-4"/> : <span className="text-xs text-slate-500">N/A</span>)}
+                                 </div>
+                             ))}
                         </div>
                     </Card>
 
+                    <Card title="Flagged Discussion Points" icon="flag" className="border-amber-500/50">
+                        {flaggedEvents.length > 0 ? (
+                            <div className="p-2 space-y-2">
+                                {flaggedEvents.map((l, i) => (
+                                    <div key={i} className="flex gap-3 bg-amber-900/10 border border-amber-500/30 p-2 rounded">
+                                        <span className="font-mono text-amber-500 text-xs mt-0.5">{l.simTime}</span>
+                                        <span className="text-slate-200 text-sm">{l.msg}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-4 text-center text-slate-500 italic text-sm">No events were flagged during the scenario.</div>
+                        )}
+                    </Card>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Card title="Performance Metrics" icon="zap" className="md:col-span-1 border-sky-500/50">
                         <div className="p-4 grid grid-cols-1 gap-4 text-sm">
                             <div className="flex justify-between border-b border-slate-700 pb-1"><span>Total Duration</span><span className="font-mono font-bold text-white">{metrics.duration}</span></div>
@@ -143,33 +141,24 @@
                         </div>
                     </Card>
 
-                    <Card title="Instructor Feedback" icon="edit-3" className="md:col-span-2 border-amber-500/50">
-                        <div className="p-2 flex flex-col h-full gap-2">
-                            <textarea 
-                                value={instructorNotes} 
-                                onChange={(e) => setInstructorNotes(e.target.value)}
-                                className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-32 text-sm resize-none focus:border-sky-500 outline-none" 
-                                placeholder="Enter feedback on technical and non-technical skills (CRM, Communication, Leadership)..." 
-                            />
+                    <Card title="Instructor Feedback" icon="edit-3" className="md:col-span-3 border-slate-700">
+                        <div className="p-2 h-full">
+                            <textarea value={instructorNotes} onChange={(e) => setInstructorNotes(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white h-full min-h-[120px] text-sm resize-none focus:border-sky-500 outline-none" placeholder="Enter final feedback notes..." />
                         </div>
                     </Card>
                 </div>
 
-                <Card title="Physiological Trends & Events" icon="activity">
-                    <div className="bg-slate-900 p-2 rounded h-80 relative">
-                        <canvas ref={chartRef}></canvas>
-                    </div>
+                <Card title="Physiological Trends" icon="activity">
+                    <div className="bg-slate-900 p-2 rounded h-64 relative"><canvas ref={chartRef}></canvas></div>
                 </Card>
 
-                <Card title="Action Timeline" icon="clock">
-                    <div className="space-y-1 max-h-80 overflow-y-auto font-mono text-xs p-2">
+                <Card title="Full Action Timeline" icon="clock">
+                    <div className="space-y-1 max-h-64 overflow-y-auto font-mono text-xs p-2">
                         {log.map((l, i) => (
                             <div key={i} className="flex gap-4 border-b border-slate-700/50 pb-2 hover:bg-slate-800 p-1 rounded transition-colors">
                                 <span className="text-sky-400 w-16 flex-shrink-0 font-bold">{l.simTime}</span>
                                 <span className="text-slate-500 w-24 flex-shrink-0">{l.type.toUpperCase()}</span>
-                                <span className={`flex-grow ${l.type === 'action' ? 'text-emerald-300 font-bold' : l.type === 'danger' ? 'text-red-400 font-bold' : 'text-slate-300'}`}>
-                                    {l.msg}
-                                </span>
+                                <span className={`flex-grow ${l.type === 'action' ? 'text-emerald-300 font-bold' : l.type === 'danger' ? 'text-red-400 font-bold' : 'text-slate-300'}`}>{l.msg}</span>
                             </div>
                         ))}
                     </div>
@@ -177,6 +166,5 @@
             </div>
         );
     };
-
     window.DebriefScreen = DebriefScreen;
 })();
