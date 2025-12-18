@@ -159,67 +159,111 @@
             propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; 
         }, [rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
-        // --- WAVEFORM GENERATORS ---
+        // --- IMPROVED WAVEFORM GENERATORS ---
         const getECGValue = (t, type, pathology, cpr) => {
-            if (cpr) return (Math.sin(t * 12 * Math.PI) * 45) + (Math.random() * 15 - 7.5);
-            let y = (Math.random() - 0.5) * 1.5; 
-            if (type === 'Asystole') return y;
-            if (type === 'VF' || type === 'Coarse VF') return (Math.sin(t * 50) * 20 + Math.sin(t * 13) * 15 + (Math.random() - 0.5) * 10);
-            if (type === 'Fine VF') return (Math.sin(t * 60) * 5 + Math.sin(t * 20) * 5 + (Math.random() - 0.5) * 5);
-            if (type === 'VT' || type === 'pVT') return Math.sin(t * Math.PI * 2) * 45; 
+            // t is 0..1 (progress through one beat)
+            if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); // Consistent CPR oscillation
             
-            if (!['AF', 'SVT', 'VT', 'VF', 'pVT', 'Asystole'].includes(type)) {
-                y += 4 * Math.exp(-Math.pow(t - 0.15, 2) / 0.0015);
+            // Stable baseline noise
+            let noise = (Math.random() - 0.5) * 1.5; 
+            
+            if (type === 'Asystole') return noise;
+            
+            if (type === 'VF' || type === 'Coarse VF') {
+                // Chaotic but continuous
+                return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
             }
-            y -= 5 * Math.exp(-Math.pow(t - 0.38, 2) / 0.0003);
-            y += 55 * Math.exp(-Math.pow(t - 0.40, 2) / 0.0006);
-            y -= 12 * Math.exp(-Math.pow(t - 0.43, 2) / 0.0004);
-            let tAmp = 8;
-            if (type === 'STEMI' || pathology === 'STEMI') {
-                if (t > 0.43 && t < 0.65) { y += 12 * Math.exp(-Math.pow(t - 0.55, 2) / 0.02); }
-                tAmp = 14; 
+            if (type === 'Fine VF') {
+                return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
             }
-            y += tAmp * Math.exp(-Math.pow(t - 0.70, 2) / 0.015);
-            if (type === 'AF') y += Math.sin(t * 40) * 1.5 + (Math.random() - 0.5) * 2;
-            return y;
+            if (type === 'VT' || type === 'pVT') {
+                // Monomorphic VT - large sine-like waves
+                return Math.sin(t * 2 * Math.PI) * 35;
+            }
+            
+            // Standard P-QRS-T construction
+            let y = 0;
+            
+            // P Wave (at 0.1)
+            if (['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', '1st Deg Heart Block'].includes(type)) {
+                y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
+            }
+            // Flutter waves (sawtooth)
+            if (type === 'Atrial Flutter') {
+                y += 6 * Math.sin(t * 15);
+            }
+            // AF (fibrillatory baseline)
+            if (type === 'AF') {
+                y += (Math.random() - 0.5) * 3;
+            }
+
+            // QRS Complex (centered at 0.35)
+            // Q
+            y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / 0.0005);
+            // R
+            y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / 0.0008);
+            // S
+            y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / 0.0005);
+
+            // ST Segment & Pathology
+            if (pathology === 'STEMI' || type === 'STEMI') {
+                if (t > 0.38 && t < 0.6) {
+                    y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02); // Elevation
+                }
+            }
+
+            // T Wave (at 0.6)
+            y += 8 * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
+
+            return y + noise;
         };
 
         const getPlethValue = (t) => {
             let y = 0;
-            if (t < 0.15) { y = 30 * Math.sin((t / 0.15) * (Math.PI / 2)); } 
-            else { y = 30 * Math.exp(-(t - 0.15) * 2.5); y += 4 * Math.exp(-Math.pow(t - 0.4, 2) / 0.008); }
+            if (t < 0.2) { y = 30 * Math.sin((t / 0.2) * (Math.PI / 2)); } 
+            else { y = 30 * Math.exp(-(t - 0.2) * 2.5); y += 5 * Math.exp(-Math.pow(t - 0.45, 2) / 0.01); }
             return y;
         };
 
         const getArtValue = (t) => {
             let y = 0;
-            if (t < 0.12) { y = 40 * Math.sin((t / 0.12) * (Math.PI / 2)); } 
-            else { y = 40 * Math.exp(-(t - 0.12) * 2.0); y += 6 * Math.exp(-Math.pow(t - 0.38, 2) / 0.005); }
+            if (t < 0.15) { y = 40 * Math.sin((t / 0.15) * (Math.PI / 2)); } 
+            else { y = 40 * Math.exp(-(t - 0.15) * 2.0); y += 8 * Math.exp(-Math.pow(t - 0.4, 2) / 0.005); }
             return y;
         };
 
         const getCO2Value = (t, pathology) => {
             // t is breath cycle 0..1
+            // 0.0 - 0.4: Inspiration (CO2 ~ 0)
+            // 0.4 - 0.5: Expiration Upstroke
+            // 0.5 - 0.9: Alveolar Plateau
+            // 0.9 - 1.0: Inspiration Downstroke
+            
             let y = 0;
-            const isBronchospasm = pathology === 'bronchospastic' || pathology === 'obstructive';
+            const isObstructive = pathology === 'bronchospastic' || pathology === 'obstructive';
 
-            if (isBronchospasm) {
-                // Shark Fin: Slow rise (obstruction), no plateau, sharp drop
-                if (t < 0.3) y = 0; // Inspiration
-                else if (t < 0.9) {
-                     // Curved upstroke (exponential rise)
-                     // Map 0.3->0.9 to 0->1
-                     const phase = (t - 0.3) / 0.6;
-                     y = 35 * (1 - Math.exp(-phase * 3)); // Shark fin curve
+            if (t < 0.4) {
+                y = 0; // Inspiration baseline
+            } else if (t < 0.9) {
+                // Expiration phase
+                if (isObstructive) {
+                    // Shark fin: slow exponential rise, no flat plateau
+                    const phase = (t - 0.4) / 0.5;
+                    y = 35 * (1 - Math.exp(-phase * 4)); 
+                } else {
+                    // Normal square wave
+                    if (t < 0.45) {
+                        // Sharp upstroke
+                        y = 35 * ((t - 0.4) / 0.05);
+                    } else {
+                        // Slight incline plateau
+                        y = 35 + (2 * (t - 0.45));
+                    }
                 }
-                else y = 0; // Rapid drop
             } else {
-                // Normal Square Wave
-                if (t < 0.3) y = 0;
-                else if (t < 0.35) y = 35 * ((t - 0.3) / 0.05); // Upstroke
-                else if (t < 0.85) y = 35 + (2 * (t - 0.35)); // Plateau
-                else if (t < 0.95) y = 37 * (1 - ((t - 0.85) / 0.1)); // Downstroke
-                else y = 0;
+                // Rapid drop (Inspiration start)
+                y = 37 * (1 - ((t - 0.9) / 0.1));
+                if (y < 0) y = 0;
             }
             return y;
         };
@@ -268,14 +312,17 @@
                     requestRef.current = requestAnimationFrame(animate); return; 
                 }
 
+                // Smooth HR jitter for AF
                 let effectiveHR = props.hr;
-                if (props.rhythmType === 'AF' && state.beatProgress < 0.05) {
-                     if (Math.random() < 0.1) jitterRef.current = (Math.random() - 0.5) * 30;
+                if (props.rhythmType === 'AF') {
+                    if (state.beatProgress < 0.05 && Math.random() < 0.1) {
+                         jitterRef.current = (Math.random() - 0.5) * 20; // Change rate slightly per beat
+                    }
+                    effectiveHR += jitterRef.current;
                 }
-                if (props.rhythmType === 'AF') effectiveHR += jitterRef.current;
                 
                 if (props.isCPR) effectiveHR = 110;
-                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; 
+                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; // Intrinsic rate of arrhythmia
                 
                 let beatDuration = 60 / Math.max(10, effectiveHR); 
                 state.beatProgress += dt / beatDuration; 
