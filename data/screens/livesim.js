@@ -79,6 +79,12 @@
              sim.dispatch({type: 'SET_AUDIO_OUTPUT', payload: next});
         };
 
+        const handleRemove = (e, key, type) => {
+            e.stopPropagation(); 
+            if (type === 'continuous') sim.dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
+            else sim.dispatch({ type: 'DECREMENT_INTERVENTION', payload: key });
+        };
+
         const renderActionBtn = (key) => {
              const action = INTERVENTIONS[key];
              if (!action) return null;
@@ -86,13 +92,22 @@
              const isActive = activeInterventions.has(key);
              const variant = (count > 0 || isActive) ? "success" : "outline";
              return (
-                 <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden`}>
+                 <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden group/btn`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
                         <span className="text-[10px] opacity-70 italic truncate">{action.category}</span>
                         {count > 0 && action.type !== 'continuous' && <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 rounded-full shadow-md">x{count}</span>}
                      </div>
-                     {isActive && action.type === 'continuous' && <div className="absolute top-1 right-1 text-red-400 bg-slate-900 rounded-full p-0.5"><Lucide icon="x" className="w-3 h-3"/></div>}
+                     {isActive && action.type === 'continuous' && (
+                         <div className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'continuous')}>
+                             <Lucide icon="x" className="w-3 h-3"/>
+                         </div>
+                     )}
+                     {!isActive && count > 0 && action.type !== 'continuous' && (
+                         <div className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'bolus')}>
+                             <Lucide icon="minus" className="w-3 h-3"/>
+                         </div>
+                     )}
                      {activeDurations[key] && (<div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-1000" style={{width: `${Math.max(0, 100 - ((time - activeDurations[key].startTime)/activeDurations[key].duration*100))}%`}}></div>)}
                  </button>
              );
