@@ -11,10 +11,14 @@
         const [audioEnabled, setAudioEnabled] = useState(false);
         const [defibOpen, setDefibOpen] = useState(false);
         const [showToast, setShowToast] = useState(false);
+        
+        // Track unique notification ID to prevent infinite loop
+        const lastNotifId = useRef(null);
 
         // Toast Logic
         useEffect(() => {
-            if(notification && notification.id) {
+            if(notification && notification.id && notification.id !== lastNotifId.current) {
+                lastNotifId.current = notification.id;
                 setShowToast(true);
                 const timer = setTimeout(() => {
                     setShowToast(false);
