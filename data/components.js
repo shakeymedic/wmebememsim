@@ -117,13 +117,6 @@
             if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
             return (
                 <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
-                    {/* Monitor Trend Bar */}
-                    {trend && trend.active && (
-                         <div className="absolute top-0 left-0 h-1 bg-white/50 w-full z-30">
-                             <div className="h-full bg-sky-500 transition-all duration-1000 ease-linear" style={{width: `${trend.progress * 100}%`}}></div>
-                         </div>
-                    )}
-
                     {isNIBP && (<button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>)}
                     <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
                     <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{displayValue()}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{displayValue2()}</span>}</div></div>
@@ -137,10 +130,7 @@
         return (
             <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden group ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'}`} onClick={handleInteraction}>
                 {showEditHint && (<div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors"><Lucide icon="settings-2" className="w-3 h-3" /></div>)}
-                
-                {/* Controller Trend Bar */}
-                {trend && trend.active && (<div className="absolute bottom-0 left-0 h-1.5 bg-sky-500 z-20 transition-all duration-1000 ease-linear" style={{ width: `${trend.progress * 100}%` }}></div>)}
-                
+                {trend && trend.active && (<div className="absolute bottom-0 left-0 h-1.5 bg-sky-500/50 z-0 transition-all duration-1000 ease-linear" style={{ width: `${trend.progress * 100}%` }}></div>)}
                 <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 relative z-10 group-hover:text-sky-400 transition-colors">{label}</span>
                 {isEditing ? (<input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />) : (<div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5 relative z-10" onClick={handleInteraction}><span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>{displayValue()}{isBP && <span className="text-lg text-slate-400 ml-0.5">/{displayValue2()}</span>}</span>{!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}</div>)}
                 <span className="text-[8px] md:text-[9px] text-slate-600 leading-none relative z-10">{unit}</span>
@@ -171,30 +161,60 @@
         
         // --- IMPROVED WAVEFORM GENERATORS ---
         const getECGValue = (t, type, pathology, cpr) => {
-            if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); 
+            // t is 0..1 (progress through one beat)
+            if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); // Consistent CPR oscillation
             
+            // Stable baseline noise
             let noise = (Math.random() - 0.5) * 1.5; 
+            
             if (type === 'Asystole') return noise;
             
-            if (type === 'VF' || type === 'Coarse VF') return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
-            if (type === 'Fine VF') return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
-            if (type === 'VT' || type === 'pVT') return Math.sin(t * 2 * Math.PI) * 35;
+            if (type === 'VF' || type === 'Coarse VF') {
+                // Chaotic but continuous
+                return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
+            }
+            if (type === 'Fine VF') {
+                return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
+            }
+            if (type === 'VT' || type === 'pVT') {
+                // Monomorphic VT - large sine-like waves
+                return Math.sin(t * 2 * Math.PI) * 35;
+            }
             
+            // Standard P-QRS-T construction
             let y = 0;
+            
+            // P Wave (at 0.1)
             if (['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', '1st Deg Heart Block'].includes(type)) {
                 y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
             }
-            if (type === 'Atrial Flutter') y += 6 * Math.sin(t * 15);
-            if (type === 'AF') y += (Math.random() - 0.5) * 3;
+            // Flutter waves (sawtooth)
+            if (type === 'Atrial Flutter') {
+                y += 6 * Math.sin(t * 15);
+            }
+            // AF (fibrillatory baseline)
+            if (type === 'AF') {
+                y += (Math.random() - 0.5) * 3;
+            }
 
+            // QRS Complex (centered at 0.35)
+            // Q
             y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / 0.0005);
+            // R
             y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / 0.0008);
+            // S
             y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / 0.0005);
 
+            // ST Segment & Pathology
             if (pathology === 'STEMI' || type === 'STEMI') {
-                if (t > 0.38 && t < 0.6) y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02);
+                if (t > 0.38 && t < 0.6) {
+                    y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02); // Elevation
+                }
             }
+
+            // T Wave (at 0.6)
             y += 8 * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
+
             return y + noise;
         };
 
@@ -213,18 +233,35 @@
         };
 
         const getCO2Value = (t, pathology) => {
+            // t is breath cycle 0..1
+            // 0.0 - 0.4: Inspiration (CO2 ~ 0)
+            // 0.4 - 0.5: Expiration Upstroke
+            // 0.5 - 0.9: Alveolar Plateau
+            // 0.9 - 1.0: Inspiration Downstroke
+            
             let y = 0;
             const isObstructive = pathology === 'bronchospastic' || pathology === 'obstructive';
-            if (t < 0.4) y = 0;
-            else if (t < 0.9) {
+
+            if (t < 0.4) {
+                y = 0; // Inspiration baseline
+            } else if (t < 0.9) {
+                // Expiration phase
                 if (isObstructive) {
+                    // Shark fin: slow exponential rise, no flat plateau
                     const phase = (t - 0.4) / 0.5;
                     y = 35 * (1 - Math.exp(-phase * 4)); 
                 } else {
-                    if (t < 0.45) y = 35 * ((t - 0.4) / 0.05);
-                    else y = 35 + (2 * (t - 0.45));
+                    // Normal square wave
+                    if (t < 0.45) {
+                        // Sharp upstroke
+                        y = 35 * ((t - 0.4) / 0.05);
+                    } else {
+                        // Slight incline plateau
+                        y = 35 + (2 * (t - 0.45));
+                    }
                 }
             } else {
+                // Rapid drop (Inspiration start)
                 y = 37 * (1 - ((t - 0.9) / 0.1));
                 if (y < 0) y = 0;
             }
@@ -275,14 +312,17 @@
                     requestRef.current = requestAnimationFrame(animate); return; 
                 }
 
+                // Smooth HR jitter for AF
                 let effectiveHR = props.hr;
                 if (props.rhythmType === 'AF') {
-                    if (state.beatProgress < 0.05 && Math.random() < 0.1) jitterRef.current = (Math.random() - 0.5) * 20;
+                    if (state.beatProgress < 0.05 && Math.random() < 0.1) {
+                         jitterRef.current = (Math.random() - 0.5) * 20; // Change rate slightly per beat
+                    }
                     effectiveHR += jitterRef.current;
                 }
                 
                 if (props.isCPR) effectiveHR = 110;
-                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; 
+                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; // Intrinsic rate of arrhythmia
                 
                 let beatDuration = 60 / Math.max(10, effectiveHR); 
                 state.beatProgress += dt / beatDuration; 
