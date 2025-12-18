@@ -26,6 +26,7 @@
         pacingThreshold: 70, 
         activeLoops: {}, 
         completedObjectives: new Set(),
+        assessments: {}, // NEW
         lastUpdate: 0,
         isOffline: false 
     };
@@ -176,7 +177,19 @@
                     lastUpdate: Date.now()
                 };
 
-            case 'ADD_LOG': const timestamp = new Date().toLocaleTimeString('en-GB'); const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, timeSeconds: state.time }] };
+            // NEW: Handle Flags
+            case 'ADD_LOG': 
+                const timestamp = new Date().toLocaleTimeString('en-GB'); 
+                const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; 
+                return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, flagged: action.payload.flagged || false, timeSeconds: state.time }] };
+            case 'TOGGLE_FLAG':
+                const newLog = [...state.log];
+                if(newLog[action.payload]) {
+                    newLog[action.payload] = { ...newLog[action.payload], flagged: !newLog[action.payload].flagged };
+                }
+                return { ...state, log: newLog };
+            case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
+
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
             case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
@@ -243,7 +256,7 @@
                 } else if (data.type === 'ALARM_SILENCE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
                 } else if (data.type === 'MARKER_EVENT') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual' } });
+                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual', flagged: true } });
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
                     if (state.scenario && state.scenario.investigations && state.scenario.investigations.ecg) {
@@ -421,7 +434,8 @@
             } 
         }, [state.speech, isMonitorMode, state.audioOutput, state.isRunning]);
 
-        const addLogEntry = (msg, type = 'info') => dispatch({ type: 'ADD_LOG', payload: { msg, type } });
+        // Updated Helper for Flagging
+        const addLogEntry = (msg, type = 'info', flagged = false) => dispatch({ type: 'ADD_LOG', payload: { msg, type, flagged } });
         
         const applyIntervention = (key) => {
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
