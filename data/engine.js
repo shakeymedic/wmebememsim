@@ -26,7 +26,7 @@
         pacingThreshold: 70, 
         activeLoops: {}, 
         completedObjectives: new Set(),
-        assessments: {}, // NEW
+        assessments: {}, 
         lastUpdate: 0,
         isOffline: false 
     };
@@ -149,6 +149,8 @@
                 const syncedScenario = { 
                     ...state.scenario, 
                     title: action.payload.scenarioTitle, 
+                    ageRange: action.payload.ageRange,
+                    wetflag: action.payload.wetflag,
                     deterioration: { type: action.payload.pathology },
                     ...action.payload.investigations 
                 };
@@ -199,6 +201,11 @@
                 const removedDurations = { ...state.activeDurations };
                 delete removedDurations[action.payload];
                 return { ...state, activeInterventions: removedActive, activeDurations: removedDurations };
+            case 'DECREMENT_INTERVENTION':
+                const decKey = action.payload;
+                const decCounts = { ...state.interventionCounts };
+                if (decCounts[decKey] > 0) decCounts[decKey]--;
+                return { ...state, interventionCounts: decCounts };
             case 'SET_PARALYSIS': return { ...state, isParalysed: action.payload };
             case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
             case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
@@ -332,6 +339,8 @@
                     flash: state.flash, 
                     cycleTimer: state.cycleTimer, 
                     scenarioTitle: state.scenario.title, 
+                    ageRange: state.scenario.ageRange,
+                    wetflag: state.scenario.wetflag || null,
                     pathology: state.scenario.deterioration?.type || 'normal', 
                     investigations: investigations, 
                     activeInterventions: Array.from(state.activeInterventions), 
