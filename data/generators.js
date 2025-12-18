@@ -17,7 +17,6 @@ window.generateName = (sex) => {
 };
 
 // --- MEDICAL GENERATORS ---
-
 window.generateHistory = (age, sex = 'Male') => {
     if (age < 20) return { pmh: ["Nil significant"], dhx: ["Nil"], allergies: ["Nil"] };
     const commonPMH = ["Hypertension", "Type 2 Diabetes", "Asthma", "Hyperlipidaemia", "GORD", "Depression", "Anxiety", "Previous MI", "AF", "CKD Stage 3"];
@@ -57,34 +56,22 @@ window.estimateWeight = (age) => {
     return null; 
 };
 
-// --- PASTE INTO data/generators.js (Replace existing calculateWetflag) ---
-
 window.calculateWetflag = (age, weightStr) => {
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight <= 0) return null;
-    
-    // Tube: Formula (Age/4) + 4.
-    // ACTION: Round to nearest 0.5 specifically
     let rawTube = (age / 4) + 4;
     let tubeSize = Math.round(rawTube * 2) / 2;
-    
-    // Safety clamps
     if (age < 1) tubeSize = "3.5-4.0"; 
     else if (tubeSize > 9.0) tubeSize = 9.0;
     else if (tubeSize < 3.0) tubeSize = 3.0;
-    
-    // Adrenaline: 10mcg/kg (Standard APLS)
     let adrenalineMcg = Math.round(weight * 10);
-    
-    // Glucose: 2ml/kg of 10% Dextrose usually, or simple 2ml/kg rule for sim
     let glucoseVol = Math.round(weight * 2);
-
     return { 
         weight: weight, 
-        energy: Math.round(weight * 4),      // 4 J/kg
+        energy: Math.round(weight * 4),
         tube: tubeSize.toString(), 
-        fluids: Math.round(weight * 10),     // ACTION: Set to 10ml/kg as requested
-        lorazepam: Math.min(4, weight * 0.1).toFixed(1), // 0.1mg/kg (Max 4mg)
+        fluids: Math.round(weight * 10),
+        lorazepam: Math.min(4, weight * 0.1).toFixed(1),
         adrenaline: adrenalineMcg, 
         glucose: glucoseVol
     };
@@ -120,12 +107,45 @@ window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, time
     if (currentVitals.rr < 10 && !isVentilated) { vbg.pCO2 = Math.min(15, vbg.pCO2 + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); }
     if (isVentilated && vbg.pCO2 > 6.0) { vbg.pCO2 = Math.max(4.5, vbg.pCO2 - (0.2 * minutes)); vbg.pH = Math.min(7.4, vbg.pH + (0.02 * minutes)); }
     if (currentVitals.spO2 < 85 || currentVitals.bpSys < 80) { vbg.Lac = Math.min(15, vbg.Lac + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); vbg.HCO3 = Math.max(10, vbg.HCO3 - (0.5 * minutes)); }
-    // Ketone dynamics (slow improvement with insulin)
     if (activeInterventions.has('InsulinInfusion') || activeInterventions.has('InsulinDextrose')) {
         vbg.Ketones = Math.max(0.1, vbg.Ketones - (0.05 * minutes));
         vbg.Glu = Math.max(4.0, vbg.Glu - (0.1 * minutes));
     }
     return vbg;
+};
+
+window.generateUrine = (type = "normal") => {
+    const base = { leuks: "-", nitrites: "-", blood: "-", ketones: "-", protein: "-", glucose: "-", bhcg: "Negative" };
+    if(type === "uti") return { ...base, leuks: "+++", nitrites: "+" };
+    if(type === "dka") return { ...base, ketones: "++++", glucose: "++++" };
+    if(type === "rhabdo") return { ...base, blood: "+++ (Myoglobin)" };
+    if(type === "pregnancy") return { ...base, bhcg: "POSITIVE" };
+    if(type === "renal_colic") return { ...base, blood: "++" };
+    return base;
+};
+
+window.generatePocus = (type = "normal") => {
+    const base = { heart: "Normal contractility. No pericardial effusion.", lungs: "Lung sliding present bilaterally. No B-lines.", abdo: "No free fluid in Morrison's pouch or splenorenal angle." };
+    if(type === "tamponade") return { ...base, heart: "Large pericardial effusion. RV diastolic collapse present." };
+    if(type === "pneumothorax") return { ...base, lungs: "Left: Absent lung sliding. Barcode sign present." };
+    if(type === "pulmonary_oedema") return { ...base, lungs: "Diffuse B-lines bilaterally (Rocket tails)." };
+    if(type === "ruptured_aaa") return { ...base, abdo: "Large free fluid in abdomen. Aorta > 5cm." };
+    if(type === "ectopic") return { ...base, abdo: "Empty uterus. Free fluid in Pouch of Douglas." };
+    if(type === "pe") return { ...base, heart: "RV dilatation. Septal flattening (D-sign)." };
+    return base;
+};
+
+window.generateCT = (type = "normal") => {
+    if(type === "sah") return "Hyperdensity within the basal cisterns and sylvian fissures consistent with acute Subarachnoid Haemorrhage.";
+    if(type === "stroke_isch") return "No acute haemorrhage. Dense MCA sign on right side. Early loss of grey-white differentiation.";
+    if(type === "stroke_haem") return "Large intracerebral haematoma in the right basal ganglia with surrounding oedema.";
+    if(type === "subdural") return "Crescentic hyperdensity over the left hemisphere with 5mm midline shift.";
+    if(type === "extradural") return "Biconvex (lentiform) hyperdensity in the right temporal region. Fracture of temporal bone.";
+    if(type === "pe") return "CTPA: Filling defects seen in both main pulmonary arteries extending into lobar branches. Right heart strain.";
+    if(type === "dissection") return "CT Aorta: Dissection flap visible originating in ascending aorta and extending to iliac bifurcation (Type A).";
+    if(type === "pancreatitis") return "CT Abdo: Pancreas is oedematous with peripancreatic stranding and fluid collections.";
+    if(type === "perf") return "CT Abdo: Free air under the diaphragm. Extravasation of contrast from duodenum.";
+    return "No acute intracranial/thoracic/abdominal pathology identified.";
 };
 
 window.HUMAN_FACTOR_CHALLENGES = [
