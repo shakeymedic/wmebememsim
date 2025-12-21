@@ -147,6 +147,7 @@
             lastY: 50, 
             beatProgress: 0, 
             breathProgress: 0, 
+            pWaveProgress: 0, // Independent tracker for P-waves (Heart Block)
             lastTime: 0, 
             lastYCO2: 0, 
             lastYPleth: 0, 
@@ -160,60 +161,75 @@
         }, [rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
         
         // --- IMPROVED WAVEFORM GENERATORS ---
-        const getECGValue = (t, type, pathology, cpr) => {
-            // t is 0..1 (progress through one beat)
-            if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); // Consistent CPR oscillation
+        const getECGValue = (t, pT, absoluteTime, type, pathology, cpr) => {
+            // t = QRS/Beat progress (0 to 1)
+            // pT = P-wave progress (0 to 1) - Independent rate (approx 75bpm)
+            // absoluteTime = continuous time in seconds (for continuous waveforms like flutter/fib)
+
+            if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); 
             
-            // Stable baseline noise
             let noise = (Math.random() - 0.5) * 1.5; 
             
             if (type === 'Asystole') return noise;
             
             if (type === 'VF' || type === 'Coarse VF') {
-                // Chaotic but continuous
                 return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
             }
             if (type === 'Fine VF') {
                 return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
             }
             if (type === 'VT' || type === 'pVT') {
-                // Monomorphic VT - large sine-like waves
                 return Math.sin(t * 2 * Math.PI) * 35;
             }
-            
-            // Standard P-QRS-T construction
+
             let y = 0;
             
-            // P Wave (at 0.1)
-            if (['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', '1st Deg Heart Block'].includes(type)) {
-                y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
-            }
-            // Flutter waves (sawtooth)
-            if (type === 'Atrial Flutter') {
-                y += 6 * Math.sin(t * 15);
-            }
-            // AF (fibrillatory baseline)
+            // --- BASELINE/ATRIAL ACTIVITY ---
             if (type === 'AF') {
-                y += (Math.random() - 0.5) * 3;
-            }
-
-            // QRS Complex (centered at 0.35)
-            // Q
-            y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / 0.0005);
-            // R
-            y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / 0.0008);
-            // S
-            y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / 0.0005);
-
-            // ST Segment & Pathology
-            if (pathology === 'STEMI' || type === 'STEMI') {
-                if (t > 0.38 && t < 0.6) {
-                    y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02); // Elevation
+                // Continuous fibrillatory baseline
+                y += (Math.sin(absoluteTime * 25) * 2) + (Math.random() * 1.5); 
+            } else if (type === 'Atrial Flutter') {
+                // Sawtooth baseline (300bpm = 5Hz)
+                y += Math.sin(absoluteTime * 10 * Math.PI) * 6;
+            } else if (type === 'Complete Heart Block') {
+                // Independent P waves marching through
+                // P-wave centred at pT = 0.5
+                y += 5 * Math.exp(-Math.pow(pT - 0.5, 2) / 0.002);
+            } else {
+                // Standard P-wave (locked to QRS)
+                // Skip P-wave if SVT (buried)
+                if (type !== 'SVT' && type !== 'Junctional') {
+                    // P Wave at t=0.1
+                    y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
                 }
             }
 
-            // T Wave (at 0.6)
-            y += 8 * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
+            // --- QRS COMPLEX (at t=0.35) ---
+            // Width factor: 0.0008 (normal), 0.0004 (narrow/SVT), 0.002 (wide/bundle)
+            let width = 0.0008;
+            if (type === 'SVT') width = 0.0004; // Very narrow
+            if (['LBBB', 'RBBB', 'Hyperkalemia'].includes(pathology)) width = 0.002;
+
+            // Q
+            y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / (width * 0.6));
+            // R
+            y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / width);
+            // S
+            y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / (width * 0.6));
+
+            // --- ST SEGMENT ---
+            if (pathology === 'STEMI' || type === 'STEMI') {
+                if (t > 0.38 && t < 0.6) {
+                    y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02);
+                }
+            }
+
+            // --- T WAVE (at t=0.6) ---
+            if (type !== 'SVT') { // T waves often merged in SVT
+                 let tAmp = 8;
+                 if (pathology === 'Hyperkalemia') tAmp = 25; // Peaked T
+                 y += tAmp * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
+            }
 
             return y + noise;
         };
@@ -315,8 +331,10 @@
                 // Smooth HR jitter for AF
                 let effectiveHR = props.hr;
                 if (props.rhythmType === 'AF') {
-                    if (state.beatProgress < 0.05 && Math.random() < 0.1) {
-                         jitterRef.current = (Math.random() - 0.5) * 20; // Change rate slightly per beat
+                    // Aggressive jitter for AF
+                    if (state.beatProgress < 0.05 && Math.random() < 0.2) {
+                         // Pick a random interval equivalent to 90-160bpm
+                         jitterRef.current = (Math.random() * 70) - 35; 
                     }
                     effectiveHR += jitterRef.current;
                 }
@@ -328,13 +346,18 @@
                 state.beatProgress += dt / beatDuration; 
                 if (state.beatProgress >= 1) state.beatProgress = 0;
 
+                // Independent P-Wave Progress (approx 75bpm)
+                state.pWaveProgress += dt * (75 / 60);
+                if (state.pWaveProgress >= 1) state.pWaveProgress = 0;
+
                 let breathDuration = 60 / (Math.max(1, props.rr) || 12); 
                 state.breathProgress += dt / breathDuration; 
                 if (state.breathProgress >= 1) state.breathProgress = 0;
 
                 if (state.x > canvas.width) { state.x = 0; state.lastY = baselineECG; }
 
-                let rawECG = getECGValue(state.beatProgress, props.rhythmType, props.pathology, props.isCPR);
+                // Pass absolute time (timestamp/1000) for continuous waveforms like Flutter/AF
+                let rawECG = getECGValue(state.beatProgress, state.pWaveProgress, (timestamp / 1000), props.rhythmType, props.pathology, props.isCPR);
                 const gain = window.waveformGain;
                 let yECG = baselineECG - (rawECG * gain);
                 if (window.noise.interference) yECG += Math.sin(timestamp / 20) * 5;
