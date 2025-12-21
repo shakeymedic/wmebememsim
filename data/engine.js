@@ -101,9 +101,24 @@
             case 'UPDATE_VITALS': 
                 if (!state.isRunning && action.payload.source !== 'manual') return state;
                 return { ...state, vitals: action.payload };
+            
             case 'UPDATE_RHYTHM': 
-                const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(action.payload);
-                return { ...state, rhythm: action.payload, arrestPanelOpen: isArrest ? true : state.arrestPanelOpen };
+                const newRhythm = action.payload;
+                const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(newRhythm);
+                let rhythmVitals = { ...state.vitals };
+                
+                // --- Auto-adjust HR for specific rhythms ---
+                // Only adjust if we aren't already in the arrest panel logic (to prevent overwriting 0 HR in arrest)
+                if (!state.arrestPanelOpen && !isArrest) {
+                    if (newRhythm === 'AF') rhythmVitals.hr = getRandomInt(110, 150); // AF Rapid
+                    if (newRhythm === 'SVT') rhythmVitals.hr = getRandomInt(170, 200);
+                    if (newRhythm === 'Complete Heart Block') rhythmVitals.hr = getRandomInt(35, 45);
+                    if (newRhythm === 'Sinus Bradycardia') rhythmVitals.hr = getRandomInt(40, 50);
+                    if (newRhythm === 'Sinus Tachycardia') rhythmVitals.hr = getRandomInt(110, 130);
+                    if (newRhythm === 'Atrial Flutter') rhythmVitals.hr = 150; // Classic 2:1
+                }
+                
+                return { ...state, rhythm: newRhythm, vitals: rhythmVitals, arrestPanelOpen: isArrest ? true : state.arrestPanelOpen };
             
             case 'TRIGGER_IMPROVE':
                 let impTargets = {}; 
