@@ -23,7 +23,9 @@
         noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 },
         notification: null,
-        pacingThreshold: 70, 
+        pacingThreshold: 70, // Default threshold
+        icp: 10, // Intracranial Pressure
+        hypoxiaTimer: 0,
         activeLoops: {}, 
         completedObjectives: new Set(),
         assessments: {}, 
@@ -41,7 +43,24 @@
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 const initialVitals = { etco2: 4.5, temp: 36.5, bm: 5.5, ...action.payload.vitals };
-                return { ...initialState, scenario: action.payload, vitals: initialVitals, prevVitals: {...initialVitals}, rhythm: initialRhythm, nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, processedEvents: new Set(), activeInterventions: new Set(), arrestPanelOpen: false, pacingThreshold: getRandomInt(60, 100), isOffline: state.isOffline };
+                // Determine initial ICP based on scenario type
+                let startICP = 10;
+                if(action.payload.category === 'Trauma' && action.payload.title.includes('Head')) startICP = 25;
+
+                return { 
+                    ...initialState, 
+                    scenario: action.payload, 
+                    vitals: initialVitals, 
+                    prevVitals: {...initialVitals}, 
+                    rhythm: initialRhythm, 
+                    nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] }, 
+                    processedEvents: new Set(), 
+                    activeInterventions: new Set(), 
+                    arrestPanelOpen: false, 
+                    pacingThreshold: getRandomInt(40, 95), // Randomize pacer threshold per patient
+                    icp: startICP,
+                    isOffline: state.isOffline 
+                };
             case 'RESTORE_SESSION': return { ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
             
             case 'TICK_TIME':
@@ -58,6 +77,51 @@
                 let newTrends = { ...state.trends };
                 let currentVitals = { ...state.vitals };
                 let vitalsChanged = false;
+                let currentICP = state.icp;
+                let currentHypoxiaTimer = state.hypoxiaTimer;
+
+                // --- ENHANCED PHYSIOLOGY ENGINE ---
+                
+                // 1. Hypoxia Lag (RR < 8 -> SpO2 Drop after 30s)
+                if (currentVitals.rr < 8 && currentVitals.rr > 0 && !state.activeInterventions.has('Bagging')) {
+                    currentHypoxiaTimer++;
+                    if (currentHypoxiaTimer > 30) {
+                        currentVitals.spO2 = Math.max(40, currentVitals.spO2 - 0.5); // Drop 0.5% per second
+                        vitalsChanged = true;
+                    }
+                } else {
+                    currentHypoxiaTimer = 0;
+                    // Recovery if oxygen applied
+                    if (state.activeInterventions.has('Oxygen') && currentVitals.spO2 < 95) {
+                         currentVitals.spO2 += 0.2;
+                         vitalsChanged = true;
+                    }
+                }
+
+                // 2. Cushing's Reflex (High ICP -> High BP, Low HR)
+                // If scenario is head injury, slowly creep ICP up unless treated
+                if (state.scenario && state.scenario.deterioration && state.scenario.deterioration.type === 'neuro' && state.isRunning) {
+                    if (state.time % 10 === 0) currentICP += 0.1; // Slow rise
+                    if (currentICP > 25) {
+                        // Cushing's response logic
+                        currentVitals.bpSys = Math.min(220, currentVitals.bpSys + 0.2);
+                        currentVitals.hr = Math.max(30, currentVitals.hr - 0.1);
+                        vitalsChanged = true;
+                    }
+                }
+
+                // 3. EtCO2 Reactivity
+                // Varies with RR
+                if (currentVitals.rr > 30) {
+                    currentVitals.etco2 = Math.max(2.5, currentVitals.etco2 - 0.01); // Blow off CO2
+                    vitalsChanged = true;
+                }
+                if (currentVitals.rr < 10 && currentVitals.rr > 0) {
+                    currentVitals.etco2 = Math.min(8.0, currentVitals.etco2 + 0.01); // Retain CO2
+                    vitalsChanged = true;
+                }
+
+                // --- END PHYSIOLOGY ---
 
                 if (newTrends.active) {
                     newTrends.elapsed += 1;
@@ -94,7 +158,9 @@
                     nibp: newNibp,
                     trends: newTrends,
                     vitals: vitalsChanged ? currentVitals : state.vitals,
-                    history: newHistory
+                    history: newHistory,
+                    icp: currentICP,
+                    hypoxiaTimer: currentHypoxiaTimer
                 };
 
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
@@ -191,6 +257,7 @@
                     noise: action.payload.noise || { interference: false },
                     notification: action.payload.notification || null,
                     remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0},
+                    pacingThreshold: action.payload.pacingThreshold || 70, 
                     lastUpdate: Date.now()
                 };
 
@@ -281,10 +348,8 @@
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual', flagged: true } });
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
-                    if (state.scenario && state.scenario.investigations && state.scenario.investigations.ecg) {
-                        const imgUrl = state.scenario.investigations.ecg.image || "https://placeholder.com/ecg.png"; 
-                        simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: imgUrl });
-                    }
+                    // Send the request, allow monitor to generate it
+                    simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: { rhythm: state.rhythm, scenario: state.scenario } });
                 } else if (data.type === 'DEVICE_MODE') {
                     if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
                         dispatch({ type: 'SET_ARREST_PANEL', payload: true });
@@ -306,11 +371,12 @@
                         bpDia: state.vitals.bpDia,
                         gain: state.waveformGain,
                         interference: state.noise.interference,
-                        cpr: state.cprInProgress
+                        cpr: state.cprInProgress,
+                        captureThreshold: state.pacingThreshold // Sync for defib logic
                     }
                 });
             }
-        }, [state.vitals, state.rhythm, state.waveformGain, state.noise]);
+        }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold]);
 
         useEffect(() => {
             try {
@@ -370,7 +436,8 @@
                     waveformGain: state.waveformGain,
                     noise: state.noise,
                     notification: state.notification,
-                    remotePacerState: state.remotePacerState
+                    remotePacerState: state.remotePacerState,
+                    pacingThreshold: state.pacingThreshold
                 };
                 sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
 
@@ -458,7 +525,6 @@
             } 
         }, [state.speech, isMonitorMode, state.audioOutput, state.isRunning]);
 
-        // Updated Helper for Flagging
         const addLogEntry = (msg, type = 'info', flagged = false) => dispatch({ type: 'ADD_LOG', payload: { msg, type, flagged } });
         
         const applyIntervention = (key) => {
@@ -546,14 +612,15 @@
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated' } });
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 } });
             dispatch({ type: 'UPDATE_RHYTHM', payload: newRhythm });
             dispatch({ type: 'SET_ARREST_PANEL', payload: true }); 
             addLogEntry(`CARDIAC ARREST - ${newRhythm}`, 'manual');
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
         const triggerROSC = (rhythm = 'Sinus Rhythm') => { 
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 80, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 8, pupils: 3 } }); 
+            const newEtco2 = 5.5 + (Math.random() * 1.5); // CO2 Spike on ROSC
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 80, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 8, pupils: 3, etco2: newEtco2 } }); 
             dispatch({ type: 'UPDATE_RHYTHM', payload: rhythm }); 
             const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; 
             dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario }); 
