@@ -115,13 +115,36 @@ function chb(x, hr, c) {
     return baseline + getP(aT) + getQRSWide(vT) + getT(vT);
 }
 
+// --- UPDATED PACER LOGIC ---
 function paced(x, hr, c) {
     var baseline = (c.height || 300) / 2;
-    var bpm = hr || 70;
-    var cyclePx = (60 / bpm) * window.ecgSpeed;
+    var pacerRate = window.state.pacerRate || 70;
+    var output = window.state.pacerOutput || 0;
+    var threshold = window.state.captureThreshold || 70;
+    var intrinsic = window.state.hr || 0;
+
+    // Demand Pacing logic handled partially in engine (rhythm switching)
+    // but visual logic here:
+    
+    // Calculate Pacer Cycle
+    var cyclePx = (60 / pacerRate) * window.ecgSpeed;
     var t = (x % cyclePx) / cyclePx;
-    var y = gaussian(t, 0.12, 0.05, window.PX_PER_MV * 1.1); 
-    y += gaussian(t, 0.40, 0.09, window.PX_PER_MV * 0.3); 
+    
+    var y = 0;
+    
+    // Pacer Spike (Sharp vertical line)
+    var spike = gaussian(t, 0.1, 0.002, window.PX_PER_MV * 2.5);
+    y += spike;
+
+    // Capture Logic
+    if (output > threshold) {
+        // Capture Beat (Wide Complex) following spike
+        // Spike at 0.1, QRS starts around 0.12
+        y += gaussian(t, 0.15, 0.05, window.PX_PER_MV * 1.1); // Wide R
+        y += gaussian(t, 0.40, 0.09, window.PX_PER_MV * 0.3); // T Wave
+    } 
+    // If no capture, we just see the spike (and flatline/underlying if we were advanced enough to mix)
+
     return baseline + y;
 }
 
@@ -335,10 +358,15 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             if (data.type === 'SYNC_VITALS') {
                 window.isRemoteControlled = true;
                 const mappedRhythm = mapRhythm(data.payload.rhythm);
-                if(state.rhythm !== mappedRhythm) {
+                
+                // Demand Pacing Logic: If in Pacer Mode, and Pacer Rate > Patient HR, override rhythm
+                if (state.deviceMode === 'pacer' && state.pacerRate > data.payload.hr) {
+                    state.rhythm = 'paced';
+                } else if (state.rhythm !== mappedRhythm) {
                      setVitals(mappedRhythm);
                      state.originalRhythm = mappedRhythm; 
                 }
+                
                 state.hr = data.payload.hr;
                 state.spo2 = data.payload.spO2;
                 state.etco2 = data.payload.etco2;
@@ -346,11 +374,15 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 state.bpDia = data.payload.bpDia;
                 if(data.payload.gain !== undefined) window.waveformGain = data.payload.gain;
                 if(data.payload.interference !== undefined) window.interferenceActive = data.payload.interference;
+                
+                // Sync capture threshold from engine
+                if(data.payload.captureThreshold !== undefined) state.captureThreshold = data.payload.captureThreshold;
+                
                 updateDisplays();
             } else if (data.type === 'SHOW_12LEAD') {
                 const overlay = document.getElementById('paperOverlay');
                 const img = document.getElementById('paperImage');
-                if(overlay && img && data.payload) {
+                if(overlay && img && data.payload && typeof data.payload === 'string') {
                     img.src = data.payload; 
                     overlay.classList.remove('hidden');
                 }
@@ -378,7 +410,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             deviceMode: 'off', rhythm: 'nsr', hr: 75, spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80,
             energy: 120, energyLevels: [50, 70, 85, 100, 120, 150, 170, 200], charged: false, syncMode: false, shockCount: 0,
             pacerOutput: 0, pacerRate: 60, pacingActive: false, isCaptured: false, originalRhythm: null,
-            chargeTimer: null, noise: {}
+            chargeTimer: null, noise: {}, captureThreshold: 70 // Default
         };
         window.state = state;
 
