@@ -12,6 +12,96 @@
         );
     };
 
+    // --- DYNAMIC 12-LEAD DRAWER ---
+    const render12Lead = (canvas, rhythm, scenario) => {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width;
+        const h = canvas.height;
+        
+        // Background Grid
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = '#ffcccc'; // Light red grid
+        ctx.lineWidth = 1;
+        
+        // Small grid
+        ctx.beginPath();
+        for(let x=0; x<=w; x+=10) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
+        for(let y=0; y<=h; y+=10) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+        ctx.stroke();
+        
+        // Big grid
+        ctx.strokeStyle = '#ff9999';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
+        for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+        ctx.stroke();
+
+        ctx.strokeStyle = 'black';
+        ctx.lineWidth = 1.2;
+        ctx.lineJoin = 'round';
+
+        const leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
+        
+        // Define pathology offsets based on scenario/rhythm
+        let stElev = 0; // 0 to 1 scale
+        if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI')) stElev = 1.5;
+        if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2; // Resolving
+
+        // Generate a single complex shape
+        const getComplex = (t, leadIndex) => {
+            // Basic P-QRS-T approximation
+            let y = 0;
+            // P wave
+            y -= 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
+            // QRS
+            y += 20 * Math.exp(-Math.pow(t - 0.22, 2) / 0.001); // R
+            y -= 8 * Math.exp(-Math.pow(t - 0.24, 2) / 0.001); // S
+            // T wave
+            y -= 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005); 
+
+            // ST Elevation logic (Simulating Anterior leads V1-V4)
+            if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
+                // Lift the segment between S and T
+                if (t > 0.26 && t < 0.45) {
+                    y -= stElev * 10;
+                }
+            }
+            return y;
+        };
+
+        // Draw 4 columns of 3 leads
+        const colW = w / 4;
+        const rowH = h / 3;
+        
+        leads.forEach((lead, i) => {
+            const col = Math.floor(i / 3);
+            const row = i % 3;
+            const originX = col * colW;
+            const originY = row * rowH + (rowH / 2);
+            
+            ctx.fillStyle = 'black';
+            ctx.font = '12px sans-serif';
+            ctx.fillText(lead, originX + 10, originY - 30);
+
+            ctx.beginPath();
+            // Draw a few beats
+            for (let x = 0; x < colW; x++) {
+                const t = (x % 200) / 200; // 1 beat per 200px roughly
+                const y = getComplex(t, i);
+                if (x === 0) ctx.moveTo(originX + x, originY + y);
+                else ctx.lineTo(originX + x, originY + y);
+            }
+            ctx.stroke();
+        });
+        
+        // Footer text
+        ctx.fillStyle = 'black';
+        ctx.font = '14px monospace';
+        ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
+    };
+
     const MonitorScreen = ({ sim }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
@@ -22,15 +112,15 @@
         const [defibOpen, setDefibOpen] = useState(false);
         const [showToast, setShowToast] = useState(false);
         const [invModal, setInvModal] = useState(null);
+        const [show12Lead, setShow12Lead] = useState(false);
+        const canvasRef = useRef(null);
         
-        // Track unique notification ID to prevent infinite loop
         const lastNotifId = useRef(null);
 
         // Toast Logic - Fixed to prevent persistent old notifications
         useEffect(() => {
             if(notification && notification.id && notification.id !== lastNotifId.current) {
                 lastNotifId.current = notification.id;
-                // Only show if notification is recent (< 5 seconds old)
                 if (Date.now() - notification.id < 5000) {
                     setShowToast(true);
                     const timer = setTimeout(() => {
@@ -47,6 +137,23 @@
              if (!arrestPanelOpen && defibOpen) setDefibOpen(false);
         }, [arrestPanelOpen]);
 
+        // Draw 12-lead when shown
+        useEffect(() => {
+            if (show12Lead && canvasRef.current) {
+                render12Lead(canvasRef.current, state.rhythm, state.scenario);
+            }
+        }, [show12Lead, state.rhythm]);
+
+        // Listen for 12-lead request
+        const simChannel = useRef(new BroadcastChannel('sim_channel'));
+        useEffect(() => {
+            simChannel.current.onmessage = (event) => {
+                if (event.data.type === 'SHOW_12LEAD') {
+                    setShow12Lead(true);
+                }
+            };
+        }, []);
+
         // Handle Monitor Popups (Investigations)
         useEffect(() => {
             if (monitorPopup && monitorPopup.type) {
@@ -55,7 +162,7 @@
                 let content = "No result available.";
                 
                 if (scenario) {
-                    if (type === 'ECG' && scenario.ecg) content = scenario.ecg.findings;
+                    if (type === 'ECG' && scenario.ecg) content = scenario.ecg.findings; // Fallback text if canvas fails
                     else if (type === 'X-ray' && scenario.chestXray) content = scenario.chestXray.findings;
                     else if (type === 'CT' && scenario.ct) content = scenario.ct.findings;
                     else if (type === 'Urine' && scenario.urine) content = scenario.urine.findings;
@@ -94,6 +201,15 @@
                         <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
                     </div>
                 </div>
+
+                {/* DYNAMIC 12-LEAD OVERLAY */}
+                {show12Lead && (
+                    <div className="absolute inset-0 z-[120] bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn" onClick={() => setShow12Lead(false)}>
+                        <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
+                        <canvas ref={canvasRef} width="800" height="500" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
+                        <div className="text-slate-400 text-xs mt-2">Analysis: {state.rhythm}</div>
+                    </div>
+                )}
 
                 {/* INVESTIGATIONS MODAL */}
                 {invModal && (
@@ -159,7 +275,7 @@
 
                     {/* Investigations Toolbar */}
                     <div className="flex-none h-14 md:h-16 bg-slate-950 border border-slate-800 rounded flex overflow-hidden shadow-lg mt-1">
-                        <InvBtn label="12-Lead" icon="activity" onClick={() => revealInvestigation('ECG')} loading={loadingInvestigations?.['ECG']} />
+                        <InvBtn label="12-Lead" icon="activity" onClick={() => sim.dispatch({type: 'REQUEST_12LEAD'})} loading={loadingInvestigations?.['ECG']} />
                         <InvBtn label="VBG" icon="droplet" onClick={() => revealInvestigation('VBG')} loading={loadingInvestigations?.['VBG']} />
                         <InvBtn label="CXR" icon="image" onClick={() => revealInvestigation('X-ray')} loading={loadingInvestigations?.['X-ray']} />
                         <InvBtn label="Urine" icon="flask-conical" onClick={() => revealInvestigation('Urine')} loading={loadingInvestigations?.['Urine']} />
