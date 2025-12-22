@@ -119,6 +119,12 @@
                 {defibOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
                         <iframe id="defib-frame" src="defib/index.html" className="w-full h-full border-0 bg-slate-900" title="Defibrillator" />
+                        <button 
+                            onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})}
+                            className="absolute top-4 right-4 z-[101] bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow-lg border-2 border-white/20 uppercase tracking-widest text-sm"
+                        >
+                            Close Defib
+                        </button>
                     </div>
                 )}
 
