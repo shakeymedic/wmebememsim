@@ -4,7 +4,7 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
-        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak } = sim; 
+        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation } = sim; 
 
         const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled } = state;
         
@@ -179,8 +179,10 @@
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
-                    <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto">
-                         <div className="bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
+                    {/* LEFT COLUMN: Patient Info, Monitor, Arrest Controls */}
+                    <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto h-full pr-1">
+                         {/* Patient Info Block */}
+                         <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
                             {scenario.title && <div className="text-xs text-emerald-400 font-bold uppercase mt-0.5">{scenario.title}</div>}
@@ -192,8 +194,9 @@
                             </div>
                          </div>
                          
+                         {/* Paeds WETFLAG Block */}
                          {isPaeds && scenario.wetflag && (
-                             <div className="bg-slate-800 p-2 rounded border border-purple-500/30">
+                             <div className="flex-none bg-slate-800 p-2 rounded border border-purple-500/30">
                                  <h3 className="text-[10px] font-bold text-purple-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="baby" className="w-3 h-3"/> WETFLAG ({scenario.wetflag.weight}kg)</h3>
                                  <div className="grid grid-cols-3 gap-1 text-xs">
                                      <div className="bg-slate-900 p-1 rounded text-center"><span className="text-[8px] text-slate-500 block">ENERGY</span><span className="font-mono font-bold">{scenario.wetflag.energy}J</span></div>
@@ -206,9 +209,10 @@
                              </div>
                          )}
 
-                        <div className="bg-black border border-slate-800 rounded relative overflow-hidden">
+                        {/* Monitor Block - Fixed Height but Scrollable Container */}
+                        <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
                              <div className="relative">
-                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-72"/>
+                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-64"/>
                                  {!isMonitoringApplied && (
                                      <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">No Monitoring</div>
                                  )}
@@ -227,7 +231,8 @@
                              </div>
                         </div>
                         
-                        <div className="grid grid-cols-2 gap-2">
+                        {/* Arrest / Defib Controls */}
+                        <div className="flex-none grid grid-cols-2 gap-2">
                             <div className="relative">
                                 <Button variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST</Button>
                                 {showArrestMenu && (
@@ -250,14 +255,15 @@
                             </div>
                         </div>
                         
-                        <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full ${arrestPanelOpen ? 'bg-red-900/30 border-red-500' : ''}`}>
+                        <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full flex-none ${arrestPanelOpen ? 'bg-red-900/30 border-red-500 text-red-400' : ''}`}>
                              <Lucide icon="zap" className="w-4 h-4"/> {arrestPanelOpen ? "Close Defib on Monitor" : "Open Defib on Monitor"}
                         </Button>
 
                         {arrestPanelOpen && (
-                             <div className="bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
+                             <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
                                      <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator Active</h3>
+                                     <button onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
                                  <div className="grid grid-cols-2 gap-2">
                                      <Button onClick={() => sim.dispatch({type: 'CHARGE_INIT', payload: {energy: 150}})} variant="warning" className="h-10 text-xs">Charge</Button>
@@ -271,6 +277,7 @@
                         )}
                     </div>
                     
+                    {/* RIGHT COLUMN: Actions, Log, Tabs */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden">
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex gap-2">
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-12 text-lg flex-1 text-white focus:border-sky-500 outline-none" placeholder="Search Action or Type Custom Log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
@@ -284,7 +291,7 @@
                         </div>
 
                         <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
-                             {['Common', 'Drugs', 'Airway', 'Breathing', 'Circulation', 'Procedures', 'Voice', 'Assessment'].map(cat => (
+                             {['Common', 'Drugs', 'Airway', 'Breathing', 'Circulation', 'Procedures', 'Investigations', 'Voice', 'Assessment'].map(cat => (
                                  <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'} ${cat === 'Assessment' ? 'ml-auto border-l border-slate-700 text-amber-400' : ''}`}>{cat}</button>
                              ))}
                         </div>
@@ -324,6 +331,15 @@
                                             </Button>
                                         ))}
                                     </div>
+                                </div>
+                            ) : activeTab === 'Investigations' ? (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                    {['ECG', 'VBG', 'X-ray', 'Urine', 'POCUS', 'CT'].map(type => (
+                                        <Button key={type} onClick={() => revealInvestigation(type)} variant="outline" className="h-14 flex flex-col items-center justify-center gap-1">
+                                            <Lucide icon="activity" className="w-4 h-4 text-sky-400"/>
+                                            <span className="text-xs font-bold">Send {type}</span>
+                                        </Button>
+                                    ))}
                                 </div>
                             ) : activeTab === 'Drugs' ? (
                                 renderDrugsTab()
