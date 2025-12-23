@@ -3,194 +3,69 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZOLL R Series Simulator V2 - WMEBEM | RCUK 2025</title>
+    <title>ZOLL R Series Simulator</title>
     <link rel="manifest" href="manifest.json">
     <script>
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js')
-          .then(() => console.log('Service Worker Registered'));
+        navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker Registered'));
       }
     </script>
     
     <script>
-(function(){'use strict';
+    (function(){'use strict';
+    
+    // --- WAVEFORM GENERATION ENGINE (MATCHING MONITOR.JS) ---
+    window.getECGValue = function(t, pT, absoluteTime, type, pathology, cpr) {
+        if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); 
+        let noise = (Math.random() - 0.5) * 1.5; 
+        
+        if (type === 'Asystole') return noise;
+        if (type === 'VF' || type === 'Coarse VF') return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
+        if (type === 'Fine VF') return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
+        if (type === 'VT' || type === 'pVT' || type === 'vt_pulseless') return Math.sin(t * 2 * Math.PI) * 35;
 
-// --- GLOBAL SETTINGS ---
-window.PX_PER_BIG = 25; 
-window.PX_PER_MM = 5;   
-window.PX_PER_MV = 50;  
-window.ecgSpeed = 125;  
-window.waveformX = 0;   
-window.waveformGain = 1.0; 
-window.interferenceActive = false;
-
-function setSpeed(pxPerSec){ window.ecgSpeed = pxPerSec; }
-
-// --- STABLE MATH HELPERS ---
-function gaussian(t, center, width, amp) {
-    var x = (t - center);
-    return -amp * Math.exp(-0.5 * (x * x) / (width * width));
-}
-
-// --- SHAPES ---
-function getP(t) { return gaussian(t, 0.15, 0.04, window.PX_PER_MV * 0.15); }
-
-function getQRSNarrow(t) {
-    var q = gaussian(t, 0.23, 0.008, -window.PX_PER_MV * 0.1); 
-    var r = gaussian(t, 0.25, 0.015, window.PX_PER_MV * 1.5);   
-    var s = gaussian(t, 0.27, 0.010, -window.PX_PER_MV * 0.3); 
-    return q + r + s;
-}
-
-function getQRSWide(t) { 
-    return gaussian(t, 0.25, 0.05, window.PX_PER_MV * 1.2); 
-}
-
-function getT(t) { return gaussian(t, 0.55, 0.09, window.PX_PER_MV * 0.3); }
-
-// --- RHYTHM LOGIC ---
-function sinusTemplate(x, hr, c, opts) {
-    opts = opts || {};
-    var baseline = (c.height || 300) / 2;
-    var bpm = hr || 75;
-    var cyclePx = (60 / bpm) * window.ecgSpeed;
-    var t = (x % cyclePx) / cyclePx; 
-    var y = 0;
-    if (!opts.hideP) y += getP(t);
-    y += getQRSNarrow(t);
-    y += getT(t);
-    return baseline + y;
-}
-
-function svt(x, hr, c) {
-    var baseline = (c.height || 300) / 2;
-    var bpm = 180; 
-    var cyclePx = (60 / bpm) * window.ecgSpeed;
-    var t = (x % cyclePx) / cyclePx;
-    var qrs = gaussian(t, 0.15, 0.02, window.PX_PER_MV * 1.1); 
-    var twave = gaussian(t, 0.50, 0.08, window.PX_PER_MV * 0.2); 
-    return baseline + qrs + twave;
-}
-
-function vtach(x, hr, c) {
-    var baseline = (c.height || 300) / 2;
-    var cyclePx = (60 / 160) * window.ecgSpeed;
-    var t = (x % cyclePx) / cyclePx;
-    var val = Math.sin(2 * Math.PI * t) - 0.2 * Math.sin(4 * Math.PI * t - 0.2);
-    return baseline - (val * window.PX_PER_MV * 1.4);
-}
-
-function vfib(x, hr, c) {
-    var baseline = (c.height || 300) / 2;
-    var y = 0;
-    y += Math.sin(x * 0.15) * 3.0;
-    y += Math.sin(x * 0.22) * 2.0;
-    y += Math.sin(x * 0.09) * 1.5;
-    var ampWander = (Math.sin(x * 0.002) * 0.2) + 0.6; 
-    return baseline + (y * (window.PX_PER_MV/15) * ampWander);
-}
-
-function afib(x, hr, c) {
-    var baseline = (c.height || 300) / 2;
-    var fWaves = Math.sin(x * 0.15) * 1.5 + Math.sin(x * 0.08) * 1.0;
-    var cyclePx = (60 / 140) * window.ecgSpeed;
-    var phaseNoise = Math.sin(x * 0.005) * cyclePx * 0.6; 
-    var t = ((x + phaseNoise) % cyclePx) / cyclePx;
-    var qrs = 0;
-    if(t > 0.2 && t < 0.4) {
-        var localT = (t - 0.2) / 0.2;
-        qrs = -window.PX_PER_MV * 1.0 * Math.exp(-0.5 * Math.pow(localT - 0.5, 2) / 0.005);
-    }
-    return baseline + fWaves + qrs;
-}
-
-function asystole(x, hr, c) { return (c.height/2) + Math.sin(x * 0.002) * 4; }
-
-function chb(x, hr, c) {
-    var baseline = (c.height || 300) / 2;
-    var aCycle = (60 / 75) * window.ecgSpeed;
-    var vCycle = (60 / 35) * window.ecgSpeed;
-    var aT = (x % aCycle) / aCycle;
-    var vT = (x % vCycle) / vCycle;
-    return baseline + getP(aT) + getQRSWide(vT) + getT(vT);
-}
-
-function paced(x, hr, c) {
-    var baseline = (c.height || 300) / 2;
-    var bpm = hr || 70;
-    var cyclePx = (60 / bpm) * window.ecgSpeed;
-    var t = (x % cyclePx) / cyclePx;
-    var y = gaussian(t, 0.12, 0.05, window.PX_PER_MV * 1.1); 
-    y += gaussian(t, 0.40, 0.09, window.PX_PER_MV * 0.3); 
-    return baseline + y;
-}
-
-var rhythms = {
-    nsr: function(x,h,t,c){ return sinusTemplate(x, h, c, {}); },
-    sinus_brady: function(x,h,t,c){ return sinusTemplate(x, 45, c, {}); },
-    sinus_tach: function(x,h,t,c){ return sinusTemplate(x, 120, c, {hideP:true}); },
-    svt: function(x,h,t,c){ return svt(x, h, c); },
-    vtach: function(x,h,t,c){ return vtach(x, h, c); },
-    vt_pulseless: function(x,h,t,c){ return vtach(x, 180, c); },
-    vfib: function(x,h,t,c){ return vfib(x, h, c); },
-    afib: function(x,h,t,c){ return afib(x, h, c); },
-    chb: function(x,h,t,c){ return chb(x, h, c); },
-    paced: function(x,h,t,c){ return paced(x, h, c); },
-    asystole: function(x,h,t,c){ return asystole(x, h, c); },
-    brady: function(x,h,t,c){ return sinusTemplate(x, 40, c, {}); },
-    idioventricular: function(x,h,t,c){ return sinusTemplate(x, 30, c, {hideP:true, rAmp:0.8}); },
-    sinus: function(x,h,t,c){ return sinusTemplate(x, 75, c, {}); },
-    pea: function(x,h,t,c){ return sinusTemplate(x, 70, c, {}); }
-};
-
-// --- UPDATED ARTEFACT & GAIN LOGIC ---
-function withArtefacts(fn){
-    return function(x, hr, tSeconds, canvasInfo){
-        var baseline = (canvasInfo.height || 300) / 2;
-        var rawY = fn(x, hr, tSeconds, canvasInfo); 
-        var y = baseline + ((rawY - baseline) * window.waveformGain);
-        var st = window.state || {};
-        var flags = (st.noise || {});
-
-        if (st.cprActive) {
-            var freq = 1.83; 
-            var ang = tSeconds * freq * 2 * Math.PI;
-            var cprWave = (Math.sin(ang) - 0.4 * Math.sin(2 * ang)) * (window.PX_PER_MV * 4.0);
-            var noise = (Math.random() - 0.5) * (window.PX_PER_MV * 0.4);
-            y = baseline + ((y - baseline) * 0.1) + cprWave + noise;
+        let y = 0;
+        
+        // Baseline/Atrial
+        if (type === 'AF' || type === 'afib') {
+            y += (Math.sin(absoluteTime * 25) * 2) + (Math.random() * 1.5); 
+        } else if (type === 'Atrial Flutter') {
+            y += Math.sin(absoluteTime * 10 * Math.PI) * 6;
+        } else if (type === 'Complete Heart Block' || type === 'chb') {
+            y += 5 * Math.exp(-Math.pow(pT - 0.5, 2) / 0.002);
+        } else {
+            if (type !== 'SVT' && type !== 'svt' && type !== 'Junctional') {
+                y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002); // P Wave
+            }
         }
 
-        if(flags.movement) y += Math.sin(tSeconds * 0.5 + x * 0.005) * (window.PX_PER_MM * 1.5);
-        if(flags.leadoff) y += Math.sin(tSeconds * 50) * (window.PX_PER_MM * 4.0);
-        if(window.interferenceActive) y += Math.sin(x * 0.8) * (window.PX_PER_MM * 1.5);
+        // QRS
+        let width = 0.0008;
+        if (type === 'SVT' || type === 'svt') width = 0.0004;
+        if (['LBBB', 'RBBB', 'Hyperkalemia', 'paced'].includes(type) || type === 'paced') width = 0.002;
+
+        y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / (width * 0.6)); // Q
+        y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / width); // R
+        y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / (width * 0.6)); // S
+
+        // T Wave
+        if (type !== 'SVT' && type !== 'svt') {
+             let tAmp = 8;
+             if (pathology === 'Hyperkalemia') tAmp = 25; 
+             y += tAmp * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
+        }
         
-        return y;
-    }
-}
+        return y + noise;
+    };
 
-var wrapped = {};
-Object.keys(rhythms).forEach(function(k){ wrapped[k] = withArtefacts(rhythms[k]); });
-window.rhythms = wrapped;
-
-// --- GRID DRAWER ---
-window.drawECGGrid = function(ctx, w, h) {
-    ctx.fillStyle = '#050505'; 
-    ctx.fillRect(0, 0, w, h);
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(0, 255, 50, 0.07)';
-    ctx.beginPath();
-    for (var x=0; x<=w; x+=window.PX_PER_MM) { ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,h); }
-    for (var y=0; y<=h; y+=window.PX_PER_MM) { ctx.moveTo(0,y+0.5); ctx.lineTo(w,y+0.5); }
-    ctx.stroke();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(0, 255, 50, 0.12)';
-    ctx.beginPath();
-    for (var x=0; x<=w; x+=window.PX_PER_BIG) { ctx.moveTo(x+0.5,0); ctx.lineTo(x+0.5,h); }
-    for (var y=0; y<=h; y+=window.PX_PER_BIG) { ctx.moveTo(0,y+0.5); ctx.lineTo(w,y+0.5); }
-    ctx.stroke();
-};
-})();
-</script>
+    // --- GRID DRAWER ---
+    window.drawECGGrid = function(ctx, w, h) {
+        ctx.fillStyle = '#050505'; 
+        // We do NOT clearRect here because we use the "eraser bar" method
+        // But for initial setup we might.
+    };
+    })();
+    </script>
     
     <style> 
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
@@ -323,7 +198,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             '3rd Deg Block': 'chb',
             '3rd Degree AV Block': 'chb',
             'pVT': 'vt_pulseless',
-            'Agonal Rhythm': 'pea'
+            'Agonal Rhythm': 'pea',
+            'Complete Heart Block': 'chb',
+            'Atrial Flutter': 'Atrial Flutter'
         };
 
         const mapRhythm = (r) => rhythmMap[r] || 'nsr';
@@ -332,23 +209,33 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             const data = event.data;
             if (data.type === 'SYNC_VITALS') {
                 window.isRemoteControlled = true;
-                const mappedRhythm = mapRhythm(data.payload.rhythm);
-                if(state.rhythm !== mappedRhythm) {
-                     setVitals(mappedRhythm);
+                const mappedRhythm = data.payload.rhythm; // Use RAW rhythm name for getECGValue
+                
+                // Demand Pacing Logic: If in Pacer Mode, and Pacer Rate > Patient HR, override rhythm
+                if (state.deviceMode === 'pacer' && state.pacerRate > data.payload.hr) {
+                    state.rhythm = 'paced';
+                } else if (state.rhythm !== mappedRhythm) {
+                     state.rhythm = mappedRhythm;
                      state.originalRhythm = mappedRhythm; 
                 }
+                
                 state.hr = data.payload.hr;
                 state.spo2 = data.payload.spO2;
                 state.etco2 = data.payload.etco2;
                 state.bpSys = data.payload.bpSys;
                 state.bpDia = data.payload.bpDia;
+                state.cprActive = data.payload.cpr; // Sync CPR state
                 if(data.payload.gain !== undefined) window.waveformGain = data.payload.gain;
                 if(data.payload.interference !== undefined) window.interferenceActive = data.payload.interference;
+                
+                // Sync capture threshold from engine
+                if(data.payload.captureThreshold !== undefined) state.captureThreshold = data.payload.captureThreshold;
+                
                 updateDisplays();
             } else if (data.type === 'SHOW_12LEAD') {
                 const overlay = document.getElementById('paperOverlay');
                 const img = document.getElementById('paperImage');
-                if(overlay && img && data.payload) {
+                if(overlay && img && data.payload && typeof data.payload === 'string') {
                     img.src = data.payload; 
                     overlay.classList.remove('hidden');
                 }
@@ -373,10 +260,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
 
         const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
         const state = {
-            deviceMode: 'off', rhythm: 'nsr', hr: 75, spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80,
+            deviceMode: 'off', rhythm: 'Sinus Rhythm', hr: 75, spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80,
             energy: 120, energyLevels: [50, 70, 85, 100, 120, 150, 170, 200], charged: false, syncMode: false, shockCount: 0,
             pacerOutput: 0, pacerRate: 60, pacingActive: false, isCaptured: false, originalRhythm: null,
-            chargeTimer: null, noise: {}
+            chargeTimer: null, noise: {}, captureThreshold: 70, cprActive: false
         };
         window.state = state;
 
@@ -554,36 +441,96 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
             ctx.scale(dpr, dpr);
+            
+            // Set grid background immediately on resize
+            ctx.fillStyle = '#050505'; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
         }
         window.addEventListener('resize', resize); resize();
 
-        function animate(time) {
+        // --- NEW ANIMATION LOGIC (MATCHING MONITOR.JS) ---
+        const drawState = { x: 0, lastY: 100, beatProgress: 0, pWaveProgress: 0, lastTime: 0 };
+        const jitterRef = { current: 0 };
+
+        function animate(timestamp) {
             if(state.deviceMode==='off') return;
-            if(lastTime===0) lastTime=time;
-            let dt = (time - lastTime)/1000;
-            lastTime = time;
+            if(!drawState.lastTime) drawState.lastTime = timestamp;
             
-            const width = canvas.width / (window.devicePixelRatio || 1);
-            const height = canvas.height / (window.devicePixelRatio || 1);
-            window.drawECGGrid(ctx, width, height);
+            let dt = Math.min((timestamp - drawState.lastTime) / 1000, 0.05);
+            drawState.lastTime = timestamp;
+
+            const ecgSpeed = 150; 
+            drawState.x += ecgSpeed * dt;
+            const prevX = drawState.x - (ecgSpeed * dt);
             
-            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-            ctx.shadowBlur = 10; ctx.shadowColor = 'rgba(57, 255, 20, 0.8)';
-            ctx.beginPath();
-            
-            const rhythmFn = window.rhythms[state.rhythm] || window.rhythms['nsr'];
-            for(let x=0; x<width; x+=1) {
-                let y = rhythmFn(x + window.waveformX, state.hr, Date.now()/1000, {height: height});
-                if(x===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            // Draw Eraser Bar
+            const eraserWidth = 35;
+            if (drawState.x + 30 < canvas.width / window.devicePixelRatio) {
+                 ctx.fillStyle = '#050505';
+                 ctx.fillRect(drawState.x, 0, eraserWidth, canvas.height / window.devicePixelRatio);
+            } else {
+                 ctx.fillStyle = '#050505';
+                 ctx.fillRect(drawState.x, 0, (canvas.width / window.devicePixelRatio) - drawState.x, canvas.height / window.devicePixelRatio);
+                 ctx.fillRect(0, 0, eraserWidth, canvas.height / window.devicePixelRatio);
             }
-            ctx.stroke();
+
+            // Draw Grid (Simplistic redraw in erased area - optional optimization omitted for simplicity, grid is dark enough)
             
-            window.waveformX += window.ecgSpeed * dt;
+            const height = canvas.height / window.devicePixelRatio;
+            const baselineECG = height * 0.5;
+
+            // Handle Heart Rate & Jitter
+            let effectiveHR = state.hr;
+            if (state.rhythm === 'AF' || state.rhythm === 'afib') {
+                if (drawState.beatProgress < 0.05 && Math.random() < 0.2) {
+                     jitterRef.current = (Math.random() * 70) - 35; 
+                }
+                effectiveHR += jitterRef.current;
+            }
+            if (state.cprActive) effectiveHR = 110;
+            else if (effectiveHR === 0 && ['VF','VT','pVT','PEA','vt_pulseless'].includes(state.rhythm)) effectiveHR = 150; 
+
+            let beatDuration = 60 / Math.max(10, effectiveHR); 
+            drawState.beatProgress += dt / beatDuration; 
+            if (drawState.beatProgress >= 1) drawState.beatProgress = 0;
+
+            drawState.pWaveProgress += dt * (75 / 60);
+            if (drawState.pWaveProgress >= 1) drawState.pWaveProgress = 0;
+
+            if (drawState.x > canvas.width / window.devicePixelRatio) { 
+                drawState.x = 0; 
+                drawState.lastY = baselineECG; 
+            }
+
+            // Calculate Y
+            let rawECG = window.getECGValue(drawState.beatProgress, drawState.pWaveProgress, (timestamp / 1000), state.rhythm, null, state.cprActive);
+            const gain = window.waveformGain || 1.0;
+            let yECG = baselineECG - (rawECG * gain);
+            if (window.interferenceActive) yECG += Math.sin(timestamp / 20) * 5;
+
+            // Draw Line
+            if (drawState.x > prevX) {
+                ctx.strokeStyle = '#39ff14'; 
+                ctx.lineWidth = 2.5; 
+                ctx.lineJoin = 'round'; 
+                ctx.lineCap = 'round';
+                ctx.shadowBlur = 6; 
+                ctx.shadowColor = 'rgba(57, 255, 20, 0.6)';
+                
+                ctx.beginPath(); 
+                ctx.moveTo(prevX, drawState.lastY); 
+                ctx.lineTo(drawState.x, yECG); 
+                ctx.stroke();
+                
+                // Reset shadow for next frame (performance)
+                ctx.shadowBlur = 0;
+            }
+            
+            drawState.lastY = yECG;
             requestAnimationFrame(animate);
         }
         
         setMode('off');
-        window.setVitals = function(r) { state.rhythm = r; }
     });
     </script>
 </body>
