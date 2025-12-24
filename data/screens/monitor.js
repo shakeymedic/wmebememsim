@@ -313,7 +313,9 @@
         const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
         if (!sessionID) return null; 
-        if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) { // Fix: Allow HR 0 to be valid
+        
+        // Fix: Allow HR 0 (Cardiac Arrest) to be a valid state, don't show waiting screen
+        if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) {
             return (
                 <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
                     <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
