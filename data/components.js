@@ -2,7 +2,6 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // SAFE LUCIDE COMPONENT
     const Lucide = React.memo(({ icon, className = "" }) => {
         const ref = useRef(null);
         useEffect(() => {
@@ -162,10 +161,6 @@
         
         // --- IMPROVED WAVEFORM GENERATORS ---
         const getECGValue = (t, pT, absoluteTime, type, pathology, cpr) => {
-            // t = QRS/Beat progress (0 to 1)
-            // pT = P-wave progress (0 to 1) - Independent rate (approx 75bpm)
-            // absoluteTime = continuous time in seconds (for continuous waveforms like flutter/fib)
-
             if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); 
             
             let noise = (Math.random() - 0.5) * 1.5; 
@@ -192,29 +187,22 @@
                 // Sawtooth baseline (300bpm = 5Hz)
                 y += Math.sin(absoluteTime * 10 * Math.PI) * 6;
             } else if (type === 'Complete Heart Block') {
-                // Independent P waves marching through
-                // P-wave centred at pT = 0.5
+                // Independent P waves marching through (approx 75bpm independent of QRS)
                 y += 5 * Math.exp(-Math.pow(pT - 0.5, 2) / 0.002);
             } else {
                 // Standard P-wave (locked to QRS)
-                // Skip P-wave if SVT (buried)
                 if (type !== 'SVT' && type !== 'Junctional') {
-                    // P Wave at t=0.1
                     y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
                 }
             }
 
             // --- QRS COMPLEX (at t=0.35) ---
-            // Width factor: 0.0008 (normal), 0.0004 (narrow/SVT), 0.002 (wide/bundle)
             let width = 0.0008;
             if (type === 'SVT') width = 0.0004; // Very narrow
             if (['LBBB', 'RBBB', 'Hyperkalemia'].includes(pathology)) width = 0.002;
 
-            // Q
             y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / (width * 0.6));
-            // R
             y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / width);
-            // S
             y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / (width * 0.6));
 
             // --- ST SEGMENT ---
@@ -225,9 +213,9 @@
             }
 
             // --- T WAVE (at t=0.6) ---
-            if (type !== 'SVT') { // T waves often merged in SVT
+            if (type !== 'SVT') { 
                  let tAmp = 8;
-                 if (pathology === 'Hyperkalemia') tAmp = 25; // Peaked T
+                 if (pathology === 'Hyperkalemia') tAmp = 25; 
                  y += tAmp * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
             }
 
@@ -249,35 +237,24 @@
         };
 
         const getCO2Value = (t, pathology) => {
-            // t is breath cycle 0..1
-            // 0.0 - 0.4: Inspiration (CO2 ~ 0)
-            // 0.4 - 0.5: Expiration Upstroke
-            // 0.5 - 0.9: Alveolar Plateau
-            // 0.9 - 1.0: Inspiration Downstroke
-            
             let y = 0;
             const isObstructive = pathology === 'bronchospastic' || pathology === 'obstructive';
 
             if (t < 0.4) {
-                y = 0; // Inspiration baseline
+                y = 0; 
             } else if (t < 0.9) {
-                // Expiration phase
                 if (isObstructive) {
-                    // Shark fin: slow exponential rise, no flat plateau
+                    // Shark fin
                     const phase = (t - 0.4) / 0.5;
                     y = 35 * (1 - Math.exp(-phase * 4)); 
                 } else {
-                    // Normal square wave
                     if (t < 0.45) {
-                        // Sharp upstroke
                         y = 35 * ((t - 0.4) / 0.05);
                     } else {
-                        // Slight incline plateau
                         y = 35 + (2 * (t - 0.45));
                     }
                 }
             } else {
-                // Rapid drop (Inspiration start)
                 y = 37 * (1 - ((t - 0.9) / 0.1));
                 if (y < 0) y = 0;
             }
@@ -331,22 +308,19 @@
                 // Smooth HR jitter for AF
                 let effectiveHR = props.hr;
                 if (props.rhythmType === 'AF') {
-                    // Aggressive jitter for AF
                     if (state.beatProgress < 0.05 && Math.random() < 0.2) {
-                         // Pick a random interval equivalent to 90-160bpm
                          jitterRef.current = (Math.random() * 70) - 35; 
                     }
                     effectiveHR += jitterRef.current;
                 }
                 
                 if (props.isCPR) effectiveHR = 110;
-                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; // Intrinsic rate of arrhythmia
+                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; 
                 
                 let beatDuration = 60 / Math.max(10, effectiveHR); 
                 state.beatProgress += dt / beatDuration; 
                 if (state.beatProgress >= 1) state.beatProgress = 0;
 
-                // Independent P-Wave Progress (approx 75bpm)
                 state.pWaveProgress += dt * (75 / 60);
                 if (state.pWaveProgress >= 1) state.pWaveProgress = 0;
 
@@ -356,7 +330,6 @@
 
                 if (state.x > canvas.width) { state.x = 0; state.lastY = baselineECG; }
 
-                // Pass absolute time (timestamp/1000) for continuous waveforms like Flutter/AF
                 let rawECG = getECGValue(state.beatProgress, state.pWaveProgress, (timestamp / 1000), props.rhythmType, props.pathology, props.isCPR);
                 const gain = window.waveformGain;
                 let yECG = baselineECG - (rawECG * gain);
