@@ -13,78 +13,83 @@
     };
 
     const render12Lead = (canvas, rhythm, scenario) => {
-        const ctx = canvas.getContext('2d');
-        const w = canvas.width;
-        const h = canvas.height;
-        
-        ctx.fillStyle = 'white';
-        ctx.fillRect(0, 0, w, h);
-        ctx.strokeStyle = '#ffcccc'; 
-        ctx.lineWidth = 1;
-        
-        ctx.beginPath();
-        for(let x=0; x<=w; x+=10) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-        for(let y=0; y<=h; y+=10) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
-        ctx.stroke();
-        
-        ctx.strokeStyle = '#ff9999';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-        for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
-        ctx.stroke();
+        if (!canvas) return;
+        try {
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, w, h);
+            ctx.strokeStyle = '#ffcccc'; 
+            ctx.lineWidth = 1;
+            
+            ctx.beginPath();
+            for(let x=0; x<=w; x+=10) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
+            for(let y=0; y<=h; y+=10) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+            ctx.stroke();
+            
+            ctx.strokeStyle = '#ff9999';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
+            for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+            ctx.stroke();
 
-        ctx.strokeStyle = 'black';
-        ctx.lineWidth = 1.2;
-        ctx.lineJoin = 'round';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 1.2;
+            ctx.lineJoin = 'round';
 
-        const leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
-        
-        let stElev = 0; 
-        if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI')) stElev = 1.5;
-        if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2; 
+            const leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
+            
+            let stElev = 0; 
+            if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI')) stElev = 1.5;
+            if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2; 
 
-        const getComplex = (t, leadIndex) => {
-            let y = 0;
-            y -= 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
-            y += 20 * Math.exp(-Math.pow(t - 0.22, 2) / 0.001); 
-            y -= 8 * Math.exp(-Math.pow(t - 0.24, 2) / 0.001); 
-            y -= 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005); 
+            const getComplex = (t, leadIndex) => {
+                let y = 0;
+                y -= 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
+                y += 20 * Math.exp(-Math.pow(t - 0.22, 2) / 0.001); 
+                y -= 8 * Math.exp(-Math.pow(t - 0.24, 2) / 0.001); 
+                y -= 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005); 
 
-            if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
-                if (t > 0.26 && t < 0.45) {
-                    y -= stElev * 10;
+                if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
+                    if (t > 0.26 && t < 0.45) {
+                        y -= stElev * 10;
+                    }
                 }
-            }
-            return y;
-        };
+                return y;
+            };
 
-        const colW = w / 4;
-        const rowH = h / 3;
-        
-        leads.forEach((lead, i) => {
-            const col = Math.floor(i / 3);
-            const row = i % 3;
-            const originX = col * colW;
-            const originY = row * rowH + (rowH / 2);
+            const colW = w / 4;
+            const rowH = h / 3;
+            
+            leads.forEach((lead, i) => {
+                const col = Math.floor(i / 3);
+                const row = i % 3;
+                const originX = col * colW;
+                const originY = row * rowH + (rowH / 2);
+                
+                ctx.fillStyle = 'black';
+                ctx.font = '12px sans-serif';
+                ctx.fillText(lead, originX + 10, originY - 30);
+
+                ctx.beginPath();
+                for (let x = 0; x < colW; x++) {
+                    const t = (x % 200) / 200; 
+                    const y = getComplex(t, i);
+                    if (x === 0) ctx.moveTo(originX + x, originY + y);
+                    else ctx.lineTo(originX + x, originY + y);
+                }
+                ctx.stroke();
+            });
             
             ctx.fillStyle = 'black';
-            ctx.font = '12px sans-serif';
-            ctx.fillText(lead, originX + 10, originY - 30);
-
-            ctx.beginPath();
-            for (let x = 0; x < colW; x++) {
-                const t = (x % 200) / 200; 
-                const y = getComplex(t, i);
-                if (x === 0) ctx.moveTo(originX + x, originY + y);
-                else ctx.lineTo(originX + x, originY + y);
-            }
-            ctx.stroke();
-        });
-        
-        ctx.fillStyle = 'black';
-        ctx.font = '14px monospace';
-        ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
+            ctx.font = '14px monospace';
+            ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
+        } catch (e) {
+            console.error("12-Lead Render Error", e);
+        }
     };
 
     const MonitorScreen = ({ sim }) => {
@@ -107,11 +112,9 @@
         useEffect(() => {
             if(notification && notification.id && notification.id !== lastNotifId.current) {
                 lastNotifId.current = notification.id;
-                if (Date.now() - notification.id < 5000) {
-                    setShowToast(true);
-                    const timer = setTimeout(() => setShowToast(false), 3000); 
-                    return () => clearTimeout(timer);
-                }
+                setShowToast(true);
+                const timer = setTimeout(() => setShowToast(false), 4000); 
+                return () => clearTimeout(timer);
             }
         }, [notification]);
 
@@ -141,14 +144,14 @@
                 lastPopupTime.current = monitorPopup.timestamp;
                 const type = monitorPopup.type;
                 let title = type;
-                let content = "No result available.";
+                let content = "No findings recorded.";
                 
                 if (scenario) {
-                    if (type === 'ECG' && scenario.ecg) content = scenario.ecg.findings; 
-                    else if (type === 'X-ray' && scenario.chestXray) content = scenario.chestXray.findings;
-                    else if (type === 'CT' && scenario.ct) content = scenario.ct.findings;
-                    else if (type === 'Urine' && scenario.urine) content = scenario.urine.findings;
-                    else if (type === 'POCUS' && scenario.pocus) content = scenario.pocus.findings;
+                    if (type === 'ECG') content = (scenario.ecg && scenario.ecg.findings) ? scenario.ecg.findings : "Normal Sinus Rhythm"; 
+                    else if (type === 'X-ray') content = (scenario.chestXray && scenario.chestXray.findings) ? scenario.chestXray.findings : "Lung fields clear.";
+                    else if (type === 'CT') content = (scenario.ct && scenario.ct.findings) ? scenario.ct.findings : "No acute intracranial pathology.";
+                    else if (type === 'Urine') content = (scenario.urine && scenario.urine.findings) ? scenario.urine.findings : "Urinalysis Normal.";
+                    else if (type === 'POCUS') content = (scenario.pocus && scenario.pocus.findings) ? scenario.pocus.findings : "No free fluid seen.";
                     else if (type === 'VBG' && scenario.vbg) {
                         const v = scenario.vbg;
                         content = (
@@ -166,8 +169,8 @@
                     }
                 }
                 setInvToast({ title, content });
-                // Auto dismiss after 5 seconds
-                const timer = setTimeout(() => setInvToast(null), 5000);
+                // Auto dismiss after 6 seconds
+                const timer = setTimeout(() => setInvToast(null), 6000);
                 return () => clearTimeout(timer);
             }
         }, [monitorPopup, scenario]);
@@ -192,7 +195,7 @@
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
-                            <button onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
+                            <button onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
                         </div>
                         <div className="text-white text-sm font-medium leading-relaxed">
                             {invToast?.content}
@@ -237,29 +240,37 @@
                     <div className="flex-none grid grid-cols-2 md:grid-cols-5 gap-2 h-[25vh] md:h-[28vh]">
                         <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         
-                        {/* NIBP DISPLAY (Separate) */}
+                        {/* NIBP DISPLAY with Larger Buttons */}
                         <div className="relative h-full">
                             <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
                             {hasMonitoring && (
-                                <div className="absolute bottom-2 right-2 flex gap-1 z-20">
-                                    <button onClick={triggerNIBP} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[9px] px-2 py-1 rounded border border-slate-600 uppercase font-bold tracking-wide transition-colors">{nibp.inflating ? 'Inflating...' : 'Cycle'}</button>
-                                    <button onClick={toggleNIBPMode} className={`text-[9px] px-2 py-1 rounded border uppercase font-bold tracking-wide transition-colors ${nibp.mode === 'auto' ? 'bg-emerald-900/50 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
+                                <div className="absolute bottom-2 right-2 flex gap-2 z-20 w-full px-2 justify-end">
+                                    <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2 rounded border border-slate-600 uppercase font-bold tracking-wide transition-colors shadow-lg flex-1 max-w-[80px]">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-xs px-4 py-2 rounded border uppercase font-bold tracking-wide transition-colors shadow-lg flex-1 max-w-[60px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
 
-                        {/* ABP DISPLAY (Conditional) */}
+                        {/* ABP or SpO2 */}
                         {hasArtLine ? (
                              <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
                         ) : (
                              <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         )}
 
+                        {/* If ABP takes slot 3, SpO2 moves to slot 4, else RR is slot 4. BUT user wants ETCO2 visible. */}
+                        {/* Logic: if ABP active, it takes a slot. We need SpO2, RR, ETCO2. */}
+                        
                         {hasArtLine && (
                              <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         )}
 
                         <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+
+                        {/* ETCO2 Tile (Conditionally Rendered) */}
+                        {etco2Enabled && (
+                            <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        )}
                     </div>
 
                     {/* Investigations Toolbar */}
@@ -305,7 +316,7 @@
         const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
         if (!sessionID) return null; 
-        if (!sim.state.vitals || !sim.state.vitals.hr) {
+        if (!sim.state.vitals || !sim.state.vitals.hr && sim.state.vitals.hr !== 0) { // Fix: Allow HR 0 to be valid
             return (
                 <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
                     <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
