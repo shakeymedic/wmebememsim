@@ -519,19 +519,4 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 
                 ctx.beginPath(); 
                 ctx.moveTo(prevX, drawState.lastY); 
-                ctx.lineTo(drawState.x, yECG); 
-                ctx.stroke();
-                
-                // Reset shadow for next frame (performance)
-                ctx.shadowBlur = 0;
-            }
-            
-            drawState.lastY = yECG;
-            requestAnimationFrame(animate);
-        }
-        
-        setMode('defib');
-    });
-    </script>
-</body>
-</html>
+                ctx.lineTo(drawState.x
