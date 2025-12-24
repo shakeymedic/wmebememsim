@@ -146,7 +146,7 @@
             lastY: 50, 
             beatProgress: 0, 
             breathProgress: 0, 
-            pWaveProgress: 0, // Independent tracker for P-waves (Heart Block)
+            pWaveProgress: 0, 
             lastTime: 0, 
             lastYCO2: 0, 
             lastYPleth: 0, 
@@ -179,40 +179,32 @@
 
             let y = 0;
             
-            // --- BASELINE/ATRIAL ACTIVITY ---
             if (type === 'AF') {
-                // Continuous fibrillatory baseline
                 y += (Math.sin(absoluteTime * 25) * 2) + (Math.random() * 1.5); 
             } else if (type === 'Atrial Flutter') {
-                // Sawtooth baseline (300bpm = 5Hz)
                 y += Math.sin(absoluteTime * 10 * Math.PI) * 6;
             } else if (type === 'Complete Heart Block') {
-                // Independent P waves marching through (approx 75bpm independent of QRS)
                 y += 5 * Math.exp(-Math.pow(pT - 0.5, 2) / 0.002);
             } else {
-                // Standard P-wave (locked to QRS)
                 if (type !== 'SVT' && type !== 'Junctional') {
                     y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
                 }
             }
 
-            // --- QRS COMPLEX (at t=0.35) ---
             let width = 0.0008;
-            if (type === 'SVT') width = 0.0004; // Very narrow
+            if (type === 'SVT') width = 0.0004; 
             if (['LBBB', 'RBBB', 'Hyperkalemia'].includes(pathology)) width = 0.002;
 
             y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / (width * 0.6));
             y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / width);
             y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / (width * 0.6));
 
-            // --- ST SEGMENT ---
             if (pathology === 'STEMI' || type === 'STEMI') {
                 if (t > 0.38 && t < 0.6) {
                     y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02);
                 }
             }
 
-            // --- T WAVE (at t=0.6) ---
             if (type !== 'SVT') { 
                  let tAmp = 8;
                  if (pathology === 'Hyperkalemia') tAmp = 25; 
@@ -244,7 +236,6 @@
                 y = 0; 
             } else if (t < 0.9) {
                 if (isObstructive) {
-                    // Shark fin
                     const phase = (t - 0.4) / 0.5;
                     y = 35 * (1 - Math.exp(-phase * 4)); 
                 } else {
@@ -317,7 +308,11 @@
                 if (props.isCPR) effectiveHR = 110;
                 else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; 
                 
-                let beatDuration = 60 / Math.max(10, effectiveHR); 
+                // CRITICAL FIX: Ensure we never divide by zero (Asystole / Arrest)
+                let safeHR = Math.max(10, effectiveHR);
+                if (effectiveHR === 0) safeHR = 60; // Provide a base speed for the flatline/noise to draw
+
+                let beatDuration = 60 / safeHR; 
                 state.beatProgress += dt / beatDuration; 
                 if (state.beatProgress >= 1) state.beatProgress = 0;
 
@@ -335,35 +330,40 @@
                 let yECG = baselineECG - (rawECG * gain);
                 if (window.noise.interference) yECG += Math.sin(timestamp / 20) * 5;
 
-                if (state.x > prevX) { 
-                    ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; 
-                    ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
-                    
-                    if (props.showEtco2) {
-                        const baseCO2 = canvas.height * 0.60;
-                        const rawCO2 = getCO2Value(state.breathProgress, props.co2Pathology);
-                        const yCO2 = baseCO2 - rawCO2;
-                        ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
-                        state.lastYCO2 = yCO2;
+                // Wrap drawing in Try/Catch to prevent crashing on invalid state
+                try {
+                    if (state.x > prevX) { 
+                        ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; 
+                        ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
+                        
+                        if (props.showEtco2) {
+                            const baseCO2 = canvas.height * 0.60;
+                            const rawCO2 = getCO2Value(state.breathProgress, props.co2Pathology);
+                            const yCO2 = baseCO2 - rawCO2;
+                            ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
+                            ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
+                            state.lastYCO2 = yCO2;
+                        }
+                        if (props.showArt) {
+                            const baseArt = canvas.height * 0.80;
+                            const rawArt = getArtValue(state.beatProgress);
+                            const yArt = baseArt - rawArt;
+                            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; 
+                            ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
+                            state.lastYArt = yArt;
+                        }
+                        if (props.spO2 > 10) {
+                            const basePleth = canvas.height - 15;
+                            const rawPleth = getPlethValue(state.beatProgress);
+                            const ampScale = Math.max(0.3, props.spO2 / 100); 
+                            const yPleth = basePleth - (rawPleth * ampScale);
+                            ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; 
+                            ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
+                            state.lastYPleth = yPleth;
+                        }
                     }
-                    if (props.showArt) {
-                        const baseArt = canvas.height * 0.80;
-                        const rawArt = getArtValue(state.beatProgress);
-                        const yArt = baseArt - rawArt;
-                        ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
-                        state.lastYArt = yArt;
-                    }
-                    if (props.spO2 > 10) {
-                        const basePleth = canvas.height - 15;
-                        const rawPleth = getPlethValue(state.beatProgress);
-                        const ampScale = Math.max(0.3, props.spO2 / 100); 
-                        const yPleth = basePleth - (rawPleth * ampScale);
-                        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
-                        state.lastYPleth = yPleth;
-                    }
+                } catch(e) {
+                    // Fail silently for one frame rather than crashing the app
                 }
                 state.lastY = yECG;
                 requestRef.current = requestAnimationFrame(animate);
