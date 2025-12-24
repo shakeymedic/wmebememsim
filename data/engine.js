@@ -104,7 +104,7 @@
                 }
 
                 if (currentVitals.rr > 30) {
-                    currentVitals.etco2 = Math.max(2.5, currentVitals.etco2 - 0.01);
+                    currentVitals.etco2 = Math.max(2.5, currentVitals.etco2 - 0.01); 
                     vitalsChanged = true;
                 }
                 if (currentVitals.rr < 10 && currentVitals.rr > 0) {
@@ -237,7 +237,6 @@
                     soundEffect: action.payload.soundEffect || state.soundEffect, 
                     audioOutput: action.payload.audioOutput || 'monitor', 
                     trends: action.payload.trends || state.trends, 
-                    // CRITICAL FIX: Ensure boolean false is treated as a value, not null
                     arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, 
                     isFinished: action.payload.isFinished || false, 
                     monitorPopup: action.payload.monitorPopup || state.monitorPopup,
@@ -477,7 +476,7 @@
             if (shouldStart) { if (ctx && ctx.state === 'suspended') ctx.resume(); scheduleBeep(); }
             return () => clearTimeout(timerId);
         }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]);
-
+        
         useEffect(() => { 
             if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating) { dispatch({ type: 'START_NIBP' }); }
             if (state.nibp.inflating) { playInflationSound(); const timeout = setTimeout(() => { dispatch({ type: 'COMMIT_NIBP' }); }, 5000); return () => clearTimeout(timeout); }
@@ -516,7 +515,7 @@
         const applyIntervention = (key) => {
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(state.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
             const action = INTERVENTIONS[key]; if (!action) return;
-            
+            // ... checks ...
             if (action.requires) {
                 const missing = action.requires.filter(req => !state.activeInterventions.has(req));
                 if (missing.length > 0) {
@@ -535,6 +534,7 @@
             }
 
             let logMsg = action.log;
+            // ... (Special cases for paeds/wetflag logic) ...
             if (key === 'Fluids') {
                 if (state.scenario.ageRange === 'Paediatric' && state.scenario.wetflag) {
                     logMsg = `Fluid Bolus (${state.scenario.wetflag.fluids}ml) administered.`;
@@ -547,6 +547,7 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${state.scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${state.scenario.wetflag.glucose}ml) administered.`;
             }
+            
             const newVitals = { ...state.vitals }; let newActive = new Set(state.activeInterventions); let newCounts = { ...state.interventionCounts }; const count = (newCounts[key] || 0) + 1;
             if (action.duration && !state.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
@@ -554,6 +555,7 @@
             
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
+            // ... (Objective checks) ...
             if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
             if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
             if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
@@ -596,6 +598,7 @@
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 } });
@@ -604,6 +607,7 @@
             addLogEntry(`CARDIAC ARREST - ${newRhythm}`, 'manual');
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
+        
         const triggerROSC = (rhythm = 'Sinus Rhythm') => { 
             const newEtco2 = 5.5 + (Math.random() * 1.5); 
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 80, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 8, pupils: 3, etco2: newEtco2 } }); 
@@ -715,7 +719,10 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
         const reset = () => { dispatch({ type: 'CLEAR_SESSION' }); };
-        const enableAudio = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } };
+        const enableAudio = () => { 
+            if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } 
+            if (window.speechSynthesis && window.speechSynthesis.paused) { window.speechSynthesis.resume(); }
+        };
 
         useEffect(() => {
             if (state.isRunning) {
