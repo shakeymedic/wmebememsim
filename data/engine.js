@@ -23,8 +23,8 @@
         noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 },
         notification: null,
-        pacingThreshold: 70, // Default threshold
-        icp: 10, // Intracranial Pressure
+        pacingThreshold: 70, 
+        icp: 10, 
         hypoxiaTimer: 0,
         activeLoops: {}, 
         completedObjectives: new Set(),
@@ -43,7 +43,6 @@
             case 'LOAD_SCENARIO':
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 const initialVitals = { etco2: 4.5, temp: 36.5, bm: 5.5, ...action.payload.vitals };
-                // Determine initial ICP based on scenario type
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && action.payload.title.includes('Head')) startICP = 25;
 
@@ -57,7 +56,7 @@
                     processedEvents: new Set(), 
                     activeInterventions: new Set(), 
                     arrestPanelOpen: false, 
-                    pacingThreshold: getRandomInt(40, 95), // Randomize pacer threshold per patient
+                    pacingThreshold: getRandomInt(40, 95), 
                     icp: startICP,
                     isOffline: state.isOffline 
                 };
@@ -80,48 +79,38 @@
                 let currentICP = state.icp;
                 let currentHypoxiaTimer = state.hypoxiaTimer;
 
-                // --- ENHANCED PHYSIOLOGY ENGINE ---
-                
-                // 1. Hypoxia Lag (RR < 8 -> SpO2 Drop after 30s)
+                // --- PHYSIOLOGY ENGINE ---
                 if (currentVitals.rr < 8 && currentVitals.rr > 0 && !state.activeInterventions.has('Bagging')) {
                     currentHypoxiaTimer++;
                     if (currentHypoxiaTimer > 30) {
-                        currentVitals.spO2 = Math.max(40, currentVitals.spO2 - 0.5); // Drop 0.5% per second
+                        currentVitals.spO2 = Math.max(40, currentVitals.spO2 - 0.5); 
                         vitalsChanged = true;
                     }
                 } else {
                     currentHypoxiaTimer = 0;
-                    // Recovery if oxygen applied
                     if (state.activeInterventions.has('Oxygen') && currentVitals.spO2 < 95) {
                          currentVitals.spO2 += 0.2;
                          vitalsChanged = true;
                     }
                 }
 
-                // 2. Cushing's Reflex (High ICP -> High BP, Low HR)
-                // If scenario is head injury, slowly creep ICP up unless treated
                 if (state.scenario && state.scenario.deterioration && state.scenario.deterioration.type === 'neuro' && state.isRunning) {
-                    if (state.time % 10 === 0) currentICP += 0.1; // Slow rise
+                    if (state.time % 10 === 0) currentICP += 0.1; 
                     if (currentICP > 25) {
-                        // Cushing's response logic
                         currentVitals.bpSys = Math.min(220, currentVitals.bpSys + 0.2);
                         currentVitals.hr = Math.max(30, currentVitals.hr - 0.1);
                         vitalsChanged = true;
                     }
                 }
 
-                // 3. EtCO2 Reactivity
-                // Varies with RR
                 if (currentVitals.rr > 30) {
-                    currentVitals.etco2 = Math.max(2.5, currentVitals.etco2 - 0.01); // Blow off CO2
+                    currentVitals.etco2 = Math.max(2.5, currentVitals.etco2 - 0.01);
                     vitalsChanged = true;
                 }
                 if (currentVitals.rr < 10 && currentVitals.rr > 0) {
-                    currentVitals.etco2 = Math.min(8.0, currentVitals.etco2 + 0.01); // Retain CO2
+                    currentVitals.etco2 = Math.min(8.0, currentVitals.etco2 + 0.01); 
                     vitalsChanged = true;
                 }
-
-                // --- END PHYSIOLOGY ---
 
                 if (newTrends.active) {
                     newTrends.elapsed += 1;
@@ -173,15 +162,13 @@
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(newRhythm);
                 let rhythmVitals = { ...state.vitals };
                 
-                // --- Auto-adjust HR for specific rhythms ---
-                // Only adjust if we aren't already in the arrest panel logic (to prevent overwriting 0 HR in arrest)
                 if (!state.arrestPanelOpen && !isArrest) {
-                    if (newRhythm === 'AF') rhythmVitals.hr = getRandomInt(110, 150); // AF Rapid
+                    if (newRhythm === 'AF') rhythmVitals.hr = getRandomInt(110, 150);
                     if (newRhythm === 'SVT') rhythmVitals.hr = getRandomInt(170, 200);
                     if (newRhythm === 'Complete Heart Block') rhythmVitals.hr = getRandomInt(35, 45);
                     if (newRhythm === 'Sinus Bradycardia') rhythmVitals.hr = getRandomInt(40, 50);
                     if (newRhythm === 'Sinus Tachycardia') rhythmVitals.hr = getRandomInt(110, 130);
-                    if (newRhythm === 'Atrial Flutter') rhythmVitals.hr = 150; // Classic 2:1
+                    if (newRhythm === 'Atrial Flutter') rhythmVitals.hr = 150; 
                 }
                 
                 return { ...state, rhythm: newRhythm, vitals: rhythmVitals, arrestPanelOpen: isArrest ? true : state.arrestPanelOpen };
@@ -250,7 +237,8 @@
                     soundEffect: action.payload.soundEffect || state.soundEffect, 
                     audioOutput: action.payload.audioOutput || 'monitor', 
                     trends: action.payload.trends || state.trends, 
-                    arrestPanelOpen: action.payload.arrestPanelOpen || state.arrestPanelOpen, 
+                    // CRITICAL FIX: Ensure boolean false is treated as a value, not null
+                    arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, 
                     isFinished: action.payload.isFinished || false, 
                     monitorPopup: action.payload.monitorPopup || state.monitorPopup,
                     waveformGain: action.payload.waveformGain || 1.0,
@@ -261,7 +249,6 @@
                     lastUpdate: Date.now()
                 };
 
-            // NEW: Handle Flags
             case 'ADD_LOG': 
                 const timestamp = new Date().toLocaleTimeString('en-GB'); 
                 const simTime = `${Math.floor(state.time/60).toString().padStart(2,'0')}:${(state.time%60).toString().padStart(2,'0')}`; 
@@ -348,7 +335,6 @@
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual', flagged: true } });
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
-                    // Send the request, allow monitor to generate it
                     simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: { rhythm: state.rhythm, scenario: state.scenario } });
                 } else if (data.type === 'DEVICE_MODE') {
                     if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
@@ -372,7 +358,7 @@
                         gain: state.waveformGain,
                         interference: state.noise.interference,
                         cpr: state.cprInProgress,
-                        captureThreshold: state.pacingThreshold // Sync for defib logic
+                        captureThreshold: state.pacingThreshold 
                     }
                 });
             }
@@ -619,7 +605,7 @@
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
         const triggerROSC = (rhythm = 'Sinus Rhythm') => { 
-            const newEtco2 = 5.5 + (Math.random() * 1.5); // CO2 Spike on ROSC
+            const newEtco2 = 5.5 + (Math.random() * 1.5); 
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 80, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 8, pupils: 3, etco2: newEtco2 } }); 
             dispatch({ type: 'UPDATE_RHYTHM', payload: rhythm }); 
             const updatedScenario = { ...state.scenario, deterioration: { ...state.scenario.deterioration, active: false } }; 
