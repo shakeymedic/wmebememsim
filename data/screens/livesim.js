@@ -266,8 +266,8 @@
                                      <button onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
                                  <div className="grid grid-cols-2 gap-2">
-                                     <Button onClick={() => sim.dispatch({type: 'CHARGE_INIT', payload: {energy: 150}})} variant="warning" className="h-10 text-xs">Charge</Button>
-                                     <Button onClick={() => sim.dispatch({type: 'SHOCK_DELIVERED', payload: {energy: 150}})} variant="danger" className="h-10 text-xs font-bold">SHOCK</Button>
+                                     <Button onClick={() => { sim.dispatch({type: 'CHARGE_INIT', payload: {energy: 150}}); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">Charge</Button>
+                                     <Button onClick={() => { sim.dispatch({type: 'SHOCK_DELIVERED', payload: {energy: 150}}); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">SHOCK</Button>
                                  </div>
                                  <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
                                      <span className="text-slate-400 text-[10px] uppercase">CPR Timer</span>
