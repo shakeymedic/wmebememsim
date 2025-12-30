@@ -1,5 +1,5 @@
 // defib/sw.js
-const CACHE_NAME = 'wmebem-sim-v17';
+const CACHE_NAME = 'wmebem-sim-v18';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -10,14 +10,18 @@ const ASSETS_TO_CACHE = [
   '../data/components.js',
   '../data/interventions.js',
   '../data/generators.js',
-  '../data/screens.js',
+  // Corrected: specific screen files instead of missing screens.js
+  '../data/screens/index.js',
+  '../data/screens/setup.js',
+  '../data/screens/monitor.js',
+  '../data/screens/livesim.js',
+  '../data/screens/debrief.js',
+  // External dependencies
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/react@17/umd/react.development.js',
   'https://unpkg.com/react-dom@17/umd/react-dom.development.js',
   'https://unpkg.com/@babel/standalone/babel.min.js',
-  'https://unpkg.com/lucide@latest',
-  'https://cdn.jsdelivr.net/npm/chart.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
+  'https://unpkg.com/lucide@latest'
 ];
 
 self.addEventListener('install', (e) => {
