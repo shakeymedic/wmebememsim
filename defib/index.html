@@ -62,7 +62,6 @@
     window.drawECGGrid = function(ctx, w, h) {
         ctx.fillStyle = '#050505'; 
         // We do NOT clearRect here because we use the "eraser bar" method
-        // But for initial setup we might.
     };
     })();
     </script>
@@ -474,8 +473,6 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                  ctx.fillRect(0, 0, eraserWidth, canvas.height / window.devicePixelRatio);
             }
 
-            // Draw Grid (Simplistic redraw in erased area - optional optimization omitted for simplicity, grid is dark enough)
-            
             const height = canvas.height / window.devicePixelRatio;
             const baselineECG = height * 0.5;
 
@@ -519,4 +516,16 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 
                 ctx.beginPath(); 
                 ctx.moveTo(prevX, drawState.lastY); 
-                ctx.lineTo(drawState.x
+                ctx.lineTo(drawState.x, yECG);
+                ctx.stroke();
+            }
+            
+            drawState.lastY = yECG;
+            requestAnimationFrame(animate);
+        }
+        
+        requestAnimationFrame(animate);
+    });
+    </script>
+</body>
+</html>
