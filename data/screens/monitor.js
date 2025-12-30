@@ -101,22 +101,11 @@
         
         const [audioEnabled, setAudioEnabled] = useState(false);
         const [defibOpen, setDefibOpen] = useState(false);
-        const [showToast, setShowToast] = useState(false);
         const [invToast, setInvToast] = useState(null); 
         const [show12Lead, setShow12Lead] = useState(false);
         const canvasRef = useRef(null);
         
-        const lastNotifId = useRef(null);
         const lastPopupTime = useRef(0);
-
-        useEffect(() => {
-            if(notification && notification.id && notification.id !== lastNotifId.current) {
-                lastNotifId.current = notification.id;
-                setShowToast(true);
-                const timer = setTimeout(() => setShowToast(false), 4000); 
-                return () => clearTimeout(timer);
-            }
-        }, [notification]);
 
         useEffect(() => {
              if (arrestPanelOpen && !defibOpen) setDefibOpen(true);
@@ -182,14 +171,6 @@
             <div className={`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
-                {/* SYSTEM NOTIFICATION (CENTER TOP) */}
-                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-[60] bg-slate-900/95 border-l-8 rounded shadow-2xl px-8 py-4 transition-all duration-300 scale-150 origin-top flex flex-col items-center pointer-events-none ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
-                    <div className="flex items-center gap-4">
-                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-8 h-8 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
-                        <span className="font-bold text-white text-2xl tracking-wide">{notification?.msg}</span>
-                    </div>
-                </div>
-
                 {/* INVESTIGATION TOAST (TOP RIGHT) */}
                 <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
@@ -244,9 +225,9 @@
                         <div className="relative h-full">
                             <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
                             {hasMonitoring && (
-                                <div className="absolute bottom-2 right-2 flex gap-2 z-20 w-full px-2 justify-end">
-                                    <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2 rounded border border-slate-600 uppercase font-bold tracking-wide transition-colors shadow-lg flex-1 max-w-[80px]">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-xs px-4 py-2 rounded border uppercase font-bold tracking-wide transition-colors shadow-lg flex-1 max-w-[60px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
+                                <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
+                                    <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
