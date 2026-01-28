@@ -6,8 +6,8 @@
         if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">Not enough data for graph</div>;
 
         const width = 800;
-        const height = 500; // Increased height
-        const padding = 40;
+        const height = 200;
+        const padding = 30;
         const graphW = width - padding * 2;
         const graphH = height - padding * 2;
 
@@ -23,9 +23,6 @@
         let bpPath = "M " + history.map(h => `${getX(h.time)},${getY(h.bp, 250)}`).join(" L ");
         let spo2Path = "M " + history.map(h => `${getX(h.time)},${getY(h.spo2, 100)}`).join(" L ");
 
-        // Filter log for relevant events to tag (Action or Manual)
-        const events = log.filter(l => (l.type === 'action' || l.type === 'manual') && l.timeSeconds);
-
         return (
             <div className="w-full bg-slate-900 border border-slate-700 rounded p-2 mb-4 overflow-hidden">
                 <h4 className="text-xs font-bold text-slate-400 mb-2 uppercase">Vitals Trend & Interventions</h4>
@@ -39,39 +36,22 @@
                     <path d={bpPath} fill="none" stroke="#ef4444" strokeWidth="2" /> {/* BP Red */}
                     <path d={spo2Path} fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="4" /> {/* SpO2 Blue Dashed */}
 
-                    {/* Intervention Markers & Tags */}
-                    {events.map((l, i) => {
-                        const x = getX(l.timeSeconds); 
-                        // Stagger vertical height of text to prevent overlap: Modulo 4 levels
-                        const textY = padding + 20 + (i % 8) * 15; 
-                        
+                    {/* Intervention Markers */}
+                    {log.filter(l => l.type === 'action' || l.type === 'manual').map((l, i) => {
+                        const x = getX(l.timeSeconds); // Ensure log has timeSeconds
+                        if (!l.timeSeconds) return null;
                         return (
                             <g key={i}>
-                                {/* Dashed Line down */}
-                                <line x1={x} y1={textY} x2={x} y2={height-padding} stroke="white" strokeWidth="1" strokeOpacity="0.2" strokeDasharray="2"/>
-                                {/* Dot on time axis (bottom) */}
+                                <line x1={x} y1={padding} x2={x} y2={height-padding} stroke="white" strokeWidth="1" strokeOpacity="0.3" strokeDasharray="2"/>
                                 <circle cx={x} cy={height-padding} r="2" fill="white"/>
-                                
-                                {/* Text Label */}
-                                <text 
-                                    x={x} 
-                                    y={textY} 
-                                    fill="#94a3b8" 
-                                    fontSize="9" 
-                                    fontWeight="bold" 
-                                    textAnchor="start"
-                                    transform={`rotate(-45, ${x}, ${textY})`} // Rotate text
-                                >
-                                    {l.msg}
-                                </text>
                             </g>
                         );
                     })}
                     
                     {/* Legend */}
-                    <text x={width-80} y={height-10} fill="#22c55e" fontSize="10" fontWeight="bold">HR</text>
-                    <text x={width-60} y={height-10} fill="#ef4444" fontSize="10" fontWeight="bold">BP</text>
-                    <text x={width-40} y={height-10} fill="#3b82f6" fontSize="10" fontWeight="bold">SpO2</text>
+                    <text x={width-80} y={20} fill="#22c55e" fontSize="10" fontWeight="bold">HR</text>
+                    <text x={width-80} y={35} fill="#ef4444" fontSize="10" fontWeight="bold">BP</text>
+                    <text x={width-80} y={50} fill="#3b82f6" fontSize="10" fontWeight="bold">SpO2</text>
                 </svg>
             </div>
         );
@@ -90,10 +70,12 @@
             return true;
         });
 
+        // Calculate Scores based on Objectives
         const objectivesTotal = state.scenario.learningObjectives ? state.scenario.learningObjectives.length : 0;
         const objectivesMet = state.completedObjectives.size;
         const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : 100;
 
+        // Generate Downloadable Text
         const generateReport = () => {
             const text = `SIMULATION REPORT - ${state.scenario.title}\nDate: ${new Date().toLocaleString()}\nStudent Score: ${score}%\n\nLOG:\n` + 
                          state.log.map(l => `[${l.simTime}] ${l.msg}`).join('\n');
@@ -119,6 +101,7 @@
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
+                    {/* Left Col: Analysis */}
                     <div className="overflow-y-auto space-y-4 pr-2">
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
@@ -127,6 +110,7 @@
                                 <div className="text-sm text-slate-400">Objectives Met: {objectivesMet}/{objectivesTotal}</div>
                             </div>
                             
+                            {/* NEW GRAPH COMPONENT */}
                             <DebriefGraph history={state.history} log={state.log} />
 
                             <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
@@ -146,6 +130,7 @@
                         </div>
                     </div>
 
+                    {/* Right Col: Log */}
                     <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                         <div className="flex border-b border-slate-700 bg-slate-900 p-2 gap-2">
                             {['all', 'actions', 'manual', 'system'].map(f => (
