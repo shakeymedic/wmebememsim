@@ -38,7 +38,7 @@
             return (
                 <DebriefScreen 
                     sim={sim} 
-                    onRestart={() => { reset(); setView('setup'); }} 
+                    onExit={() => { reset(); setView('setup'); }} 
                 />
             );
         }
