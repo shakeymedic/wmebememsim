@@ -14,14 +14,15 @@ window.INTERVENTIONS = {
     // --- BREATHING ---
     'Oxygen': { label: 'High Flow O2', effect: { SpO2: 10 }, category: 'Breathing', log: 'High flow oxygen applied.', type: 'continuous', duration: 5 },
     'Bagging': { label: 'Bag-Valve-Mask', effect: { SpO2: 25, RR: 'vent' }, category: 'Breathing', log: 'Manual ventilation (BVM) started.', type: 'continuous', duration: 5 },
-    'Nebs': { label: 'Nebs (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Breathing', log: 'Nebulisers (Salbutamol/Ipratropium) administered.', type: 'bolus', duration: 300, requires: ['Oxygen'] },
-    'NebAdrenaline': { label: 'Neb Adrenaline', effect: { HR: 10, RR: -5, SpO2: 5 }, category: 'Breathing', log: 'Nebulised Adrenaline running.', type: 'bolus', duration: 300, requires: ['Oxygen'] },
+    'Nebs': { label: 'Nebs (Salb/Iprat)', effect: { HR: 10, RR: -3, SpO2: 5 }, category: 'Breathing', log: 'Nebulisers (Salbutamol/Ipratropium) administered.', type: 'bolus', duration: 300 }, 
+    'NebAdrenaline': { label: 'Neb Adrenaline', effect: { HR: 10, RR: -5, SpO2: 5 }, category: 'Breathing', log: 'Nebulised Adrenaline running.', type: 'bolus', duration: 300 },
     'CPAP': { label: 'CPAP', effect: { SpO2: 10, RR: -5, BP: -5 }, category: 'Breathing', log: 'CPAP initiated.', type: 'continuous', duration: 60, requires: ['Oxygen'] },
     'NIV': { label: 'NIV (BiPAP)', effect: { SpO2: 12, RR: -5, BP: -5 }, category: 'Breathing', log: 'NIV (BiPAP) initiated.', type: 'continuous', duration: 60, requires: ['Oxygen'] },
     'Needle': { label: 'Needle Decompression', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Breathing', log: 'Needle thoracocentesis performed.', type: 'bolus', duration: 30 },
     'FingerThoracostomy': { label: 'Finger Thoracostomy', effect: { SpO2: 20, BP: 15, RR: -8 }, category: 'Breathing', log: 'Finger thoracostomy performed.', type: 'bolus', duration: 60 },
     'SeldingerDrain': { label: 'Chest Drain (Seldinger)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Seldinger chest drain inserted.', type: 'continuous', duration: 450 },
     'SurgicalDrain': { label: 'Chest Drain (Surgical)', effect: { SpO2: 15, BP: 10, RR: -5 }, category: 'Breathing', log: 'Surgical chest drain inserted.', type: 'continuous', duration: 600 },
+    'ChestSeal': { label: 'Chest Seal', effect: { SpO2: 5, RR: -2 }, category: 'Breathing', log: 'Chest seal applied.', type: 'continuous', duration: 15 },
 
     // --- CARDIAC & FLUIDS ---
     'PPCI': { label: 'PPCI Referral', effect: {}, category: 'Procedures', log: 'Urgent transfer for Primary PCI.', type: 'bolus', duration: 300 },
@@ -65,6 +66,7 @@ window.INTERVENTIONS = {
     'Cyclizine': { label: 'Cyclizine', effect: { HR: 5 }, category: 'Drugs', log: 'IV Cyclizine administered.', type: 'bolus', duration: 10, requires: ['IV Access'] },
     'MagSulph': { label: 'Magnesium Sulphate', effect: { BP: -5, RR: -2 }, category: 'Drugs', log: 'IV Magnesium Sulphate administered.', type: 'bolus', duration: 600, requires: ['IV Access'] },
     'Calcium': { label: 'Calcium Gluconate', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Gluconate administered.', type: 'bolus', duration: 30, requires: ['IV Access'] },
+    'CalciumChloride': { label: 'Calcium Chloride', effect: { BP: 5 }, category: 'Drugs', log: 'IV Calcium Chloride administered.', type: 'bolus', duration: 30, requires: ['IV Access'] },
     'InsulinDextrose': { label: 'Insulin/Dextrose', effect: { BM: 0 }, category: 'Drugs', log: 'Insulin/Dextrose bolus started (Hyperkalaemia).', type: 'bolus', duration: 60, requires: ['IV Access'] },
     'Dextrose': { label: 'Glucose 10%', effect: { BM: 8 }, category: 'Drugs', log: 'IV Glucose/Dextrose administered.', type: 'bolus', duration: 60, requires: ['IV Access'] },
     'InsulinInfusion': { label: 'Insulin Infusion', effect: { BM: -2 }, category: 'Drugs', log: 'Fixed rate Insulin infusion started (0.1 u/kg/hr).', type: 'continuous', duration: 0, requires: ['IV Access'] },
