@@ -5,15 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>EM Sim Generator v17 - WMEBEM</title>
     
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    <!-- Firebase -->
+    <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
+    
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
@@ -28,7 +27,11 @@
         }
     </script>
     
-    <!-- Google Fonts -->
+    <script>
+        // Maps the UMD variable to the name your ui.js expects
+        window.lucide = window.lucideReact || window.lucide;
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -82,19 +85,19 @@
         </div>
     </div>
 
-    <!-- Load Data Modules -->
     <script src="data/interventions.js"></script>
     <script src="data/generators.js"></script>
     <script src="data/scenarios.js"></script>
     <script src="data/ui.js"></script>
     <script src="data/engine.js"></script>
     
-    <!-- Load Screen Components -->
-    <script src="data/screens/setup.js"></script>
+    <script src="data/screens/index.js"></script> 
+    
     <script src="data/screens/livesim.js"></script>
     <script src="data/screens/monitor.js"></script>
     <script src="data/screens/debrief.js"></script>
-    <script src="data/screens/index.js"></script>
+    
+    <script src="data/screens/setup.js"></script>
 
     <script>
         // Safe localStorage wrapper
@@ -336,7 +339,7 @@
                         <div style="color: #ef4444; font-size: 24px;">⚠️</div>
                         <div style="color: #f87171; font-size: 18px;">Failed to load application</div>
                         <div style="color: #94a3b8; max-width: 400px;">
-                            Some components failed to load. Please check the browser console for errors and ensure all files are present.
+                            The app failed to initialize. Please check console for errors.
                         </div>
                         <button onclick="location.reload()" style="padding: 10px 20px; background: #0ea5e9; color: white; border: none; border-radius: 6px; cursor: pointer;">
                             Retry
