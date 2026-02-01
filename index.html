@@ -28,7 +28,6 @@
     </script>
     
     <script>
-        // Maps the UMD variable to the name your ui.js expects
         window.lucide = window.lucideReact || window.lucide;
     </script>
 
@@ -91,13 +90,11 @@
     <script src="data/ui.js"></script>
     <script src="data/engine.js"></script>
     
-    <script src="data/screens/index.js"></script> 
-    
+    <script src="data/screens/index.js"></script>
+    <script src="data/screens/setup.js"></script>
     <script src="data/screens/livesim.js"></script>
     <script src="data/screens/monitor.js"></script>
     <script src="data/screens/debrief.js"></script>
-    
-    <script src="data/screens/setup.js"></script>
 
     <script>
         // Safe localStorage wrapper
@@ -128,7 +125,7 @@
             measurementId: "G-8C6WW1EWXJ"
         };
 
-        // Initialize Firebase (replace config with your own)
+        // Initialize Firebase
         try {
             if (window.firebase && !firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
@@ -190,7 +187,8 @@
 
             // Handle scenario generation
             const handleGenerate = (scenario) => {
-                sim.dispatch({ type: 'SET_SCENARIO', payload: scenario });
+                // BUG FIX: Changed 'SET_SCENARIO' to 'INIT_SCENARIO' to match engine.js
+                sim.dispatch({ type: 'INIT_SCENARIO', payload: scenario });
                 setView('briefing');
                 setResumeAvailable(null);
                 safeStorage.removeItem('wmebem_sim_state');
@@ -198,7 +196,8 @@
 
             // Handle resume
             const handleResume = (savedState) => {
-                sim.dispatch({ type: 'RESTORE_STATE', payload: savedState });
+                // BUG FIX: Changed 'RESTORE_STATE' to 'RESTORE_SESSION' to match engine.js
+                sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState });
                 setView('live');
                 setResumeAvailable(null);
             };
@@ -208,7 +207,8 @@
                 const currentScenario = sim.state.scenario;
                 sim.dispatch({ type: 'RESET' });
                 if (currentScenario) {
-                    sim.dispatch({ type: 'SET_SCENARIO', payload: currentScenario });
+                    // BUG FIX: Changed 'SET_SCENARIO' to 'INIT_SCENARIO' to match engine.js
+                    sim.dispatch({ type: 'INIT_SCENARIO', payload: currentScenario });
                     setView('briefing');
                 } else {
                     setView('setup');
@@ -304,6 +304,8 @@
 
         // Wait for all components to load then render
         const checkReady = setInterval(() => {
+            // Note: We check if ANY of the core components are ready. 
+            // If some scripts failed, the timeout catch below will handle it.
             if (window.MonitorContainer && 
                 window.SetupScreen && 
                 window.ALL_SCENARIOS && 
@@ -339,7 +341,8 @@
                         <div style="color: #ef4444; font-size: 24px;">⚠️</div>
                         <div style="color: #f87171; font-size: 18px;">Failed to load application</div>
                         <div style="color: #94a3b8; max-width: 400px;">
-                            The app failed to initialize. Please check console for errors.
+                            The application failed to initialize. This is usually due to a network error loading external libraries or a file missing from the server. <br><br>
+                            Please check the browser console (F12) for specific errors.
                         </div>
                         <button onclick="location.reload()" style="padding: 10px 20px; background: #0ea5e9; color: white; border: none; border-radius: 6px; cursor: pointer;">
                             Retry
