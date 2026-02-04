@@ -3,346 +3,217 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>EM Sim Generator v17 - WMEBEM</title>
-    
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
-    <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <title>WMEBEM Sim Generator v17.4</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace']
-                    }
-                }
-            }
+            theme: { extend: {} },
+            plugins: [],
         }
-    </script>
-    
-    <script>
-        window.lucide = window.lucideReact || window.lucide;
     </script>
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-    
+    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body, #root { height: 100%; width: 100%; overflow: hidden; }
-        body { 
-            font-family: 'Inter', system-ui, sans-serif; 
-            background: #0f172a;
-            color: white;
-        }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #1e293b; }
-        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-        
-        /* Loading spinner */
-        .loading-spinner {
-            width: 40px;
-            height: 40px;
-            border: 3px solid #334155;
-            border-top-color: #0ea5e9;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        /* Flash animations */
-        @keyframes flash-red {
-            0%, 100% { background-color: transparent; }
-            50% { background-color: rgba(239, 68, 68, 0.2); }
-        }
-        @keyframes flash-green {
-            0%, 100% { background-color: transparent; }
-            50% { background-color: rgba(34, 197, 94, 0.2); }
-        }
-        .flash-red { animation: flash-red 0.5s ease-in-out infinite; }
-        .flash-green { animation: flash-green 0.5s ease-in-out; }
+        .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .flash-red { animation: flashRed 1.5s ease-in-out infinite; }
+        @keyframes flashRed { 0%, 100% { background-color: rgba(15, 23, 42, 1); } 50% { background-color: rgba(127, 29, 29, 0.5); } }
+        .flash-green { animation: flashGreen 1s ease-in-out; }
+        @keyframes flashGreen { 0%, 100% { border-color: #334155; } 50% { border-color: #10b981; } }
+        html, body { height: 100%; overflow: hidden; }
+        body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; }
+        #root { height: 100%; display: flex; flex-direction: column; }
+        .flash-active { animation: flash-white 0.15s ease-out !important; }
+        @keyframes flash-white { 0% { background-color: #ffffff; color: #000; transform: scale(1.05); } 100% { background-color: inherit; color: inherit; transform: scale(1); } }
     </style>
 </head>
-<body>
-    <div id="root">
-        <div style="height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px;">
-            <div class="loading-spinner"></div>
-            <div style="color: #94a3b8;">Loading EM Sim Generator...</div>
+<body class="antialiased selection:bg-sky-500 selection:text-white">
+    <div id="root" class="flex h-full items-center justify-center text-slate-500">
+        <div class="flex flex-col items-center gap-4">
+            <svg class="animate-spin h-8 w-8 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <span class="font-mono text-sm tracking-widest uppercase">Initialising WMEBEM Sim Engine...</span>
         </div>
     </div>
 
-    <script type="text/babel" src="data/interventions.js"></script>
-    <script type="text/babel" src="data/generators.js"></script>
-    <script type="text/babel" src="data/scenarios.js"></script>
-    
+    <script src="data/generators.js"></script>
+    <script src="data/interventions.js"></script>
+    <script src="data/scenarios.js"></script>
+
     <script type="text/babel" src="data/components.js"></script>
-    
     <script type="text/babel" src="data/engine.js"></script>
-    
+
     <script type="text/babel" src="data/screens/setup.js"></script>
-    <script type="text/babel" src="data/screens/livesim.js"></script>
     <script type="text/babel" src="data/screens/monitor.js"></script>
+    <script type="text/babel" src="data/screens/livesim.js"></script>
     <script type="text/babel" src="data/screens/debrief.js"></script>
     
     <script type="text/babel" src="data/screens/index.js"></script>
 
     <script type="text/babel">
-        // Safe localStorage wrapper
+        // Safe Storage Helper
         const safeStorage = {
             getItem: (key) => {
-                try { return localStorage.getItem(key); } 
-                catch (e) { console.warn('localStorage unavailable'); return null; }
+                try { return localStorage.getItem(key); } catch(e) { console.warn('Storage blocked'); return null; }
             },
-            setItem: (key, value) => {
-                try { localStorage.setItem(key, value); } 
-                catch (e) { console.warn('localStorage unavailable'); }
+            setItem: (key, val) => {
+                try { localStorage.setItem(key, val); } catch(e) { console.warn('Storage blocked'); }
             },
             removeItem: (key) => {
-                try { localStorage.removeItem(key); } 
-                catch (e) { console.warn('localStorage unavailable'); }
+                try { localStorage.removeItem(key); } catch(e) { console.warn('Storage blocked'); }
             }
         };
 
-        // Firebase Configuration
+        // Firebase Init (Wrapped to prevent crashes if blocked)
         const firebaseConfig = {
             apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
             authDomain: "wmebem-sim.firebaseapp.com",
-            databaseURL: "https://wmebem-sim-default-rtdb.firebaseio.com",
             projectId: "wmebem-sim",
             storageBucket: "wmebem-sim.firebasestorage.app",
             messagingSenderId: "143041936940",
             appId: "1:143041936940:web:4d15c3fc3ce7e10c081b89",
             measurementId: "G-8C6WW1EWXJ"
         };
-
-        // Initialize Firebase
         try {
-            if (window.firebase && !firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
+            if (window.firebase && !firebase.apps.length) { 
+                firebase.initializeApp(firebaseConfig); 
                 window.db = firebase.database();
-                console.log('Firebase initialized');
             }
-        } catch (e) {
-            console.warn('Firebase initialization failed:', e);
-        }
+        } catch (e) { console.error("Firebase Init blocked:", e); }
 
-        // Main App Component
         const App = () => {
             const { useState, useEffect } = React;
+            const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer } = window;
 
-            const [view, setView] = useState('setup');
+            const [view, setView] = useState('setup'); 
             const [sessionID, setSessionID] = useState(null);
-            const [resumeAvailable, setResumeAvailable] = useState(null);
 
             // Session Management
             useEffect(() => {
                 const params = new URLSearchParams(window.location.search);
-                
-                // Check for monitor mode
                 if (params.get('mode') === 'monitor') {
                     const sid = params.get('session');
-                    if (sid) {
-                        setSessionID(sid);
-                        setView('monitor');
-                    }
-                    return;
-                }
-
-                // Normal controller mode - get or create session ID
-                const savedID = safeStorage.getItem('wmebem_session_id');
-                if (savedID) {
-                    setSessionID(savedID);
+                    if (sid) setSessionID(sid);
+                    setView('monitor');
                 } else {
-                    const newID = Math.random().toString(36).substring(2, 6).toUpperCase();
-                    safeStorage.setItem('wmebem_session_id', newID);
-                    setSessionID(newID);
+                    // Uses safe storage helper to prevent crash
+                    const savedID = safeStorage.getItem('wmebem_session_id');
+                    if (savedID) { setSessionID(savedID); } 
+                    else {
+                        const newID = Math.random().toString(36).substring(2, 6).toUpperCase();
+                        safeStorage.setItem('wmebem_session_id', newID);
+                        setSessionID(newID);
+                    }
                 }
+            }, []); 
 
-                // Check for resume data
-                const savedState = safeStorage.getItem('wmebem_sim_state');
-                if (savedState) {
-                    try {
-                        const parsed = JSON.parse(savedState);
-                        if (parsed && parsed.scenario && !parsed.isFinished) {
-                            setResumeAvailable(parsed);
+            // Init Engine
+            const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
+            
+            // Telemetry Hub
+            useEffect(() => {
+                const channel = new BroadcastChannel('sim_channel');
+                
+                const sendUpdate = () => {
+                    if (!sim.state || !sim.state.vitals) return;
+                    channel.postMessage({
+                        type: 'SYNC_VITALS',
+                        payload: {
+                            rhythm: sim.state.rhythm,
+                            hr: sim.state.vitals.hr,
+                            spO2: sim.state.vitals.spO2,
+                            etco2: sim.state.vitals.etco2,
+                            bpSys: sim.state.vitals.bpSys,
+                            bpDia: sim.state.vitals.bpDia,
+                            gain: sim.state.waveformGain,
+                            interference: sim.state.noise.interference,
+                            cpr: sim.state.cprInProgress
                         }
-                    } catch (e) {
-                        console.warn('Failed to parse saved state');
+                    });
+                };
+
+                channel.onmessage = (event) => {
+                    const data = event.data;
+                    if (data.type === 'REQUEST_SYNC') sendUpdate(); 
+                    if (data.type === 'SHOCK_DELIVERED') {
+                        sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'danger');
+                        sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'shock' });
                     }
-                }
-            }, []);
-
-            // Initialize simulation engine
-            const sim = window.useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : null);
-
-            // Handle scenario generation
-            const handleGenerate = (scenario) => {
-                sim.dispatch({ type: 'INIT_SCENARIO', payload: scenario });
-                setView('briefing');
-                setResumeAvailable(null);
-                safeStorage.removeItem('wmebem_sim_state');
-            };
-
-            // Handle resume
-            const handleResume = (savedState) => {
-                sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState });
-                setView('live');
-                setResumeAvailable(null);
-            };
-
-            // Handle restart
-            const handleRestart = () => {
-                const currentScenario = sim.state.scenario;
-                sim.dispatch({ type: 'RESET' });
-                if (currentScenario) {
-                    sim.dispatch({ type: 'INIT_SCENARIO', payload: currentScenario });
-                    setView('briefing');
-                } else {
-                    setView('setup');
-                }
-                safeStorage.removeItem('wmebem_sim_state');
-            };
-
-            // Monitor View
-            if (view === 'monitor') {
-                return React.createElement(window.MonitorContainer, { sessionID });
-            }
-
-            // Join Screen
-            if (view === 'join') {
-                return React.createElement(window.JoinScreen, {
-                    onJoin: (code) => {
-                        setSessionID(code);
-                        window.location.href = `?mode=monitor&session=${code}`;
+                    if (data.type === 'PACER_UPDATE') {
+                        sim.dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                     }
-                });
-            }
+                };
 
-            // Main Controller Interface
-            return React.createElement('div', { className: 'h-full flex flex-col bg-slate-900' },
-                // Header
-                React.createElement('header', { className: 'bg-slate-950 border-b border-slate-800 p-3 flex items-center justify-between flex-shrink-0' },
-                    React.createElement('div', { className: 'flex items-center gap-3' },
-                        React.createElement('img', { 
-                            src: 'https://iili.io/KGQOvkl.md.png', 
-                            alt: 'WMEBEM Logo', 
-                            className: 'h-10 md:h-14 object-contain' 
-                        }),
-                        React.createElement('div', null,
-                            React.createElement('h1', { className: 'text-xl md:text-2xl font-bold text-sky-400 tracking-tight' }, 'EM Sim Generator v17'),
-                            React.createElement('p', { className: 'text-xs text-slate-500 hidden md:block' }, 'Emergency Medicine Simulation Training')
-                        )
-                    ),
-                    React.createElement('div', { className: 'flex items-center gap-4' },
-                        // Session ID Display
-                        sessionID && React.createElement('div', {
-                            className: 'flex items-center gap-2 bg-sky-900/20 border border-sky-500/30 px-3 py-2 rounded cursor-pointer hover:bg-sky-900/40 transition-colors',
-                            onClick: () => {
-                                navigator.clipboard.writeText(sessionID);
-                                alert('Session ID copied to clipboard!');
-                            },
-                            title: 'Click to copy'
-                        },
-                            React.createElement('span', { className: 'text-[10px] text-sky-500 uppercase tracking-widest' }, 'Session'),
-                            React.createElement('span', { className: 'font-mono text-lg font-bold text-white tracking-widest' }, sessionID)
-                        ),
-                        // Monitor Link
-                        React.createElement('button', {
-                            className: 'px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded text-slate-300 text-sm transition-colors',
-                            onClick: () => setView('join')
-                        }, 'Join as Monitor')
-                    )
-                ),
+                const interval = setInterval(sendUpdate, 1000); 
+                sendUpdate(); 
+                
+                return () => { clearInterval(interval); channel.close(); }
+            }, [sim.state]); 
 
-                // Main Content
-                React.createElement('main', { className: 'flex-grow overflow-hidden relative' },
-                    view === 'setup' && React.createElement(window.SetupScreen, {
-                        onGenerate: handleGenerate,
-                        savedState: resumeAvailable,
-                        onResume: () => handleResume(resumeAvailable),
-                        sessionID: sessionID,
-                        onJoinClick: () => setView('join')
-                    }),
-                    view === 'briefing' && sim.state.scenario && React.createElement(window.BriefingScreen, {
-                        scenario: sim.state.scenario,
-                        onStart: () => {
-                            sim.start();
-                            setView('live');
-                        },
-                        onBack: () => setView('setup')
-                    }),
-                    (view === 'live' || view === 'debrief') && sim.state.scenario && React.createElement(window.LiveSimContainer, {
-                        sim: sim,
-                        view: view,
-                        setView: setView,
-                        resumeData: view === 'live' && resumeAvailable ? resumeAvailable : null,
-                        onRestart: handleRestart,
-                        sessionID: sessionID
-                    })
-                ),
+            // View Routing
+            const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
+            const handleGenerate = (s) => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: s }); setView('briefing'); };
+            const handleResume = (savedState) => { sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); setView('live'); };
+            const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); safeStorage.removeItem('wmebem_sim_state'); };
 
-                // Footer
-                React.createElement('footer', { className: 'bg-slate-950 border-t border-slate-800 p-2 text-center text-[10px] text-slate-500 flex-shrink-0' },
-                    React.createElement('p', null, `© ${new Date().getFullYear()} West Midlands Evidence Based Emergency Medicine Ltd.`)
-                )
+            // Recovery Logic (Safe Storage)
+            const [resumeAvailable, setResumeAvailable] = useState(null);
+            useEffect(() => {
+                if (view === 'setup') {
+                    const saved = safeStorage.getItem('wmebem_sim_state');
+                    if (saved) { try { setResumeAvailable(JSON.parse(saved)); } catch(e) {} }
+                }
+            }, [view]);
+
+            if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
+            if (view === 'monitor') return <MonitorContainer sessionID={sessionID} />;
+
+            return (
+                <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
+                    <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+                        <div className="flex items-center gap-4">
+                            <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-10 md:h-16 object-contain" />
+                            <div><h1 className="text-xl md:text-3xl font-bold text-sky-400 tracking-tight">EM Sim Generator v17</h1></div>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <div className="flex items-center gap-2 bg-sky-900/20 border border-sky-500/30 px-3 py-1 rounded cursor-pointer hover:bg-sky-900/40 transition-colors" onClick={() => {navigator.clipboard.writeText(sessionID); alert("Session ID Copied")}}>
+                                <span className="text-[10px] text-sky-500 uppercase tracking-widest">Session</span>
+                                <span className="font-mono text-xl font-bold text-white tracking-widest">{sessionID || "..."}</span>
+                            </div>
+                        </div>
+                    </header>
+                    <main className="flex-grow overflow-hidden relative">
+                        {view === 'setup' && <SetupScreen onGenerate={handleGenerate} savedState={resumeAvailable} onResume={() => handleResume(resumeAvailable)} sessionID={sessionID} onJoinClick={() => setView('join')} />}
+                        {view === 'briefing' && sim.state.scenario && <BriefingScreen scenario={sim.state.scenario} onStart={() => { sim.start(); setView('live'); }} onBack={() => setView('setup')} />}
+                        {(view === 'live' || view === 'debrief') && sim.state.scenario && <LiveSimContainer sim={sim} view={view} setView={setView} resumeData={view === 'live' && resumeAvailable ? resumeAvailable : null} onRestart={handleRestart} sessionID={sessionID} />}
+                    </main>
+                    <footer className="bg-slate-950 border-t border-slate-800 p-2 text-center text-[10px] text-slate-500 flex-shrink-0">
+                        <p>&copy; {new Date().getFullYear()} West Midlands Evidence Based Emergency Medicine Ltd.</p>
+                    </footer>
+                </div>
             );
         };
 
-        // Wait for all components to load then render
+        // Loop to check if scripts are loaded before rendering
         const checkReady = setInterval(() => {
-            if (window.MonitorContainer && 
-                window.SetupScreen && 
-                window.ALL_SCENARIOS && 
-                window.useSimulation &&
-                window.LiveSimScreen &&
-                window.DebriefScreen) {
-                
+            if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
                 clearInterval(checkReady);
-                
                 try {
-                    const root = ReactDOM.createRoot(document.getElementById('root'));
-                    root.render(React.createElement(App));
-                    console.log('EM Sim Generator v17 loaded successfully');
-                } catch (e) {
-                    console.error('Render error:', e);
-                }
+                    ReactDOM.render(React.createElement(App), document.getElementById('root'));
+                } catch(e) { console.error("Render Error:", e); }
             }
         }, 100);
-
-        // Timeout after 10 seconds
-        setTimeout(() => {
-            clearInterval(checkReady);
-            const root = document.getElementById('root');
-            if (root.querySelector('.loading-spinner')) {
-                root.innerHTML = `
-                    <div style="height: 100%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px; padding: 20px; text-align: center;">
-                        <div style="color: #ef4444; font-size: 24px;">⚠️</div>
-                        <div style="color: #f87171; font-size: 18px;">Failed to load application</div>
-                        <div style="color: #94a3b8; max-width: 400px;">
-                            The application failed to initialize. <br><br>
-                            Likely cause: A file in the "data" folder is missing or has a syntax error.
-                        </div>
-                        <button onclick="location.reload()" style="padding: 10px 20px; background: #0ea5e9; color: white; border: none; border-radius: 6px; cursor: pointer;">
-                            Retry
-                        </button>
-                    </div>
-                `;
-            }
-        }, 10000);
     </script>
 </body>
 </html>
