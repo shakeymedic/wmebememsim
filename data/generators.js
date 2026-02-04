@@ -1,45 +1,40 @@
 // data/generators.js
+
+// --- MATH HELPERS ---
 window.getRandomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-
+window.getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max - min) + min).toFixed(decimals));
 window.getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
+window.clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
-window.MALE_NAMES = ["James", "John", "Michael", "David", "William", "Richard", "Robert", "Thomas", "Christopher", "Daniel", "Matthew", "Anthony", "Mark", "Paul", "Steven", "Andrew", "Joseph", "Charles", "Joshua", "George", "Harry", "Oliver", "Jack", "Noah", "Charlie", "Jacob", "Alfie", "Oscar", "Leo", "Mohammed"];
-window.FEMALE_NAMES = ["Mary", "Patricia", "Jennifer", "Elizabeth", "Linda", "Susan", "Jessica", "Sarah", "Karen", "Nancy", "Margaret", "Lisa", "Betty", "Dorothy", "Sandra", "Ashley", "Kimberly", "Emily", "Donna", "Michelle", "Emma", "Olivia", "Ava", "Isla", "Sophie", "Mia", "Isabella", "Charlotte", "Amelia", "Lily"];
-window.SURNAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Miller", "Davis", "Garcia", "Rodriguez", "Wilson", "Martinez", "Anderson", "Taylor", "Thomas", "Moore", "Jackson", "Martin", "Lee", "Thompson", "White", "Harris", "Clark", "Lewis", "Robinson", "Walker", "Hall", "Young", "King", "Wright", "Hill"];
-
+// --- NAME GENERATOR ---
 window.generateName = (sex) => {
-    const first = sex === 'Male' ? window.getRandomItem(MALE_NAMES) : window.getRandomItem(FEMALE_NAMES);
-    const last = window.getRandomItem(SURNAMES);
-    return `${first} ${last}`;
+    const male = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "George", "Harry", "Jack", "Oliver", "Noah", "Arthur", "Leo"];
+    const female = ["Mary", "Patricia", "Jennifer", "Linda", "Elizabeth", "Barbara", "Susan", "Jessica", "Sarah", "Karen", "Olivia", "Amelia", "Isla", "Ava", "Mia", "Grace", "Lily"];
+    const sur = ["Smith", "Jones", "Williams", "Taylor", "Brown", "Davies", "Evans", "Wilson", "Thomas", "Johnson", "Roberts", "Robinson", "Thompson", "Wright", "Walker", "White", "Edwards", "Hughes", "Green", "Hall"];
+    
+    const first = sex === 'Female' ? window.getRandomItem(female) : window.getRandomItem(male);
+    return `${first} ${window.getRandomItem(sur)}`;
 };
 
-window.generateHistory = (age, sex) => {
-    const pmhPool = ["Hypertension", "Type 2 Diabetes", "Asthma", "COPD", "IHD", "Atrial Fibrillation", "Hypothyroidism", "Depression", "Anxiety", "Epilepsy", "Osteoarthritis", "Rheumatoid Arthritis", "CKD Stage 3", "GORD", "Hyperlipidaemia"];
-    const dhxPool = ["Aspirin", "Metformin", "Ramipril", "Bisoprolol", "Atorvastatin", "Omeprazole", "Salbutamol", "Amlodipine", "Levothyroxine", "Sertraline", "Furosemide", "Apixaban", "Paracetamol PRN"];
-    
-    const numPmh = age > 65 ? window.getRandomInt(2, 4) : (age > 40 ? window.getRandomInt(0, 2) : window.getRandomInt(0, 1));
-    const numDhx = numPmh > 0 ? window.getRandomInt(numPmh, numPmh + 2) : 0;
-    
-    const pmh = [];
-    const dhx = [];
-    const usedPmh = new Set();
-    const usedDhx = new Set();
-    
-    for (let i = 0; i < numPmh; i++) {
-        let item = window.getRandomItem(pmhPool);
-        while (usedPmh.has(item)) item = window.getRandomItem(pmhPool);
-        usedPmh.add(item);
-        pmh.push(item);
-    }
-    
-    for (let i = 0; i < numDhx; i++) {
-        let item = window.getRandomItem(dhxPool);
-        while (usedDhx.has(item)) item = window.getRandomItem(dhxPool);
-        usedDhx.add(item);
-        dhx.push(item);
-    }
-    
-    return { pmh: pmh.length > 0 ? pmh : ["Nil"], dhx: dhx.length > 0 ? dhx : ["Nil"], allergies: [Math.random() > 0.8 ? window.getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"] };
+// --- MEDICAL GENERATORS ---
+window.generateHistory = (age, sex = 'Male') => {
+    if (age < 20) return { pmh: ["Nil significant"], dhx: ["Nil"], allergies: ["Nil"] };
+    const commonPMH = ["Hypertension", "Type 2 Diabetes", "Asthma", "Hyperlipidaemia", "GORD", "Depression", "Anxiety", "Previous MI", "AF", "CKD Stage 3"];
+    const femalePMH = ["PCOS", "Endometriosis", "Previous C-Section"];
+    let pmh = []; let dhx = [];
+    const pmhCount = age > 60 ? window.getRandomInt(1, 4) : age > 40 ? window.getRandomInt(0, 2) : window.getRandomInt(0, 1);
+    for(let i=0; i<pmhCount; i++) { const item = window.getRandomItem(commonPMH); if(!pmh.includes(item)) pmh.push(item); }
+    if (sex === 'Female' && Math.random() > 0.8) pmh.push(window.getRandomItem(femalePMH));
+    if (pmh.includes("Hypertension")) dhx.push("Ramipril 5mg OD");
+    if (pmh.includes("Type 2 Diabetes")) dhx.push("Metformin 1g BD");
+    if (pmh.includes("Asthma")) dhx.push("Salbutamol PRN", "Beclometasone BD");
+    if (pmh.includes("Hyperlipidaemia")) dhx.push("Atorvastatin 20mg ON");
+    if (pmh.includes("GORD")) dhx.push("Omeprazole 20mg OD");
+    if (pmh.includes("AF")) dhx.push("Bisoprolol 2.5mg OD", "Edoxaban 60mg OD");
+    if (pmh.includes("Previous MI")) dhx.push("Aspirin 75mg OD", "Atorvastatin 80mg ON", "Bisoprolol 2.5mg OD");
+    if (pmh.length === 0) pmh.push("Nil significant");
+    if (dhx.length === 0) dhx.push("Nil regular medications");
+    return { pmh: pmh, dhx: dhx, allergies: [Math.random() > 0.8 ? window.getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"] };
 };
 
 window.getBaseVitals = (age) => {
@@ -73,7 +68,6 @@ window.calculateWetflag = (age, weightStr) => {
     let glucoseVol = Math.round(weight * 2);
     return { 
         weight: weight, 
-        age: age,
         energy: Math.round(weight * 4),
         tube: tubeSize.toString(), 
         fluids: Math.round(weight * 10),
@@ -84,195 +78,81 @@ window.calculateWetflag = (age, weightStr) => {
 };
 
 window.generateVbg = (clinicalState = "normal") => {
-    let vbg = { pH: 7.38, pCO2: 5.5, pO2: 5.0, HCO3: 24, BE: 0, Lactate: 1.2, K: 4.2, Na: 140, Hb: 135, Glucose: 5.5 };
-    
-    switch(clinicalState) {
-        case "metabolic_acidosis_severe":
-            vbg = { pH: 7.10, pCO2: 2.5, pO2: 4.5, HCO3: 10, BE: -18, Lactate: 8.5, K: 5.8, Na: 138, Hb: 130, Glucose: 4.0 };
-            break;
-        case "metabolic_acidosis":
-            vbg = { pH: 7.25, pCO2: 3.5, pO2: 4.8, HCO3: 16, BE: -10, Lactate: 4.5, K: 5.2, Na: 139, Hb: 128, Glucose: 5.0 };
-            break;
-        case "respiratory_acidosis":
-            vbg = { pH: 7.28, pCO2: 8.5, pO2: 6.0, HCO3: 28, BE: 2, Lactate: 1.5, K: 4.5, Na: 140, Hb: 145, Glucose: 6.0 };
-            break;
-        case "respiratory_alkalosis":
-            vbg = { pH: 7.52, pCO2: 3.0, pO2: 5.5, HCO3: 22, BE: -2, Lactate: 1.0, K: 3.8, Na: 141, Hb: 140, Glucose: 5.5 };
-            break;
-        case "septic_shock":
-            vbg = { pH: 7.22, pCO2: 3.0, pO2: 4.2, HCO3: 14, BE: -12, Lactate: 7.0, K: 5.0, Na: 136, Hb: 100, Glucose: 8.0 };
-            break;
-        case "haemorrhagic_shock":
-            vbg = { pH: 7.30, pCO2: 3.8, pO2: 4.5, HCO3: 18, BE: -8, Lactate: 5.5, K: 4.8, Na: 138, Hb: 65, Glucose: 6.5 };
-            break;
-        case "dka":
-            vbg = { pH: 7.15, pCO2: 2.2, pO2: 5.0, HCO3: 8, BE: -20, Lactate: 2.0, K: 5.5, Na: 132, Hb: 150, Glucose: 28.0 };
-            break;
-        case "hhs":
-            vbg = { pH: 7.32, pCO2: 4.5, pO2: 5.0, HCO3: 20, BE: -4, Lactate: 1.8, K: 4.0, Na: 155, Hb: 160, Glucose: 45.0 };
-            break;
-        case "hyperkalemia":
-            vbg = { pH: 7.32, pCO2: 4.8, pO2: 5.0, HCO3: 20, BE: -4, Lactate: 1.5, K: 7.2, Na: 138, Hb: 100, Glucose: 6.0 };
-            break;
-        case "hyponatremia":
-            vbg = { pH: 7.38, pCO2: 5.2, pO2: 5.2, HCO3: 24, BE: 0, Lactate: 1.0, K: 4.0, Na: 118, Hb: 135, Glucose: 5.5 };
-            break;
-        case "hypercalcemia":
-            vbg = { pH: 7.40, pCO2: 5.0, pO2: 5.0, HCO3: 24, BE: 0, Lactate: 1.2, K: 4.2, Na: 140, Hb: 130, Glucose: 5.5 };
-            break;
-        case "co_poisoning":
-            vbg = { pH: 7.35, pCO2: 4.8, pO2: 12.0, HCO3: 22, BE: -2, Lactate: 3.5, K: 4.2, Na: 140, Hb: 145, Glucose: 7.0 };
-            break;
-        case "hypothermia":
-            vbg = { pH: 7.25, pCO2: 4.0, pO2: 4.0, HCO3: 18, BE: -6, Lactate: 4.0, K: 5.5, Na: 138, Hb: 150, Glucose: 3.5 };
-            break;
-        default:
-            break;
+    let vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
+    vbg.pH += window.getRandomFloat(-0.03, 0.03, 2);
+    switch (clinicalState) {
+        case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0, Ketones: 5.8 }; break;
+        case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0, Ketones: 0.5 }; break;
+        case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0, Ketones: 1.2 }; break;
+        case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
+        case "respiratory_acidosis_acute": vbg = { pH: 7.15, pCO2: 9.5, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2, Ketones: 0.2 }; break;
+        case "metabolic_acidosis_severe": vbg = { pH: 6.90, pCO2: 6.0, HCO3: 10, BE: -22, Lac: 12.0, K: 6.5, Glu: 6.0, Ketones: 0.4 }; break;
+        case "metabolic_alkalosis": vbg = { pH: 7.50, pCO2: 5.8, HCO3: 30, BE: 6, Lac: 1.0, K: 3.0, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0, Ketones: 0.2 }; break;
+        case "hyponatremia": vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Na: 115, Glu: 5.5, Ketones: 0.2 }; break;
+        case "gi_bleed": vbg = { pH: 7.32, pCO2: 4.8, HCO3: 20, BE: -4, Lac: 3.5, K: 4.1, Glu: 6.5, Ketones: 1.5 }; break; 
+        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 3.5, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hypothermia": vbg = { pH: 7.30, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 2.5, K: 3.5, Glu: 4.5, Ketones: 0.3 }; break;
+        case "co_poisoning": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 18, BE: -6, Lac: 4.0, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
+        default: break;
     }
-    
-    // Add some random variation
-    Object.keys(vbg).forEach(key => {
-        if (typeof vbg[key] === 'number') {
-            vbg[key] = parseFloat((vbg[key] + (Math.random() - 0.5) * 0.2).toFixed(2));
-        }
-    });
-    
+    return vbg;
+};
+
+window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, timeSeconds) => {
+    if (!startVbg) return { pH: 7.4, pCO2: 5.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
+    let vbg = { ...startVbg };
+    const minutes = timeSeconds / 60;
+    const isVentilated = activeInterventions.has('Bagging') || activeInterventions.has('RSI') || activeInterventions.has('i-gel') || activeInterventions.has('NIV');
+    if (currentVitals.rr < 10 && !isVentilated) { vbg.pCO2 = Math.min(15, vbg.pCO2 + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); }
+    if (isVentilated && vbg.pCO2 > 6.0) { vbg.pCO2 = Math.max(4.5, vbg.pCO2 - (0.2 * minutes)); vbg.pH = Math.min(7.4, vbg.pH + (0.02 * minutes)); }
+    if (currentVitals.spO2 < 85 || currentVitals.bpSys < 80) { vbg.Lac = Math.min(15, vbg.Lac + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); vbg.HCO3 = Math.max(10, vbg.HCO3 - (0.5 * minutes)); }
+    if (activeInterventions.has('InsulinInfusion') || activeInterventions.has('InsulinDextrose')) {
+        vbg.Ketones = Math.max(0.1, vbg.Ketones - (0.05 * minutes));
+        vbg.Glu = Math.max(4.0, vbg.Glu - (0.1 * minutes));
+    }
     return vbg;
 };
 
 window.generateUrine = (type = "normal") => {
-    const results = {
-        normal: { findings: "Urinalysis: Negative for leukocytes, nitrites, blood, protein, glucose, ketones." },
-        uti: { findings: "Urinalysis: Leukocytes +++, Nitrites +ve, Blood +, Protein trace. Consistent with UTI." },
-        dka: { findings: "Urinalysis: Glucose +++, Ketones +++, Protein +. Consistent with DKA." },
-        rhabdo: { findings: "Urinalysis: Blood +++ (myoglobinuria), Protein ++. No RBCs on microscopy." },
-        pregnancy: { findings: "Urinalysis: Beta-hCG POSITIVE. Leukocytes neg, Nitrites neg." },
-        dehydration: { findings: "Urinalysis: Specific gravity 1.035, Ketones +, otherwise NAD." }
-    };
-    return results[type] || results.normal;
+    const base = { leuks: "-", nitrites: "-", blood: "-", ketones: "-", protein: "-", glucose: "-", bhcg: "Negative" };
+    if(type === "uti") return { ...base, leuks: "+++", nitrites: "+" };
+    if(type === "dka") return { ...base, ketones: "++++", glucose: "++++" };
+    if(type === "rhabdo") return { ...base, blood: "+++ (Myoglobin)" };
+    if(type === "pregnancy") return { ...base, bhcg: "POSITIVE" };
+    if(type === "renal_colic") return { ...base, blood: "++" };
+    return base;
 };
 
 window.generatePocus = (type = "normal") => {
-    const results = {
-        normal: { findings: "POCUS: No free fluid. Normal lung sliding bilaterally. IVC normal calibre with respiratory variation. Normal cardiac contractility." },
-        tamponade: { findings: "POCUS: Large pericardial effusion with RV diastolic collapse. Swinging heart. No lung sliding B/L (poor views)." },
-        pneumothorax: { findings: "POCUS: Absent lung sliding on affected side with lung point identified. No free fluid." },
-        pulmonary_oedema: { findings: "POCUS: Multiple B-lines bilaterally (>3 per field). Dilated IVC with minimal respiratory variation. Reduced LV function." },
-        ruptured_aaa: { findings: "POCUS: Large AAA (>6cm) with surrounding haematoma. Free fluid in Morison's pouch and pelvis." },
-        ectopic: { findings: "POCUS: Empty uterus with free fluid in pelvis. No IUP identified." },
-        pe: { findings: "POCUS: Dilated RV with McConnell's sign. IVC dilated and non-collapsing. No free fluid." }
-    };
-    return results[type] || results.normal;
+    const base = { heart: "Normal contractility. No pericardial effusion.", lungs: "Lung sliding present bilaterally. No B-lines.", abdo: "No free fluid in Morrison's pouch or splenorenal angle." };
+    if(type === "tamponade") return { ...base, heart: "Large pericardial effusion. RV diastolic collapse present." };
+    if(type === "pneumothorax") return { ...base, lungs: "Left: Absent lung sliding. Barcode sign present." };
+    if(type === "pulmonary_oedema") return { ...base, lungs: "Diffuse B-lines bilaterally (Rocket tails)." };
+    if(type === "ruptured_aaa") return { ...base, abdo: "Large free fluid in abdomen. Aorta > 5cm." };
+    if(type === "ectopic") return { ...base, abdo: "Empty uterus. Free fluid in Pouch of Douglas." };
+    if(type === "pe") return { ...base, heart: "RV dilatation. Septal flattening (D-sign)." };
+    return base;
 };
 
 window.generateCT = (type = "normal") => {
-    const results = {
-        normal: "CT Head: No acute intracranial abnormality. No mass effect or midline shift.",
-        sah: "CT Head: SUBARACHNOID HAEMORRHAGE - diffuse blood in basal cisterns and Sylvian fissures. Early hydrocephalus.",
-        stroke_isch: "CT Head: Loss of grey-white differentiation in R MCA territory. Hyperdense R MCA sign. NIHSS correlation recommended.",
-        stroke_haem: "CT Head: Large intracerebral haemorrhage in L basal ganglia with surrounding oedema. Midline shift 8mm to right.",
-        subdural: "CT Head: Acute-on-chronic subdural haematoma with mixed density. 12mm at thickest point with 6mm midline shift.",
-        extradural: "CT Head: Biconvex hyperdense collection consistent with extradural haematoma. Associated skull fracture. Mass effect.",
-        pe: "CTPA: Large saddle PE at main pulmonary artery bifurcation. Multiple segmental emboli bilaterally. RV:LV ratio >1.",
-        dissection: "CT Aorta: Stanford Type A dissection from aortic root to iliac bifurcation. True lumen compressed. No rupture.",
-        pancreatitis: "CT Abdomen: Bulky pancreas with surrounding fat stranding and peripancreatic fluid collections. Modified CTSI 6.",
-        perf: "CT Abdomen: Free intraperitoneal air. Likely hollow viscus perforation. Urgent surgical review."
-    };
-    return results[type] || results.normal;
-};
-
-// Investigation presets for controller to send
-window.CT_HEAD_PRESETS = [
-    { label: "Normal", value: "CT Head: No acute intracranial abnormality. No mass effect or midline shift." },
-    { label: "SAH", value: "CT Head: SUBARACHNOID HAEMORRHAGE - diffuse blood in basal cisterns and Sylvian fissures. Early hydrocephalus." },
-    { label: "Large ICH", value: "CT Head: Large intracerebral haemorrhage with surrounding oedema and midline shift. Neurosurgical review recommended." },
-    { label: "Ischaemic Stroke", value: "CT Head: Loss of grey-white differentiation in MCA territory. Early ischaemic changes. Consider thrombolysis." },
-    { label: "Subdural", value: "CT Head: Acute subdural haematoma with mass effect and midline shift. Urgent neurosurgical referral." },
-    { label: "Extradural", value: "CT Head: Biconvex extradural haematoma with associated skull fracture. Mass effect present." },
-    { label: "Contusions", value: "CT Head: Multiple cerebral contusions with surrounding oedema. No surgical lesion. ICP monitoring recommended." },
-    { label: "Diffuse Axonal Injury", value: "CT Head: Multiple petechial haemorrhages at grey-white junction consistent with DAI. No surgical lesion." }
-];
-
-window.INVESTIGATION_PRESETS = {
-    'CT_HEAD': window.CT_HEAD_PRESETS,
-    'CT_CHEST': [
-        { label: "Normal", value: "CT Chest: No acute cardiopulmonary abnormality. Lungs clear." },
-        { label: "PE", value: "CT PA: Large saddle pulmonary embolism. RV strain evident. Urgent anticoagulation required." },
-        { label: "Pneumothorax", value: "CT Chest: Large RIGHT pneumothorax with mediastinal shift. Urgent decompression required." },
-        { label: "Haemothorax", value: "CT Chest: Large LEFT haemothorax with active extravasation. Surgical review recommended." },
-        { label: "Aortic Dissection", value: "CT Aorta: Type A aortic dissection with intimal flap extending into arch. URGENT cardiothoracic referral." },
-        { label: "Rib Fractures", value: "CT Chest: Multiple right-sided rib fractures (ribs 4-8) with underlying pulmonary contusion." }
-    ],
-    'CT_ABDO': [
-        { label: "Normal", value: "CT Abdomen/Pelvis: No acute intra-abdominal abnormality." },
-        { label: "Appendicitis", value: "CT Abdomen: Acute appendicitis with peri-appendiceal fat stranding. No perforation." },
-        { label: "Bowel Obstruction", value: "CT Abdomen: Small bowel obstruction with transition point in RIF. Dilated proximal loops." },
-        { label: "Free Air", value: "CT Abdomen: Pneumoperitoneum with free fluid. Perforated viscus - URGENT surgical review." },
-        { label: "AAA Rupture", value: "CT Abdomen: Ruptured 8cm infrarenal AAA with retroperitoneal haematoma. EMERGENCY vascular surgery." },
-        { label: "Splenic Injury", value: "CT Abdomen: Grade IV splenic laceration with active haemorrhage. Haemoperitoneum present." },
-        { label: "Liver Laceration", value: "CT Abdomen: Grade III liver laceration with subcapsular haematoma. Haemoperitoneum present." }
-    ],
-    'CXR': [
-        { label: "Normal", value: "CXR: Lung fields clear. No cardiomegaly. No pneumothorax." },
-        { label: "Pneumothorax", value: "CXR: Large RIGHT tension pneumothorax with mediastinal shift. Urgent decompression required." },
-        { label: "Haemothorax", value: "CXR: Large LEFT pleural effusion (likely haemothorax). Loss of costophrenic angle." },
-        { label: "Pulmonary Oedema", value: "CXR: Bilateral interstitial oedema. Cardiomegaly. Upper lobe diversion. Bat wing appearance." },
-        { label: "Pneumonia", value: "CXR: Right lower lobe consolidation with air bronchograms. Consistent with pneumonia." },
-        { label: "Widened Mediastinum", value: "CXR: Widened mediastinum. Consider aortic pathology. CT recommended." },
-        { label: "Rib Fractures", value: "CXR: Multiple right-sided rib fractures (ribs 4-7). Small associated pneumothorax." }
-    ],
-    'ECG': [
-        { label: "Normal SR", value: "ECG: Normal sinus rhythm. Rate 72. No acute changes." },
-        { label: "STEMI Anterior", value: "ECG: ST elevation V1-V4 with reciprocal changes. ANTERIOR STEMI - activate cath lab." },
-        { label: "STEMI Inferior", value: "ECG: ST elevation II, III, aVF. INFERIOR STEMI - activate cath lab. Check RV leads." },
-        { label: "NSTEMI", value: "ECG: ST depression V3-V6 with T wave inversion. Troponin pending. High risk ACS." },
-        { label: "AF", value: "ECG: Atrial fibrillation. Ventricular rate 120. No acute ischaemic changes." },
-        { label: "Complete HB", value: "ECG: Complete heart block. Ventricular rate 35. Urgent pacing required." },
-        { label: "Hyperkalaemia", value: "ECG: Peaked T waves, prolonged PR, widened QRS. CHECK K+ URGENTLY." }
-    ],
-    'VBG': [
-        { label: "Normal", content: "VBG: pH 7.38, pCO2 5.2, pO2 5.0, HCO3 24, BE 0, Lactate 1.0, K 4.0, Na 140, Hb 140, Glucose 5.5" },
-        { label: "Metabolic Acidosis", content: "VBG: pH 7.25, pCO2 3.5, pO2 5.0, HCO3 15, BE -10, Lactate 4.0, K 4.8, Na 138, Hb 130, Glucose 6.0 - METABOLIC ACIDOSIS with respiratory compensation" },
-        { label: "Severe Acidosis", content: "VBG: pH 7.05, pCO2 2.5, pO2 4.5, HCO3 6, BE -22, Lactate 8.5, K 5.8, Na 132, Hb 100, Glucose 4.0 - SEVERE METABOLIC ACIDOSIS - Critical" },
-        { label: "Resp Acidosis", content: "VBG: pH 7.20, pCO2 9.5, pO2 6.0, HCO3 28, BE 2, Lactate 1.5, K 4.5, Na 140, Hb 150, Glucose 6.0 - RESPIRATORY ACIDOSIS - Type 2 resp failure" },
-        { label: "Septic Shock", content: "VBG: pH 7.18, pCO2 2.8, pO2 4.8, HCO3 10, BE -16, Lactate 6.5, K 5.2, Na 135, Hb 95, Glucose 8.0 - Severe sepsis/septic shock" },
-        { label: "DKA", content: "VBG: pH 7.15, pCO2 2.2, pO2 5.0, HCO3 8, BE -20, Lactate 2.0, K 5.5, Na 132, Hb 150, Glucose 28.0 - DKA. Ketones >3. Start DKA protocol." },
-        { label: "Hyperkalaemia", content: "VBG: pH 7.32, pCO2 4.8, pO2 5.0, HCO3 20, BE -4, Lactate 1.5, K 7.2, Na 138, Hb 100, Glucose 6.0 - HYPERKALAEMIA - Check ECG, treat urgently" }
-    ],
-    'BLOODS': [
-        { label: "Normal", value: "FBC: Hb 140, WCC 8.5, Plt 250. U&E: Na 140, K 4.2, Cr 85. LFT: Normal. Clotting: Normal." },
-        { label: "Sepsis", value: "FBC: WCC 22, Plt 85. CRP 280. Lactate 4.5. Cr 180 (AKI). Clotting deranged." },
-        { label: "DKA", value: "Glucose 28. K 6.2. Na 128. pH 7.1. HCO3 8. Ketones 5.2." },
-        { label: "GI Bleed", value: "Hb 68 (↓↓). Plt 180. Urea 18.5 (↑). Cr 95. Group & Save sent." },
-        { label: "Coagulopathy", value: "PT 35 (↑↑). APTT 55 (↑). Fibrinogen 0.8 (↓). Plt 45 (↓↓). Consider massive transfusion protocol." },
-        { label: "Hyperkalaemia", value: "K 7.2. ECG changes - treat urgently. Na 138, Cr 250 (AKI stage 3)." }
-    ],
-    'URINE': [
-        { label: "Normal", value: "Urinalysis: Clear. No blood, protein, leucocytes or nitrites." },
-        { label: "UTI", value: "Urinalysis: Leucocytes +++, Nitrites +, Blood +. Consistent with UTI." },
-        { label: "DKA", value: "Urinalysis: Ketones +++, Glucose +++." },
-        { label: "Rhabdo", value: "Urinalysis: Blood +++ (no RBCs on microscopy - myoglobinuria). Check CK." },
-        { label: "Pregnancy +ve", value: "Urinalysis: hCG POSITIVE. Pregnancy test positive." }
-    ],
-    'POCUS': [
-        { label: "Normal", value: "POCUS: Good cardiac contractility. No pericardial effusion. IVC collapsing >50%. Lungs: A-lines bilaterally." },
-        { label: "Tamponade", value: "POCUS: Large pericardial effusion with RV diastolic collapse. TAMPONADE - urgent pericardiocentesis." },
-        { label: "Pneumothorax", value: "POCUS: Absent lung sliding on RIGHT. Barcode sign. PNEUMOTHORAX." },
-        { label: "Pulm Oedema", value: "POCUS: Multiple B-lines bilaterally. Dilated IVC non-collapsing. Pulmonary oedema/fluid overload." },
-        { label: "Ruptured AAA", value: "POCUS: 7cm infrarenal AAA with retroperitoneal fluid. RUPTURED AAA - activate major haemorrhage." },
-        { label: "Ectopic", value: "POCUS: Free fluid in pelvis. No IUP seen. Consider ectopic pregnancy." },
-        { label: "PE signs", value: "POCUS: Dilated RV with septal flattening (D-sign). McConnell's sign. RV:LV >1. Suggestive of PE." }
-    ]
+    if(type === "sah") return "Hyperdensity within the basal cisterns and sylvian fissures consistent with acute Subarachnoid Haemorrhage.";
+    if(type === "stroke_isch") return "No acute haemorrhage. Dense MCA sign on right side. Early loss of grey-white differentiation.";
+    if(type === "stroke_haem") return "Large intracerebral haematoma in the right basal ganglia with surrounding oedema.";
+    if(type === "subdural") return "Crescentic hyperdensity over the left hemisphere with 5mm midline shift.";
+    if(type === "extradural") return "Biconvex (lentiform) hyperdensity in the right temporal region. Fracture of temporal bone.";
+    if(type === "pe") return "CTPA: Filling defects seen in both main pulmonary arteries extending into lobar branches. Right heart strain.";
+    if(type === "dissection") return "CT Aorta: Dissection flap visible originating in ascending aorta and extending to iliac bifurcation (Type A).";
+    if(type === "pancreatitis") return "CT Abdo: Pancreas is oedematous with peripancreatic stranding and fluid collections.";
+    if(type === "perf") return "CT Abdo: Free air under the diaphragm. Extravasation of contrast from duodenum.";
+    return "No acute intracranial/thoracic/abdominal pathology identified.";
 };
 
 window.HUMAN_FACTOR_CHALLENGES = [
-    { id: 'hf0', label: 'None', description: '' },
-    { id: 'hf1', label: 'Aggressive Relative', description: 'A family member is shouting and demanding answers. De-escalation required.' },
-    { id: 'hf2', label: 'Equipment Failure', description: 'The suction has failed. You need to find alternatives.' },
-    { id: 'hf3', label: 'Interrupting Colleague', description: 'A colleague keeps interrupting with unrelated queries about another patient.' },
-    { id: 'hf4', label: 'Missing Drugs', description: 'The first drug you look for is missing from the cupboard.' },
-    { id: 'hf5', label: 'Language Barrier', description: 'The patient does not speak English. An interpreter is not immediately available.' },
-    { id: 'hf6', label: 'Conflicting Senior Advice', description: 'Two senior clinicians are giving contradictory management advice.' },
-    { id: 'hf7', label: 'Media Present', description: 'A journalist with a camera has entered the department.' },
-    { id: 'hf8', label: 'VIP Patient', description: 'The patient is a local celebrity. Hospital management is asking for updates.' }
+  { id: 'hf0', type: 'Standard Simulation', description: 'Manage effectively.' },
+  { id: 'hf1', type: 'Blindfolded Lead', description: 'Leader blindfolded. Tests closed-loop comms.' },
+  { id: 'hf2', type: 'Silent Team', description: 'Only leader speaks.' },
+  { id: 'hf3', type: 'New Junior', description: 'Junior member needs explicit instructions.' },
+  { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
+  { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
 ];
