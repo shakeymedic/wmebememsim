@@ -8,8 +8,9 @@
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
     <script src="https://unpkg.com/lucide-react@0.263.1/dist/umd/lucide-react.min.js"></script>
-    
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
     
@@ -84,19 +85,22 @@
         </div>
     </div>
 
-    <script src="data/interventions.js"></script>
-    <script src="data/generators.js"></script>
-    <script src="data/scenarios.js"></script>
-    <script src="data/ui.js"></script>
-    <script src="data/engine.js"></script>
+    <script type="text/babel" src="data/interventions.js"></script>
+    <script type="text/babel" src="data/generators.js"></script>
+    <script type="text/babel" src="data/scenarios.js"></script>
     
-    <script src="data/screens/index.js"></script>
-    <script src="data/screens/setup.js"></script>
-    <script src="data/screens/livesim.js"></script>
-    <script src="data/screens/monitor.js"></script>
-    <script src="data/screens/debrief.js"></script>
+    <script type="text/babel" src="data/components.js"></script>
+    
+    <script type="text/babel" src="data/engine.js"></script>
+    
+    <script type="text/babel" src="data/screens/setup.js"></script>
+    <script type="text/babel" src="data/screens/livesim.js"></script>
+    <script type="text/babel" src="data/screens/monitor.js"></script>
+    <script type="text/babel" src="data/screens/debrief.js"></script>
+    
+    <script type="text/babel" src="data/screens/index.js"></script>
 
-    <script>
+    <script type="text/babel">
         // Safe localStorage wrapper
         const safeStorage = {
             getItem: (key) => {
@@ -187,7 +191,6 @@
 
             // Handle scenario generation
             const handleGenerate = (scenario) => {
-                // BUG FIX: Changed 'SET_SCENARIO' to 'INIT_SCENARIO' to match engine.js
                 sim.dispatch({ type: 'INIT_SCENARIO', payload: scenario });
                 setView('briefing');
                 setResumeAvailable(null);
@@ -196,7 +199,6 @@
 
             // Handle resume
             const handleResume = (savedState) => {
-                // BUG FIX: Changed 'RESTORE_STATE' to 'RESTORE_SESSION' to match engine.js
                 sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState });
                 setView('live');
                 setResumeAvailable(null);
@@ -207,7 +209,6 @@
                 const currentScenario = sim.state.scenario;
                 sim.dispatch({ type: 'RESET' });
                 if (currentScenario) {
-                    // BUG FIX: Changed 'SET_SCENARIO' to 'INIT_SCENARIO' to match engine.js
                     sim.dispatch({ type: 'INIT_SCENARIO', payload: currentScenario });
                     setView('briefing');
                 } else {
@@ -226,7 +227,6 @@
                 return React.createElement(window.JoinScreen, {
                     onJoin: (code) => {
                         setSessionID(code);
-                        // Redirect to monitor mode
                         window.location.href = `?mode=monitor&session=${code}`;
                     }
                 });
@@ -304,8 +304,6 @@
 
         // Wait for all components to load then render
         const checkReady = setInterval(() => {
-            // Note: We check if ANY of the core components are ready. 
-            // If some scripts failed, the timeout catch below will handle it.
             if (window.MonitorContainer && 
                 window.SetupScreen && 
                 window.ALL_SCENARIOS && 
@@ -321,12 +319,6 @@
                     console.log('EM Sim Generator v17 loaded successfully');
                 } catch (e) {
                     console.error('Render error:', e);
-                    // Fallback for older React
-                    try {
-                        ReactDOM.render(React.createElement(App), document.getElementById('root'));
-                    } catch (e2) {
-                        console.error('Fallback render error:', e2);
-                    }
                 }
             }
         }, 100);
@@ -341,8 +333,8 @@
                         <div style="color: #ef4444; font-size: 24px;">⚠️</div>
                         <div style="color: #f87171; font-size: 18px;">Failed to load application</div>
                         <div style="color: #94a3b8; max-width: 400px;">
-                            The application failed to initialize. This is usually due to a network error loading external libraries or a file missing from the server. <br><br>
-                            Please check the browser console (F12) for specific errors.
+                            The application failed to initialize. <br><br>
+                            Likely cause: A file in the "data" folder is missing or has a syntax error.
                         </div>
                         <button onclick="location.reload()" style="padding: 10px 20px; background: #0ea5e9; color: white; border: none; border-radius: 6px; cursor: pointer;">
                             Retry
