@@ -1,4 +1,7 @@
-// data/screens/setup.js
+{
+type: "file",
+fileName: "data/screens/setup.js",
+content: `
 (() => {
     const { useState, useEffect } = React;
 
@@ -12,14 +15,19 @@
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
         const [premadeCategory, setPremadeCategory] = useState(null);
+        const [customScenarios, setCustomScenarios] = useState([]);
+        const [showWetflag, setShowWetflag] = useState(true);
+
+        // Custom Builder State
+        const [buildId, setBuildId] = useState(null);
         const [buildTitle, setBuildTitle] = useState("");
         const [buildAge, setBuildAge] = useState(40);
+        const [buildSex, setBuildSex] = useState("Male");
         const [buildCat, setBuildCat] = useState("Medical");
         const [buildDesc, setBuildDesc] = useState("A 40-year-old male with chest pain.");
-        const [buildPC, setBuildPC] = useState("Chest Pain");
         const [buildPMH, setBuildPMH] = useState("Hypertension");
-        const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98 });
-        const [customScenarios, setCustomScenarios] = useState([]);
+        const [buildAllergies, setBuildAllergies] = useState("NKDA");
+        const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, rhythm: "Sinus Rhythm" });
 
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
@@ -31,60 +39,76 @@
             }
         }, []);
 
+        const loadIntoBuilder = (s) => {
+            setBuildId(s.id || \`CUST_\${Date.now()}\`);
+            setBuildTitle(s.title);
+            setBuildAge(s.patientAge || 40);
+            setBuildSex(s.sex || "Male");
+            setBuildCat(s.category);
+            setBuildDesc(s.patientProfileTemplate.replace('{age}', s.patientAge || 40).replace('{sex}', s.sex || 'Male'));
+            setBuildPMH(Array.isArray(s.pmh) ? s.pmh.join(", ") : (s.pmh || ""));
+            setBuildAllergies(Array.isArray(s.allergies) ? s.allergies.join(", ") : (s.allergies || "NKDA"));
+            setBuildVitals({
+                hr: s.vitalsMod?.hr || s.vitals?.hr || 80,
+                bpSys: s.vitalsMod?.bpSys || s.vitals?.bpSys || 120,
+                rr: s.vitalsMod?.rr || s.vitals?.rr || 16,
+                spO2: s.vitalsMod?.spO2 || s.vitals?.spO2 || 98,
+                temp: s.vitalsMod?.temp || s.vitals?.temp || 37,
+                gcs: s.vitalsMod?.gcs || s.vitals?.gcs || 15,
+                rhythm: s.ecg?.type || "Sinus Rhythm"
+            });
+            setMode('builder');
+        };
+
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
             const safeVitals = {
                 hr: parseInt(buildVitals.hr) || 80,
                 bpSys: parseInt(buildVitals.bpSys) || 120,
                 rr: parseInt(buildVitals.rr) || 16,
-                spO2: parseInt(buildVitals.spO2) || 98
+                spO2: parseInt(buildVitals.spO2) || 98,
+                temp: parseFloat(buildVitals.temp) || 37,
+                gcs: parseInt(buildVitals.gcs) || 15,
+                bpDia: Math.floor((parseInt(buildVitals.bpSys)||120) * 0.65)
             };
+
             const newScen = {
-                id: `CUST_${Date.now()}`,
+                id: \`CUST_\${Date.now()}\`,
                 title: buildTitle,
                 category: buildCat,
                 ageRange: buildAge < 18 ? "Paediatric" : "Adult",
                 acuity: 'Majors',
                 ageGenerator: () => parseInt(buildAge),
+                patientAge: parseInt(buildAge),
+                sex: buildSex,
                 patientProfileTemplate: buildDesc,
-                presentingComplaint: buildPC,
-                vitalsMod: { ...safeVitals, bpDia: Math.floor(safeVitals.bpSys * 0.65), gcs: 15, temp: 37 },
-                pmh: buildPMH.split(','),
+                presentingComplaint: buildTitle,
+                vitalsMod: safeVitals,
+                pmh: buildPMH.split(',').map(s=>s.trim()),
                 dhx: ["As per history"],
-                allergies: ["NKDA"],
+                allergies: buildAllergies.split(',').map(s=>s.trim()),
                 instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom Objective"] },
                 vbgClinicalState: "normal",
                 ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: buildVitals.rhythm || "Normal" },
                 chestXray: { findings: "Unremarkable" }
             };
-            const updated = [...customScenarios, newScen];
-            setCustomScenarios(updated);
-            localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
-            setMode('custom'); 
-        };
 
-        const handleExport = () => {
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(customScenarios));
-            const downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "scenarios.json");
-            document.body.appendChild(downloadAnchorNode);
-            downloadAnchorNode.click();
-            downloadAnchorNode.remove();
-        };
-
-        const handleImport = (event) => {
-            const fileReader = new FileReader();
-            fileReader.readAsText(event.target.files[0], "UTF-8");
-            fileReader.onload = e => {
-                try {
-                    const imported = JSON.parse(e.target.result);
-                    const merged = [...customScenarios, ...imported];
-                    setCustomScenarios(merged);
-                    localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(merged));
-                    alert("Import successful!");
-                } catch(err) { alert("Invalid JSON file"); }
-            };
+            // If editing existing custom, replace it
+            if(buildId && buildId.startsWith('CUST_')) {
+                const existingIdx = customScenarios.findIndex(c => c.id === buildId);
+                let updated;
+                if(existingIdx >= 0) {
+                     updated = [...customScenarios];
+                     updated[existingIdx] = newScen;
+                } else {
+                     updated = [...customScenarios, newScen];
+                }
+                setCustomScenarios(updated);
+                localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
+            }
+            
+            // Launch immediately
+            handleGenerate(newScen);
         };
 
         const handleGenerate = (base) => {
@@ -99,6 +123,12 @@
                      );
                      if (pool.length === 0) { alert("No scenarios match filters."); return; }
                      selectedBase = pool[Math.floor(Math.random() * pool.length)];
+                 }
+
+                 // If already processed (custom), skip generation logic
+                 if (selectedBase.id.startsWith('CUST_')) {
+                     onGenerate({ ...selectedBase, showWetflag }, {});
+                     return;
                  }
 
                  const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
@@ -131,7 +161,8 @@
                     allergies: selectedBase.allergies || history.allergies,
                     vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
                     hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
-                    weight, wetflag
+                    weight, wetflag,
+                    showWetflag // Pass the toggle state
                  };
 
                  onGenerate(generated, {});
@@ -157,7 +188,7 @@
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
                     <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
-                    <p>Select a mode below. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you craft on the fly.</p>
+                    <p>Select a mode below. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
                 </div>
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
@@ -165,10 +196,17 @@
                         <Button onClick={onResume} variant="success">Resume</Button>
                     </div>
                 )}
+                
+                {/* WETFLAG Toggle */}
+                <div className="flex items-center gap-2 p-2 bg-slate-800 rounded border border-slate-600">
+                    <input type="checkbox" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="w-5 h-5 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
+                    <span className="text-sm font-bold text-white">Show WETFLAG on Monitor (Paediatric Scenarios)</span>
+                </div>
+
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
                     <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto no-scrollbar">
                         {['random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-4 text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m}</button>
+                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={\`pb-2 px-4 text-sm font-bold uppercase whitespace-nowrap transition-colors \${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}\`}>{m === 'builder' ? 'Builder/Edit' : m}</button>
                         ))}
                     </div>
                     {mode === 'random' && (
@@ -199,8 +237,14 @@
                                     <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
                                         {ALL_SCENARIOS.filter(premadeCategory.filter).map((s) => (
                                             <div key={s.id} className="flex justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
-                                                <div><div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>}</div><div className="text-xs text-slate-400">{s.patientProfileTemplate.substring(0, 60)}...</div></div>
-                                                <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
+                                                <div className="flex-1">
+                                                    <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>}</div>
+                                                    <div className="text-xs text-slate-400">{s.patientProfileTemplate.substring(0, 60)}...</div>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
+                                                    <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
+                                                </div>
                                             </div>
                                         ))}
                                         {ALL_SCENARIOS.filter(premadeCategory.filter).length === 0 && (<div className="text-center text-slate-500 py-8">No scenarios found in this category.</div>)}
@@ -211,31 +255,44 @@
                     )}
                     {mode === 'custom' && (
                         <div className="space-y-2 animate-fadeIn">
-                             <div className="flex gap-2 mb-4"><Button onClick={handleExport} variant="outline" className="h-8 text-xs flex-1">Export JSON</Button><label className="flex-1"><span className="flex items-center justify-center h-8 px-2 rounded bg-slate-700 text-white text-xs border border-slate-600 cursor-pointer hover:bg-slate-600">Import JSON</span><input type="file" className="hidden" onChange={handleImport} accept=".json"/></label></div>
-                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet.</p>}
+                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet. Use Builder to create one.</p>}
                              {customScenarios.map((s, i) => (
-                                 <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600"><div><div className="font-bold text-white">{s.title}</div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div><Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button></div>
+                                 <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
+                                     <div><div className="font-bold text-white">{s.title}</div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div>
+                                     <div className="flex gap-2">
+                                        <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs">Edit</Button>
+                                        <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
+                                     </div>
+                                 </div>
                              ))}
                         </div>
                     )}
                     {mode === 'builder' && (
                         <div className="space-y-4 animate-fadeIn">
-                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500"/>
-                            <div className="grid grid-cols-2 gap-2"><input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option></select></div>
-                            <textarea placeholder="Description (e.g. A 45-year-old male found collapsed...)" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500 font-bold"/>
+                            <div className="grid grid-cols-3 gap-2">
+                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
+                                <select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select>
+                                <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Paediatric</option></select>
+                            </div>
+                            <textarea placeholder="Description" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+                            <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            <input type="text" placeholder="Allergies (comma separated)" value={buildAllergies} onChange={e=>setBuildAllergies(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            
+                            <h4 className="text-xs font-bold text-slate-500 uppercase mt-2">Initial Observations</h4>
                             <div className="grid grid-cols-3 gap-2">
                                 <div><label className="text-[10px] text-slate-500 uppercase">Heart Rate</label><input type="number" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Sys BP</label><input type="number" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Resp Rate</label><input type="number" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">SpO2 %</label><input type="number" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs || 15} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp || 37} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
                             </div>
                             <div>
                                 <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
                                 <select onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}</select>
                             </div>
-                            <Button onClick={saveCustomScenario} variant="primary" className="w-full">Save Custom Scenario</Button>
+                            <Button onClick={saveCustomScenario} variant="primary" className="w-full text-lg h-12">Run Scenario</Button>
                         </div>
                     )}
                 </div>
@@ -310,3 +367,5 @@
     window.JoinScreen = JoinScreen;
     window.BriefingScreen = BriefingScreen;
 })();
+`
+}
