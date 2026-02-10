@@ -1,4 +1,7 @@
-// data/screens/monitor.js
+{
+type: "file",
+fileName: "data/screens/monitor.js",
+content: `
 (() => {
     const { useState, useEffect, useRef } = React;
 
@@ -86,7 +89,7 @@
             
             ctx.fillStyle = 'black';
             ctx.font = '14px monospace';
-            ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
+            ctx.fillText(\`ID: \${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: \${new Date().toLocaleDateString()}   Paper Speed: 25mm/s\`, 20, h - 20);
         } catch (e) {
             console.error("12-Lead Render Error", e);
         }
@@ -95,22 +98,21 @@
     const MonitorScreen = ({ sim }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag, showMonitorTimer } = state;
         const hasMonitoring = activeInterventions.has('Obs'); 
         const hasArtLine = activeInterventions.has('ArtLine');
         
         const [audioEnabled, setAudioEnabled] = useState(false);
-        const [defibOpen, setDefibOpen] = useState(false);
         const [invToast, setInvToast] = useState(null); 
         const [show12Lead, setShow12Lead] = useState(false);
         const canvasRef = useRef(null);
         
         const lastPopupTime = useRef(0);
 
-        useEffect(() => {
-             if (arrestPanelOpen && !defibOpen) setDefibOpen(true);
-             if (!arrestPanelOpen && defibOpen) setDefibOpen(false);
-        }, [arrestPanelOpen]);
+        // --- BLACK SCREEN IF FINISHED ---
+        if (state.isFinished) {
+            return <div className="h-full w-full bg-black flex items-center justify-center text-slate-800 font-bold uppercase tracking-widest text-3xl">Simulation Finished</div>;
+        }
 
         useEffect(() => {
             if (show12Lead && canvasRef.current) {
@@ -129,13 +131,21 @@
 
         // --- INVESTIGATION TOAST LOGIC ---
         useEffect(() => {
+            // Handle clearing
+            if (monitorPopup && monitorPopup.type === null && invToast) {
+                setInvToast(null);
+                return;
+            }
+
             if (monitorPopup && monitorPopup.type && monitorPopup.timestamp > lastPopupTime.current) {
                 lastPopupTime.current = monitorPopup.timestamp;
                 const type = monitorPopup.type;
                 let title = type;
                 let content = "No findings recorded.";
-                
-                if (scenario) {
+
+                if (monitorPopup.customText) {
+                    content = monitorPopup.customText;
+                } else if (scenario) {
                     if (type === 'ECG') content = (scenario.ecg && scenario.ecg.findings) ? scenario.ecg.findings : "Normal Sinus Rhythm"; 
                     else if (type === 'X-ray') content = (scenario.chestXray && scenario.chestXray.findings) ? scenario.chestXray.findings : "Lung fields clear.";
                     else if (type === 'CT') content = (scenario.ct && scenario.ct.findings) ? scenario.ct.findings : "No acute intracranial pathology.";
@@ -158,9 +168,6 @@
                     }
                 }
                 setInvToast({ title, content });
-                // Auto dismiss after 6 seconds
-                const timer = setTimeout(() => setInvToast(null), 6000);
-                return () => clearTimeout(timer);
             }
         }, [monitorPopup, scenario]);
 
@@ -168,11 +175,11 @@
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
 
         return (
-            <div className={`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
+            <div className={\`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 \${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden\`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 {/* INVESTIGATION TOAST (TOP RIGHT) */}
-                <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
+                <div className={\`absolute top-4 right-4 z-[70] transition-all duration-500 \${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}\`}>
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
@@ -193,16 +200,45 @@
                     </div>
                 )}
 
-                {/* --- DEFIB FRAME --- */}
-                {defibOpen && (
+                {/* --- DEFIB OVERLAY (REACT) --- */}
+                {arrestPanelOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
-                        <iframe id="defib-frame" src="defib/index.html" className="w-full h-full border-0 bg-slate-900" title="Defibrillator" />
-                        <button 
-                            onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})}
-                            className="absolute top-4 right-4 z-[101] bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow-lg border-2 border-white/20 uppercase tracking-widest text-sm"
-                        >
-                            Close Defib
-                        </button>
+                        {/* Header */}
+                        <div className="bg-slate-900 border-b border-slate-700 p-2 flex justify-between items-center">
+                            <div className="text-slate-300 font-bold uppercase tracking-wider flex items-center gap-2">
+                                <Lucide icon="zap" className="text-red-500" /> Manual Defibrillator
+                            </div>
+                            <div className="text-red-500 font-mono font-bold animate-pulse text-xl">MANUAL MODE</div>
+                            <div className="text-slate-500">{new Date().toLocaleTimeString()}</div>
+                        </div>
+
+                        {/* Defib Monitor Area */}
+                        <div className="flex-grow relative bg-black grid grid-rows-2">
+                             {/* Lead II */}
+                             <div className="relative border-b border-slate-800">
+                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" />
+                             </div>
+                             {/* Pads */}
+                             <div className="relative">
+                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" />
+                             </div>
+                        </div>
+
+                        {/* Defib Controls Bottom */}
+                        <div className="bg-slate-900 p-4 border-t border-slate-700 grid grid-cols-4 gap-4">
+                             <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
+                                 <div className="text-slate-500 text-xs uppercase mb-1">Energy Select</div>
+                                 <div className="text-3xl font-mono text-yellow-500 font-bold">150 J</div>
+                             </div>
+                             <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
+                                 <div className="text-slate-500 text-xs uppercase mb-1">Status</div>
+                                 <div className="text-xl font-mono text-white font-bold">{flash === 'yellow' ? 'CHARGING...' : (flash === 'red' ? 'SHOCK DELIVERED' : 'READY')}</div>
+                             </div>
+                             
+                             <div className="col-span-2 flex items-center justify-end gap-4">
+                                 <div className="text-slate-400 text-sm uppercase font-bold mr-4">CPR Timer: <span className="text-white text-xl font-mono">{Math.floor(state.cycleTimer/60)}:{(state.cycleTimer%60).toString().padStart(2,'0')}</span></div>
+                             </div>
+                        </div>
                     </div>
                 )}
 
@@ -215,6 +251,7 @@
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>
                         )}
+                        {showMonitorTimer && <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-xl px-2 py-1 rounded border border-slate-700">{Math.floor(state.time/60)}:{(state.time%60).toString().padStart(2,'0')}</div>}
                     </div>
 
                     {/* Vitals Grid */}
@@ -227,7 +264,7 @@
                             {hasMonitoring && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
                                     <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={\`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] \${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}\`}>Auto</button>
                                 </div>
                             )}
                         </div>
@@ -263,19 +300,20 @@
                 </div>
 
                 {/* --- WETFLAG SIDEBAR (PAEDS) --- */}
-                {isPaeds && scenario.wetflag && (
+                {isPaeds && showWetflag && scenario.wetflag && (
                     <div className="absolute top-0 right-0 h-full w-48 bg-slate-900/95 backdrop-blur border-l border-slate-700 p-2 flex flex-col gap-2 shadow-2xl z-40">
                          <div className="bg-purple-900/40 border border-purple-500/50 p-2 rounded mb-2">
                              <h3 className="text-purple-400 font-bold text-center text-sm">WETFLAG</h3>
                              <div className="text-center text-white font-mono text-xl font-bold">{scenario.wetflag.weight}kg</div>
+                             <div className="text-center text-slate-400 text-xs mt-1">Age: {scenario.patientAge}y</div>
                          </div>
                          <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
-                             <WetFlagItem label="Energy" value={`${scenario.wetflag.energy}J`} />
+                             <WetFlagItem label="Energy" value={\`\${scenario.wetflag.energy}J\`} />
                              <WetFlagItem label="Tube" value={scenario.wetflag.tube} />
-                             <WetFlagItem label="Fluids" value={`${scenario.wetflag.fluids}ml`} />
-                             <WetFlagItem label="Loraz" value={`${scenario.wetflag.lorazepam}mg`} />
-                             <WetFlagItem label="Adren" value={`${scenario.wetflag.adrenaline}mcg`} />
-                             <WetFlagItem label="Gluc" value={`${scenario.wetflag.glucose}ml`} />
+                             <WetFlagItem label="Fluids" value={\`\${scenario.wetflag.fluids}ml\`} />
+                             <WetFlagItem label="Loraz" value={\`\${scenario.wetflag.lorazepam}mg\`} />
+                             <WetFlagItem label="Adren" value={\`\${scenario.wetflag.adrenaline}mcg\`} />
+                             <WetFlagItem label="Gluc" value={\`\${scenario.wetflag.glucose}ml\`} />
                          </div>
                     </div>
                 )}
@@ -311,3 +349,5 @@
     window.MonitorScreen = MonitorScreen;
     window.MonitorContainer = MonitorContainer;
 })();
+`
+}
