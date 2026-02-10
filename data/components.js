@@ -1,419 +1,373 @@
-// data/components.js
+{
+type: "file",
+fileName: "data/components.js",
+content: `
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    const Lucide = React.memo(({ icon, className = "" }) => {
-        const ref = useRef(null);
-        useEffect(() => {
-            const renderIcon = () => {
-                if (!ref.current || !window.lucide) return;
-                ref.current.innerHTML = '';
-                const kebabToPascal = (str) => str.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
-                const iconName = kebabToPascal(icon);
-                if (window.lucide.icons && window.lucide.icons[iconName] && window.lucide.createElement) {
-                    const svg = window.lucide.createElement(window.lucide.icons[iconName]);
-                    if (className) svg.setAttribute('class', className);
-                    ref.current.appendChild(svg);
-                    return;
-                }
-                const i = document.createElement('i');
-                i.setAttribute('data-lucide', icon);
-                if (className) i.setAttribute('class', className);
-                ref.current.appendChild(i);
-                if (window.lucide.createIcons) {
-                    window.lucide.createIcons({ root: ref.current, nameAttr: 'data-lucide', attrs: { class: className } });
-                }
-            };
-            renderIcon();
-            const timer = setTimeout(renderIcon, 500);
-            return () => clearTimeout(timer);
-        }, [icon, className]);
-        return <span ref={ref} className="inline-flex items-center justify-center"></span>;
-    });
+    // --- ICONS (Lucide React equivalent) ---
+    const Lucide = ({ icon, className, onClick }) => {
+        // Simple mapping for common icons used in the app
+        const icons = {
+            'activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
+            'heart-pulse': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 11H6"/><path d="M12 5l3 6h3"/>',
+            'zap': '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
+            'wind': '<path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>',
+            'droplet': '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path>',
+            'thermometer': '<path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>',
+            'loader-2': '<path d="M21 12a9 9 0 1 1-6.219-8.56"></path>',
+            'alert-triangle': '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line>',
+            'check-circle': '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>',
+            'x': '<line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>',
+            'menu': '<line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="18" x2="20" y2="18"></line>',
+            'play': '<polygon points="5 3 19 12 5 21 5 3"></polygon>',
+            'pause': '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>',
+            'square': '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>',
+            'volume-2': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>',
+            'volume-x': '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line>',
+            'arrow-left': '<line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>',
+            'clock': '<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>',
+            'list': '<line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line>',
+            'monitor': '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line>',
+            'user': '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle>',
+            'info': '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line>',
+            'mic': '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line>',
+            'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+            'minus': '<line x1="5" y1="12" x2="19" y2="12"></line>',
+            'flag': '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line>',
+            'stethoscope': '<path d="M4.8 2.3A5 5 0 0 0 3.8 7C2 7 0 9 0 12c0 2.2 1.6 4.3 3.5 4.9a5 5 0 0 0 .5-3.6"></path><path d="M22 10v7a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-7"></path><path d="M17 10V6a2 2 0 0 0-2-2h-3a2 2 0 0 0-2 2v1"></path><path d="M7 3v4a2 2 0 0 1-2 2H4"></path>',
+            'ambulance': '<rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle>',
+            'baby': '<path d="M9 12h.01"></path><path d="M15 12h.01"></path><path d="M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5"></path><path d="M19 6.3a9 9 0 0 1 1.8 3.9 2 2 0 0 1 0 3.6 9 9 0 0 1-17.6 0 2 2 0 0 1 0-3.6A9 9 0 0 1 12 3c2 0 4 .5 5.7 1.6"></path><path d="M12 2v1"></path>',
+            'skull': '<path d="m11.5 13.5-3.5 4"></path><path d="m12.5 13.5 3.5 4"></path><circle cx="9" cy="7" r="1.5"></circle><circle cx="15" cy="7" r="1.5"></circle><path d="M8 11.5v-1a4 4 0 0 1 8 0v1"></path><path d="M10.5 16.5h3"></path><path d="M22 12c0 5.5-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2s10 4.5 10 10Z"></path>',
+            'brain': '<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"></path>',
+            'clipboard-check': '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path><path d="M14 13l2 2 4-4"></path>',
+            'external-link': '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>',
+            'scan': '<path d="M3 7V5a2 2 0 0 1 2-2h2"></path><path d="M17 3h2a2 2 0 0 1 2 2v2"></path><path d="M21 17v2a2 2 0 0 1-2 2h-2"></path><path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>',
+            'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>',
+            'flask-conical': '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><line x1="8.5" y1="2" x2="15.5" y2="2"></line><line x1="8.5" y1="14" x2="15.5" y2="14"></line>',
+            'waves': '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>',
+            'check-square': '<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
+            'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>'
+        };
 
-    const Button = ({ onClick, children, variant = 'primary', className = '', disabled = false, progress = 0 }) => {
-        const [isFlashing, setIsFlashing] = useState(false);
-        const handleClick = (e) => {
-            if (disabled) return;
-            setIsFlashing(true);
-            setTimeout(() => setIsFlashing(false), 150);
-            if (onClick) onClick(e);
-        };
-        let variants = {
-            primary: "bg-sky-600 hover:bg-sky-500 text-white",
-            secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200",
-            danger: "bg-red-600 hover:bg-red-500 text-white",
-            success: "bg-emerald-600 hover:bg-emerald-500 text-white",
-            warning: "bg-amber-500 hover:bg-amber-600 text-white",
-            outline: "border border-slate-600 text-slate-300 hover:bg-slate-800"
-        };
-        let base = "px-4 py-3 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm relative overflow-hidden touch-manipulation z-0";
-        if (className.includes("h-16")) { base += " text-xl px-8"; } 
-        else if (className.includes("h-14")) { base += " text-lg px-4"; } 
-        else { base += " text-xs"; }
-        const finalClass = `${base} ${variants[variant]} ${className} ${isFlashing ? 'flash-active' : ''}`;
         return (
-            <button onClick={handleClick} disabled={disabled} className={finalClass}>
-                {progress > 0 && (
-                    <div className="absolute top-0 left-0 bottom-0 bg-emerald-500/50 z-[-1] transition-all duration-1000 ease-linear" style={{ width: `${progress}%` }}></div>
-                )}
-                <span className="relative z-10 flex items-center gap-2 whitespace-nowrap w-full justify-center">{children}</span>
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="24" height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className}
+                onClick={onClick}
+                dangerouslySetInnerHTML={{ __html: icons[icon] || '' }}
+            />
+        );
+    };
+
+    // --- BUTTON COMPONENT ---
+    const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md' }) => {
+        const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
+        const variants = {
+            primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
+            secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600",
+            danger: "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/50 border border-red-500",
+            success: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/50 border border-emerald-500",
+            warning: "bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/50 border border-amber-500",
+            outline: "bg-transparent border border-slate-600 text-slate-400 hover:border-slate-400 hover:text-slate-200"
+        };
+        const sizes = {
+            sm: "px-2 py-1 text-xs",
+            md: "px-4 py-2 text-sm",
+            lg: "px-6 py-3 text-lg"
+        };
+        return (
+            <button 
+                onClick={onClick} 
+                disabled={disabled} 
+                className={\`\${baseClass} \${variants[variant]} \${sizes[size]} \${className} \${disabled ? 'opacity-50 cursor-not-allowed' : ''}\`}
+            >
+                {children}
             </button>
         );
     };
 
-    const Card = ({ title, icon, children, className = "", collapsible = false, defaultOpen = true }) => {
-        const [isOpen, setIsOpen] = useState(defaultOpen);
-        return (
-            <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden shadow-lg flex flex-col ${className}`}>
-                {title && (
-                    <div className={`bg-slate-800/50 p-3 border-b border-slate-700 flex items-center justify-between flex-shrink-0 ${collapsible ? 'cursor-pointer hover:bg-slate-700/50 transition-colors' : ''}`} onClick={() => collapsible && setIsOpen(!isOpen)}>
-                        <div className="flex items-center gap-2">
-                            {icon && <Lucide icon={icon} className="w-5 h-5 text-sky-400" />}
-                            <h3 className="font-bold text-slate-200">{title}</h3>
-                        </div>
-                        {collapsible && (<Lucide icon="chevron-down" className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />)}
-                    </div>
-                )}
-                {(!collapsible || isOpen) && (
-                    <div className="p-4 animate-fadeIn flex-grow overflow-auto min-h-0">{children}</div>
-                )}
-            </div>
-        );
-    };
-    
-    const VitalDisplay = ({ label, value, value2, prev, unit, lowIsBad = true, onUpdate, onClick, alert, isText = false, visible = true, isMonitor = false, hideTrends = false, isNIBP = false, lastNIBP = null, trend = null }) => {
-        const [isEditing, setIsEditing] = useState(false);
-        const [editVal, setEditVal] = useState(value);
-        useEffect(() => { if (!isEditing) setEditVal(value); }, [value, isEditing]);
-        const handleBlur = () => { setIsEditing(false); if (editVal !== value && onUpdate) onUpdate(isText ? editVal : parseFloat(editVal)); };
+    // --- CARD COMPONENT ---
+    const Card = ({ children, title, className = '' }) => (
+        <div className={\`bg-slate-800 rounded border border-slate-700 p-4 \${className}\`}>
+            {title && <h3 className="text-sm font-bold text-slate-400 uppercase mb-2">{title}</h3>}
+            {children}
+        </div>
+    );
 
-        const isBP = label.includes("BP") || label.includes("NIBP") || label.includes("ABP");
-        const getColors = (lbl) => {
-            if (lbl.includes("Heart") || lbl.includes("HR")) return "text-green-500";
-            if (lbl.includes("SpO2") || lbl.includes("Pleth")) return "text-cyan-400"; 
-            if (lbl.includes("BP") || lbl.includes("NIBP") || lbl.includes("ABP")) return "text-red-500";
-            if (lbl.includes("Resp") || lbl.includes("RR")) return "text-yellow-400"; 
-            if (lbl.includes("CO2") || lbl.includes("ETCO2")) return "text-yellow-500";
-            return "text-slate-200";
-        };
-        const colorClass = getColors(label);
-        const handleInteraction = () => { if (onClick) { onClick(); } else { setEditVal(value); setIsEditing(true); } };
-        
-        const displayValue = () => {
-            if (label === "Pupils") return (typeof value === 'number') ? `${Math.round(value)}mm` : value;
-            if (value === null || value === undefined) return '--';
-            if (typeof value === 'string' && !isText) return value;
-            return isText ? value : Math.round(value);
-        };
-        const displayValue2 = () => {
-            if (value2 === undefined || value2 === null) return '--';
-            if (typeof value2 === 'string' && !isText) return value2;
-            return typeof value2 === 'number' ? Math.round(value2) : value2;
-        };
-        
-        if (isMonitor) {
-            if (!visible) return <div className="flex flex-col items-center justify-center h-full bg-slate-900/20 rounded border border-slate-800 opacity-20"><span className="text-2xl font-bold text-slate-600">{label}</span><span className="text-4xl font-mono text-slate-700">--</span></div>;
-            return (
-                <div className={`relative flex flex-col p-2 h-full bg-black overflow-hidden ${alert ? 'animate-pulse bg-red-900/30' : ''}`}>
-                    {isNIBP && (<button onClick={onClick} className="absolute inset-0 z-20 w-full h-full cursor-pointer opacity-0 hover:opacity-10 transition-opacity bg-white" title="Cycle NIBP"></button>)}
-                    <div className="flex justify-between items-start"><span className={`text-sm md:text-base font-bold ${colorClass} uppercase tracking-tight`}>{label}</span>{!isText && <div className="text-[10px] text-slate-500 flex flex-col items-end leading-tight"><span>150</span><span>50</span></div>}</div>
-                    <div className="flex-grow flex items-center justify-center"><div className={`flex items-baseline ${colorClass} font-mono font-bold leading-none`}><span className={isText ? "text-4xl" : "text-6xl md:text-7xl tracking-tighter"}>{displayValue()}</span>{isBP && <span className="text-3xl md:text-4xl ml-1 text-slate-300 opacity-80">/{displayValue2()}</span>}</div></div>
-                    <div className="flex justify-between items-end mt-1"><span className="text-xs text-slate-400 font-bold">{unit}</span>{isNIBP && (<div className="flex flex-col items-end"><span className="text-[10px] text-slate-500 font-mono">{lastNIBP ? `Last: ${Math.floor((Date.now() - lastNIBP)/60000)}m ago` : 'MANUAL'}</span><div className="text-[10px] bg-slate-800 text-slate-300 px-1 rounded border border-slate-600 mt-1 pointer-events-none">CYCLE</div></div>)}{!hideTrends && !isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-lg font-bold ${value > prev ? 'text-emerald-500' : value < prev ? 'text-red-500' : 'text-slate-800'}`}>{value > prev ? '↑' : value < prev ? '↓' : ''}</span>}</div>
-                </div>
-            );
-        }
-        if (!visible) return (<div className="bg-slate-900/50 p-1 md:p-2 rounded border border-slate-800 flex flex-col items-center justify-center h-20 relative opacity-40"><span className="text-[9px] md:text-[10px] font-bold text-slate-600 uppercase tracking-wider">{label}</span><span className="text-xl font-mono text-slate-700">--</span></div>);
-        const showEditHint = !isMonitor && visible;
-
-        return (
-            <div className={`bg-slate-900/50 p-1 md:p-2 rounded border flex flex-col items-center justify-center h-20 relative touch-manipulation transition-colors duration-300 overflow-hidden group ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700 hover:border-sky-500 hover:bg-slate-800'}`} onClick={handleInteraction}>
-                {showEditHint && (<div className="absolute top-1 right-1 text-slate-600 group-hover:text-sky-400 transition-colors"><Lucide icon="settings-2" className="w-3 h-3" /></div>)}
-                {trend && trend.active && (<div className="absolute bottom-0 left-0 h-1.5 bg-sky-500/50 z-0 transition-all duration-1000 ease-linear" style={{ width: `${trend.progress * 100}%` }}></div>)}
-                <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 relative z-10 group-hover:text-sky-400 transition-colors">{label}</span>
-                {isEditing ? (<input type={isText ? "text" : "number"} value={editVal} onChange={(e) => setEditVal(e.target.value)} onBlur={handleBlur} onKeyDown={(e) => e.key === 'Enter' && handleBlur()} className="text-lg font-mono font-bold text-white bg-slate-800 border border-slate-500 rounded w-full text-center relative z-10" autoFocus />) : (<div className="flex items-baseline gap-1 cursor-pointer hover:bg-slate-800/50 rounded px-2 py-0.5 relative z-10" onClick={handleInteraction}><span className={`font-mono font-bold text-white ${isText ? 'text-lg' : 'text-2xl'}`}>{displayValue()}{isBP && <span className="text-lg text-slate-400 ml-0.5">/{displayValue2()}</span>}</span>{!isText && !isBP && value !== '?' && prev !== '?' && <span className={`text-[10px] font-bold ${value === prev ? 'text-slate-500' : (lowIsBad ? (value > prev ? 'text-emerald-400' : 'text-red-400') : (value > prev ? 'text-red-400' : 'text-emerald-400'))}`}>{value > prev ? '▲' : value < prev ? '▼' : '▬'}</span>}</div>)}
-                <span className="text-[8px] md:text-[9px] text-slate-600 leading-none relative z-10">{unit}</span>
-            </div>
-        );
-    };
-
-    const ECGMonitor = ({ rhythmType, hr, isPaused, showEtco2, rr, pathology, co2Pathology, spO2, showTraces, showArt, isCPR, className = "h-40", rhythmLabel = null }) => {
+    // --- CANVAS ECG MONITOR ---
+    const ECGMonitor = ({ rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology = 'normal', isCPR = false, className = '', rhythmLabel }) => {
         const canvasRef = useRef(null);
-        const requestRef = useRef(null);
-        const jitterRef = useRef(0);
-        const drawState = useRef({ 
-            x: 0, 
-            lastY: 50, 
-            beatProgress: 0, 
-            breathProgress: 0, 
-            pWaveProgress: 0, 
-            lastTime: 0, 
-            lastYCO2: 0, 
-            lastYPleth: 0, 
-            lastYArt: 0 
-        });
+        const [width, setWidth] = useState(0);
 
-        const propsRef = useRef({ rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel });
+        // Waveform Generators
+        const getECGValue = (t, type) => {
+            let y = 0;
+            // Add CPR Artifact
+            if (isCPR) {
+                y += Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
+                return y; // Override underlying rhythm mostly
+            }
 
-        useEffect(() => { 
-            propsRef.current = { rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel }; 
-        }, [rhythmType, hr, rr, showEtco2, pathology, co2Pathology, isPaused, spO2, showTraces, showArt, isCPR, rhythmLabel]);
+            const pWave = (t) => 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
+            const qrsComplex = (t) => {
+                let val = 0;
+                val -= 5 * Math.exp(-Math.pow(t - 0.18, 2) / 0.0005);
+                val += 40 * Math.exp(-Math.pow(t - 0.2, 2) / 0.0005);
+                val -= 10 * Math.exp(-Math.pow(t - 0.22, 2) / 0.0005);
+                return val;
+            };
+            const tWave = (t) => 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005);
+
+            switch (type) {
+                case 'Sinus Rhythm': return pWave(t) + qrsComplex(t) + tWave(t);
+                case 'Sinus Tachycardia': return pWave(t) + qrsComplex(t) + tWave(t);
+                case 'Sinus Bradycardia': return pWave(t) + qrsComplex(t) + tWave(t);
+                case 'AF': return (Math.random() * 2) + qrsComplex(t) + (tWave(t) * 0.5); // Irregular baseline
+                case 'VT': return 35 * Math.sin(t * 20); // Large sine-ish
+                case 'VF': return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5); // Chaotic
+                case 'Asystole': return (Math.random() - 0.5) * 1; // Flatline noise
+                case 'SVT': return qrsComplex(t) + tWave(t); // Fast, narrow, no P
+                case 'PEA': return pWave(t) + qrsComplex(t) + tWave(t); // Looks normal
+                case '1st Deg Heart Block': return pWave(t - 0.1) + qrsComplex(t) + tWave(t); // Prolonged PR
+                case 'Complete Heart Block': return pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t); // Dissociation
+                case 'Atrial Flutter': return (Math.sin(t * 30) * 5) + qrsComplex(t); // Sawtooth
+                default: return 0;
+            }
+        };
+
+        const getSPO2Value = (t) => {
+            if (spO2 < 10) return 0;
+            // Dicrotic notch shape
+            let val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 20 : Math.sin(t * Math.PI * 2) * 5;
+            val += Math.sin((t - 0.1) * Math.PI * 2 * 2) * 5; 
+            return val;
+        };
+
+        const getRespValue = (t) => Math.sin(t * Math.PI * 2) * 15;
         
-        // --- IMPROVED WAVEFORM GENERATORS ---
-        const getECGValue = (t, pT, absoluteTime, type, pathology, cpr) => {
-            if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); 
-            
-            let noise = (Math.random() - 0.5) * 1.5; 
-            
-            if (type === 'Asystole') return noise;
-            
-            if (type === 'VF' || type === 'Coarse VF') {
-                return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
+        const getCO2Value = (t) => {
+            // Capnography Square Wave
+            // Rise time 0-0.1, Plateau 0.1-0.5, Fall 0.5-0.6, Baseline 0.6-1.0
+            if (t < 0.1) return (t / 0.1) * 20;
+            if (t < 0.5) {
+                if (co2Pathology === 'bronchospastic') return 20 + ((t - 0.1) / 0.4) * 5; // Shark fin
+                return 20;
             }
-            if (type === 'Fine VF') {
-                return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
-            }
-            if (type === 'VT' || type === 'pVT') {
-                return Math.sin(t * 2 * Math.PI) * 35;
-            }
-
-            let y = 0;
-            
-            if (type === 'AF') {
-                y += (Math.sin(absoluteTime * 25) * 2) + (Math.random() * 1.5); 
-            } else if (type === 'Atrial Flutter') {
-                y += Math.sin(absoluteTime * 10 * Math.PI) * 6;
-            } else if (type === 'Complete Heart Block') {
-                y += 5 * Math.exp(-Math.pow(pT - 0.5, 2) / 0.002);
-            } else {
-                if (type !== 'SVT' && type !== 'Junctional') {
-                    y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
-                }
-            }
-
-            let width = 0.0008;
-            if (type === 'SVT') width = 0.0004; 
-            if (['LBBB', 'RBBB', 'Hyperkalemia'].includes(pathology)) width = 0.002;
-
-            y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / (width * 0.6));
-            y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / width);
-            y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / (width * 0.6));
-
-            if (pathology === 'STEMI' || type === 'STEMI') {
-                if (t > 0.38 && t < 0.6) {
-                    y += 12 * Math.exp(-Math.pow(t - 0.48, 2) / 0.02);
-                }
-            }
-
-            if (type !== 'SVT') { 
-                 let tAmp = 8;
-                 if (pathology === 'Hyperkalemia') tAmp = 25; 
-                 y += tAmp * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
-            }
-
-            return y + noise;
+            if (t < 0.6) return 20 - ((t - 0.5) / 0.1) * 20;
+            return 0;
         };
-
-        const getPlethValue = (t) => {
-            let y = 0;
-            if (t < 0.2) { y = 30 * Math.sin((t / 0.2) * (Math.PI / 2)); } 
-            else { y = 30 * Math.exp(-(t - 0.2) * 2.5); y += 5 * Math.exp(-Math.pow(t - 0.45, 2) / 0.01); }
-            return y;
-        };
-
+        
         const getArtValue = (t) => {
-            let y = 0;
-            if (t < 0.15) { y = 40 * Math.sin((t / 0.15) * (Math.PI / 2)); } 
-            else { y = 40 * Math.exp(-(t - 0.15) * 2.0); y += 8 * Math.exp(-Math.pow(t - 0.4, 2) / 0.005); }
-            return y;
-        };
-
-        const getCO2Value = (t, pathology) => {
-            let y = 0;
-            const isObstructive = pathology === 'bronchospastic' || pathology === 'obstructive';
-
-            if (t < 0.4) {
-                y = 0; 
-            } else if (t < 0.9) {
-                if (isObstructive) {
-                    const phase = (t - 0.4) / 0.5;
-                    y = 35 * (1 - Math.exp(-phase * 4)); 
-                } else {
-                    if (t < 0.45) {
-                        y = 35 * ((t - 0.4) / 0.05);
-                    } else {
-                        y = 35 + (2 * (t - 0.45));
-                    }
-                }
-            } else {
-                y = 37 * (1 - ((t - 0.9) / 0.1));
-                if (y < 0) y = 0;
-            }
-            return y;
+            // Sharp upstroke, dicrotic notch
+            let val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 25 : Math.sin(t * Math.PI * 2) * 5;
+            if (t > 0.3 && t < 0.5) val += 5; // Notch
+            return val;
         };
 
         useEffect(() => {
             const canvas = canvasRef.current;
+            if (!canvas) return;
+            
             const ctx = canvas.getContext('2d');
-            const setSize = () => { 
-                const parent = canvas.parentElement; 
-                if(parent) { 
-                    canvas.width = parent.clientWidth; 
-                    canvas.height = parent.clientHeight; 
-                    drawState.current.lastY = canvas.height * 0.30; 
-                    drawState.current.lastYCO2 = canvas.height * 0.60; 
-                    drawState.current.lastYArt = canvas.height * 0.80; 
-                    drawState.current.lastYPleth = canvas.height - 20; 
-                    ctx.fillStyle = '#000000'; 
-                    ctx.fillRect(0,0, canvas.width, canvas.height); 
-                } 
-            };
-            setSize(); window.addEventListener('resize', setSize);
+            let animationFrameId;
+            let time = 0;
+            let xPos = 0;
+            const speed = 2; // Pixels per frame
 
-            const animate = (timestamp) => {
-                const state = drawState.current; 
-                const props = propsRef.current;
-                window.waveformGain = window.waveformGain || 1.0; 
-                window.noise = window.noise || {};
-
-                if (!state.lastTime) state.lastTime = timestamp;
-                let dt = Math.min((timestamp - state.lastTime) / 1000, 0.05); 
-                state.lastTime = timestamp;
-
-                if (props.isPaused) { requestRef.current = requestAnimationFrame(animate); return; }
-
-                const ecgSpeed = 150; 
-                state.x += ecgSpeed * dt;
-                const prevX = state.x - (ecgSpeed * dt);
-                
-                if (state.x + 30 < canvas.width) ctx.fillRect(state.x, 0, 35, canvas.height); 
-                else { ctx.fillRect(state.x, 0, canvas.width - state.x, canvas.height); ctx.fillRect(0, 0, 30, canvas.height); }
-                
-                const baselineECG = canvas.height * 0.30;
-                
-                if (!props.showTraces) { 
-                    ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.moveTo(prevX, baselineECG); ctx.lineTo(state.x, baselineECG); ctx.stroke(); 
-                    requestRef.current = requestAnimationFrame(animate); return; 
+            // Buffers to store path history for scrolling/wiping effect
+            // Simplified: Draw wipe
+            
+            const render = () => {
+                if (!canvas.parentElement) return;
+                const newWidth = canvas.parentElement.clientWidth;
+                const newHeight = canvas.parentElement.clientHeight;
+                if (canvas.width !== newWidth || canvas.height !== newHeight) {
+                    canvas.width = newWidth;
+                    canvas.height = newHeight;
+                    setWidth(newWidth);
+                    // Clear on resize
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, newWidth, newHeight);
                 }
 
-                // Smooth HR jitter for AF
-                let effectiveHR = props.hr;
-                if (props.rhythmType === 'AF') {
-                    if (state.beatProgress < 0.05 && Math.random() < 0.2) {
-                         jitterRef.current = (Math.random() * 70) - 35; 
+                if (isPaused) return;
+
+                // Wiping bar
+                ctx.fillStyle = 'rgba(0,0,0,1)';
+                ctx.fillRect(xPos, 0, 10, canvas.height); // Erase ahead
+
+                const traceHeight = canvas.height / (showTraces ? (showEtco2 ? 4 : 3) : 1);
+                
+                // 1. ECG Trace (Top)
+                let ecgFreq = (hr > 0 ? hr : 60) / 60;
+                if (rhythmType === 'VF') ecgFreq = 4; // Fast chaos
+                if (rhythmType === 'Asystole') ecgFreq = 0.1;
+
+                // Cycle calculation
+                const cycleT = (time * ecgFreq) % 1;
+                const ecgY = (traceHeight / 2) - getECGValue(cycleT, rhythmType) * (rhythmType === 'VF' ? 0.5 : 1);
+                
+                ctx.strokeStyle = '#22c55e'; // Green
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(xPos - speed, (window.lastEcgY || ecgY));
+                ctx.lineTo(xPos, ecgY);
+                ctx.stroke();
+                window.lastEcgY = ecgY;
+
+                if (showTraces) {
+                    // 2. SpO2 or Art Line (Middle 1)
+                    const secondTraceYBase = traceHeight * 1.5;
+                    let secondTraceY = secondTraceYBase;
+                    
+                    if (showArt) {
+                         const artCycle = (time * ecgFreq) % 1; // Sync with heart
+                         secondTraceY = secondTraceYBase - getArtValue(artCycle);
+                         ctx.strokeStyle = '#ef4444'; // Red for Art
+                    } else {
+                         const spo2Cycle = (time * ecgFreq) % 1; // Sync with heart
+                         secondTraceY = secondTraceYBase - getSPO2Value(spo2Cycle);
+                         ctx.strokeStyle = '#3b82f6'; // Blue for SpO2
                     }
-                    effectiveHR += jitterRef.current;
-                }
-                
-                if (props.isCPR) effectiveHR = 110;
-                else if (effectiveHR === 0 && ['VF','VT','pVT','PEA'].includes(props.rhythmType)) effectiveHR = 150; 
-                
-                // CRITICAL FIX: Ensure we never divide by zero (Asystole / Arrest)
-                let safeHR = Math.max(10, effectiveHR);
-                if (effectiveHR === 0) safeHR = 60; // Provide a base speed for the flatline/noise to draw
 
-                let beatDuration = 60 / safeHR; 
-                state.beatProgress += dt / beatDuration; 
-                if (state.beatProgress >= 1) state.beatProgress = 0;
+                    ctx.beginPath();
+                    ctx.moveTo(xPos - speed, (window.lastSecondY || secondTraceY));
+                    ctx.lineTo(xPos, secondTraceY);
+                    ctx.stroke();
+                    window.lastSecondY = secondTraceY;
 
-                state.pWaveProgress += dt * (75 / 60);
-                if (state.pWaveProgress >= 1) state.pWaveProgress = 0;
-
-                let breathDuration = 60 / (Math.max(1, props.rr) || 12); 
-                state.breathProgress += dt / breathDuration; 
-                if (state.breathProgress >= 1) state.breathProgress = 0;
-
-                if (state.x > canvas.width) { state.x = 0; state.lastY = baselineECG; }
-
-                let rawECG = getECGValue(state.beatProgress, state.pWaveProgress, (timestamp / 1000), props.rhythmType, props.pathology, props.isCPR);
-                const gain = window.waveformGain;
-                let yECG = baselineECG - (rawECG * gain);
-                if (window.noise.interference) yECG += Math.sin(timestamp / 20) * 5;
-
-                // Wrap drawing in Try/Catch to prevent crashing on invalid state
-                try {
-                    if (state.x > prevX) { 
-                        ctx.strokeStyle = '#00ff00'; ctx.lineWidth = 2; ctx.lineJoin = 'round'; 
-                        ctx.beginPath(); ctx.moveTo(prevX, state.lastY); ctx.lineTo(state.x, yECG); ctx.stroke(); 
+                    // 3. Resp (Middle 2)
+                    const respFreq = (rr > 0 ? rr : 12) / 60;
+                    const respCycle = (time * respFreq) % 1;
+                    const respY = (traceHeight * 2.5) - getRespValue(respCycle);
+                    
+                    ctx.strokeStyle = '#eab308'; // Yellow
+                    ctx.beginPath();
+                    ctx.moveTo(xPos - speed, (window.lastRespY || respY));
+                    ctx.lineTo(xPos, respY);
+                    ctx.stroke();
+                    window.lastRespY = respY;
+                    
+                    // 4. ETCO2 (Bottom - Optional)
+                    if (showEtco2) {
+                        const co2Freq = (rr > 0 ? rr : 12) / 60;
+                        const co2Cycle = (time * co2Freq) % 1;
+                        // Phase shift CO2 to be opposite inspiration roughly
+                        const shiftedCycle = (co2Cycle + 0.5) % 1; 
+                        const co2Y = (traceHeight * 3.8) - getCO2Value(shiftedCycle);
                         
-                        if (props.showEtco2) {
-                            const baseCO2 = canvas.height * 0.60;
-                            const rawCO2 = getCO2Value(state.breathProgress, props.co2Pathology);
-                            const yCO2 = baseCO2 - rawCO2;
-                            ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; 
-                            ctx.beginPath(); ctx.moveTo(prevX, state.lastYCO2); ctx.lineTo(state.x, yCO2); ctx.stroke();
-                            state.lastYCO2 = yCO2;
-                        }
-                        if (props.showArt) {
-                            const baseArt = canvas.height * 0.80;
-                            const rawArt = getArtValue(state.beatProgress);
-                            const yArt = baseArt - rawArt;
-                            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2; 
-                            ctx.beginPath(); ctx.moveTo(prevX, state.lastYArt); ctx.lineTo(state.x, yArt); ctx.stroke();
-                            state.lastYArt = yArt;
-                        }
-                        if (props.spO2 > 10) {
-                            const basePleth = canvas.height - 15;
-                            const rawPleth = getPlethValue(state.beatProgress);
-                            const ampScale = Math.max(0.3, props.spO2 / 100); 
-                            const yPleth = basePleth - (rawPleth * ampScale);
-                            ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; 
-                            ctx.beginPath(); ctx.moveTo(prevX, state.lastYPleth); ctx.lineTo(state.x, yPleth); ctx.stroke();
-                            state.lastYPleth = yPleth;
-                        }
+                        ctx.strokeStyle = '#a855f7'; // Purple
+                        ctx.lineWidth = 2; // Thicker
+                        ctx.beginPath();
+                        ctx.moveTo(xPos - speed, (window.lastCo2Y || co2Y));
+                        ctx.lineTo(xPos, co2Y); // Fill logic would be complex in this wipe approach, sticking to line
+                        ctx.stroke();
+                        window.lastCo2Y = co2Y;
                     }
-                } catch(e) {
-                    // Fail silently for one frame rather than crashing the app
                 }
-                state.lastY = yECG;
-                requestRef.current = requestAnimationFrame(animate);
+
+                xPos += speed;
+                if (xPos >= canvas.width) {
+                    xPos = 0;
+                }
+                
+                time += 0.016; // 60fps approx
+                animationFrameId = requestAnimationFrame(render);
             };
-            requestRef.current = requestAnimationFrame(animate);
-            return () => { window.removeEventListener('resize', setSize); if (requestRef.current) cancelAnimationFrame(requestRef.current); };
-        }, []);
+            
+            animationFrameId = requestAnimationFrame(render);
+            return () => cancelAnimationFrame(animationFrameId);
+        }, [rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology, isCPR]);
 
         return (
-            <div className={`w-full bg-black rounded border border-slate-700 relative overflow-hidden ${className} min-h-[150px]`}>
-                <canvas ref={canvasRef} className="block w-full h-full"></canvas>
-                {showTraces && <div className="absolute top-[5%] right-2 bg-black/60 px-2 py-0.5 rounded border-l-2 border-green-500"><span className="text-lg font-mono text-green-500 font-bold shadow-black drop-shadow-md">{propsRef.current.rhythmLabel || rhythmType}</span></div>}
+            <div className={\`relative w-full bg-black \${className}\`}>
+                <canvas ref={canvasRef} className="block w-full h-full" />
+                <div className="absolute top-2 left-2 text-green-500 font-mono text-xs font-bold">{rhythmLabel || "LEAD II"}</div>
+                {showTraces && !showArt && <div className="absolute top-[33%] left-2 text-blue-500 font-mono text-xs font-bold">PLETH</div>}
+                {showTraces && showArt && <div className="absolute top-[33%] left-2 text-red-500 font-mono text-xs font-bold">ART</div>}
+                {showTraces && <div className="absolute top-[66%] left-2 text-yellow-500 font-mono text-xs font-bold">RESP</div>}
+                {showTraces && showEtco2 && <div className="absolute bottom-2 left-2 text-purple-500 font-mono text-xs font-bold">CO2</div>}
+                
+                {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR DETECTED</div>}
             </div>
         );
     };
 
-    const InvestigationButton = ({ type, icon, label, isRevealed, isLoading, revealInvestigation, isRunning, scenario }) => {
-        const [isFlashing, setIsFlashing] = useState(false);
-        const getResult = () => {
-            if (!scenario) return "No data";
-            if (type === 'ECG') return scenario.ecg ? scenario.ecg.findings : "Normal";
-            if (type === 'VBG') {
-                if (!scenario.vbg) return "Normal";
-                const v = scenario.vbg;
-                return `pH: ${v.pH.toFixed(2)} | pCO2: ${v.pCO2.toFixed(1)} | pO2: 5.5 | HCO3: ${v.HCO3.toFixed(1)} | BE: ${v.BE.toFixed(1)} | Lac: ${v.Lac.toFixed(1)} | K+: ${v.K.toFixed(1)} | Glu: ${v.Glu.toFixed(1)} | Ket: ${v.Ketones ? v.Ketones.toFixed(1) : '0.1'}`;
-            }
-            if (type === 'X-ray') return scenario.chestXray ? scenario.chestXray.findings : "Normal";
-            if (type === 'Urine') return scenario.urine ? scenario.urine.findings : "Normal";
-            if (type === 'CT') return scenario.ct ? scenario.ct.findings : "CT Head: No acute intracranial abnormality.";
-            if (type === 'POCUS') return scenario.pocus ? scenario.pocus.findings : "No free fluid. Normal lung sliding.";
-            return "No significant abnormalities.";
-        };
-        const isRepeatable = ['VBG', 'ECG', 'Obs', 'POCUS'].includes(type);
-        const isDisabled = !isRunning || isLoading || (!isRepeatable && isRevealed);
-        const handleClick = () => {
-            if (isDisabled) return;
-            setIsFlashing(true);
-            setTimeout(() => setIsFlashing(false), 150);
-            if (!isLoading) revealInvestigation(type);
-        };
+    // --- VITAL DISPLAY TILE ---
+    const VitalDisplay = ({ label, value, value2, unit, alert, prev, visible, onClick, trend, isMonitor, hideTrends, isNIBP, lastNIBP }) => {
+        if (!visible) return (
+            <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
+                <span className="text-slate-600 text-xs uppercase">{label} Off</span>
+            </div>
+        );
+
+        let color = "text-green-500";
+        if (label === 'SpO2') color = "text-blue-500";
+        if (label === 'BP' || label === 'ABP' || label === 'NIBP') color = "text-red-500";
+        if (label === 'RR') color = "text-yellow-500";
+        if (label === 'ETCO2') color = "text-purple-500";
+        if (label === 'Temp') color = "text-white";
+        if (label === 'Glucose') color = "text-white";
+
+        const trendIcon = trend ? (trend.progress > 0 ? (value > (prev || value) ? '↑' : '↓') : '') : '';
+        const isChanging = prev !== undefined && Math.abs(prev - value) > 0.5;
+
+        // Specialized NIBP Tile for Monitor
+        if (isNIBP && isMonitor) {
+            return (
+                <div onClick={onClick} className={\`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors \${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}\`}>
+                     <div className="flex justify-between items-start">
+                        <span className={\`text-sm font-bold uppercase \${color}\`}>{label}</span>
+                        <span className="text-xs text-slate-400">{unit}</span>
+                     </div>
+                     <div className="flex items-end justify-center gap-1 my-1">
+                         <span className={\`text-4xl md:text-5xl font-mono font-bold leading-none \${color}\`}>{value || '--'}</span>
+                         <span className="text-xl text-slate-500 font-bold mb-1">/</span>
+                         <span className={\`text-2xl md:text-3xl font-mono font-bold leading-none \${color}\`}>{value2 || '--'}</span>
+                     </div>
+                     <div className="text-right text-[10px] text-slate-500 uppercase font-mono">
+                         {lastNIBP ? \`Last: \${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}\` : 'No reading'}
+                     </div>
+                </div>
+            );
+        }
+
         return (
-            <div className="flex flex-col bg-slate-900 border border-slate-700 rounded overflow-hidden">
-                <button onClick={handleClick} disabled={isDisabled} className={`p-2 flex items-center justify-between text-xs font-bold w-full transition-colors duration-100 ${isFlashing ? 'flash-active' : ''} ${(!isRepeatable && isRevealed) ? 'bg-slate-800 text-slate-400' : 'bg-slate-700 hover:bg-slate-600 text-white'}`}>
-                    <span className="flex items-center gap-2"><Lucide icon={icon} className="w-3 h-3" /> {isRevealed && isRepeatable ? `Repeat ${label}` : label}</span>
-                    {isLoading && <Lucide icon="loader-2" className="w-3 h-3 animate-spin" />}
-                </button>
-                {isRevealed && (<div className="p-2 text-[10px] text-slate-300 bg-slate-800/50 leading-tight border-t border-slate-700 animate-fadeIn">{getResult()}</div>)}
+            <div onClick={onClick} className={\`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors overflow-hidden \${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}\`}>
+                <div className="flex justify-between items-start">
+                    <span className={\`text-xs md:text-sm font-bold uppercase \${color}\`}>{label}</span>
+                    <span className="text-[10px] md:text-xs text-slate-400">{unit}</span>
+                </div>
+                
+                <div className="flex items-baseline justify-center gap-1">
+                    <span className={\`text-4xl md:text-5xl font-mono font-bold tracking-tight \${color}\`}>
+                        {value2 ? \`\${value}/\${value2}\` : (value !== null ? value : '--')}
+                    </span>
+                    {trendIcon && <span className="text-lg text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
+                </div>
+
+                {!hideTrends && trend && trend.active && (
+                    <div className="w-full bg-slate-800 h-1 mt-2 rounded overflow-hidden">
+                        <div className="bg-sky-500 h-full transition-all duration-1000" style={{width: \`\${trend.progress * 100}%\`}}></div>
+                    </div>
+                )}
             </div>
         );
     };
 
-    window.Lucide = Lucide; window.Button = Button; window.Card = Card; window.VitalDisplay = VitalDisplay; window.ECGMonitor = ECGMonitor; window.InvestigationButton = InvestigationButton;
+    window.Lucide = Lucide;
+    window.Button = Button;
+    window.Card = Card;
+    window.ECGMonitor = ECGMonitor;
+    window.VitalDisplay = VitalDisplay;
 })();
+`
+}
