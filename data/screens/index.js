@@ -1,50 +1,38 @@
-// data/screens/index.js
+{
+type: "file",
+fileName: "data/screens/index.js",
+content: `
 (() => {
-    const { useEffect } = React;
-    const { LiveSimScreen, DebriefScreen, Lucide } = window;
-
+    // This container manages the active view between the live simulation and the debrief
     const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => {
-        const { state, stop, reset } = sim;
-        const { scenario } = state;
-        
+        const { LiveSimScreen, DebriefScreen } = window;
+
+        // Auto-resume if data provided
+        const { useEffect } = React;
         useEffect(() => {
-            if (view === 'resume' && resumeData) {
-                sim.dispatch({ type: 'RESTORE_SESSION', payload: resumeData });
-            } else if (!scenario) {
-                setView('setup');
+            if (resumeData) {
+                // Logic already handled in App level restore
             }
-        }, []);
-
-        if (!scenario) {
-            return (
-                <div className="flex flex-col items-center justify-center h-full text-slate-400 animate-pulse">
-                    <Lucide icon="loader-2" className="w-8 h-8 mb-4 animate-spin text-sky-500" />
-                </div>
-            );
-        }
-
-        if (view === 'live' || view === 'resume') {
-            return (
-                <LiveSimScreen 
-                    sim={sim} 
-                    onFinish={() => { stop(); setView('debrief'); }} 
-                    onBack={() => setView('briefing')} 
-                    sessionID={sessionID} 
-                />
-            );
-        }
+        }, [resumeData]);
 
         if (view === 'debrief') {
-            return (
-                <DebriefScreen 
-                    sim={sim} 
-                    onRestart={() => { reset(); setView('setup'); }} 
-                />
-            );
+            return <DebriefScreen sim={sim} onExit={onRestart} />;
         }
 
-        return null;
+        return (
+            <LiveSimScreen 
+                sim={sim} 
+                onFinish={() => {
+                    sim.stop();
+                    setView('debrief');
+                }}
+                onBack={() => setView('setup')}
+                sessionID={sessionID}
+            />
+        );
     };
 
     window.LiveSimContainer = LiveSimContainer;
 })();
+`
+}
