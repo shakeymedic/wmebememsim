@@ -1,4 +1,7 @@
-// data/interventions.js
+{
+type: "file",
+fileName: "data/interventions.js",
+content: `
 window.INTERVENTIONS = {
     // --- AIRWAY ---
     'Manoeuvres': { label: 'Head Tilt / Jaw Thrust', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway manoeuvres applied.', type: 'continuous', duration: 5 },
@@ -104,6 +107,9 @@ window.INTERVENTIONS = {
     'Carboprost': { label: 'Carboprost', effect: {}, category: 'Drugs', log: 'IM Carboprost administered.', type: 'bolus', duration: 10 },
     'AntiD': { label: 'Anti-D Ig', effect: {}, category: 'Drugs', log: 'Anti-D Immunoglobulin administered.', type: 'bolus', duration: 10, requires: ['IV Access'] },
     'Prostin': { label: 'Dinoprostone (Prostin)', effect: {}, category: 'Drugs', log: 'IV Dinoprostone infusion started.', type: 'continuous', duration: 0, requires: ['IV Access'] },
+    'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30, requires: ['IV Access'] },
+    'Albumin': { label: 'Human Albumin Solution', effect: { BP: 5 }, category: 'Drugs', log: 'IV Albumin administered.', type: 'bolus', duration: 60, requires: ['IV Access'] },
+    'TopicalEyeDrops': { label: 'Topical Eye Drops', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
 
     // --- PROCEDURES ---
     'Obs': { label: 'Attach Monitoring', effect: {}, category: 'Procedures', log: 'Monitoring applied. Vitals now visible.', type: 'continuous', duration: 5 },
@@ -120,8 +126,6 @@ window.INTERVENTIONS = {
     'Thoracotomy': { label: 'Resus Thoracotomy', effect: { BP: 20, SpO2: 15 }, category: 'Procedures', log: 'Resuscitative Thoracotomy performed.', type: 'bolus', duration: 120 },
     'REBOA': { label: 'REBOA', effect: { BP: 30 }, category: 'Procedures', log: 'REBOA catheter deployed.', type: 'continuous', duration: 120, requires: ['IV Access'] },
     'PPCI': { label: 'PPCI Referral', effect: {}, category: 'Procedures', log: 'Urgent transfer for Primary PCI.', type: 'bolus', duration: 300 },
-    'Furosemide': { label: 'Furosemide', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered.', type: 'bolus', duration: 30, requires: ['IV Access'] },
-    'Albumin': { label: 'Human Albumin Solution', effect: { BP: 5 }, category: 'Drugs', log: 'IV Albumin administered.', type: 'bolus', duration: 60, requires: ['IV Access'] },
     'AsciticTap': { label: 'Ascitic Tap', effect: {}, category: 'Procedures', log: 'Ascitic tap/paracentesis performed.', type: 'bolus', duration: 60 },
     'Hyperbaric': { label: 'Hyperbaric Referral', effect: {}, category: 'Procedures', log: 'Referral to hyperbaric unit made.', type: 'bolus', duration: 10 },
     'Surgery': { label: 'Emergency Surgery', effect: {}, category: 'Procedures', log: 'Patient transferred to theatre.', type: 'bolus', duration: 300 },
@@ -133,7 +137,6 @@ window.INTERVENTIONS = {
     'AirEnema': { label: 'Air Enema', effect: {}, category: 'Procedures', log: 'Radiological air enema performed.', type: 'bolus', duration: 120 },
     'Pericardiocentesis': { label: 'Pericardiocentesis', effect: { BP: 20, HR: -10 }, category: 'Procedures', log: 'Needle pericardiocentesis performed.', type: 'bolus', duration: 60 },
     'Tourniquet': { label: 'Tourniquet', effect: {}, category: 'Procedures', log: 'Tourniquet applied.', type: 'continuous', duration: 10 },
-    'TopicalEyeDrops': { label: 'Topical Eye Drops', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
     'Plaster': { label: 'Plaster / Backslab', effect: {}, category: 'Procedures', log: 'Plaster backslab applied.', type: 'continuous', duration: 120 },
     'ClingFilm': { label: 'Cling Film', effect: { Temp: 0.5 }, category: 'Procedures', log: 'Burns covered with cling film.', type: 'continuous', duration: 30 },
     'ExchangeTransfusion': { label: 'Exchange Transfusion', effect: {}, category: 'Procedures', log: 'Exchange Transfusion started.', type: 'continuous', duration: 300, requires: ['IV Access'] },
@@ -141,3 +144,5 @@ window.INTERVENTIONS = {
     'Irrigation': { label: 'Irrigation', effect: {}, category: 'Procedures', log: 'Copious irrigation started.', type: 'continuous', duration: 300 },
     'PacingPads': { label: 'Pacing Pads', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 },
 };
+`
+}
