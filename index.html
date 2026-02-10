@@ -1,56 +1,74 @@
+{
+type: "file",
+fileName: "index.html",
+content: `
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v17.4</title>
+    <title>WMEBEM Sim Generator v17.5</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
-            theme: { extend: {} },
+            theme: { 
+                extend: {
+                    colors: {
+                        slate: { 950: '#020617' } // Ensure dark theme consistency
+                    }
+                } 
+            },
             plugins: [],
         }
     </script>
 
-    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <style>
-        .animate-fadeIn { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        .flash-red { animation: flashRed 1.5s ease-in-out infinite; }
-        @keyframes flashRed { 0%, 100% { background-color: rgba(15, 23, 42, 1); } 50% { background-color: rgba(127, 29, 29, 0.5); } }
-        .flash-green { animation: flashGreen 1s ease-in-out; }
-        @keyframes flashGreen { 0%, 100% { border-color: #334155; } 50% { border-color: #10b981; } }
-        html, body { height: 100%; overflow: hidden; }
-        body { background-color: #0f172a; color: #f1f5f9; display: flex; flex-direction: column; }
-        #root { height: 100%; display: flex; flex-direction: column; }
-        .flash-active { animation: flash-white 0.15s ease-out !important; }
-        @keyframes flash-white { 0% { background-color: #ffffff; color: #000; transform: scale(1.05); } 100% { background-color: inherit; color: inherit; transform: scale(1); } }
+        /* Base Setup */
+        html, body { height: 100%; overflow: hidden; background-color: #0f172a; color: #f1f5f9; }
+        #root { height: 100%; width: 100%; display: flex; flex-direction: column; }
+        
+        /* Utilities */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Animations */
+        .animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .flash-red { animation: flashRed 1s infinite; }
+        @keyframes flashRed { 0%, 100% { box-shadow: inset 0 0 0 0 transparent; } 50% { box-shadow: inset 0 0 50px 20px rgba(239, 68, 68, 0.5); } }
+        
+        .flash-green { animation: flashGreen 1s ease-out; }
+        @keyframes flashGreen { 0% { box-shadow: inset 0 0 50px 20px rgba(34, 197, 94, 0.5); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+        
+        .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
-    <div id="root" class="flex h-full items-center justify-center text-slate-500">
-        <div class="flex flex-col items-center gap-4">
-            <svg class="animate-spin h-8 w-8 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-            <span class="font-mono text-sm tracking-widest uppercase">Initialising WMEBEM Sim Engine...</span>
+    <div id="root">
+        <div class="flex h-full items-center justify-center text-slate-500 flex-col gap-4">
+            <svg class="animate-spin h-10 w-10 text-sky-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="font-mono text-sm tracking-widest uppercase">Initializing...</span>
         </div>
     </div>
 
-    <script src="data/generators.js"></script>
-    <script src="data/interventions.js"></script>
-    <script src="data/scenarios.js"></script>
-
+    <script type="text/babel" src="data/interventions.js"></script>
+    <script type="text/babel" src="data/data.js"></script>
+    <script type="text/babel" src="data/scenarios.js"></script>
+    <script type="text/babel" src="data/generators.js"></script>
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
 
@@ -58,24 +76,10 @@
     <script type="text/babel" src="data/screens/monitor.js"></script>
     <script type="text/babel" src="data/screens/livesim.js"></script>
     <script type="text/babel" src="data/screens/debrief.js"></script>
-    
     <script type="text/babel" src="data/screens/index.js"></script>
 
     <script type="text/babel">
-        // Safe Storage Helper
-        const safeStorage = {
-            getItem: (key) => {
-                try { return localStorage.getItem(key); } catch(e) { console.warn('Storage blocked'); return null; }
-            },
-            setItem: (key, val) => {
-                try { localStorage.setItem(key, val); } catch(e) { console.warn('Storage blocked'); }
-            },
-            removeItem: (key) => {
-                try { localStorage.removeItem(key); } catch(e) { console.warn('Storage blocked'); }
-            }
-        };
-
-        // Firebase Init (Wrapped to prevent crashes if blocked)
+        // --- CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
             authDomain: "wmebem-sim.firebaseapp.com",
@@ -85,135 +89,150 @@
             appId: "1:143041936940:web:4d15c3fc3ce7e10c081b89",
             measurementId: "G-8C6WW1EWXJ"
         };
+
+        // --- INIT FIREBASE ---
         try {
             if (window.firebase && !firebase.apps.length) { 
                 firebase.initializeApp(firebaseConfig); 
                 window.db = firebase.database();
+                console.log("Firebase Connected");
             }
-        } catch (e) { console.error("Firebase Init blocked:", e); }
+        } catch (e) { 
+            console.error("Firebase Init Failed:", e); 
+        }
 
+        // --- APP COMPONENT ---
         const App = () => {
             const { useState, useEffect } = React;
-            const { useSimulation, JoinScreen, MonitorContainer, SetupScreen, BriefingScreen, LiveSimContainer } = window;
+            const { SetupScreen, JoinScreen, BriefingScreen, MonitorContainer, LiveSimContainer, useSimulation } = window;
 
-            const [view, setView] = useState('setup'); 
-            const [sessionID, setSessionID] = useState(null);
+            // URL Params for Monitor Mode
+            const urlParams = new URLSearchParams(window.location.search);
+            const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
+            const initialSession = urlParams.get('session');
 
-            // Session Management
-            useEffect(() => {
-                const params = new URLSearchParams(window.location.search);
-                if (params.get('mode') === 'monitor') {
-                    const sid = params.get('session');
-                    if (sid) setSessionID(sid);
-                    setView('monitor');
-                } else {
-                    // Uses safe storage helper to prevent crash
-                    const savedID = safeStorage.getItem('wmebem_session_id');
-                    if (savedID) { setSessionID(savedID); } 
-                    else {
-                        const newID = Math.random().toString(36).substring(2, 6).toUpperCase();
-                        safeStorage.setItem('wmebem_session_id', newID);
-                        setSessionID(newID);
-                    }
-                }
-            }, []); 
-
-            // Init Engine
-            const sim = useSimulation(null, view === 'monitor', view === 'monitor' ? sessionID : sessionID);
+            const [view, setView] = useState(initialMode); 
+            const [sessionID, setSessionID] = useState(initialSession);
+            const [generatedScenario, setGeneratedScenario] = useState(null);
             
-            // Telemetry Hub
+            // Generate Session ID if Controller
             useEffect(() => {
-                const channel = new BroadcastChannel('sim_channel');
-                
-                const sendUpdate = () => {
-                    if (!sim.state || !sim.state.vitals) return;
-                    channel.postMessage({
-                        type: 'SYNC_VITALS',
-                        payload: {
-                            rhythm: sim.state.rhythm,
-                            hr: sim.state.vitals.hr,
-                            spO2: sim.state.vitals.spO2,
-                            etco2: sim.state.vitals.etco2,
-                            bpSys: sim.state.vitals.bpSys,
-                            bpDia: sim.state.vitals.bpDia,
-                            gain: sim.state.waveformGain,
-                            interference: sim.state.noise.interference,
-                            cpr: sim.state.cprInProgress
-                        }
-                    });
-                };
+                if (!sessionID && view !== 'monitor') {
+                    const id = Math.random().toString(36).substring(2, 6).toUpperCase();
+                    setSessionID(id);
+                }
+            }, []);
 
-                channel.onmessage = (event) => {
-                    const data = event.data;
-                    if (data.type === 'REQUEST_SYNC') sendUpdate(); 
-                    if (data.type === 'SHOCK_DELIVERED') {
-                        sim.addLogEntry(`Shock Delivered (${data.energy}J)`, 'danger');
-                        sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'shock' });
-                    }
-                    if (data.type === 'PACER_UPDATE') {
-                        sim.dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
-                    }
-                };
+            // --- SIM ENGINE ---
+            // Initializes the logic core. Pass sessionID to enable sync.
+            const engine = useSimulation(
+                generatedScenario, 
+                view === 'monitor', 
+                sessionID
+            );
 
-                const interval = setInterval(sendUpdate, 1000); 
-                sendUpdate(); 
-                
-                return () => { clearInterval(interval); channel.close(); }
-            }, [sim.state]); 
+            // --- HANDLERS ---
+            const handleGenerate = (scenario, modifiers) => {
+                setGeneratedScenario(scenario);
+                engine.dispatch({ type: 'LOAD_SCENARIO', payload: scenario });
+                setView('briefing');
+            };
 
-            // View Routing
-            const handleJoin = (code) => { setSessionID(code); setView('monitor'); };
-            const handleGenerate = (s) => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: s }); setView('briefing'); };
-            const handleResume = (savedState) => { sim.dispatch({ type: 'RESTORE_SESSION', payload: savedState }); setView('live'); };
-            const handleRestart = () => { sim.dispatch({ type: 'LOAD_SCENARIO', payload: null }); setView('setup'); safeStorage.removeItem('wmebem_sim_state'); };
+            const handleStart = () => {
+                engine.start();
+                setView('livesim');
+            };
 
-            // Recovery Logic (Safe Storage)
-            const [resumeAvailable, setResumeAvailable] = useState(null);
+            const handleJoin = (code) => {
+                setSessionID(code);
+                setView('monitor');
+            };
+
+            const handleResume = (saved) => {
+                if(saved && saved.scenario) {
+                    setGeneratedScenario(saved.scenario);
+                    engine.dispatch({ type: 'RESTORE_SESSION', payload: saved });
+                    setView('livesim');
+                }
+            };
+
+            // --- RECOVERY CHECK ---
+            const [resumeData, setResumeData] = useState(null);
             useEffect(() => {
-                if (view === 'setup') {
-                    const saved = safeStorage.getItem('wmebem_sim_state');
-                    if (saved) { try { setResumeAvailable(JSON.parse(saved)); } catch(e) {} }
+                const saved = localStorage.getItem('wmebem_sim_state');
+                if (saved && view === 'setup') {
+                    try { setResumeData(JSON.parse(saved)); } catch(e){}
                 }
             }, [view]);
 
-            if (view === 'join') return <JoinScreen onJoin={handleJoin} />;
-            if (view === 'monitor') return <MonitorContainer sessionID={sessionID} />;
 
+            // --- RENDER ---
+            
+            // 1. Monitor View (Clean, Full Screen)
+            if (view === 'monitor') {
+                return <MonitorContainer sessionID={sessionID} />;
+            }
+
+            // 2. Controller Views (Header + Footer)
             return (
-                <div className="h-full flex flex-col bg-slate-900 text-slate-100 font-sans">
-                    <header className="flex items-center justify-between p-2 md:p-4 border-b border-slate-800 bg-slate-900 flex-shrink-0">
-                        <div className="flex items-center gap-4">
-                            <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-10 md:h-16 object-contain" />
-                            <div><h1 className="text-xl md:text-3xl font-bold text-sky-400 tracking-tight">EM Sim Generator v17</h1></div>
+                <div className="h-full flex flex-col">
+                    {/* Header */}
+                    <header className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+                        <div className="flex items-center gap-3">
+                            <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-10 object-contain" />
+                            <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Sim Generator</h1>
                         </div>
-                        <div className="flex flex-col items-end">
-                            <div className="flex items-center gap-2 bg-sky-900/20 border border-sky-500/30 px-3 py-1 rounded cursor-pointer hover:bg-sky-900/40 transition-colors" onClick={() => {navigator.clipboard.writeText(sessionID); alert("Session ID Copied")}}>
-                                <span className="text-[10px] text-sky-500 uppercase tracking-widest">Session</span>
-                                <span className="font-mono text-xl font-bold text-white tracking-widest">{sessionID || "..."}</span>
+                        {view !== 'setup' && sessionID && (
+                            <div className="flex flex-col items-end">
+                                <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Session ID</div>
+                                <div className="font-mono text-lg font-bold text-white tracking-widest leading-none select-all cursor-pointer" onClick={()=>{navigator.clipboard.writeText(sessionID); alert('Copied!');}}>{sessionID}</div>
                             </div>
-                        </div>
+                        )}
                     </header>
-                    <main className="flex-grow overflow-hidden relative">
-                        {view === 'setup' && <SetupScreen onGenerate={handleGenerate} savedState={resumeAvailable} onResume={() => handleResume(resumeAvailable)} sessionID={sessionID} onJoinClick={() => setView('join')} />}
-                        {view === 'briefing' && sim.state.scenario && <BriefingScreen scenario={sim.state.scenario} onStart={() => { sim.start(); setView('live'); }} onBack={() => setView('setup')} />}
-                        {(view === 'live' || view === 'debrief') && sim.state.scenario && <LiveSimContainer sim={sim} view={view} setView={setView} resumeData={view === 'live' && resumeAvailable ? resumeAvailable : null} onRestart={handleRestart} sessionID={sessionID} />}
+
+                    {/* Main Content */}
+                    <main className="flex-grow overflow-hidden relative bg-slate-900">
+                        {view === 'setup' && (
+                            <SetupScreen 
+                                onGenerate={handleGenerate} 
+                                onJoinClick={() => setView('join')} 
+                                sessionID={sessionID}
+                                savedState={resumeData}
+                                onResume={() => handleResume(resumeData)}
+                            />
+                        )}
+                        {view === 'join' && <JoinScreen onJoin={handleJoin} />}
+                        {view === 'briefing' && (
+                            <BriefingScreen 
+                                scenario={generatedScenario} 
+                                onStart={handleStart} 
+                                onBack={() => setView('setup')} 
+                            />
+                        )}
+                        {(view === 'livesim' || view === 'debrief') && (
+                            <LiveSimContainer 
+                                sim={engine} 
+                                view={view} 
+                                setView={setView} 
+                                onRestart={() => { engine.reset(); setView('setup'); }}
+                                sessionID={sessionID}
+                            />
+                        )}
                     </main>
-                    <footer className="bg-slate-950 border-t border-slate-800 p-2 text-center text-[10px] text-slate-500 flex-shrink-0">
-                        <p>&copy; {new Date().getFullYear()} West Midlands Evidence Based Emergency Medicine Ltd.</p>
+
+                    {/* Footer */}
+                    <footer className="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-600 flex-shrink-0">
+                        <p>&copy; {new Date().getFullYear()} West Midlands Evidence Based Emergency Medicine</p>
                     </footer>
                 </div>
             );
         };
 
-        // Loop to check if scripts are loaded before rendering
-        const checkReady = setInterval(() => {
-            if (window.MonitorContainer && window.SetupScreen && window.ALL_SCENARIOS && window.useSimulation) {
-                clearInterval(checkReady);
-                try {
-                    ReactDOM.render(React.createElement(App), document.getElementById('root'));
-                } catch(e) { console.error("Render Error:", e); }
-            }
-        }, 100);
+        // --- MOUNT ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
+`
+}
