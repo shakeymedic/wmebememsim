@@ -1,7 +1,3 @@
-{
-type: "file",
-fileName: "data/screens/monitor.js",
-content: `
 (() => {
     const { useState, useEffect, useRef } = React;
 
@@ -36,7 +32,7 @@ content: `
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-            for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+            for(let y=0; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
             ctx.stroke();
 
             ctx.strokeStyle = 'black';
@@ -89,7 +85,7 @@ content: `
             
             ctx.fillStyle = 'black';
             ctx.font = '14px monospace';
-            ctx.fillText(\`ID: \${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: \${new Date().toLocaleDateString()}   Paper Speed: 25mm/s\`, 20, h - 20);
+            ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
         } catch (e) {
             console.error("12-Lead Render Error", e);
         }
@@ -131,9 +127,10 @@ content: `
 
         // --- INVESTIGATION TOAST LOGIC ---
         useEffect(() => {
-            // Handle clearing
-            if (monitorPopup && monitorPopup.type === null && invToast) {
-                setInvToast(null);
+            // Handle clearing from controller
+            if (monitorPopup && monitorPopup.type === null) {
+                if (invToast) setInvToast(null);
+                if (show12Lead) setShow12Lead(false);
                 return;
             }
 
@@ -175,11 +172,11 @@ content: `
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
 
         return (
-            <div className={\`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 \${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden\`}>
+            <div className={`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 {/* INVESTIGATION TOAST (TOP RIGHT) */}
-                <div className={\`absolute top-4 right-4 z-[70] transition-all duration-500 \${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}\`}>
+                <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
@@ -264,7 +261,7 @@ content: `
                             {hasMonitoring && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
                                     <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={\`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] \${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}\`}>Auto</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
@@ -308,12 +305,12 @@ content: `
                              <div className="text-center text-slate-400 text-xs mt-1">Age: {scenario.patientAge}y</div>
                          </div>
                          <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
-                             <WetFlagItem label="Energy" value={\`\${scenario.wetflag.energy}J\`} />
+                             <WetFlagItem label="Energy" value={`${scenario.wetflag.energy}J`} />
                              <WetFlagItem label="Tube" value={scenario.wetflag.tube} />
-                             <WetFlagItem label="Fluids" value={\`\${scenario.wetflag.fluids}ml\`} />
-                             <WetFlagItem label="Loraz" value={\`\${scenario.wetflag.lorazepam}mg\`} />
-                             <WetFlagItem label="Adren" value={\`\${scenario.wetflag.adrenaline}mcg\`} />
-                             <WetFlagItem label="Gluc" value={\`\${scenario.wetflag.glucose}ml\`} />
+                             <WetFlagItem label="Fluids" value={`${scenario.wetflag.fluids}ml`} />
+                             <WetFlagItem label="Loraz" value={`${scenario.wetflag.lorazepam}mg`} />
+                             <WetFlagItem label="Adren" value={`${scenario.wetflag.adrenaline}mcg`} />
+                             <WetFlagItem label="Gluc" value={`${scenario.wetflag.glucose}ml`} />
                          </div>
                     </div>
                 )}
@@ -349,5 +346,3 @@ content: `
     window.MonitorScreen = MonitorScreen;
     window.MonitorContainer = MonitorContainer;
 })();
-`
-}
