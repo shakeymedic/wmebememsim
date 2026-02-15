@@ -1,7 +1,3 @@
-{
-type: "file",
-fileName: "data/interventions.js",
-content: `
 window.INTERVENTIONS = {
     // --- AIRWAY ---
     'Manoeuvres': { label: 'Head Tilt / Jaw Thrust', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway manoeuvres applied.', type: 'continuous', duration: 5 },
@@ -144,5 +140,3 @@ window.INTERVENTIONS = {
     'Irrigation': { label: 'Irrigation', effect: {}, category: 'Procedures', log: 'Copious irrigation started.', type: 'continuous', duration: 300 },
     'PacingPads': { label: 'Pacing Pads', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 },
 };
-`
-}
