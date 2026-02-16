@@ -14,7 +14,7 @@
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP } = sim; 
 
-        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, showMonitorTimer } = state;
+        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, showMonitorTimer, showWetflag } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -31,16 +31,13 @@
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
 
-        // Investigation Modal State
         const [invModal, setInvModal] = useState(null);
         const [invCustomText, setInvCustomText] = useState("");
 
-        // NIBP Modal State
         const [showNIBPModal, setShowNIBPModal] = useState(false);
         const [nibpSys, setNibpSys] = useState(vitals.bpSys);
         const [nibpDia, setNibpDia] = useState(vitals.bpDia);
 
-        // --- Assessment State ---
         const [assessments, setAssessments] = useState({
             "Safe Approach": null,
             "Team Leadership": null,
@@ -55,7 +52,6 @@
         const ROSC_RHYTHMS = ["Sinus Rhythm", "Sinus Tachycardia", "Sinus Bradycardia", "AF", "SVT"];
         const VOICE_PHRASES = ["My chest hurts", "I can't breathe", "I feel sick", "Who are you?", "My tummy hurts", "I feel dizzy", "Am I going to die?", "Yes", "No", "I'm thirsty", "Where am I?", "Please help me"];
         
-        // Drug Categorization
         const DRUG_GROUPS = {
             "Resus / Cardiac": ["AdrenalineIV", "Amiodarone", "Atropine", "Adenosine", "MagSulph", "Calcium", "CalciumChloride", "SodiumBicarb", "AdrenalineIM"],
             "Sedation / Analgesia": ["Morphine", "Fentanyl", "Ketamine", "Midazolam", "Lorazepam", "Propofol", "Roc", "Sux", "Paracetamol", "Analgesia"],
@@ -65,7 +61,6 @@
         };
         const KNOWN_DRUGS = new Set(Object.values(DRUG_GROUPS).flat());
 
-        // --- Search Logic ---
         useEffect(() => {
             if (!searchTerm) { setSearchResults([]); return; }
             const term = searchTerm.toLowerCase();
@@ -173,19 +168,9 @@
 
         const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration } : null;
 
-        // --- Investigation Handlers ---
-        const handleInvClick = (type) => {
-             setInvModal(type);
-             setInvCustomText("");
-        };
-        const sendInv = (type, text) => {
-            revealInvestigation(type, text);
-            setInvModal(null);
-        };
-        const closeInv = () => {
-            clearInvestigation();
-            setInvModal(null);
-        };
+        const handleInvClick = (type) => { setInvModal(type); setInvCustomText(""); };
+        const sendInv = (type, text) => { revealInvestigation(type, text); setInvModal(null); };
+        const closeInv = () => { clearInvestigation(); setInvModal(null); };
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -221,9 +206,7 @@
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
-                    {/* LEFT COLUMN: Patient Info, Monitor, Arrest Controls */}
                     <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto h-full pr-1">
-                         {/* Patient Info Block */}
                          <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -232,7 +215,6 @@
                             <div className="text-xs text-slate-300 mt-1 line-clamp-2">{scenario.patientProfileTemplate.replace('{age}', scenario.patientAge).replace('{sex}', scenario.sex)}</div>
                          </div>
 
-                        {/* Monitor Block */}
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
                              <div className="relative">
                                  <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-64"/>
@@ -255,7 +237,6 @@
                              </div>
                         </div>
                         
-                        {/* Arrest / Defib Controls */}
                         <div className="flex-none grid grid-cols-2 gap-2">
                             <div className="relative">
                                 <Button variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST</Button>
@@ -286,6 +267,12 @@
                              <Lucide icon="activity" className="w-4 h-4"/> Cycle NIBP Now
                         </Button>
 
+                        {isPaeds && (
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} className={`w-full flex-none mt-1 ${!showWetflag ? 'text-slate-500 border-slate-600' : 'text-purple-400 border-purple-500/50 bg-purple-900/20'}`}>
+                                <Lucide icon="baby" className="w-4 h-4 mr-1"/> {showWetflag ? 'Hide WETFLAG on Monitor' : 'Show WETFLAG on Monitor'}
+                            </Button>
+                        )}
+
                         {arrestPanelOpen && (
                              <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
@@ -304,9 +291,7 @@
                         )}
                     </div>
                     
-                    {/* RIGHT COLUMN: Actions, Log, Tabs */}
                     <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
-                        {/* Search Overlay */}
                         {searchTerm.length > 0 && searchResults.length > 0 && (
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
                                 {searchResults.map(key => (
@@ -408,9 +393,6 @@
                     </div>
                 </div>
 
-                {/* --- MODALS --- */}
-                
-                {/* LOG MODAL */}
                 {showLogModal && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl h-[80vh] flex flex-col">
@@ -431,7 +413,6 @@
                     </div>
                 )}
                 
-                {/* NIBP MODAL */}
                 {showNIBPModal && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
@@ -449,7 +430,6 @@
                     </div>
                 )}
 
-                {/* INVESTIGATION MODAL */}
                 {invModal && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-lg shadow-2xl h-[90vh] flex flex-col">
@@ -488,7 +468,6 @@
                     </div>
                 )}
                 
-                {/* VITAL CONTROL MODAL */}
                 {modalVital && (
                     <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
