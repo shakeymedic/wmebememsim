@@ -1,11 +1,6 @@
-{
-type: "file",
-fileName: "data/screens/setup.js",
-content: `
 (() => {
     const { useState, useEffect } = React;
 
-    // --- SCREEN 1: SETUP ---
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName } = window;
         
@@ -18,9 +13,9 @@ content: `
         const [customScenarios, setCustomScenarios] = useState([]);
         const [showWetflag, setShowWetflag] = useState(true);
 
-        // Custom Builder State
         const [buildId, setBuildId] = useState(null);
         const [buildTitle, setBuildTitle] = useState("");
+        const [buildName, setBuildName] = useState("");
         const [buildAge, setBuildAge] = useState(40);
         const [buildSex, setBuildSex] = useState("Male");
         const [buildCat, setBuildCat] = useState("Medical");
@@ -40,8 +35,9 @@ content: `
         }, []);
 
         const loadIntoBuilder = (s) => {
-            setBuildId(s.id || \`CUST_\${Date.now()}\`);
+            setBuildId(s.id || `CUST_${Date.now()}`);
             setBuildTitle(s.title);
+            setBuildName(s.patientName || "");
             setBuildAge(s.patientAge || 40);
             setBuildSex(s.sex || "Male");
             setBuildCat(s.category);
@@ -62,6 +58,12 @@ content: `
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
+            
+            const finalAge = parseInt(buildAge) || 40;
+            const finalName = buildName.trim() || generateName(buildSex);
+            const weight = finalAge < 16 ? estimateWeight(finalAge) : null;
+            const wetflag = weight ? calculateWetflag(finalAge, weight) : null;
+
             const safeVitals = {
                 hr: parseInt(buildVitals.hr) || 80,
                 bpSys: parseInt(buildVitals.bpSys) || 120,
@@ -73,29 +75,34 @@ content: `
             };
 
             const newScen = {
-                id: \`CUST_\${Date.now()}\`,
+                id: buildId && buildId.startsWith('CUST_') ? buildId : `CUST_${Date.now()}`,
                 title: buildTitle,
                 category: buildCat,
-                ageRange: buildAge < 18 ? "Paediatric" : "Adult",
+                ageRange: finalAge < 18 ? "Paediatric" : "Adult",
                 acuity: 'Majors',
-                ageGenerator: () => parseInt(buildAge),
-                patientAge: parseInt(buildAge),
+                ageGenerator: () => finalAge,
+                patientAge: finalAge,
+                patientName: finalName,
                 sex: buildSex,
                 patientProfileTemplate: buildDesc,
+                profile: buildDesc,
                 presentingComplaint: buildTitle,
                 vitalsMod: safeVitals,
+                vitals: safeVitals,
                 pmh: buildPMH.split(',').map(s=>s.trim()),
                 dhx: ["As per history"],
                 allergies: buildAllergies.split(',').map(s=>s.trim()),
                 instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom Objective"] },
                 vbgClinicalState: "normal",
                 ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: buildVitals.rhythm || "Normal" },
-                chestXray: { findings: "Unremarkable" }
+                chestXray: { findings: "Unremarkable" },
+                weight: weight,
+                wetflag: wetflag,
+                showWetflag: showWetflag
             };
 
-            // If editing existing custom, replace it
-            if(buildId && buildId.startsWith('CUST_')) {
-                const existingIdx = customScenarios.findIndex(c => c.id === buildId);
+            if(newScen.id.startsWith('CUST_')) {
+                const existingIdx = customScenarios.findIndex(c => c.id === newScen.id);
                 let updated;
                 if(existingIdx >= 0) {
                      updated = [...customScenarios];
@@ -107,7 +114,6 @@ content: `
                 localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
             }
             
-            // Launch immediately
             handleGenerate(newScen);
         };
 
@@ -125,7 +131,6 @@ content: `
                      selectedBase = pool[Math.floor(Math.random() * pool.length)];
                  }
 
-                 // If already processed (custom), skip generation logic
                  if (selectedBase.id.startsWith('CUST_')) {
                      onGenerate({ ...selectedBase, showWetflag }, {});
                      return;
@@ -162,7 +167,7 @@ content: `
                     vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
                     hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
                     weight, wetflag,
-                    showWetflag // Pass the toggle state
+                    showWetflag
                  };
 
                  onGenerate(generated, {});
@@ -197,7 +202,6 @@ content: `
                     </div>
                 )}
                 
-                {/* WETFLAG Toggle */}
                 <div className="flex items-center gap-2 p-2 bg-slate-800 rounded border border-slate-600">
                     <input type="checkbox" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="w-5 h-5 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
                     <span className="text-sm font-bold text-white">Show WETFLAG on Monitor (Paediatric Scenarios)</span>
@@ -206,7 +210,7 @@ content: `
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
                     <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto no-scrollbar">
                         {['random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={\`pb-2 px-4 text-sm font-bold uppercase whitespace-nowrap transition-colors \${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}\`}>{m === 'builder' ? 'Builder/Edit' : m}</button>
+                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-4 text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m}</button>
                         ))}
                     </div>
                     {mode === 'random' && (
@@ -270,10 +274,11 @@ content: `
                     {mode === 'builder' && (
                         <div className="space-y-4 animate-fadeIn">
                             <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500 font-bold"/>
-                            <div className="grid grid-cols-3 gap-2">
-                                <input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
-                                <select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select>
-                                <select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Paediatric</option></select>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div><label className="text-[10px] text-slate-500 uppercase">Patient Name</label><input type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Sex</label><select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Category</label><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Paediatric</option></select></div>
                             </div>
                             <textarea placeholder="Description" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
                             <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
@@ -300,14 +305,12 @@ content: `
         );
     };
 
-    // --- SCREEN 2: JOIN ---
     const JoinScreen = ({ onJoin }) => {
         const { Button } = window;
         const [code, setCode] = useState("");
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://iili.io/KGQOvkl.md.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
-    // --- SCREEN 3: BRIEFING ---
     const BriefingScreen = ({ scenario, onStart, onBack }) => {
         const { Button, Lucide } = window;
         return (
@@ -367,5 +370,3 @@ content: `
     window.JoinScreen = JoinScreen;
     window.BriefingScreen = BriefingScreen;
 })();
-`
-}
