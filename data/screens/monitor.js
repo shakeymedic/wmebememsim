@@ -107,7 +107,7 @@
 
         // --- BLACK SCREEN IF FINISHED ---
         if (state.isFinished) {
-            return <div className="h-full w-full bg-black flex items-center justify-center text-slate-800 font-bold uppercase tracking-widest text-3xl">Simulation Finished</div>;
+            return <div className="h-full w-full bg-black"></div>;
         }
 
         useEffect(() => {
@@ -125,9 +125,7 @@
             };
         }, []);
 
-        // --- INVESTIGATION TOAST LOGIC ---
         useEffect(() => {
-            // Handle clearing from controller
             if (monitorPopup && monitorPopup.type === null) {
                 if (invToast) setInvToast(null);
                 if (show12Lead) setShow12Lead(false);
@@ -175,7 +173,6 @@
             <div className={`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
-                {/* INVESTIGATION TOAST (TOP RIGHT) */}
                 <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
@@ -188,7 +185,6 @@
                     </div>
                 </div>
 
-                {/* DYNAMIC 12-LEAD OVERLAY */}
                 {show12Lead && (
                     <div className="absolute inset-0 z-[120] bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn" onClick={() => setShow12Lead(false)}>
                         <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
@@ -197,31 +193,25 @@
                     </div>
                 )}
 
-                {/* --- DEFIB OVERLAY (REACT) --- */}
                 {arrestPanelOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
-                        {/* Header */}
                         <div className="bg-slate-900 border-b border-slate-700 p-2 flex justify-between items-center">
                             <div className="text-slate-300 font-bold uppercase tracking-wider flex items-center gap-2">
                                 <Lucide icon="zap" className="text-red-500" /> Manual Defibrillator
                             </div>
-                            <div className="text-red-500 font-mono font-bold animate-pulse text-xl">MANUAL MODE</div>
+                            <div className="text-red-500 font-mono font-bold animate-pulse text-xl">MANUAL DEFIBRILLATOR MODE</div>
                             <div className="text-slate-500">{new Date().toLocaleTimeString()}</div>
                         </div>
 
-                        {/* Defib Monitor Area */}
                         <div className="flex-grow relative bg-black grid grid-rows-2">
-                             {/* Lead II */}
                              <div className="relative border-b border-slate-800">
                                 <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" />
                              </div>
-                             {/* Pads */}
                              <div className="relative">
                                 <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" />
                              </div>
                         </div>
 
-                        {/* Defib Controls Bottom */}
                         <div className="bg-slate-900 p-4 border-t border-slate-700 grid grid-cols-4 gap-4">
                              <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
                                  <div className="text-slate-500 text-xs uppercase mb-1">Energy Select</div>
@@ -239,9 +229,7 @@
                     </div>
                 )}
 
-                {/* --- MAIN MONITOR LAYOUT --- */}
                 <div className="flex-grow flex flex-col p-2 md:p-3 gap-2 h-full relative z-10">
-                    {/* ECG Area */}
                     <div className="flex-grow relative border border-slate-800 rounded overflow-hidden flex flex-col min-h-0 bg-black">
                         {hasMonitoring ? (
                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
@@ -251,11 +239,9 @@
                         {showMonitorTimer && <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-xl px-2 py-1 rounded border border-slate-700">{Math.floor(state.time/60)}:{(state.time%60).toString().padStart(2,'0')}</div>}
                     </div>
 
-                    {/* Vitals Grid */}
                     <div className="flex-none grid grid-cols-2 md:grid-cols-5 gap-2 h-[25vh] md:h-[28vh]">
                         <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         
-                        {/* NIBP DISPLAY with Larger Buttons */}
                         <div className="relative h-full">
                             <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
                             {hasMonitoring && (
@@ -266,7 +252,6 @@
                             )}
                         </div>
 
-                        {/* ABP or SpO2 */}
                         {hasArtLine ? (
                              <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
                         ) : (
@@ -279,13 +264,11 @@
 
                         <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
 
-                        {/* ETCO2 Tile (Conditionally Rendered) */}
                         {etco2Enabled && (
                             <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         )}
                     </div>
 
-                    {/* Investigations Toolbar */}
                     <div className="flex-none h-14 md:h-16 bg-slate-950 border border-slate-800 rounded flex overflow-hidden shadow-lg mt-1">
                         <InvBtn label="12-Lead" icon="activity" onClick={() => sim.dispatch({type: 'REQUEST_12LEAD'})} loading={loadingInvestigations?.['ECG']} />
                         <InvBtn label="VBG" icon="droplet" onClick={() => revealInvestigation('VBG')} loading={loadingInvestigations?.['VBG']} />
@@ -296,13 +279,12 @@
                     </div>
                 </div>
 
-                {/* --- WETFLAG SIDEBAR (PAEDS) --- */}
                 {isPaeds && showWetflag && scenario.wetflag && (
                     <div className="absolute top-0 right-0 h-full w-48 bg-slate-900/95 backdrop-blur border-l border-slate-700 p-2 flex flex-col gap-2 shadow-2xl z-40">
                          <div className="bg-purple-900/40 border border-purple-500/50 p-2 rounded mb-2">
                              <h3 className="text-purple-400 font-bold text-center text-sm">WETFLAG</h3>
                              <div className="text-center text-white font-mono text-xl font-bold">{scenario.wetflag.weight}kg</div>
-                             <div className="text-center text-slate-400 text-xs mt-1">Age: {scenario.patientAge}y</div>
+                             <div className="text-center bg-slate-800 text-white font-bold text-sm mt-1 py-1 rounded">Age: {scenario.patientAge} yrs</div>
                          </div>
                          <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
                              <WetFlagItem label="Energy" value={`${scenario.wetflag.energy}J`} />
@@ -330,7 +312,6 @@
         const sim = useSimulation(null, true, sessionID); 
         if (!sessionID) return null; 
         
-        // Fix: Allow HR 0 (Cardiac Arrest) to be a valid state, don't show waiting screen
         if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) {
             return (
                 <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
