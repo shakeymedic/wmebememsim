@@ -1,16 +1,11 @@
-{
-type: "file",
-fileName: "data/screens/debrief.js",
-content: `
 (() => {
     const { useState } = React;
 
     const DebriefGraph = ({ history, log }) => {
         if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">Not enough data for graph</div>;
 
-        // Increased Size
         const width = 1200;
-        const height = 400;
+        const height = 600;
         const padding = 50;
         const graphW = width - padding * 2;
         const graphH = height - padding * 2;
@@ -22,41 +17,37 @@ content: `
         const getX = (t) => padding + ((t - minTime) / duration) * graphW;
         const getY = (val, maxVal) => (height - padding) - (val / maxVal) * graphH;
 
-        // Create Paths
-        let hrPath = "M " + history.map(h => \`\${getX(h.time)},\${getY(h.hr, 200)}\`).join(" L ");
-        let bpPath = "M " + history.map(h => \`\${getX(h.time)},\${getY(h.bp, 250)}\`).join(" L ");
-        let spo2Path = "M " + history.map(h => \`\${getX(h.time)},\${getY(h.spo2, 100)}\`).join(" L ");
+        let hrPath = "M " + history.map(h => `${getX(h.time)},${getY(h.hr, 200)}`).join(" L ");
+        let bpPath = "M " + history.map(h => `${getX(h.time)},${getY(h.bp, 250)}`).join(" L ");
+        let spo2Path = "M " + history.map(h => `${getX(h.time)},${getY(h.spo2, 100)}`).join(" L ");
 
         return (
             <div className="w-full bg-slate-900 border border-slate-700 rounded p-4 mb-4 overflow-hidden">
                 <h4 className="text-xs font-bold text-slate-400 mb-2 uppercase">Vitals Trend & Interventions</h4>
-                <svg viewBox={\`0 0 \${width} \${height}\`} className="w-full h-auto">
-                    {/* Grid */}
-                    <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#333" strokeWidth="1"/>
-                    <line x1={padding} y1={padding} x2={padding} y2={height-padding} stroke="#333" strokeWidth="1"/>
+                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto bg-slate-950 rounded border border-slate-800">
+                    <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#334155" strokeWidth="2"/>
+                    <line x1={padding} y1={padding} x2={padding} y2={height-padding} stroke="#334155" strokeWidth="2"/>
                     
-                    {/* Traces */}
-                    <path d={hrPath} fill="none" stroke="#22c55e" strokeWidth="3" /> {/* HR Green */}
-                    <path d={bpPath} fill="none" stroke="#ef4444" strokeWidth="3" /> {/* BP Red */}
-                    <path d={spo2Path} fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="6" /> {/* SpO2 Blue Dashed */}
+                    <path d={hrPath} fill="none" stroke="#22c55e" strokeWidth="4" />
+                    <path d={bpPath} fill="none" stroke="#ef4444" strokeWidth="4" />
+                    <path d={spo2Path} fill="none" stroke="#3b82f6" strokeWidth="3" strokeDasharray="8" />
 
-                    {/* Intervention Markers with Labels */}
                     {log.filter(l => l.type === 'action' || l.type === 'manual').map((l, i) => {
                         const x = getX(l.timeSeconds); 
                         if (!l.timeSeconds) return null;
+                        const staggerY = (i % 6) * 25; 
                         return (
                             <g key={i}>
-                                <line x1={x} y1={padding} x2={x} y2={height-padding} stroke="white" strokeWidth="1" strokeOpacity="0.2" strokeDasharray="4"/>
-                                <circle cx={x} cy={height-padding} r="4" fill="white"/>
-                                <text x={x} y={height-padding+15} fill="#aaa" fontSize="10" textAnchor="middle" transform={\`rotate(45, \${x}, \${height-padding+15})\`}>{l.msg.substring(0, 15)}...</text>
+                                <line x1={x} y1={padding} x2={x} y2={height-padding + staggerY} stroke="#94a3b8" strokeWidth="1" strokeOpacity="0.4" strokeDasharray="4"/>
+                                <circle cx={x} cy={height-padding + staggerY} r="5" fill="#0ea5e9"/>
+                                <text x={x} y={height-padding + staggerY + 18} fill="#f8fafc" fontSize="12" fontWeight="bold" textAnchor="middle" transform={`rotate(45, ${x}, ${height-padding + staggerY + 18})`}>{l.msg}</text>
                             </g>
                         );
                     })}
                     
-                    {/* Legend */}
-                    <text x={width-80} y={40} fill="#22c55e" fontSize="16" fontWeight="bold">HR</text>
-                    <text x={width-80} y={65} fill="#ef4444" fontSize="16" fontWeight="bold">BP</text>
-                    <text x={width-80} y={90} fill="#3b82f6" fontSize="16" fontWeight="bold">SpO2</text>
+                    <text x={width-80} y={40} fill="#22c55e" fontSize="18" fontWeight="bold">HR</text>
+                    <text x={width-80} y={65} fill="#ef4444" fontSize="18" fontWeight="bold">BP</text>
+                    <text x={width-80} y={90} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2</text>
                 </svg>
             </div>
         );
@@ -75,20 +66,18 @@ content: `
             return true;
         });
 
-        // Calculate Scores based on Objectives
         const objectivesTotal = state.scenario.learningObjectives ? state.scenario.learningObjectives.length : 0;
         const objectivesMet = state.completedObjectives.size;
         const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : 100;
 
-        // Generate Downloadable Text
         const generateReport = () => {
-            const text = \`SIMULATION REPORT - \${state.scenario.title}\nDate: \${new Date().toLocaleString()}\nStudent Score: \${score}%\n\nLOG:\n\` + 
-                         state.log.map(l => \`[\${l.simTime}] \${l.msg}\`).join('\n');
+            const text = `SIMULATION REPORT - ${state.scenario.title}\nDate: ${new Date().toLocaleString()}\nStudent Score: ${score}%\n\nLOG:\n` + 
+                         state.log.map(l => `[${l.simTime}] ${l.msg}`).join('\n');
             const blob = new Blob([text], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = \`Debrief_\${Date.now()}.txt\`;
+            a.download = `Debrief_${Date.now()}.txt`;
             a.click();
         };
 
@@ -106,7 +95,6 @@ content: `
                 </div>
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
-                    {/* Left Col: Analysis */}
                     <div className="overflow-y-auto space-y-4 pr-2">
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
@@ -115,7 +103,6 @@ content: `
                                 <div className="text-sm text-slate-400">Objectives Met: {objectivesMet}/{objectivesTotal}</div>
                             </div>
                             
-                            {/* GRAPH COMPONENT */}
                             <DebriefGraph history={state.history} log={state.log} />
 
                             <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
@@ -135,20 +122,19 @@ content: `
                         </div>
                     </div>
 
-                    {/* Right Col: Log */}
                     <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                         <div className="flex border-b border-slate-700 bg-slate-900 p-2 gap-2">
                             {['all', 'actions', 'manual', 'system'].map(f => (
-                                <button key={f} onClick={() => setFilter(f)} className={\`px-3 py-1 rounded text-xs font-bold uppercase \${filter === f ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}\`}>
+                                <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold uppercase ${filter === f ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                                     {f}
                                 </button>
                             ))}
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-2">
                             {filteredLog.map((entry, i) => (
-                                <div key={i} className={\`flex gap-3 text-sm border-b border-slate-700/50 pb-1 \${entry.flagged ? 'bg-amber-900/10 p-1 rounded' : ''}\`}>
+                                <div key={i} className={`flex gap-3 text-sm border-b border-slate-700/50 pb-1 ${entry.flagged ? 'bg-amber-900/10 p-1 rounded' : ''}`}>
                                     <span className="text-slate-500 font-mono w-16 flex-shrink-0">{entry.simTime}</span>
-                                    <span className={\`flex-grow \${entry.type === 'danger' ? 'text-red-400 font-bold' : entry.type === 'success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}\`}>
+                                    <span className={`flex-grow ${entry.type === 'danger' ? 'text-red-400 font-bold' : entry.type === 'success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
                                         {entry.flagged && <Lucide icon="flag" className="inline w-3 h-3 text-amber-500 mr-1"/>}
                                         {entry.msg}
                                     </span>
@@ -163,5 +149,3 @@ content: `
 
     window.DebriefScreen = DebriefScreen;
 })();
-`
-}
