@@ -105,7 +105,6 @@
         
         const lastPopupTime = useRef(0);
 
-        // --- BLACK SCREEN IF FINISHED ---
         if (state.isFinished) {
             return <div className="h-full w-full bg-black"></div>;
         }
