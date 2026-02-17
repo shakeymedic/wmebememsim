@@ -5,17 +5,20 @@
         if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">Not enough data for graph</div>;
 
         const width = 1200;
-        const height = 600;
-        const padding = 50;
-        const graphW = width - padding * 2;
-        const graphH = height - padding * 2;
+        const height = 700;
+        const paddingLeft = 50;
+        const paddingRight = 100;
+        const paddingTop = 50;
+        const paddingBottom = 250; 
+        const graphW = width - paddingLeft - paddingRight;
+        const graphH = height - paddingTop - paddingBottom;
 
         const maxTime = Math.max(...history.map(h => h.time));
         const minTime = Math.min(...history.map(h => h.time));
         const duration = maxTime - minTime || 1;
 
-        const getX = (t) => padding + ((t - minTime) / duration) * graphW;
-        const getY = (val, maxVal) => (height - padding) - (val / maxVal) * graphH;
+        const getX = (t) => paddingLeft + ((t - minTime) / duration) * graphW;
+        const getY = (val, maxVal) => (height - paddingBottom) - (val / maxVal) * graphH;
 
         let hrPath = "M " + history.map(h => `${getX(h.time)},${getY(h.hr, 200)}`).join(" L ");
         let bpPath = "M " + history.map(h => `${getX(h.time)},${getY(h.bp, 250)}`).join(" L ");
@@ -25,8 +28,8 @@
             <div className="w-full bg-slate-900 border border-slate-700 rounded p-4 mb-4 overflow-hidden">
                 <h4 className="text-xs font-bold text-slate-400 mb-2 uppercase">Vitals Trend & Interventions</h4>
                 <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto bg-slate-950 rounded border border-slate-800">
-                    <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#334155" strokeWidth="2"/>
-                    <line x1={padding} y1={padding} x2={padding} y2={height-padding} stroke="#334155" strokeWidth="2"/>
+                    <line x1={paddingLeft} y1={height-paddingBottom} x2={width-paddingRight} y2={height-paddingBottom} stroke="#334155" strokeWidth="2"/>
+                    <line x1={paddingLeft} y1={paddingTop} x2={paddingLeft} y2={height-paddingBottom} stroke="#334155" strokeWidth="2"/>
                     
                     <path d={hrPath} fill="none" stroke="#22c55e" strokeWidth="4" />
                     <path d={bpPath} fill="none" stroke="#ef4444" strokeWidth="4" />
@@ -35,19 +38,20 @@
                     {log.filter(l => l.type === 'action' || l.type === 'manual').map((l, i) => {
                         const x = getX(l.timeSeconds); 
                         if (!l.timeSeconds) return null;
-                        const staggerY = (i % 6) * 25; 
+                        const staggerY = (i % 8) * 25; 
+                        const yPos = height - paddingBottom + staggerY + 15;
                         return (
                             <g key={i}>
-                                <line x1={x} y1={padding} x2={x} y2={height-padding + staggerY} stroke="#94a3b8" strokeWidth="1" strokeOpacity="0.4" strokeDasharray="4"/>
-                                <circle cx={x} cy={height-padding + staggerY} r="5" fill="#0ea5e9"/>
-                                <text x={x} y={height-padding + staggerY + 18} fill="#f8fafc" fontSize="12" fontWeight="bold" textAnchor="middle" transform={`rotate(45, ${x}, ${height-padding + staggerY + 18})`}>{l.msg}</text>
+                                <line x1={x} y1={paddingTop} x2={x} y2={yPos} stroke="#94a3b8" strokeWidth="1" strokeOpacity="0.4" strokeDasharray="4"/>
+                                <circle cx={x} cy={yPos} r="5" fill="#0ea5e9"/>
+                                <text x={x} y={yPos + 15} fill="#f8fafc" fontSize="12" fontWeight="bold" textAnchor="start" transform={`rotate(45, ${x}, ${yPos + 15})`}>{l.msg}</text>
                             </g>
                         );
                     })}
                     
-                    <text x={width-80} y={40} fill="#22c55e" fontSize="18" fontWeight="bold">HR</text>
-                    <text x={width-80} y={65} fill="#ef4444" fontSize="18" fontWeight="bold">BP</text>
-                    <text x={width-80} y={90} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2</text>
+                    <text x={width-80} y={paddingTop + 20} fill="#22c55e" fontSize="18" fontWeight="bold">HR</text>
+                    <text x={width-80} y={paddingTop + 45} fill="#ef4444" fontSize="18" fontWeight="bold">BP</text>
+                    <text x={width-80} y={paddingTop + 70} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2</text>
                 </svg>
             </div>
         );
