@@ -87,7 +87,6 @@
                 let currentICP = state.icp;
                 let currentHypoxiaTimer = state.hypoxiaTimer;
 
-                // --- PHYSIOLOGY ENGINE ---
                 if (currentVitals.rr < 8 && currentVitals.rr > 0 && !state.activeInterventions.has('Bagging')) {
                     currentHypoxiaTimer++;
                     if (currentHypoxiaTimer > 30) {
@@ -131,7 +130,6 @@
                         }
                     });
                     if (newTrends.elapsed >= newTrends.duration) {
-                        // FORCE SNAP TO EXACT TARGET 
                         Object.keys(newTrends.targets).forEach(key => currentVitals[key] = formatVital(key, newTrends.targets[key]));
                         newTrends.active = false; 
                     }
@@ -228,6 +226,9 @@
                 const syncedScenario = { 
                     ...state.scenario, 
                     title: action.payload.scenarioTitle, 
+                    patientName: action.payload.patientName,
+                    patientAge: action.payload.patientAge,
+                    sex: action.payload.sex,
                     ageRange: action.payload.ageRange,
                     wetflag: action.payload.wetflag,
                     deterioration: { type: action.payload.pathology },
@@ -257,8 +258,8 @@
                     remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0},
                     pacingThreshold: action.payload.pacingThreshold || 70, 
                     lastUpdate: Date.now(),
-                    showWetflag: action.payload.showWetflag,
-                    showMonitorTimer: action.payload.showMonitorTimer
+                    showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true,
+                    showMonitorTimer: action.payload.showMonitorTimer !== undefined ? action.payload.showMonitorTimer : false
                 };
 
             case 'ADD_LOG': 
@@ -422,6 +423,9 @@
                     flash: state.flash, 
                     cycleTimer: state.cycleTimer, 
                     scenarioTitle: state.scenario.title, 
+                    patientName: state.scenario.patientName,
+                    patientAge: state.scenario.patientAge,
+                    sex: state.scenario.sex,
                     ageRange: state.scenario.ageRange,
                     wetflag: state.scenario.wetflag || null,
                     pathology: state.scenario.deterioration?.type || 'normal', 
@@ -614,6 +618,7 @@
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        
         const triggerArrest = (type = 'VF') => {
             const newRhythm = type;
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 } });
@@ -621,6 +626,7 @@
             addLogEntry(`CARDIAC ARREST - ${newRhythm}`, 'manual');
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
+        
         const triggerROSC = (rhythm = 'Sinus Rhythm') => { 
             const newEtco2 = 5.5 + (Math.random() * 1.5); 
             dispatch({ type: 'UPDATE_VITALS', payload: { ...state.vitals, hr: 80, bpSys: 110, bpDia: 70, spO2: 96, rr: 16, gcs: 8, pupils: 3, etco2: newEtco2 } }); 
