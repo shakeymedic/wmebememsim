@@ -32,7 +32,7 @@
             ctx.lineWidth = 1.5;
             ctx.beginPath();
             for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-            for(let y=0; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+            for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
             ctx.stroke();
 
             ctx.strokeStyle = 'black';
