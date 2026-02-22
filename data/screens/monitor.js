@@ -115,7 +115,11 @@
             }
         }, [show12Lead, state.rhythm]);
 
-        const simChannel = useRef(new BroadcastChannel('sim_channel'));
+        const simChannel = useRef(null);
+        if (simChannel.current === null) {
+            simChannel.current = new BroadcastChannel('sim_channel');
+        }
+
         useEffect(() => {
             simChannel.current.onmessage = (event) => {
                 if (event.data.type === 'SHOW_12LEAD') {
