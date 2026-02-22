@@ -1,7 +1,3 @@
-{
-type: "file",
-fileName: "data/components.js",
-content: `
 (() => {
     const { useState, useEffect, useRef } = React;
 
@@ -87,7 +83,7 @@ content: `
             <button 
                 onClick={onClick} 
                 disabled={disabled} 
-                className={\`\${baseClass} \${variants[variant]} \${sizes[size]} \${className} \${disabled ? 'opacity-50 cursor-not-allowed' : ''}\`}
+                className={`${baseClass} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
                 {children}
             </button>
@@ -96,7 +92,7 @@ content: `
 
     // --- CARD COMPONENT ---
     const Card = ({ children, title, className = '' }) => (
-        <div className={\`bg-slate-800 rounded border border-slate-700 p-4 \${className}\`}>
+        <div className={`bg-slate-800 rounded border border-slate-700 p-4 ${className}`}>
             {title && <h3 className="text-sm font-bold text-slate-400 uppercase mb-2">{title}</h3>}
             {children}
         </div>
@@ -288,7 +284,7 @@ content: `
         }, [rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology, isCPR]);
 
         return (
-            <div className={\`relative w-full bg-black \${className}\`}>
+            <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
                 <div className="absolute top-2 left-2 text-green-500 font-mono text-xs font-bold">{rhythmLabel || "LEAD II"}</div>
                 {showTraces && !showArt && <div className="absolute top-[33%] left-2 text-blue-500 font-mono text-xs font-bold">PLETH</div>}
@@ -323,40 +319,40 @@ content: `
         // Specialized NIBP Tile for Monitor
         if (isNIBP && isMonitor) {
             return (
-                <div onClick={onClick} className={\`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors \${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}\`}>
+                <div onClick={onClick} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
                      <div className="flex justify-between items-start">
-                        <span className={\`text-sm font-bold uppercase \${color}\`}>{label}</span>
+                        <span className={`text-sm font-bold uppercase ${color}`}>{label}</span>
                         <span className="text-xs text-slate-400">{unit}</span>
                      </div>
                      <div className="flex items-end justify-center gap-1 my-1">
-                         <span className={\`text-4xl md:text-5xl font-mono font-bold leading-none \${color}\`}>{value || '--'}</span>
+                         <span className={`text-4xl md:text-5xl font-mono font-bold leading-none ${color}`}>{value || '--'}</span>
                          <span className="text-xl text-slate-500 font-bold mb-1">/</span>
-                         <span className={\`text-2xl md:text-3xl font-mono font-bold leading-none \${color}\`}>{value2 || '--'}</span>
+                         <span className={`text-2xl md:text-3xl font-mono font-bold leading-none ${color}`}>{value2 || '--'}</span>
                      </div>
                      <div className="text-right text-[10px] text-slate-500 uppercase font-mono">
-                         {lastNIBP ? \`Last: \${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}\` : 'No reading'}
+                         {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
                 </div>
             );
         }
 
         return (
-            <div onClick={onClick} className={\`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors overflow-hidden \${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}\`}>
+            <div onClick={onClick} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
                 <div className="flex justify-between items-start">
-                    <span className={\`text-xs md:text-sm font-bold uppercase \${color}\`}>{label}</span>
+                    <span className={`text-xs md:text-sm font-bold uppercase ${color}`}>{label}</span>
                     <span className="text-[10px] md:text-xs text-slate-400">{unit}</span>
                 </div>
                 
                 <div className="flex items-baseline justify-center gap-1">
-                    <span className={\`text-4xl md:text-5xl font-mono font-bold tracking-tight \${color}\`}>
-                        {value2 ? \`\${value}/\${value2}\` : (value !== null ? value : '--')}
+                    <span className={`text-4xl md:text-5xl font-mono font-bold tracking-tight ${color}`}>
+                        {value2 ? `${value}/${value2}` : (value !== null ? value : '--')}
                     </span>
                     {trendIcon && <span className="text-lg text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
                 </div>
 
                 {!hideTrends && trend && trend.active && (
                     <div className="w-full bg-slate-800 h-1 mt-2 rounded overflow-hidden">
-                        <div className="bg-sky-500 h-full transition-all duration-1000" style={{width: \`\${trend.progress * 100}%\`}}></div>
+                        <div className="bg-sky-500 h-full transition-all duration-1000" style={{width: `${trend.progress * 100}%`}}></div>
                     </div>
                 )}
             </div>
@@ -369,5 +365,3 @@ content: `
     window.ECGMonitor = ECGMonitor;
     window.VitalDisplay = VitalDisplay;
 })();
-`
-}
