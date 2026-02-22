@@ -1,7 +1,3 @@
-{
-type: "file",
-fileName: "index.html",
-content: `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -15,7 +11,7 @@ content: `
             theme: { 
                 extend: {
                     colors: {
-                        slate: { 950: '#020617' } // Ensure dark theme consistency
+                        slate: { 950: '#020617' } 
                     }
                 } 
             },
@@ -66,9 +62,8 @@ content: `
     </div>
 
     <script type="text/babel" src="data/interventions.js"></script>
-    <script type="text/babel" src="data/data.js"></script>
-    <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
+    <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
 
@@ -107,7 +102,7 @@ content: `
             const { SetupScreen, JoinScreen, BriefingScreen, MonitorContainer, LiveSimContainer, useSimulation } = window;
 
             // URL Params for Monitor Mode
-            const urlParams = new URLSearchParams(window.location.search);
+            const urlParams = newSearchParams(window.location.search);
             const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
             const initialSession = urlParams.get('session');
 
@@ -164,7 +159,6 @@ content: `
                     try { setResumeData(JSON.parse(saved)); } catch(e){}
                 }
             }, [view]);
-
 
             // --- RENDER ---
             
@@ -234,5 +228,3 @@ content: `
     </script>
 </body>
 </html>
-`
-}
