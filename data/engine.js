@@ -324,7 +324,10 @@
         const stateRef = useRef(state);
         const lastCmdRef = useRef(0);
         
-        const simChannel = useRef(new BroadcastChannel('sim_channel'));
+        const simChannel = useRef(null);
+        if (simChannel.current === null) {
+            simChannel.current = new BroadcastChannel('sim_channel');
+        }
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
@@ -396,74 +399,70 @@
             }
         }, []);
 
+        // FIREBASE WRITE - Controller pushing state to monitor
         useEffect(() => {
             const db = window.db; 
-            if (!db || !sessionID) return; 
+            if (!db || !sessionID || isMonitorMode || !state.scenario) return; 
             const sessionRef = db.ref(`sessions/${sessionID}`);
-            if (isMonitorMode) {
-                const handleUpdate = (snapshot) => { const data = snapshot.val(); if (data) { try { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); } catch (err) { console.error("Sync Error", err); } } };
-                sessionRef.on('value', handleUpdate);
-                return () => sessionRef.off('value', handleUpdate);
-            } else {
-                if (!state.scenario) return;
-                const investigations = {
-                    vbg: state.scenario.vbg || null,
-                    ecg: state.scenario.ecg || null,
-                    chestXray: state.scenario.chestXray || null,
-                    urine: state.scenario.urine || null,
-                    ct: state.scenario.ct || null,
-                    pocus: state.scenario.pocus || null
-                };
+            const investigations = {
+                vbg: state.scenario.vbg || null,
+                ecg: state.scenario.ecg || null,
+                chestXray: state.scenario.chestXray || null,
+                urine: state.scenario.urine || null,
+                ct: state.scenario.ct || null,
+                pocus: state.scenario.pocus || null
+            };
 
-                const payload = { 
-                    vitals: state.vitals, 
-                    rhythm: state.rhythm, 
-                    cprInProgress: state.cprInProgress, 
-                    etco2Enabled: state.etco2Enabled, 
-                    flash: state.flash, 
-                    cycleTimer: state.cycleTimer, 
-                    scenarioTitle: state.scenario.title, 
-                    patientName: state.scenario.patientName,
-                    patientAge: state.scenario.patientAge,
-                    sex: state.scenario.sex,
-                    ageRange: state.scenario.ageRange,
-                    wetflag: state.scenario.wetflag || null,
-                    pathology: state.scenario.deterioration?.type || 'normal', 
-                    investigations: investigations, 
-                    activeInterventions: Array.from(state.activeInterventions), 
-                    nibp: state.nibp, 
-                    speech: state.speech, 
-                    soundEffect: state.soundEffect, 
-                    audioOutput: state.audioOutput, 
-                    trends: state.trends, 
-                    arrestPanelOpen: state.arrestPanelOpen, 
-                    isFinished: state.isFinished, 
-                    monitorPopup: state.monitorPopup,
-                    waveformGain: state.waveformGain,
-                    noise: state.noise,
-                    notification: state.notification,
-                    remotePacerState: state.remotePacerState,
-                    pacingThreshold: state.pacingThreshold,
-                    showWetflag: state.showWetflag,
-                    showMonitorTimer: state.showMonitorTimer
-                };
-                sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
-
-                const cmdRef = db.ref(`sessions/${sessionID}/command`);
-                cmdRef.on('value', (snap) => {
-                    const val = snap.val();
-                    if (val && val.ts > lastCmdRef.current) {
-                        lastCmdRef.current = val.ts;
-                        if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
-                        if (val.type === 'TOGGLE_NIBP_MODE') dispatch({ type: 'TOGGLE_NIBP_MODE' });
-                        if (val.type === 'TRIGGER_ACTION') {
-                            applyIntervention(val.payload);
-                        }
-                    }
-                });
-                return () => cmdRef.off();
-            }
+            const payload = { 
+                vitals: state.vitals, 
+                rhythm: state.rhythm, 
+                cprInProgress: state.cprInProgress, 
+                etco2Enabled: state.etco2Enabled, 
+                flash: state.flash, 
+                cycleTimer: state.cycleTimer, 
+                scenarioTitle: state.scenario.title, 
+                patientName: state.scenario.patientName,
+                patientAge: state.scenario.patientAge,
+                sex: state.scenario.sex,
+                ageRange: state.scenario.ageRange,
+                wetflag: state.scenario.wetflag || null,
+                pathology: state.scenario.deterioration?.type || 'normal', 
+                investigations: investigations, 
+                activeInterventions: Array.from(state.activeInterventions), 
+                nibp: state.nibp, 
+                speech: state.speech, 
+                soundEffect: state.soundEffect, 
+                audioOutput: state.audioOutput, 
+                trends: state.trends, 
+                arrestPanelOpen: state.arrestPanelOpen, 
+                isFinished: state.isFinished, 
+                monitorPopup: state.monitorPopup,
+                waveformGain: state.waveformGain,
+                noise: state.noise,
+                notification: state.notification,
+                remotePacerState: state.remotePacerState,
+                pacingThreshold: state.pacingThreshold,
+                showWetflag: state.showWetflag,
+                showMonitorTimer: state.showMonitorTimer
+            };
+            sessionRef.set(payload).catch(e => console.error("Sync Write Error:", e));
         }, [state, isMonitorMode, sessionID]);
+
+        // FIREBASE READ - Monitor receiving state
+        useEffect(() => {
+            const db = window.db; 
+            if (!db || !sessionID || !isMonitorMode) return; 
+            const sessionRef = db.ref(`sessions/${sessionID}`);
+            const handleUpdate = (snapshot) => { 
+                const data = snapshot.val(); 
+                if (data) { 
+                    try { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); } 
+                    catch (err) { console.error("Sync Error", err); } 
+                } 
+            };
+            sessionRef.on('value', handleUpdate);
+            return () => sessionRef.off('value', handleUpdate);
+        }, [isMonitorMode, sessionID]);
 
         useEffect(() => { if (!isMonitorMode && state.scenario && state.log.length > 0) { const serializableState = { ...state, activeInterventions: Array.from(state.activeInterventions), processedEvents: Array.from(state.processedEvents), completedObjectives: Array.from(state.completedObjectives) }; localStorage.setItem('wmebem_sim_state', JSON.stringify(serializableState)); } }, [state.vitals, state.log, isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
@@ -617,6 +616,35 @@
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
             dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
         };
+
+        const applyInterventionRef = useRef(applyIntervention);
+        useEffect(() => {
+            applyInterventionRef.current = applyIntervention;
+        }, [applyIntervention]);
+
+        // FIREBASE READ - Controller receiving commands from monitor
+        useEffect(() => {
+            const db = window.db; 
+            if (!db || !sessionID || isMonitorMode) return; 
+            
+            const cmdRef = db.ref(`sessions/${sessionID}/command`);
+            const handleCmd = (snap) => {
+                const val = snap.val();
+                if (val && val.ts > lastCmdRef.current) {
+                    lastCmdRef.current = val.ts;
+                    if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
+                    if (val.type === 'TOGGLE_NIBP_MODE') dispatch({ type: 'TOGGLE_NIBP_MODE' });
+                    if (val.type === 'TRIGGER_ACTION') {
+                        if (applyInterventionRef.current) {
+                            applyInterventionRef.current(val.payload);
+                        }
+                    }
+                }
+            };
+            cmdRef.on('value', handleCmd);
+            return () => cmdRef.off('value', handleCmd);
+        }, [isMonitorMode, sessionID]);
+
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
         const triggerArrest = (type = 'VF') => {
