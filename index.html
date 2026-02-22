@@ -102,7 +102,7 @@
             const { SetupScreen, JoinScreen, BriefingScreen, MonitorContainer, LiveSimContainer, useSimulation } = window;
 
             // URL Params for Monitor Mode
-            const urlParams = newSearchParams(window.location.search);
+            const urlParams = new URLSearchParams(window.location.search);
             const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
             const initialSession = urlParams.get('session');
 
