@@ -1,7 +1,3 @@
-{
-type: "file",
-fileName: "data/screens/index.js",
-content: `
 (() => {
     // This container manages the active view between the live simulation and the debrief
     const LiveSimContainer = ({ sim, view, setView, resumeData, onRestart, sessionID }) => {
@@ -34,5 +30,3 @@ content: `
 
     window.LiveSimContainer = LiveSimContainer;
 })();
-`
-}
