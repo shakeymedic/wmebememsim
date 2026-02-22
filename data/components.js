@@ -1,6 +1,56 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
+    const BUFFER_SIZE = 1000;
+    const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), co2: { normal: new Float32Array(BUFFER_SIZE), bronchospastic: new Float32Array(BUFFER_SIZE) }, art: new Float32Array(BUFFER_SIZE) };
+
+    const pWave = (t) => 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
+    const qrsComplex = (t) => {
+        let val = 0;
+        val -= 5 * Math.exp(-Math.pow(t - 0.18, 2) / 0.0005);
+        val += 40 * Math.exp(-Math.pow(t - 0.2, 2) / 0.0005);
+        val -= 10 * Math.exp(-Math.pow(t - 0.22, 2) / 0.0005);
+        return val;
+    };
+    const tWave = (t) => 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005);
+
+    const rhythms = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'SVT', 'PEA', '1st Deg Heart Block', 'Complete Heart Block', 'Atrial Flutter', 'VT'];
+    rhythms.forEach(r => {
+        precomputed.ecg[r] = new Float32Array(BUFFER_SIZE);
+        for(let i=0; i<BUFFER_SIZE; i++) {
+            const t = i / BUFFER_SIZE;
+            let val = 0;
+            if(r.includes('Sinus') || r==='PEA') val = pWave(t) + qrsComplex(t) + tWave(t);
+            if(r==='SVT') val = qrsComplex(t) + tWave(t);
+            if(r==='1st Deg Heart Block') val = pWave(t - 0.1) + qrsComplex(t) + tWave(t);
+            if(r==='Complete Heart Block') val = pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t);
+            if(r==='Atrial Flutter') val = (Math.sin(t * 30) * 5) + qrsComplex(t);
+            if(r==='VT') val = 35 * Math.sin(t * 20);
+            precomputed.ecg[r][i] = val;
+        }
+    });
+
+    for(let i=0; i<BUFFER_SIZE; i++) {
+        const t = i / BUFFER_SIZE;
+        let spo2Val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 20 : Math.sin(t * Math.PI * 2) * 5;
+        spo2Val += Math.sin((t - 0.1) * Math.PI * 2 * 2) * 5;
+        precomputed.spo2[i] = spo2Val;
+        
+        precomputed.resp[i] = Math.sin(t * Math.PI * 2) * 15;
+        
+        let co2N = 0;
+        let co2B = 0;
+        if (t < 0.1) { co2N = (t / 0.1) * 20; co2B = (t / 0.1) * 20; }
+        else if (t < 0.5) { co2N = 20; co2B = 20 + ((t - 0.1) / 0.4) * 5; }
+        else if (t < 0.6) { co2N = 20 - ((t - 0.5) / 0.1) * 20; co2B = 20 - ((t - 0.5) / 0.1) * 20; }
+        precomputed.co2.normal[i] = co2N;
+        precomputed.co2.bronchospastic[i] = co2B;
+        
+        let artVal = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 25 : Math.sin(t * Math.PI * 2) * 5;
+        if (t > 0.3 && t < 0.5) artVal += 5;
+        precomputed.art[i] = artVal;
+    }
+
     const Lucide = ({ icon, className, onClick }) => {
         const icons = {
             'activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
@@ -99,62 +149,33 @@
         const [width, setWidth] = useState(0);
 
         const getECGValue = (t, type) => {
-            let y = 0;
-            if (isCPR) {
-                y += Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
-                return y; 
-            }
-
-            const pWave = (t) => 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
-            const qrsComplex = (t) => {
-                let val = 0;
-                val -= 5 * Math.exp(-Math.pow(t - 0.18, 2) / 0.0005);
-                val += 40 * Math.exp(-Math.pow(t - 0.2, 2) / 0.0005);
-                val -= 10 * Math.exp(-Math.pow(t - 0.22, 2) / 0.0005);
-                return val;
-            };
-            const tWave = (t) => 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005);
-
-            switch (type) {
-                case 'Sinus Rhythm': return pWave(t) + qrsComplex(t) + tWave(t);
-                case 'Sinus Tachycardia': return pWave(t) + qrsComplex(t) + tWave(t);
-                case 'Sinus Bradycardia': return pWave(t) + qrsComplex(t) + tWave(t);
-                case 'AF': return (Math.random() * 2) + qrsComplex(t) + (tWave(t) * 0.5); 
-                case 'VT': return 35 * Math.sin(t * 20); 
-                case 'VF': return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5); 
-                case 'Asystole': return (Math.random() - 0.5) * 1; 
-                case 'SVT': return qrsComplex(t) + tWave(t); 
-                case 'PEA': return pWave(t) + qrsComplex(t) + tWave(t); 
-                case '1st Deg Heart Block': return pWave(t - 0.1) + qrsComplex(t) + tWave(t); 
-                case 'Complete Heart Block': return pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t); 
-                case 'Atrial Flutter': return (Math.sin(t * 30) * 5) + qrsComplex(t); 
-                default: return 0;
-            }
+            if (isCPR) return Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
+            if (type === 'VF') return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5);
+            if (type === 'Asystole') return (Math.random() - 0.5) * 1;
+            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            if (type === 'AF') return (Math.random() * 2) + (precomputed.ecg['SVT'] ? precomputed.ecg['SVT'][idx] : 0);
+            return precomputed.ecg[type] ? precomputed.ecg[type][idx] : 0;
         };
 
         const getSPO2Value = (t) => {
             if (spO2 < 10) return 0;
-            let val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 20 : Math.sin(t * Math.PI * 2) * 5;
-            val += Math.sin((t - 0.1) * Math.PI * 2 * 2) * 5; 
-            return val;
+            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            return precomputed.spo2[idx];
         };
 
-        const getRespValue = (t) => Math.sin(t * Math.PI * 2) * 15;
+        const getRespValue = (t) => {
+            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            return precomputed.resp[idx];
+        };
         
         const getCO2Value = (t) => {
-            if (t < 0.1) return (t / 0.1) * 20;
-            if (t < 0.5) {
-                if (co2Pathology === 'bronchospastic') return 20 + ((t - 0.1) / 0.4) * 5; 
-                return 20;
-            }
-            if (t < 0.6) return 20 - ((t - 0.5) / 0.1) * 20;
-            return 0;
+            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            return precomputed.co2[co2Pathology] ? precomputed.co2[co2Pathology][idx] : precomputed.co2.normal[idx];
         };
         
         const getArtValue = (t) => {
-            let val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 25 : Math.sin(t * Math.PI * 2) * 5;
-            if (t > 0.3 && t < 0.5) val += 5; 
-            return val;
+            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            return precomputed.art[idx];
         };
 
         useEffect(() => {
@@ -271,7 +292,6 @@
                 {showTraces && showArt && <div className="absolute top-[33%] left-2 text-red-500 font-mono text-xs font-bold">ART</div>}
                 {showTraces && <div className="absolute top-[66%] left-2 text-yellow-500 font-mono text-xs font-bold">RESP</div>}
                 {showTraces && showEtco2 && <div className="absolute bottom-2 left-2 text-purple-500 font-mono text-xs font-bold">CO2</div>}
-                
                 {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR DETECTED</div>}
             </div>
         );
@@ -293,7 +313,6 @@
         if (label === 'Glucose') color = "text-white";
 
         const trendIcon = trend ? (trend.progress > 0 ? (value > (prev || value) ? '↑' : '↓') : '') : '';
-        const isChanging = prev !== undefined && Math.abs(prev - value) > 0.5;
 
         if (isNIBP && isMonitor) {
             return (
