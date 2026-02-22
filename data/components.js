@@ -1,9 +1,7 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    // --- ICONS (Lucide React equivalent) ---
     const Lucide = ({ icon, className, onClick }) => {
-        // Simple mapping for common icons used in the app
         const icons = {
             'activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
             'heart-pulse': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 11H6"/><path d="M12 5l3 6h3"/>',
@@ -63,7 +61,6 @@
         );
     };
 
-    // --- BUTTON COMPONENT ---
     const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md' }) => {
         const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
         const variants = {
@@ -90,7 +87,6 @@
         );
     };
 
-    // --- CARD COMPONENT ---
     const Card = ({ children, title, className = '' }) => (
         <div className={`bg-slate-800 rounded border border-slate-700 p-4 ${className}`}>
             {title && <h3 className="text-sm font-bold text-slate-400 uppercase mb-2">{title}</h3>}
@@ -98,18 +94,15 @@
         </div>
     );
 
-    // --- CANVAS ECG MONITOR ---
     const ECGMonitor = ({ rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology = 'normal', isCPR = false, className = '', rhythmLabel }) => {
         const canvasRef = useRef(null);
         const [width, setWidth] = useState(0);
 
-        // Waveform Generators
         const getECGValue = (t, type) => {
             let y = 0;
-            // Add CPR Artifact
             if (isCPR) {
                 y += Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
-                return y; // Override underlying rhythm mostly
+                return y; 
             }
 
             const pWave = (t) => 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
@@ -126,22 +119,21 @@
                 case 'Sinus Rhythm': return pWave(t) + qrsComplex(t) + tWave(t);
                 case 'Sinus Tachycardia': return pWave(t) + qrsComplex(t) + tWave(t);
                 case 'Sinus Bradycardia': return pWave(t) + qrsComplex(t) + tWave(t);
-                case 'AF': return (Math.random() * 2) + qrsComplex(t) + (tWave(t) * 0.5); // Irregular baseline
-                case 'VT': return 35 * Math.sin(t * 20); // Large sine-ish
-                case 'VF': return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5); // Chaotic
-                case 'Asystole': return (Math.random() - 0.5) * 1; // Flatline noise
-                case 'SVT': return qrsComplex(t) + tWave(t); // Fast, narrow, no P
-                case 'PEA': return pWave(t) + qrsComplex(t) + tWave(t); // Looks normal
-                case '1st Deg Heart Block': return pWave(t - 0.1) + qrsComplex(t) + tWave(t); // Prolonged PR
-                case 'Complete Heart Block': return pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t); // Dissociation
-                case 'Atrial Flutter': return (Math.sin(t * 30) * 5) + qrsComplex(t); // Sawtooth
+                case 'AF': return (Math.random() * 2) + qrsComplex(t) + (tWave(t) * 0.5); 
+                case 'VT': return 35 * Math.sin(t * 20); 
+                case 'VF': return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5); 
+                case 'Asystole': return (Math.random() - 0.5) * 1; 
+                case 'SVT': return qrsComplex(t) + tWave(t); 
+                case 'PEA': return pWave(t) + qrsComplex(t) + tWave(t); 
+                case '1st Deg Heart Block': return pWave(t - 0.1) + qrsComplex(t) + tWave(t); 
+                case 'Complete Heart Block': return pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t); 
+                case 'Atrial Flutter': return (Math.sin(t * 30) * 5) + qrsComplex(t); 
                 default: return 0;
             }
         };
 
         const getSPO2Value = (t) => {
             if (spO2 < 10) return 0;
-            // Dicrotic notch shape
             let val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 20 : Math.sin(t * Math.PI * 2) * 5;
             val += Math.sin((t - 0.1) * Math.PI * 2 * 2) * 5; 
             return val;
@@ -150,11 +142,9 @@
         const getRespValue = (t) => Math.sin(t * Math.PI * 2) * 15;
         
         const getCO2Value = (t) => {
-            // Capnography Square Wave
-            // Rise time 0-0.1, Plateau 0.1-0.5, Fall 0.5-0.6, Baseline 0.6-1.0
             if (t < 0.1) return (t / 0.1) * 20;
             if (t < 0.5) {
-                if (co2Pathology === 'bronchospastic') return 20 + ((t - 0.1) / 0.4) * 5; // Shark fin
+                if (co2Pathology === 'bronchospastic') return 20 + ((t - 0.1) / 0.4) * 5; 
                 return 20;
             }
             if (t < 0.6) return 20 - ((t - 0.5) / 0.1) * 20;
@@ -162,9 +152,8 @@
         };
         
         const getArtValue = (t) => {
-            // Sharp upstroke, dicrotic notch
             let val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 25 : Math.sin(t * Math.PI * 2) * 5;
-            if (t > 0.3 && t < 0.5) val += 5; // Notch
+            if (t > 0.3 && t < 0.5) val += 5; 
             return val;
         };
 
@@ -176,10 +165,9 @@
             let animationFrameId;
             let time = 0;
             let xPos = 0;
-            const speed = 2; // Pixels per frame
+            const speed = 2; 
 
-            // Buffers to store path history for scrolling/wiping effect
-            // Simplified: Draw wipe
+            let lastY = { ecg: null, second: null, resp: null, co2: null };
             
             const render = () => {
                 if (!canvas.parentElement) return;
@@ -189,84 +177,76 @@
                     canvas.width = newWidth;
                     canvas.height = newHeight;
                     setWidth(newWidth);
-                    // Clear on resize
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, newWidth, newHeight);
                 }
 
                 if (isPaused) return;
 
-                // Wiping bar
                 ctx.fillStyle = 'rgba(0,0,0,1)';
-                ctx.fillRect(xPos, 0, 10, canvas.height); // Erase ahead
+                ctx.fillRect(xPos, 0, 10, canvas.height); 
 
                 const traceHeight = canvas.height / (showTraces ? (showEtco2 ? 4 : 3) : 1);
                 
-                // 1. ECG Trace (Top)
                 let ecgFreq = (hr > 0 ? hr : 60) / 60;
-                if (rhythmType === 'VF') ecgFreq = 4; // Fast chaos
+                if (rhythmType === 'VF') ecgFreq = 4; 
                 if (rhythmType === 'Asystole') ecgFreq = 0.1;
 
-                // Cycle calculation
                 const cycleT = (time * ecgFreq) % 1;
                 const ecgY = (traceHeight / 2) - getECGValue(cycleT, rhythmType) * (rhythmType === 'VF' ? 0.5 : 1);
                 
-                ctx.strokeStyle = '#22c55e'; // Green
+                ctx.strokeStyle = '#22c55e'; 
                 ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.moveTo(xPos - speed, (window.lastEcgY || ecgY));
+                ctx.moveTo(xPos - speed, (lastY.ecg !== null ? lastY.ecg : ecgY));
                 ctx.lineTo(xPos, ecgY);
                 ctx.stroke();
-                window.lastEcgY = ecgY;
+                lastY.ecg = ecgY;
 
                 if (showTraces) {
-                    // 2. SpO2 or Art Line (Middle 1)
                     const secondTraceYBase = traceHeight * 1.5;
                     let secondTraceY = secondTraceYBase;
                     
                     if (showArt) {
-                         const artCycle = (time * ecgFreq) % 1; // Sync with heart
+                         const artCycle = (time * ecgFreq) % 1; 
                          secondTraceY = secondTraceYBase - getArtValue(artCycle);
-                         ctx.strokeStyle = '#ef4444'; // Red for Art
+                         ctx.strokeStyle = '#ef4444'; 
                     } else {
-                         const spo2Cycle = (time * ecgFreq) % 1; // Sync with heart
+                         const spo2Cycle = (time * ecgFreq) % 1; 
                          secondTraceY = secondTraceYBase - getSPO2Value(spo2Cycle);
-                         ctx.strokeStyle = '#3b82f6'; // Blue for SpO2
+                         ctx.strokeStyle = '#3b82f6'; 
                     }
 
                     ctx.beginPath();
-                    ctx.moveTo(xPos - speed, (window.lastSecondY || secondTraceY));
+                    ctx.moveTo(xPos - speed, (lastY.second !== null ? lastY.second : secondTraceY));
                     ctx.lineTo(xPos, secondTraceY);
                     ctx.stroke();
-                    window.lastSecondY = secondTraceY;
+                    lastY.second = secondTraceY;
 
-                    // 3. Resp (Middle 2)
                     const respFreq = (rr > 0 ? rr : 12) / 60;
                     const respCycle = (time * respFreq) % 1;
                     const respY = (traceHeight * 2.5) - getRespValue(respCycle);
                     
-                    ctx.strokeStyle = '#eab308'; // Yellow
+                    ctx.strokeStyle = '#eab308'; 
                     ctx.beginPath();
-                    ctx.moveTo(xPos - speed, (window.lastRespY || respY));
+                    ctx.moveTo(xPos - speed, (lastY.resp !== null ? lastY.resp : respY));
                     ctx.lineTo(xPos, respY);
                     ctx.stroke();
-                    window.lastRespY = respY;
+                    lastY.resp = respY;
                     
-                    // 4. ETCO2 (Bottom - Optional)
                     if (showEtco2) {
                         const co2Freq = (rr > 0 ? rr : 12) / 60;
                         const co2Cycle = (time * co2Freq) % 1;
-                        // Phase shift CO2 to be opposite inspiration roughly
                         const shiftedCycle = (co2Cycle + 0.5) % 1; 
                         const co2Y = (traceHeight * 3.8) - getCO2Value(shiftedCycle);
                         
-                        ctx.strokeStyle = '#a855f7'; // Purple
-                        ctx.lineWidth = 2; // Thicker
+                        ctx.strokeStyle = '#a855f7'; 
+                        ctx.lineWidth = 2; 
                         ctx.beginPath();
-                        ctx.moveTo(xPos - speed, (window.lastCo2Y || co2Y));
-                        ctx.lineTo(xPos, co2Y); // Fill logic would be complex in this wipe approach, sticking to line
+                        ctx.moveTo(xPos - speed, (lastY.co2 !== null ? lastY.co2 : co2Y));
+                        ctx.lineTo(xPos, co2Y); 
                         ctx.stroke();
-                        window.lastCo2Y = co2Y;
+                        lastY.co2 = co2Y;
                     }
                 }
 
@@ -275,7 +255,7 @@
                     xPos = 0;
                 }
                 
-                time += 0.016; // 60fps approx
+                time += 0.016; 
                 animationFrameId = requestAnimationFrame(render);
             };
             
@@ -297,7 +277,6 @@
         );
     };
 
-    // --- VITAL DISPLAY TILE ---
     const VitalDisplay = ({ label, value, value2, unit, alert, prev, visible, onClick, trend, isMonitor, hideTrends, isNIBP, lastNIBP }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
@@ -316,7 +295,6 @@
         const trendIcon = trend ? (trend.progress > 0 ? (value > (prev || value) ? '↑' : '↓') : '') : '';
         const isChanging = prev !== undefined && Math.abs(prev - value) > 0.5;
 
-        // Specialized NIBP Tile for Monitor
         if (isNIBP && isMonitor) {
             return (
                 <div onClick={onClick} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
