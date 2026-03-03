@@ -172,6 +172,15 @@
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
 
+        const getGridCols = () => {
+            let count = 4;
+            if (hasArtLine) count++;
+            if (etco2Enabled) count++;
+            if (count === 4) return 'md:grid-cols-4';
+            if (count === 5) return 'md:grid-cols-5';
+            return 'md:grid-cols-6';
+        };
+
         return (
             <div className={`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
@@ -242,7 +251,7 @@
                         {showMonitorTimer && <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-xl px-2 py-1 rounded border border-slate-700">{Math.floor(state.time/60)}:{(state.time%60).toString().padStart(2,'0')}</div>}
                     </div>
 
-                    <div className="flex-none grid grid-cols-2 md:grid-cols-5 gap-2 h-[25vh] md:h-[28vh]">
+                    <div className={`flex-none grid grid-cols-2 ${getGridCols()} gap-2 h-[25vh] md:h-[28vh]`}>
                         <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         
                         <div className="relative h-full">
@@ -255,14 +264,10 @@
                             )}
                         </div>
 
-                        {hasArtLine ? (
-                             <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
-                        ) : (
-                             <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
-                        )}
+                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
 
                         {hasArtLine && (
-                             <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                            <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
                         )}
 
                         <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
