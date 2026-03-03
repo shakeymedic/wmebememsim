@@ -188,7 +188,7 @@
             let xPos = 0;
             const speed = 2; 
 
-            let lastY = { ecg: null, second: null, resp: null, co2: null };
+            let lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null };
             
             const render = () => {
                 if (!canvas.parentElement) return;
@@ -207,14 +207,28 @@
                 ctx.fillStyle = 'rgba(0,0,0,1)';
                 ctx.fillRect(xPos, 0, 10, canvas.height); 
 
-                const traceHeight = canvas.height / (showTraces ? (showEtco2 ? 4 : 3) : 1);
+                let numTraces = 1;
+                if (showTraces) {
+                    numTraces = 3;
+                    if (showArt) numTraces++;
+                    if (showEtco2) numTraces++;
+                }
+                const traceHeight = canvas.height / numTraces;
+                let traceIdx = 0;
+
+                const getBaseY = () => {
+                    const y = traceHeight * (traceIdx + 0.5);
+                    traceIdx++;
+                    return y;
+                };
                 
                 let ecgFreq = (hr > 0 ? hr : 60) / 60;
                 if (rhythmType === 'VF') ecgFreq = 4; 
                 if (rhythmType === 'Asystole') ecgFreq = 0.1;
 
                 const cycleT = (time * ecgFreq) % 1;
-                const ecgY = (traceHeight / 2) - getECGValue(cycleT, rhythmType) * (rhythmType === 'VF' ? 0.5 : 1);
+                const ecgBaseY = getBaseY();
+                const ecgY = ecgBaseY - getECGValue(cycleT, rhythmType) * (rhythmType === 'VF' ? 0.5 : 1);
                 
                 ctx.strokeStyle = '#22c55e'; 
                 ctx.lineWidth = 2;
@@ -225,28 +239,34 @@
                 lastY.ecg = ecgY;
 
                 if (showTraces) {
-                    const secondTraceYBase = traceHeight * 1.5;
-                    let secondTraceY = secondTraceYBase;
+                    const spo2BaseY = getBaseY();
+                    const spo2Cycle = (time * ecgFreq) % 1; 
+                    const spo2Y = spo2BaseY - getSPO2Value(spo2Cycle);
                     
+                    ctx.strokeStyle = '#3b82f6'; 
+                    ctx.beginPath();
+                    ctx.moveTo(xPos - speed, (lastY.spo2 !== null ? lastY.spo2 : spo2Y));
+                    ctx.lineTo(xPos, spo2Y);
+                    ctx.stroke();
+                    lastY.spo2 = spo2Y;
+
                     if (showArt) {
-                         const artCycle = (time * ecgFreq) % 1; 
-                         secondTraceY = secondTraceYBase - getArtValue(artCycle);
-                         ctx.strokeStyle = '#ef4444'; 
-                    } else {
-                         const spo2Cycle = (time * ecgFreq) % 1; 
-                         secondTraceY = secondTraceYBase - getSPO2Value(spo2Cycle);
-                         ctx.strokeStyle = '#3b82f6'; 
+                        const artBaseY = getBaseY();
+                        const artCycle = (time * ecgFreq) % 1; 
+                        const artY = artBaseY - getArtValue(artCycle);
+
+                        ctx.strokeStyle = '#ef4444'; 
+                        ctx.beginPath();
+                        ctx.moveTo(xPos - speed, (lastY.art !== null ? lastY.art : artY));
+                        ctx.lineTo(xPos, artY);
+                        ctx.stroke();
+                        lastY.art = artY;
                     }
 
-                    ctx.beginPath();
-                    ctx.moveTo(xPos - speed, (lastY.second !== null ? lastY.second : secondTraceY));
-                    ctx.lineTo(xPos, secondTraceY);
-                    ctx.stroke();
-                    lastY.second = secondTraceY;
-
+                    const respBaseY = getBaseY();
                     const respFreq = (rr > 0 ? rr : 12) / 60;
                     const respCycle = (time * respFreq) % 1;
-                    const respY = (traceHeight * 2.5) - getRespValue(respCycle);
+                    const respY = respBaseY - getRespValue(respCycle);
                     
                     ctx.strokeStyle = '#eab308'; 
                     ctx.beginPath();
@@ -256,13 +276,13 @@
                     lastY.resp = respY;
                     
                     if (showEtco2) {
+                        const co2BaseY = getBaseY();
                         const co2Freq = (rr > 0 ? rr : 12) / 60;
                         const co2Cycle = (time * co2Freq) % 1;
                         const shiftedCycle = (co2Cycle + 0.5) % 1; 
-                        const co2Y = (traceHeight * 3.8) - getCO2Value(shiftedCycle);
+                        const co2Y = co2BaseY - getCO2Value(shiftedCycle);
                         
                         ctx.strokeStyle = '#a855f7'; 
-                        ctx.lineWidth = 2; 
                         ctx.beginPath();
                         ctx.moveTo(xPos - speed, (lastY.co2 !== null ? lastY.co2 : co2Y));
                         ctx.lineTo(xPos, co2Y); 
@@ -284,14 +304,23 @@
             return () => cancelAnimationFrame(animationFrameId);
         }, [rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology, isCPR]);
 
+        let numTraces = 1;
+        if (showTraces) {
+            numTraces = 3;
+            if (showArt) numTraces++;
+            if (showEtco2) numTraces++;
+        }
+
+        const getTop = (idx) => `calc(${(100 / numTraces) * idx}% + 4px)`;
+
         return (
             <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
-                <div className="absolute top-2 left-2 text-green-500 font-mono text-xs font-bold">{rhythmLabel || "LEAD II"}</div>
-                {showTraces && !showArt && <div className="absolute top-[33%] left-2 text-blue-500 font-mono text-xs font-bold">PLETH</div>}
-                {showTraces && showArt && <div className="absolute top-[33%] left-2 text-red-500 font-mono text-xs font-bold">ART</div>}
-                {showTraces && <div className="absolute top-[66%] left-2 text-yellow-500 font-mono text-xs font-bold">RESP</div>}
-                {showTraces && showEtco2 && <div className="absolute bottom-2 left-2 text-purple-500 font-mono text-xs font-bold">CO2</div>}
+                <div className="absolute left-2 text-green-500 font-mono text-xs font-bold" style={{ top: '4px' }}>{rhythmLabel || "LEAD II"}</div>
+                {showTraces && <div className="absolute left-2 text-blue-500 font-mono text-xs font-bold" style={{ top: getTop(1) }}>PLETH</div>}
+                {showTraces && showArt && <div className="absolute left-2 text-red-500 font-mono text-xs font-bold" style={{ top: getTop(2) }}>ART</div>}
+                {showTraces && <div className="absolute left-2 text-yellow-500 font-mono text-xs font-bold" style={{ top: getTop(showArt ? 3 : 2) }}>RESP</div>}
+                {showTraces && showEtco2 && <div className="absolute left-2 text-purple-500 font-mono text-xs font-bold" style={{ top: getTop(showArt ? 4 : 3) }}>CO2</div>}
                 {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR DETECTED</div>}
             </div>
         );
