@@ -19,6 +19,7 @@
 
     const initialCoreState = {
         time: 0, cycleTimer: 0, isRunning: false, rhythm: "Sinus Rhythm",
+        monitorTimer: { visible: false, active: false, time: 0 },
         flash: null, activeInterventions: new Set(), interventionCounts: {},
         activeDurations: {}, processedEvents: new Set(), isMuted: false,
         etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
@@ -29,7 +30,7 @@
         waveformGain: 1.0, noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
         icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
-        lastUpdate: 0, isOffline: false, showWetflag: true, showMonitorTimer: false
+        lastUpdate: 0, isOffline: false, showWetflag: true
     };
 
     const formatVital = (key, val) => {
@@ -174,7 +175,17 @@
                 if (cs && cs.scenario && cs.scenario.deterioration && cs.scenario.deterioration.type === 'neuro' && state.isRunning) {
                     if (state.time % 10 === 0) currentICP += 0.1; 
                 }
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP };
+                
+                let newMonitorTimer = { ...state.monitorTimer };
+                if (newMonitorTimer.active) { newMonitorTimer.time += 1; }
+
+                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer };
+            
+            case 'TOGGLE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, visible: !state.monitorTimer.visible } };
+            case 'START_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: true } };
+            case 'PAUSE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: false } };
+            case 'RESET_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, time: 0 } };
+            
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
@@ -191,7 +202,7 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, showMonitorTimer: action.payload.showMonitorTimer !== undefined ? action.payload.showMonitorTimer : false };
+            case 'SYNC_FROM_MASTER': return { ...state, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -215,7 +226,6 @@
             case 'UPDATE_AUDIO_LOOPS': return { ...state, activeLoops: action.payload };
             case 'COMPLETE_OBJECTIVE': const newObjs = new Set(state.completedObjectives); newObjs.add(action.payload); return { ...state, completedObjectives: newObjs };
             case 'SET_WETFLAG_VISIBILITY': return { ...state, showWetflag: action.payload };
-            case 'TOGGLE_MONITOR_TIMER': return { ...state, showMonitorTimer: !state.showMonitorTimer };
             default: return state;
         }
     };
@@ -355,6 +365,7 @@
             const payload = { 
                 vitals: state.vitals, rhythm: state.rhythm, cprInProgress: state.cprInProgress, 
                 etco2Enabled: state.etco2Enabled, flash: state.flash, cycleTimer: state.cycleTimer, 
+                monitorTimer: state.monitorTimer,
                 scenarioTitle: state.scenario.title, patientName: state.scenario.patientName,
                 patientAge: state.scenario.patientAge, sex: state.scenario.sex,
                 ageRange: state.scenario.ageRange, wetflag: state.scenario.wetflag || null,
@@ -371,7 +382,7 @@
                 monitorPopup: state.monitorPopup, waveformGain: state.waveformGain,
                 noise: state.noise, notification: state.notification,
                 remotePacerState: state.remotePacerState, pacingThreshold: state.pacingThreshold,
-                showWetflag: state.showWetflag, showMonitorTimer: state.showMonitorTimer
+                showWetflag: state.showWetflag
             };
 
             const diff = {};
