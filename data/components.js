@@ -351,11 +351,11 @@
                         <span className="text-xs text-slate-400">{unit}</span>
                      </div>
                      <div className="flex items-end justify-center gap-1 my-1">
-                         <span className={`text-4xl md:text-5xl font-mono font-bold leading-none ${color}`}>{value || '--'}</span>
-                         <span className="text-xl text-slate-500 font-bold mb-1">/</span>
-                         <span className={`text-2xl md:text-3xl font-mono font-bold leading-none ${color}`}>{value2 || '--'}</span>
+                         <span className={`text-5xl md:text-6xl lg:text-7xl font-mono font-bold leading-none ${color}`}>{value || '--'}</span>
+                         <span className="text-2xl text-slate-500 font-bold mb-1">/</span>
+                         <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{value2 || '--'}</span>
                      </div>
-                     <div className="text-right text-[10px] text-slate-500 uppercase font-mono">
+                     <div className="text-right text-[10px] text-slate-500 uppercase font-mono mt-auto">
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
                 </div>
@@ -369,11 +369,11 @@
                     <span className="text-[10px] md:text-xs text-slate-400">{unit}</span>
                 </div>
                 
-                <div className="flex items-baseline justify-center gap-1">
-                    <span className={`text-4xl md:text-5xl font-mono font-bold tracking-tight ${color}`}>
+                <div className="flex items-baseline justify-center gap-1 h-full mt-2">
+                    <span className={`text-5xl md:text-7xl lg:text-8xl font-mono font-bold tracking-tight ${color}`}>
                         {value2 ? `${value}/${value2}` : (value !== null ? value : '--')}
                     </span>
-                    {trendIcon && <span className="text-lg text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
+                    {trendIcon && <span className="text-xl md:text-3xl text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
                 </div>
 
                 {!hideTrends && trend && trend.active && (
