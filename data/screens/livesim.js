@@ -2,19 +2,84 @@
     const { useState, useEffect, useRef } = React;
 
     const PREDEFINED_FINDINGS = {
-        'CT': ['Normal / No acute findings', 'Large Intracranial Haemorrhage', 'Subarachnoid Haemorrhage', 'Large Infarct', 'Mass Effect / Midline Shift'],
-        'X-ray': ['Lung fields clear', 'Large Pneumothorax', 'Right Lower Lobe Consolidation', 'Pulmonary Oedema', 'Widened Mediastinum'],
-        'ECG': ['Normal Sinus Rhythm', 'Anterior STEMI', 'Inferior STEMI', 'Atrial Fibrillation', 'Complete Heart Block'],
-        'VBG': ['Normal', 'Severe Metabolic Acidosis', 'Respiratory Acidosis', 'Hyperkalaemia', 'Lactate > 4.0'],
-        'Urine': ['Normal', 'Leukocytes +++, Nitrites +', 'Blood +++'],
-        'POCUS': ['No free fluid', 'Fluid in Morison\'s pouch', 'Pericardial Effusion / Tamponade', 'Absent lung sliding (Pneumothorax)']
+        'CT': [
+            'Normal Head CT',
+            'Large Subdural Haematoma with midline shift',
+            'Epidural Haematoma',
+            'Subarachnoid Haemorrhage (Fisher Grade 3)',
+            'Large MCA Territory Infarct',
+            'Dense MCA Sign',
+            'Intraparenchymal Haemorrhage',
+            'Basal Skull Fracture',
+            'C-Spine: No acute fracture',
+            'CTPA: Large saddle embolus',
+            'CTPA: Segmental PE',
+            'CT Abdo: Free gas (perforation)',
+            'CT Abdo: Ruptured AAA',
+            'CT Abdo: Acute appendicitis'
+        ],
+        'X-ray': [
+            'Normal CXR',
+            'Large right-sided pneumothorax',
+            'Tension pneumothorax (tracheal deviation)',
+            'Left lower lobe consolidation',
+            'Right upper lobe consolidation',
+            'Bilateral diffuse infiltrates (Pulmonary Oedema)',
+            'Widened mediastinum',
+            'Right neck of femur fracture',
+            'Pelvic ring fracture (open book)',
+            'Distal radius fracture'
+        ],
+        'ECG': [
+            'Normal Sinus Rhythm',
+            'Anterior STEMI (V1-V4 ST elevation)',
+            'Inferior STEMI (II, III, aVF ST elevation)',
+            'Lateral STEMI (I, aVL, V5-V6)',
+            'Atrial Fibrillation (Rapid Ventricular Response)',
+            'SVT (Narrow complex tachycardia)',
+            'Complete Heart Block (3rd Degree)',
+            '1st Degree AV Block',
+            'LBBB (New onset)',
+            'RBBB',
+            'Prolonged QT interval',
+            'Peaked T waves (Hyperkalaemia)',
+            'VT (Broad complex tachycardia)'
+        ],
+        'VBG': [
+            'Normal (pH 7.4, pCO2 5.0, Lactate 1.0)',
+            'Severe Metabolic Acidosis (pH 7.1, Lac 8.0, HCO3 12)',
+            'Respiratory Acidosis (pH 7.2, pCO2 9.0)',
+            'Hyperkalaemia (K+ 7.2)',
+            'Severe DKA (pH 7.0, Glu >30, Ketones 6.0)',
+            'Sepsis pattern (Lac 5.5, BE -8)'
+        ],
+        'Urine': [
+            'Normal',
+            'Leukocytes +++, Nitrites +, Blood + (UTI)',
+            'Blood +++ (Haematuria)',
+            'Ketones +++, Glucose +++ (DKA)',
+            'Protein +++ (Pre-eclampsia/Renal)',
+            'B-hCG Positive (Pregnancy)'
+        ],
+        'POCUS': [
+            'Normal / No free fluid',
+            'FAST: Free fluid in Morison\'s pouch',
+            'FAST: Free fluid in Splenorenal recess',
+            'FAST: Pelvic free fluid',
+            'ECHO: Large Pericardial Effusion / Tamponade',
+            'ECHO: Poor LV function',
+            'ECHO: Dilated Right Ventricle',
+            'LUNG: Absent lung sliding (Pneumothorax)',
+            'LUNG: B-lines bilaterally (Pulmonary Oedema)',
+            'AORTA: AAA > 5.5cm'
+        ]
     };
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP } = sim; 
 
-        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, showMonitorTimer, showWetflag } = state;
+        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, showWetflag } = state;
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -222,7 +287,21 @@
                                      <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">No Monitoring</div>
                                  )}
                                  <button onClick={()=>setShowRhythmModal(true)} className="absolute top-1 right-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded z-30 font-bold uppercase tracking-wider backdrop-blur-sm">Change Rhythm</button>
-                                 <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`absolute top-1 left-1 bg-slate-800/80 hover:bg-slate-700 border ${showMonitorTimer ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded z-30 font-bold uppercase tracking-wider backdrop-blur-sm`}><Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{showMonitorTimer ? 'Hide Timer' : 'Show Timer'}</button>
+                                 <div className="absolute top-1 left-1 flex gap-1 z-30">
+                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800/80 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded font-bold uppercase tracking-wider backdrop-blur-sm`}>
+                                         <Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{state.monitorTimer?.visible ? 'Hide Timer' : 'Show Timer'}
+                                     </button>
+                                     {state.monitorTimer?.visible && (
+                                         <>
+                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800/80 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700 backdrop-blur-sm">
+                                                 {state.monitorTimer?.active ? 'Pause' : 'Start'}
+                                             </button>
+                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800/80 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700 backdrop-blur-sm">
+                                                 Reset
+                                             </button>
+                                         </>
+                                     )}
+                                 </div>
                              </div>
 
                              <div className="grid grid-cols-2 gap-1 p-1 bg-black">
