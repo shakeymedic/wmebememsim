@@ -94,7 +94,7 @@
     const MonitorScreen = ({ sim }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag, showMonitorTimer } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag } = state;
         const hasMonitoring = activeInterventions.has('Obs'); 
         const hasArtLine = activeInterventions.has('ArtLine');
         
@@ -248,7 +248,11 @@
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>
                         )}
-                        {showMonitorTimer && <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-xl px-2 py-1 rounded border border-slate-700">{Math.floor(state.time/60)}:{(state.time%60).toString().padStart(2,'0')}</div>}
+                        {state.monitorTimer?.visible && (
+                            <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-4xl md:text-6xl px-4 py-2 rounded border border-slate-700 shadow-2xl">
+                                {Math.floor(state.monitorTimer.time/60).toString().padStart(2,'0')}:{(state.monitorTimer.time%60).toString().padStart(2,'0')}
+                            </div>
+                        )}
                     </div>
 
                     <div className={`flex-none grid grid-cols-2 ${getGridCols()} gap-2 h-[25vh] md:h-[28vh]`}>
