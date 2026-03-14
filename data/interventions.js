@@ -109,7 +109,7 @@ window.INTERVENTIONS = {
 
     // --- PROCEDURES ---
     'Obs': { label: 'Attach Monitoring', effect: {}, category: 'Procedures', log: 'Monitoring applied. Vitals now visible.', type: 'continuous', duration: 5 },
-    'ArtLine': { label: 'Arterial Line', effect: {}, category: 'Procedures', log: 'Arterial line inserted.', type: 'continuous', duration: 120, requires: ['IV Access'] },
+    'ArtLine': { label: 'Arterial Line', effect: {}, category: 'Procedures', log: 'Arterial line inserted.', type: 'continuous', duration: 120 },
     'CVC': { label: 'Central Line', effect: {}, category: 'Procedures', log: 'Central venous catheter inserted.', type: 'continuous', duration: 180, requires: ['IV Access'] },
     'Catheter': { label: 'Urinary Catheter', effect: {}, category: 'Procedures', log: 'Urinary catheter inserted.', type: 'continuous', duration: 60 },
     'NGTube': { label: 'NG Tube', effect: {}, category: 'Procedures', log: 'Nasogastric tube inserted.', type: 'continuous', duration: 60 },
