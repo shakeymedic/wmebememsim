@@ -190,6 +190,19 @@ window.processScenarios = () => {
     const scenarios = window.RAW_SCENARIOS || [];
     const { generateUrine, generatePocus, generateCT } = window; // Ensure these are available
 
+    // ECG rhythm name normalisation — maps shorthand/non-canonical names to the strings
+    // that components.js precomputes waveforms for.
+    const ECG_RHYTHM_NORM = {
+        'Sinus Tachy':   'Sinus Tachycardia',
+        'Sinus Brady':   'Sinus Bradycardia',
+        '1st Deg Block': '1st Deg Heart Block',
+        '3rd Deg Block': 'Complete Heart Block',
+        'STEMI':         'Sinus Tachycardia',  // STEMI ECG changes shown via 12-lead canvas, not waveform type
+        'NSR':           'Sinus Rhythm',
+        'Normal Sinus':  'Sinus Rhythm',
+    };
+    const normEcgType = (t) => ECG_RHYTHM_NORM[t] || t;
+
     return scenarios.map(s => {
         let kit = ['Monitoring', 'IV Access'];
         let links = [];
@@ -304,13 +317,21 @@ window.processScenarios = () => {
             deteriorated.vbg = { ...s.vbg, pH: worsenPh(s.vbg.pH), Lac: s.vbg.Lac + 2 };
         }
 
+        // Normalise the top-level ecg.type so state.rhythm starts with a canonical value.
+        // The original type is preserved inside investigations.ecg for 12-lead ST-elevation logic.
+        const normalisedEcg = s.ecg
+            ? { ...s.ecg, type: normEcgType(s.ecg.type) }
+            : { type: 'Sinus Rhythm', findings: 'Normal Sinus Rhythm' };
+
         return {
             ...s,
+            ecg: normalisedEcg,
+            learningObjectives: s.instructorBrief?.learningObjectives || [],
             recommendedActions: safeRecommended, 
             stabilisers: safeStabilisers,       
             equipment: s.instructorBrief.equipment || kit, 
             learningLinks: s.learningLinks || links,
-            investigations: investigations, // ATTACH GENERATED INVESTIGATIONS
+            investigations: investigations, // ATTACH GENERATED INVESTIGATIONS (ecg preserved with original type)
             evolution: { improved, deteriorated }
         };
     });

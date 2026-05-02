@@ -75,13 +75,25 @@
         const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : 100;
 
         const generateReport = () => {
-            const text = `SIMULATION REPORT - ${state.scenario.title}\nDate: ${new Date().toLocaleString()}\nStudent Score: ${score}%\n\nLOG:\n` + 
-                         state.log.map(l => `[${l.simTime}] ${l.msg}`).join('\n');
-            const blob = new Blob([text], { type: 'text/plain' });
+            const objRows = (state.scenario.learningObjectives || []).map(obj => {
+                const met = state.completedObjectives.has(obj);
+                return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${obj}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`;
+            }).join('');
+            const logRows = state.log.map(l => {
+                const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1';
+                return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${l.simTime}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${l.msg}</td></tr>`;
+            }).join('');
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${state.scenario.title}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body>
+<h1>${state.scenario.title}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${new Date().toLocaleString()}</h2>
+<div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${score}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${objectivesMet} / ${objectivesTotal}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${Math.floor(state.time/60)}m ${state.time%60}s</div></div></div></div>
+<div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>
+<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div>
+</body></html>`;
+            const blob = new Blob([html], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Debrief_${Date.now()}.txt`;
+            a.download = `Debrief_${Date.now()}.html`;
             a.click();
         };
 

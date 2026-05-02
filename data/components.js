@@ -91,7 +91,8 @@
             'flask-conical': '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><line x1="8.5" y1="2" x2="15.5" y2="2"></line><line x1="8.5" y1="14" x2="15.5" y2="14"></line>',
             'waves': '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>',
             'check-square': '<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
-            'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>'
+            'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>',
+            'wifi': '<path d="M5 12.55a11 11 0 0 1 14.08 0"></path><path d="M1.42 9a16 16 0 0 1 21.16 0"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>'
         };
 
         return (
@@ -148,13 +149,22 @@
         const canvasRef = useRef(null);
         const [width, setWidth] = useState(0);
 
+        // Safety normalisation — maps legacy/shorthand rhythm names to canonical precomputed keys
+        const ECG_NORM = {
+            'Sinus Tachy': 'Sinus Tachycardia', 'Sinus Brady': 'Sinus Bradycardia',
+            '1st Deg Block': '1st Deg Heart Block', '3rd Deg Block': 'Complete Heart Block',
+            'STEMI': 'Sinus Tachycardia', 'NSR': 'Sinus Rhythm', 'Normal Sinus': 'Sinus Rhythm',
+            'CHB': 'Complete Heart Block', 'chb': 'Complete Heart Block',
+            'sinus_tach': 'Sinus Tachycardia', 'sinus_brady': 'Sinus Bradycardia', 'nsr': 'Sinus Rhythm',
+        };
         const getECGValue = (t, type) => {
+            const normType = ECG_NORM[type] || type;
             if (isCPR) return Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
-            if (type === 'VF') return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5);
-            if (type === 'Asystole') return (Math.random() - 0.5) * 1;
+            if (normType === 'VF') return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5);
+            if (normType === 'Asystole') return (Math.random() - 0.5) * 1;
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
-            if (type === 'AF') return (Math.random() * 2) + (precomputed.ecg['SVT'] ? precomputed.ecg['SVT'][idx] : 0);
-            return precomputed.ecg[type] ? precomputed.ecg[type][idx] : 0;
+            if (normType === 'AF') return (Math.random() * 2) + (precomputed.ecg['SVT'] ? precomputed.ecg['SVT'][idx] : 0);
+            return precomputed.ecg[normType] ? precomputed.ecg[normType][idx] : precomputed.ecg['Sinus Rhythm'][idx];
         };
 
         const getSPO2Value = (t) => {

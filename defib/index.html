@@ -118,7 +118,7 @@
 .screen.screen-off{background:#1a1a1a}
 .hidden { display: none !important; }
 #paperOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-#paperImage { max-width: 100%; max-height: 80%; border: 5px solid white; box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+#paperCanvas { max-width: 100%; max-height: 80%; border: 5px solid white; box-shadow: 0 0 30px rgba(255,255,255,0.2); background: white; }
 .side-btn.active-ghost, .btn-analyze.active-ghost, .btn-charge.active-ghost, .btn-sync.active-ghost, .btn-shock.active-ghost { background-color: #3498db !important; border-color: #2980b9 !important; transform: scale(0.95); box-shadow: 0 0 15px rgba(52, 152, 219, 0.8); }
 button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 @media (max-height: 800px) { .zoll-device { transform: scale(0.9); transform-origin: top center; margin-bottom: -50px; } .ecg-canvas-container { height: 220px; } .btn-shock { width: 100px; height: 100px; font-size: 16px; } .btn-shock::before { font-size: 40px; } }
@@ -133,7 +133,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         <div class="device-screen-section">
             <div class="screen">
                 <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="WMEBEM Logo"></div>
-                <div id="paperOverlay" class="hidden" onclick="this.classList.add('hidden')"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><img id="paperImage" src="" alt="12 Lead ECG"><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
+                <div id="paperOverlay" class="hidden" onclick="this.classList.add('hidden')"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
                 <div class="screen-header">
                     <div class="screen-info" id="leadInfo">LEAD: II</div><div class="screen-info" id="syncIndicator"></div>
                     <div class="screen-info" id="modeInfo">MODE: MONITOR</div><div class="screen-info" id="timeInfo">00:00:00</div>
@@ -204,6 +204,70 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
 
         const mapRhythm = (r) => rhythmMap[r] || 'nsr';
 
+        function render12LeadDefib(canvas, rhythm, scenario) {
+            if (!canvas) return;
+            try {
+                const ctx = canvas.getContext('2d');
+                const w = canvas.width;
+                const h = canvas.height;
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, w, h);
+                ctx.strokeStyle = '#ffcccc';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for(let x=0;x<=w;x+=10){ctx.moveTo(x,0);ctx.lineTo(x,h);}
+                for(let y=0;y<=h;y+=10){ctx.moveTo(0,y);ctx.lineTo(w,y);}
+                ctx.stroke();
+                ctx.strokeStyle = '#ff9999';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                for(let x=0;x<=w;x+=50){ctx.moveTo(x,0);ctx.lineTo(x,h);}
+                for(let y=0;y<=h;y+=50){ctx.moveTo(0,y);ctx.lineTo(w,y);}
+                ctx.stroke();
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 1.2;
+                ctx.lineJoin = 'round';
+                const leads = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'];
+                let stElev = 0;
+                const ecgType = scenario && (scenario.ecg?.type || scenario.investigations?.ecg?.type || '');
+                if (rhythm === 'STEMI' || ecgType === 'STEMI') stElev = 1.5;
+                if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2;
+                const getComplex = (t, leadIndex) => {
+                    let y = 0;
+                    y -= 5 * Math.exp(-Math.pow(t-0.1,2)/0.002);
+                    y += 20 * Math.exp(-Math.pow(t-0.22,2)/0.001);
+                    y -= 8 * Math.exp(-Math.pow(t-0.24,2)/0.001);
+                    y -= 8 * Math.exp(-Math.pow(t-0.45,2)/0.005);
+                    if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
+                        if (t > 0.26 && t < 0.45) y -= stElev * 10;
+                    }
+                    return y;
+                };
+                const colW = w / 4;
+                const rowH = h / 3;
+                leads.forEach((lead, i) => {
+                    const col = Math.floor(i / 3);
+                    const row = i % 3;
+                    const originX = col * colW;
+                    const originY = row * rowH + (rowH / 2);
+                    ctx.fillStyle = 'black';
+                    ctx.font = '12px sans-serif';
+                    ctx.fillText(lead, originX + 10, originY - 30);
+                    ctx.beginPath();
+                    for (let x = 0; x < colW; x++) {
+                        const t = (x % 200) / 200;
+                        const y = getComplex(t, i);
+                        if (x === 0) ctx.moveTo(originX + x, originY + y);
+                        else ctx.lineTo(originX + x, originY + y);
+                    }
+                    ctx.stroke();
+                });
+                ctx.fillStyle = 'black';
+                ctx.font = '14px monospace';
+                ctx.fillText('ID: ' + (scenario ? scenario.patientName : 'UNKNOWN') + '   DATE: ' + new Date().toLocaleDateString() + '   25mm/s', 20, h - 20);
+            } catch(e) { console.error('12-Lead Defib Render Error', e); }
+        }
+
         simChannel.onmessage = (event) => {
             const data = event.data;
             if (data.type === 'SYNC_VITALS') {
@@ -233,9 +297,11 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 updateDisplays();
             } else if (data.type === 'SHOW_12LEAD') {
                 const overlay = document.getElementById('paperOverlay');
-                const img = document.getElementById('paperImage');
-                if(overlay && img && data.payload && typeof data.payload === 'string') {
-                    img.src = data.payload; 
+                const canvas = document.getElementById('paperCanvas');
+                if (overlay && canvas && data.payload) {
+                    const rhythm = typeof data.payload === 'string' ? data.payload : (data.payload.rhythm || 'Sinus Rhythm');
+                    const scenario = typeof data.payload === 'object' ? data.payload.scenario : null;
+                    render12LeadDefib(canvas, rhythm, scenario);
                     overlay.classList.remove('hidden');
                 }
             } else if (data.type === 'GHOST_PRESS') {

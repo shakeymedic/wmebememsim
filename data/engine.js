@@ -522,9 +522,35 @@
             
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
-            if(state.scenario.title.includes('Sepsis') && key === 'Antibiotics') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Antibiotics' });
-            if(state.scenario.title.includes('Sepsis') && key === 'Fluids') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Fluids' });
-            if(state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline') dispatch({ type: 'COMPLETE_OBJECTIVE', payload: 'Adrenaline' });
+            // Generic objective completion — matches intervention key against learning objective text
+            const OBJECTIVE_TRIGGERS = {
+                'Antibiotics':   ['antibio', 'sepsis', 'infection', 'antimicro'],
+                'Fluids':        ['fluid', 'resus', 'bolus', 'iv fluid', 'saline'],
+                'AdrenalineIM':  ['adrenaline', 'anaphyl', 'epinephrine'],
+                'AdrenalineIV':  ['adrenaline', 'cardiac arrest', 'epinephrine'],
+                'Adrenaline':    ['adrenaline', 'anaphyl', 'epinephrine'],
+                'O2':            ['oxygen', 'o2', 'airway'],
+                'Aspirin':       ['aspirin', 'acs', 'stemi', 'nstemi'],
+                'GTN':           ['gtn', 'nitrate', 'acs'],
+                'InsulinInfusion': ['insulin', 'dka', 'glucose'],
+                'InsulinDextrose': ['insulin', 'dka', 'glucose', 'hyperkalaemia', 'hyperkalemia'],
+                'Atropine':      ['atropine', 'bradycardia', 'heart block'],
+                'Lorazepam':     ['lorazepam', 'seizure', 'benzodiazep'],
+                'NaloxoneIV':    ['naloxone', 'opiate', 'opioid'],
+                'Tranexamic':    ['tranexam', 'haemorrhage', 'trauma'],
+                'RSI':           ['rsi', 'intubat', 'airway management'],
+                'ChestDrain':    ['chest drain', 'pneumothorax', 'haemothorax'],
+                'NeedleDecomp':  ['needle', 'pneumothorax', 'tension'],
+            };
+            const triggers = OBJECTIVE_TRIGGERS[key];
+            if (triggers && state.scenario.learningObjectives && state.scenario.learningObjectives.length) {
+                state.scenario.learningObjectives.forEach(obj => {
+                    const objLower = obj.toLowerCase();
+                    if (triggers.some(kw => objLower.includes(kw))) {
+                        dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj });
+                    }
+                });
+            }
 
             if (state.scenario.stabilisers && state.scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (state.scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }

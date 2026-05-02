@@ -42,7 +42,7 @@
             const leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
             
             let stElev = 0; 
-            if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI')) stElev = 1.5;
+            if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI') || (scenario && scenario.investigations?.ecg?.type === 'STEMI')) stElev = 1.5;
             if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2; 
 
             const getComplex = (t, leadIndex) => {
@@ -161,6 +161,8 @@
                                 <span>Glu: <b className={v.Glu > 11 ? "text-red-400" : "text-emerald-400"}>{v.Glu.toFixed(1)}</b></span>
                                 <span>BE: <b>{v.BE.toFixed(1)}</b></span>
                                 <span>HCO3: <b>{v.HCO3.toFixed(1)}</b></span>
+                                {v.Na !== undefined && <span>Na+: <b className={v.Na < 135 || v.Na > 145 ? "text-red-400" : "text-emerald-400"}>{v.Na.toFixed(0)}</b></span>}
+                                {v.Ca !== undefined && <span>Ca²⁺: <b className={v.Ca > 2.6 ? "text-red-400" : "text-emerald-400"}>{v.Ca.toFixed(2)}</b></span>}
                             </div>
                         );
                     }
@@ -241,7 +243,7 @@
                     </div>
                 )}
 
-                <div className="flex-grow flex flex-col p-2 md:p-3 gap-2 h-full relative z-10">
+                <div className={`flex-grow flex flex-col p-2 md:p-3 gap-2 h-full relative z-10 ${isPaeds && showWetflag && scenario?.wetflag ? 'md:pr-52' : ''}`}>
                     <div className="flex-grow relative border border-slate-800 rounded overflow-hidden flex flex-col min-h-0 bg-black">
                         {hasMonitoring ? (
                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />

@@ -21,6 +21,7 @@
         const [buildCat, setBuildCat] = useState("Medical");
         const [buildDesc, setBuildDesc] = useState("A 40-year-old male with chest pain.");
         const [buildPMH, setBuildPMH] = useState("Hypertension");
+        const [buildDhx, setBuildDhx] = useState("Nil");
         const [buildAllergies, setBuildAllergies] = useState("NKDA");
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, rhythm: "Sinus Rhythm" });
 
@@ -43,6 +44,7 @@
             setBuildCat(s.category);
             setBuildDesc(s.patientProfileTemplate.replace('{age}', s.patientAge || 40).replace('{sex}', s.sex || 'Male'));
             setBuildPMH(Array.isArray(s.pmh) ? s.pmh.join(", ") : (s.pmh || ""));
+            setBuildDhx(Array.isArray(s.dhx) ? s.dhx.join(", ") : (s.dhx || "Nil"));
             setBuildAllergies(Array.isArray(s.allergies) ? s.allergies.join(", ") : (s.allergies || "NKDA"));
             setBuildVitals({
                 hr: s.vitalsMod?.hr || s.vitals?.hr || 80,
@@ -80,7 +82,6 @@
                 category: buildCat,
                 ageRange: finalAge < 18 ? "Paediatric" : "Adult",
                 acuity: 'Majors',
-                ageGenerator: () => finalAge,
                 patientAge: finalAge,
                 patientName: finalName,
                 sex: buildSex,
@@ -90,7 +91,7 @@
                 vitalsMod: safeVitals,
                 vitals: safeVitals,
                 pmh: buildPMH.split(',').map(s=>s.trim()),
-                dhx: ["As per history"],
+                dhx: buildDhx.split(',').map(s=>s.trim()),
                 allergies: buildAllergies.split(',').map(s=>s.trim()),
                 instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom Objective"] },
                 vbgClinicalState: "normal",
@@ -278,10 +279,11 @@
                                 <div><label className="text-[10px] text-slate-500 uppercase">Patient Name</label><input type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Sex</label><select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Category</label><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Paediatric</option></select></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Category</label><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Cardiac Arrest</option><option>Toxicology</option><option>Obstetrics &amp; Gynae</option><option>Psychiatric</option><option>Paediatric</option></select></div>
                             </div>
                             <textarea placeholder="Description" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
                             <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            <input type="text" placeholder="Drug History (comma separated)" value={buildDhx} onChange={e=>setBuildDhx(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
                             <input type="text" placeholder="Allergies (comma separated)" value={buildAllergies} onChange={e=>setBuildAllergies(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
                             
                             <h4 className="text-xs font-bold text-slate-500 uppercase mt-2">Initial Observations</h4>

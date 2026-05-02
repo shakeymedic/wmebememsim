@@ -78,22 +78,22 @@ window.calculateWetflag = (age, weightStr) => {
 };
 
 window.generateVbg = (clinicalState = "normal") => {
-    let vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
+    let vbg = { pH: 7.40, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
     vbg.pH += window.getRandomFloat(-0.03, 0.03, 2);
     switch (clinicalState) {
-        case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0, Ketones: 5.8 }; break;
-        case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0, Ketones: 0.5 }; break;
-        case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0, Ketones: 1.2 }; break;
-        case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
-        case "respiratory_acidosis_acute": vbg = { pH: 7.15, pCO2: 9.5, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2, Ketones: 0.2 }; break;
-        case "metabolic_acidosis_severe": vbg = { pH: 6.90, pCO2: 6.0, HCO3: 10, BE: -22, Lac: 12.0, K: 6.5, Glu: 6.0, Ketones: 0.4 }; break;
-        case "metabolic_alkalosis": vbg = { pH: 7.50, pCO2: 5.8, HCO3: 30, BE: 6, Lac: 1.0, K: 3.0, Glu: 5.5, Ketones: 0.2 }; break;
-        case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0, Ketones: 0.2 }; break;
-        case "hyponatremia": vbg = { pH: 7.40, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Na: 115, Glu: 5.5, Ketones: 0.2 }; break;
-        case "gi_bleed": vbg = { pH: 7.32, pCO2: 4.8, HCO3: 20, BE: -4, Lac: 3.5, K: 4.1, Glu: 6.5, Ketones: 1.5 }; break; 
-        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 3.5, Glu: 5.5, Ketones: 0.2 }; break;
-        case "hypothermia": vbg = { pH: 7.30, pCO2: 5.0, HCO3: 22, BE: -2, Lac: 2.5, K: 3.5, Glu: 4.5, Ketones: 0.3 }; break;
-        case "co_poisoning": vbg = { pH: 7.35, pCO2: 5.0, HCO3: 18, BE: -6, Lac: 4.0, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
+        case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, pO2: 4.0, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0, Ketones: 5.8 }; break;
+        case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, pO2: 3.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0, Ketones: 0.5 }; break;
+        case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, pO2: 3.5, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0, Ketones: 1.2 }; break;
+        case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, pO2: 4.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
+        case "respiratory_acidosis_acute": vbg = { pH: 7.15, pCO2: 9.5, pO2: 3.0, HCO3: 24, BE: 0, Lac: 1.5, K: 4.1, Glu: 6.2, Ketones: 0.2 }; break;
+        case "metabolic_acidosis_severe": vbg = { pH: 6.90, pCO2: 6.0, pO2: 3.5, HCO3: 10, BE: -22, Lac: 12.0, K: 6.5, Glu: 6.0, Ketones: 0.4 }; break;
+        case "metabolic_alkalosis": vbg = { pH: 7.50, pCO2: 5.8, pO2: 5.2, HCO3: 30, BE: 6, Lac: 1.0, K: 3.0, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, pO2: 4.8, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0, Ketones: 0.2 }; break;
+        case "hyponatremia": vbg = { pH: 7.40, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Na: 115, Glu: 5.5, Ketones: 0.2 }; break;
+        case "gi_bleed": vbg = { pH: 7.32, pCO2: 4.8, pO2: 4.2, HCO3: 20, BE: -4, Lac: 3.5, K: 4.1, Glu: 6.5, Ketones: 1.5 }; break; 
+        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 3.5, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hypothermia": vbg = { pH: 7.30, pCO2: 5.0, pO2: 4.0, HCO3: 22, BE: -2, Lac: 2.5, K: 3.5, Glu: 4.5, Ketones: 0.3 }; break;
+        case "co_poisoning": vbg = { pH: 7.35, pCO2: 5.0, pO2: 4.5, HCO3: 18, BE: -6, Lac: 4.0, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
         default: break;
     }
     return vbg;

@@ -266,6 +266,7 @@
                         </Button>
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
                         <Button variant="outline" onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank')} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
+                        <Button variant="outline" onClick={() => window.open('defib/index.html', '_blank')} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
                         <div className="font-mono text-2xl font-bold text-white ml-2">{formatTime(time)}</div>
                     </div>
                 </div>
