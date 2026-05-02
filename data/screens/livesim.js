@@ -630,10 +630,10 @@
                                      </div>
                                  )}
 
-                                 {(invModal === 'X-ray' || invModal === 'CT') && scenario.investigationImages && scenario.investigationImages[invModal] && (
+                                 {(invModal === 'X-ray' || invModal === 'CT') && scenario.customImages && scenario.customImages[invModal === 'X-ray' ? 'xray' : 'ct'] && (
                                      <div>
                                          <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Scenario Image</label>
-                                         <a href={scenario.investigationImages[invModal]} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline text-sm break-all">{scenario.investigationImages[invModal]}</a>
+                                         <a href={scenario.customImages[invModal === 'X-ray' ? 'xray' : 'ct']} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline text-sm break-all">{scenario.customImages[invModal === 'X-ray' ? 'xray' : 'ct']}</a>
                                      </div>
                                  )}
 
