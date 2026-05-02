@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZOLL R Series Simulator</title>
+    <title>EM Evidence — Defib Simulator</title>
     <link rel="manifest" href="manifest.json">
     <script>
       if ('serviceWorker' in navigator) {
@@ -129,10 +129,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
 </head>
 <body>
     <div class="zoll-device" id="zollDevice">
-        <img src="images/logo.png" alt="WMEBEM Logo" class="zoll-top-logo">
+        <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
         <div class="device-screen-section">
             <div class="screen">
-                <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="WMEBEM Logo"></div>
+                <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="EM Evidence Logo"></div>
                 <div id="paperOverlay" class="hidden" onclick="this.classList.add('hidden')"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
                 <div class="screen-header">
                     <div class="screen-info" id="leadInfo">LEAD: II</div><div class="screen-info" id="syncIndicator"></div>

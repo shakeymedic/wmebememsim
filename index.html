@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WMEBEM Sim Generator v17.5</title>
+    <title>EM Evidence Sim</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -173,8 +173,10 @@
                     {/* Header */}
                     <header className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
                         <div className="flex items-center gap-3">
-                            <img src="https://iili.io/KGQOvkl.md.png" alt="WMEBEM Logo" className="h-10 object-contain" />
-                            <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Sim Generator</h1>
+                            <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer">
+                                <img src="https://iili.io/KGQOvkl.md.png" alt="EM Evidence Logo" className="h-10 object-contain" />
+                            </a>
+                            <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Evidence Sim</h1>
                         </div>
                         {view !== 'setup' && sessionID && (
                             <div className="flex flex-col items-end">
@@ -216,7 +218,7 @@
 
                     {/* Footer */}
                     <footer className="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-600 flex-shrink-0">
-                        <p>&copy; {new Date().getFullYear()} West Midlands Evidence Based Emergency Medicine</p>
+                        <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-700 hover:text-sky-500">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>
                     </footer>
                 </div>
             );
