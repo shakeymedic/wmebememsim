@@ -386,7 +386,7 @@
                 </div>
                 
                 <div className="flex items-baseline justify-center gap-1 h-full mt-2">
-                    <span className={`text-5xl md:text-7xl lg:text-8xl font-mono font-bold tracking-tight ${color}`}>
+                    <span className={`${value2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl'} font-mono font-bold tracking-tight ${color}`}>
                         {value2 ? `${value}/${value2}` : (value !== null ? value : '--')}
                     </span>
                     {trendIcon && <span className="text-xl md:text-3xl text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
