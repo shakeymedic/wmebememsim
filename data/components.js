@@ -202,11 +202,12 @@
             let animationFrameId;
             let time = 0;
             let xPos = 0;
-            const speed = 2; 
+            let lastTs = null;
+            const SWEEP_SECONDS = 8; // real-monitor sweep: ~8s per full canvas width
 
             let lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null };
             
-            const render = () => {
+            const render = (ts) => {
                 if (!canvas.parentElement) return;
                 const newWidth = canvas.parentElement.clientWidth;
                 const newHeight = canvas.parentElement.clientHeight;
@@ -220,8 +221,14 @@
 
                 if (isPaused) return;
 
+                // Frame-rate-independent timing
+                if (lastTs === null) { lastTs = ts; animationFrameId = requestAnimationFrame(render); return; }
+                const elapsed = Math.min((ts - lastTs) / 1000, 0.05); // seconds, capped to handle tab blur
+                lastTs = ts;
+                const speed = (canvas.width / SWEEP_SECONDS) * elapsed;
+
                 ctx.fillStyle = 'rgba(0,0,0,1)';
-                ctx.fillRect(xPos, 0, 10, canvas.height); 
+                ctx.fillRect(xPos, 0, 12, canvas.height); 
 
                 let numTraces = 1;
                 if (showTraces) {
@@ -309,10 +316,11 @@
 
                 xPos += speed;
                 if (xPos >= canvas.width) {
-                    xPos = 0;
+                    xPos -= canvas.width;
+                    lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null }; // reset to prevent wrap-around line artifact
                 }
                 
-                time += 0.016; 
+                time += elapsed; 
                 animationFrameId = requestAnimationFrame(render);
             };
             
