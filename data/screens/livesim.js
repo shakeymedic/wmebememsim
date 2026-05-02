@@ -124,7 +124,7 @@
         const [nibpDia, setNibpDia] = useState(vitals.bpDia);
 
         const [showDrugCalc, setShowDrugCalc] = useState(false);
-        const [drugCalcWeight, setDrugCalcWeight] = useState(scenario.weight || 70);
+        const [drugCalcWeight, setDrugCalcWeight] = useState(scenario.wetflag?.weight || scenario.weight || 70);
         const [showTimerModal, setShowTimerModal] = useState(false);
         const [timerAlerts, setTimerAlerts] = useState([]);
         const [newAlertMins, setNewAlertMins] = useState('5');
