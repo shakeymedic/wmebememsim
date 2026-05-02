@@ -61,6 +61,7 @@
         const { state } = sim;
         const { Lucide, Button } = window;
         const [filter, setFilter] = useState('all');
+        const [replayIdx, setReplayIdx] = useState(null);
 
         const filteredLog = state.log.filter(entry => {
             if (filter === 'all') return true;
@@ -120,6 +121,39 @@
                             </div>
                             
                             <DebriefGraph history={state.history} log={state.log} />
+
+                            {state.history && state.history.length > 1 && (
+                                <div className="mb-4 bg-slate-900 border border-slate-700 rounded p-3">
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Session Replay</h4>
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={state.history.length - 1}
+                                        value={replayIdx !== null ? replayIdx : state.history.length - 1}
+                                        onChange={e => setReplayIdx(parseInt(e.target.value))}
+                                        className="w-full accent-sky-500"
+                                    />
+                                    {replayIdx !== null && state.history[replayIdx] && (
+                                        <div className="grid grid-cols-4 gap-2 mt-2">
+                                            {[['HR', state.history[replayIdx].hr, 'bpm', '#22c55e'],
+                                              ['BP', state.history[replayIdx].bp, 'mmHg', '#ef4444'],
+                                              ['SpO2', state.history[replayIdx].spo2, '%', '#3b82f6'],
+                                              ['RR', state.history[replayIdx].rr, '/min', '#a78bfa']].map(([lbl, val, unit, col]) => (
+                                                <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
+                                                    <div className="text-[10px] font-bold uppercase" style={{color: col}}>{lbl}</div>
+                                                    <div className="text-lg font-mono font-bold text-white">{val ?? '--'}</div>
+                                                    <div className="text-[9px] text-slate-500">{unit}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between mt-1">
+                                        <span className="text-[10px] text-slate-500">T+0s</span>
+                                        <span className="text-[10px] text-sky-400 font-mono">{replayIdx !== null && state.history[replayIdx] ? `T+${state.history[replayIdx].time}s` : 'Drag to replay'}</span>
+                                        <span className="text-[10px] text-slate-500">T+{state.history[state.history.length-1].time}s</span>
+                                    </div>
+                                </div>
+                            )}
 
                             <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
                             <ul className="space-y-2">

@@ -23,6 +23,11 @@
         const [buildPMH, setBuildPMH] = useState("Hypertension");
         const [buildDhx, setBuildDhx] = useState("Nil");
         const [buildAllergies, setBuildAllergies] = useState("NKDA");
+        const [buildDifficulty, setBuildDifficulty] = useState("Intermediate");
+        const [buildCxrUrl, setBuildCxrUrl] = useState("");
+        const [buildCtUrl, setBuildCtUrl] = useState("");
+        const [buildLearningObj, setBuildLearningObj] = useState("");
+        const [buildCustomActions, setBuildCustomActions] = useState("");
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, rhythm: "Sinus Rhythm" });
 
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
@@ -46,6 +51,11 @@
             setBuildPMH(Array.isArray(s.pmh) ? s.pmh.join(", ") : (s.pmh || ""));
             setBuildDhx(Array.isArray(s.dhx) ? s.dhx.join(", ") : (s.dhx || "Nil"));
             setBuildAllergies(Array.isArray(s.allergies) ? s.allergies.join(", ") : (s.allergies || "NKDA"));
+            setBuildDifficulty(s.difficulty || "Intermediate");
+            setBuildCxrUrl(s.customImages?.xray || "");
+            setBuildCtUrl(s.customImages?.ct || "");
+            setBuildLearningObj(Array.isArray(s.learningObjectives) ? s.learningObjectives.join(', ') : (s.instructorBrief?.learningObjectives?.join(', ') || ''));
+            setBuildCustomActions(Array.isArray(s.customActions) ? s.customActions.join(', ') : '');
             setBuildVitals({
                 hr: s.vitalsMod?.hr || s.vitals?.hr || 80,
                 bpSys: s.vitalsMod?.bpSys || s.vitals?.bpSys || 120,
@@ -57,6 +67,35 @@
             });
             setMode('builder');
         };
+
+        const exportCustomScenarios = () => {
+            if (!customScenarios.length) return alert("No custom scenarios to export.");
+            const blob = new Blob([JSON.stringify(customScenarios, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `em_evidence_scenarios_${Date.now()}.json`; a.click();
+        };
+
+        const importCustomScenariosFile = (e) => {
+            const file = e.target.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                try {
+                    const arr = JSON.parse(ev.target.result);
+                    const list = Array.isArray(arr) ? arr : [arr];
+                    const merged = [...customScenarios];
+                    let added = 0;
+                    list.forEach(s => { if (s.id && !merged.find(c => c.id === s.id)) { merged.push(s); added++; } });
+                    setCustomScenarios(merged);
+                    localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(merged));
+                    alert(`Imported ${added} new scenario(s).`);
+                } catch (err) { alert('Import failed: ' + err.message); }
+            };
+            reader.readAsText(file);
+            e.target.value = '';
+        };
+
+        const DIFF_COLOURS = { Beginner: 'bg-emerald-900/50 text-emerald-400 border-emerald-800', Intermediate: 'bg-amber-900/50 text-amber-400 border-amber-800', Advanced: 'bg-red-900/50 text-red-400 border-red-800' };
+        const DiffBadge = ({ d }) => d ? <span className={`text-[9px] px-1 rounded border ${DIFF_COLOURS[d] || DIFF_COLOURS.Intermediate}`}>{d.toUpperCase()}</span> : null;
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
@@ -93,7 +132,11 @@
                 pmh: buildPMH.split(',').map(s=>s.trim()),
                 dhx: buildDhx.split(',').map(s=>s.trim()),
                 allergies: buildAllergies.split(',').map(s=>s.trim()),
-                instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: ["Custom Objective"] },
+                difficulty: buildDifficulty,
+                customImages: { xray: buildCxrUrl || null, ct: buildCtUrl || null },
+                learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : ['Custom Objective'],
+                customActions: buildCustomActions.split(',').map(s=>s.trim()).filter(Boolean),
+                instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : ['Custom Objective'] },
                 vbgClinicalState: "normal",
                 ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: buildVitals.rhythm || "Normal" },
                 chestXray: { findings: "Unremarkable" },
@@ -243,7 +286,7 @@
                                         {ALL_SCENARIOS.filter(premadeCategory.filter).map((s) => (
                                             <div key={s.id} className="flex justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
                                                 <div className="flex-1">
-                                                    <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>}</div>
+                                                    <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
                                                     <div className="text-xs text-slate-400">{s.patientProfileTemplate.substring(0, 60)}...</div>
                                                 </div>
                                                 <div className="flex gap-2">
@@ -260,10 +303,17 @@
                     )}
                     {mode === 'custom' && (
                         <div className="space-y-2 animate-fadeIn">
+                             <div className="flex gap-2 pb-2 border-b border-slate-700">
+                                 <Button onClick={exportCustomScenarios} variant="secondary" className="h-8 text-xs flex items-center gap-1"><Lucide icon="download" className="w-3 h-3"/> Export JSON</Button>
+                                 <label className="cursor-pointer flex items-center">
+                                     <span className="inline-flex items-center gap-1 px-3 h-8 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded text-xs text-slate-200 font-bold"><Lucide icon="upload" className="w-3 h-3"/> Import JSON</span>
+                                     <input type="file" accept=".json" onChange={importCustomScenariosFile} className="hidden"/>
+                                 </label>
+                             </div>
                              {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet. Use Builder to create one.</p>}
                              {customScenarios.map((s, i) => (
                                  <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
-                                     <div><div className="font-bold text-white">{s.title}</div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div>
+                                     <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div>
                                      <div className="flex gap-2">
                                         <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs">Edit</Button>
                                         <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
@@ -285,6 +335,15 @@
                             <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
                             <input type="text" placeholder="Drug History (comma separated)" value={buildDhx} onChange={e=>setBuildDhx(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
                             <input type="text" placeholder="Allergies (comma separated)" value={buildAllergies} onChange={e=>setBuildAllergies(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div><label className="text-[10px] text-slate-500 uppercase">Difficulty</label><select value={buildDifficulty} onChange={e=>setBuildDifficulty(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Learning Objectives (comma separated)</label><input type="text" placeholder="e.g. Give adrenaline, Secure airway" value={buildLearningObj} onChange={e=>setBuildLearningObj(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/></div>
+                            </div>
+                            <input type="text" placeholder="Custom Scenario Actions (comma separated, e.g. Call Cardiology, Request MRI)" value={buildCustomActions} onChange={e=>setBuildCustomActions(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            <div className="grid grid-cols-2 gap-2">
+                                <input type="url" placeholder="Chest X-ray Image URL (optional)" value={buildCxrUrl} onChange={e=>setBuildCxrUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                                <input type="url" placeholder="CT Scan Image URL (optional)" value={buildCtUrl} onChange={e=>setBuildCtUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            </div>
                             
                             <h4 className="text-xs font-bold text-slate-500 uppercase mt-2">Initial Observations</h4>
                             <div className="grid grid-cols-3 gap-2">

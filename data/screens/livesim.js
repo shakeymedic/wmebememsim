@@ -75,6 +75,26 @@
         ]
     };
 
+    const DRUG_CALC_LIST = [
+        { name: 'Adrenaline IM (Anaphylaxis)', perKg: 0.01, unit: 'mg', max: 0.5, info: '1:1000 (1 mg/ml) IM' },
+        { name: 'Adrenaline IV (Arrest)', perKg: 0.01, unit: 'mg', max: 1, info: '1:10 000 (0.1 mg/ml) IV' },
+        { name: 'Lorazepam (Seizure)', perKg: 0.1, unit: 'mg', max: 4, info: '4 mg/ml IV/IO' },
+        { name: 'Midazolam Buccal (Seizure)', perKg: 0.2, unit: 'mg', max: 10, info: '10 mg/ml Buccal' },
+        { name: 'Morphine IV', perKg: 0.1, unit: 'mg', max: 10, info: '10 mg/ml IV slow' },
+        { name: 'Ketamine (RSI/Anaesthesia)', perKg: 1.5, unit: 'mg', max: 200, info: '50 mg/ml IV' },
+        { name: 'Rocuronium (RSI)', perKg: 1.2, unit: 'mg', max: 200, info: '10 mg/ml IV' },
+        { name: 'Suxamethonium (RSI)', perKg: 2, unit: 'mg', max: 200, info: '50 mg/ml IV' },
+        { name: 'Amiodarone (Arrest)', perKg: 5, unit: 'mg', max: 300, info: '50 mg/ml IV rapid' },
+        { name: 'Atropine (Bradycardia)', perKg: 0.02, unit: 'mg', min: 0.1, max: 3, info: '0.6 mg/ml IV/IO' },
+        { name: 'Paracetamol IV', perKg: 15, unit: 'mg', max: 1000, info: '10 mg/ml IV' },
+        { name: 'Glucose 10%', perKg: 5, unit: 'ml', max: 500, info: 'IV bolus' },
+        { name: 'Sodium Bicarb 8.4%', perKg: 1, unit: 'mmol', max: 50, info: '1 mmol/ml IV slow' },
+        { name: 'TXA (Trauma Haemorrhage)', perKg: 15, unit: 'mg', max: 1000, info: '100 mg/ml IV slow over 10 min' },
+        { name: 'Ceftriaxone (Sepsis)', perKg: 50, unit: 'mg', max: 2000, info: '250 mg/ml IV' },
+        { name: 'IV Fluid Bolus', perKg: 10, unit: 'ml', max: 500, info: "NS or Hartmann's IV" },
+        { name: 'MgSO4 (Asthma / Seizure)', perKg: 40, unit: 'mg', max: 2000, info: '500 mg/ml IV slow 20 min' },
+    ];
+
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP } = sim; 
@@ -102,6 +122,17 @@
         const [showNIBPModal, setShowNIBPModal] = useState(false);
         const [nibpSys, setNibpSys] = useState(vitals.bpSys);
         const [nibpDia, setNibpDia] = useState(vitals.bpDia);
+
+        const [showDrugCalc, setShowDrugCalc] = useState(false);
+        const [drugCalcWeight, setDrugCalcWeight] = useState(scenario.weight || 70);
+        const [showTimerModal, setShowTimerModal] = useState(false);
+        const [timerAlerts, setTimerAlerts] = useState([]);
+        const [newAlertMins, setNewAlertMins] = useState('5');
+        const [newAlertMsg, setNewAlertMsg] = useState('');
+        const [firedAlerts, setFiredAlerts] = useState(new Set());
+        const [showKeyHelp, setShowKeyHelp] = useState(false);
+        const audioCtxRef = useRef(null);
+        const lastAlertRef = useRef({});
 
         const [assessments, setAssessments] = useState({
             "Safe Approach": null,
@@ -155,6 +186,57 @@
         useEffect(() => {
             sim.dispatch({type: 'UPDATE_ASSESSMENT', payload: assessments});
         }, [assessments]);
+
+        const playAlertTone = (type) => {
+            try {
+                if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
+                const ctx = audioCtxRef.current;
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = type === 'critical' ? 880 : 660;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.5);
+            } catch(e) {}
+        };
+
+        useEffect(() => {
+            if (isMuted || !isRunning) return;
+            const now = Date.now();
+            if (vitals.hr > 130 || vitals.hr < 40) { if (now - (lastAlertRef.current.hr || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.hr = now; } }
+            if (vitals.spO2 < 90) { if (now - (lastAlertRef.current.spO2 || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.spO2 = now; } }
+            if (vitals.rr < 8 || vitals.rr > 30) { if (now - (lastAlertRef.current.rr || 0) > 10000) { playAlertTone('alert'); lastAlertRef.current.rr = now; } }
+        }, [vitals.hr, vitals.spO2, vitals.rr, isMuted, isRunning]);
+
+        useEffect(() => {
+            if (!isRunning) return;
+            timerAlerts.forEach(alert => {
+                const alertTimeS = alert.mins * 60;
+                if (time >= alertTimeS && !firedAlerts.has(alert.id)) {
+                    setFiredAlerts(prev => new Set([...prev, alert.id]));
+                    addLogEntry(`Timer Alert: ${alert.msg}`, 'danger');
+                    playAlertTone('critical');
+                }
+            });
+        }, [time, isRunning, timerAlerts, firedAlerts]);
+
+        useEffect(() => {
+            const handler = (e) => {
+                const tag = document.activeElement?.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                if (e.key === ' ') { e.preventDefault(); isRunning ? pause() : start(); }
+                if (e.key === 'f' || e.key === 'F') onFinish();
+                if (e.key === 'd' || e.key === 'D') setShowDrugCalc(v => !v);
+                if (e.key === 't' || e.key === 'T') setShowTimerModal(v => !v);
+                if (e.key === '?') setShowKeyHelp(v => !v);
+            };
+            window.addEventListener('keydown', handler);
+            return () => window.removeEventListener('keydown', handler);
+        }, [isRunning]);
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         const isMonitoringApplied = activeInterventions.has('Obs'); 
@@ -267,6 +349,9 @@
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
                         <Button variant="outline" onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank')} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
                         <Button variant="outline" onClick={() => window.open('defib/index.html', '_blank')} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
+                        <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
+                        <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
+                        <Button variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
                         <div className="font-mono text-2xl font-bold text-white ml-2">{formatTime(time)}</div>
                     </div>
                 </div>
@@ -467,6 +552,16 @@
                                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                         {getInterventionsByCat(activeTab).map(key => renderActionBtn(key))}
                                     </div>
+                                    {scenario.customActions && scenario.customActions.length > 0 && activeTab === 'Common' && (
+                                        <div className="mt-4 p-4 bg-sky-900/20 border-2 border-sky-500 rounded-lg shadow-lg">
+                                            <h4 className="text-sm font-bold text-sky-400 uppercase mb-3 flex items-center gap-2"><Lucide icon="settings" className="w-4 h-4"/> Scenario Actions</h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                                {scenario.customActions.map((action, idx) => (
+                                                    <button key={idx} onClick={() => addLogEntry(action, 'action')} className="h-14 p-2 rounded text-left bg-sky-900/30 hover:bg-sky-800/50 border border-sky-600 flex items-center text-xs font-bold text-sky-300">{action}</button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </>
                             )}
                         </div>
@@ -535,6 +630,13 @@
                                      </div>
                                  )}
 
+                                 {(invModal === 'X-ray' || invModal === 'CT') && scenario.investigationImages && scenario.investigationImages[invModal] && (
+                                     <div>
+                                         <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Scenario Image</label>
+                                         <a href={scenario.investigationImages[invModal]} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline text-sm break-all">{scenario.investigationImages[invModal]}</a>
+                                     </div>
+                                 )}
+
                                  <div>
                                     <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Custom Finding</label>
                                     <textarea value={invCustomText} onChange={e=>setInvCustomText(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm h-20" placeholder="Type custom finding here..."></textarea>
@@ -588,6 +690,93 @@
                                 ))}
                             </div>
                             <Button onClick={()=>setShowRhythmModal(false)} variant="outline" className="w-full mt-4">Cancel</Button>
+                        </div>
+                    </div>
+                )}
+
+                {showDrugCalc && (
+                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-lg shadow-2xl h-[90vh] flex flex-col">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold text-white uppercase tracking-wider">Drug Dosing Calculator</h3>
+                                <button onClick={() => setShowDrugCalc(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                            </div>
+                            <div className="mb-4">
+                                <label className="text-xs text-slate-400 font-bold uppercase">Patient Weight (kg)</label>
+                                <input type="number" value={drugCalcWeight} onChange={e => setDrugCalcWeight(parseFloat(e.target.value) || 70)} className="w-full bg-slate-900 border border-slate-500 rounded p-2 text-xl font-mono text-white text-center font-bold mt-1" />
+                            </div>
+                            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                                {DRUG_CALC_LIST.map((drug, idx) => {
+                                    const rawDose = drug.perKg * drugCalcWeight;
+                                    const minDose = drug.min ? Math.max(rawDose, drug.min) : rawDose;
+                                    const finalDose = Math.min(minDose, drug.max);
+                                    return (
+                                        <div key={idx} className="bg-slate-900 border border-slate-700 rounded p-3 flex justify-between items-center">
+                                            <div>
+                                                <div className="text-sm font-bold text-white">{drug.name}</div>
+                                                <div className="text-xs text-slate-400">{drug.info}</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <div className="text-lg font-bold text-sky-400 font-mono">{finalDose.toFixed(1)} {drug.unit}</div>
+                                                <div className="text-[10px] text-slate-500">max {drug.max}{drug.unit}</div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showTimerModal && (
+                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-md shadow-2xl">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold text-white uppercase tracking-wider">Timer Alerts</h3>
+                                <button onClick={() => setShowTimerModal(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                            </div>
+                            <div className="space-y-3 mb-4">
+                                <div className="flex gap-2">
+                                    <input type="number" value={newAlertMins} onChange={e => setNewAlertMins(e.target.value)} placeholder="Mins" className="w-20 bg-slate-900 border border-slate-600 rounded p-2 text-white text-center" />
+                                    <input type="text" value={newAlertMsg} onChange={e => setNewAlertMsg(e.target.value)} placeholder="Alert message..." className="flex-1 bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" />
+                                    <Button onClick={() => { if (!newAlertMsg || !newAlertMins) return; setTimerAlerts(prev => [...prev, {id: Date.now(), mins: parseFloat(newAlertMins), msg: newAlertMsg}]); setNewAlertMsg(''); setNewAlertMins('5'); }} variant="primary" className="h-10 px-3">Add</Button>
+                                </div>
+                                <div className="text-xs text-slate-500">Alerts fire automatically at the set sim time and play a tone.</div>
+                            </div>
+                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                                {timerAlerts.length === 0 && <div className="text-slate-500 text-sm text-center py-4">No alerts set</div>}
+                                {timerAlerts.map(alert => (
+                                    <div key={alert.id} className={`flex items-center justify-between p-3 rounded border ${firedAlerts.has(alert.id) ? 'bg-red-900/30 border-red-600' : 'bg-slate-900 border-slate-700'}`}>
+                                        <div>
+                                            <span className="text-white font-bold text-sm">{alert.msg}</span>
+                                            <span className="text-slate-400 text-xs ml-2">@ {alert.mins}min</span>
+                                            {firedAlerts.has(alert.id) && <span className="text-red-400 text-xs ml-2 font-bold">FIRED</span>}
+                                        </div>
+                                        <button onClick={() => setTimerAlerts(prev => prev.filter(a => a.id !== alert.id))} className="text-slate-500 hover:text-red-400"><Lucide icon="x" className="w-4 h-4"/></button>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button onClick={() => setShowTimerModal(false)} variant="outline" className="w-full mt-4">Close</Button>
+                        </div>
+                    </div>
+                )}
+
+                {showKeyHelp && (
+                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                        <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h3>
+                                <button onClick={() => setShowKeyHelp(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                            </div>
+                            <div className="space-y-2">
+                                {[['Space', 'Play / Pause sim'], ['F', 'Finish sim'], ['D', 'Toggle Drug Calculator'], ['T', 'Toggle Timer Alerts'], ['?', 'Show this help']].map(([key, desc]) => (
+                                    <div key={key} className="flex items-center justify-between p-2 bg-slate-900 rounded border border-slate-700">
+                                        <kbd className="bg-slate-700 border border-slate-500 text-white text-xs font-mono px-3 py-1 rounded">{key}</kbd>
+                                        <span className="text-slate-300 text-sm">{desc}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button onClick={() => setShowKeyHelp(false)} variant="outline" className="w-full mt-4">Close</Button>
                         </div>
                     </div>
                 )}
