@@ -14,7 +14,7 @@
     };
     const tWave = (t) => 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005);
 
-    const rhythms = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'SVT', 'PEA', '1st Deg Heart Block', 'Complete Heart Block', 'Atrial Flutter', 'VT'];
+    const rhythms = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'SVT', 'PEA', '1st Deg Heart Block', 'Complete Heart Block', 'Atrial Flutter', 'VT', 'STEMI'];
     rhythms.forEach(r => {
         precomputed.ecg[r] = new Float32Array(BUFFER_SIZE);
         for(let i=0; i<BUFFER_SIZE; i++) {
@@ -26,6 +26,11 @@
             if(r==='Complete Heart Block') val = pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t);
             if(r==='Atrial Flutter') val = (Math.sin(t * 30) * 5) + qrsComplex(t);
             if(r==='VT') val = 35 * Math.sin(t * 20);
+            if(r==='STEMI') {
+                // Sinus complex with elevated ST segment (J-point to T) — visible on a single-lead strip.
+                val = pWave(t) + qrsComplex(t) + tWave(t);
+                if (t > 0.26 && t < 0.45) val -= 12; // ST elevation (drawn upward in canvas inverted-y)
+            }
             precomputed.ecg[r][i] = val;
         }
     });
@@ -165,7 +170,7 @@
         const ECG_NORM = {
             'Sinus Tachy': 'Sinus Tachycardia', 'Sinus Brady': 'Sinus Bradycardia',
             '1st Deg Block': '1st Deg Heart Block', '3rd Deg Block': 'Complete Heart Block',
-            'STEMI': 'Sinus Tachycardia', 'NSR': 'Sinus Rhythm', 'Normal Sinus': 'Sinus Rhythm',
+            'NSR': 'Sinus Rhythm', 'Normal Sinus': 'Sinus Rhythm',
             'CHB': 'Complete Heart Block', 'chb': 'Complete Heart Block',
             'sinus_tach': 'Sinus Tachycardia', 'sinus_brady': 'Sinus Bradycardia', 'nsr': 'Sinus Rhythm',
         };
@@ -194,7 +199,7 @@
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.co2[pathology] ? precomputed.co2[pathology][idx] : precomputed.co2.normal[idx];
         };
-        
+
         const getArtValue = (t) => {
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.art[idx];
@@ -203,7 +208,7 @@
         useEffect(() => {
             const canvas = canvasRef.current;
             if (!canvas) return;
-            
+
             const ctx = canvas.getContext('2d');
             let animationFrameId;
             let time = 0;
@@ -212,7 +217,7 @@
             const SWEEP_SECONDS = 8; // real-monitor sweep: ~8s per full canvas width
 
             let lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null };
-            
+
             const render = (ts) => {
                 if (!canvas.parentElement) return;
                 const newWidth = canvas.parentElement.clientWidth;
@@ -260,8 +265,8 @@
                 const cycleT = (time * ecgFreq) % 1;
                 const ecgBaseY = getBaseY();
                 const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR) * (live.rhythmType === 'VF' ? 0.5 : 1);
-                
-                ctx.strokeStyle = '#22c55e'; 
+
+                ctx.strokeStyle = '#22c55e';
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(xPos - speed, (lastY.ecg !== null ? lastY.ecg : ecgY));
@@ -273,8 +278,8 @@
                     const spo2BaseY = getBaseY();
                     const spo2Cycle = (time * ecgFreq) % 1;
                     const spo2Y = spo2BaseY - getSPO2Value(spo2Cycle, live.spO2);
-                    
-                    ctx.strokeStyle = '#3b82f6'; 
+
+                    ctx.strokeStyle = '#3b82f6';
                     ctx.beginPath();
                     ctx.moveTo(xPos - speed, (lastY.spo2 !== null ? lastY.spo2 : spo2Y));
                     ctx.lineTo(xPos, spo2Y);
@@ -283,10 +288,10 @@
 
                     if (showArt) {
                         const artBaseY = getBaseY();
-                        const artCycle = (time * ecgFreq) % 1; 
+                        const artCycle = (time * ecgFreq) % 1;
                         const artY = artBaseY - getArtValue(artCycle);
 
-                        ctx.strokeStyle = '#ef4444'; 
+                        ctx.strokeStyle = '#ef4444';
                         ctx.beginPath();
                         ctx.moveTo(xPos - speed, (lastY.art !== null ? lastY.art : artY));
                         ctx.lineTo(xPos, artY);
@@ -312,11 +317,11 @@
                         const co2Cycle = (time * co2Freq) % 1;
                         const shiftedCycle = (co2Cycle + 0.5) % 1;
                         const co2Y = co2BaseY - getCO2Value(shiftedCycle, live.co2Pathology);
-                        
-                        ctx.strokeStyle = '#a855f7'; 
+
+                        ctx.strokeStyle = '#a855f7';
                         ctx.beginPath();
                         ctx.moveTo(xPos - speed, (lastY.co2 !== null ? lastY.co2 : co2Y));
-                        ctx.lineTo(xPos, co2Y); 
+                        ctx.lineTo(xPos, co2Y);
                         ctx.stroke();
                         lastY.co2 = co2Y;
                     }
@@ -327,11 +332,11 @@
                     xPos -= canvas.width;
                     lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null }; // reset to prevent wrap-around line artifact
                 }
-                
-                time += elapsed; 
+
+                time += elapsed;
                 animationFrameId = requestAnimationFrame(render);
             };
-            
+
             animationFrameId = requestAnimationFrame(render);
             return () => cancelAnimationFrame(animationFrameId);
         }, [isPaused, showTraces, showEtco2, showArt]);
