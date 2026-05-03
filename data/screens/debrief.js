@@ -71,12 +71,18 @@
             return true;
         });
 
-        const objectivesTotal = state.scenario.learningObjectives ? state.scenario.learningObjectives.length : 0;
-        const objectivesMet = state.completedObjectives.size;
+        const allObjectives = (() => {
+            const a = state.scenario.learningObjectives || [];
+            const b = state.scenario.instructorBrief?.learningObjectives || [];
+            const seen = new Set();
+            return [...a, ...b].filter(o => { if (seen.has(o)) return false; seen.add(o); return true; });
+        })();
+        const objectivesTotal = allObjectives.length;
+        const objectivesMet = allObjectives.filter(o => state.completedObjectives.has(o)).length;
         const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : 100;
 
         const generateReport = () => {
-            const objRows = (state.scenario.learningObjectives || []).map(obj => {
+            const objRows = allObjectives.map(obj => {
                 const met = state.completedObjectives.has(obj);
                 return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${obj}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`;
             }).join('');
@@ -157,7 +163,7 @@
 
                             <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
                             <ul className="space-y-2">
-                                {state.scenario.learningObjectives && state.scenario.learningObjectives.map((obj, i) => (
+                                {allObjectives.map((obj, i) => (
                                     <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
                                         <Lucide icon={state.completedObjectives.has(obj) ? "check-square" : "square"} className={state.completedObjectives.has(obj) ? "text-emerald-500 w-4 h-4" : "text-slate-600 w-4 h-4"} />
                                         {obj}
