@@ -155,6 +155,12 @@
         const canvasRef = useRef(null);
         const [width, setWidth] = useState(0);
 
+        // Keep frequently-changing values in refs so vitals updates don't tear down
+        // and restart the animation loop (which would reset xPos and leave stale
+        // trace to the right of the sweep).
+        const liveRef = useRef({ rhythmType, hr, rr, spO2, co2Pathology, isCPR });
+        liveRef.current = { rhythmType, hr, rr, spO2, co2Pathology, isCPR };
+
         // Safety normalisation — maps legacy/shorthand rhythm names to canonical precomputed keys
         const ECG_NORM = {
             'Sinus Tachy': 'Sinus Tachycardia', 'Sinus Brady': 'Sinus Bradycardia',
@@ -163,9 +169,9 @@
             'CHB': 'Complete Heart Block', 'chb': 'Complete Heart Block',
             'sinus_tach': 'Sinus Tachycardia', 'sinus_brady': 'Sinus Bradycardia', 'nsr': 'Sinus Rhythm',
         };
-        const getECGValue = (t, type) => {
+        const getECGValue = (t, type, cpr) => {
             const normType = ECG_NORM[type] || type;
-            if (isCPR) return Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
+            if (cpr) return Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
             if (normType === 'VF') return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5);
             if (normType === 'Asystole') return (Math.random() - 0.5) * 1;
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
@@ -173,8 +179,8 @@
             return precomputed.ecg[normType] ? precomputed.ecg[normType][idx] : precomputed.ecg['Sinus Rhythm'][idx];
         };
 
-        const getSPO2Value = (t) => {
-            if (spO2 < 10) return 0;
+        const getSPO2Value = (t, sat) => {
+            if (sat < 10) return 0;
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.spo2[idx];
         };
@@ -183,10 +189,10 @@
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.resp[idx];
         };
-        
-        const getCO2Value = (t) => {
+
+        const getCO2Value = (t, pathology) => {
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.co2[co2Pathology] ? precomputed.co2[co2Pathology][idx] : precomputed.co2.normal[idx];
+            return precomputed.co2[pathology] ? precomputed.co2[pathology][idx] : precomputed.co2.normal[idx];
         };
         
         const getArtValue = (t) => {
@@ -227,8 +233,10 @@
                 lastTs = ts;
                 const speed = (canvas.width / SWEEP_SECONDS) * elapsed;
 
+                const live = liveRef.current;
+
                 ctx.fillStyle = 'rgba(0,0,0,1)';
-                ctx.fillRect(xPos, 0, 12, canvas.height); 
+                ctx.fillRect(xPos, 0, 12, canvas.height);
 
                 let numTraces = 1;
                 if (showTraces) {
@@ -244,14 +252,14 @@
                     traceIdx++;
                     return y;
                 };
-                
-                let ecgFreq = (hr > 0 ? hr : 60) / 60;
-                if (rhythmType === 'VF') ecgFreq = 4; 
-                if (rhythmType === 'Asystole') ecgFreq = 0.1;
+
+                let ecgFreq = (live.hr > 0 ? live.hr : 60) / 60;
+                if (live.rhythmType === 'VF') ecgFreq = 4;
+                if (live.rhythmType === 'Asystole') ecgFreq = 0.1;
 
                 const cycleT = (time * ecgFreq) % 1;
                 const ecgBaseY = getBaseY();
-                const ecgY = ecgBaseY - getECGValue(cycleT, rhythmType) * (rhythmType === 'VF' ? 0.5 : 1);
+                const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR) * (live.rhythmType === 'VF' ? 0.5 : 1);
                 
                 ctx.strokeStyle = '#22c55e'; 
                 ctx.lineWidth = 2;
@@ -263,8 +271,8 @@
 
                 if (showTraces) {
                     const spo2BaseY = getBaseY();
-                    const spo2Cycle = (time * ecgFreq) % 1; 
-                    const spo2Y = spo2BaseY - getSPO2Value(spo2Cycle);
+                    const spo2Cycle = (time * ecgFreq) % 1;
+                    const spo2Y = spo2BaseY - getSPO2Value(spo2Cycle, live.spO2);
                     
                     ctx.strokeStyle = '#3b82f6'; 
                     ctx.beginPath();
@@ -287,23 +295,23 @@
                     }
 
                     const respBaseY = getBaseY();
-                    const respFreq = (rr > 0 ? rr : 12) / 60;
+                    const respFreq = (live.rr > 0 ? live.rr : 12) / 60;
                     const respCycle = (time * respFreq) % 1;
                     const respY = respBaseY - getRespValue(respCycle);
-                    
-                    ctx.strokeStyle = '#eab308'; 
+
+                    ctx.strokeStyle = '#eab308';
                     ctx.beginPath();
                     ctx.moveTo(xPos - speed, (lastY.resp !== null ? lastY.resp : respY));
                     ctx.lineTo(xPos, respY);
                     ctx.stroke();
                     lastY.resp = respY;
-                    
+
                     if (showEtco2) {
                         const co2BaseY = getBaseY();
-                        const co2Freq = (rr > 0 ? rr : 12) / 60;
+                        const co2Freq = (live.rr > 0 ? live.rr : 12) / 60;
                         const co2Cycle = (time * co2Freq) % 1;
-                        const shiftedCycle = (co2Cycle + 0.5) % 1; 
-                        const co2Y = co2BaseY - getCO2Value(shiftedCycle);
+                        const shiftedCycle = (co2Cycle + 0.5) % 1;
+                        const co2Y = co2BaseY - getCO2Value(shiftedCycle, live.co2Pathology);
                         
                         ctx.strokeStyle = '#a855f7'; 
                         ctx.beginPath();
@@ -326,7 +334,7 @@
             
             animationFrameId = requestAnimationFrame(render);
             return () => cancelAnimationFrame(animationFrameId);
-        }, [rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology, isCPR]);
+        }, [isPaused, showTraces, showEtco2, showArt]);
 
         let numTraces = 1;
         if (showTraces) {
