@@ -4,33 +4,71 @@
     const BUFFER_SIZE = 1000;
     const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), co2: { normal: new Float32Array(BUFFER_SIZE), bronchospastic: new Float32Array(BUFFER_SIZE) }, art: new Float32Array(BUFFER_SIZE) };
 
-    const pWave = (t) => 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
+    // --- Waveform components (cycle normalised to [0,1]) ---
+    // Tuned for realistic morphology at 60 bpm: P ~80ms, QRS ~70ms, T ~160ms
+    const pWave = (t) => 4.5 * Math.exp(-Math.pow(t - 0.10, 2) / 0.0015);
+
     const qrsComplex = (t) => {
         let val = 0;
-        val -= 5 * Math.exp(-Math.pow(t - 0.18, 2) / 0.0005);
-        val += 40 * Math.exp(-Math.pow(t - 0.2, 2) / 0.0005);
-        val -= 10 * Math.exp(-Math.pow(t - 0.22, 2) / 0.0005);
+        val -= 6  * Math.exp(-Math.pow(t - 0.170, 2) / 0.00030);  // Q
+        val += 45 * Math.exp(-Math.pow(t - 0.205, 2) / 0.00020);  // R
+        val -= 14 * Math.exp(-Math.pow(t - 0.240, 2) / 0.00030);  // S
         return val;
     };
-    const tWave = (t) => 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005);
+
+    const tWave = (t) => 9 * Math.exp(-Math.pow(t - 0.42, 2) / 0.009);
 
     const rhythms = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'SVT', 'PEA', '1st Deg Heart Block', 'Complete Heart Block', 'Atrial Flutter', 'VT', 'STEMI'];
     rhythms.forEach(r => {
         precomputed.ecg[r] = new Float32Array(BUFFER_SIZE);
-        for(let i=0; i<BUFFER_SIZE; i++) {
+        for (let i = 0; i < BUFFER_SIZE; i++) {
             const t = i / BUFFER_SIZE;
             let val = 0;
-            if(r.includes('Sinus') || r==='PEA') val = pWave(t) + qrsComplex(t) + tWave(t);
-            if(r==='SVT') val = qrsComplex(t) + tWave(t);
-            if(r==='1st Deg Heart Block') val = pWave(t - 0.1) + qrsComplex(t) + tWave(t);
-            if(r==='Complete Heart Block') val = pWave((t * 1.5) % 1) + qrsComplex(t) + tWave(t);
-            if(r==='Atrial Flutter') val = (Math.sin(t * 30) * 5) + qrsComplex(t);
-            if(r==='VT') val = 35 * Math.sin(t * 20);
-            if(r==='STEMI') {
-                // Sinus complex with elevated ST segment (J-point to T) — visible on a single-lead strip.
+
+            if (r === 'Sinus Rhythm' || r === 'Sinus Tachycardia' || r === 'Sinus Bradycardia' || r === 'PEA') {
                 val = pWave(t) + qrsComplex(t) + tWave(t);
-                if (t > 0.26 && t < 0.45) val -= 12; // ST elevation (drawn upward in canvas inverted-y)
             }
+            else if (r === 'SVT') {
+                // Narrow-complex tachy. P absent / buried; T present but smaller.
+                val = qrsComplex(t) + tWave(t) * 0.85;
+            }
+            else if (r === '1st Deg Heart Block') {
+                // Prolonged PR — keep P at 0.10, push QRS + T later by 0.10 (~100 ms at 60 bpm)
+                val = pWave(t) + qrsComplex(t - 0.10) + tWave(t - 0.10);
+            }
+            else if (r === 'Complete Heart Block') {
+                // Buffer carries the slow ventricular escape only (QRS + T).
+                // Independent atrial P waves are added in real-time in getECGValue() so AV dissociation drifts visibly across the strip.
+                val = qrsComplex(t) + tWave(t);
+            }
+            else if (r === 'Atrial Flutter') {
+                // Sharkfin sawtooth at 2:1 conduction (2 flutter waves per ventricular cycle).
+                // Sharp downstroke, slow upstroke — averaging close to zero so QRS sits on a sensible baseline.
+                const fp = (t * 2) % 1;
+                let saw;
+                if (fp < 0.18) {
+                    saw = 4 - fp * 45;                          // sharp negative downstroke (+4 → -4)
+                } else {
+                    saw = -4 + ((fp - 0.18) / 0.82) * 8;        // slow rise back to baseline (-4 → +4)
+                }
+                val = saw + qrsComplex(t) + tWave(t) * 0.35;    // T partly buried in flutter wave
+            }
+            else if (r === 'VT') {
+                // Wide bizarre QRS, no P, discordant T (deflected opposite the dominant QRS direction).
+                val += 38 * Math.exp(-Math.pow(t - 0.20, 2) / 0.0050);  // wide R
+                val -= 22 * Math.exp(-Math.pow(t - 0.32, 2) / 0.0040);  // wide S
+                val -= 9  * Math.exp(-Math.pow(t - 0.55, 2) / 0.0180);  // discordant (negative) T
+            }
+            else if (r === 'STEMI') {
+                // P + QRS as normal. ST-T fused into a single elevated coved dome from J-point onward.
+                // SIGN: positive val == upward on screen (canvas inverted-y handled in render).
+                val = pWave(t) + qrsComplex(t);
+                if (t > 0.27 && t < 0.65) {
+                    const phase = (t - 0.27) / 0.38;
+                    val += 14 * Math.sin(phase * Math.PI);              // smooth dome from J-point, returns to baseline
+                }
+            }
+
             precomputed.ecg[r][i] = val;
         }
     });
@@ -174,13 +212,48 @@
             'CHB': 'Complete Heart Block', 'chb': 'Complete Heart Block',
             'sinus_tach': 'Sinus Tachycardia', 'sinus_brady': 'Sinus Bradycardia', 'nsr': 'Sinus Rhythm',
         };
-        const getECGValue = (t, type, cpr) => {
+
+        const getECGValue = (t, type, cpr, absTime = 0) => {
             const normType = ECG_NORM[type] || type;
-            if (cpr) return Math.sin(t * 15) * 25 + (Math.random() - 0.5) * 10;
-            if (normType === 'VF') return (Math.sin(t * 15) * 15) + (Math.sin(t * 43) * 10) + (Math.random() * 5);
-            if (normType === 'Asystole') return (Math.random() - 0.5) * 1;
+
+            if (cpr) {
+                // CPR artefact at ~110/min compression rate (1.83 Hz) with irregular noise on top
+                return Math.sin(absTime * 2 * Math.PI * 1.83) * 28 + (Math.random() - 0.5) * 8;
+            }
+
+            if (normType === 'VF') {
+                // Chaotic — three incommensurate frequencies + noise + slow waxing/waning amplitude
+                const ampMod = 0.65 + 0.45 * Math.sin(absTime * 1.7);
+                const w1 = Math.sin(absTime * 13.2) * 20;
+                const w2 = Math.sin(absTime * 25.6 + 1.3) * 13;
+                const w3 = Math.sin(absTime * 41.7 + 2.4) * 7;
+                const noise = (Math.random() - 0.5) * 6;
+                return (w1 + w2 + w3) * ampMod + noise;
+            }
+
+            if (normType === 'Asystole') {
+                return (Math.random() - 0.5) * 1.2;
+            }
+
             const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
-            if (normType === 'AF') return (Math.random() * 2) + (precomputed.ecg['SVT'] ? precomputed.ecg['SVT'][idx] : 0);
+
+            if (normType === 'AF') {
+                // Absent P, fine fibrillatory baseline. R-R remains regular by design (precomputed buffer).
+                const fib = Math.sin(absTime * 28) * 1.2 + Math.sin(absTime * 47 + 1.1) * 0.7 + (Math.random() - 0.5) * 1.4;
+                return fib + (precomputed.ecg['SVT'] ? precomputed.ecg['SVT'][idx] : 0);
+            }
+
+            if (normType === 'Complete Heart Block') {
+                // Buffer = ventricular escape (QRS+T at the slow set rate).
+                // Add atrial P waves at an INDEPENDENT rate driven by absolute time → AV dissociation drifts visibly across the strip.
+                const qrs = precomputed.ecg['Complete Heart Block'] ? precomputed.ecg['Complete Heart Block'][idx] : 0;
+                const atrialHz = 75 / 60;        // ~75/min atrial rate
+                const period = 1 / atrialHz;
+                const pPhase = (absTime % period) / period;
+                const pVal = 4.2 * Math.exp(-Math.pow(pPhase - 0.5, 2) / 0.005);
+                return qrs + pVal;
+            }
+
             return precomputed.ecg[normType] ? precomputed.ecg[normType][idx] : precomputed.ecg['Sinus Rhythm'][idx];
         };
 
@@ -264,10 +337,12 @@
 
                 const cycleT = (time * ecgFreq) % 1;
                 const ecgBaseY = getBaseY();
-                const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR) * (live.rhythmType === 'VF' ? 0.5 : 1);
+                const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR, time) * (live.rhythmType === 'VF' ? 0.5 : 1);
 
                 ctx.strokeStyle = '#22c55e';
                 ctx.lineWidth = 2;
+                ctx.lineJoin = 'round';
+                ctx.lineCap = 'round';
                 ctx.beginPath();
                 ctx.moveTo(xPos - speed, (lastY.ecg !== null ? lastY.ecg : ecgY));
                 ctx.lineTo(xPos, ecgY);
