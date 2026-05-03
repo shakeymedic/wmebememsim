@@ -53,6 +53,18 @@
         
         .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+        /* Accessibility: visible focus indicators (WCAG 2.4.7). */
+        :focus { outline: none; }
+        :focus-visible { outline: 2px solid #38bdf8; outline-offset: 2px; border-radius: 4px; }
+        button:focus-visible, [role="button"]:focus-visible {
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.6);
+            outline: none;
+        }
+        input:focus-visible, textarea:focus-visible, select:focus-visible {
+            outline: 2px solid #38bdf8;
+            outline-offset: 1px;
+        }
     </style>
 </head>
 <body class="antialiased selection:bg-sky-500 selection:text-white">
@@ -92,13 +104,20 @@
 
         // --- INIT FIREBASE ---
         try {
-            if (window.firebase && !firebase.apps.length) { 
-                firebase.initializeApp(firebaseConfig); 
+            if (window.firebase && !firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
                 window.db = firebase.database();
                 console.log("Firebase Connected");
             }
-        } catch (e) { 
-            console.error("Firebase Init Failed:", e); 
+        } catch (e) {
+            console.error("Firebase Init Failed:", e);
+        }
+
+        // --- REGISTER SERVICE WORKER (offline resilience for tablets) ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW register failed', err));
+            });
         }
 
         // --- APP COMPONENT ---
@@ -222,7 +241,7 @@
                     </main>
 
                     {/* Footer */}
-                    <footer className="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-600 flex-shrink-0">
+                    <footer classname="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-600 flex-shrink-0">
                         <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-700 hover:text-sky-500">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>
                     </footer>
                 </div>
