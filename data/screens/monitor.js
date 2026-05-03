@@ -11,7 +11,7 @@
         );
     };
 
-    const render12Lead = (canvas, rhythm, scenario) => {
+    const render12Lead = (canvas, rhythm, scenario, hr = 75) => {
         if (!canvas) return;
         try {
             const ctx = canvas.getContext('2d');
@@ -63,19 +63,24 @@
             const colW = w / 4;
             const rowH = h / 3;
             
+            // Period in pixels per QRS — 25mm/s paper speed at typical resolution → adjust by HR.
+            // Faster HR → tighter complexes; clamp to keep waveform legible.
+            const safeHr = Math.max(20, Math.min(220, hr || 75));
+            const period = Math.max(60, Math.min(400, Math.round(15000 / safeHr)));
+
             leads.forEach((lead, i) => {
                 const col = Math.floor(i / 3);
                 const row = i % 3;
                 const originX = col * colW;
                 const originY = row * rowH + (rowH / 2);
-                
+
                 ctx.fillStyle = 'black';
                 ctx.font = '12px sans-serif';
                 ctx.fillText(lead, originX + 10, originY - 30);
 
                 ctx.beginPath();
                 for (let x = 0; x < colW; x++) {
-                    const t = (x % 200) / 200; 
+                    const t = (x % period) / period;
                     const y = getComplex(t, i);
                     if (x === 0) ctx.moveTo(originX + x, originY + y);
                     else ctx.lineTo(originX + x, originY + y);
@@ -94,7 +99,7 @@
     const MonitorScreen = ({ sim }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
-        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag } = state;
+        const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag } = state;
         const hasMonitoring = activeInterventions.has('Obs'); 
         const hasArtLine = activeInterventions.has('ArtLine');
         
@@ -104,26 +109,27 @@
         const canvasRef = useRef(null);
         
         const lastPopupTime = useRef(0);
-
-        if (state.isFinished) {
-            return <div className="h-full w-full bg-black"></div>;
-        }
+        const simChannel = useRef(null);
 
         useEffect(() => {
             if (show12Lead && canvasRef.current) {
-                render12Lead(canvasRef.current, state.rhythm, state.scenario);
+                render12Lead(canvasRef.current, state.rhythm, state.scenario, state.vitals?.hr);
             }
-        }, [show12Lead, state.rhythm]);
-
-        const simChannel = useRef(null);
-        if (simChannel.current === null) {
-            simChannel.current = new BroadcastChannel('sim_channel');
-        }
+        }, [show12Lead, state.rhythm, state.vitals?.hr]);
 
         useEffect(() => {
+            if (simChannel.current === null) {
+                simChannel.current = new BroadcastChannel('sim_channel');
+            }
             simChannel.current.onmessage = (event) => {
                 if (event.data.type === 'SHOW_12LEAD') {
                     setShow12Lead(true);
+                }
+            };
+            return () => {
+                if (simChannel.current) {
+                    simChannel.current.close();
+                    simChannel.current = null;
                 }
             };
         }, []);
@@ -141,8 +147,26 @@
                 let title = type;
                 let content = "No findings recorded.";
 
-                if (monitorPopup.customText) {
-                    content = monitorPopup.customText;
+                const ct = monitorPopup.customText;
+                // Structured VBG payload from revealInvestigation('VBG')
+                if (ct && typeof ct === 'object' && ct.__vbg) {
+                    const v = ct;
+                    content = (
+                        <div className="grid grid-cols-4 gap-2 text-xs font-mono">
+                            <span>pH: <b className={v.pH < 7.35 || v.pH > 7.45 ? "text-red-400" : "text-emerald-400"}>{v.pH.toFixed(2)}</b></span>
+                            <span>pCO2: <b className={v.pCO2 > 6.0 || v.pCO2 < 4.5 ? "text-red-400" : "text-emerald-400"}>{v.pCO2.toFixed(1)}</b></span>
+                            <span>pO2: <b className={v.pO2 < 8.0 ? "text-red-400" : "text-emerald-400"}>{v.pO2 ? v.pO2.toFixed(1) : '5.5'}</b></span>
+                            <span>Lac: <b className={v.Lac > 2 ? "text-red-400" : "text-emerald-400"}>{v.Lac.toFixed(1)}</b></span>
+                            <span>K+: <b className={v.K > 5.5 ? "text-red-400" : "text-emerald-400"}>{v.K.toFixed(1)}</b></span>
+                            <span>Glu: <b className={v.Glu > 11 ? "text-red-400" : "text-emerald-400"}>{v.Glu.toFixed(1)}</b></span>
+                            <span>BE: <b>{v.BE.toFixed(1)}</b></span>
+                            <span>HCO3: <b>{v.HCO3.toFixed(1)}</b></span>
+                            {v.Na !== undefined && <span>Na+: <b className={v.Na < 135 || v.Na > 145 ? "text-red-400" : "text-emerald-400"}>{v.Na.toFixed(0)}</b></span>}
+                            {v.Ca !== undefined && <span>Ca²⁺: <b className={v.Ca > 2.6 ? "text-red-400" : "text-emerald-400"}>{v.Ca.toFixed(2)}</b></span>}
+                        </div>
+                    );
+                } else if (ct) {
+                    content = ct;
                 } else if (scenario) {
                     if (type === 'ECG') content = (scenario.ecg && scenario.ecg.findings) ? scenario.ecg.findings : "Normal Sinus Rhythm"; 
                     else if (type === 'X-ray') content = (scenario.chestXray && scenario.chestXray.findings) ? scenario.chestXray.findings : "Lung fields clear.";
@@ -171,8 +195,13 @@
             }
         }, [monitorPopup, scenario]);
 
+        if (state.isFinished) {
+            return <div className="h-full w-full bg-black"></div>;
+        }
+
         const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
+        const thresholds = (window.getAlarmThresholds && window.getAlarmThresholds(scenario?.patientAge ?? 40)) || { hr: {low:40,high:130}, rr:{low:8,high:30}, spO2:90 };
 
         const getGridCols = () => {
             let count = 4;
@@ -246,7 +275,7 @@
                 <div className={`flex-grow flex flex-col p-2 md:p-3 gap-2 h-full relative z-10 ${isPaeds && showWetflag && scenario?.wetflag ? 'md:pr-52' : ''}`}>
                     <div className="flex-grow relative border border-slate-800 rounded overflow-hidden flex flex-col min-h-0 bg-black">
                         {hasMonitoring ? (
-                            <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} className="h-full" rhythmLabel="ECG" />
+                            <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} co2Pathology={etco2Pathology || 'normal'} className="h-full" rhythmLabel="ECG" />
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>
                         )}
@@ -258,7 +287,7 @@
                     </div>
 
                     <div className={`flex-none grid grid-cols-2 ${getGridCols()} gap-2 h-[25vh] md:h-[28vh]`}>
-                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > 140 || vitals.hr < 40} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
                         
                         <div className="relative h-full">
                             <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
@@ -270,13 +299,13 @@
                             )}
                         </div>
 
-                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
 
                         {hasArtLine && (
                             <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
                         )}
 
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > 30 || vitals.rr < 8} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
 
                         {etco2Enabled && (
                             <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
