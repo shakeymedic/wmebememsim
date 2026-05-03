@@ -37,6 +37,17 @@ window.generateHistory = (age, sex = 'Male') => {
     return { pmh: pmh, dhx: dhx, allergies: [Math.random() > 0.8 ? window.getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"] };
 };
 
+// Age-stratified alarm thresholds (heart rate, respiratory rate)
+window.getAlarmThresholds = (age) => {
+    if (age == null) age = 40;
+    if (age < 1)        return { hr: { low: 100, high: 180 }, rr: { low: 30, high: 60 }, spO2: 92 };
+    if (age <= 2)       return { hr: { low: 90,  high: 160 }, rr: { low: 24, high: 40 }, spO2: 92 };
+    if (age <= 5)       return { hr: { low: 80,  high: 140 }, rr: { low: 22, high: 34 }, spO2: 92 };
+    if (age <= 12)      return { hr: { low: 60,  high: 120 }, rr: { low: 18, high: 30 }, spO2: 92 };
+    if (age > 65)       return { hr: { low: 50,  high: 110 }, rr: { low: 10, high: 24 }, spO2: 90 };
+    return                     { hr: { low: 40,  high: 130 }, rr: { low: 8,  high: 30 }, spO2: 90 };
+};
+
 window.getBaseVitals = (age) => {
     let v = { hr: 75, rr: 16, bpSys: 120, bpDia: 75, temp: 36.8, bm: 5.8, gcs: 15, pupils: 3 }; 
     if (age < 1) v = { hr: 145, rr: 45, bpSys: 75, bpDia: 45, temp: 37.0, bm: 4.5, gcs: 15, pupils: 3 }; 
