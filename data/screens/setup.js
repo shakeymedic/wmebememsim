@@ -100,7 +100,8 @@
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
             
-            const finalAge = parseInt(buildAge) || 40;
+            const parsedAge = parseInt(buildAge);
+            const finalAge = Number.isFinite(parsedAge) ? Math.min(110, Math.max(0, parsedAge)) : 40;
             const finalName = buildName.trim() || generateName(buildSex);
             const weight = finalAge < 16 ? estimateWeight(finalAge) : null;
             const wetflag = weight ? calculateWetflag(finalAge, weight) : null;
@@ -327,7 +328,7 @@
                             <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500 font-bold"/>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 <div><label className="text-[10px] text-slate-500 uppercase">Patient Name</label><input type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" min="0" max="110" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Sex</label><select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Category</label><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Cardiac Arrest</option><option>Toxicology</option><option>Obstetrics &amp; Gynae</option><option>Psychiatric</option><option>Paediatric</option></select></div>
                             </div>
