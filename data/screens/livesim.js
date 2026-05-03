@@ -99,7 +99,9 @@
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP } = sim; 
 
-        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, showWetflag } = state;
+        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
+        const etco2Shape = etco2Pathology || 'normal';
+        const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
         const [activeTab, setActiveTab] = useState("Common");
         const [customLog, setCustomLog] = useState("");
@@ -110,7 +112,6 @@
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
         const [showLogModal, setShowLogModal] = useState(false);
-        const [etco2Shape, setEtco2Shape] = useState("normal");
         const [showRhythmModal, setShowRhythmModal] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
@@ -124,15 +125,27 @@
         const [nibpDia, setNibpDia] = useState(vitals.bpDia);
 
         const [showDrugCalc, setShowDrugCalc] = useState(false);
-        const [drugCalcWeight, setDrugCalcWeight] = useState(scenario.wetflag?.weight || scenario.weight || 70);
+        const [drugCalcWeightStr, setDrugCalcWeightStr] = useState(String(scenario.wetflag?.weight || scenario.weight || 70));
+        const drugCalcWeight = parseFloat(drugCalcWeightStr) || 0;
         const [showTimerModal, setShowTimerModal] = useState(false);
         const [timerAlerts, setTimerAlerts] = useState([]);
         const [newAlertMins, setNewAlertMins] = useState('5');
         const [newAlertMsg, setNewAlertMsg] = useState('');
         const [firedAlerts, setFiredAlerts] = useState(new Set());
+        const firedAlertsRef = useRef(new Set());
         const [showKeyHelp, setShowKeyHelp] = useState(false);
         const audioCtxRef = useRef(null);
         const lastAlertRef = useRef({});
+
+        // Reset fired-alerts when sim resets to T=0
+        useEffect(() => {
+            if (time === 0) {
+                firedAlertsRef.current = new Set();
+                setFiredAlerts(new Set());
+            }
+        }, [time === 0]);
+
+        const thresholds = (window.getAlarmThresholds && window.getAlarmThresholds(scenario?.patientAge ?? 40)) || { hr: {low:40,high:130}, rr:{low:8,high:30}, spO2:90 };
 
         const [assessments, setAssessments] = useState({
             "Safe Approach": null,
@@ -207,22 +220,23 @@
         useEffect(() => {
             if (isMuted || !isRunning) return;
             const now = Date.now();
-            if (vitals.hr > 130 || vitals.hr < 40) { if (now - (lastAlertRef.current.hr || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.hr = now; } }
-            if (vitals.spO2 < 90) { if (now - (lastAlertRef.current.spO2 || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.spO2 = now; } }
-            if (vitals.rr < 8 || vitals.rr > 30) { if (now - (lastAlertRef.current.rr || 0) > 10000) { playAlertTone('alert'); lastAlertRef.current.rr = now; } }
-        }, [vitals.hr, vitals.spO2, vitals.rr, isMuted, isRunning]);
+            if (vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low) { if (now - (lastAlertRef.current.hr || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.hr = now; } }
+            if (vitals.spO2 < thresholds.spO2) { if (now - (lastAlertRef.current.spO2 || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.spO2 = now; } }
+            if (vitals.rr < thresholds.rr.low || vitals.rr > thresholds.rr.high) { if (now - (lastAlertRef.current.rr || 0) > 10000) { playAlertTone('alert'); lastAlertRef.current.rr = now; } }
+        }, [vitals.hr, vitals.spO2, vitals.rr, isMuted, isRunning, thresholds.hr.high, thresholds.hr.low, thresholds.rr.high, thresholds.rr.low, thresholds.spO2]);
 
         useEffect(() => {
             if (!isRunning) return;
             timerAlerts.forEach(alert => {
                 const alertTimeS = alert.mins * 60;
-                if (time >= alertTimeS && !firedAlerts.has(alert.id)) {
-                    setFiredAlerts(prev => new Set([...prev, alert.id]));
+                if (time >= alertTimeS && !firedAlertsRef.current.has(alert.id)) {
+                    firedAlertsRef.current.add(alert.id);
+                    setFiredAlerts(new Set(firedAlertsRef.current));
                     addLogEntry(`Timer Alert: ${alert.msg}`, 'danger');
                     playAlertTone('critical');
                 }
             });
-        }, [time, isRunning, timerAlerts, firedAlerts]);
+        }, [time, isRunning, timerAlerts]);
 
         useEffect(() => {
             const handler = (e) => {
@@ -356,8 +370,8 @@
                     </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-2 overflow-hidden min-h-0">
-                    <div className="lg:col-span-4 flex flex-col gap-2 overflow-y-auto h-full pr-1">
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2 overflow-hidden min-h-0">
+                    <div className="md:col-span-5 lg:col-span-4 flex flex-col gap-2 overflow-y-auto h-full pr-1">
                          <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -456,7 +470,7 @@
                         )}
                     </div>
                     
-                    <div className="lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="md:col-span-7 lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
                         {searchTerm.length > 0 && searchResults.length > 0 && (
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
                                 {searchResults.map(key => (
@@ -703,7 +717,7 @@
                             </div>
                             <div className="mb-4">
                                 <label className="text-xs text-slate-400 font-bold uppercase">Patient Weight (kg)</label>
-                                <input type="number" value={drugCalcWeight} onChange={e => setDrugCalcWeight(parseFloat(e.target.value) || 70)} className="w-full bg-slate-900 border border-slate-500 rounded p-2 text-xl font-mono text-white text-center font-bold mt-1" />
+                                <input type="number" value={drugCalcWeightStr} onChange={e => setDrugCalcWeightStr(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-2 text-xl font-mono text-white text-center font-bold mt-1" />
                             </div>
                             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                                 {DRUG_CALC_LIST.map((drug, idx) => {
