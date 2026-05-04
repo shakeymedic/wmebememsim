@@ -89,8 +89,40 @@
         precomputed.co2.normal[i] = co2N;
         precomputed.co2.bronchospastic[i] = co2B;
         
-        let artVal = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 25 : Math.sin(t * Math.PI * 2) * 5;
-        if (t > 0.3 && t < 0.5) artVal += 5;
+        // --- Arterial line (radial) ---
+        // Anchored to ECG cycle: R wave at t≈0.205. Mechanical pulse arrives ~210 ms later
+        // at the radial artery (peak at t≈0.42 of the cardiac cycle at 60 bpm).
+        // Phases: end-diastolic plateau → anacrotic limb → systolic peak → systolic decline
+        //         → dicrotic notch (aortic valve closure) → dicrotic wave (elastic recoil) → diastolic runoff
+        const dia = 6;        // end-diastolic baseline
+        let artVal;
+
+        if (t < 0.30) {
+            // Late-diastolic plateau (wraps continuously from prior beat's runoff)
+            artVal = dia;
+        } else if (t < 0.42) {
+            // Anacrotic (ascending) limb — sharp rise
+            const x = (t - 0.30) / 0.12;
+            const ease = 1 - Math.pow(1 - x, 2.5);
+            artVal = dia + 26 * ease;                                 // peaks at 32
+        } else if (t < 0.62) {
+            // Systolic decline (ease-out from peak toward J-point of art waveform)
+            const x = (t - 0.42) / 0.20;
+            artVal = 32 - 14 * (x * (2 - x));                         // 32 → 18
+        } else if (t < 0.68) {
+            // Dicrotic notch — brief dip at aortic valve closure
+            const x = (t - 0.62) / 0.06;
+            artVal = 18 - 3.5 * Math.sin(x * Math.PI);                // 18 → 14.5 → 18
+        } else if (t < 0.78) {
+            // Dicrotic wave — secondary rise from elastic recoil of the aorta
+            const x = (t - 0.68) / 0.10;
+            artVal = 18 + 4 * Math.sin(x * Math.PI);                  // 18 → 22 → 18
+        } else {
+            // Diastolic runoff — exponential decay back to baseline
+            const x = (t - 0.78) / 0.22;
+            artVal = dia + (18 - dia) * Math.exp(-3 * x);
+        }
+
         precomputed.art[i] = artVal;
     }
 
