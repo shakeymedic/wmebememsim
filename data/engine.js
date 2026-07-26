@@ -46,7 +46,10 @@
                 if(!action.payload) return { ...initialVitalsState };
                 const initialVitals = { ...initialVitalsState.vitals, ...action.payload.vitals };
                 return { ...initialVitalsState, vitals: initialVitals, prevVitals: { ...initialVitals } };
-            case 'RESTORE_SESSION': return { ...state, vitals: action.payload.vitals, prevVitals: action.payload.prevVitals || action.payload.vitals, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0 };
+            case 'RESTORE_SESSION': {
+                const restoredVitals = { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) };
+                return { ...state, vitals: restoredVitals, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0 };
+            }
             case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, trends: action.payload.trends || state.trends };
             case 'UPDATE_VITALS': return { ...state, vitals: action.payload };
             case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
@@ -161,7 +164,7 @@
         switch (action.type) {
             case 'CLEAR_SESSION': return { ...initialScenarioState };
             case 'LOAD_SCENARIO': return { ...initialScenarioState, scenario: action.payload };
-            case 'RESTORE_SESSION': return { scenario: action.payload.scenario, investigationsRevealed: action.payload.investigationsRevealed || {}, loadingInvestigations: action.payload.loadingInvestigations || {} };
+            case 'RESTORE_SESSION': return { scenario: window.rehydrateScenario(action.payload.scenario), investigationsRevealed: action.payload.investigationsRevealed || {}, loadingInvestigations: action.payload.loadingInvestigations || {} };
             case 'SYNC_FROM_MASTER': 
                 const syncedScenario = { 
                     ...state.scenario, 
@@ -481,7 +484,9 @@
                     const cur = stateRef.current;
                     if (!cur.scenario) return;
                     const slim = {
-                        scenario: { id: cur.scenario.id, title: cur.scenario.title }, // identifier only
+                        // The whole scenario, not just an identifier: every screen dereferences fields
+                        // like patientProfileTemplate, and a stub makes them throw on resume.
+                        scenario: cur.scenario,
                         vitals: cur.vitals, prevVitals: cur.prevVitals, trends: cur.trends, hypoxiaTimer: cur.hypoxiaTimer,
                         rhythm: cur.rhythm, time: cur.time, cycleTimer: cur.cycleTimer,
                         activeInterventions: Array.from(cur.activeInterventions),

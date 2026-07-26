@@ -96,10 +96,13 @@
     ];
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
-        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor } = window;
+        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP } = sim; 
 
-        const { scenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
+        const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
+        // A restored or partially-synced session can arrive without a scenario; every field read below
+        // must degrade to blank rather than take down the whole render tree.
+        const scenario = rawScenario || {};
         const etco2Shape = etco2Pathology || 'normal';
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
@@ -361,8 +364,8 @@
                             {state.log.some(l => l.flagged) && <span className="absolute top-0 right-0 w-2 h-2 bg-amber-500 rounded-full"></span>}
                         </Button>
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
-                        <Button variant="outline" onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank')} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
-                        <Button variant="outline" onClick={() => window.open('defib/index.html', '_blank')} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
+                        <Button variant="outline" onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank', 'noopener')} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
+                        <Button variant="outline" onClick={() => window.open('defib/index.html', '_blank', 'noopener')} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
                         <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
                         <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
                         <Button variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
@@ -377,7 +380,8 @@
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
                             {scenario.title && <div className="text-xs text-emerald-400 font-bold uppercase mt-0.5">{scenario.title}</div>}
                             {scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
-                            <div className="text-xs text-slate-300 mt-1 line-clamp-2">{scenario.patientProfileTemplate.replace('{age}', scenario.patientAge).replace('{sex}', scenario.sex)}</div>
+                            <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>
+                            <HumanFactorBadge hf={scenario.hf} className="mt-2" />
                          </div>
 
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">

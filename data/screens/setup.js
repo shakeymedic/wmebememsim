@@ -2,7 +2,8 @@
     const { useState, useEffect } = React;
 
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
-        const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName } = window;
+        const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
+                getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
         const [mode, setMode] = useState('random'); 
         const [category, setCategory] = useState('Medical');
@@ -30,6 +31,29 @@
         const [buildCustomActions, setBuildCustomActions] = useState("");
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, rhythm: "Sinus Rhythm" });
 
+        // The freetext brief used to be independent of the structured fields, so a scenario could read
+        // "40-year-old male" while the age field said 7. Keep it derived until the user edits it, then
+        // flag it as stale instead of silently overwriting their words.
+        const [descDirty, setDescDirty] = useState(false);
+        const autoDesc = (a, s, t) => `A ${a}-year-old ${String(s || 'patient').toLowerCase()} with ${(t || 'an undifferentiated presentation').toLowerCase()}.`;
+        useEffect(() => {
+            if (!descDirty) setBuildDesc(autoDesc(buildAge, buildSex, buildTitle));
+        }, [buildAge, buildSex, buildTitle, descDirty]);
+        const descStale = descDirty && !String(buildDesc).includes(String(buildAge));
+
+        const builderErrors = {
+            age: validateBuilderField('age', buildAge),
+            hr: validateBuilderField('hr', buildVitals.hr),
+            bpSys: validateBuilderField('bpSys', buildVitals.bpSys),
+            rr: validateBuilderField('rr', buildVitals.rr),
+            spO2: validateBuilderField('spO2', buildVitals.spO2),
+            gcs: validateBuilderField('gcs', buildVitals.gcs),
+            temp: validateBuilderField('temp', buildVitals.temp)
+        };
+        const builderInvalid = Object.values(builderErrors).some(Boolean);
+        const FieldError = ({ msg }) => msg ? <div className="text-[10px] text-red-400 mt-0.5">{msg}</div> : null;
+        const fieldClass = (msg) => `w-full bg-slate-900 border rounded p-2 text-white placeholder-slate-500 ${msg ? 'border-red-500' : 'border-slate-600'}`;
+
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
         useEffect(() => {
@@ -47,7 +71,8 @@
             setBuildAge(s.patientAge || 40);
             setBuildSex(s.sex || "Male");
             setBuildCat(s.category);
-            setBuildDesc(s.patientProfileTemplate.replace('{age}', s.patientAge || 40).replace('{sex}', s.sex || 'Male'));
+            setBuildDesc(formatProfileTemplate(s.patientProfileTemplate || s.profile, s.patientAge || window.getPreviewAge(s), s.sex || 'Male'));
+            setDescDirty(true);
             setBuildPMH(Array.isArray(s.pmh) ? s.pmh.join(", ") : (s.pmh || ""));
             setBuildDhx(Array.isArray(s.dhx) ? s.dhx.join(", ") : (s.dhx || "Nil"));
             setBuildAllergies(Array.isArray(s.allergies) ? s.allergies.join(", ") : (s.allergies || "NKDA"));
@@ -99,21 +124,25 @@
 
         const saveCustomScenario = () => {
             if(!buildTitle) return alert("Please add a title");
-            
-            const parsedAge = parseInt(buildAge);
-            const finalAge = Number.isFinite(parsedAge) ? Math.min(110, Math.max(0, parsedAge)) : 40;
+            // Reject rather than clamp: a silently corrected age used to reclassify the scenario as
+            // paediatric and produce WETFLAG doses for a patient the facilitator never described.
+            const problems = Object.values(builderErrors).filter(Boolean);
+            if (problems.length) return alert("Please correct the following before running:\n\n" + problems.join("\n"));
+
+            const finalAge = Number(buildAge);
             const finalName = buildName.trim() || generateName(buildSex);
             const weight = finalAge < 16 ? estimateWeight(finalAge) : null;
             const wetflag = weight ? calculateWetflag(finalAge, weight) : null;
 
+            const bpSys = Number(buildVitals.bpSys);
             const safeVitals = {
-                hr: parseInt(buildVitals.hr) || 80,
-                bpSys: parseInt(buildVitals.bpSys) || 120,
-                rr: parseInt(buildVitals.rr) || 16,
-                spO2: parseInt(buildVitals.spO2) || 98,
-                temp: parseFloat(buildVitals.temp) || 37,
-                gcs: parseInt(buildVitals.gcs) || 15,
-                bpDia: Math.floor((parseInt(buildVitals.bpSys)||120) * 0.65)
+                hr: Number(buildVitals.hr),
+                bpSys: bpSys,
+                rr: Number(buildVitals.rr),
+                spO2: Number(buildVitals.spO2),
+                temp: Number(buildVitals.temp),
+                gcs: Number(buildVitals.gcs),
+                bpDia: Math.floor(bpSys * 0.65)
             };
 
             const newScen = {
@@ -143,7 +172,8 @@
                 chestXray: { findings: "Unremarkable" },
                 weight: weight,
                 wetflag: wetflag,
-                showWetflag: showWetflag
+                showWetflag: showWetflag,
+                hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0]
             };
 
             if(newScen.id.startsWith('CUST_')) {
@@ -176,15 +206,17 @@
                      selectedBase = pool[Math.floor(Math.random() * pool.length)];
                  }
 
+                 const selectedHf = HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0];
+
                  if (selectedBase.id.startsWith('CUST_')) {
-                     onGenerate({ ...selectedBase, showWetflag }, {});
+                     onGenerate({ ...selectedBase, showWetflag, hf: selectedBase.hf || selectedHf }, {});
                      return;
                  }
 
                  const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
                  let sex = Math.random() > 0.5 ? 'Male' : 'Female';
                  const t = selectedBase.title.toLowerCase();
-                 const p = selectedBase.patientProfileTemplate.toLowerCase();
+                 const p = String(selectedBase.patientProfileTemplate || '').toLowerCase();
                  const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
                  const forceMale = ["testicular", "prostate", "scrotal"];
                  
@@ -204,13 +236,13 @@
                  const generated = { 
                     ...selectedBase, 
                     patientName: randomName, patientAge, sex,
-                    profile: selectedBase.patientProfileTemplate.replace('{age}', patientAge).replace('{sex}', sex),
+                    profile: formatProfileTemplate(selectedBase.patientProfileTemplate, patientAge, sex),
                     vitals: finalVitals, 
                     pmh: selectedBase.pmh || history.pmh, 
                     dhx: selectedBase.dhx || history.dhx, 
                     allergies: selectedBase.allergies || history.allergies,
                     vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
-                    hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0],
+                    hf: selectedHf,
                     weight, wetflag,
                     showWetflag
                  };
@@ -234,7 +266,12 @@
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
                 <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-center justify-between">
                     <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
-                    <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Use as Monitor</Button>
+                    <div className="flex gap-2">
+                        {/* New tab, not same tab: the facilitator keeps the controller on this laptop and
+                            drags the monitor window to the second screen. */}
+                        <Button onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank', 'noopener')} variant="primary" className="h-10 text-xs flex items-center gap-1"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
+                        <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Join Another Session</Button>
+                    </div>
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
                     <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
@@ -242,7 +279,7 @@
                 </div>
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
-                        <div><h3 className="font-bold text-emerald-400">Resume Previous?</h3><p className="text-sm text-slate-300">{savedState.scenario.title}</p></div>
+                        <div><h3 className="font-bold text-emerald-400">Resume Previous?</h3><p className="text-sm text-slate-300">{(savedState.scenario && savedState.scenario.title) || 'Saved session'}</p></div>
                         <Button onClick={onResume} variant="success">Resume</Button>
                     </div>
                 )}
@@ -288,7 +325,7 @@
                                             <div key={s.id} className="flex justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
                                                 <div className="flex-1">
                                                     <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
-                                                    <div className="text-xs text-slate-400">{s.patientProfileTemplate.substring(0, 60)}...</div>
+                                                    <div className="text-xs text-slate-400">{getScenarioPreviewText(s).substring(0, 60)}...</div>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
@@ -314,7 +351,7 @@
                              {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet. Use Builder to create one.</p>}
                              {customScenarios.map((s, i) => (
                                  <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
-                                     <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{s.patientProfileTemplate}</div></div>
+                                     <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{getScenarioPreviewText(s)}</div></div>
                                      <div className="flex gap-2">
                                         <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs">Edit</Button>
                                         <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
@@ -328,11 +365,21 @@
                             <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500 font-bold"/>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 <div><label className="text-[10px] text-slate-500 uppercase">Patient Name</label><input type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" min="0" max="110" placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
+                                <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className={fieldClass(builderErrors.age)}/><FieldError msg={builderErrors.age}/></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Sex</label><select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select></div>
                                 <div><label className="text-[10px] text-slate-500 uppercase">Category</label><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Cardiac Arrest</option><option>Toxicology</option><option>Obstetrics &amp; Gynae</option><option>Psychiatric</option><option>Paediatric</option></select></div>
                             </div>
-                            <textarea placeholder="Description" value={buildDesc} onChange={e=>setBuildDesc(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white h-20 placeholder-slate-500"/>
+                            <div>
+                                <textarea placeholder="Description" value={buildDesc} onChange={e=>{ setDescDirty(true); setBuildDesc(e.target.value); }} className={`w-full bg-slate-900 border rounded p-2 text-white h-20 placeholder-slate-500 ${descStale ? 'border-amber-500' : 'border-slate-600'}`}/>
+                                {descStale ? (
+                                    <div className="flex items-center justify-between gap-2 text-[11px] text-amber-400 mt-1">
+                                        <span>This brief may be out of date — it does not mention age {buildAge}.</span>
+                                        <button type="button" onClick={() => { setDescDirty(false); setBuildDesc(autoDesc(buildAge, buildSex, buildTitle)); }} className="underline font-bold whitespace-nowrap">Regenerate</button>
+                                    </div>
+                                ) : (
+                                    !descDirty && <div className="text-[10px] text-slate-500 mt-1">Auto-generated from age, sex and title. Editing it stops auto-updates.</div>
+                                )}
+                            </div>
                             <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
                             <input type="text" placeholder="Drug History (comma separated)" value={buildDhx} onChange={e=>setBuildDhx(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
                             <input type="text" placeholder="Allergies (comma separated)" value={buildAllergies} onChange={e=>setBuildAllergies(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
@@ -348,18 +395,24 @@
                             
                             <h4 className="text-xs font-bold text-slate-500 uppercase mt-2">Initial Observations</h4>
                             <div className="grid grid-cols-3 gap-2">
-                                <div><label className="text-[10px] text-slate-500 uppercase">Heart Rate</label><input type="number" value={buildVitals.hr} onChange={e=>setBuildVitals({...buildVitals, hr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Sys BP</label><input type="number" value={buildVitals.bpSys} onChange={e=>setBuildVitals({...buildVitals, bpSys: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Resp Rate</label><input type="number" value={buildVitals.rr} onChange={e=>setBuildVitals({...buildVitals, rr: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">SpO2 %</label><input type="number" value={buildVitals.spO2} onChange={e=>setBuildVitals({...buildVitals, spO2: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">GCS</label><input type="number" value={buildVitals.gcs} onChange={e=>setBuildVitals({...buildVitals, gcs: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" max={15} min={3}/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Temp °C</label><input type="number" value={buildVitals.temp} onChange={e=>setBuildVitals({...buildVitals, temp: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"/></div>
+                                {[['hr','Heart Rate'],['bpSys','Sys BP'],['rr','Resp Rate'],['spO2','SpO2 %'],['gcs','GCS'],['temp','Temp °C']].map(([key, label]) => (
+                                    <div key={key}>
+                                        <label className="text-[10px] text-slate-500 uppercase">{label}</label>
+                                        <input type="number" min={BUILDER_LIMITS[key].min} max={BUILDER_LIMITS[key].max} value={buildVitals[key]} onChange={e=>setBuildVitals({...buildVitals, [key]: e.target.value})} className={fieldClass(builderErrors[key])}/>
+                                        <FieldError msg={builderErrors[key]}/>
+                                    </div>
+                                ))}
                             </div>
                             <div>
                                 <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
                                 <select onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}</select>
                             </div>
-                            <Button onClick={saveCustomScenario} variant="primary" className="w-full text-lg h-12">Run Scenario</Button>
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase">Human Factors</label>
+                                <select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select>
+                            </div>
+                            <Button onClick={saveCustomScenario} variant="primary" disabled={builderInvalid} className="w-full text-lg h-12">Run Scenario</Button>
+                            {builderInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields above to run this scenario.</p>}
                         </div>
                     )}
                 </div>
@@ -373,17 +426,20 @@
         return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://raw.githubusercontent.com/shakeymedic/wmem/main/emevidence_logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
-    const BriefingScreen = ({ scenario, onStart, onBack }) => {
-        const { Button, Lucide } = window;
+    const BriefingScreen = ({ scenario: rawScenario, onStart, onBack }) => {
+        const { Button, Lucide, HumanFactorBadge } = window;
+        const scenario = rawScenario || {};
+        const brief = scenario.instructorBrief || {};
         return (
             <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
                 <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
                     <div className="p-6 bg-slate-800 border-b border-slate-700 flex justify-between items-center">
                         <div>
                             <h2 className="text-3xl font-bold text-white mb-2">{scenario.title}</h2>
-                            <div className="flex gap-2 mt-2"><span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span><span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span><span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span></div>
+                            <div className="flex gap-2 mt-2"><span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span><span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span><span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span><HumanFactorBadge hf={scenario.hf} /></div>
+                            {scenario.hf && scenario.hf.id !== 'hf0' && <p className="text-xs text-fuchsia-300/80 mt-2 max-w-md">{scenario.hf.description}</p>}
                         </div>
-                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold">Initial GCS</div><div className="text-4xl font-mono font-bold text-white">{scenario.vitals.gcs}</div></div>
+                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold">Initial GCS</div><div className="text-4xl font-mono font-bold text-white">{scenario.vitals ? scenario.vitals.gcs : '-'}</div></div>
                     </div>
                     {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
                         <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
@@ -416,10 +472,10 @@
                             </div>
                         </div>
                         <div className="space-y-4">
-                            <div className="p-3 bg-amber-900/20 rounded border border-amber-600/30"><h4 className="text-sm font-bold text-amber-400 uppercase mb-1">Clinical Progression</h4><p className="text-sm text-slate-300 leading-snug">{scenario.instructorBrief.progression}</p></div>
-                            <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30"><h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{scenario.instructorBrief.interventions && scenario.instructorBrief.interventions.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+                            <div className="p-3 bg-amber-900/20 rounded border border-amber-600/30"><h4 className="text-sm font-bold text-amber-400 uppercase mb-1">Clinical Progression</h4><p className="text-sm text-slate-300 leading-snug">{brief.progression}</p></div>
+                            <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30"><h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{brief.interventions && brief.interventions.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
                             <div className="p-3 bg-slate-900/50 rounded border border-slate-600"><h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4><div className="flex flex-col gap-1">{scenario.learningLinks && scenario.learningLinks.map((link, i) => (<a key={i} href={link.url} target="_blank" className="flex items-center gap-2 text-xs text-sky-400 hover:underline"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</a>))}</div></div>
-                            <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30"><h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Learning Objectives</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{(scenario.instructorBrief.debriefPoints || scenario.instructorBrief.learningObjectives || []).map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+                            <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30"><h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Learning Objectives</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{(brief.debriefPoints || brief.learningObjectives || []).map((l, i) => <li key={i}>{l}</li>)}</ul></div>
                         </div>
                     </div>
                 </div>

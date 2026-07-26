@@ -123,24 +123,35 @@
         // --- APP COMPONENT ---
         const App = () => {
             const { useState, useEffect } = React;
-            const { SetupScreen, JoinScreen, BriefingScreen, MonitorContainer, LiveSimContainer, useSimulation } = window;
+            const { SetupScreen, JoinScreen, BriefingScreen, MonitorContainer, LiveSimContainer, useSimulation, ErrorBoundary } = window;
 
             // URL Params for Monitor Mode
             const urlParams = new URLSearchParams(window.location.search);
             const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
             const initialSession = urlParams.get('session');
 
-            const [view, setView] = useState(initialMode); 
-            const [sessionID, setSessionID] = useState(initialSession);
+            const [view, setView] = useState(initialMode);
+            // Controller code must survive reloads and back-navigation, otherwise any monitor already
+            // paired with it is orphaned. Resolve URL -> localStorage -> mint new.
+            const [sessionID, setSessionID] = useState(() => {
+                if (initialSession) return initialSession;
+                if (initialMode === 'monitor') return null;
+                let stored = null;
+                try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
+                return stored || Math.random().toString(36).substring(2, 6).toUpperCase();
+            });
             const [generatedScenario, setGeneratedScenario] = useState(null);
-            
-            // Generate Session ID if Controller
+
             useEffect(() => {
-                if (!sessionID && view !== 'monitor') {
-                    const id = Math.random().toString(36).substring(2, 6).toUpperCase();
-                    setSessionID(id);
+                if (!sessionID || view === 'monitor') return;
+                try { localStorage.setItem('wmebem_session_id', sessionID); } catch (e) {}
+                // Keep the code in the URL so a reload or a shared link resolves to the same session.
+                if (urlParams.get('session') !== sessionID) {
+                    const next = new URLSearchParams(window.location.search);
+                    next.set('session', sessionID);
+                    window.history.replaceState({}, '', `${window.location.pathname}?${next.toString()}`);
                 }
-            }, []);
+            }, [sessionID, view]);
 
             // --- SIM ENGINE ---
             // Initializes the logic core. Pass sessionID to enable sync.
@@ -168,10 +179,20 @@
             };
 
             const handleResume = (saved) => {
-                if(saved && saved.scenario) {
-                    setGeneratedScenario(saved.scenario);
-                    engine.dispatch({ type: 'RESTORE_SESSION', payload: saved });
+                if (!saved || !saved.scenario) return;
+                try {
+                    // Snapshots only ever held {id, title} before, so rebuild the full scenario from
+                    // the live definitions before anything tries to render it.
+                    const scenario = window.rehydrateScenario(saved.scenario);
+                    if (!scenario) return;
+                    setGeneratedScenario(scenario);
+                    engine.dispatch({ type: 'RESTORE_SESSION', payload: { ...saved, scenario } });
                     setView('livesim');
+                } catch (e) {
+                    console.error('Failed to resume session', e);
+                    try { localStorage.removeItem('wmebem_sim_state'); } catch (err) {}
+                    setResumeData(null);
+                    alert('That saved session could not be restored and has been cleared.');
                 }
             };
 
@@ -180,7 +201,10 @@
             useEffect(() => {
                 const saved = localStorage.getItem('wmebem_sim_state');
                 if (saved && view === 'setup') {
-                    try { setResumeData(JSON.parse(saved)); } catch(e){}
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if (parsed && parsed.scenario) setResumeData(parsed);
+                    } catch(e) { console.warn('Discarding unreadable saved session', e); }
                 }
             }, [view]);
 
@@ -188,7 +212,7 @@
             
             // 1. Monitor View (Clean, Full Screen)
             if (view === 'monitor') {
-                return <MonitorContainer sessionID={sessionID} />;
+                return <ErrorBoundary><MonitorContainer sessionID={sessionID} /></ErrorBoundary>;
             }
 
             // 2. Controller Views (Header + Footer)
@@ -212,6 +236,7 @@
 
                     {/* Main Content */}
                     <main className="flex-grow overflow-hidden relative bg-slate-900">
+                      <ErrorBoundary onReset={() => { try { engine.reset(); } catch (e) {} setView('setup'); }}>
                         {view === 'setup' && (
                             <SetupScreen 
                                 onGenerate={handleGenerate} 
@@ -238,6 +263,7 @@
                                 sessionID={sessionID}
                             />
                         )}
+                      </ErrorBoundary>
                     </main>
 
                     {/* Footer */}

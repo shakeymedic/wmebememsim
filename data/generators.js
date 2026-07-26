@@ -6,6 +6,82 @@ window.getRandomFloat = (min, max, decimals) => parseFloat((Math.random() * (max
 window.getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 window.clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
+// --- PROFILE TEMPLATE INTERPOLATION ---
+// Scenario briefs are stored as templates containing {age} / {sex} placeholders. Anything that
+// renders a brief (preview card, builder, live dashboard) must go through here, otherwise the raw
+// placeholder leaks into the UI.
+window.formatProfileTemplate = (template, age, sex) => {
+    if (!template) return "";
+    const ageStr = (age === undefined || age === null || age === '') ? 'unknown-age' : age;
+    return String(template).replace(/\{age\}/g, ageStr).replace(/\{sex\}/g, sex || 'patient');
+};
+
+// Preview cards render before a patient is generated, so there is no patientAge yet. Draw one
+// representative age per scenario and cache it so card text stays stable across re-renders.
+const previewAgeCache = {};
+window.getPreviewAge = (scenario) => {
+    if (!scenario) return 40;
+    if (scenario.patientAge !== undefined && scenario.patientAge !== null) return scenario.patientAge;
+    const key = scenario.id || scenario.title;
+    if (previewAgeCache[key] === undefined) {
+        try { previewAgeCache[key] = scenario.ageGenerator ? scenario.ageGenerator() : 40; }
+        catch (e) { previewAgeCache[key] = 40; }
+    }
+    return previewAgeCache[key];
+};
+
+window.getScenarioPreviewText = (scenario) => {
+    if (!scenario) return "";
+    const template = scenario.patientProfileTemplate || scenario.profile || "";
+    return window.formatProfileTemplate(template, window.getPreviewAge(scenario), scenario.sex);
+};
+
+// --- SESSION RESTORE ---
+// A persisted scenario has been through JSON, so generator functions are gone and older snapshots
+// may only contain {id, title}. Re-merge over the live base definition and guarantee that every
+// field a screen dereferences exists, so a resume can never throw during render.
+window.rehydrateScenario = (saved) => {
+    if (!saved) return null;
+    let base = null;
+    try {
+        base = (window.ALL_SCENARIOS || []).find(s => s.id === saved.id) || null;
+        if (!base && saved.id) {
+            const custom = JSON.parse(localStorage.getItem('wmebem_custom_scenarios') || '[]');
+            base = custom.find(s => s.id === saved.id) || null;
+        }
+    } catch (e) { base = null; }
+    const merged = { ...(base || {}), ...saved };
+    if (!merged.title) merged.title = 'Restored Scenario';
+    if (!merged.patientProfileTemplate) merged.patientProfileTemplate = merged.profile || 'Patient details unavailable for this restored session.';
+    if (!merged.profile) merged.profile = window.formatProfileTemplate(merged.patientProfileTemplate, merged.patientAge, merged.sex);
+    if (!merged.instructorBrief) merged.instructorBrief = {};
+    if (!Array.isArray(merged.recommendedActions)) merged.recommendedActions = [];
+    return merged;
+};
+
+// --- BUILDER INPUT VALIDATION ---
+// Physiologically plausible bounds. Values outside these are almost always typos, and previously
+// propagated silently into WETFLAG maths and the debrief chart.
+window.BUILDER_LIMITS = {
+    age:   { min: 0,  max: 120, label: 'Age',         unit: 'years' },
+    hr:    { min: 0,  max: 300, label: 'Heart Rate',  unit: 'bpm' },
+    bpSys: { min: 0,  max: 300, label: 'Systolic BP', unit: 'mmHg' },
+    rr:    { min: 0,  max: 100, label: 'Resp Rate',   unit: '/min' },
+    spO2:  { min: 0,  max: 100, label: 'SpO2',        unit: '%' },
+    gcs:   { min: 3,  max: 15,  label: 'GCS',         unit: '' },
+    temp:  { min: 20, max: 45,  label: 'Temp',        unit: '°C' }
+};
+
+window.validateBuilderField = (field, rawValue) => {
+    const limit = window.BUILDER_LIMITS[field];
+    if (!limit) return null;
+    if (rawValue === '' || rawValue === null || rawValue === undefined) return `${limit.label} is required.`;
+    const num = Number(rawValue);
+    if (!Number.isFinite(num)) return `${limit.label} must be a number.`;
+    if (num < limit.min || num > limit.max) return `${limit.label} must be between ${limit.min} and ${limit.max} ${limit.unit}`.trim() + '.';
+    return null;
+};
+
 // --- NAME GENERATOR ---
 window.generateName = (sex) => {
     const male = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "George", "Harry", "Jack", "Oliver", "Noah", "Arthur", "Leo"];

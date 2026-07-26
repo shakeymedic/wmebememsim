@@ -18,11 +18,28 @@
         const duration = maxTime - minTime || 1;
 
         const getX = (t) => paddingLeft + ((t - minTime) / duration) * graphW;
-        const getY = (val, maxVal) => (height - paddingBottom) - (val / maxVal) * graphH;
+        // Axis maxima used to be hardcoded, so one extreme value (e.g. HR 999) was drawn above the
+        // plot area and clipped away. Grow the axis to fit the data, and clamp as a last resort.
+        const axisMax = (key, floor) => {
+            const peak = Math.max(0, ...history.map(h => Number(h[key])).filter(Number.isFinite));
+            return Math.max(floor, Math.ceil((peak * 1.1) / 20) * 20);
+        };
+        const hrMax = axisMax('hr', 200);
+        const bpMax = axisMax('bp', 250);
+        const spo2Max = 100;
+        const getY = (val, maxVal) => {
+            const v = Math.min(Math.max(Number(val) || 0, 0), maxVal);
+            return (height - paddingBottom) - (v / maxVal) * graphH;
+        };
+        const buildPath = (key, maxVal) => {
+            const pts = history.filter(h => Number.isFinite(Number(h[key])));
+            if (pts.length < 2) return "";
+            return "M " + pts.map(h => `${getX(h.time)},${getY(h[key], maxVal)}`).join(" L ");
+        };
 
-        let hrPath = "M " + history.map(h => `${getX(h.time)},${getY(h.hr, 200)}`).join(" L ");
-        let bpPath = "M " + history.map(h => `${getX(h.time)},${getY(h.bp, 250)}`).join(" L ");
-        let spo2Path = "M " + history.map(h => `${getX(h.time)},${getY(h.spo2, 100)}`).join(" L ");
+        const hrPath = buildPath('hr', hrMax);
+        const bpPath = buildPath('bp', bpMax);
+        const spo2Path = buildPath('spo2', spo2Max);
 
         return (
             <div className="w-full bg-slate-900 border border-slate-700 rounded p-4 mb-4 overflow-hidden">
@@ -49,9 +66,9 @@
                         );
                     })}
                     
-                    <text x={width-80} y={paddingTop + 20} fill="#22c55e" fontSize="18" fontWeight="bold">HR</text>
-                    <text x={width-80} y={paddingTop + 45} fill="#ef4444" fontSize="18" fontWeight="bold">BP</text>
-                    <text x={width-80} y={paddingTop + 70} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2</text>
+                    <text x={width-90} y={paddingTop + 20} fill="#22c55e" fontSize="18" fontWeight="bold">HR /{hrMax}</text>
+                    <text x={width-90} y={paddingTop + 45} fill="#ef4444" fontSize="18" fontWeight="bold">BP /{bpMax}</text>
+                    <text x={width-90} y={paddingTop + 70} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2 /100</text>
                 </svg>
             </div>
         );
@@ -60,6 +77,7 @@
     const DebriefScreen = ({ sim, onExit }) => {
         const { state } = sim;
         const { Lucide, Button } = window;
+        const scenario = state.scenario || {};
         const [filter, setFilter] = useState('all');
         const [replayIdx, setReplayIdx] = useState(null);
 
@@ -72,8 +90,8 @@
         });
 
         const allObjectives = (() => {
-            const a = state.scenario.learningObjectives || [];
-            const b = state.scenario.instructorBrief?.learningObjectives || [];
+            const a = scenario.learningObjectives || [];
+            const b = scenario.instructorBrief?.learningObjectives || [];
             const seen = new Set();
             return [...a, ...b].filter(o => { if (seen.has(o)) return false; seen.add(o); return true; });
         })();
@@ -90,8 +108,8 @@
                 const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1';
                 return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${l.simTime}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${l.msg}</td></tr>`;
             }).join('');
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${state.scenario.title}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body>
-<h1>${state.scenario.title}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${new Date().toLocaleString()}</h2>
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${scenario.title || 'Simulation'}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body>
+<h1>${scenario.title || 'Simulation'}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${new Date().toLocaleString()}</h2>
 <div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${score}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${objectivesMet} / ${objectivesTotal}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${Math.floor(state.time/60)}m ${state.time%60}s</div></div></div></div>
 <div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>
 <div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div>
@@ -109,7 +127,7 @@
                 <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
                     <div>
                         <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Lucide icon="check-circle" className="text-emerald-500"/> Simulation Complete</h1>
-                        <p className="text-slate-400">{state.scenario.title} • Duration: {Math.floor(state.time/60)}m {state.time%60}s</p>
+                        <p className="text-slate-400">{scenario.title || 'Simulation'} • Duration: {Math.floor(state.time/60)}m {state.time%60}s</p>
                     </div>
                     <div className="flex gap-2">
                         <Button onClick={generateReport} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>

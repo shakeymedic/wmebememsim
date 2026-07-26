@@ -529,7 +529,55 @@
         );
     };
 
+    // A render error anywhere below React's root unmounts the whole tree and leaves a blank page
+    // that only a reload recovers from. This keeps the facilitator in the app with a way out.
+    class ErrorBoundary extends React.Component {
+        constructor(props) { super(props); this.state = { error: null }; }
+        static getDerivedStateFromError(error) { return { error }; }
+        componentDidCatch(error, info) { console.error("Render error caught by boundary:", error, info); }
+        render() {
+            if (!this.state.error) return this.props.children;
+            return (
+                <div className="h-full w-full flex items-center justify-center p-6 bg-slate-900">
+                    <div className="max-w-lg w-full bg-slate-800 border border-red-500/60 rounded-lg p-6 shadow-2xl space-y-4">
+                        <h2 className="text-xl font-bold text-red-400">Something went wrong</h2>
+                        <p className="text-sm text-slate-300">
+                            This screen failed to render. Your session was not lost — you can return to the main menu and start or reload a scenario.
+                        </p>
+                        <pre className="text-[11px] text-slate-500 bg-slate-900 border border-slate-700 rounded p-2 overflow-x-auto whitespace-pre-wrap">
+                            {String(this.state.error && this.state.error.message || this.state.error)}
+                        </pre>
+                        <div className="flex gap-2">
+                            <Button variant="primary" className="flex-1" onClick={() => {
+                                this.setState({ error: null });
+                                if (this.props.onReset) this.props.onReset();
+                            }}>Return to Main Menu</Button>
+                            <Button variant="outline" className="flex-1" onClick={() => window.location.reload()}>Reload App</Button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+    }
+
+    // Human factors modifier indicator — must stay visible for the whole sim so the facilitator
+    // does not forget which constraint the team is working under.
+    const HumanFactorBadge = ({ hf, className = "" }) => {
+        if (!hf || !hf.type || hf.id === 'hf0') return null;
+        return (
+            <span
+                title={hf.description || ''}
+                className={`inline-flex items-center gap-1 bg-fuchsia-900/40 border border-fuchsia-500/60 text-fuchsia-300 text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${className}`}
+            >
+                <Lucide icon="user" className="w-3 h-3" />
+                Human Factor: {hf.type}
+            </span>
+        );
+    };
+
     window.Lucide = Lucide;
+    window.ErrorBoundary = ErrorBoundary;
+    window.HumanFactorBadge = HumanFactorBadge;
     window.Button = Button;
     window.Card = Card;
     window.ECGMonitor = ECGMonitor;
