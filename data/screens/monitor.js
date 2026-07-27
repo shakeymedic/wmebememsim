@@ -118,9 +118,13 @@
         }, [show12Lead, state.rhythm, state.vitals?.hr]);
 
         useEffect(() => {
+            // The 12-lead bridge is a local nicety; everything clinical arrives over Firebase. Older iOS
+            // Safari has no BroadcastChannel and throwing here would blank the student monitor entirely.
             if (simChannel.current === null) {
-                simChannel.current = new BroadcastChannel('sim_channel');
+                try { simChannel.current = ('BroadcastChannel' in window) ? new BroadcastChannel('sim_channel') : null; }
+                catch (e) { console.warn('BroadcastChannel unavailable on monitor', e); simChannel.current = null; }
             }
+            if (!simChannel.current) return;
             simChannel.current.onmessage = (event) => {
                 if (event.data.type === 'SHOW_12LEAD') {
                     setShow12Lead(true);

@@ -97,7 +97,7 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate } = window;
-        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP } = sim; 
+        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
 
         const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
         // A restored or partially-synced session can arrive without a scenario; every field read below
@@ -129,7 +129,10 @@
 
         const [showDrugCalc, setShowDrugCalc] = useState(false);
         const [drugCalcWeightStr, setDrugCalcWeightStr] = useState(String(scenario.wetflag?.weight || scenario.weight || 70));
-        const drugCalcWeight = parseFloat(drugCalcWeightStr) || 0;
+        // A weight of 0 or a typo silently produced 0 mg doses and 0 J energies — every derived number in
+        // the calculator is a multiple of it, so an invalid weight must block the whole table, not coerce.
+        const drugCalcWeightError = window.validateBuilderField ? window.validateBuilderField('weight', drugCalcWeightStr) : null;
+        const drugCalcWeight = drugCalcWeightError ? 0 : parseFloat(drugCalcWeightStr);
         const [showTimerModal, setShowTimerModal] = useState(false);
         const [timerAlerts, setTimerAlerts] = useState([]);
         const [newAlertMins, setNewAlertMins] = useState('5');
@@ -321,14 +324,49 @@
         };
 
         const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(30); };
-        const confirmVitalUpdate = () => { 
-            const targets = {}; 
-            if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); } 
-            else { targets[modalVital] = (modalVital === 'pupils' || modalVital === 'gcs') ? modalTarget : parseFloat(modalTarget); } 
-            if (trendDuration === 0) Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k]));
-            else startTrend(targets, trendDuration); 
-            setModalVital(null); 
+        // A blank or non-numeric field used to reach the reducer as NaN, which then poisoned the Firebase
+        // diff (RTDB rejects NaN) and froze the student monitor for the rest of the session.
+        const validateVitalModal = () => {
+            if (modalVital === 'pupils') return modalTarget === '' || modalTarget === null ? 'Pupils is required.' : null;
+            const field = modalVital === 'bp' ? 'bpSys' : modalVital;
+            const err = window.validateBuilderField ? window.validateBuilderField(field, modalTarget) : null;
+            if (err) return err;
+            if (!Number.isFinite(parseFloat(modalTarget))) return 'Target must be a number.';
+            if (modalVital === 'bp') {
+                const err2 = window.validateBuilderField ? window.validateBuilderField('bpDia', modalTarget2) : null;
+                if (err2) return err2;
+                if (!Number.isFinite(parseFloat(modalTarget2))) return 'Diastolic must be a number.';
+                if (parseFloat(modalTarget) <= parseFloat(modalTarget2)) return 'Systolic must be greater than diastolic.';
+            }
+            return null;
         };
+        const vitalModalError = modalVital ? validateVitalModal() : null;
+
+        // Same NaN-into-Firebase hazard as the vitals modal — the NIBP reading is synced too.
+        const nibpError = (() => {
+            if (!showNIBPModal) return null;
+            const e1 = window.validateBuilderField ? window.validateBuilderField('bpSys', nibpSys) : null;
+            if (e1) return e1;
+            const e2 = window.validateBuilderField ? window.validateBuilderField('bpDia', nibpDia) : null;
+            if (e2) return e2;
+            if (parseFloat(nibpSys) <= parseFloat(nibpDia)) return 'Systolic must be greater than diastolic.';
+            return null;
+        })();
+
+        const confirmVitalUpdate = () => {
+            if (vitalModalError) return;
+            const targets = {};
+            if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
+            else if (modalVital === 'pupils') { targets.pupils = modalTarget; }
+            else { targets[modalVital] = parseFloat(modalTarget); }
+            if (trendDuration === 0) Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k]));
+            else startTrend(targets, trendDuration);
+            setModalVital(null);
+        };
+
+        // Paediatric arrests are weight-based (4 J/kg); 150 J on a 12 kg child is not a teachable number.
+        const shockEnergy = Number.isFinite(Number(scenario.wetflag?.energy)) && Number(scenario.wetflag.energy) > 0
+            ? Math.round(Number(scenario.wetflag.energy)) : 150;
 
         const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration } : null;
 
@@ -345,14 +383,16 @@
                     </div>
                 </div>
 
-                <div className="flex justify-between items-center bg-slate-800 p-2 rounded mb-2 border border-slate-700">
-                    <div className="flex gap-2 items-center relative z-20">
+                {/* Wraps instead of overflowing: at ~375px this was one non-scrolling row and Back/Finish/
+                    START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
+                <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
+                    <div className="flex flex-wrap gap-2 items-center relative z-20">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
                         <Button variant="danger" onClick={onFinish} className="h-8 px-2 font-bold"><Lucide icon="square"/> Finish</Button>
                         {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold w-32 justify-between">
                             <Lucide icon="monitor" className="w-4 h-4"/> {audioOutput === 'both' ? 'Audio: Both' : (audioOutput === 'controller' ? 'Audio: Ctrl' : 'Audio: Mon')}
                         </Button>
@@ -463,8 +503,8 @@
                                      <button onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
                                  <div className="grid grid-cols-2 gap-2">
-                                     <Button onClick={() => { sim.dispatch({type: 'CHARGE_INIT', payload: {energy: 150}}); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">Charge</Button>
-                                     <Button onClick={() => { sim.dispatch({type: 'SHOCK_DELIVERED', payload: {energy: 150}}); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">SHOCK</Button>
+                                     <Button onClick={() => { initCharge(shockEnergy); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">Charge {shockEnergy}J</Button>
+                                     <Button onClick={() => { deliverShock(shockEnergy, 'facilitator'); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">SHOCK {shockEnergy}J</Button>
                                  </div>
                                  <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
                                      <span className="text-slate-400 text-[10px] uppercase">CPR Timer</span>
@@ -487,22 +527,26 @@
                         )}
 
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-col gap-2">
-                            <div className="flex gap-2">
-                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-12 text-lg flex-1 text-white focus:border-sky-500 outline-none" placeholder="Search Interventions..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
-                                <div className="w-px h-12 bg-slate-700 mx-1"></div>
-                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-12 w-20 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
-                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-12 w-20 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
+                            {/* min-w-0 on the inputs + wrapping rows: fixed-width buttons alongside a flex-1
+                                input clipped the labels on narrow screens. */}
+                            <div className="flex flex-wrap gap-2">
+                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-12 text-lg flex-1 min-w-[10rem] text-white focus:border-sky-500 outline-none" placeholder="Search Interventions..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
+                                <div className="hidden sm:block w-px h-12 bg-slate-700 mx-1"></div>
+                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-12 w-20 shrink-0 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
+                                <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-12 w-20 shrink-0 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
                             </div>
-                            <div className="flex gap-2">
-                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                                <Button onClick={() => {addLogEntry(customLog, 'manual', true); setCustomLog("");}} variant="secondary" className="h-10 w-24 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
-                                <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} variant="secondary" className="h-10 w-24">Add Log</Button>
+                            <div className="flex flex-wrap gap-2">
+                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                                <Button onClick={() => {addLogEntry(customLog, 'manual', true); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
+                                <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
                             </div>
                         </div>
 
-                        <div className="flex overflow-x-auto bg-slate-900 border-b border-slate-700 no-scrollbar">
+                        {/* Nine categories won't fit on a phone, so this one stays a scroller — but the
+                            scrollbar is left visible, otherwise there is no cue the later tabs exist. */}
+                        <div className="flex flex-wrap md:flex-nowrap md:overflow-x-auto bg-slate-900 border-b border-slate-700">
                              {['Common', 'Drugs', 'Airway', 'Breathing', 'Circulation', 'Procedures', 'Investigations', 'Voice', 'Assessment'].map(cat => (
-                                 <button key={cat} onClick={() => setActiveTab(cat)} className={`px-4 py-3 text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'} ${cat === 'Assessment' ? 'ml-auto border-l border-slate-700 text-amber-400' : ''}`}>{cat}</button>
+                                 <button key={cat} onClick={() => setActiveTab(cat)} className={`px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'} ${cat === 'Assessment' ? 'md:ml-auto border-l border-slate-700 text-amber-400' : ''}`}>{cat}</button>
                              ))}
                         </div>
                         
@@ -613,8 +657,9 @@
                              <div className="space-y-4">
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Systolic</label><input type="number" value={nibpSys} onChange={e=>setNibpSys(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={nibpDia} onChange={e=>setNibpDia(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
+                                {nibpError && <div className="bg-red-900/30 border border-red-600 rounded p-2 text-red-200 text-xs font-bold text-center">{nibpError}</div>}
                                 <div className="grid grid-cols-2 gap-2">
-                                    <Button onClick={() => { sim.dispatch({type: 'SET_NIBP', payload: {sys: nibpSys, dia: nibpDia}}); setShowNIBPModal(false); addLogEntry(`NIBP Manual: ${nibpSys}/${nibpDia}`, 'manual'); }} variant="primary" className="h-12 text-sm">Send Value</Button>
+                                    <Button onClick={() => { if (nibpError) return; sim.dispatch({type: 'SET_NIBP', payload: {sys: parseFloat(nibpSys), dia: parseFloat(nibpDia)}}); setShowNIBPModal(false); addLogEntry(`NIBP Manual: ${nibpSys}/${nibpDia}`, 'manual'); }} variant="primary" disabled={!!nibpError} className={`h-12 text-sm ${nibpError ? 'opacity-40 cursor-not-allowed' : ''}`}>Send Value</Button>
                                     <Button onClick={() => { triggerNIBP(); setShowNIBPModal(false); }} variant="warning" className="h-12 text-sm">Cycle Cuff</Button>
                                 </div>
                                 <Button onClick={()=>setShowNIBPModal(false)} variant="outline" className="w-full">Cancel</Button>
@@ -689,7 +734,8 @@
                                 <div className="grid grid-cols-4 gap-1 mt-2">
                                     {[0, 30, 120, 300].map(d => <button key={d} onClick={()=>setTrendDuration(d)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===d ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{d}s</button>)}
                                 </div>
-                                <Button onClick={confirmVitalUpdate} variant="success" className="w-full mt-4 h-12 text-lg font-bold">CONFIRM</Button>
+                                {vitalModalError && <div className="bg-red-900/30 border border-red-600 rounded p-2 text-red-200 text-xs font-bold text-center">{vitalModalError}</div>}
+                                <Button onClick={confirmVitalUpdate} variant="success" disabled={!!vitalModalError} className={`w-full mt-4 h-12 text-lg font-bold ${vitalModalError ? 'opacity-40 cursor-not-allowed' : ''}`}>CONFIRM</Button>
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
                             </div>
                         </div>
@@ -721,10 +767,16 @@
                             </div>
                             <div className="mb-4">
                                 <label className="text-xs text-slate-400 font-bold uppercase">Patient Weight (kg)</label>
-                                <input type="number" value={drugCalcWeightStr} onChange={e => setDrugCalcWeightStr(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-2 text-xl font-mono text-white text-center font-bold mt-1" />
+                                <input type="number" min="0.5" max="300" step="0.1" value={drugCalcWeightStr} onChange={e => setDrugCalcWeightStr(e.target.value)} className={`w-full bg-slate-900 border rounded p-2 text-xl font-mono text-white text-center font-bold mt-1 ${drugCalcWeightError ? 'border-red-500' : 'border-slate-500'}`} />
+                                {drugCalcWeightError && <div className="text-red-400 text-xs font-bold mt-1">{drugCalcWeightError}</div>}
                             </div>
                             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                                {DRUG_CALC_LIST.map((drug, idx) => {
+                                {drugCalcWeightError && (
+                                    <div className="bg-red-900/30 border border-red-600 rounded p-4 text-center text-red-200 text-sm">
+                                        Doses hidden until a valid weight is entered.
+                                    </div>
+                                )}
+                                {!drugCalcWeightError && DRUG_CALC_LIST.map((drug, idx) => {
                                     const rawDose = drug.perKg * drugCalcWeight;
                                     const minDose = drug.min ? Math.max(rawDose, drug.min) : rawDose;
                                     const finalDose = Math.min(minDose, drug.max);

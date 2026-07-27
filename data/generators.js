@@ -69,7 +69,14 @@ window.BUILDER_LIMITS = {
     rr:    { min: 0,  max: 100, label: 'Resp Rate',   unit: '/min' },
     spO2:  { min: 0,  max: 100, label: 'SpO2',        unit: '%' },
     gcs:   { min: 3,  max: 15,  label: 'GCS',         unit: '' },
-    temp:  { min: 20, max: 45,  label: 'Temp',        unit: '°C' }
+    temp:  { min: 20, max: 45,  label: 'Temp',        unit: '°C' },
+    bpDia: { min: 0,  max: 250, label: 'Diastolic BP', unit: 'mmHg' },
+    etco2: { min: 0,  max: 15,  label: 'EtCO2',       unit: 'kPa' },
+    bm:    { min: 0,  max: 50,  label: 'Glucose',     unit: 'mmol/L' },
+    icp:   { min: 0,  max: 80,  label: 'ICP',         unit: 'mmHg' },
+    // 0.5 kg is a 23-week neonate; 300 kg covers bariatric. Zero or negative previously divided
+    // through the WETFLAG maths and produced 0 J shock energy and 0 mL fluid boluses.
+    weight: { min: 0.5, max: 300, label: 'Weight',    unit: 'kg' }
 };
 
 window.validateBuilderField = (field, rawValue) => {

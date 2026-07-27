@@ -176,7 +176,11 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         window.isRemoteControlled = false;
-        const simChannel = new BroadcastChannel('sim_channel');
+        // Unguarded, this threw before any UI was wired up and left a dead page. Without a channel the
+        // defib still works as a standalone teaching device, just not linked to the controller.
+        let simChannel = null;
+        try { simChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('sim_channel') : null; }
+        catch (e) { console.warn('BroadcastChannel unavailable — running defib standalone', e); }
 
         // CORRECTED RHYTHM MAP
         const rhythmMap = {
@@ -268,7 +272,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             } catch(e) { console.error('12-Lead Defib Render Error', e); }
         }
 
-        simChannel.onmessage = (event) => {
+        if (simChannel) simChannel.onmessage = (event) => {
             const data = event.data;
             if (data.type === 'SYNC_VITALS') {
                 window.isRemoteControlled = true;
@@ -292,8 +296,11 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 if(data.payload.interference !== undefined) window.interferenceActive = data.payload.interference;
                 
                 // Sync capture threshold from engine
-                if(data.payload.captureThreshold !== undefined) state.captureThreshold = data.payload.captureThreshold;
-                
+                if(data.payload.captureThreshold !== undefined) {
+                    state.captureThreshold = data.payload.captureThreshold;
+                    evaluateCapture();
+                }
+
                 updateDisplays();
             } else if (data.type === 'SHOW_12LEAD') {
                 const overlay = document.getElementById('paperOverlay');
@@ -308,11 +315,12 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 handleGhostPress(data.payload); 
             }
         };
-        simChannel.postMessage({ type: 'REQUEST_SYNC' });
-
         function broadcast(type, payload) {
-            simChannel.postMessage({ type, payload });
+            if (!simChannel) return;
+            try { simChannel.postMessage({ type, payload }); }
+            catch (e) { console.warn('Channel post failed', e); }
         }
+        broadcast('REQUEST_SYNC', {});
 
         function handleGhostPress(elementId) {
             const el = document.getElementById(elementId);
@@ -393,11 +401,13 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             if(mode==='off') {
                 document.querySelector('.screen').classList.add('screen-off');
                 document.getElementById('hrDisplay').textContent = '--';
+                stopAnimation();
                 if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
             } else {
                 document.querySelector('.screen').classList.remove('screen-off');
+                evaluateCapture();
                 updateDisplays();
-                requestAnimationFrame(animate);
+                startAnimation();
             }
         }
 
@@ -428,7 +438,19 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 const d = document.querySelector('.pacing-controls > div:nth-child(3) .pacer-dial');
                 if(d) d.style.setProperty('--dial-rotation', rot+'deg');
             }
+            evaluateCapture();
             updateDisplays();
+        }
+
+        // Transcutaneous pacing only captures once output exceeds the patient's threshold. The device
+        // previously showed the same thing at 0 mA as at 140 mA, so students never learned to titrate up.
+        function evaluateCapture() {
+            const wasCaptured = state.isCaptured;
+            state.pacingActive = state.deviceMode === 'pacer' && state.pacerOutput > 0 && state.pacerRate > 0;
+            state.isCaptured = state.pacingActive && state.pacerOutput >= state.captureThreshold;
+            if (!state.pacingActive) { if (wasCaptured) setMessage('PACING OFF', 'ready'); return; }
+            if (state.isCaptured) setMessage(`PACING - CAPTURE @ ${state.pacerOutput}mA`, 'ready');
+            else setMessage(`PACING - NO CAPTURE (${state.pacerOutput}mA)`, 'alert');
         }
 
         function chargeDefib() {
@@ -505,7 +527,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             const rect = canvas.parentElement.getBoundingClientRect();
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
+            // setTransform, not scale: scale multiplies into the existing matrix, so every resize or
+            // orientation change compounded the factor until the trace shrank off-canvas.
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
             
             // Set grid background immediately on resize
             ctx.fillStyle = '#050505'; 
@@ -517,7 +541,20 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         const drawState = { x: 0, lastY: 100, beatProgress: 0, pWaveProgress: 0, lastTime: 0 };
         const jitterRef = { current: 0 };
 
+        // Exactly one rAF loop at a time. setMode() used to call requestAnimationFrame unconditionally,
+        // so every dial turn spawned another loop and the trace drew progressively faster.
+        let rafId = null;
+        function startAnimation() {
+            if (rafId !== null) return;
+            drawState.lastTime = 0;
+            rafId = requestAnimationFrame(animate);
+        }
+        function stopAnimation() {
+            if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        }
+
         function animate(timestamp) {
+            rafId = null;
             if(state.deviceMode==='off') return;
             if(!drawState.lastTime) drawState.lastTime = timestamp;
             
@@ -587,10 +624,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             }
             
             drawState.lastY = yECG;
-            requestAnimationFrame(animate);
+            rafId = requestAnimationFrame(animate);
         }
-        
-        requestAnimationFrame(animate);
+
+        startAnimation();
     });
     </script>
 </body>

@@ -33,6 +33,12 @@
         lastUpdate: 0, isOffline: false, showWetflag: true
     };
 
+    // 'pupils' and 'gcs' are the only non-numeric vitals the UI can set (gcs may arrive as a string).
+    const isVitalValueSafe = (key, val) => {
+        if (key === 'pupils') return val !== undefined && val !== null && val !== '';
+        return Number.isFinite(Number(val)) && val !== '' && val !== null;
+    };
+
     const formatVital = (key, val) => {
         if (['temp', 'bm', 'etco2'].includes(key)) return Math.round(val * 10) / 10;
         return Math.round(val);
@@ -52,8 +58,21 @@
             }
             case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, trends: action.payload.trends || state.trends };
             case 'UPDATE_VITALS': return { ...state, vitals: action.payload };
-            case 'MANUAL_VITAL_UPDATE': return { ...state, vitals: { ...state.vitals, [action.payload.key]: action.payload.value }, prevVitals: { ...state.vitals } };
-            case 'START_TREND': return { ...state, trends: { active: true, targets: action.payload.targets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
+            case 'MANUAL_VITAL_UPDATE': {
+                // Boundary guard: a NaN here propagates into the Firebase payload, which RTDB rejects,
+                // and the rejected diff is then retried forever — freezing the student monitor.
+                const { key, value } = action.payload;
+                if (!isVitalValueSafe(key, value)) return state;
+                return { ...state, vitals: { ...state.vitals, [key]: value }, prevVitals: { ...state.vitals } };
+            }
+            case 'START_TREND': {
+                const safeTargets = {};
+                Object.keys(action.payload.targets || {}).forEach(k => {
+                    if (isVitalValueSafe(k, action.payload.targets[k])) safeTargets[k] = action.payload.targets[k];
+                });
+                if (Object.keys(safeTargets).length === 0) return state;
+                return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
+            }
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
             case 'TRIGGER_IMPROVE':
             case 'TRIGGER_DETERIORATE': return { ...state, trends: action.payload.trends };
@@ -191,7 +210,22 @@
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && action.payload.title.includes('Head')) startICP = 25;
                 return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, showWetflag: action.payload.showWetflag !== false };
-            case 'RESTORE_SESSION': return { ...state, ...action.payload, activeInterventions: new Set(action.payload.activeInterventions || []), processedEvents: new Set(action.payload.processedEvents || []), completedObjectives: new Set(action.payload.completedObjectives || []), isRunning: false };
+            case 'RESTORE_SESSION': {
+                // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
+                // `log` or `scenario` key carried in from the snapshot would shadow the live values
+                // owned by the other three reducers for the rest of the session.
+                const p = action.payload || {};
+                return { ...state,
+                    time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
+                    interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
+                    nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,
+                    isParalysed: !!p.isParalysed, showWetflag: p.showWetflag !== false,
+                    icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
+                    activeInterventions: new Set(p.activeInterventions || []),
+                    processedEvents: new Set(p.processedEvents || []),
+                    completedObjectives: new Set(p.completedObjectives || []),
+                    isRunning: false };
+            }
             case 'START_SIM': return { ...state, isRunning: true, isFinished: false };
             case 'PAUSE_SIM': return { ...state, isRunning: false };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
@@ -283,10 +317,17 @@
         const lastCmdRef = useRef(0);
         const lastPayloadRef = useRef({});
         
+        // The local defib bridge is optional — everything clinical goes over Firebase. Older iOS
+        // Safari and locked-down MDM profiles have no BroadcastChannel, and throwing here would
+        // blank the whole controller before the ErrorBoundary could render a fallback.
         const simChannel = useRef(null);
-        if (simChannel.current === null) {
-            simChannel.current = new BroadcastChannel('sim_channel');
+        const channelReady = useRef(false);
+        if (!channelReady.current) {
+            channelReady.current = true;
+            try { simChannel.current = ('BroadcastChannel' in window) ? new BroadcastChannel('sim_channel') : null; }
+            catch (e) { console.warn('BroadcastChannel unavailable — defib bridge disabled', e); simChannel.current = null; }
         }
+        const postToChannel = (msg) => { if (simChannel.current) { try { simChannel.current.postMessage(msg); } catch (e) { console.warn('Channel post failed', e); } } };
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
@@ -314,9 +355,30 @@
 
             if (action.type === 'UPDATE_RHYTHM') {
                 const newRhythm = action.payload;
+                // 'VT' is deliberately absent: it is offered in the general rhythm list and is commonly
+                // taught as VT-with-a-pulse. Only the unambiguously pulseless rhythms zero the numbers.
+                const PULSELESS = ['VF', 'pVT', 'Asystole', 'PEA'];
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(newRhythm);
-                let rhythmVitals = { ...stateRef.current.vitals };
-                if (!stateRef.current.arrestPanelOpen && !isArrest) {
+                const cur = stateRef.current;
+                let rhythmVitals = { ...cur.vitals };
+
+                if (PULSELESS.includes(newRhythm)) {
+                    // A shockable/pulseless rhythm showing a pre-arrest BP and SpO2 is clinically
+                    // contradictory; the numeric panel must agree with the trace.
+                    if (rhythmVitals.hr > 0 || rhythmVitals.bpSys > 0) {
+                        dispatchVitals({ type: 'STOP_TREND', currentState: cur });
+                        rhythmVitals = { ...rhythmVitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 };
+                    }
+                } else if (PULSELESS.includes(cur.rhythm)) {
+                    // Coming out of a pulseless rhythm into an organised one — an organised rhythm must
+                    // never be left displaying HR 0.
+                    const age = cur.scenario?.patientAge ?? 40;
+                    const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
+                    dispatchVitals({ type: 'STOP_TREND', currentState: cur });
+                    rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: 5.0 + Math.random() * 1.5 };
+                }
+
+                if (!cur.arrestPanelOpen && !isArrest) {
                     if (newRhythm === 'AF') rhythmVitals.hr = getRandomInt(110, 150);
                     if (newRhythm === 'SVT') rhythmVitals.hr = getRandomInt(170, 200);
                     if (newRhythm === 'Complete Heart Block') rhythmVitals.hr = getRandomInt(35, 45);
@@ -335,31 +397,49 @@
 
         // Register BroadcastChannel handler ONCE — read live state via stateRef to avoid stale closures.
         useEffect(() => {
-            if (isMonitorMode) return;
+            if (isMonitorMode || !simChannel.current) return;
             simChannel.current.onmessage = (event) => {
                 const data = event.data;
                 const cur = stateRef.current;
-                if (!cur.isRunning) return;
+
+                // While paused, log the student's action instead of discarding it. The defib shows its
+                // own local banner, so a dropped press leaves the two screens silently disagreeing.
+                // PACER_UPDATE is device state, not a clinical action — it must stay in sync even paused,
+                // otherwise the facilitator's capture threshold view drifts from the student's dial.
+                if (!cur.isRunning && data.type !== 'PACER_UPDATE') {
+                    const pausedLabels = {
+                        SHOCK_DELIVERED: `student pressed SHOCK (${data.payload?.energy ?? '?'}J)`,
+                        CHARGE_INIT: `student pressed CHARGE (${data.payload?.energy ?? '?'}J)`,
+                        MARKER_EVENT: 'student marked event',
+                        ALARM_SILENCE: 'student silenced alarm',
+                        REQUEST_12LEAD: 'student requested 12-lead',
+                        DEVICE_MODE: `student set device mode to ${data.payload?.mode ?? '?'}`
+                    };
+                    if (pausedLabels[data.type]) {
+                        dispatch({ type: 'ADD_LOG', payload: { msg: `(paused) ${pausedLabels[data.type]}`, type: 'system' } });
+                    }
+                    return;
+                }
 
                 if (data.type === 'PACER_UPDATE') {
                     dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
                 } else if (data.type === 'CHARGE_INIT') {
-                    dispatch({ type: 'SET_FLASH', payload: 'yellow' });
-                    dispatch({ type: 'ADD_LOG', payload: { msg: `Defib Charging (${data.payload.energy}J)`, type: 'warning' } });
-                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: "Charging...", type: "warning", id: Date.now() } });
-                    setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
+                    initCharge(data.payload.energy);
                 } else if (data.type === 'SHOCK_DELIVERED') {
-                    dispatch({ type: 'SET_FLASH', payload: 'red' });
-                    dispatch({ type: 'ADD_LOG', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: 'danger' } });
-                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${data.payload.energy}J`, type: "danger", id: Date.now() } });
-                    setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
+                    deliverShock(data.payload.energy, 'student');
                 } else if (data.type === 'ALARM_SILENCE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
                 } else if (data.type === 'MARKER_EVENT') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual', flagged: true } });
                 } else if (data.type === 'REQUEST_12LEAD') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
-                    simChannel.current.postMessage({ type: 'SHOW_12LEAD', payload: { rhythm: cur.rhythm, scenario: cur.scenario, hr: cur.vitals.hr } });
+                    // Send only the fields render12LeadDefib reads. The full scenario still carries
+                    // ageGenerator(), and a function makes postMessage throw DataCloneError.
+                    const s = cur.scenario || {};
+                    postToChannel({ type: 'SHOW_12LEAD', payload: {
+                        rhythm: cur.rhythm, hr: cur.vitals.hr,
+                        scenario: { patientName: s.patientName, ecg: s.ecg || null, investigations: { ecg: s.investigations?.ecg || null } }
+                    } });
                 } else if (data.type === 'DEVICE_MODE') {
                     if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
                         dispatch({ type: 'SET_ARREST_PANEL', payload: true });
@@ -371,7 +451,7 @@
 
         useEffect(() => {
             if (!isMonitorMode) {
-                simChannel.current.postMessage({
+                postToChannel({
                     type: 'SYNC_VITALS',
                     payload: {
                         rhythm: state.rhythm, hr: state.vitals.hr, spO2: state.vitals.spO2,
@@ -412,8 +492,17 @@
                 const cur = stateRef.current;
                 if (!cur.scenario) return;
                 const co2Pathology = cur.etco2Pathology || 'normal';
+                // RTDB rejects NaN/Infinity outright and the rejected diff would be retried forever,
+                // freezing the student monitor. Drop any non-finite numeric before it reaches the wire.
+                const safeVitals = {};
+                Object.keys(cur.vitals).forEach(k => {
+                    const v = cur.vitals[k];
+                    if (typeof v === 'number' && !Number.isFinite(v)) return;
+                    if (v === undefined) return;
+                    safeVitals[k] = v;
+                });
                 const payload = {
-                    vitals: cur.vitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
+                    vitals: safeVitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
                     etco2Enabled: cur.etco2Enabled, flash: cur.flash, cycleTimer: cur.cycleTimer,
                     monitorTimer: cur.monitorTimer,
                     scenarioTitle: cur.scenario.title, patientName: cur.scenario.patientName,
@@ -473,16 +562,15 @@
             return () => sessionRef.off('value', handleUpdate);
         }, [isMonitorMode, sessionID]);
 
-        // Persist a slim snapshot to localStorage, throttled to ~5s — full state at 1Hz hits quota fast.
-        const persistTimerRef = useRef(null);
+        // Persist a slim snapshot to localStorage every 5s. This is a single interval keyed only on
+        // isMonitorMode: the previous effect re-ran on every vitals tick, and its cleanup cleared the
+        // pending timeout each time, so at 1Hz the 5s write never actually fired and resume was dead.
         useEffect(() => {
-            if (isMonitorMode || !state.scenario || state.log.length === 0) return;
-            if (persistTimerRef.current) return; // a write is already scheduled
-            persistTimerRef.current = setTimeout(() => {
-                persistTimerRef.current = null;
+            if (isMonitorMode) return;
+            const id = setInterval(() => {
                 try {
                     const cur = stateRef.current;
-                    if (!cur.scenario) return;
+                    if (!cur.scenario || cur.log.length === 0) return;
                     const slim = {
                         // The whole scenario, not just an identifier: every screen dereferences fields
                         // like patientProfileTemplate, and a stub makes them throw on resume.
@@ -502,8 +590,8 @@
                     console.warn('localStorage persist failed', e);
                 }
             }, 5000);
-            return () => { if (persistTimerRef.current) { clearTimeout(persistTimerRef.current); persistTimerRef.current = null; } };
-        }, [state.vitals, state.log.length, isMonitorMode, state.scenario]);
+            return () => clearInterval(id);
+        }, [isMonitorMode]);
         useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
         
         useEffect(() => {
@@ -656,25 +744,8 @@
             if (scenario.title && scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
             if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
 
-            // Defib — realistic outcome model. Defib never causes asystole; outcome depends on
-            // queued rhythm (instructor-driven) or probability scaled by CPR quality and shocks given.
-            if (action.effect.changeRhythm === 'defib' && (cur.rhythm === 'VF' || cur.rhythm === 'VT' || cur.rhythm === 'pVT')) {
-                if (cur.queuedRhythm) {
-                    dispatch({ type: 'UPDATE_RHYTHM', payload: cur.queuedRhythm });
-                    if (cur.queuedRhythm === 'Sinus Rhythm') triggerROSC();
-                    else addLogEntry(`Rhythm changed to ${cur.queuedRhythm}`, 'manual');
-                    dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
-                } else {
-                    const shocksGiven = (cur.interventionCounts[key] || 0) + 1;
-                    const cprQuality = cur.cprInProgress ? 1 : 0;
-                    // ROSC chance rises with shocks and good CPR; capped at 50%
-                    const roscChance = Math.min(0.5, 0.08 + 0.07 * shocksGiven + 0.1 * cprQuality);
-                    if (Math.random() < roscChance) {
-                        triggerROSC();
-                    } else {
-                        addLogEntry('Defib: No change in rhythm. Resume CPR.', 'warning');
-                    }
-                }
+            if (action.effect.changeRhythm === 'defib') {
+                applyShockOutcome(cur);
             }
 
             const isArrest = cur.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(cur.rhythm));
@@ -760,6 +831,47 @@
             dispatch({ type: 'SET_FLASH', payload: 'green' });
         };
 
+        // Shared shock outcome. Both the facilitator's Defib intervention and a student shock arriving
+        // over the channel route through here so the two paths cannot drift apart again.
+        const shockCountRef = useRef(0);
+        const SHOCKABLE = ['VF', 'VT', 'pVT'];
+        function applyShockOutcome(cur) {
+            shockCountRef.current += 1;
+            if (!SHOCKABLE.includes(cur.rhythm)) {
+                addLogEntry(`Shock delivered into non-shockable rhythm (${cur.rhythm}) — no effect.`, 'warning');
+                return;
+            }
+            if (cur.queuedRhythm) {
+                dispatch({ type: 'UPDATE_RHYTHM', payload: cur.queuedRhythm });
+                if (cur.queuedRhythm === 'Sinus Rhythm') triggerROSC();
+                else addLogEntry(`Rhythm changed to ${cur.queuedRhythm}`, 'manual');
+                dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
+                return;
+            }
+            // ROSC chance rises with shocks and good CPR; capped at 50%. Defib never causes asystole.
+            const roscChance = Math.min(0.5, 0.08 + 0.07 * shockCountRef.current + 0.1 * (cur.cprInProgress ? 1 : 0));
+            if (Math.random() < roscChance) triggerROSC();
+            else addLogEntry('Defib: No change in rhythm. Resume CPR.', 'warning');
+        }
+
+        function initCharge(energy) {
+            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : 150;
+            dispatch({ type: 'SET_FLASH', payload: 'yellow' });
+            addLogEntry(`Defib Charging (${j}J)`, 'warning');
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Charging ${j}J...`, type: 'warning', id: Date.now() } });
+            setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
+        }
+
+        function deliverShock(energy, source = 'facilitator') {
+            const cur = stateRef.current;
+            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : 150;
+            dispatch({ type: 'SET_FLASH', payload: 'red' });
+            addLogEntry(`Shock Delivered ${j}J (${source})`, 'danger', true);
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${j}J`, type: 'danger', id: Date.now() } });
+            setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
+            applyShockOutcome(cur);
+        }
+
         const revealInvestigation = (type, customText = null) => {
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type });
             setTimeout(() => {
@@ -794,18 +906,16 @@
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const playSound = (type) => { dispatch({ type: 'TRIGGER_SOUND', payload: type }); addLogEntry(`Sound: ${type}`, 'manual'); };
         const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
-        const triggerNIBP = () => {
-            if (isMonitorMode && sessionID) { window.db.ref(`sessions/${sessionID}/command`).set({ type: 'START_NIBP', ts: Date.now() }); } 
-            else { dispatch({ type: 'START_NIBP' }); }
+        // Firebase may never have loaded (offline tablet, blocked CDN). Without this guard the student
+        // monitor throws on every NIBP/action press instead of falling back to acting locally.
+        const sendCommand = (payload) => {
+            if (!isMonitorMode || !sessionID || !window.db) return false;
+            try { window.db.ref(`sessions/${sessionID}/command`).set({ ...payload, ts: Date.now() }); return true; }
+            catch (e) { console.warn('Command send failed', e); return false; }
         };
-        const toggleNIBPMode = () => {
-             if (isMonitorMode && sessionID) { window.db.ref(`sessions/${sessionID}/command`).set({ type: 'TOGGLE_NIBP_MODE', ts: Date.now() }); } 
-             else { dispatch({ type: 'TOGGLE_NIBP_MODE' }); }
-        };
-        const triggerAction = (action) => {
-             if (isMonitorMode && sessionID) { window.db.ref(`sessions/${sessionID}/command`).set({ type: 'TRIGGER_ACTION', payload: action, ts: Date.now() }); } 
-             else { applyIntervention(action); }
-        }
+        const triggerNIBP = () => { if (!sendCommand({ type: 'START_NIBP' })) dispatch({ type: 'START_NIBP' }); };
+        const toggleNIBPMode = () => { if (!sendCommand({ type: 'TOGGLE_NIBP_MODE' })) dispatch({ type: 'TOGGLE_NIBP_MODE' }); };
+        const triggerAction = (action) => { if (!sendCommand({ type: 'TRIGGER_ACTION', payload: action })) applyIntervention(action); };
         
         const playInflationSound = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'running') { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         
@@ -855,7 +965,7 @@
         const start = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } dispatch({ type: 'START_SIM' }); };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
-        const reset = () => { dispatch({ type: 'CLEAR_SESSION' }); };
+        const reset = () => { shockCountRef.current = 0; dispatch({ type: 'CLEAR_SESSION' }); };
         const enableAudio = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } if (window.speechSynthesis && window.speechSynthesis.paused) { window.speechSynthesis.resume(); } };
 
         useEffect(() => {
@@ -870,7 +980,7 @@
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
         }, [state.isRunning]);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock };
     };
     window.useSimulation = useSimulation;
 })();

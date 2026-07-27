@@ -56,11 +56,29 @@
 
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
+        // JSON.parse succeeding says nothing about shape. A hand-edited localStorage entry or an
+        // arbitrary .json file used to be accepted wholesale and then crashed the scenario list on
+        // the first `.title.toLowerCase()`.
+        const isValidScenarioShape = (s) => !!s && typeof s === 'object' && !Array.isArray(s)
+            && typeof s.id === 'string' && s.id.length > 0
+            && typeof s.title === 'string' && s.title.length > 0;
+
+        const sanitiseScenarioList = (raw) => {
+            const list = Array.isArray(raw) ? raw : [raw];
+            return list.filter(isValidScenarioShape);
+        };
+
         useEffect(() => {
             const saved = localStorage.getItem('wmebem_custom_scenarios');
-            if (saved) {
-                try { setCustomScenarios(JSON.parse(saved)); } 
-                catch (e) { console.error("Failed to load custom scenarios", e); localStorage.removeItem('wmebem_custom_scenarios'); }
+            if (!saved) return;
+            try {
+                const clean = sanitiseScenarioList(JSON.parse(saved));
+                setCustomScenarios(clean);
+                // Rewrite so a partially-corrupt store isn't re-filtered on every load.
+                localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(clean));
+            } catch (e) {
+                console.error("Failed to load custom scenarios", e);
+                localStorage.removeItem('wmebem_custom_scenarios');
             }
         }, []);
 
@@ -105,16 +123,20 @@
             const reader = new FileReader();
             reader.onload = (ev) => {
                 try {
-                    const arr = JSON.parse(ev.target.result);
-                    const list = Array.isArray(arr) ? arr : [arr];
+                    const parsed = JSON.parse(ev.target.result);
+                    const rawCount = Array.isArray(parsed) ? parsed.length : 1;
+                    const list = sanitiseScenarioList(parsed);
+                    const rejected = rawCount - list.length;
+                    if (list.length === 0) { alert('Import failed: no valid scenarios found (each needs an id and a title).'); return; }
                     const merged = [...customScenarios];
                     let added = 0;
-                    list.forEach(s => { if (s.id && !merged.find(c => c.id === s.id)) { merged.push(s); added++; } });
+                    list.forEach(s => { if (!merged.find(c => c.id === s.id)) { merged.push(s); added++; } });
                     setCustomScenarios(merged);
                     localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(merged));
-                    alert(`Imported ${added} new scenario(s).`);
+                    alert(`Imported ${added} new scenario(s).` + (rejected > 0 ? ` ${rejected} skipped (invalid shape).` : ''));
                 } catch (err) { alert('Import failed: ' + err.message); }
             };
+            reader.onerror = () => alert('Import failed: could not read the file.');
             reader.readAsText(file);
             e.target.value = '';
         };
@@ -290,9 +312,11 @@
                 </div>
 
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
-                    <div className="flex gap-2 mb-6 border-b border-slate-700 overflow-x-auto no-scrollbar">
+                    {/* Wraps rather than scrolls: `no-scrollbar` removed the only affordance that more tabs
+                        existed, so Builder/Edit was effectively invisible at phone widths. */}
+                    <div className="flex flex-wrap gap-x-2 gap-y-1 mb-6 border-b border-slate-700">
                         {['random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-4 text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m}</button>
+                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m}</button>
                         ))}
                     </div>
                     {mode === 'random' && (

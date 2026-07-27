@@ -18,6 +18,7 @@
 
     const tWave = (t) => 9 * Math.exp(-Math.pow(t - 0.42, 2) / 0.009);
 
+    const warnedRhythms = new Set();
     const rhythms = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'SVT', 'PEA', '1st Deg Heart Block', 'Complete Heart Block', 'Atrial Flutter', 'VT', 'STEMI'];
     rhythms.forEach(r => {
         precomputed.ecg[r] = new Float32Array(BUFFER_SIZE);
@@ -243,6 +244,11 @@
             'NSR': 'Sinus Rhythm', 'Normal Sinus': 'Sinus Rhythm',
             'CHB': 'Complete Heart Block', 'chb': 'Complete Heart Block',
             'sinus_tach': 'Sinus Tachycardia', 'sinus_brady': 'Sinus Bradycardia', 'nsr': 'Sinus Rhythm',
+            // Arrest rhythms the facilitator can select but which had no waveform of their own, so they
+            // silently fell through to Sinus Rhythm — a normal-looking trace during a cardiac arrest.
+            'pVT': 'VT', 'pvt': 'VT', 'vt_pulseless': 'VT', 'Pulseless VT': 'VT', 'VT (Pulseless)': 'VT',
+            'Coarse VF': 'VF', 'Fine VF': 'VF', 'coarse_vf': 'VF', 'fine_vf': 'VF', 'vf': 'VF',
+            'Agonal Rhythm': 'PEA', 'agonal': 'PEA', 'asystole': 'Asystole', 'pea': 'PEA',
         };
 
         const getECGValue = (t, type, cpr, absTime = 0) => {
@@ -286,7 +292,13 @@
                 return qrs + pVal;
             }
 
-            return precomputed.ecg[normType] ? precomputed.ecg[normType][idx] : precomputed.ecg['Sinus Rhythm'][idx];
+            if (precomputed.ecg[normType]) return precomputed.ecg[normType][idx];
+            // Falling back to a normal trace is clinically misleading, so make it loud rather than silent.
+            if (!warnedRhythms.has(type)) {
+                warnedRhythms.add(type);
+                console.warn(`ECG: no waveform for rhythm "${type}" — falling back to Sinus Rhythm. Add an ECG_NORM alias.`);
+            }
+            return precomputed.ecg['Sinus Rhythm'][idx];
         };
 
         const getSPO2Value = (t, sat) => {
@@ -487,6 +499,11 @@
 
         const trendIcon = trend ? (trend.progress > 0 ? (value > (prev || value) ? '↑' : '↓') : '') : '';
 
+        // A pulseless arrest legitimately reads 0/0, so truthiness is the wrong test here — it would
+        // render '--' and hide the fact the numbers agree with the arrest trace.
+        const hasValue2 = value2 !== undefined && value2 !== null && value2 !== '';
+        const show = (v) => (v === undefined || v === null || v === '' ? '--' : v);
+
         if (isNIBP && isMonitor) {
             return (
                 <div onClick={onClick} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
@@ -495,9 +512,9 @@
                         <span className="text-xs text-slate-400">{unit}</span>
                      </div>
                      <div className="flex items-end justify-center gap-1 my-1">
-                         <span className={`text-5xl md:text-6xl lg:text-7xl font-mono font-bold leading-none ${color}`}>{value || '--'}</span>
+                         <span className={`text-5xl md:text-6xl lg:text-7xl font-mono font-bold leading-none ${color}`}>{show(value)}</span>
                          <span className="text-2xl text-slate-500 font-bold mb-1">/</span>
-                         <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{value2 || '--'}</span>
+                         <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
                      </div>
                      <div className="text-right text-[10px] text-slate-500 uppercase font-mono mt-auto">
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
@@ -514,8 +531,8 @@
                 </div>
                 
                 <div className="flex items-baseline justify-center gap-1 h-full mt-2">
-                    <span className={`${value2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl'} font-mono font-bold tracking-tight ${color}`}>
-                        {value2 ? `${value}/${value2}` : (value !== null ? value : '--')}
+                    <span className={`${hasValue2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl'} font-mono font-bold tracking-tight ${color}`}>
+                        {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}
                     </span>
                     {trendIcon && <span className="text-xl md:text-3xl text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
                 </div>

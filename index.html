@@ -113,12 +113,9 @@
             console.error("Firebase Init Failed:", e);
         }
 
-        // --- REGISTER SERVICE WORKER (offline resilience for tablets) ---
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW register failed', err));
-            });
-        }
+        // No service worker at this scope on purpose. There is no root sw.js, and adding a
+        // stale-while-revalidate cache here would risk serving last session's code after a fix ships —
+        // unacceptable for clinical content. defib/index.html keeps its own SW at its own scope.
 
         // --- APP COMPONENT ---
         const App = () => {

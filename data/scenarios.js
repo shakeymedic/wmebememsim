@@ -253,8 +253,11 @@ window.processScenarios = () => {
 
         let baseCT = "normal";
         if (s.title.includes("Subarachnoid")) baseCT = "sah";
-        if (s.title.includes("Stroke") && s.title.includes("Isch")) baseCT = "stroke_isch";
-        if (s.title.includes("Stroke") && !s.title.includes("Isch")) baseCT = "stroke_haem"; // Fallback
+        // "Heat Stroke" is a hyperthermic emergency, not a cerebrovascular one — the bare substring match
+        // gave it an intracerebral haemorrhage CT report, a clinically wrong teaching artefact.
+        if (/\bstroke\b/i.test(s.title) && !/\bheat\b/i.test(s.title)) {
+            baseCT = /\bisch/i.test(s.title) ? "stroke_isch" : "stroke_haem";
+        }
         if (s.title.includes("Subdural")) baseCT = "subdural";
         if (s.title.includes("Extradural") || (s.title.includes("Head") && s.category === 'Trauma')) baseCT = "extradural";
         if (s.title.includes("Embolism")) baseCT = "pe";
