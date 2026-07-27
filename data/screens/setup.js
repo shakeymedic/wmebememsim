@@ -231,7 +231,16 @@
                  const selectedHf = HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0];
 
                  if (selectedBase.id.startsWith('CUST_')) {
-                     onGenerate({ ...selectedBase, showWetflag, hf: selectedBase.hf || selectedHf }, {});
+                     // Custom scenarios are built at runtime and never pass through processScenarios,
+                     // so enrich them here. Without this the live observations screen loads with no
+                     // equipment list, no guideline links, no investigations and no VBG result.
+                     const enriched = window.enrichScenario ? window.enrichScenario(selectedBase) : selectedBase;
+                     onGenerate({
+                         ...enriched,
+                         vbg: enriched.vbg || generateVbg(enriched.vbgClinicalState || "normal"),
+                         showWetflag,
+                         hf: selectedBase.hf || selectedHf
+                     }, {});
                      return;
                  }
 

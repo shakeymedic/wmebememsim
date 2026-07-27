@@ -599,7 +599,7 @@
                                 renderDrugsTab()
                             ) : (
                                 <>
-                                    {scenario.recommendedActions && activeTab === 'Common' && (
+                                    {scenario.recommendedActions && scenario.recommendedActions.length > 0 && activeTab === 'Common' && (
                                         <div className="mb-4 p-4 bg-amber-900/20 border-2 border-amber-500 rounded-lg shadow-lg">
                                             <h4 className="text-sm font-bold text-amber-400 uppercase mb-3 flex items-center gap-2"><Lucide icon="check-circle" className="w-4 h-4"/> Recommended Actions</h4>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">

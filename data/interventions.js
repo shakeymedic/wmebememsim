@@ -97,6 +97,9 @@ window.INTERVENTIONS = {
     'VitaminA': { label: 'Vitamin A', effect: {}, category: 'Drugs', log: 'Vitamin A administered.', type: 'bolus', duration: 10 },
     'Acetazolamide': { label: 'Acetazolamide', effect: {}, category: 'Drugs', log: 'IV Acetazolamide administered.', type: 'bolus', duration: 10, requires: ['IV Access'] },
     'Cyproheptadine': { label: 'Cyproheptadine', effect: {}, category: 'Drugs', log: 'Cyproheptadine administered.', type: 'bolus', duration: 10 },
+    'Thrombolysis': { label: 'Thrombolysis (Alteplase)', effect: {}, category: 'Drugs', log: 'IV thrombolysis (alteplase) commenced.', type: 'bolus', duration: 60, requires: ['IV Access'] },
+    'Nimodipine': { label: 'Nimodipine', effect: { BP: -5 }, category: 'Drugs', log: 'Nimodipine administered.', type: 'bolus', duration: 10 },
+    'Pabrinex': { label: 'Pabrinex / Thiamine', effect: {}, category: 'Drugs', log: 'IV Pabrinex (thiamine) administered.', type: 'bolus', duration: 30, requires: ['IV Access'] },
     'Antivenom': { label: 'Antivenom', effect: {}, category: 'Drugs', log: 'Antivenom administered.', type: 'bolus', duration: 30, requires: ['IV Access'] },
     'Oxytocin': { label: 'Oxytocin', effect: { BP: -5 }, category: 'Drugs', log: 'IV Oxytocin administered.', type: 'bolus', duration: 10, requires: ['IV Access'] },
     'Ergometrine': { label: 'Ergometrine', effect: { BP: 10 }, category: 'Drugs', log: 'IV Ergometrine administered.', type: 'bolus', duration: 10, requires: ['IV Access'] },
@@ -137,6 +140,8 @@ window.INTERVENTIONS = {
     'ClingFilm': { label: 'Cling Film', effect: { Temp: 0.5 }, category: 'Procedures', log: 'Burns covered with cling film.', type: 'continuous', duration: 30 },
     'ExchangeTransfusion': { label: 'Exchange Transfusion', effect: {}, category: 'Procedures', log: 'Exchange Transfusion started.', type: 'continuous', duration: 300, requires: ['IV Access'] },
     'LumbarPuncture': { label: 'Lumbar Puncture', effect: {}, category: 'Procedures', log: 'Lumbar puncture performed.', type: 'bolus', duration: 300 },
+    'Reduction': { label: 'Reduction / Manipulation', effect: {}, category: 'Procedures', log: 'Fracture / dislocation reduced under analgesia.', type: 'bolus', duration: 120 },
+    'Phototherapy': { label: 'Phototherapy', effect: {}, category: 'Procedures', log: 'Phototherapy commenced.', type: 'continuous', duration: 60 },
     'Irrigation': { label: 'Irrigation', effect: {}, category: 'Procedures', log: 'Copious irrigation started.', type: 'continuous', duration: 300 },
     'PacingPads': { label: 'Pacing Pads', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 },
 };
