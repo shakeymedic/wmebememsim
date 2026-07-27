@@ -194,7 +194,7 @@
         );
     };
 
-    const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md' }) => {
+    const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null }) => {
         const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
         const variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
@@ -209,11 +209,28 @@
             md: "px-4 py-2 text-sm",
             lg: "px-6 py-3 text-lg"
         };
+        const classes = `${baseClass} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`;
+        // Navigation buttons render as real anchors: browsers treat an anchor click as a
+        // genuine user navigation, whereas a programmatic window.open() is silently blocked
+        // by popup blockers (Safari, hardened Chrome, kiosk webviews).
+        if (href && !disabled) {
+            return (
+                <a
+                    href={href}
+                    target={target || '_blank'}
+                    rel="noopener noreferrer"
+                    onClick={onClick}
+                    className={classes}
+                >
+                    {children}
+                </a>
+            );
+        }
         return (
-            <button 
-                onClick={onClick} 
-                disabled={disabled} 
-                className={`${baseClass} ${variants[variant]} ${sizes[size]} ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            <button
+                onClick={onClick}
+                disabled={disabled}
+                className={classes}
             >
                 {children}
             </button>

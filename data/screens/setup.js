@@ -300,7 +300,7 @@
                     <div className="flex gap-2">
                         {/* New tab, not same tab: the facilitator keeps the controller on this laptop and
                             drags the monitor window to the second screen. */}
-                        <Button onClick={() => window.open(`?mode=monitor&session=${sessionID}`, '_blank', 'noopener')} variant="primary" className="h-10 text-xs flex items-center gap-1"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
+                        <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
                         <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Join Another Session</Button>
                     </div>
                 </div>
@@ -507,7 +507,7 @@
                         <div className="space-y-4">
                             <div className="p-3 bg-amber-900/20 rounded border border-amber-600/30"><h4 className="text-sm font-bold text-amber-400 uppercase mb-1">Clinical Progression</h4><p className="text-sm text-slate-300 leading-snug">{brief.progression}</p></div>
                             <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30"><h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{brief.interventions && brief.interventions.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
-                            <div className="p-3 bg-slate-900/50 rounded border border-slate-600"><h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4><div className="flex flex-col gap-1">{scenario.learningLinks && scenario.learningLinks.map((link, i) => (<a key={i} href={link.url} target="_blank" className="flex items-center gap-2 text-xs text-sky-400 hover:underline"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</a>))}</div></div>
+                            <div className="p-3 bg-slate-900/50 rounded border border-slate-600"><h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4><div className="flex flex-col gap-1">{scenario.learningLinks && scenario.learningLinks.map((link, i) => (<a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-sky-400 hover:underline"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</a>))}</div></div>
                             <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30"><h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Learning Objectives</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{(brief.debriefPoints || brief.learningObjectives || []).map((l, i) => <li key={i}>{l}</li>)}</ul></div>
                         </div>
                     </div>
