@@ -100,6 +100,8 @@
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
 
         const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
+        const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
+        const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // A restored or partially-synced session can arrive without a scenario; every field read below
         // must degrade to blank rather than take down the whole render tree.
         const scenario = rawScenario || {};
@@ -393,6 +395,10 @@
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                        <div role={syncProblem ? 'alert' : 'status'} title={syncStatus.message || (syncStatus.state === 'connected' ? 'Live monitor sync is active.' : 'Connecting to Firebase Realtime Database.')} className={`h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold ${syncProblem ? 'border-red-500 bg-red-950/60 text-red-300' : syncStatus.state === 'connected' ? 'border-emerald-700 bg-emerald-950/40 text-emerald-300' : 'border-amber-600 bg-amber-950/40 text-amber-300'}`}>
+                            <Lucide icon={syncProblem ? 'wifi-off' : 'wifi'} className="w-3 h-3" />
+                            {syncProblem ? 'Sync error' : syncStatus.state === 'connected' ? 'Monitor live' : 'Syncing'}
+                        </div>
                         <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold w-32 justify-between">
                             <Lucide icon="monitor" className="w-4 h-4"/> {audioOutput === 'both' ? 'Audio: Both' : (audioOutput === 'controller' ? 'Audio: Ctrl' : 'Audio: Mon')}
                         </Button>

@@ -30,7 +30,46 @@
         waveformGain: 1.0, noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
         icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
-        lastUpdate: 0, isOffline: false, showWetflag: true
+        lastUpdate: 0, isOffline: false, showWetflag: true,
+        // `isOffline` is kept for existing UI behaviour; syncStatus carries the actionable
+        // reason that the controller and second-screen monitor display to the user.
+        syncStatus: { state: 'connecting', message: null, lastWriteAt: null }
+    };
+
+    const SYNC_OFFLINE_STATES = new Set(['unavailable', 'disconnected', 'error']);
+
+    // Realtime Database rejects undefined, NaN and Infinity anywhere in a payload, including
+    // nested NIBP/trend/investigation data. Sanitise the whole wire payload, not just vitals.
+    const sanitizeForRealtimeDatabase = (value, path = '', dropped = []) => {
+        if (value === undefined) {
+            dropped.push(path || '(root)');
+            return { value: undefined, dropped };
+        }
+        if (typeof value === 'number' && !Number.isFinite(value)) {
+            dropped.push(path || '(root)');
+            return { value: undefined, dropped };
+        }
+        if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            return { value, dropped };
+        }
+        if (Array.isArray(value)) {
+            const result = [];
+            value.forEach((item, index) => {
+                const safe = sanitizeForRealtimeDatabase(item, `${path}[${index}]`, dropped);
+                if (safe.value !== undefined) result.push(safe.value);
+            });
+            return { value: result, dropped };
+        }
+        if (typeof value === 'object') {
+            const result = {};
+            Object.keys(value).forEach(key => {
+                const safe = sanitizeForRealtimeDatabase(value[key], path ? `${path}.${key}` : key, dropped);
+                if (safe.value !== undefined) result[key] = safe.value;
+            });
+            return { value: result, dropped };
+        }
+        dropped.push(path || '(root)');
+        return { value: undefined, dropped };
     };
 
     // 'pupils' and 'gcs' are the only non-numeric vitals the UI can set (gcs may arrive as a string).
@@ -203,13 +242,13 @@
     const coreReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialCoreState, isOffline: state.isOffline };
+            case 'CLEAR_SESSION': return { ...initialCoreState, isOffline: state.isOffline, syncStatus: state.syncStatus };
             case 'LOAD_SCENARIO': 
-                if(!action.payload) return { ...initialCoreState, isOffline: state.isOffline };
+                if(!action.payload) return { ...initialCoreState, isOffline: state.isOffline, syncStatus: state.syncStatus };
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && action.payload.title.includes('Head')) startICP = 25;
-                return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, showWetflag: action.payload.showWetflag !== false };
+                return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus, showWetflag: action.payload.showWetflag !== false };
             case 'RESTORE_SESSION': {
                 // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
                 // `log` or `scenario` key carried in from the snapshot would shadow the live values
@@ -230,6 +269,14 @@
             case 'PAUSE_SIM': return { ...state, isRunning: false };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
             case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
+            case 'SET_SYNC_STATUS': {
+                const syncStatus = {
+                    state: action.payload?.state || 'error',
+                    message: action.payload?.message || null,
+                    lastWriteAt: action.payload?.lastWriteAt || state.syncStatus?.lastWriteAt || null
+                };
+                return { ...state, syncStatus, isOffline: SYNC_OFFLINE_STATES.has(syncStatus.state) };
+            }
             case 'TICK_TIME':
                 const newDurations = { ...state.activeDurations }; 
                 let durChanged = false;
@@ -465,18 +512,34 @@
         }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput]);
 
         useEffect(() => {
-            try {
-                if (window.firebase && !window.db) {
-                    window.db = firebase.database();
-                    window.db.ref('.info/connected').on('value', (snap) => {
-                        if (snap.val() === false) dispatch({ type: 'SET_OFFLINE', payload: true });
-                        else dispatch({ type: 'SET_OFFLINE', payload: false });
-                    });
-                }
-            } catch (e) {
-                console.warn("Firebase failed to load - Offline Mode Active");
-                dispatch({ type: 'SET_OFFLINE', payload: true });
+            const db = window.db;
+            if (!db) {
+                const bootstrap = window.firebaseSyncBootstrap || {};
+                dispatch({
+                    type: 'SET_SYNC_STATUS',
+                    payload: {
+                        state: bootstrap.state === 'unavailable' ? 'unavailable' : 'error',
+                        message: bootstrap.message || 'Firebase Realtime Database is unavailable.'
+                    }
+                });
+                return;
             }
+
+            dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connecting', message: 'Connecting to live session…' } });
+            const connectionRef = db.ref('.info/connected');
+            const onConnection = (snap) => {
+                if (snap.val() === true) {
+                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
+                } else {
+                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'disconnected', message: 'Realtime Database connection is unavailable.' } });
+                }
+            };
+            const onConnectionError = (error) => {
+                console.error('Firebase connection-state listener failed:', error);
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Firebase connection error: ${error.message || 'unknown error'}` } });
+            };
+            connectionRef.on('value', onConnection, onConnectionError);
+            return () => connectionRef.off('value', onConnection);
         }, []);
 
         // Firebase sync — throttled to 500ms; reads live state from stateRef so we don't depend on
@@ -492,17 +555,8 @@
                 const cur = stateRef.current;
                 if (!cur.scenario) return;
                 const co2Pathology = cur.etco2Pathology || 'normal';
-                // RTDB rejects NaN/Infinity outright and the rejected diff would be retried forever,
-                // freezing the student monitor. Drop any non-finite numeric before it reaches the wire.
-                const safeVitals = {};
-                Object.keys(cur.vitals).forEach(k => {
-                    const v = cur.vitals[k];
-                    if (typeof v === 'number' && !Number.isFinite(v)) return;
-                    if (v === undefined) return;
-                    safeVitals[k] = v;
-                });
                 const payload = {
-                    vitals: safeVitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
+                    vitals: cur.vitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
                     etco2Enabled: cur.etco2Enabled, flash: cur.flash, cycleTimer: cur.cycleTimer,
                     monitorTimer: cur.monitorTimer,
                     scenarioTitle: cur.scenario.title, patientName: cur.scenario.patientName,
@@ -523,15 +577,42 @@
                     remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
                     showWetflag: cur.showWetflag, co2Pathology
                 };
+                const sanitised = sanitizeForRealtimeDatabase(payload);
+                const safePayload = sanitised.value || {};
+                if (sanitised.dropped.length) {
+                    const dropped = sanitised.dropped.join(', ');
+                    console.error(`Firebase sync omitted invalid value(s): ${dropped}`);
+                    dispatch({
+                        type: 'SET_SYNC_STATUS',
+                        payload: { state: 'degraded', message: `Invalid data omitted from sync: ${dropped}` }
+                    });
+                }
                 const diff = {};
-                for (const key in payload) {
-                    if (JSON.stringify(payload[key]) !== JSON.stringify(lastPayloadRef.current[key])) {
-                        diff[key] = payload[key];
+                for (const key in safePayload) {
+                    if (JSON.stringify(safePayload[key]) !== JSON.stringify(lastPayloadRef.current[key])) {
+                        diff[key] = safePayload[key];
                     }
                 }
                 if (Object.keys(diff).length > 0) {
-                    sessionRef.update(diff).catch(e => console.error("Sync Write Error:", e));
-                    lastPayloadRef.current = payload;
+                    // Only advance the acknowledged snapshot after RTDB accepts the write. Advancing it
+                    // before the promise resolves made a permission-denied write look successful forever.
+                    sessionRef.update(diff).then(() => {
+                        lastPayloadRef.current = safePayload;
+                        dispatch({
+                            type: 'SET_SYNC_STATUS',
+                            payload: {
+                                state: sanitised.dropped.length ? 'degraded' : 'connected',
+                                message: sanitised.dropped.length ? 'Some invalid data was omitted from sync.' : null,
+                                lastWriteAt: Date.now()
+                            }
+                        });
+                    }).catch(e => {
+                        console.error("Sync Write Error:", e);
+                        dispatch({
+                            type: 'SET_SYNC_STATUS',
+                            payload: { state: 'error', message: `Live session write failed: ${e.message || 'unknown error'}` }
+                        });
+                    });
                 }
             };
 
@@ -554,11 +635,21 @@
             const handleUpdate = (snapshot) => { 
                 const data = snapshot.val(); 
                 if (data) { 
-                    try { dispatch({ type: 'SYNC_FROM_MASTER', payload: data }); } 
+                    try {
+                        dispatch({ type: 'SYNC_FROM_MASTER', payload: data });
+                        dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
+                    }
                     catch (err) { console.error("Sync Error", err); } 
                 } 
             };
-            sessionRef.on('value', handleUpdate);
+            const handleReadError = (error) => {
+                console.error('Firebase monitor read failed:', error);
+                dispatch({
+                    type: 'SET_SYNC_STATUS',
+                    payload: { state: 'error', message: `Live session read failed: ${error.message || 'unknown error'}` }
+                });
+            };
+            sessionRef.on('value', handleUpdate, handleReadError);
             return () => sessionRef.off('value', handleUpdate);
         }, [isMonitorMode, sessionID]);
 
@@ -800,7 +891,14 @@
                     if (val.type === 'TRIGGER_ACTION') { if (applyInterventionRef.current) { applyInterventionRef.current(val.payload); } }
                 }
             };
-            cmdRef.on('value', handleCmd);
+            const handleCommandReadError = (error) => {
+                console.error('Firebase command listener failed:', error);
+                dispatch({
+                    type: 'SET_SYNC_STATUS',
+                    payload: { state: 'error', message: `Live-session command read failed: ${error.message || 'unknown error'}` }
+                });
+            };
+            cmdRef.on('value', handleCmd, handleCommandReadError);
             return () => cmdRef.off('value', handleCmd);
         }, [isMonitorMode, sessionID]);
 
@@ -910,8 +1008,29 @@
         // monitor throws on every NIBP/action press instead of falling back to acting locally.
         const sendCommand = (payload) => {
             if (!isMonitorMode || !sessionID || !window.db) return false;
-            try { window.db.ref(`sessions/${sessionID}/command`).set({ ...payload, ts: Date.now() }); return true; }
-            catch (e) { console.warn('Command send failed', e); return false; }
+            const safe = sanitizeForRealtimeDatabase({ ...payload, ts: Date.now() });
+            if (!safe.value || safe.dropped.length) {
+                const message = `Invalid monitor command was not sent: ${safe.dropped.join(', ') || 'unknown field'}`;
+                console.error(message);
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message } });
+                return false;
+            }
+            try {
+                window.db.ref(`sessions/${sessionID}/command`).set(safe.value).then(() => {
+                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null, lastWriteAt: Date.now() } });
+                }).catch(e => {
+                    console.error('Command send failed:', e);
+                    dispatch({
+                        type: 'SET_SYNC_STATUS',
+                        payload: { state: 'error', message: `Live-session command write failed: ${e.message || 'unknown error'}` }
+                    });
+                });
+                return true;
+            } catch (e) {
+                console.error('Command send failed:', e);
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Live-session command write failed: ${e.message || 'unknown error'}` } });
+                return false;
+            }
         };
         const triggerNIBP = () => { if (!sendCommand({ type: 'START_NIBP' })) dispatch({ type: 'START_NIBP' }); };
         const toggleNIBPMode = () => { if (!sendCommand({ type: 'TOGGLE_NIBP_MODE' })) dispatch({ type: 'TOGGLE_NIBP_MODE' }); };

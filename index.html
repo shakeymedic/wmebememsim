@@ -95,6 +95,9 @@
         const firebaseConfig = {
             apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
             authDomain: "wmebem-sim.firebaseapp.com",
+            // This project uses Realtime Database, not Firestore. Keep the exact database host
+            // explicit rather than relying on the SDK's projectId-derived fallback.
+            databaseURL: "https://wmebem-sim-default-rtdb.firebaseio.com",
             projectId: "wmebem-sim",
             storageBucket: "wmebem-sim.firebasestorage.app",
             messagingSenderId: "143041936940",
@@ -103,13 +106,18 @@
         };
 
         // --- INIT FIREBASE ---
+        window.firebaseSyncBootstrap = { state: 'connecting', message: null };
         try {
-            if (window.firebase && !firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-                window.db = firebase.database();
-                console.log("Firebase Connected");
-            }
+            if (!window.firebase) throw new Error('Firebase SDK did not load.');
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            window.db = firebase.database();
+            console.info("Firebase Realtime Database initialized");
         } catch (e) {
+            window.db = null;
+            window.firebaseSyncBootstrap = {
+                state: 'unavailable',
+                message: `Firebase initialization failed: ${e.message || 'unknown error'}`
+            };
             console.error("Firebase Init Failed:", e);
         }
 
@@ -125,7 +133,8 @@
             // URL Params for Monitor Mode
             const urlParams = new URLSearchParams(window.location.search);
             const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
-            const initialSession = urlParams.get('session');
+            const rawInitialSession = urlParams.get('session');
+            const initialSession = rawInitialSession ? rawInitialSession.trim().toUpperCase() : null;
 
             const [view, setView] = useState(initialMode);
             // Controller code must survive reloads and back-navigation, otherwise any monitor already
@@ -171,7 +180,7 @@
             };
 
             const handleJoin = (code) => {
-                setSessionID(code);
+                setSessionID(String(code || '').trim().toUpperCase());
                 setView('monitor');
             };
 

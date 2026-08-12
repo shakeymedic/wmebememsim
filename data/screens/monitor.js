@@ -100,6 +100,8 @@
         const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag } = state;
+        const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
+        const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         const hasMonitoring = activeInterventions.has('Obs'); 
         const hasArtLine = activeInterventions.has('ArtLine');
         
@@ -218,6 +220,12 @@
 
         return (
             <div className={`h-full w-full flex flex-col bg-black text-white transition-colors duration-200 ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')} relative overflow-hidden`}>
+                {syncProblem && (
+                    <div role="alert" className="absolute top-0 inset-x-0 z-[130] bg-red-950/95 border-b border-red-500 px-4 py-2 text-center text-sm font-bold text-red-100 shadow-lg">
+                        <span>Disconnected from live session.</span>
+                        {syncStatus.message && <span className="ml-2 font-normal text-red-200">{syncStatus.message}</span>}
+                    </div>
+                )}
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
                 <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
@@ -358,13 +366,16 @@
         const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
         if (!sessionID) return null; 
+        const syncStatus = sim.state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
+        const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         
         if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) {
             return (
                 <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
                     <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
-                    <div className="text-xl font-mono tracking-widest">WAITING FOR CONTROLLER</div>
+                    <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
+                    {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
                 </div>
             ); 
         }
