@@ -193,9 +193,20 @@ window.generateVbg = (clinicalState = "normal") => {
     return vbg;
 };
 
-window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, timeSeconds) => {
+window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, timeSeconds, trendDirection = null) => {
     if (!startVbg) return { pH: 7.4, pCO2: 5.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
     let vbg = { ...startVbg };
+    // A facilitator-triggered improvement/deterioration is an explicit clinical state change. Apply it
+    // to the runtime VBG baseline so the next repeat gas changes even before time-based physiology accrues.
+    if (trendDirection === 'improve') {
+        vbg.pH = Math.min(7.4, vbg.pH + 0.05);
+        vbg.Lac = Math.max(1, vbg.Lac / 2);
+        if (Number.isFinite(vbg.K) && vbg.K > 5.5) vbg.K = Math.max(4.0, vbg.K - 1.0);
+    } else if (trendDirection === 'deteriorate') {
+        vbg.pH = Math.max(6.8, vbg.pH - 0.05);
+        vbg.Lac = Math.min(15, vbg.Lac + 2);
+        if (Number.isFinite(vbg.HCO3)) vbg.HCO3 = Math.max(5, vbg.HCO3 - 2);
+    }
     const minutes = timeSeconds / 60;
     const isVentilated = activeInterventions.has('Bagging') || activeInterventions.has('RSI') || activeInterventions.has('i-gel') || activeInterventions.has('NIV');
     if (currentVitals.rr < 10 && !isVentilated) { vbg.pCO2 = Math.min(15, vbg.pCO2 + (0.1 * minutes)); vbg.pH = Math.max(6.8, vbg.pH - (0.01 * minutes)); }

@@ -96,7 +96,7 @@
     ];
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
-        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate } = window;
+        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
 
         const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
@@ -139,6 +139,7 @@
         const [timerAlerts, setTimerAlerts] = useState([]);
         const [newAlertMins, setNewAlertMins] = useState('5');
         const [newAlertMsg, setNewAlertMsg] = useState('');
+        const [timerAlertError, setTimerAlertError] = useState('');
         const [firedAlerts, setFiredAlerts] = useState(new Set());
         const firedAlertsRef = useRef(new Set());
         const [showKeyHelp, setShowKeyHelp] = useState(false);
@@ -248,17 +249,19 @@
 
         useEffect(() => {
             const handler = (e) => {
-                const tag = document.activeElement?.tagName;
-                if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+                const modalOpen = modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showArrestMenu || showROSCMenu || arrestPanelOpen;
+                if (modalOpen) return;
+                const active = document.activeElement;
+                if (active?.matches?.('button, a, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
                 if (e.key === ' ') { e.preventDefault(); isRunning ? pause() : start(); }
-                if (e.key === 'f' || e.key === 'F') onFinish();
+                if (e.key === 'f' || e.key === 'F') { if (window.confirm('End the simulation and go to debrief?')) onFinish(); }
                 if (e.key === 'd' || e.key === 'D') setShowDrugCalc(v => !v);
                 if (e.key === 't' || e.key === 'T') setShowTimerModal(v => !v);
                 if (e.key === '?') setShowKeyHelp(v => !v);
             };
             window.addEventListener('keydown', handler);
             return () => window.removeEventListener('keydown', handler);
-        }, [isRunning]);
+        }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showArrestMenu, showROSCMenu, arrestPanelOpen]);
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         const isMonitoringApplied = activeInterventions.has('Obs'); 
@@ -370,7 +373,14 @@
         const shockEnergy = Number.isFinite(Number(scenario.wetflag?.energy)) && Number(scenario.wetflag.energy) > 0
             ? Math.round(Number(scenario.wetflag.energy)) : 150;
 
-        const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration } : null;
+        const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration, target: trends.targets[key] } : null;
+        const addTimerAlert = () => {
+            const mins = Number(newAlertMins);
+            if (!newAlertMsg.trim()) { setTimerAlertError('Enter an alert message.'); return; }
+            if (!Number.isFinite(mins) || mins < 0.5 || mins > 180) { setTimerAlertError('Alert time must be between 0.5 and 180 minutes.'); return; }
+            setTimerAlerts(prev => [...prev, { id: Date.now(), mins, msg: newAlertMsg.trim() }]);
+            setNewAlertMsg(''); setNewAlertMins('5'); setTimerAlertError('');
+        };
 
         const handleInvClick = (type) => { setInvModal(type); setInvCustomText(""); };
         const sendInv = (type, text) => { revealInvestigation(type, text); setInvModal(null); };
@@ -402,10 +412,10 @@
                         <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold w-32 justify-between">
                             <Lucide icon="monitor" className="w-4 h-4"/> {audioOutput === 'both' ? 'Audio: Both' : (audioOutput === 'controller' ? 'Audio: Ctrl' : 'Audio: Mon')}
                         </Button>
-                        <Button variant={isMuted ? "danger" : "secondary"} onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className="h-8 px-2">
+                        <Button ariaLabel={isMuted ? "Unmute alarms" : "Mute alarms"} variant={isMuted ? "danger" : "secondary"} onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className="h-8 px-2">
                             <Lucide icon={isMuted ? "volume-x" : "volume-2"} className="w-4 h-4"/>
                         </Button>
-                        <Button variant="secondary" onClick={() => setShowLogModal(true)} className="h-8 px-2 relative">
+                        <Button ariaLabel="Open simulation log" variant="secondary" onClick={() => setShowLogModal(true)} className="h-8 px-2 relative">
                             <Lucide icon="list" className="w-4 h-4"/>
                             {state.log.some(l => l.flagged) && <span className="absolute top-0 right-0 w-2 h-2 bg-amber-500 rounded-full"></span>}
                         </Button>
@@ -414,7 +424,7 @@
                         <Button variant="outline" href="defib/index.html" className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
                         <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
                         <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
-                        <Button variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
+                        <Button ariaLabel="Open keyboard shortcuts" variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
                         <div className="font-mono text-2xl font-bold text-white ml-2">{formatTime(time)}</div>
                     </div>
                 </div>
@@ -506,7 +516,7 @@
                              <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
                                      <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator Active</h3>
-                                     <button onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
+                                     <button aria-label="Close defibrillator panel" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
                                  <div className="grid grid-cols-2 gap-2">
                                      <Button onClick={() => { initCharge(shockEnergy); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">Charge {shockEnergy}J</Button>
@@ -567,8 +577,8 @@
                                                 <div key={skill} className="flex items-center justify-between bg-slate-900 p-3 rounded border border-slate-700">
                                                     <span className="text-sm font-bold text-slate-200">{skill}</span>
                                                     <div className="flex gap-2">
-                                                        <button onClick={()=>setAssessments({...assessments, [skill]: false})} className={`p-2 rounded border ${assessments[skill] === false ? 'bg-red-600 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-500'}`}><Lucide icon="x" className="w-4 h-4"/></button>
-                                                        <button onClick={()=>setAssessments({...assessments, [skill]: true})} className={`p-2 rounded border ${assessments[skill] === true ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-500'}`}><Lucide icon="check" className="w-4 h-4"/></button>
+                                                        <button aria-label={`Mark ${skill} as needing improvement`} onClick={()=>setAssessments({...assessments, [skill]: false})} className={`p-2 rounded border ${assessments[skill] === false ? 'bg-red-600 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-500'}`}><Lucide icon="x" className="w-4 h-4"/></button>
+                                                        <button aria-label={`Mark ${skill} as achieved`} onClick={()=>setAssessments({...assessments, [skill]: true})} className={`p-2 rounded border ${assessments[skill] === true ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-500'}`}><Lucide icon="check" className="w-4 h-4"/></button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -637,7 +647,7 @@
                 </div>
 
                 {showLogModal && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Simulation log" onClose={()=>setShowLogModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl h-[80vh] flex flex-col">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-lg font-bold text-white uppercase tracking-wider">Simulation Log</h3>
@@ -646,18 +656,18 @@
                             <div className="flex-1 overflow-y-auto bg-slate-900 p-4 rounded border border-slate-700 font-mono text-sm space-y-2">
                                 {state.log.map((entry, i) => (
                                     <div key={i} className={`flex gap-4 border-b border-slate-800 pb-1 items-center ${entry.flagged ? 'bg-amber-900/20 -mx-2 px-2' : ''}`}>
-                                        <button onClick={() => sim.dispatch({type: 'TOGGLE_FLAG', payload: i})} className={`text-slate-500 hover:text-amber-500 transition-colors ${entry.flagged ? 'text-amber-500' : ''}`}><Lucide icon="flag" className="w-4 h-4"/></button>
+                                        <button aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({type: 'TOGGLE_FLAG', payload: i})} className={`text-slate-500 hover:text-amber-500 transition-colors ${entry.flagged ? 'text-amber-500' : ''}`}><Lucide icon="flag" className="w-4 h-4"/></button>
                                         <span className="text-slate-500 w-20 flex-shrink-0">{entry.simTime}</span>
                                         <span className={`flex-grow ${entry.type==='danger' ? 'text-red-400 font-bold' : entry.type==='success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>{entry.msg}</span>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                    </div>
+                    </Modal>
                 )}
                 
                 {showNIBPModal && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="NIBP control" onClose={()=>setShowNIBPModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                              <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">NIBP Control</h3>
                              <div className="space-y-4">
@@ -671,15 +681,15 @@
                                 <Button onClick={()=>setShowNIBPModal(false)} variant="outline" className="w-full">Cancel</Button>
                              </div>
                         </div>
-                    </div>
+                    </Modal>
                 )}
 
                 {invModal && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Investigation result" onClose={()=>closeInv()}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-lg shadow-2xl h-[90vh] flex flex-col">
                              <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-lg font-bold text-white uppercase tracking-wider flex-shrink-0">Send {invModal} Result</h3>
-                                <button onClick={()=>setInvModal(null)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                <button aria-label="Close investigation result" onClick={()=>setInvModal(null)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                              </div>
                              
                              <div className="space-y-4 overflow-y-auto flex-grow pr-2">
@@ -716,11 +726,11 @@
                                  <Button onClick={closeInv} variant="danger" className="w-full">Clear/Close Result on Monitor</Button>
                              </div>
                         </div>
-                    </div>
+                    </Modal>
                 )}
                 
                 {modalVital && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Vital control" onClose={()=>setModalVital(null)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
                             <div className="space-y-4">
@@ -745,11 +755,11 @@
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
                             </div>
                         </div>
-                    </div>
+                    </Modal>
                 )}
 
                 {showRhythmModal && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Select rhythm" onClose={()=>setShowRhythmModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Select Rhythm</h3>
                             <div className="grid grid-cols-3 gap-2">
@@ -761,15 +771,15 @@
                             </div>
                             <Button onClick={()=>setShowRhythmModal(false)} variant="outline" className="w-full mt-4">Cancel</Button>
                         </div>
-                    </div>
+                    </Modal>
                 )}
 
                 {showDrugCalc && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Drug dosing calculator" onClose={()=>setShowDrugCalc(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-lg shadow-2xl h-[90vh] flex flex-col">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-lg font-bold text-white uppercase tracking-wider">Drug Dosing Calculator</h3>
-                                <button onClick={() => setShowDrugCalc(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                <button aria-label="Close drug calculator" onClick={() => setShowDrugCalc(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                             </div>
                             <div className="mb-4">
                                 <label className="text-xs text-slate-400 font-bold uppercase">Patient Weight (kg)</label>
@@ -801,22 +811,23 @@
                                 })}
                             </div>
                         </div>
-                    </div>
+                    </Modal>
                 )}
 
                 {showTimerModal && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Timer alerts" onClose={()=>setShowTimerModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-md shadow-2xl">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-lg font-bold text-white uppercase tracking-wider">Timer Alerts</h3>
-                                <button onClick={() => setShowTimerModal(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                <button aria-label="Close timer alerts" onClick={() => setShowTimerModal(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                             </div>
                             <div className="space-y-3 mb-4">
                                 <div className="flex gap-2">
-                                    <input type="number" value={newAlertMins} onChange={e => setNewAlertMins(e.target.value)} placeholder="Mins" className="w-20 bg-slate-900 border border-slate-600 rounded p-2 text-white text-center" />
+                                    <input type="number" min="0.5" max="180" step="0.5" value={newAlertMins} onChange={e => { setNewAlertMins(e.target.value); setTimerAlertError(''); }} placeholder="Mins" className="w-20 bg-slate-900 border border-slate-600 rounded p-2 text-white text-center" />
                                     <input type="text" value={newAlertMsg} onChange={e => setNewAlertMsg(e.target.value)} placeholder="Alert message..." className="flex-1 bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm" />
-                                    <Button onClick={() => { if (!newAlertMsg || !newAlertMins) return; setTimerAlerts(prev => [...prev, {id: Date.now(), mins: parseFloat(newAlertMins), msg: newAlertMsg}]); setNewAlertMsg(''); setNewAlertMins('5'); }} variant="primary" className="h-10 px-3">Add</Button>
+                                    <Button onClick={addTimerAlert} variant="primary" className="h-10 px-3">Add</Button>
                                 </div>
+                                {timerAlertError && <div className="text-red-400 text-xs font-bold">{timerAlertError}</div>}
                                 <div className="text-xs text-slate-500">Alerts fire automatically at the set sim time and play a tone.</div>
                             </div>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -828,21 +839,21 @@
                                             <span className="text-slate-400 text-xs ml-2">@ {alert.mins}min</span>
                                             {firedAlerts.has(alert.id) && <span className="text-red-400 text-xs ml-2 font-bold">FIRED</span>}
                                         </div>
-                                        <button onClick={() => setTimerAlerts(prev => prev.filter(a => a.id !== alert.id))} className="text-slate-500 hover:text-red-400"><Lucide icon="x" className="w-4 h-4"/></button>
+                                        <button aria-label={`Remove alert: ${alert.msg}`} onClick={() => setTimerAlerts(prev => prev.filter(a => a.id !== alert.id))} className="text-slate-500 hover:text-red-400"><Lucide icon="x" className="w-4 h-4"/></button>
                                     </div>
                                 ))}
                             </div>
                             <Button onClick={() => setShowTimerModal(false)} variant="outline" className="w-full mt-4">Close</Button>
                         </div>
-                    </div>
+                    </Modal>
                 )}
 
                 {showKeyHelp && (
-                    <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <Modal label="Keyboard shortcuts" onClose={()=>setShowKeyHelp(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <div className="flex justify-between items-center mb-4">
                                 <h3 className="text-lg font-bold text-white uppercase tracking-wider">Keyboard Shortcuts</h3>
-                                <button onClick={() => setShowKeyHelp(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                <button aria-label="Close keyboard shortcuts" onClick={() => setShowKeyHelp(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                             </div>
                             <div className="space-y-2">
                                 {[['Space', 'Play / Pause sim'], ['F', 'Finish sim'], ['D', 'Toggle Drug Calculator'], ['T', 'Toggle Timer Alerts'], ['?', 'Show this help']].map(([key, desc]) => (
@@ -854,7 +865,7 @@
                             </div>
                             <Button onClick={() => setShowKeyHelp(false)} variant="outline" className="w-full mt-4">Close</Button>
                         </div>
-                    </div>
+                    </Modal>
                 )}
             </div>
         );

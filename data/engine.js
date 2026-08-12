@@ -3,7 +3,7 @@
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
     const initialVitalsState = {
-        vitals: { etco2: 4.5, temp: 36.5, bm: 5.5, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16 },
+        vitals: { etco2: 4.5, temp: 36.5, bm: 5.5, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 },
         prevVitals: {},
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         hypoxiaTimer: 0
@@ -247,7 +247,7 @@
                 if(!action.payload) return { ...initialCoreState, isOffline: state.isOffline, syncStatus: state.syncStatus };
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
-                if(action.payload.category === 'Trauma' && action.payload.title.includes('Head')) startICP = 25;
+                if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
                 return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus, showWetflag: action.payload.showWetflag !== false };
             case 'RESTORE_SESSION': {
                 // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
@@ -388,6 +388,9 @@
                 if (scen && scen.evolution && scen.evolution.improved && scen.evolution.improved.vitals) { impTargets = { ...scen.evolution.improved.vitals }; } 
                 else { impTargets.hr = Math.max(60, vits.hr - 15); impTargets.bpSys = Math.min(120, vits.bpSys + 15); impTargets.spO2 = Math.min(99, vits.spO2 + 5); }
                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...vits } } } };
+                if (scen?.vbg && window.calculateDynamicVbg) {
+                    dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'improve') }, currentState: stateRef.current });
+                }
                 dispatchCore({ type: 'SET_FLASH', payload: 'green', currentState: stateRef.current });
             }
             if (action.type === 'TRIGGER_DETERIORATE') {
@@ -397,6 +400,9 @@
                  if (scen && scen.evolution && scen.evolution.deteriorated && scen.evolution.deteriorated.vitals) { detTargets = { ...scen.evolution.deteriorated.vitals }; } 
                  else { detTargets.hr = Math.min(170, vits.hr + 20); detTargets.bpSys = Math.max(60, vits.bpSys - 20); detTargets.spO2 = Math.max(80, vits.spO2 - 10); }
                  enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...vits } } } };
+                 if (scen?.vbg && window.calculateDynamicVbg) {
+                     dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'deteriorate') }, currentState: stateRef.current });
+                 }
                  dispatchCore({ type: 'SET_FLASH', payload: 'red', currentState: stateRef.current });
             }
 
@@ -422,7 +428,7 @@
                     const age = cur.scenario?.patientAge ?? 40;
                     const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
                     dispatchVitals({ type: 'STOP_TREND', currentState: cur });
-                    rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: 5.0 + Math.random() * 1.5 };
+                    rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: Math.round((5.0 + Math.random() * 1.5) * 10) / 10 };
                 }
 
                 if (!cur.arrestPanelOpen && !isArrest) {
@@ -458,6 +464,8 @@
                         SHOCK_DELIVERED: `student pressed SHOCK (${data.payload?.energy ?? '?'}J)`,
                         CHARGE_INIT: `student pressed CHARGE (${data.payload?.energy ?? '?'}J)`,
                         MARKER_EVENT: 'student marked event',
+                        CHECK_PULSE: 'student checked pulse',
+                        ANALYSIS_RESULT: `defib analysis: ${data.payload?.result || 'unknown result'}`,
                         ALARM_SILENCE: 'student silenced alarm',
                         REQUEST_12LEAD: 'student requested 12-lead',
                         DEVICE_MODE: `student set device mode to ${data.payload?.mode ?? '?'}`
@@ -474,6 +482,10 @@
                     initCharge(data.payload.energy);
                 } else if (data.type === 'SHOCK_DELIVERED') {
                     deliverShock(data.payload.energy, 'student');
+                } else if (data.type === 'CHECK_PULSE') {
+                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Checked Pulse', type: 'action' } });
+                } else if (data.type === 'ANALYSIS_RESULT') {
+                    dispatch({ type: 'ADD_LOG', payload: { msg: `Defib Analysis: ${data.payload?.result || 'Unknown result'}`, type: 'action' } });
                 } else if (data.type === 'ALARM_SILENCE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
                 } else if (data.type === 'MARKER_EVENT') {
@@ -559,7 +571,7 @@
                     vitals: cur.vitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
                     etco2Enabled: cur.etco2Enabled, flash: cur.flash, cycleTimer: cur.cycleTimer,
                     monitorTimer: cur.monitorTimer,
-                    scenarioTitle: cur.scenario.title, patientName: cur.scenario.patientName,
+                    scenarioTitle: cur.scenario.title || '', patientName: cur.scenario.patientName || '',
                     patientAge: cur.scenario.patientAge, sex: cur.scenario.sex,
                     ageRange: cur.scenario.ageRange, wetflag: cur.scenario.wetflag || null,
                     pathology: cur.scenario.deterioration?.type || 'normal',
@@ -917,7 +929,7 @@
             const cur = stateRef.current;
             const age = cur.scenario?.patientAge ?? 40;
             const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
-            const newEtco2 = 5.0 + (Math.random() * 1.5);
+            const newEtco2 = Math.round((5.0 + (Math.random() * 1.5)) * 10) / 10;
             dispatch({ type: 'STOP_TREND' });
             dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.vitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 } });
             dispatch({ type: 'UPDATE_RHYTHM', payload: rhythm });

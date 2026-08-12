@@ -133,7 +133,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         <div class="device-screen-section">
             <div class="screen">
                 <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="EM Evidence Logo"></div>
-                <div id="paperOverlay" class="hidden" onclick="this.classList.add('hidden')"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
+                <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead analysis" tabindex="-1"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
                 <div class="screen-header">
                     <div class="screen-info" id="leadInfo">LEAD: II</div><div class="screen-info" id="syncIndicator"></div>
                     <div class="screen-info" id="modeInfo">MODE: MONITOR</div><div class="screen-info" id="timeInfo">00:00:00</div>
@@ -148,7 +148,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 <div class="message-bar ready" id="messageBar">SIMULATOR READY</div>
             </div>
             <div class="softkeys">
-                <button class="softkey" id="checkPulseBtn">Check Pulse</button><button class="softkey">Param</button><button class="softkey">Marker</button><button class="softkey">Alarms</button>
+                <button class="softkey" id="checkPulseBtn">Check Pulse</button><button class="softkey" disabled title="Parameter setup is not simulated">Param</button><button class="softkey" id="markerBtn">Marker</button><button class="softkey" disabled title="Alarm configuration is not simulated">Alarms</button>
             </div>
         </div>
         <div class="device-controls-section">
@@ -168,7 +168,6 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 <div><div class="pacer-label">OUTPUT</div><div class="pacer-dial" style="--dial-rotation: 0deg;"></div><div class="pacer-value" id="outputDisplay">0</div><div class="pacer-label">mA</div><div class="pacer-controls-btn"><button class="pacer-btn" data-pacer-param="output" data-pacer-dir="-5">-</button><button class="pacer-btn" data-pacer-param="output" data-pacer-dir="5">+</button></div></div>
                 <div><div class="pacer-label">RATE</div><div class="pacer-dial" style="--dial-rotation: 0deg;"></div><div class="pacer-value" id="rateDisplay">60</div><div class="pacer-label">ppm</div><div class="pacer-controls-btn"><button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="-5">-</button><button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="5">+</button></div></div>
             </div>
-            <button id="markerBtn" style="display:none;"></button>
         </div>
         <div class="zoll-branding"><div class="zoll-logo-text">ZOLL</div></div>
     </div>
@@ -309,7 +308,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                     const rhythm = typeof data.payload === 'string' ? data.payload : (data.payload.rhythm || 'Sinus Rhythm');
                     const scenario = typeof data.payload === 'object' ? data.payload.scenario : null;
                     render12LeadDefib(canvas, rhythm, scenario);
+                    overlayReturnFocus = document.activeElement;
                     overlay.classList.remove('hidden');
+                    overlay.focus();
                 }
             } else if (data.type === 'GHOST_PRESS') {
                 handleGhostPress(data.payload); 
@@ -321,6 +322,20 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             catch (e) { console.warn('Channel post failed', e); }
         }
         broadcast('REQUEST_SYNC', {});
+        let overlayReturnFocus = null;
+        function closePaperOverlay() {
+            const overlay = document.getElementById('paperOverlay');
+            if (!overlay || overlay.classList.contains('hidden')) return;
+            overlay.classList.add('hidden');
+            overlayReturnFocus?.focus?.();
+        }
+        document.getElementById('paperOverlay')?.addEventListener('click', closePaperOverlay);
+        document.addEventListener('keydown', (event) => {
+            const overlay = document.getElementById('paperOverlay');
+            if (!overlay || overlay.classList.contains('hidden')) return;
+            if (event.key === 'Escape') { event.preventDefault(); closePaperOverlay(); }
+            else if (event.key === 'Tab') { event.preventDefault(); overlay.focus(); }
+        });
 
         function handleGhostPress(elementId) {
             const el = document.getElementById(elementId);
@@ -411,12 +426,14 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             }
         }
 
+        const fmt = (value, decimals = null) => Number.isFinite(value)
+            ? (decimals === null ? value : (Math.round(value * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals)) : '--';
         function updateDisplays() {
             if(state.deviceMode==='off') return;
-            document.getElementById('hrDisplay').textContent = state.hr;
-            document.getElementById('spo2Display').textContent = state.spo2;
-            document.getElementById('etco2Display').textContent = state.etco2;
-            document.getElementById('bpDisplay').textContent = `${state.bpSys}/${state.bpDia}`;
+            document.getElementById('hrDisplay').textContent = fmt(state.hr);
+            document.getElementById('spo2Display').textContent = fmt(state.spo2);
+            document.getElementById('etco2Display').textContent = fmt(state.etco2, 1);
+            document.getElementById('bpDisplay').textContent = `${fmt(state.bpSys)}/${fmt(state.bpDia)}`;
             document.getElementById('energyDisplay').textContent = state.energy;
             document.getElementById('outputDisplay').textContent = state.pacerOutput;
             document.getElementById('rateDisplay').textContent = state.pacerRate;
@@ -490,6 +507,24 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             updateDisplays();
         }
 
+        function checkPulse() {
+            broadcast('CHECK_PULSE', { timestamp: Date.now() });
+            setMessage('CHECK PULSE', 'ready');
+            setTimeout(() => setMessage('SIMULATOR READY', 'ready'), 1000);
+        }
+
+        function analyseRhythm() {
+            if (state.deviceMode === 'off') return;
+            setMessage('ANALYSING...', 'alert');
+            setTimeout(() => {
+                const shockable = ['VF', 'Coarse VF', 'Fine VF', 'VT', 'pVT', 'vt_pulseless'].includes(state.originalRhythm || state.rhythm);
+                const result = shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED';
+                setMessage(result, shockable ? 'alert' : 'ready');
+                broadcast('ANALYSIS_RESULT', { result, rhythm: state.originalRhythm || state.rhythm });
+                setTimeout(() => setMessage('SIMULATOR READY', 'ready'), 2000);
+            }, 3000);
+        }
+
         function markerPress() {
             broadcast('MARKER_EVENT', { timestamp: Date.now() });
             setMessage('EVENT MARKED', 'ready');
@@ -513,8 +548,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         document.getElementById('chargeBtn').addEventListener('click', chargeDefib);
         document.getElementById('shockBtn').addEventListener('click', deliverShock);
         document.getElementById('syncBtn').addEventListener('click', toggleSync);
-        document.getElementById('analyseBtn').addEventListener('click', () => setMessage('ANALYSING...', 'alert'));
+        document.getElementById('analyseBtn').addEventListener('click', analyseRhythm);
         document.querySelectorAll('.energy-arrow').forEach(b=>b.addEventListener('click', ()=>adjustEnergy(parseInt(b.dataset.energyDir))));
+        document.getElementById('checkPulseBtn').addEventListener('click', checkPulse);
         document.getElementById('markerBtn').addEventListener('click', markerPress);
         document.getElementById('alarmSuspendBtn').addEventListener('click', alarmSuspend);
         document.getElementById('recorderBtn').addEventListener('click', recorderPress);

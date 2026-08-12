@@ -115,12 +115,13 @@
             if (!customScenarios.length) return alert("No custom scenarios to export.");
             const blob = new Blob([JSON.stringify(customScenarios, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = `em_evidence_scenarios_${Date.now()}.json`; a.click();
+            const a = document.createElement('a'); a.href = url; a.download = `em_evidence_scenarios_${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
 
         const importCustomScenariosFile = (e) => {
             const file = e.target.files[0]; if (!file) return;
             const reader = new FileReader();
+            reader.onerror = () => { alert('Could not read the selected scenario file. Please try another JSON export.'); e.target.value = ''; };
             reader.onload = (ev) => {
                 try {
                     const parsed = JSON.parse(ev.target.result);
@@ -136,7 +137,6 @@
                     alert(`Imported ${added} new scenario(s).` + (rejected > 0 ? ` ${rejected} skipped (invalid shape).` : ''));
                 } catch (err) { alert('Import failed: ' + err.message); }
             };
-            reader.onerror = () => alert('Import failed: could not read the file.');
             reader.readAsText(file);
             e.target.value = '';
         };

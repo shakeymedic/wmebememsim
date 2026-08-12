@@ -301,7 +301,15 @@ window.RAW_SCENARIOS = [
 // created at runtime and never pass through RAW_SCENARIOS — reach the live observations screen
 // with the same fully populated shape as the premade library.
 window.enrichScenario = (s) => {
-    const { generateUrine, generatePocus, generateCT } = window; // Ensure these are available
+    if (!s || typeof s !== 'object') { console.warn('Skipping malformed scenario: expected an object.', s); return null; }
+    const title = typeof s.title === 'string' ? s.title : '';
+    const sourceEcg = s.ecg && typeof s.ecg === 'object' ? s.ecg : null;
+    const sourceChestXray = s.chestXray && typeof s.chestXray === 'object' ? s.chestXray : null;
+    const sourceEvolution = s.evolution && typeof s.evolution === 'object' ? s.evolution : {};
+    const { generateUrine, generatePocus, generateCT, generateVbg } = window; // Ensure these are available
+    // Materialise the authored clinical VBG state once. This stable baseline is then updated by
+    // improve/deteriorate triggers and used for repeat gases rather than being regenerated each reveal.
+    const baseVbg = s.vbg || (s.vbgClinicalState && generateVbg ? generateVbg(s.vbgClinicalState) : null);
 
     // ECG rhythm name normalisation — maps shorthand/non-canonical names to the strings
     // that components.js precomputes waveforms for.
@@ -323,7 +331,7 @@ window.enrichScenario = (s) => {
         if (s.acuity === 'Resus') kit = [...kit, 'Defibrillator', 'Airway Trolley', 'Drugs Bag', 'IO Drill', 'Ultrasound'];
         if (s.category === 'Trauma') kit = [...kit, 'Pelvic Binder', 'Splints', 'TXA', 'Blood Warmer'];
         if (s.ageRange === 'Paediatric') kit = [...kit, 'Broselow Tape', 'Paeds Drug Calc'];
-        if (s.category === 'Obstetrics & Gynae') kit = [...kit, 'Obs Delivery Pack', 'Neonatal Resuscatire'];
+        if (s.category === 'Obstetrics & Gynae') kit = [...kit, 'Obs Delivery Pack', 'Neonatal Resuscitaire'];
 
         if (s.ageRange === 'Paediatric') {
             links.push({ label: 'RCUK Paeds Guidelines 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines' });
@@ -334,12 +342,12 @@ window.enrichScenario = (s) => {
         }
         if (s.category === 'Trauma') links.push({ label: 'NICE Trauma (NG39)', url: 'https://www.nice.org.uk/guidance/ng39' });
         if (s.category === 'Toxicology') links.push({ label: 'TOXBASE', url: 'https://www.toxbase.org/' });
-        if (s.title.includes('Sepsis')) links.push({ label: 'Sepsis Trust Tools', url: 'https://sepsistrust.org/professional-resources/clinical-tools/' });
+        if (title.includes('Sepsis')) links.push({ label: 'Sepsis Trust Tools', url: 'https://sepsistrust.org/professional-resources/clinical-tools/' });
         if (s.category === 'Obstetrics & Gynae') links.push({ label: 'RCOG Guidelines', url: 'https://www.rcog.org.uk/guidance/browse-all-guidance/' });
 
         // --- FIX: Auto-Correct Clinical Keys ---
-        const mapKeys = (list) => list ? list.map(item => {
-            if (item === 'Adrenaline') return (s.acuity === 'Resus' && !s.title.includes('Anaphylaxis')) ? 'AdrenalineIV' : 'AdrenalineIM';
+        const mapKeys = (list) => Array.isArray(list) ? list.map(item => {
+            if (item === 'Adrenaline') return (s.acuity === 'Resus' && !title.includes('Anaphylaxis')) ? 'AdrenalineIV' : 'AdrenalineIM';
             if (item === 'Magnesium') return 'MagSulph';
             if (item === 'Amio') return 'Amiodarone';
             if (item === 'Calcium') return 'Calcium';
@@ -351,53 +359,53 @@ window.enrichScenario = (s) => {
 
         // --- INTELLIGENT INVESTIGATIONS GENERATION ---
         let baseUrine = "normal";
-        if (s.title.includes("Sepsis") || s.title.includes("UTI") || s.title.includes("Pyelo")) baseUrine = "uti";
-        if (s.title.includes("DKA") || s.title.includes("HHS")) baseUrine = "dka";
-        if (s.title.includes("Rhabdo")) baseUrine = "rhabdo";
-        if (s.category === 'Obstetrics & Gynae' || s.title.includes("Ectopic")) baseUrine = "pregnancy";
+        if (title.includes("Sepsis") || title.includes("UTI") || title.includes("Pyelo")) baseUrine = "uti";
+        if (title.includes("DKA") || title.includes("HHS")) baseUrine = "dka";
+        if (title.includes("Rhabdo")) baseUrine = "rhabdo";
+        if (s.category === 'Obstetrics & Gynae' || title.includes("Ectopic")) baseUrine = "pregnancy";
 
         let basePocus = "normal";
-        if (s.title.includes("Tamponade")) basePocus = "tamponade";
-        if (s.title.includes("Pneumothorax") || s.title.includes("Stab")) basePocus = "pneumothorax";
-        if (s.title.includes("Oedema") || s.title.includes("Failure")) basePocus = "pulmonary_oedema";
-        if (s.title.includes("AAA")) basePocus = "ruptured_aaa";
-        if (s.title.includes("Ectopic")) basePocus = "ectopic";
-        if (s.title.includes("Embolism")) basePocus = "pe";
+        if (title.includes("Tamponade")) basePocus = "tamponade";
+        if (title.includes("Pneumothorax") || title.includes("Stab")) basePocus = "pneumothorax";
+        if (title.includes("Oedema") || title.includes("Failure")) basePocus = "pulmonary_oedema";
+        if (title.includes("AAA")) basePocus = "ruptured_aaa";
+        if (title.includes("Ectopic")) basePocus = "ectopic";
+        if (title.includes("Embolism")) basePocus = "pe";
 
         let baseCT = "normal";
-        if (s.title.includes("Subarachnoid")) baseCT = "sah";
+        if (title.includes("Subarachnoid")) baseCT = "sah";
         // "Heat Stroke" is a hyperthermic emergency, not a cerebrovascular one — the bare substring match
         // gave it an intracerebral haemorrhage CT report, a clinically wrong teaching artefact.
-        if (/\bstroke\b/i.test(s.title) && !/\bheat\b/i.test(s.title)) {
-            baseCT = /\bisch/i.test(s.title) ? "stroke_isch" : "stroke_haem";
+        if (/\bstroke\b/i.test(title) && !/\bheat\b/i.test(title)) {
+            baseCT = /\bisch/i.test(title) ? "stroke_isch" : "stroke_haem";
         }
-        if (s.title.includes("Subdural")) baseCT = "subdural";
-        if (s.title.includes("Extradural") || (s.title.includes("Head") && s.category === 'Trauma')) baseCT = "extradural";
-        if (s.title.includes("Embolism")) baseCT = "pe";
-        if (s.title.includes("Dissection")) baseCT = "dissection";
-        if (s.title.includes("Pancreatitis")) baseCT = "pancreatitis";
-        if (s.title.includes("Perforation") || s.title.includes("Ischaemia")) baseCT = "perf";
+        if (title.includes("Subdural")) baseCT = "subdural";
+        if (title.includes("Extradural") || (title.includes("Head") && s.category === 'Trauma')) baseCT = "extradural";
+        if (title.includes("Embolism")) baseCT = "pe";
+        if (title.includes("Dissection")) baseCT = "dissection";
+        if (title.includes("Pancreatitis")) baseCT = "pancreatitis";
+        if (title.includes("Perforation") || title.includes("Ischaemia")) baseCT = "perf";
 
         // Override existing or generate new
         const investigations = {
             urine: s.urine || (generateUrine ? generateUrine(baseUrine) : { findings: "Urinalysis: Normal. No leukocytes, nitrites, or blood." }),
             pocus: s.pocus || (generatePocus ? generatePocus(basePocus) : { findings: "POCUS: No free fluid. Normal lung sliding." }),
             ct: s.ct || (generateCT ? { findings: generateCT(baseCT) } : { findings: "CT Head: No acute intracranial abnormality." }),
-            ecg: s.ecg || { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm" },
-            chestXray: s.chestXray || { findings: "CXR: Lung fields clear. No cardiomegaly." },
-            vbg: s.vbgClinicalState ? null : { pH: 7.4, Lac: 1.0, K: 4.0, Glu: 5.5, pCO2: 5.0, pO2: 12.0, BE: 0, HCO3: 24 } // Will be generated dynamic if state exists
+            ecg: sourceEcg || { type: "Sinus Rhythm", findings: "Normal Sinus Rhythm" },
+            chestXray: sourceChestXray || { findings: "CXR: Lung fields clear. No cardiomegaly." },
+            vbg: baseVbg || { pH: 7.4, Lac: 1.0, K: 4.0, Glu: 5.5, pCO2: 5.0, pO2: 12.0, BE: 0, HCO3: 24 }
         };
 
         // --- Evolution Logic (Trends) ---
-        let improved = { ...s, ...(s.evolution ? s.evolution.improved : {}) };
-        let deteriorated = { ...s, ...(s.evolution ? s.evolution.deteriorated : {}) };
+        let improved = { ...s, ...(sourceEvolution.improved || {}) };
+        let deteriorated = { ...s, ...(sourceEvolution.deteriorated || {}) };
 
         // 1. Dynamic Chest X-ray
-        if (s.chestXray) {
-            let newCXR = s.chestXray.findings;
-            if (newCXR.includes("Pneumothorax") || s.title.includes("Pneumothorax") || s.title.includes("Stab")) {
+        if (sourceChestXray) {
+            let newCXR = typeof sourceChestXray.findings === 'string' ? sourceChestXray.findings : '';
+            if (newCXR.includes("Pneumothorax") || title.includes("Pneumothorax") || title.includes("Stab")) {
                 newCXR = "Intercostal drain seen in good position. Lung re-expanded. No residual pneumothorax.";
-            } else if (newCXR.includes("tube") || s.title.includes("Intubation")) {
+            } else if (newCXR.includes("tube") || title.includes("Intubation")) {
                 newCXR = "ETT tip in good position above carina. Lung fields clear.";
             } else if (newCXR.includes("Normal")) {
                 newCXR = "Remains Normal.";
@@ -405,38 +413,32 @@ window.enrichScenario = (s) => {
                 newCXR = "Findings unchanged (radiological lag).";
             }
             improved.chestXray = { findings: newCXR };
-            deteriorated.chestXray = { findings: s.chestXray.findings + " Worsening appearance." };
+            deteriorated.chestXray = { findings: `${newCXR} Worsening appearance.`.trim() };
         }
 
         // 2. Dynamic ECG
-        if (s.ecg) {
-            let newECG = s.ecg ? s.ecg.findings : "Normal";
-            let newType = s.ecg.type;
-            if (s.ecg.type === "STEMI") {
+        if (sourceEcg) {
+            let newECG = sourceEcg.findings || "Normal";
+            let newType = sourceEcg.type;
+            if (sourceEcg.type === "STEMI") {
                 newECG = "ST segments resolving. Q waves developing.";
                 newType = "Sinus Rhythm (Post-MI)";
-            } else if (["VT", "VF", "SVT", "AF"].includes(s.ecg.type)) {
+            } else if (["VT", "VF", "SVT", "AF"].includes(sourceEcg.type)) {
                 newECG = "Reverted to Sinus Rhythm.";
                 newType = "Sinus Rhythm";
-            } else if (s.title.includes("Hyperkalaemia")) {
+            } else if (title.includes("Hyperkalaemia")) {
                 newECG = "T waves normalising. QRS narrowing.";
             }
             improved.ecg = { type: newType, findings: newECG };
-            deteriorated.ecg = { type: s.ecg.type, findings: "Worsening changes / Arrythmia persistence." };
+            deteriorated.ecg = { type: sourceEcg.type, findings: "Worsening changes / Arrythmia persistence." };
         }
 
-        // 3. Dynamic VBG
-        if (s.vbg) {
-            const improvePh = (val) => val < 7.35 ? val + 0.1 : val;
-            const worsenPh = (val) => val - 0.1;
-            improved.vbg = { ...s.vbg, pH: improvePh(s.vbg.pH), Lac: Math.max(1, s.vbg.Lac / 2), K: s.vbg.K > 5.5 ? 5.0 : s.vbg.K };
-            deteriorated.vbg = { ...s.vbg, pH: worsenPh(s.vbg.pH), Lac: s.vbg.Lac + 2 };
-        }
+        // Dynamic VBG is calculated at investigation reveal from vbgClinicalState/current state.
 
         // Normalise the top-level ecg.type so state.rhythm starts with a canonical value.
         // The original type is preserved inside investigations.ecg for 12-lead ST-elevation logic.
-        const normalisedEcg = s.ecg
-            ? { ...s.ecg, type: normEcgType(s.ecg.type) }
+        const normalisedEcg = sourceEcg
+            ? { ...sourceEcg, type: normEcgType(sourceEcg.type) }
             : { type: 'Sinus Rhythm', findings: 'Normal Sinus Rhythm' };
 
         return {
@@ -447,12 +449,16 @@ window.enrichScenario = (s) => {
             stabilisers: safeStabilisers,       
             equipment: s.instructorBrief?.equipment || kit,
             learningLinks: s.learningLinks || links,
+            vbg: baseVbg,
             investigations: investigations, // ATTACH GENERATED INVESTIGATIONS (ecg preserved with original type)
             evolution: { improved, deteriorated }
         };
     }
 };
 
-window.processScenarios = () => (window.RAW_SCENARIOS || []).map(window.enrichScenario);
-
-window.ALL_SCENARIOS = window.processScenarios();
+window.processScenarios = () => (window.RAW_SCENARIOS || []).reduce((processed, scenario, index) => {
+    try { const enriched = window.enrichScenario(scenario); if (enriched) processed.push(enriched); else console.warn(`Skipping malformed scenario at index ${index}.`); }
+    catch (error) { console.warn(`Skipping malformed scenario at index ${index}:`, error); }
+    return processed;
+}, []);
+window.ALL_SCENARIOS = (() => { try { return window.processScenarios(); } catch (error) { console.warn('Scenario processing failed; starting with no premade scenarios.', error); return []; } })();

@@ -1,5 +1,6 @@
 // defib/sw.js
-const CACHE_NAME = 'wmebem-sim-v18';
+// Bump this cache version on every deploy so tablets do not retain an old simulator build.
+const CACHE_NAME = 'wmebem-sim-v19';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -44,15 +45,20 @@ self.addEventListener('activate', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
+  // Cache Storage only accepts GET requests. Let form/API writes use the browser normally.
+  if (e.request.method !== 'GET') return;
   e.respondWith(
     caches.match(e.request).then((cachedResponse) => {
       const fetchPromise = fetch(e.request).then((networkResponse) => {
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(e.request, networkResponse.clone());
-        });
+        if (networkResponse && networkResponse.ok) {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(e.request, networkResponse.clone());
+            return networkResponse;
+          });
+        }
         return networkResponse;
       });
       return cachedResponse || fetchPromise;
-    })
+    }).catch(() => caches.match('./index.html').then((fallback) => fallback || new Response('Offline — simulator is not cached yet.', { status: 503, headers: { 'Content-Type': 'text/plain' } })))
   );
 });

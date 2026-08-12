@@ -194,7 +194,7 @@
         );
     };
 
-    const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null }) => {
+    const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null, ariaLabel = null }) => {
         const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
         const variants = {
             primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
@@ -221,6 +221,7 @@
                     rel="noopener noreferrer"
                     onClick={onClick}
                     className={classes}
+                    aria-label={ariaLabel || undefined}
                 >
                     {children}
                 </a>
@@ -231,10 +232,61 @@
                 onClick={onClick}
                 disabled={disabled}
                 className={classes}
+                aria-label={ariaLabel || undefined}
             >
                 {children}
             </button>
         );
+    };
+
+
+
+    // Shared modal shell: gives every overlay a dialog contract, keeps focus inside it, and restores
+    // the invoking control when it closes. The visually-hidden label works even where a modal has a
+    // custom visible heading.
+    const Modal = ({ label, onClose, children, className = '' }) => {
+        const dialogRef = useRef(null);
+        const returnFocusRef = useRef(null);
+        const closeRef = useRef(onClose);
+        closeRef.current = onClose;
+        const labelIdRef = useRef(`modal-label-${Math.random().toString(36).slice(2)}`);
+        useEffect(() => {
+            returnFocusRef.current = document.activeElement;
+            const focusDialog = () => {
+                const focusable = dialogRef.current?.querySelector('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+                (focusable || dialogRef.current)?.focus();
+            };
+            const timer = setTimeout(focusDialog, 0);
+            const onKeyDown = (event) => {
+                if (event.key === 'Escape') { event.preventDefault(); closeRef.current?.(); return; }
+                if (event.key !== 'Tab' || !dialogRef.current) return;
+                const focusables = Array.from(dialogRef.current.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+                if (!focusables.length) { event.preventDefault(); dialogRef.current.focus(); return; }
+                const first = focusables[0], last = focusables[focusables.length - 1];
+                if (!focusables.includes(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
+                else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            };
+            document.addEventListener('keydown', onKeyDown);
+            return () => {
+                clearTimeout(timer);
+                document.removeEventListener('keydown', onKeyDown);
+                returnFocusRef.current?.focus?.();
+            };
+        }, []);
+        return (
+            <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+                <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelIdRef.current} tabIndex="-1" className={className}>
+                    <span id={labelIdRef.current} className="sr-only">{label}</span>
+                    {children}
+                </div>
+            </div>
+        );
+    };
+
+    const formatVitalValue = (value, decimals) => {
+        if (!Number.isFinite(value)) return '--';
+        return Number.isInteger(decimals) ? (Math.round(value * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals) : value;
     };
 
     const Card = ({ children, title, className = '' }) => (
@@ -514,16 +566,20 @@
         if (label === 'Temp') color = "text-white";
         if (label === 'Glucose') color = "text-white";
 
-        const trendIcon = trend ? (trend.progress > 0 ? (value > (prev || value) ? '↑' : '↓') : '') : '';
+        const trendIcon = trend?.active && Number.isFinite(trend.target) && Number.isFinite(value)
+            ? (trend.target > value ? '↑' : trend.target < value ? '↓' : '') : '';
 
-        // A pulseless arrest legitimately reads 0/0, so truthiness is the wrong test here — it would
-        // render '--' and hide the fact the numbers agree with the arrest trace.
-        const hasValue2 = value2 !== undefined && value2 !== null && value2 !== '';
-        const show = (v) => (v === undefined || v === null || v === '' ? '--' : v);
+        // A pulseless arrest legitimately reads 0/0, so truthiness is the wrong test here. All
+        // numeric fields use one finite-value formatter; the only text vital is the pupil descriptor.
+        const hasValue2 = Number.isFinite(value2);
+        const show = (v) => label === 'Pupils' && typeof v === 'string'
+            ? v : formatVitalValue(v, label === 'ETCO2' ? 1 : undefined);
 
+        const Tile = onClick ? 'button' : 'div';
+        const tileProps = onClick ? { type: 'button', onClick, 'aria-label': `Adjust ${label}` } : {};
         if (isNIBP && isMonitor) {
             return (
-                <div onClick={onClick} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
+                <Tile {...tileProps} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
                      <div className="flex justify-between items-start">
                         <span className={`text-sm font-bold uppercase ${color}`}>{label}</span>
                         <span className="text-xs text-slate-400">{unit}</span>
@@ -536,12 +592,12 @@
                      <div className="text-right text-[10px] text-slate-500 uppercase font-mono mt-auto">
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
-                </div>
+                </Tile>
             );
         }
 
         return (
-            <div onClick={onClick} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between cursor-pointer transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
+            <Tile {...tileProps} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
                 <div className="flex justify-between items-start">
                     <span className={`text-xs md:text-sm font-bold uppercase ${color}`}>{label}</span>
                     <span className="text-[10px] md:text-xs text-slate-400">{unit}</span>
@@ -559,7 +615,7 @@
                         <div className="bg-sky-500 h-full transition-all duration-1000" style={{width: `${trend.progress * 100}%`}}></div>
                     </div>
                 )}
-            </div>
+            </Tile>
         );
     };
 
@@ -613,6 +669,7 @@
     window.ErrorBoundary = ErrorBoundary;
     window.HumanFactorBadge = HumanFactorBadge;
     window.Button = Button;
+    window.Modal = Modal;
     window.Card = Card;
     window.ECGMonitor = ECGMonitor;
     window.VitalDisplay = VitalDisplay;

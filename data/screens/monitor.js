@@ -232,7 +232,7 @@
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
-                            <button onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
+                            <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
                         </div>
                         <div className="text-white text-sm font-medium leading-relaxed">
                             {invToast?.content}
@@ -241,11 +241,13 @@
                 </div>
 
                 {show12Lead && (
-                    <div className="absolute inset-0 z-[120] bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn" onClick={() => setShow12Lead(false)}>
-                        <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
-                        <canvas ref={canvasRef} width="800" height="500" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
-                        <div className="text-slate-400 text-xs mt-2">Analysis: {state.rhythm}</div>
-                    </div>
+                    <Modal label="12-lead analysis" onClose={() => setShow12Lead(false)}>
+                        <div className="bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn">
+                            <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
+                            <canvas ref={canvasRef} width="800" height="500" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
+                            <div className="text-slate-400 text-xs mt-2">Analysis: {state.rhythm}</div>
+                        </div>
+                    </Modal>
                 )}
 
                 {arrestPanelOpen && (
