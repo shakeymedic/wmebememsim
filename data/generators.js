@@ -282,3 +282,81 @@ window.HUMAN_FACTOR_CHALLENGES = [
   { id: 'hf4', type: 'Missing Kit', description: 'Crucial equipment missing.' },
   { id: 'hf5', type: 'Distracted Senior', description: 'Consultant on phone, dismissive.' },
 ];
+
+// =================================================================================================
+// WAVE 4b / PART A — QUICK SIM SYNTHETIC PATIENT
+// -------------------------------------------------------------------------------------------------
+// Quick Sim is a stripped-back "obs + rhythm only" teaching mode. It has NO clinical scenario: no
+// brief, no learning objectives, no intervention library, no expectation machinery. But every other
+// part of the app (engine, vitals precedence, Firebase sync, monitor, defib, debrief) is driven off
+// `state.scenario`, so rather than fork a parallel controller we hand the EXISTING engine a
+// deliberately blank synthetic patient and let the controller omit the scenario-dependent panels.
+//
+// Design rules this object has to satisfy:
+//   * `quickSim: true` is the single flag every screen keys off (it survives sync + persistence
+//     because it is a primitive on the scenario, exactly like `showWetflag`).
+//   * NO `deterioration` block  -> LOAD_SCENARIO's detMode0 resolves to 'manual' (requirement A6),
+//     while the AUTO/MANUAL toggle stays available because it is state, not scenario, driven.
+//   * NO `recommendedActions`, `customActions`, `stabilisers`, `learningObjectives` -> nothing for
+//     the omitted panels to render and nothing for the objective/score machinery to score.
+//   * Age-appropriate starting obs via getBaseVitals(), plus WETFLAG whenever a paediatric weight
+//     is resolvable, so paediatric energy (4 J/kg) and dosing work exactly as in a real scenario.
+//   * It is NOT put through enrichScenario(): enrichment exists to attach equipment lists, guideline
+//     links and investigation findings, none of which Quick Sim shows. A minimal `ecg`/`vbg` pair is
+//     supplied directly so the monitor trace and any repeat-gas code path still have valid input.
+window.buildQuickSimScenario = (opts = {}) => {
+    const rawAge = Number(opts.age);
+    const age = Number.isFinite(rawAge) && rawAge >= 0 && rawAge <= 120 ? rawAge : 40;
+    const sex = opts.sex === 'Female' ? 'Female' : 'Male';
+    const name = String(opts.name || '').trim() || 'Quick Sim Patient';
+
+    // Weight: explicit facilitator entry wins; otherwise estimate for children and leave adults
+    // null (which is what the rest of the app already means by "no weight-based dosing needed").
+    let weight = null;
+    const rawWeight = Number(opts.weight);
+    if (Number.isFinite(rawWeight) && rawWeight > 0) weight = rawWeight;
+    else if (age < 16) { const est = window.estimateWeight(age); weight = est === null ? null : parseFloat(est); }
+
+    const wetflag = weight ? window.calculateWetflag(age, weight) : null;
+    const base = window.getBaseVitals(age);
+    const rhythm = (window.RHYTHMS && window.RHYTHMS.isKnown(opts.rhythm)) ? window.RHYTHMS.canonical(opts.rhythm) : 'Sinus Rhythm';
+
+    const vitals = {
+        hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, rr: base.rr,
+        spO2: 98, temp: base.temp, gcs: base.gcs, bm: base.bm, pupils: base.pupils,
+        etco2: 4.5, ph: 7.4, k: 4.2
+    };
+
+    return {
+        id: `QUICK_${Date.now()}`,
+        quickSim: true,
+        title: 'Quick Sim',
+        category: 'Quick Sim',
+        ageRange: age < 18 ? 'Paediatric' : (age > 65 ? 'Elderly' : 'Adult'),
+        acuity: 'Majors',
+        patientName: name,
+        patientAge: age,
+        sex,
+        // Kept deliberately factual: there is no clinical story to tell.
+        patientProfileTemplate: `Blank {age}-year-old {sex} for ad-hoc teaching. No scenario — the facilitator drives the obs and rhythm directly.`,
+        profile: `Blank ${age}-year-old ${sex.toLowerCase()} for ad-hoc teaching. No scenario — the facilitator drives the obs and rhythm directly.`,
+        presentingComplaint: 'Quick Sim (no scenario)',
+        vitalsMod: vitals,
+        vitals,
+        pmh: [], dhx: [], allergies: ['NKDA'],
+        difficulty: null,
+        // Empty by design — see the header comment. Do not "helpfully" populate these.
+        recommendedActions: [], customActions: [], stabilisers: [], learningObjectives: [],
+        instructorBrief: { progression: null, interventions: [], learningObjectives: [] },
+        equipment: [], learningLinks: [],
+        ecg: { type: rhythm, findings: (window.RHYTHMS ? window.RHYTHMS.labelFor(rhythm) : rhythm) },
+        chestXray: null,
+        investigations: null,
+        evolution: null,
+        vbg: window.generateVbg('normal'),
+        vbgClinicalState: 'normal',
+        weight, wetflag,
+        showWetflag: opts.showWetflag !== false,
+        hf: (window.HUMAN_FACTOR_CHALLENGES || [])[0] || null
+    };
+};

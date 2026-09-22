@@ -1,0 +1,150 @@
+/* =================================================================================================
+   EM EVIDENCE SIM — FIREBASE REALTIME DATABASE SECURITY RULES
+   Wave 4b. This file did not exist before; the database was running on console defaults.
+
+   -------------------------------------------------------------------------------------------------
+   WHAT YOU MUST DO IN THE FIREBASE CONSOLE (nobody can do these for you — they need your login)
+   -------------------------------------------------------------------------------------------------
+   1. ENABLE SIGN-IN
+        Firebase console -> project "wmebem-sim" -> Build -> Authentication -> Get started
+        -> Sign-in method -> Email/Password -> Enable -> Save.
+        (Leave "Email link / passwordless" off. Google sign-in is optional; the app supports it
+        only if you also add the Google provider — it degrades silently if you don't.)
+
+   2. PASTE THESE RULES
+        Build -> Realtime Database -> Rules tab. Select all, delete, paste this ENTIRE file
+        (the console's rules editor accepts both comment styles, so leave the comments in place.
+         NOTE: never write a literal comment-terminator inside this header — it would close the
+         comment early and the whole file would fail to parse.)
+        Press PUBLISH.
+
+   3. MAKE YOURSELF AN ADMIN  (one manual write — by design)
+        a. In the app, click "Sign in" -> "Create account" and sign up with your own email.
+        b. Firebase console -> Authentication -> Users -> copy your User UID.
+        c. Firebase console -> Realtime Database -> Data. Create these two values by hand:
+               users/<YOUR_UID>/role    = "admin"      (string)
+               users/<YOUR_UID>/status  = "approved"   (string)
+        This step MUST be manual: rule 4 below forbids any user — including you — from writing
+        their own role. That is the whole point. Once you are admin, the in-app "Admin" panel
+        does every subsequent approval and entitlement grant for you.
+
+   4. ADD RESTRICTED CONTENT WHEN YOU'RE READY
+        Restricted (e.g. RCUK) scenarios live at  restrictedScenarios/<SCENARIO_ID>  and are read
+        from the database AT RUNTIME. They are never in the shipped JavaScript. See README.md
+        ("Restricted scenarios") for the exact JSON shape to paste.
+
+   -------------------------------------------------------------------------------------------------
+   DESIGN NOTES
+   -------------------------------------------------------------------------------------------------
+   * sessions/* stays FULLY OPEN, read and write, unauthenticated. This is deliberate and exactly
+     as it behaves today: a student monitor or defibrillator tablet joins with nothing but a
+     4-character code and no account. The app must remain fully usable with no sign-in, so this
+     node must not be locked down. It carries ephemeral simulation telemetry only.
+
+   * users/$uid is self-service for PROFILE fields (email, displayName, createdAt, lastSeenAt) but
+     `role`, `status` and `entitlements` are ADMIN-WRITE-ONLY. Without that split any signed-in
+     user could set entitlements.rcuk = true and help themselves to copyrighted content.
+
+   * Access is an ENTITLEMENTS MAP, not a boolean, so a paid tier is a new key rather than a
+     rewrite:  entitlements: { rcuk: true, premium: false, expiresAt: null }
+
+   * PAYMENT SEAM (NOT CONNECTED). When you sell licences, the payment provider's webhook must run
+     SERVER-SIDE (Cloud Function / your own server) using the Firebase Admin SDK, which bypasses
+     these rules entirely, and write users/$uid/entitlements itself. Entitlements must NEVER become
+     client-writable — a client that can write its own entitlements has no paywall. The
+     `paymentEvents` node below is closed to every client precisely so a server can own it.
+   ================================================================================================= */
+{
+  "rules": {
+
+    // ------------------------------------------------------------------------------------------
+    // 1. SESSIONS — open by design. The anonymous monitor/defib path depends on this.
+    // ------------------------------------------------------------------------------------------
+    "sessions": {
+      "$code": {
+        ".read": true,
+        ".write": true
+      }
+    },
+
+    // ------------------------------------------------------------------------------------------
+    // 2. USERS — profile self-service, privilege fields admin-only.
+    // ------------------------------------------------------------------------------------------
+    "users": {
+      // An admin must be able to LIST users to approve them, so allow a collection read for
+      // admins only. A normal user cannot read this level at all.
+      ".read": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+
+      "$uid": {
+        ".read":  "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+
+        // ---- PRIVILEGE FIELDS. These three .write rules ARE the security model. ----
+        // A child .write of false/admin-only OVERRIDES the permissive $uid .write above for that
+        // child, so a user writing their own profile cannot smuggle a role change alongside it.
+        "role": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isString() && (newData.val() === 'user' || newData.val() === 'admin')"
+        },
+        "status": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'approved' || newData.val() === 'rejected')"
+        },
+        "entitlements": {
+          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+          "$flag": {
+            ".validate": "newData.isBoolean() || newData.isNumber() || newData.isString()"
+          }
+        },
+
+        // ---- Self-service profile fields ----
+        "email":       { ".validate": "newData.isString() && newData.val().length < 320" },
+        "displayName": { ".validate": "newData.isString() && newData.val().length < 120" },
+        "createdAt":   { ".validate": "newData.isNumber() || newData.isString()" },
+        "lastSeenAt":  { ".validate": "newData.isNumber() || newData.isString()" },
+
+        // Asking for access is not being granted access. This node is writable by the user and
+        // carries no privilege whatsoever; the admin panel reads it to build the request queue.
+        "requestedAccess": {
+          "$flag": { ".validate": "newData.isBoolean() || newData.isString() || newData.isNumber()" }
+        }
+      }
+    },
+
+    // ------------------------------------------------------------------------------------------
+    // 3. RESTRICTED SCENARIOS — copyrighted content, e.g. RCUK. Never in the JS bundle.
+    //    Read requires: signed in + approved + entitlements.rcuk === true.
+    //    Write requires: admin. (Client-side checks only control the UI; THIS is the enforcement.)
+    // ------------------------------------------------------------------------------------------
+    "restrictedScenarios": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child('rcuk').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      "$scenarioId": {
+        ".validate": "newData.hasChildren(['id', 'title'])"
+      }
+    },
+
+    // ------------------------------------------------------------------------------------------
+    // 4. PREMIUM SCENARIOS — reserved for the future paid tier. Identical pattern, different
+    //    entitlement key, so paid content needs no new rule design.
+    // ------------------------------------------------------------------------------------------
+    "premiumScenarios": {
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child('premium').val() === true",
+      ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+
+    // ------------------------------------------------------------------------------------------
+    // 5. PAYMENT SEAM — closed to every client, in both directions. A trusted server using the
+    //    Admin SDK bypasses rules and is the only thing that may ever touch this node, or
+    //    users/$uid/entitlements. DO NOT RELAX THIS.
+    // ------------------------------------------------------------------------------------------
+    "paymentEvents": {
+      ".read": false,
+      ".write": false
+    }
+
+    // Anything not listed above is denied: as soon as any rule exists, Firebase's default for
+    // unmatched paths is deny. No catch-all wildcard is used here on purpose, because a wildcard
+    // sibling of named keys is easy to mis-read as granting access.
+  }
+}

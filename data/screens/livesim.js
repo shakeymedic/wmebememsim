@@ -136,6 +136,29 @@
         // A restored or partially-synced session can arrive without a scenario; every field read below
         // must degrade to blank rather than take down the whole render tree.
         const scenario = rawScenario || {};
+        // ======================= WAVE 4b / PART A: QUICK SIM =======================================
+        // `quickSim` is a single boolean read off the SAME scenario object every other screen reads.
+        // This is NOT a parallel controller (requirement A4): it is this controller with the
+        // scenario-dependent panels omitted. Everything that stays — the vitals tiles, the
+        // vitals-control modal and its validation, the trend-over-time control, the rhythm selector,
+        // ARREST/ROSC, Launch Monitor, the Defib and Arrest View toggles, the timer, start/pause/
+        // finish and the event log — is the existing code path, unchanged and unduplicated.
+        //
+        // What is omitted, and why:
+        //   * intervention library / tabs / search  — nothing to give; there is no scenario.
+        //   * drug panel + Active Drugs/pk panels   — no drugs can be given, so they'd be dead UI.
+        //   * scenario brief / patient details card — there is no brief.
+        //   * learning objectives                   — none exist.
+        //   * safety-flag chip + expectation hints  — expectations are properties of interventions;
+        //                                             with no interventions there is nothing to flag.
+        //   * investigations / voice / assessment   — all scenario-content driven.
+        // What is explicitly KEPT in Quick Sim despite being "extra": the AUTO/MANUAL deterioration
+        // toggle (requirement A6 — defaults to MANUAL because the synthetic patient declares no rate,
+        // but the facilitator can still switch to AUTO), Trend Better/Worse (they fall back to
+        // relative adjustments when no scenario evolution exists), the custom log entry with its Flag
+        // button, NIBP, the drug-dose calculator and the timer alerts — all facilitator tools that
+        // are useful without a scenario.
+        const quickSim = !!scenario.quickSim;
         const etco2Shape = etco2Pathology || 'normal';
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
@@ -290,7 +313,10 @@
         }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-        const isMonitoringApplied = activeInterventions.has('Obs'); 
+        // In Quick Sim the engine seeds the real 'Obs' key at LOAD_SCENARIO, so this is already true;
+        // the explicit `|| quickSim` is a belt-and-braces guard so a resumed or synced Quick Sim can
+        // never show "No Monitoring" over a screen whose entire purpose is the monitor.
+        const isMonitoringApplied = activeInterventions.has('Obs') || quickSim; 
         const showEtco2 = etco2Enabled;
         const showArt = activeInterventions.has('ArtLine');
         const isPaeds = scenario.ageRange === 'Paediatric' || scenario.wetflag;
@@ -515,15 +541,16 @@
                             {state.log.some(l => l.flagged) && <span className="absolute top-0 right-0 w-2 h-2 bg-amber-500 rounded-full"></span>}
                         </Button>
                         {/* Safety flags: a running count of flagged deviations (actions performed out of
-                            sequence, shocks, manual flags). Teaching artefact, facilitator-only. */}
-                        {flaggedEntries.length > 0 && (
+                            sequence, shocks, manual flags). Teaching artefact, facilitator-only.
+                            A2: suppressed in Quick Sim — there are no interventions to flag. */}
+                        {!quickSim && flaggedEntries.length > 0 && (
                             <Button ariaLabel={`Review ${flaggedEntries.length} safety flags`} variant="outline" onClick={() => setShowFlagsModal(true)} className="h-8 px-2 text-amber-400 border-amber-500/60 bg-amber-950/30 text-[10px] uppercase font-bold">
                                 <Lucide icon="flag" className="w-3 h-3 mr-1"/> Safety flags ({flaggedEntries.length})
                             </Button>
                         )}
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
                         <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
-                        <Button variant="outline" href="defib/index.html" className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
+                        {!quickSim && <Button variant="outline" href="defib/index.html" className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
                         <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
                         <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
                         <Button ariaLabel="Open keyboard shortcuts" variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
@@ -533,6 +560,18 @@
 
                 <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2 overflow-hidden min-h-0">
                     <div className="md:col-span-5 lg:col-span-4 flex flex-col gap-2 overflow-y-auto h-full pr-1">
+                         {/* A2: the scenario brief card is replaced in Quick Sim by a one-line factual
+                             patient strip. No brief, no diagnosis, no human-factors challenge — none
+                             of those exist without a scenario. */}
+                         {quickSim ? (
+                         <div className="flex-none bg-slate-800 p-2 rounded border-l-4 border-sky-500 shadow-md flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="text-[9px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1"><Lucide icon="sliders" className="w-3 h-3"/> Quick Sim — no scenario</div>
+                                <div className="text-sm text-white font-bold truncate">{scenario.patientName} ({scenario.patientAge}y {scenario.sex}{scenario.wetflag?.weight ? `, ${scenario.wetflag.weight} kg` : ''})</div>
+                            </div>
+                            {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
+                         </div>
+                         ) : (
                          <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
                             <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
@@ -541,6 +580,7 @@
                             <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>
                             <HumanFactorBadge hf={scenario.hf} className="mt-2" />
                          </div>
+                         )}
 
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
                              <div className="relative">
@@ -589,7 +629,7 @@
                              peak, or already worn off - which is exactly the information needed to decide
                              whether a repeat dose is due (IM adrenaline at 5 min) or futile. The ROUTE is
                              printed per entry so IM/IV/buccal are distinguishable at a glance. ---- */}
-                        {(state.activeDrugs || []).length > 0 && (
+                        {!quickSim && (state.activeDrugs || []).length > 0 && (
                             <div className="flex-none rounded border border-slate-700 bg-slate-900/70 p-2">
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Active drugs / pharmacokinetics</div>
                                 <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
@@ -630,9 +670,15 @@
                                         {deteriorationMode === 'auto' ? 'AUTO — deteriorating on its own' : 'MANUAL — obs only change when you change them'}
                                     </div>
                                     <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {/* A6: Quick Sim has no scenario and therefore no declared
+                                            deterioration rate, so it starts in MANUAL and the toggle
+                                            says so plainly rather than implying AUTO will do something.
+                                            Use the vitals tiles' trend control to drive a decline. */}
                                         {detInfo.declared
                                             ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
-                                            : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
+                                            : quickSim
+                                                ? 'Quick Sim has no declared deterioration rate, so AUTO would change nothing on its own. Ramp the obs with the trend control on any tile instead.'
+                                                : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
                                     </div>
                                 </div>
                                 <Button
@@ -650,7 +696,7 @@
 
                         {/* ---- A5: live drug timing. The facilitator needs to know WHY the obs are still
                              moving, which is exactly what the pk envelope makes invisible otherwise. ---- */}
-                        {activeDrugRows.length > 0 && (
+                        {!quickSim && activeDrugRows.length > 0 && (
                             <div className="flex-none bg-slate-800 rounded border-l-4 border-violet-500 p-2">
                                 <h3 className="text-[10px] font-bold text-violet-300 uppercase tracking-widest mb-1 flex items-center gap-1">
                                     <Lucide icon="pill" className="w-3 h-3"/> Active drugs ({activeDrugRows.length})
@@ -813,6 +859,80 @@
                         )}
                     </div>
                     
+                    {/* =================== WAVE 4b / A2: THE QUICK SIM RIGHT-HAND PANE ===================
+                        Replaces the intervention library entirely. Everything here is scenario-free:
+                        the full rhythm registry (including every arrest rhythm), the two relative trend
+                        buttons, the custom/flagged log entry row, and the live event log. There is no
+                        search, no tabs, no drug groups, no investigations, no voice and no assessment
+                        checklist, because none of those mean anything without a scenario. */}
+                    {quickSim ? (
+                    <div className="md:col-span-7 lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                        <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
+                            <div className="flex-1 min-w-[12rem]">
+                                <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Rhythm</div>
+                                <div className="text-sm font-bold text-white">{RG.labelFor(state.rhythm)}</div>
+                            </div>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
+                            {/* The ETCO2 tile is always present, but the capnography TRACE is only
+                                meaningful once the facilitator says the patient is on capnography.
+                                Same TOGGLE_ETCO2 action the 'ToggleETCO2' intervention dispatches. */}
+                            <Button onClick={() => sim.dispatch({ type: 'TOGGLE_ETCO2' })} variant="outline"
+                                className={`h-11 px-3 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
+                                ETCO2 {etco2Enabled ? 'on' : 'off'}
+                            </Button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                            {/* FULL RHYTHM REGISTRY. RG.SELECTABLE is the single shared registry from
+                                data/rhythms.js, so this list can never disagree with the monitor, the
+                                defibrillator's shockability logic or the arrest model. Arrest rhythms
+                                are marked so the facilitator can see what will zero the obs. */}
+                            <div>
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Select rhythm ({RG.SELECTABLE.length})</div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                    {RG.SELECTABLE.map(r => {
+                                        const isCur = state.rhythm === r;
+                                        const arrest = RG.inArrest(r);
+                                        return (
+                                            <button key={r} onClick={() => changeRhythm(r, 'manual selection')}
+                                                title={`${RG.labelFor(r)}${RG.isShockable(r) ? ' — shockable' : ''}${RG.isPulseless(r) ? ' — pulseless' : ''}`}
+                                                className={`p-2 rounded border text-left text-[11px] font-bold leading-tight min-h-[3rem] ${isCur ? 'bg-sky-600 border-sky-400 text-white' : arrest ? 'bg-red-950/40 border-red-800/70 text-red-200 hover:bg-red-900/40' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>
+                                                {RG.labelFor(r)}
+                                                <div className="mt-0.5 flex gap-1 flex-wrap">
+                                                    {RG.isShockable(r) && <span className="text-[8px] uppercase tracking-wider px-1 rounded bg-red-900/70 border border-red-600 text-red-200">shock</span>}
+                                                    {RG.isSyncCardiovertible(r) && <span className="text-[8px] uppercase tracking-wider px-1 rounded bg-amber-900/60 border border-amber-600 text-amber-200">sync</span>}
+                                                    {RG.isPulseless(r) && <span className="text-[8px] uppercase tracking-wider px-1 rounded bg-slate-900 border border-slate-500 text-slate-300">pulseless</span>}
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* EVENT LOG, inline rather than behind the log modal: with nothing else
+                                competing for this pane there is room to keep it permanently visible. */}
+                            <div>
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Event log ({state.log.length})</div>
+                                <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 overflow-y-auto">
+                                    {state.log.length === 0 && <div className="text-slate-500 text-center py-4">Nothing logged yet. Press START, then change the obs or the rhythm.</div>}
+                                    {state.log.slice().reverse().map((entry, i) => (
+                                        <div key={i} className={`flex gap-3 border-b border-slate-800 last:border-0 pb-0.5 ${entry.flagged ? 'bg-amber-900/20 -mx-1 px-1 rounded' : ''}`}>
+                                            <span className="text-slate-500 w-12 flex-shrink-0">{entry.simTime}</span>
+                                            <span className={`flex-grow ${entry.type==='danger' ? 'text-red-400 font-bold' : entry.type==='warning' ? 'text-amber-300 font-bold' : entry.type==='success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>{entry.msg}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2">
+                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
+                            <Button onClick={() => {addLogEntry(customLog, 'manual', true); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
+                            <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
+                        </div>
+                    </div>
+                    ) : (
                     <div className="md:col-span-7 lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
                         {searchTerm.length > 0 && searchResults.length > 0 && (
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
@@ -927,6 +1047,7 @@
                             )}
                         </div>
                     </div>
+                    )}
                 </div>
 
                 {showLogModal && (

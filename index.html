@@ -31,6 +31,11 @@
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <!-- WAVE 4b / B1: Firebase Authentication, same compat v8 SDK version as the two above so the
+         existing initialisation style is unchanged. This script is PURELY ADDITIVE: if it fails to
+         load, or if Email/Password has not been enabled in the console, data/auth.js degrades to
+         "sign-in not configured" and every existing feature keeps working with no account. -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
     <style>
         /* Base Setup */
@@ -50,6 +55,13 @@
         
         .flash-green { animation: flashGreen 1s ease-out; }
         @keyframes flashGreen { 0% { box-shadow: inset 0 0 50px 20px rgba(34, 197, 94, 0.5); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
+
+        /* WAVE 4b / D6: SET_FLASH:'yellow' has been dispatched by initCharge() since Wave 3 and the
+           monitor already reads it to show "CHARGING...", but there was no matching CSS class, so
+           the defibrillator charge produced no visual cue anywhere. Amber, single-shot, matching
+           the charge tone's ~1s duration. */
+        .flash-yellow { animation: flashYellow 1s ease-out; }
+        @keyframes flashYellow { 0%, 100% { box-shadow: inset 0 0 0 0 transparent; } 50% { box-shadow: inset 0 0 50px 20px rgba(245, 158, 11, 0.45); } }
         
         .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
@@ -88,6 +100,12 @@
     <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
+
+    <!-- WAVE 4b / PART B + C: accounts, admin approval, entitlements and the restricted-content
+         loader. Loaded AFTER components.js (it uses Button/Modal/Lucide) and BEFORE the screens.
+         It is optional by construction: nothing in the engine or any screen depends on it, and if
+         sign-in is not configured the app behaves exactly as it did before Wave 4b. -->
+    <script type="text/babel" src="data/auth.js"></script>
 
     <script type="text/babel" src="data/screens/setup.js"></script>
     <script type="text/babel" src="data/screens/monitor.js"></script>
@@ -176,8 +194,14 @@
 
         const ControllerApp = ({ view, setView, sessionID, setSessionID }) => {
             const { useState, useEffect } = React;
-            const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary } = window;
+            const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
             const [generatedScenario, setGeneratedScenario] = useState(null);
+
+            // WAVE 4b / PART B: accounts are OPTIONAL and OFF THE CRITICAL PATH. useAuth() never
+            // throws, never blocks and never prompts; when Firebase Authentication is not enabled
+            // it simply reports available:false. The only things it gates are the Restricted
+            // premade section and the Admin panel — requirement B4.
+            const auth = useAuth ? useAuth() : null;
 
             // --- SIM ENGINE ---
             // Initializes the logic core. Pass sessionID to enable sync.
@@ -193,6 +217,24 @@
             const handleStart = () => {
                 engine.start();
                 setView('livesim');
+            };
+
+            // ---- WAVE 4b / PART A: QUICK SIM ------------------------------------------------
+            // Deliberately the SAME path as handleGenerate (same engine, same LOAD_SCENARIO, same
+            // Firebase session, same monitor) with exactly two differences: the scenario is the
+            // synthetic blank patient from buildQuickSimScenario(), and the briefing screen is
+            // skipped because there is no brief to read. It does NOT auto-start — the facilitator
+            // still presses START, so the timer/start/pause/finish controls behave as usual.
+            const handleQuickSim = (opts) => {
+                try {
+                    const scenario = window.buildQuickSimScenario(opts || {});
+                    setGeneratedScenario(scenario);
+                    engine.dispatch({ type: 'LOAD_SCENARIO', payload: scenario });
+                    setView('livesim');
+                } catch (err) {
+                    console.error('Quick Sim failed to start:', err);
+                    alert('Could not start Quick Sim: ' + err.message);
+                }
             };
 
             const handleJoin = (code) => {
@@ -245,12 +287,17 @@
                             </a>
                             <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Evidence Sim</h1>
                         </div>
-                        {view !== 'setup' && sessionID && (
-                            <div className="flex flex-col items-end">
-                                <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Session ID</div>
-                                <div className="font-mono text-lg font-bold text-white tracking-widest leading-none select-all cursor-pointer" onClick={()=>{navigator.clipboard.writeText(sessionID); alert('Copied!');}}>{sessionID}</div>
-                            </div>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {view !== 'setup' && sessionID && (
+                                <div className="flex flex-col items-end">
+                                    <div className="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Session ID</div>
+                                    <div className="font-mono text-lg font-bold text-white tracking-widest leading-none select-all cursor-pointer" onClick={()=>{navigator.clipboard.writeText(sessionID); alert('Copied!');}}>{sessionID}</div>
+                                </div>
+                            )}
+                            {/* Optional account control. Renders "Sign in" and nothing else until
+                                clicked; it never interrupts, and the app is fully usable ignoring it. */}
+                            {auth && AccountButton && <AccountButton auth={auth} />}
+                        </div>
                     </header>
 
                     {/* Main Content */}
@@ -259,6 +306,8 @@
                         {view === 'setup' && (
                             <SetupScreen 
                                 onGenerate={handleGenerate} 
+                                onQuickSim={handleQuickSim}
+                                auth={auth}
                                 onJoinClick={() => setView('join')} 
                                 sessionID={sessionID}
                                 savedState={resumeData}

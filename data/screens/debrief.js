@@ -107,9 +107,19 @@
         const { state } = sim;
         const { Lucide, Button } = window;
         const scenario = state.scenario || {};
+        // WAVE 4b / A5: QUICK SIM DEBRIEF. Quick Sim produces a real, lightweight debrief — event
+        // log, vitals trend graph and instructor notes — but there is no scenario, so there are no
+        // learning objectives to score and no score to show. Every scenario-dependent block below is
+        // guarded, and `state.scenario` being null outright (an edge case that could previously
+        // reach this screen via an aborted load) is handled by the `|| {}` above.
+        const isQuickSim = !!scenario.quickSim;
         const [filter, setFilter] = useState('all');
         const [replayIdx, setReplayIdx] = useState(null);
-        const notesKey = `wmebem_debrief_notes_${state.sessionID || scenario.sessionID || scenario.id || 'current'}`;
+        // WAVE 4b / D1: keyed on state.runId — a genuinely unique id minted per RUN by the engine.
+        // It used to read `state.sessionID`, which has never existed on state, so the key silently
+        // collapsed to the SCENARIO id and every run of the same scenario shared one set of notes.
+        // The remaining fallbacks only matter for a pre-Wave-4b saved session.
+        const notesKey = `wmebem_debrief_notes_${state.runId || scenario.id || 'current'}`;
         const [instructorNotes, setInstructorNotes] = useState(() => { try { return localStorage.getItem(notesKey) || ''; } catch (e) { return ''; } });
         useEffect(() => { try { localStorage.setItem(notesKey, instructorNotes); } catch (e) {} }, [notesKey, instructorNotes]);
 
@@ -139,18 +149,23 @@
         const flaggedCount = state.log.filter(l => l.flagged).length;
 
         const allObjectives = (() => {
-            const a = scenario.learningObjectives || [];
-            const b = scenario.instructorBrief?.learningObjectives || [];
+            // A5: no scenario means no objectives. Array.isArray guards a restricted/pasted scenario
+            // that carries a malformed learningObjectives field.
+            const a = Array.isArray(scenario.learningObjectives) ? scenario.learningObjectives : [];
+            const b = Array.isArray(scenario.instructorBrief?.learningObjectives) ? scenario.instructorBrief.learningObjectives : [];
             const seen = new Set();
             return [...a, ...b].filter(o => { if (seen.has(o)) return false; seen.add(o); return true; });
         })();
         const objectivesTotal = allObjectives.length;
-        const objectivesMet = allObjectives.filter(o => state.completedObjectives.has(o)).length;
-        const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : 100;
+        const completed = state.completedObjectives instanceof Set ? state.completedObjectives : new Set();
+        const objectivesMet = allObjectives.filter(o => completed.has(o)).length;
+        // A score of "100%" against zero objectives is meaningless and actively misleading in Quick
+        // Sim, so the score is null when there is nothing to score and the card is omitted.
+        const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : null;
 
         const generateReport = () => {
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
-            const objRows = allObjectives.map(obj => { const met = state.completedObjectives.has(obj); return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`; }).join('');
+            const objRows = allObjectives.map(obj => { const met = completed.has(obj); return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`; }).join('');
             const logRows = state.log.map(l => { const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1'; return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${esc(l.msg)}</td></tr>`; }).join('');
             const devRows = deviations.map(d => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(d.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;font-weight:bold;">${esc(d.deviation.label || d.deviation.action)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#cbd5e1;">${esc(d.deviation.missing.join(', '))}</td></tr>`).join('');
             const shockRows = shockEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fca5a5;">${esc(l.msg)}</td></tr>`).join('');
@@ -159,7 +174,13 @@
             const defibCard = `<div class="card"><h3 style="color:#ef4444;margin-top:0;">Defibrillation &amp; Rhythm</h3><div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Shocks</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockCount || shockEvents.length || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Into shockable rhythm</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockableShocks || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Cumulative energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.totalEnergy || 0)} J</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Last energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.lastEnergy ?? '--')} J</div></div></div>${shockRows ? `<table><thead><tr><th>Time</th><th>Shock</th></tr></thead><tbody>${shockRows}</tbody></table>` : '<div style="color:#94a3b8;">No shocks delivered.</div>'}${convRows ? `<h4 style="color:#fbbf24;">Rhythm transitions</h4><table><thead><tr><th>Time</th><th>Transition</th></tr></thead><tbody>${convRows}</tbody></table>` : ''}</div>`;
             const devCard = `<div class="card"><h3 style="color:#fbbf24;margin-top:0;">Sequence Deviations</h3>${deviations.length ? `<table><thead><tr><th>Time</th><th>Action</th><th>Not in place</th></tr></thead><tbody>${devRows}</tbody></table>` : '<div style="color:#94a3b8;">No sequence deviations recorded.</div>'}</div>`;
             const safeTitle = esc(scenario.title || 'Simulation');
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div><div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            // A5: the objectives card and the score are omitted from the downloadable report when
+            // there are no objectives, rather than printing "100% of 0".
+            const scoreBlock = score === null
+                ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Mode</div><div style="font-size:1.5rem;font-weight:bold;">Quick Sim</div><div style="font-size:.7rem;color:#64748b;">No scenario \u2014 nothing to score</div></div>`
+                : `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div>`;
+            const objCard = objectivesTotal === 0 ? '' : `<div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${objCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
 
@@ -168,7 +189,11 @@
                 <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
                     <div>
                         <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Lucide icon="check-circle" className="text-emerald-500"/> Simulation Complete</h1>
-                        <p className="text-slate-400">{scenario.title || 'Simulation'} • Duration: {Math.floor(state.time/60)}m {state.time%60}s</p>
+                        <p className="text-slate-400">
+                            {scenario.title || 'Simulation'}
+                            {isQuickSim && <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 border border-sky-700 bg-sky-950/40 rounded px-1.5 py-0.5">Quick Sim &middot; no scenario</span>}
+                            {' '}• Duration: {Math.floor(state.time/60)}m {state.time%60}s
+                        </p>
                     </div>
                     <div className="flex gap-2">
                         <Button onClick={generateReport} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
@@ -180,10 +205,20 @@
                     <div className="overflow-y-auto space-y-4 pr-2">
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
-                            <div className="flex items-center gap-4 mb-4">
-                                <div className="text-4xl font-bold text-sky-400">{score}%</div>
-                                <div className="text-sm text-slate-400">Objectives Met: {objectivesMet}/{objectivesTotal}</div>
-                            </div>
+                            {/* A5: with no scenario there are no objectives and therefore no score.
+                                Showing "100%" against zero objectives would be actively misleading. */}
+                            {score === null ? (
+                                <div className="mb-4 text-sm text-slate-400">
+                                    {isQuickSim
+                                        ? 'Quick Sim has no scenario, so there are no learning objectives to score. The event log, the vitals trend and your notes below are the debrief.'
+                                        : 'This session declared no learning objectives, so there is nothing to score.'}
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="text-4xl font-bold text-sky-400">{score}%</div>
+                                    <div className="text-sm text-slate-400">Objectives Met: {objectivesMet}/{objectivesTotal}</div>
+                                </div>
+                            )}
                             
                             {/* B5: shock summary. Shock count, cumulative energy and the last energy
                                 used are teaching data (energy escalation, 4 J/kg in children,
@@ -256,17 +291,27 @@
                                 </div>
                             )}
 
-                            <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
-                            <ul className="space-y-2">
-                                {allObjectives.map((obj, i) => (
-                                    <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                                        <Lucide icon={state.completedObjectives.has(obj) ? "check-square" : "square"} className={state.completedObjectives.has(obj) ? "text-emerald-500 w-4 h-4" : "text-slate-600 w-4 h-4"} />
-                                        {obj}
-                                    </li>
-                                ))}
-                            </ul>
+                            {/* A5: omitted entirely rather than rendered as an empty list. */}
+                            {objectivesTotal > 0 && (
+                                <>
+                                    <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
+                                    <ul className="space-y-2">
+                                        {allObjectives.map((obj, i) => (
+                                            <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
+                                                <Lucide icon={completed.has(obj) ? "check-square" : "square"} className={completed.has(obj) ? "text-emerald-500 w-4 h-4" : "text-slate-600 w-4 h-4"} />
+                                                {obj}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </>
+                            )}
                         </div>
 
+                        {/* A5: the sequence-deviation card is expectation machinery. Quick Sim has no
+                            interventions at all, so there is nothing that could be out of sequence and
+                            the card is omitted rather than shown permanently empty. Manual flags still
+                            appear in the log pane on the right. */}
+                        {!isQuickSim && (
                         <div className="bg-slate-800 p-4 rounded-lg border border-amber-600/50">
                             <h3 className="text-lg font-bold text-amber-400 mb-1 flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Sequence Deviations</h3>
                             <p className="text-xs text-slate-400 mb-3">Actions performed before their usual prerequisites were in place. Nothing was blocked — these are discussion points, not errors by definition. {flaggedCount} flagged event{flaggedCount === 1 ? '' : 's'} in total.</p>
@@ -286,6 +331,7 @@
                                 </ul>
                             )}
                         </div>
+                        )}
 
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Instructor Notes</h3>

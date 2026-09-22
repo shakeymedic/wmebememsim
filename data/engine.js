@@ -36,11 +36,22 @@
         scenario: null, investigationsRevealed: {}, loadingInvestigations: {}
     };
 
+    // WAVE 4b / D1: a genuinely unique identifier for THIS RUN of a scenario.
+    // The debrief's instructor-notes localStorage key was built from `state.sessionID`, which has
+    // never existed on state, so it silently fell back to `scenario.id`. That meant every run of the
+    // same scenario shared one notes key and notes bled between sessions — and with Quick Sim, where
+    // there is no meaningful scenario id at all, they would bleed across every quick sim ever run.
+    // `runId` is minted once per LOAD_SCENARIO/RESTORE_SESSION, is a primitive (so it survives sync
+    // and JSON persistence untouched), and is restored with a resumed session so resuming a run
+    // reopens the SAME notes rather than starting a blank set.
+    const newRunId = () => `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
     const initialCoreState = {
+        runId: null,
         time: 0, cycleTimer: 0, isRunning: false, rhythm: "Sinus Rhythm",
         monitorTimer: { visible: false, active: false, time: 0 },
         flash: null, activeInterventions: new Set(), interventionCounts: {},
-        activeDurations: {}, processedEvents: new Set(), isMuted: false,
+        activeDurations: {}, isMuted: false,
         etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
         // Every administered drug that carries a `pk` envelope, with the time it was given. This is
         // the single source of truth for drug timing: numeric effects, wear-off AND neuromuscular
@@ -187,6 +198,28 @@
         if (key === 'pupils') return val !== undefined && val !== null && val !== '';
         return Number.isFinite(Number(val)) && val !== '' && val !== null;
     };
+
+    // WAVE 4b / D5: PUPILS ARE CATEGORICAL, NOT CONTINUOUS.
+    // `pupils` legitimately holds either a number (3, 4, 8 — a diameter in mm) or one of a small set
+    // of descriptive strings ('Dilated', 'Pinpoint', 'Unequal'), which the arrest and ROSC paths both
+    // write. Interpolating between 3 and 'Dilated' yields NaN, and a NaN in `vitals` is rejected by
+    // RTDB, which freezes the student monitor. This was latent only because no UI reached it — Quick
+    // Sim adds a facilitator who can reach every vital, so it is guarded explicitly now rather than
+    // relying on the incidental typeof checks further down.
+    // Rule: pupils NEVER interpolate. They SNAP to the target, whatever its type. Numeric values are
+    // coerced and clamped to a plausible 1-9 mm; strings pass through verbatim.
+    const PUPIL_MIN_MM = 1, PUPIL_MAX_MM = 9;
+    const normalisePupils = (val) => {
+        if (typeof val === 'number') return Number.isFinite(val) ? Math.min(PUPIL_MAX_MM, Math.max(PUPIL_MIN_MM, Math.round(val))) : 3;
+        const s = String(val === undefined || val === null ? '' : val).trim();
+        if (s === '') return 3;
+        // A numeric string from a number input ('4') is a diameter, not a description.
+        const n = Number(s);
+        if (Number.isFinite(n)) return Math.min(PUPIL_MAX_MM, Math.max(PUPIL_MIN_MM, Math.round(n)));
+        return s;
+    };
+    // True for any vital that must never be linearly interpolated by the trend engine.
+    const isCategoricalVital = (key) => key === 'pupils';
 
     const formatVital = (key, val) => {
         if (key === 'ph') return Math.round(val * 100) / 100;
@@ -791,6 +824,8 @@
     };
 
     window.__pkInternals = { pkFactor, pkPhase, pkRemaining, drugOffsets, composeVitals, buildDrugEntry, paralysisFromDrugs, deteriorationDeltas, applyDeteriorationTick, deteriorationTreatmentFactor, normaliseDeteriorationType, formatVital, clampVital, DEFAULT_VITALS, EFFECT_TARGETS, VITAL_LIMITS, isDrugSpent,
+        // WAVE 4b / D5: exported so the verifiers can assert the categorical-vital guard directly.
+        normalisePupils, isCategoricalVital,
         // WAVE 4a additions, all exercised directly by the Node verification harness.
         drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
         ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
@@ -832,6 +867,13 @@
                 // and the rejected diff is then retried forever — freezing the student monitor.
                 const { key, value } = action.payload;
                 if (!isVitalValueSafe(key, value)) return state;
+                // D5: a manual pupil write is normalised at the boundary, so nothing downstream ever
+                // sees a raw '' / NaN / '4' ambiguity.
+                if (isCategoricalVital(key)) {
+                    const pv = normalisePupils(value);
+                    const pbase = { ...state.baseVitals, [key]: pv };
+                    return { ...state, baseVitals: pbase, vitals: { ...state.vitals, [key]: pv }, prevVitals: { ...state.vitals } };
+                }
                 const t = cs ? cs.time : 0;
                 const drugs = cs ? cs.activeDrugs : [];
                 const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
@@ -900,16 +942,24 @@
                     Object.keys(newTrends.targets).forEach(key => {
                         const startVal = newTrends.startVitals[key];
                         const targetVal = newTrends.targets[key];
-                        if (startVal !== undefined && targetVal !== undefined && typeof startVal === 'number' && typeof targetVal === 'number') {
+                        // D5: categorical vitals snap on the FIRST tick and are never interpolated,
+                        // even when both ends happen to be numbers (there is no such thing as 3.4 mm
+                        // of pupil on a clinical chart, and a half-way value between 3 and 'Dilated'
+                        // is NaN). Everything else interpolates as before.
+                        if (isCategoricalVital(key)) {
+                            if (targetVal !== undefined) { base[key] = normalisePupils(targetVal); trendOwned[key] = true; }
+                        } else if (startVal !== undefined && targetVal !== undefined && typeof startVal === 'number' && typeof targetVal === 'number') {
                             base[key] = startVal + ((targetVal - startVal) * progress);
                             trendOwned[key] = true;
                         } else if (startVal !== undefined && targetVal !== undefined) {
-                            base[key] = targetVal;   // non-numeric (pupils): snap, never interpolate
+                            base[key] = targetVal;   // other non-numeric: snap, never interpolate
                             trendOwned[key] = true;
                         }
                     });
                     if (newTrends.elapsed >= newTrends.duration) {
-                        Object.keys(newTrends.targets).forEach(key => { base[key] = newTrends.targets[key]; });
+                        Object.keys(newTrends.targets).forEach(key => {
+                            base[key] = isCategoricalVital(key) ? normalisePupils(newTrends.targets[key]) : newTrends.targets[key];
+                        });
                         newTrends.active = false;
                     }
                     vitalsChanged = true;
@@ -1091,9 +1141,9 @@
     const coreReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialCoreState, isOffline: state.isOffline, syncStatus: state.syncStatus };
+            case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
             case 'LOAD_SCENARIO': 
-                if(!action.payload) return { ...initialCoreState, isOffline: state.isOffline, syncStatus: state.syncStatus };
+                if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
@@ -1102,13 +1152,31 @@
                 // touches the toggle is never surprised by moving numbers.
                 const det0 = action.payload.deterioration || null;
                 const detMode0 = (det0 && det0.active && normaliseDeteriorationType(det0.type) && Number(det0.rate) > 0) ? 'auto' : 'manual';
-                return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus, showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0 };
+                // WAVE 4b / A2 + A6: QUICK SIM. The synthetic blank patient carries no `deterioration`
+                // block, so detMode0 resolves to 'manual' with no special case — requirement A6 — while
+                // the AUTO/MANUAL toggle stays available because it is state-driven, not scenario-driven.
+                //
+                // The one thing Quick Sim DOES need seeding is monitoring. 'Obs' (Monitoring) is the
+                // gate on the ECG trace, the pulse-ox beep scheduler and the alarm limits, and Quick
+                // Sim has no intervention library to attach it from. Seeding the REAL intervention key
+                // means the monitor, the beeps and the alarms all work through their existing,
+                // unmodified code paths instead of needing a quickSim branch in each of them.
+                const quick0 = !!action.payload.quickSim;
+                return { ...initialCoreState, runId: newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
+                    showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
+                    // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
+                    // would hand every session the same object.
+                    activeInterventions: new Set(quick0 ? ['Obs'] : []),
+                    interventionCounts: quick0 ? { Obs: 1 } : {} };
             case 'RESTORE_SESSION': {
                 // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
                 // `log` or `scenario` key carried in from the snapshot would shadow the live values
                 // owned by the other three reducers for the rest of the session.
                 const p = action.payload || {};
                 return { ...state,
+                    // D1: resuming reopens the SAME run, and therefore the same instructor notes.
+                    // Pre-Wave-4b snapshots carry no runId, so mint one rather than leaving it null.
+                    runId: p.runId || state.runId || newRunId(),
                     time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
                     interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
                     nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,
@@ -1122,7 +1190,6 @@
                     defib: { ...initialCoreState.defib, ...(p.defib || {}) },
                     lastConversion: p.lastConversion || null,
                     activeInterventions: new Set(p.activeInterventions || []),
-                    processedEvents: new Set(p.processedEvents || []),
                     completedObjectives: new Set(p.completedObjectives || []),
                     isRunning: false };
             }
@@ -1326,7 +1393,13 @@
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
             case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
             case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
-            case 'MARK_EVENT_PROCESSED': const newEvents = new Set(state.processedEvents); newEvents.add(action.payload); return { ...state, processedEvents: newEvents };
+            // WAVE 4b / D4: the `processedEvents` / MARK_EVENT_PROCESSED machinery is GONE. It existed
+            // to de-duplicate timed scenario events, but no scenario in the library has ever carried
+            // an `events` or `timeline` array, nothing ever dispatched MARK_EVENT_PROCESSED, and the
+            // Set was being serialised into every localStorage snapshot for nothing. Autonomous
+            // progression is handled by the Wave 3/4a deterioration model instead. If timed scripted
+            // events are ever wanted, build them on `scenario.deterioration`'s rate model rather than
+            // resurrecting this.
             case 'SET_ARREST_PANEL': return { ...state, arrestPanelOpen: action.payload };
             case 'SET_GAIN': return { ...state, waveformGain: action.payload };
             case 'TOGGLE_INTERFERENCE': return { ...state, noise: { ...state.noise, interference: !state.noise.interference } };
@@ -1884,10 +1957,12 @@
                         scenario: cur.scenario,
                         vitals: cur.vitals, baseVitals: cur.baseVitals, prevVitals: cur.prevVitals, trends: cur.trends, hypoxiaTimer: cur.hypoxiaTimer,
                         activeDrugs: cur.activeDrugs, deteriorationMode: cur.deteriorationMode,
+                        // D1: the per-run id travels with the snapshot so a resumed session reopens
+                        // the same instructor notes instead of a blank set.
+                        runId: cur.runId || null,
                         rhythm: cur.rhythm, time: cur.time, cycleTimer: cur.cycleTimer,
                         activeInterventions: Array.from(cur.activeInterventions),
                         interventionCounts: cur.interventionCounts, activeDurations: cur.activeDurations,
-                        processedEvents: Array.from(cur.processedEvents),
                         completedObjectives: Array.from(cur.completedObjectives),
                         log: cur.log.slice(-200), // recent log only
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,

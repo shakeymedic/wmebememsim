@@ -1,18 +1,37 @@
 (() => {
     const { useState, useEffect } = React;
 
-    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick }) => {
+    // `initialMode` / `initialPremadeCategory` are OPTIONAL. They exist so a particular panel can be
+    // opened directly — used by the Node verification harness to render the locked Restricted section
+    // without simulating clicks, and available for deep-linking a mode later. Both default to the
+    // normal first-load state, so nothing changes for a real user.
+    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, auth, initialMode, initialPremadeCategory }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
-        const [mode, setMode] = useState('random'); 
+        const [mode, setMode] = useState(initialMode || 'random'); 
         const [category, setCategory] = useState('Medical');
         const [age, setAge] = useState('Any');
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
-        const [premadeCategory, setPremadeCategory] = useState(null);
+        const [premadeCategory, setPremadeCategory] = useState(initialPremadeCategory || null);
         const [customScenarios, setCustomScenarios] = useState([]);
         const [showWetflag, setShowWetflag] = useState(true);
+
+        // ---- WAVE 4b / PART A: QUICK SIM launch options -------------------------------------
+        // A3: the facilitator may OPTIONALLY set age/weight/sex/name so WETFLAG and paediatric
+        // energy/dosing still work; leaving everything alone gives a sensible adult (40y, 70 kg-ish
+        // adult physiology, sinus rhythm). Blank strings mean "use the default", which is why these
+        // are strings rather than numbers.
+        const [qsAge, setQsAge] = useState('40');
+        const [qsWeight, setQsWeight] = useState('');
+        const [qsSex, setQsSex] = useState('Male');
+        const [qsName, setQsName] = useState('');
+        const [qsRhythm, setQsRhythm] = useState('Sinus Rhythm');
+
+        // ---- WAVE 4b / PART C: restricted (RCUK) scenarios ----------------------------------
+        // Loaded FROM FIREBASE at runtime, never bundled. Shipped empty but fully wired.
+        const [restricted, setRestricted] = useState({ phase: 'idle', scenarios: [], reason: null });
 
         const [buildId, setBuildId] = useState(null);
         const [buildTitle, setBuildTitle] = useState("");
@@ -250,7 +269,16 @@
                      return;
                  }
 
-                 const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator() : 40;
+                 // WAVE 4b / C5: honour an AUTHORED patientAge before falling back to 40.
+                 // Built-in scenarios all carry an `ageGenerator`, so this branch never mattered
+                 // before. A restricted scenario pasted into Firebase (or a hand-written custom one)
+                 // states its age directly as `patientAge` — and that age drives WETFLAG, the
+                 // paediatric 4 J/kg defibrillation energy and every weight-based dose, so silently
+                 // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
+                 // cosmetic one.
+                 const authoredAge = Number(selectedBase.patientAge);
+                 const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator()
+                     : (Number.isFinite(authoredAge) && authoredAge > 0 ? authoredAge : 40);
                  let sex = Math.random() > 0.5 ? 'Male' : 'Female';
                  const t = selectedBase.title.toLowerCase();
                  const p = String(selectedBase.patientProfileTemplate || '').toLowerCase();
@@ -261,7 +289,10 @@
                  else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
                  
                  const history = generateHistory(patientAge, sex);
-                 const weight = patientAge < 16 ? estimateWeight(patientAge) : null;
+                 // An authored weight wins over the age estimate, for the same reason.
+                 const authoredWeight = Number(selectedBase.weight);
+                 const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
+                     : (patientAge < 16 ? estimateWeight(patientAge) : null);
                  const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
                  const randomName = generateName(sex);
 
@@ -288,6 +319,130 @@
              } catch (err) { console.error("Generator Error:", err); alert("Error generating scenario: " + err.message); }
         };
 
+        // ---- QUICK SIM validation + launch --------------------------------------------------
+        // Reuses validateBuilderField (the SAME validator the Builder and the live vitals-control
+        // modal use) so an out-of-range age or weight is rejected identically everywhere.
+        const qsAgeError = qsAge === '' ? null : validateBuilderField('age', qsAge);
+        const qsWeightError = qsWeight === '' ? null : validateBuilderField('weight', qsWeight);
+        const qsInvalid = !!(qsAgeError || qsWeightError);
+        const qsResolvedAge = qsAge === '' ? 40 : Number(qsAge);
+        const qsAutoWeight = (!qsWeight && qsResolvedAge < 16) ? estimateWeight(qsResolvedAge) : null;
+
+        const launchQuickSim = () => {
+            if (qsInvalid) return;
+            if (!onQuickSim) { alert('Quick Sim is unavailable in this build.'); return; }
+            onQuickSim({
+                age: qsAge === '' ? 40 : Number(qsAge),
+                weight: qsWeight === '' ? null : Number(qsWeight),
+                sex: qsSex,
+                name: qsName,
+                rhythm: qsRhythm,
+                showWetflag
+            });
+        };
+
+        // ---- RESTRICTED SECTION -------------------------------------------------------------
+        // C1/C4: a clear locked state, a sign-in / request-access path, and NO errors or console
+        // noise when Firebase Auth has never been enabled. The client-side check below controls the
+        // UI ONLY — the real enforcement is the database rules (database.rules.json), which is why
+        // we still attempt the read and treat PERMISSION_DENIED as a normal locked outcome.
+        const restrictedUnlocked = !!(auth && auth.has && auth.has('rcuk'));
+        useEffect(() => {
+            if (!restrictedUnlocked) { setRestricted({ phase: 'locked', scenarios: [], reason: null }); return; }
+            let cancelled = false;
+            setRestricted({ phase: 'loading', scenarios: [], reason: null });
+            (window.loadRestrictedScenarios ? window.loadRestrictedScenarios() : Promise.resolve({ ok: false, reason: 'unavailable', scenarios: [] }))
+                .then(res => {
+                    if (cancelled) return;
+                    setRestricted({
+                        phase: res.ok ? (res.scenarios.length ? 'ready' : 'empty') : 'locked',
+                        scenarios: res.scenarios,
+                        reason: res.reason
+                    });
+                });
+            return () => { cancelled = true; };
+        }, [restrictedUnlocked]);
+
+        const RestrictedSection = () => {
+            const signedIn = !!(auth && auth.phase === 'signedIn');
+            const status = (auth && auth.profile && auth.profile.status) || null;
+            return (
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button>
+                        <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                            <Lucide icon={restrictedUnlocked ? 'unlock' : 'lock'} className="w-4 h-4"/> Restricted Scenarios
+                        </h3>
+                    </div>
+
+                    {!restrictedUnlocked ? (
+                        <div className="bg-slate-900 border border-amber-700/60 rounded-lg p-4 space-y-3">
+                            <div className="flex items-start gap-3">
+                                <Lucide icon="lock" className="w-6 h-6 text-amber-400 flex-none mt-0.5"/>
+                                <div className="text-sm text-slate-300 space-y-2">
+                                    <p className="font-bold text-amber-300">This section is locked.</p>
+                                    <p>It holds copyrighted scenarios (for example RCUK course material) that cannot be distributed with the app. They are stored separately and released to individually approved accounts.</p>
+                                    <p className="text-slate-400">Everything else in the simulator — all {ALL_SCENARIOS.length} built-in scenarios, Quick Sim, the monitor, the defibrillator and the debrief — needs no account at all.</p>
+                                </div>
+                            </div>
+
+                            <div className="border-t border-slate-800 pt-3 text-xs space-y-2">
+                                {!auth || !auth.available ? (
+                                    <p className="text-slate-400">Accounts are not switched on for this deployment yet, so there is nothing to sign in to. Nothing is broken — this section will unlock once the owner enables it.</p>
+                                ) : !signedIn ? (
+                                    <p className="text-slate-400">Sign in with the account button in the header, then request access below.</p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <p className="text-slate-400">
+                                            Signed in as <span className="text-slate-200 font-bold">{auth.user && auth.user.email}</span>.
+                                            {status === 'approved'
+                                                ? ' Your account is approved but does not hold the restricted-content entitlement yet.'
+                                                : status === 'rejected'
+                                                    ? ' Your access request was declined.'
+                                                    : ' Your account is awaiting approval.'}
+                                        </p>
+                                        <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-400 border-amber-500/60">
+                                            Request access
+                                        </Button>
+                                        {auth.notice && <div className="text-emerald-300">{auth.notice}</div>}
+                                        {auth.error && <div className="text-red-300">{auth.error}</div>}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : restricted.phase === 'loading' ? (
+                        <div className="text-center text-slate-500 py-8 text-sm">Loading restricted scenarios…</div>
+                    ) : restricted.phase === 'empty' ? (
+                        <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 space-y-2">
+                            <p className="font-bold text-emerald-400">Unlocked — but there is nothing here yet.</p>
+                            <p className="text-slate-400">No scenarios have been added to <span className="font-mono text-slate-300">restrictedScenarios/</span> in the database. See the “Restricted scenarios” section of README.md for the JSON shape to paste in.</p>
+                        </div>
+                    ) : (
+                        <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
+                            {/* C5: these run through the EXACT same handleGenerate/loadIntoBuilder
+                                path as a built-in scenario — no special-casing downstream. */}
+                            {restricted.scenarios.map(s => (
+                                <div key={s.id} className="flex justify-between items-center bg-amber-950/20 hover:bg-amber-900/20 p-3 rounded border border-amber-800/50 group">
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">
+                                            {s.title}
+                                            <span className="text-[9px] bg-amber-900/50 text-amber-300 px-1 rounded border border-amber-700 uppercase font-bold">restricted</span>
+                                            <DiffBadge d={s.difficulty}/>
+                                        </div>
+                                        <div className="text-xs text-slate-400 truncate">{getScenarioPreviewText(s)}</div>
+                                    </div>
+                                    <div className="flex gap-2 flex-none">
+                                        <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
+                                        <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
         const premadeCategories = [
             { id: 'Medical', label: 'Adult Medical', icon: 'stethoscope', filter: s => s.category === 'Medical' && s.ageRange === 'Adult' },
             { id: 'Trauma', label: 'Trauma', icon: 'ambulance', filter: s => s.category === 'Trauma' },
@@ -297,6 +452,9 @@
             { id: 'ObsGyn', label: 'Obs & Gynae', icon: 'baby', filter: s => s.category === 'Obstetrics & Gynae' },
             { id: 'Elderly', label: 'Geriatrics', icon: 'user', filter: s => s.ageRange === 'Elderly' },
             { id: 'Psychiatric', label: 'Psychiatric', icon: 'brain', filter: s => s.category === 'Psychiatric' },
+            // WAVE 4b / C1: the restricted category. `restricted: true` means it does NOT filter
+            // ALL_SCENARIOS at all — its contents come from Firebase at runtime, or it shows locked.
+            { id: 'Restricted', label: 'Restricted (RCUK)', icon: 'lock', restricted: true, filter: () => false },
         ];
 
         return (
@@ -312,7 +470,7 @@
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
                     <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
-                    <p>Select a mode below. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
+                    <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
                 </div>
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
@@ -330,10 +488,69 @@
                     {/* Wraps rather than scrolls: `no-scrollbar` removed the only affordance that more tabs
                         existed, so Builder/Edit was effectively invisible at phone widths. */}
                     <div className="flex flex-wrap gap-x-2 gap-y-1 mb-6 border-b border-slate-700">
-                        {['random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m}</button>
+                        {/* WAVE 4b / A1: QUICK SIM sits first — it is the fastest route to a running
+                            monitor and skips scenario generation entirely. */}
+                        {['quick', 'random', 'premade', 'custom', 'builder'].map(m => (
+                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m}</button>
                         ))}
                     </div>
+                    {/* ============================ WAVE 4b / PART A: QUICK SIM ============================
+                        No scenario, no brief, no drugs, no objectives. Just a blank patient whose obs and
+                        rhythm the facilitator drives straight to the monitor. Everything on this panel is
+                        optional — pressing the button with the defaults gives a 40-year-old in sinus rhythm. */}
+                    {mode === 'quick' && (
+                        <div className="space-y-4 animate-fadeIn">
+                            <div className="bg-sky-950/30 border border-sky-700/50 rounded p-3 text-sm text-slate-300">
+                                <p className="font-bold text-sky-300 mb-1 flex items-center gap-2"><Lucide icon="sliders" className="w-4 h-4"/> Quick Sim — obs and rhythm only</p>
+                                <p className="text-xs text-slate-400">A blank patient with editable observations, the full rhythm list, arrest/ROSC, the defibrillator and the monitor. No scenario brief, no drug library, no learning objectives. You still get the timer, the event log and a debrief.</p>
+                            </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div>
+                                    <label className="text-[10px] text-slate-500 uppercase">Age (years)</label>
+                                    <input type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} value={qsAge} onChange={e => setQsAge(e.target.value)} placeholder="40" className={fieldClass(qsAgeError)}/>
+                                    <FieldError msg={qsAgeError}/>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] text-slate-500 uppercase">Weight (kg)</label>
+                                    <input type="number" min={BUILDER_LIMITS.weight.min} max={BUILDER_LIMITS.weight.max} step="0.1" value={qsWeight} onChange={e => setQsWeight(e.target.value)} placeholder={qsAutoWeight ? `auto ${qsAutoWeight}` : 'optional'} className={fieldClass(qsWeightError)}/>
+                                    <FieldError msg={qsWeightError}/>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] text-slate-500 uppercase">Sex</label>
+                                    <select value={qsSex} onChange={e => setQsSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] text-slate-500 uppercase">Name</label>
+                                    <input type="text" value={qsName} onChange={e => setQsName(e.target.value)} placeholder="Quick Sim Patient" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] text-slate-500 uppercase">Starting rhythm</label>
+                                <select value={qsRhythm} onChange={e => setQsRhythm(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">
+                                    {(window.RHYTHMS ? window.RHYTHMS.SELECTABLE : ['Sinus Rhythm']).map(r => <option key={r} value={r}>{window.RHYTHMS ? window.RHYTHMS.labelFor(r) : r}</option>)}
+                                </select>
+                                <p className="text-[10px] text-slate-500 mt-1">Changeable at any time from the controller, including every arrest rhythm.</p>
+                            </div>
+
+                            {/* A3: paediatric maths is live in Quick Sim exactly as in a real scenario. */}
+                            {qsResolvedAge < 16 && !qsInvalid && (() => {
+                                const w = qsWeight === '' ? (qsAutoWeight === null ? null : parseFloat(qsAutoWeight)) : Number(qsWeight);
+                                const wf = w ? calculateWetflag(qsResolvedAge, w) : null;
+                                if (!wf) return null;
+                                return (
+                                    <div className="p-3 bg-purple-900/20 border border-purple-500/40 rounded">
+                                        <h4 className="text-[10px] font-bold text-purple-300 uppercase tracking-widest mb-1">WETFLAG will be active ({wf.weight} kg)</h4>
+                                        <div className="text-[11px] text-slate-300">Shock energy {wf.energy} J · Tube {wf.tube} · Fluids {wf.fluids} ml · Adrenaline {wf.adrenaline} mcg · Glucose {wf.glucose} ml</div>
+                                    </div>
+                                );
+                            })()}
+
+                            <Button onClick={launchQuickSim} disabled={qsInvalid} className={`w-full py-4 text-lg shadow-lg shadow-sky-900/20 ${qsInvalid ? 'opacity-40 cursor-not-allowed' : ''}`}>Start Quick Sim</Button>
+                            {qsInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields to start.</p>}
+                        </div>
+                    )}
                     {mode === 'random' && (
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">
@@ -350,12 +567,15 @@
                             {!premadeCategory ? (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                                     {premadeCategories.map(cat => (
-                                        <button key={cat.id} onClick={() => setPremadeCategory(cat)} className="flex flex-col items-center justify-center p-4 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded-lg transition-all active:scale-95 group">
-                                            <Lucide icon={cat.icon} className="w-8 h-8 text-sky-400 group-hover:text-white mb-2" />
-                                            <span className="text-sm font-bold text-slate-200 group-hover:text-white">{cat.label}</span>
+                                        <button key={cat.id} onClick={() => setPremadeCategory(cat)} className={`flex flex-col items-center justify-center p-4 border rounded-lg transition-all active:scale-95 group ${cat.restricted ? 'bg-amber-950/30 hover:bg-amber-900/30 border-amber-700/60' : 'bg-slate-700 hover:bg-slate-600 border-slate-600'}`}>
+                                            <Lucide icon={cat.restricted && !restrictedUnlocked ? 'lock' : cat.icon} className={`w-8 h-8 mb-2 ${cat.restricted ? 'text-amber-400' : 'text-sky-400 group-hover:text-white'}`} />
+                                            <span className="text-sm font-bold text-slate-200 group-hover:text-white text-center leading-tight">{cat.label}</span>
+                                            {cat.restricted && <span className="text-[9px] uppercase tracking-wider font-bold text-amber-500/80 mt-1">{restrictedUnlocked ? 'unlocked' : 'locked'}</span>}
                                         </button>
                                     ))}
                                 </div>
+                            ) : premadeCategory.restricted ? (
+                                <RestrictedSection />
                             ) : (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 mb-4"><Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button><h3 className="text-lg font-bold text-sky-400">{premadeCategory.label} Scenarios</h3></div>

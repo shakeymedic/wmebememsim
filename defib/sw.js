@@ -1,9 +1,11 @@
 // defib/sw.js
 // Bump this cache version on every deploy so tablets do not retain an old simulator build.
-// Wave 3 (defib on monitor, shared rhythm registry) — bumped so tablets cannot keep serving
-// the pre-Wave-3 defibrillator from cache. This SW is cache-FIRST, so a stale cache means a stale
-// clinical device.
-const CACHE_NAME = 'wmebem-sim-v20';
+// WAVE 4b / D7 — bumped so tablets cannot keep serving a pre-Wave-4b build from cache. This SW is
+// cache-FIRST, so a stale cache means a stale clinical device: without this bump a tablet would keep
+// running the old defibrillator page (with the dead GHOST_PRESS receiver) and, worse, an old
+// ../data/engine.js without the Quick Sim, runId and pupil-guard changes, against a controller that
+// has them. Bump this on EVERY deploy.
+const CACHE_NAME = 'wmebem-sim-v21';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -15,6 +17,9 @@ const ASSETS_TO_CACHE = [
   '../data/components.js',
   '../data/interventions.js',
   '../data/generators.js',
+  // WAVE 4b: the auth/entitlements module. Cached so the Restricted section degrades identically
+  // offline (locked, with a message) instead of throwing on a missing script.
+  '../data/auth.js',
   '../data/screens/index.js',
   '../data/screens/setup.js',
   '../data/screens/monitor.js',

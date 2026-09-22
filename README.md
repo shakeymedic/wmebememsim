@@ -1,0 +1,230 @@
+# WMEBEM Sim — West Midlands Emergency Medicine simulation suite
+
+A facilitator-driven clinical simulation suite: a **controller** the facilitator drives, a **monitor**
+screen the candidates watch, and a **defibrillator** simulator for a second tablet. Vanilla React 18 +
+Tailwind, both loaded from CDN with in-browser Babel. **There is no build step.** Editing a file and
+pushing is the whole deployment process (Netlify serves the repo root).
+
+| Path | What it is |
+| --- | --- |
+| `index.html` | Shell: CDN scripts, Firebase init (`window.db`), `ControllerApp`, `MonitorContainer` routing |
+| `data/rhythms.js` | The single shared rhythm registry (`window.RHYTHMS`) — labels, shockability, arrest/ROSC sets, energy ladders |
+| `data/interventions.js` | Every intervention and drug, with routes, effects and pharmacokinetic envelopes |
+| `data/generators.js` | Random-patient generation, WETFLAG, VBG/imaging synthesis, builder validation, `buildQuickSimScenario` |
+| `data/scenarios.js` | The 254 built-in scenarios plus `enrichScenario()` |
+| `data/engine.js` | `useSimulation()` — all simulation state, the vitals model, drug PK, deterioration, arrest, defib, Firebase sync |
+| `data/auth.js` | Firebase Auth, the entitlements model, the admin panel, restricted-scenario loading |
+| `data/components.js` | Shared UI primitives (`Button`, `Modal`, `Lucide`, `ECGMonitor`, …) |
+| `data/screens/` | `setup.js`, `livesim.js` (controller), `monitor.js`, `debrief.js` |
+| `defib/` | The standalone defibrillator page and its cache-first service worker |
+| `database.rules.json` | The Realtime Database security rules **you must paste into the Firebase console** |
+
+---
+
+## Running it
+
+Open `index.html` over HTTP (not `file://` — the service worker and module fetches need an origin).
+
+```bash
+python3 -m http.server 8000
+```
+
+- Controller: `http://localhost:8000/`
+- Monitor: `http://localhost:8000/?mode=monitor&session=ABCD`
+- Defibrillator: `http://localhost:8000/defib/`
+
+The **Session ID** shown in the controller header is what pairs the screens. It maps to
+`sessions/<CODE>` in the Realtime Database.
+
+---
+
+## Launch modes
+
+| Mode | What it does |
+| --- | --- |
+| **Quick Sim** | A blank synthetic patient and nothing else. Editable obs, the full rhythm list, arrest/ROSC, the monitor and the defib toggle. No scenario, no drugs, no interventions. For ad-hoc teaching at the bedside. |
+| **Random** | Generates a patient from the scenario templates with randomised demographics and obs. |
+| **Premade** | Pick from the 254 built-in scenarios by category. |
+| **Restricted** | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
+| **Custom** | Paste or import a scenario JSON file. |
+| **Builder** | Build a scenario field by field in the UI. |
+
+### Quick Sim
+
+Quick Sim runs the **same controller** as everything else, with the scenario-dependent panels omitted —
+it is not a separate implementation. It sets `scenario.quickSim = true` on a synthetic patient built by
+`window.buildQuickSimScenario()`, and the controller, the monitor and the debrief all read that one
+flag. Consequences worth knowing:
+
+- Monitoring (`Obs`) is **seeded at load**, so the ECG, the pulse-oximeter beep and the alarm limits all
+  work through their normal code paths with no intervention library to attach them from.
+- Deterioration starts in **MANUAL** (the synthetic patient declares no rate). The AUTO/MANUAL toggle is
+  still there. Ramp obs with the trend control on any vitals tile.
+- Age and weight are optional. Set a paediatric age and **WETFLAG, paediatric defibrillation energies
+  and weight-based dosing all work**; leave them alone and you get a sensible 40-year-old adult.
+- It **does** produce a debrief — event log, vitals trend, instructor notes — but no score and no
+  learning objectives, because there is no scenario to have objectives.
+
+---
+
+## Firebase setup — what you must do in the console yourself
+
+The app works **completely without any of this**. Every launch mode except Restricted, all 254
+scenarios, the monitor, the defibrillator and the debrief work with no account and no sign-in. The
+steps below only enable accounts and restricted content.
+
+### 1. Enable Email/Password sign-in
+
+Firebase console → **Build → Authentication → Get started → Sign-in method → Email/Password → Enable →
+Save**. (Optionally enable **Google** too; the app offers a Google button and hides it silently if the
+provider is not enabled.)
+
+Until you do this, the account button shows "Accounts unavailable" and the Restricted section shows as
+locked with an explanation. No errors, no console noise.
+
+### 2. Publish the database rules
+
+Firebase console → **Build → Realtime Database → Rules**. Paste the contents of
+[`database.rules.json`](./database.rules.json) and press **Publish**. The comments in that file are
+accepted by the console's rules editor.
+
+These rules are the *actual* enforcement. The client-side entitlement checks only control what the UI
+shows; someone who bypasses the UI still cannot read restricted content, because the database refuses.
+
+### 3. Make yourself an admin — manually
+
+This step **cannot** be done from inside the app, by design. The rules forbid a user from writing their
+own `role`, `status` or `entitlements`; otherwise anyone could grant themselves access.
+
+1. Sign up in the app with your own email.
+2. Console → **Authentication → Users** → copy your **User UID**.
+3. Console → **Realtime Database → Data** → create:
+
+```
+users
+└── <YOUR_UID>
+    ├── role:   "admin"
+    └── status: "approved"
+```
+
+Reload the app. You now have an **Admin** panel that lists every user and lets you approve or reject
+pending requests and grant or revoke entitlements per user, without touching the console again.
+
+### 4. Add restricted scenarios
+
+See the next section.
+
+---
+
+## Restricted scenarios
+
+Restricted scenarios are **never in this repository and never in the shipped JavaScript bundle**. That
+is the entire point: RCUK and similarly licensed material stays in your private database, readable only
+by accounts you have personally granted the matching entitlement. The app ships this section *empty but
+fully wired*.
+
+Write them under `restrictedScenarios/<ID>` in the Realtime Database. The shape is the ordinary
+scenario shape — the same one the built-in scenarios in `data/scenarios.js` use — because restricted
+scenarios run through **exactly the same pipeline** as built-in ones: `enrichScenario()`, WETFLAG,
+investigations, defibrillation, deterioration. There is no special-casing downstream of loading.
+
+### Required fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id` | string | Must be unique and must match the key. Required by the DB rules. |
+| `title` | string | Shown in the picker. Required by the DB rules. |
+
+Everything else is optional and defaults the same way a built-in scenario would.
+
+### Commonly used fields
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `category` | string | Grouping label in the picker |
+| `ageRange` | `"Adult"` \| `"Paediatric"` \| `"Elderly"` | `"Paediatric"` turns on WETFLAG and paediatric energies |
+| `patientAge` | number | Years. Use a decimal for infants (0.5 = 6 months) |
+| `sex` | `"Male"` \| `"Female"` | |
+| `patientName` | string | |
+| `acuity` | `"Resus"` \| `"Majors"` \| `"Minors"` | |
+| `presentingComplaint` | string | |
+| `profile` / `patientProfileTemplate` | string | The brief. `{age}` and `{sex}` are substituted |
+| `vitals` | object | `hr`, `bpSys`, `bpDia`, `spO2`, `rr`, `temp`, `etco2`, `gcs`, `bm`, `ph`, `k`, `pupils` |
+| `rhythm` | string | Must be a label from `data/rhythms.js` |
+| `pmh`, `dhx`, `allergies` | string[] | |
+| `recommendedActions` | string[] | Intervention keys from `data/interventions.js` |
+| `learningObjectives` | string[] | Scored in the debrief |
+| `deterioration` | object | `{ active, type, rate }` — drives AUTO mode |
+| `investigations` | object | `{ bloods, ecg, cxr, … }` |
+| `instructorBrief` | object | `{ progression, interventions, learningObjectives }` |
+
+### Example entry
+
+Paste this at `restrictedScenarios/RCUK_ALS_01` to check the wiring end to end:
+
+```json
+{
+  "id": "RCUK_ALS_01",
+  "title": "ALS — Shockable Rhythm",
+  "category": "RCUK ALS",
+  "ageRange": "Adult",
+  "patientAge": 62,
+  "sex": "Male",
+  "patientName": "Restricted Example",
+  "acuity": "Resus",
+  "presentingComplaint": "Witnessed collapse in the department",
+  "profile": "A {age}-year-old {sex} collapsed in the waiting room. CPR in progress on arrival.",
+  "rhythm": "Ventricular Fibrillation",
+  "vitals": { "hr": 0, "bpSys": 0, "bpDia": 0, "spO2": 0, "rr": 0, "temp": 36.2, "gcs": 3, "bm": 6.1, "k": 4.4, "ph": 7.1 },
+  "pmh": ["Ischaemic heart disease", "Type 2 diabetes"],
+  "dhx": ["Aspirin 75 mg OD", "Bisoprolol 5 mg OD"],
+  "allergies": ["NKDA"],
+  "recommendedActions": ["CPR", "Defib", "Adrenaline", "Amiodarone", "IV Access", "Airway"],
+  "learningObjectives": [
+    "Recognises a shockable rhythm and delivers the first shock without delay",
+    "Minimises interruptions to chest compressions",
+    "Gives adrenaline after the third shock and amiodarone after the third shock",
+    "Considers and verbalises the reversible causes"
+  ],
+  "instructorBrief": {
+    "progression": "VF persists through two shocks, then converts to a perfusing sinus rhythm after the third.",
+    "interventions": ["High-quality CPR", "Early defibrillation", "Adrenaline 1 mg IV", "Amiodarone 300 mg IV"],
+    "learningObjectives": ["Runs the ALS algorithm as team leader with a clear, closed-loop handover"]
+  }
+}
+```
+
+### Granting access
+
+A user needs **both** `status: "approved"` **and** `entitlements.rcuk: true`. Do this from the Admin
+panel in the app. A user can press "Request access" from the locked section, which writes a timestamped
+flag to their own record for you to see in the panel — it cannot grant anything.
+
+---
+
+## Payments
+
+Not implemented, deliberately. `entitlements` exists as a **map** (`{ rcuk, premium, expiresAt }`)
+rather than a single boolean precisely so a paid tier can be added without reworking the model.
+
+The one rule that must never be broken: **entitlements must only ever be written server-side.** The
+database rules already enforce this — `entitlements`, `role` and `status` are admin-write-only. A
+payment integration must therefore run its webhook through the Firebase **Admin SDK** (a Cloud Function
+or a small server), never from the browser. `window.__paymentWebhookSeam` in `data/auth.js` documents
+the seam and throws if called, so nobody can accidentally wire a client-side grant.
+
+---
+
+## Development notes
+
+- **No build system.** Every `.js` file under `data/` is loaded as `<script type="text/babel">` and
+  compiled in the browser. JSX is fine; ES modules, imports and bare `export` are not. Each file is an
+  IIFE that assigns to `window`.
+- **The service worker in `defib/sw.js` is cache-first.** Bump `CACHE_NAME` on every deploy or tablets
+  will keep serving a stale build of a clinical device.
+- **Permissive philosophy: never block, only flag.** The simulator does not stop the facilitator doing
+  anything clinically odd. It records it, and the debrief raises it as a discussion point.
+- **Vitals precedence** (each stage overrides the last): manual set → active trends → autonomous
+  deterioration → airway/paralysis/hypoxia → drug pharmacokinetic envelope → clamp and round.
+- **Sync payloads are primitives only.** `Set`s become arrays, `undefined` and `NaN` are stripped;
+  Realtime Database rejects them and a rejected write silently freezes the candidates' monitor.
