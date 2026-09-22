@@ -23,6 +23,9 @@
         flash: null, activeInterventions: new Set(), interventionCounts: {},
         activeDurations: {}, processedEvents: new Set(), isMuted: false,
         etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
+        // Paralysis is time-limited and actually consumed by the physiology (see vitalsReducer).
+        // WAVE 2: fold this into the general `pk` envelope rather than keeping a bespoke timer.
+        paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 },
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
         speech: { text: null, timestamp: 0, source: null }, soundEffect: { type: null, timestamp: 0 },
         audioOutput: 'monitor', arrestPanelOpen: false, isFinished: false, etco2Pathology: 'normal',
@@ -70,6 +73,54 @@
         }
         dropped.push(path || '(root)');
         return { value: undefined, dropped };
+    };
+
+    // --- PERMISSIVE EXPECTATIONS (never blocking) -------------------------------------------------
+    // A facilitator must never be prevented from doing anything; unmet expectations are recorded so
+    // the deviation becomes teaching data. An expectation counts as MET if the key is an active
+    // continuous intervention OR has been given at least once as a bolus — the original code tested
+    // only `activeInterventions`, which bolus drugs never join, so RSI's own prerequisites
+    // (Propofol + Roc, both boluses) could never be satisfied in any of the 254 scenarios.
+    const isExpectationMet = (key, coreState) => {
+        if (!coreState) return false;
+        const active = coreState.activeInterventions;
+        if (active && typeof active.has === 'function' && active.has(key)) return true;
+        const counts = coreState.interventionCounts || {};
+        return (counts[key] || 0) > 0;
+    };
+
+    const labelFor = (key) => (INTERVENTIONS[key] && INTERVENTIONS[key].label) || key;
+
+    // Returns a list of human-readable descriptions of what is NOT in place yet. `requires` is still
+    // accepted as a synonym for `expects` so older/custom scenario data keeps working.
+    const getUnmetExpectations = (action, coreState) => {
+        if (!action) return [];
+        const missing = [];
+        const all = action.expects || action.requires || [];
+        all.forEach(key => { if (!isExpectationMet(key, coreState)) missing.push(labelFor(key)); });
+        (action.expectsAny || []).forEach(group => {
+            const keys = group.keys || [];
+            if (!keys.some(k => isExpectationMet(k, coreState))) missing.push(group.label || keys.map(labelFor).join(' / '));
+        });
+        return missing;
+    };
+    window.getUnmetExpectations = getUnmetExpectations;
+
+    // Airway interventions that deliver breaths for the patient. Shared by the hypoxia model and the
+    // paralysis model so "paralysed but unbagged" desaturates and "paralysed and ventilated" does not.
+    const VENTILATING = ['Bagging', 'RSI', 'i-gel', 'NIV', 'CPAP', 'FONA'];
+    const isVentilated = (activeInt) => !!activeInt && VENTILATING.some(k => activeInt.has(k));
+    const VENTILATOR_RATE = 14;
+
+    // Paralysis only bites after the drug's onset time, and stops at the end of its duration.
+    const paralysisPhase = (paralysis, time) => {
+        if (!paralysis || !paralysis.active) return 'none';
+        const start = paralysis.startTime || 0;
+        const onset = paralysis.onset || 0;
+        const duration = paralysis.duration || 0;
+        if (time < start + onset) return 'onset';
+        if (duration > 0 && time >= start + onset + duration) return 'expired';
+        return 'active';
     };
 
     // 'pupils' and 'gcs' are the only non-numeric vitals the UI can set (gcs may arrive as a string).
@@ -127,20 +178,63 @@
                 const rhythm = cs ? cs.rhythm : 'Sinus Rhythm';
                 const cprActive = cs ? cs.cprInProgress : false;
                 const inArrest = ['VF', 'VT', 'pVT', 'PEA', 'Asystole'].includes(rhythm);
-                const isBagging = activeInt.has('Bagging') || activeInt.has('RSI') || activeInt.has('i-gel') || activeInt.has('NIV');
+                const isBagging = isVentilated(activeInt);
+                const time0 = cs ? cs.time : 0;
+
+                // TRENDS FIRST. A trend interpolates from a snapshot towards a target, so if it runs
+                // after the airway/hypoxia model it simply overwrites it and a paralysed, unventilated
+                // patient never desaturates. Applying trends first lets the physiology below take
+                // precedence. (WAVE 2: the same ordering problem still erases drug effects between
+                // ticks; that needs the full pk/effect envelope, not a reorder.)
+                if (newTrends.active) {
+                    newTrends.elapsed += 1;
+                    const progress = Math.min(1, newTrends.elapsed / newTrends.duration);
+                    Object.keys(newTrends.targets).forEach(key => {
+                        const startVal = newTrends.startVitals[key];
+                        const targetVal = newTrends.targets[key];
+                        if (startVal !== undefined && targetVal !== undefined) { currentVitals[key] = formatVital(key, startVal + ((targetVal - startVal) * progress)); }
+                    });
+                    if (newTrends.elapsed >= newTrends.duration) {
+                        Object.keys(newTrends.targets).forEach(key => currentVitals[key] = formatVital(key, newTrends.targets[key]));
+                        newTrends.active = false;
+                    }
+                    vitalsChanged = true;
+                }
+
+                // PARALYSIS, made real. `isParalysed` previously had zero consumers, so paralysis was
+                // cosmetic and permanent. Now, once the blocker's onset time has passed, respiration
+                // is the ventilator's rate if the patient is being ventilated and ZERO if not — which
+                // then feeds the hypoxia model below, so paralysing an unbagged patient desaturates.
+                const paraPhase = paralysisPhase(cs ? cs.paralysis : null, time0);
+                if (!inArrest && paraPhase === 'active') {
+                    const targetRr = isBagging ? VENTILATOR_RATE : 0;
+                    if (currentVitals.rr !== targetRr) { currentVitals.rr = targetRr; vitalsChanged = true; }
+                }
 
                 // Hypoxia: SpO2 falls if hypoventilating or apnoeic without ventilatory support
                 if (!inArrest && currentVitals.spO2 > 0 && (currentVitals.rr < 8 || currentVitals.rr <= 0) && !isBagging) {
                     currentHypoxiaTimer++;
-                    if (currentHypoxiaTimer > 10) {
+                    // Pre-oxygenation buys a longer safe apnoea time; apnoeic (nasal) oxygenation
+                    // halves the rate of desaturation once it starts.
+                    const preoxygenated = activeInt.has('Preoxygenation');
+                    const apnoeicO2 = activeInt.has('ApnoeicOxygenation');
+                    const graceSeconds = preoxygenated ? 40 : 10;
+                    if (currentHypoxiaTimer > graceSeconds) {
                         // Steeper drop below 88 (Severinghaus curve)
-                        const dropRate = currentVitals.spO2 < 88 ? 1.5 : 0.5;
+                        let dropRate = currentVitals.spO2 < 88 ? 1.5 : 0.5;
+                        if (apnoeicO2) dropRate = dropRate / 2;
                         currentVitals.spO2 = Math.max(20, formatVital('spO2', currentVitals.spO2 - dropRate));
                         vitalsChanged = true;
                     }
                 } else {
                     currentHypoxiaTimer = 0;
-                    if (activeInt.has('Oxygen') && currentVitals.spO2 < 95) { currentVitals.spO2 = formatVital('spO2', currentVitals.spO2 + 0.2); vitalsChanged = true; }
+                    // Recovery. SpO2 is stored as an integer, so the old +0.2/s was rounded straight
+                    // back to the same value and a rescued airway never re-oxygenated: after a failed
+                    // intubation you could bag the patient and watch them sit at 45% forever. Step a
+                    // whole point every 3 s instead (~20 points/min), and count any positive-pressure
+                    // or high-flow source, not just the 'Oxygen' key.
+                    const oxygenSource = activeInt.has('Oxygen') || activeInt.has('Preoxygenation') || activeInt.has('ApnoeicOxygenation') || isBagging;
+                    if (oxygenSource && currentVitals.spO2 < 98 && time0 % 3 === 0) { currentVitals.spO2 = Math.min(98, formatVital('spO2', currentVitals.spO2 + 1)); vitalsChanged = true; }
                 }
 
                 if (scen && scen.deterioration && scen.deterioration.type === 'neuro' && isRunning) {
@@ -162,21 +256,6 @@
                         currentVitals.etco2 = formatVital('etco2', currentVitals.etco2 + delta * 0.15);
                         vitalsChanged = true;
                     }
-                }
-
-                if (newTrends.active) {
-                    newTrends.elapsed += 1;
-                    const progress = Math.min(1, newTrends.elapsed / newTrends.duration);
-                    Object.keys(newTrends.targets).forEach(key => {
-                        const startVal = newTrends.startVitals[key];
-                        const targetVal = newTrends.targets[key];
-                        if (startVal !== undefined && targetVal !== undefined) { currentVitals[key] = formatVital(key, startVal + ((targetVal - startVal) * progress)); }
-                    });
-                    if (newTrends.elapsed >= newTrends.duration) {
-                        Object.keys(newTrends.targets).forEach(key => currentVitals[key] = formatVital(key, newTrends.targets[key]));
-                        newTrends.active = false;
-                    }
-                    vitalsChanged = true;
                 }
 
                 // Snapshot prevVitals every 15 seconds so trend arrows reflect recent direction.
@@ -202,7 +281,9 @@
             case 'ADD_LOG': 
                 const timestamp = new Date().toLocaleTimeString('en-GB'); 
                 const simTime = cs ? `${Math.floor(cs.time/60).toString().padStart(2,'0')}:${(cs.time%60).toString().padStart(2,'0')}` : '00:00'; 
-                return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, flagged: action.payload.flagged || false, timeSeconds: cs ? cs.time : 0 }] };
+                // `deviation` carries the structured "performed WITHOUT" record so the debrief can
+                // render a Sequence deviations card rather than re-parsing log text.
+                return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, flagged: action.payload.flagged || false, deviation: action.payload.deviation || null, timeSeconds: cs ? cs.time : 0 }] };
             case 'TOGGLE_FLAG':
                 const newLog = [...state.log];
                 if(newLog[action.payload]) { newLog[action.payload] = { ...newLog[action.payload], flagged: !newLog[action.payload].flagged }; }
@@ -258,7 +339,8 @@
                     time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
                     interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
                     nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,
-                    isParalysed: !!p.isParalysed, showWetflag: p.showWetflag !== false,
+                    isParalysed: !!p.isParalysed, paralysis: p.paralysis || { active: !!p.isParalysed, agent: null, startTime: 0, onset: 0, duration: 0 },
+                    showWetflag: p.showWetflag !== false,
                     icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
                     activeInterventions: new Set(p.activeInterventions || []),
                     processedEvents: new Set(p.processedEvents || []),
@@ -294,7 +376,16 @@
                 let newMonitorTimer = { ...state.monitorTimer };
                 if (newMonitorTimer.active) { newMonitorTimer.time += 1; }
 
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer };
+                // Neuromuscular blockade wears off. Sux (~8 min) and roc (~45 min) therefore diverge,
+                // and the patient is no longer permanently paralysed after a single dose.
+                let nextParalysis = state.paralysis;
+                let nextIsParalysed = state.isParalysed;
+                if (paralysisPhase(state.paralysis, state.time + 1) === 'expired') {
+                    nextParalysis = { active: false, agent: null, startTime: 0, onset: 0, duration: 0 };
+                    nextIsParalysed = false;
+                }
+
+                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer, paralysis: nextParalysis, isParalysed: nextIsParalysed };
             
             case 'TOGGLE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, visible: !state.monitorTimer.visible } };
             case 'START_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: true } };
@@ -317,14 +408,32 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state, rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
+            case 'SYNC_FROM_MASTER': return { ...state,
+                // isRunning / isMuted / activeLoops are what make the STUDENT MONITOR audible: every
+                // audio path in this file is gated on isRunning, which the monitor can only learn
+                // about over the wire because it never calls start() itself.
+                isRunning: !!action.payload.isRunning,
+                isMuted: !!action.payload.isMuted,
+                activeLoops: action.payload.activeLoops || {},
+                isParalysed: !!action.payload.isParalysed,
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
             case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
             case 'REMOVE_INTERVENTION': const removedActive = new Set(state.activeInterventions); removedActive.delete(action.payload); const removedDurations = { ...state.activeDurations }; delete removedDurations[action.payload]; return { ...state, activeInterventions: removedActive, activeDurations: removedDurations };
             case 'DECREMENT_INTERVENTION': const decKey = action.payload; const decCounts = { ...state.interventionCounts }; if (decCounts[decKey] > 0) decCounts[decKey]--; return { ...state, interventionCounts: decCounts };
-            case 'SET_PARALYSIS': return { ...state, isParalysed: action.payload };
+            case 'SET_PARALYSIS': {
+                // Accepts either a bare boolean (legacy) or { active, agent, onset, duration }.
+                const p = action.payload;
+                if (typeof p === 'boolean') {
+                    return { ...state, isParalysed: p, paralysis: p ? { ...state.paralysis, active: true } : { active: false, agent: null, startTime: 0, onset: 0, duration: 0 } };
+                }
+                if (!p || p.active === false) {
+                    return { ...state, isParalysed: false, paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 } };
+                }
+                return { ...state, isParalysed: true, paralysis: { active: true, agent: p.agent || null, startTime: p.startTime !== undefined ? p.startTime : state.time, onset: p.onset || 0, duration: p.duration || 0 } };
+            }
             case 'TRIGGER_POPUP': {
                 const p = (action.payload && typeof action.payload === 'object') ? action.payload : { type: action.payload, customText: action.customText || null };
                 return { ...state, monitorPopup: { type: p.type, timestamp: Date.now(), customText: p.customText !== undefined ? p.customText : null } };
@@ -575,11 +684,25 @@
                     patientAge: cur.scenario.patientAge, sex: cur.scenario.sex,
                     ageRange: cur.scenario.ageRange, wetflag: cur.scenario.wetflag || null,
                     pathology: cur.scenario.deterioration?.type || 'normal',
-                    investigations: {
-                        vbg: cur.scenario.vbg || null, ecg: cur.scenario.ecg || null,
-                        chestXray: cur.scenario.chestXray || null, urine: cur.scenario.urine || null,
-                        ct: cur.scenario.ct || null, pocus: cur.scenario.pocus || null
-                    },
+                    // Investigations: enrichScenario writes generated CXR/CT/urine/POCUS reports to
+                    // scenario.investigations.*, but this payload previously read only the top-level
+                    // fields — so students saw generic default text in essentially every scenario
+                    // (CT and POCUS lost in 254/254). Read the generated block and let any top-level
+                    // override (e.g. the "lung re-expanded" CXR rewrite) win.
+                    // investigations.ecg deliberately carries the ORIGINAL, un-normalised ecg (STEMI
+                    // stays STEMI) so the monitor's 12-lead draws ST elevation, while the monitoring
+                    // trace keeps using the separately-synced normalised `rhythm`.
+                    investigations: (() => {
+                        const gen = cur.scenario.investigations || {};
+                        return {
+                            vbg: cur.scenario.vbg || gen.vbg || null,
+                            ecg: gen.ecg || cur.scenario.ecg || null,
+                            chestXray: cur.scenario.chestXray || gen.chestXray || null,
+                            urine: cur.scenario.urine || gen.urine || null,
+                            ct: cur.scenario.ct || gen.ct || null,
+                            pocus: cur.scenario.pocus || gen.pocus || null
+                        };
+                    })(),
                     activeInterventions: Array.from(cur.activeInterventions),
                     nibp: cur.nibp, speech: cur.speech, soundEffect: cur.soundEffect,
                     audioOutput: cur.audioOutput, trends: cur.trends,
@@ -587,7 +710,10 @@
                     monitorPopup: cur.monitorPopup, waveformGain: cur.waveformGain,
                     noise: cur.noise, notification: cur.notification,
                     remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
-                    showWetflag: cur.showWetflag, co2Pathology
+                    showWetflag: cur.showWetflag, co2Pathology,
+                    // Top-level keys only — the write diff is shallow and per-key. Never undefined.
+                    isRunning: !!cur.isRunning, isMuted: !!cur.isMuted,
+                    activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed
                 };
                 const sanitised = sanitizeForRealtimeDatabase(payload);
                 const safePayload = sanitised.value || {};
@@ -637,7 +763,8 @@
             state.nibp, state.speech, state.soundEffect, state.audioOutput, state.trends,
             state.arrestPanelOpen, state.isFinished, state.monitorPopup, state.waveformGain,
             state.noise, state.notification, state.remotePacerState, state.pacingThreshold,
-            state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID
+            state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
+            state.isRunning, state.isMuted, state.activeLoops, state.isParalysed
         ]);
 
         useEffect(() => {
@@ -685,7 +812,7 @@
                         processedEvents: Array.from(cur.processedEvents),
                         completedObjectives: Array.from(cur.completedObjectives),
                         log: cur.log.slice(-200), // recent log only
-                        nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed,
+                        nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
                         showWetflag: cur.showWetflag, icp: cur.icp
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
@@ -695,37 +822,142 @@
             }, 5000);
             return () => clearInterval(id);
         }, [isMonitorMode]);
-        useEffect(() => { if (!audioCtxRef.current) { const AudioContext = window.AudioContext || window.webkitAudioContext; audioCtxRef.current = new AudioContext(); } }, []);
-        
+        // The context is created at mount (before any gesture) so it is born 'suspended' under the
+        // autoplay policy. The "Tap to Enable Sound" overlay resumes THIS ref, which is correct; what
+        // was missing was recovery when iOS/tab-backgrounding re-suspends it, so watch statechange.
+        const [audioCtxState, setAudioCtxState] = useState('unknown');
+        useEffect(() => {
+            if (!audioCtxRef.current) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                try { audioCtxRef.current = new AudioContext(); } catch (e) { console.warn('AudioContext unavailable', e); return; }
+            }
+            const ctx = audioCtxRef.current;
+            setAudioCtxState(ctx.state);
+            const onStateChange = () => {
+                setAudioCtxState(ctx.state);
+                // Re-suspension is common on iOS and when a tab is backgrounded. Try to recover
+                // immediately; if the browser refuses without a gesture the overlay can be re-shown.
+                if (ctx.state === 'suspended') { try { ctx.resume().catch(() => {}); } catch (e) {} }
+            };
+            ctx.addEventListener('statechange', onStateChange);
+            return () => ctx.removeEventListener('statechange', onStateChange);
+        }, []);
+
+        // Resume + prime. Some iOS builds only truly unlock output once a buffer has been *played*
+        // inside the user gesture, so push a one-sample silent buffer through as well.
+        const resumeAudio = (prime = false) => {
+            const ctx = audioCtxRef.current;
+            if (!ctx) return Promise.resolve(false);
+            const primeSilence = () => {
+                if (!prime) return;
+                try {
+                    const buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+                    const source = ctx.createBufferSource();
+                    source.buffer = buffer;
+                    source.connect(ctx.destination);
+                    source.start(0);
+                } catch (e) { /* priming is best-effort */ }
+            };
+            if (ctx.state === 'suspended') {
+                try {
+                    const p = ctx.resume();
+                    if (p && typeof p.then === 'function') {
+                        return p.then(() => { primeSilence(); setAudioCtxState(ctx.state); return true; }).catch(e => { console.warn('AudioContext resume failed', e); return false; });
+                    }
+                } catch (e) { console.warn('AudioContext resume threw', e); return Promise.resolve(false); }
+            }
+            primeSilence();
+            return Promise.resolve(true);
+        };
+
+        // Is this device the one that should be making noise right now?
+        const isAudioRouted = (current) => (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both'))
+            || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
+
+        // Pulse-oximeter beep. Every early exit now RESCHEDULES: previously a manual rhythm change to
+        // pVT/VF with a non-zero HR exited the loop permanently (and `rhythm` was not a dependency),
+        // killing audio for the rest of the session with no way back.
         useEffect(() => {
             let timerId;
-            const ctx = audioCtxRef.current;
+            let cancelled = false;
+            const SILENT_RHYTHMS = ['VF', 'Asystole', 'pVT', 'PEA'];
             const scheduleBeep = () => {
+                if (cancelled) return;
                 const current = stateRef.current;
-                const correctOutput = (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both')) || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
-                
-                if (!current.isRunning) return;
-                if (current.vitals.hr <= 0 || current.rhythm === 'VF' || current.rhythm === 'Asystole' || current.rhythm === 'pVT' || current.rhythm === 'PEA') return;
-                if (!current.activeInterventions.has('Obs')) { timerId = setTimeout(scheduleBeep, 1000); return; }
-                
-                if (!current.isMuted && ctx && correctOutput) {
-                    const osc = ctx.createOscillator(); const gain = ctx.createGain();
-                    osc.type = 'sine'; 
-                    const spO2 = current.vitals.spO2;
-                    let freq = 800;
-                    if (spO2 < 100) { freq = Math.max(400, 400 + ((spO2 - 85) * (400/15))); }
-                    osc.frequency.value = freq; 
-                    osc.connect(gain); gain.connect(ctx.destination);
-                    const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15); 
-                    osc.start(now); osc.stop(now + 0.2);
+                const ctx = audioCtxRef.current;
+                const retry = (ms) => { timerId = setTimeout(scheduleBeep, ms); };
+
+                if (!current.isRunning) { retry(1000); return; }
+                if (current.vitals.hr <= 0 || SILENT_RHYTHMS.includes(current.rhythm)) { retry(1000); return; }
+                if (!current.activeInterventions.has('Obs')) { retry(1000); return; }
+
+                if (!current.isMuted && ctx && isAudioRouted(current)) {
+                    if (ctx.state === 'suspended') { resumeAudio(); retry(500); return; }
+                    try {
+                        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        const spO2 = current.vitals.spO2;
+                        // Real oximeters keep dropping in pitch well below 85%. The old mapping clamped
+                        // at 400 Hz from 85% downwards — exactly where the cue matters most. Now the
+                        // tone continues to fall to a floor of 180 Hz at 50%, and stays recognisable.
+                        let freq = 800;
+                        if (spO2 >= 85) freq = 400 + ((spO2 - 85) * (400 / 15));
+                        else freq = Math.max(180, 400 - ((85 - spO2) * (220 / 35)));
+                        osc.frequency.value = Math.max(120, Math.min(900, freq));
+                        osc.connect(gain); gain.connect(ctx.destination);
+                        const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+                        osc.start(now); osc.stop(now + 0.2);
+                    } catch (e) { console.warn('Beep failed', e); }
                 }
-                const delay = 60000 / (Math.max(20, current.vitals.hr) || 60); timerId = setTimeout(scheduleBeep, delay);
+                retry(60000 / (Math.max(20, current.vitals.hr) || 60));
             };
 
-            const shouldStart = state.isRunning && state.vitals && state.vitals.hr > 0;
-            if (shouldStart) { if (ctx && ctx.state === 'suspended') ctx.resume(); scheduleBeep(); }
-            return () => clearTimeout(timerId);
-        }, [state.isRunning, isMonitorMode, (state.vitals && state.vitals.hr > 0)]);
+            resumeAudio();
+            scheduleBeep();
+            return () => { cancelled = true; clearTimeout(timerId); };
+        }, [isMonitorMode, audioCtxState]);
+
+        // PHYSIOLOGICAL ALARMS. These used to exist only on the facilitator's laptop (livesim.js had
+        // its own separate AudioContext), so trainees could never hear a desat or brady alarm on the
+        // device that in real life screams. They now live in shared engine code, run on whichever
+        // device `audioOutput` routes to, and are driven by the synced vitals.
+        const lastAlarmRef = useRef({});
+        const playAlertTone = (type) => {
+            const ctx = audioCtxRef.current;
+            if (!ctx) return;
+            try {
+                if (ctx.state === 'suspended') { resumeAudio(); return; }
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.frequency.value = type === 'critical' ? 880 : 660;
+                osc.type = 'sine';
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+            } catch (e) { /* never let an alarm take down the sim */ }
+        };
+
+        useEffect(() => {
+            const current = state;
+            if (!current.isRunning || current.isMuted) return;
+            if (!isAudioRouted(current)) return;
+            // No monitoring attached means no alarm limits are being watched — same rule as the beep.
+            if (!current.activeInterventions.has('Obs')) return;
+            const age = current.scenario?.patientAge ?? 40;
+            const th = (window.getAlarmThresholds && window.getAlarmThresholds(age)) || { hr: { low: 40, high: 130 }, rr: { low: 8, high: 30 }, spO2: 90 };
+            const v = current.vitals || {};
+            const now = Date.now();
+            const fire = (key, tone) => {
+                if (now - (lastAlarmRef.current[key] || 0) > 10000) { playAlertTone(tone); lastAlarmRef.current[key] = now; }
+            };
+            const pulseless = ['VF', 'pVT', 'Asystole', 'PEA'].includes(current.rhythm);
+            if (pulseless) { fire('arrest', 'critical'); return; }
+            if (v.hr > th.hr.high || v.hr < th.hr.low) fire('hr', 'critical');
+            if (v.spO2 < th.spO2) fire('spO2', 'critical');
+            if (v.rr < th.rr.low || v.rr > th.rr.high) fire('rr', 'alert');
+        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode]);
         
         useEffect(() => { 
             if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating) { dispatch({ type: 'START_NIBP' }); }
@@ -763,32 +995,49 @@
             } 
         }, [state.speech, isMonitorMode, state.audioOutput, state.isRunning]);
 
-        const addLogEntry = (msg, type = 'info', flagged = false) => dispatch({ type: 'ADD_LOG', payload: { msg, type, flagged } });
+        const addLogEntry = (msg, type = 'info', flagged = false, deviation = null) => dispatch({ type: 'ADD_LOG', payload: { msg, type, flagged, deviation } });
         
         const applyIntervention = (key) => {
             // Always read live state — this function is invoked from async paths (Firebase command listener)
             // where the closed-over `state` would be stale.
             const cur = stateRef.current;
             const scenario = cur.scenario;
-            if (!scenario) return;
+            // These two used to be silent no-ops, so a mistyped key or a not-yet-loaded scenario made
+            // the button look broken with no explanation anywhere.
+            if (!scenario) {
+                console.warn(`applyIntervention('${key}') ignored: no scenario is loaded.`);
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: 'No scenario loaded — load a scenario first.', type: 'danger', id: Date.now() } });
+                return;
+            }
 
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(cur.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
-            const action = INTERVENTIONS[key]; if (!action) return;
+            const action = INTERVENTIONS[key];
+            if (!action) {
+                console.warn(`Unknown intervention key '${key}' — no definition in INTERVENTIONS.`);
+                addLogEntry(`Unknown intervention '${key}' requested — nothing applied (check scenario data).`, 'warning', true);
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Unknown intervention: ${key}`, type: 'danger', id: Date.now() } });
+                return;
+            }
 
-            if (action.requires) {
-                const missing = action.requires.filter(req => !cur.activeInterventions.has(req));
-                if (missing.length > 0) {
-                    const reqLabel = INTERVENTIONS[missing[0]] ? INTERVENTIONS[missing[0]].label : missing[0];
-                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Requires ${reqLabel}`, type: 'danger', id: Date.now() } });
-                    return;
-                }
+            // PERMISSIVE GATING. Nothing is ever blocked. Unmet expectations are recorded as a flagged
+            // deviation (amber log row, toolbar chip, debrief card) plus a brief non-blocking toast.
+            // Performing RSI without pre-oxygenation is assessable behaviour worth RECORDING, not
+            // preventing. Follows the existing non-blocking precedents (pacing without capture, shock
+            // into a non-shockable rhythm).
+            const missingLabels = getUnmetExpectations(action, cur);
+            if (missingLabels.length > 0) {
+                const missingText = missingLabels.join(', ');
+                addLogEntry(`${action.label} performed WITHOUT: ${missingText}`, 'warning', true, { action: key, label: action.label, missing: missingLabels });
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — missing ${missingText} (proceeding)`, type: 'warning', id: Date.now() } });
             }
 
             const isActive = cur.activeInterventions.has(key);
             if (action.type === 'continuous' && isActive) {
+                 // Deliberate toggle-off. The button shows an explicit ACTIVE state and a tooltip saying
+                 // a second press stops it, so removal cannot be mistaken for a repeat dose.
                  dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
                  addLogEntry(`${action.label} removed.`, 'action');
-                 dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} Removed`, type: 'info', id: Date.now() } });
+                 dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} STOPPED (second press toggles off)`, type: 'info', id: Date.now() } });
                  return;
             }
 
@@ -845,13 +1094,68 @@
 
             if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (scenario.title && scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
-            if (key === 'Roc' || key === 'Sux') dispatch({ type: 'SET_PARALYSIS', payload: true });
+            // --- PARALYSIS (roc vs sux now genuinely differ) ---
+            // Timing lives in the intervention data (`paralysis: { onset, duration }`). WAVE 2 should
+            // fold this into the general `pk` envelope instead of this bespoke timer.
+            if (action.paralysis || action.effect.paralysed) {
+                const pz = action.paralysis || { onset: 60, duration: 2700 };
+                dispatch({ type: 'SET_PARALYSIS', payload: { active: true, agent: key, startTime: cur.time, onset: pz.onset, duration: pz.duration } });
+                if (key === 'Sux') addLogEntry('Fasciculations observed after suxamethonium.', 'info');
+                const ventilated = isVentilated(cur.activeInterventions);
+                addLogEntry(`${action.label}: paralysis in ~${pz.onset}s, lasting ~${Math.round(pz.duration / 60)} min.${ventilated ? '' : ' Patient is NOT being ventilated — expect apnoea and desaturation.'}`, ventilated ? 'info' : 'warning', !ventilated);
+            }
+            if (action.effect.reverseParalysis) {
+                dispatch({ type: 'SET_PARALYSIS', payload: { active: false } });
+                if (!isVentilated(cur.activeInterventions)) newVitals.rr = Math.max(newVitals.rr, 10);
+            }
+
+            // --- AIRWAY / RSI: clinically honest oxygenation instead of a jump to SpO2 99 ---
+            // The facilitator keeps full control of the outcome: a successful RSI secures the airway
+            // (RSI counts as ventilation), while FailedIntubation/CICO hand the airway back and let the
+            // existing hypoxia model desaturate the paralysed patient. Nothing here is random.
+            if (key === 'RSI') {
+                const preoxKeys = ['Preoxygenation', 'ApnoeicOxygenation', 'Oxygen', 'Bagging', 'NIV', 'CPAP'];
+                const preoxed = preoxKeys.some(k => cur.activeInterventions.has(k));
+                if (preoxed) {
+                    addLogEntry('Apnoeic period begins — pre-oxygenated, so saturations are protected for now.', 'info');
+                } else {
+                    // No reservoir: desaturation starts immediately. The tick-level hypoxia model carries
+                    // it on from here if the airway is not secured promptly.
+                    newVitals.spO2 = clamp(newVitals.spO2 - 6, 0, 100);
+                    addLogEntry('Apnoeic period begins with NO pre-oxygenation — desaturating.', 'warning', true, { action: 'RSI', label: action.label, missing: ['pre-oxygenation'] });
+                }
+                if (!cur.activeInterventions.has('ApnoeicOxygenation')) {
+                    addLogEntry('No apnoeic oxygenation in place — safe apnoea time is shorter.', 'info');
+                }
+                addLogEntry('Confirm the tube: ETCO2 waveform, chest rise, bilateral air entry. Declare failed intubation early if the view is poor.', 'info');
+            }
+            if (key === 'TubeConfirm' && !cur.etco2Enabled) {
+                dispatch({ type: 'TOGGLE_ETCO2' });
+                addLogEntry('ETCO2 connected for tube confirmation.', 'action');
+            }
+            if (key === 'FailedIntubation' || key === 'CICO') {
+                // The airway is NOT secured: stop treating RSI as ventilation so a paralysed patient
+                // desaturates until the facilitator rescues with i-gel, BVM or FONA.
+                if (cur.activeInterventions.has('RSI')) dispatch({ type: 'REMOVE_INTERVENTION', payload: 'RSI' });
+                addLogEntry(key === 'CICO' ? 'CICO: airway NOT secured. Oxygenate by any means, then front-of-neck access.' : 'Airway NOT secured after failed attempt. Oxygenate between attempts.', 'danger', true);
+            }
 
             if (action.effect.changeRhythm === 'defib') {
                 applyShockOutcome(cur);
             }
 
+            // ARREST PHYSIOLOGY. During a pulseless rhythm there is no cardiac output, so drugs cannot
+            // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
+            // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
+            // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
             const isArrest = cur.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(cur.rhythm));
+            if (isArrest) {
+                const e = action.effect || {};
+                const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
+                if (suppressed.length) {
+                    addLogEntry(`${action.label} given during arrest (${cur.rhythm}) — ${suppressed.join('/')} unchanged: a pulseless patient has no perfusion to measure. ETCO2 is the marker to watch.`, 'warning');
+                }
+            }
             if (!isArrest) {
                 if (action.effect.HR) {
                     if (action.effect.HR === 'reset') newVitals.hr = 80;
@@ -873,7 +1177,9 @@
                     else if (typeof action.effect.RR === 'number') { newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); }
                 }
             }
-            if (action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
+            // SpO2 is inside the arrest guard too: a pulse oximeter cannot read a saturation without
+            // a pulse, so BVM in asystole must not display 25%.
+            if (!isArrest && action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
 
             if (action.effect.gcs) {
                 if (typeof action.effect.gcs === 'string') { if (action.effect.gcs === 'sedated') newVitals.gcs = 3; }
@@ -1048,7 +1354,7 @@
         const toggleNIBPMode = () => { if (!sendCommand({ type: 'TOGGLE_NIBP_MODE' })) dispatch({ type: 'TOGGLE_NIBP_MODE' }); };
         const triggerAction = (action) => { if (!sendCommand({ type: 'TRIGGER_ACTION', payload: action })) applyIntervention(action); };
         
-        const playInflationSound = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'running') { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
+        const playInflationSound = () => { if (audioCtxRef.current && audioCtxRef.current.state !== 'running') { resumeAudio(); } if (audioCtxRef.current && audioCtxRef.current.state === 'running') { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         
         const playMedicalSound = (type) => {
             if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const t = ctx.currentTime;
@@ -1070,37 +1376,78 @@
             else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
+        // Loop synthesis split out from the toggle so the STUDENT MONITOR can start/stop the same
+        // continuous wheeze/stridor purely from the synced `activeLoops` map (it previously never
+        // reached students at all, because activeLoops was not in the payload).
+        const startAudioLoop = (type) => {
+            const ctx = audioCtxRef.current;
+            if (!ctx || loopNodesRef.current[type]) return;
+            if (ctx.state === 'suspended') resumeAudio();
+            try {
+                const osc = ctx.createOscillator(); const gain = ctx.createGain(); const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain();
+                if (type === 'Wheeze') { osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.25; lfoGain.gain.value = 200; }
+                else if (type === 'Stridor') { osc.type = 'sawtooth'; osc.frequency.value = 600; lfo.frequency.value = 0.3; lfoGain.gain.value = 100; }
+                else { osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.25; lfoGain.gain.value = 150; }
+                lfo.connect(lfoGain); lfoGain.connect(osc.frequency); osc.connect(gain); gain.connect(ctx.destination);
+                const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.value = 0.05;
+                osc.start(); lfo.start();
+                loopNodesRef.current[type] = { stop: () => { try { gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); } catch (e) {} setTimeout(() => { try { osc.stop(); lfo.stop(); } catch (e) {} }, 500); } };
+            } catch (e) { console.warn('Audio loop failed to start', e); }
+        };
+        const stopAudioLoop = (type) => {
+            if (!loopNodesRef.current[type]) return;
+            loopNodesRef.current[type].stop();
+            delete loopNodesRef.current[type];
+        };
+
         const toggleAudioLoop = (type) => {
             if (!audioCtxRef.current) return;
-            const ctx = audioCtxRef.current;
-            if (ctx.state === 'suspended') ctx.resume();
-            
             if (loopNodesRef.current[type]) {
-                loopNodesRef.current[type].stop(); delete loopNodesRef.current[type];
+                stopAudioLoop(type);
                 const newLoops = {...state.activeLoops}; delete newLoops[type];
                 dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: newLoops});
                 addLogEntry(`Audio Loop Stopped: ${type}`, 'manual');
             } else {
-                const osc = ctx.createOscillator(); const gain = ctx.createGain(); const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain();
-                if (type === 'Wheeze') { osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.25; lfoGain.gain.value = 200; } 
-                else if (type === 'Stridor') { osc.type = 'sawtooth'; osc.frequency.value = 600; lfo.frequency.value = 0.3; lfoGain.gain.value = 100; }
-                lfo.connect(lfoGain); lfoGain.connect(osc.frequency); osc.connect(gain); gain.connect(ctx.destination);
-                const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.value = 0.05; 
-                osc.start(); lfo.start();
-                loopNodesRef.current[type] = { stop: () => { gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); setTimeout(() => { osc.stop(); lfo.stop(); }, 500); } };
+                startAudioLoop(type);
                 dispatch({type: 'UPDATE_AUDIO_LOOPS', payload: {...state.activeLoops, [type]: true}});
                 addLogEntry(`Audio Loop Started: ${type}`, 'manual');
             }
         };
 
-        const start = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } dispatch({ type: 'START_SIM' }); };
+        // Reconcile the locally-playing loops with the synced state. Runs on both devices, so the
+        // facilitator's mute and audio routing apply to continuous sounds as well.
+        useEffect(() => {
+            const current = state;
+            const wanted = (current.isMuted || !isAudioRouted(current)) ? {} : (current.activeLoops || {});
+            Object.keys(loopNodesRef.current).forEach(type => { if (!wanted[type]) stopAudioLoop(type); });
+            Object.keys(wanted).forEach(type => { if (wanted[type] && !loopNodesRef.current[type]) startAudioLoop(type); });
+        }, [state.activeLoops, state.isMuted, state.audioOutput, isMonitorMode, audioCtxState]);
+
+        const start = () => { resumeAudio(true); dispatch({ type: 'START_SIM' }); };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
         const reset = () => { shockCountRef.current = 0; dispatch({ type: 'CLEAR_SESSION' }); };
-        const enableAudio = () => { if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') { audioCtxRef.current.resume(); } if (window.speechSynthesis && window.speechSynthesis.paused) { window.speechSynthesis.resume(); } };
+        // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
+        // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
+        const enableAudio = () => {
+            const p = resumeAudio(true);
+            if (window.speechSynthesis) {
+                try {
+                    if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+                    // Speaking an empty utterance inside the gesture unlocks TTS on iOS Safari.
+                    const warm = new SpeechSynthesisUtterance(' ');
+                    warm.volume = 0;
+                    window.speechSynthesis.speak(warm);
+                } catch (e) {}
+            }
+            return p;
+        };
 
         useEffect(() => {
-            if (state.isRunning) {
+            // Physiology is owned by the controller. isRunning is now synced so the monitor can make
+            // sound, but the monitor must NOT run its own 1 Hz physiology tick or it would fight the
+            // authoritative vitals arriving over Firebase.
+            if (state.isRunning && !isMonitorMode) {
                 timerRef.current = setInterval(() => {
                     tickRef.current = Date.now();
                     dispatch({ type: 'TICK_TIME' }); 
@@ -1109,9 +1456,9 @@
                 if (timerRef.current) clearInterval(timerRef.current);
             }
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
-        }, [state.isRunning]);
+        }, [state.isRunning, isMonitorMode]);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone, audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current) };
     };
     window.useSimulation = useSimulation;
 })();

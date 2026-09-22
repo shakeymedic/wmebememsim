@@ -68,17 +68,23 @@
             return list.filter(isValidScenarioShape);
         };
 
+        // localStorage itself throws in sandboxed/embedded frames and in some private modes, so every
+        // access goes through these guards — a blocked store must never blank the app.
+        const storeGet = (k) => { try { return localStorage.getItem(k); } catch (e) { console.warn('Storage unavailable', e); return null; } };
+        const storeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { console.warn('Storage write blocked', e); } };
+        const storeDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
         useEffect(() => {
-            const saved = localStorage.getItem('wmebem_custom_scenarios');
+            const saved = storeGet('wmebem_custom_scenarios');
             if (!saved) return;
             try {
                 const clean = sanitiseScenarioList(JSON.parse(saved));
                 setCustomScenarios(clean);
                 // Rewrite so a partially-corrupt store isn't re-filtered on every load.
-                localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(clean));
+                storeSet('wmebem_custom_scenarios', JSON.stringify(clean));
             } catch (e) {
                 console.error("Failed to load custom scenarios", e);
-                localStorage.removeItem('wmebem_custom_scenarios');
+                storeDel('wmebem_custom_scenarios');
             }
         }, []);
 
@@ -133,7 +139,7 @@
                     let added = 0;
                     list.forEach(s => { if (!merged.find(c => c.id === s.id)) { merged.push(s); added++; } });
                     setCustomScenarios(merged);
-                    localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(merged));
+                    storeSet('wmebem_custom_scenarios', JSON.stringify(merged));
                     alert(`Imported ${added} new scenario(s).` + (rejected > 0 ? ` ${rejected} skipped (invalid shape).` : ''));
                 } catch (err) { alert('Import failed: ' + err.message); }
             };
@@ -208,7 +214,7 @@
                      updated = [...customScenarios, newScen];
                 }
                 setCustomScenarios(updated);
-                localStorage.setItem('wmebem_custom_scenarios', JSON.stringify(updated));
+                storeSet('wmebem_custom_scenarios', JSON.stringify(updated));
             }
             
             handleGenerate(newScen);

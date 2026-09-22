@@ -126,9 +126,13 @@
         // unacceptable for clinical content. defib/index.html keeps its own SW at its own scope.
 
         // --- APP COMPONENT ---
+        // App owns only session/view routing. The simulation engine lives in ControllerApp, so that in
+        // monitor mode exactly ONE useSimulation instance exists (MonitorContainer's). Previously both
+        // this component and MonitorContainer created one: two AudioContexts (only one of which the
+        // "Tap to Enable Sound" overlay ever resumed) and two RTDB listeners per student device.
         const App = () => {
             const { useState, useEffect } = React;
-            const { SetupScreen, JoinScreen, BriefingScreen, MonitorContainer, LiveSimContainer, useSimulation, ErrorBoundary } = window;
+            const { MonitorContainer, ErrorBoundary } = window;
 
             // URL Params for Monitor Mode
             const urlParams = new URLSearchParams(window.location.search);
@@ -146,7 +150,6 @@
                 try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
                 return stored || Math.random().toString(36).substring(2, 6).toUpperCase();
             });
-            const [generatedScenario, setGeneratedScenario] = useState(null);
 
             useEffect(() => {
                 if (!sessionID || view === 'monitor') return;
@@ -159,13 +162,21 @@
                 }
             }, [sessionID, view]);
 
+            // 1. Monitor View (Clean, Full Screen) — no controller engine is created at all.
+            if (view === 'monitor') {
+                return <ErrorBoundary><MonitorContainer sessionID={sessionID} /></ErrorBoundary>;
+            }
+            return <ControllerApp view={view} setView={setView} sessionID={sessionID} setSessionID={setSessionID} />;
+        };
+
+        const ControllerApp = ({ view, setView, sessionID, setSessionID }) => {
+            const { useState, useEffect } = React;
+            const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary } = window;
+            const [generatedScenario, setGeneratedScenario] = useState(null);
+
             // --- SIM ENGINE ---
             // Initializes the logic core. Pass sessionID to enable sync.
-            const engine = useSimulation(
-                generatedScenario, 
-                view === 'monitor', 
-                sessionID
-            );
+            const engine = useSimulation(generatedScenario, false, sessionID);
 
             // --- HANDLERS ---
             const handleGenerate = (scenario, modifiers) => {
@@ -205,7 +216,10 @@
             // --- RECOVERY CHECK ---
             const [resumeData, setResumeData] = useState(null);
             useEffect(() => {
-                const saved = localStorage.getItem('wmebem_sim_state');
+                // localStorage throws outright in sandboxed frames (previews, embeds), which used to
+                // take the whole React tree down with a blank screen. Never let storage be fatal.
+                let saved = null;
+                try { saved = localStorage.getItem('wmebem_sim_state'); } catch (e) { console.warn('Session recovery unavailable (storage blocked)', e); }
                 if (saved && view === 'setup') {
                     try {
                         const parsed = JSON.parse(saved);
@@ -215,13 +229,7 @@
             }, [view]);
 
             // --- RENDER ---
-            
-            // 1. Monitor View (Clean, Full Screen)
-            if (view === 'monitor') {
-                return <ErrorBoundary><MonitorContainer sessionID={sessionID} /></ErrorBoundary>;
-            }
-
-            // 2. Controller Views (Header + Footer)
+            // Controller Views (Header + Footer)
             return (
                 <div className="h-full flex flex-col">
                     {/* Header */}
@@ -273,7 +281,7 @@
                     </main>
 
                     {/* Footer */}
-                    <footer classname="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-600 flex-shrink-0">
+                    <footer className="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-600 flex-shrink-0">
                         <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-700 hover:text-sky-500">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>
                     </footer>
                 </div>

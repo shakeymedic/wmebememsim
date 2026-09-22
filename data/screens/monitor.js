@@ -97,7 +97,7 @@
     };
 
     const MonitorScreen = ({ sim }) => {
-        const { VitalDisplay, ECGMonitor, Lucide, Button } = window;
+        const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, loadingInvestigations, showWetflag } = state;
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
@@ -106,6 +106,12 @@
         const hasArtLine = activeInterventions.has('ArtLine');
         
         const [audioEnabled, setAudioEnabled] = useState(false);
+        // The overlay must be able to come BACK: iOS and tab-backgrounding re-suspend the
+        // AudioContext, and a one-way flag left the monitor permanently silent with no way to fix it.
+        const audioContextState = sim.audioContextState;
+        useEffect(() => {
+            if (audioEnabled && audioContextState === 'suspended') setAudioEnabled(false);
+        }, [audioContextState, audioEnabled]);
         const [invToast, setInvToast] = useState(null); 
         const [show12Lead, setShow12Lead] = useState(false);
         const canvasRef = useRef(null);
@@ -174,11 +180,44 @@
                 } else if (ct) {
                     content = ct;
                 } else if (scenario) {
-                    if (type === 'ECG') content = (scenario.ecg && scenario.ecg.findings) ? scenario.ecg.findings : "Normal Sinus Rhythm"; 
-                    else if (type === 'X-ray') content = (scenario.chestXray && scenario.chestXray.findings) ? scenario.chestXray.findings : "Lung fields clear.";
-                    else if (type === 'CT') content = (scenario.ct && scenario.ct.findings) ? scenario.ct.findings : "No acute intracranial pathology.";
-                    else if (type === 'Urine') content = (scenario.urine && scenario.urine.findings) ? scenario.urine.findings : "Urinalysis Normal.";
-                    else if (type === 'POCUS') content = (scenario.pocus && scenario.pocus.findings) ? scenario.pocus.findings : "No free fluid seen.";
+                    // Read the generated investigations block as well as the top-level fields. The
+                    // payload now carries scenario.investigations.* (where enrichScenario actually
+                    // writes the generated CXR/CT/urine/POCUS reports), so students finally see the
+                    // scenario's own findings instead of the generic defaults.
+                    const inv = scenario.investigations || {};
+                    // generateUrine() returns a dipstick object and generatePocus() a per-window object;
+                    // neither has a `.findings` string, which is why every student saw the generic
+                    // default text. Render the structured reports properly instead.
+                    const fmtUrine = (u) => {
+                        const labels = { leuks: 'Leukocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
+                        const parts = Object.keys(labels).filter(k => u[k] !== undefined).map(k => `${labels[k]}: ${u[k]}`);
+                        return parts.length ? parts.join('  \u00b7  ') : null;
+                    };
+                    const fmtPocus = (p) => {
+                        const labels = { heart: 'Cardiac', lungs: 'Lung', abdo: 'Abdominal/FAST', aorta: 'Aorta', ivc: 'IVC' };
+                        const parts = Object.keys(labels).filter(k => p[k]).map(k => `${labels[k]}: ${p[k]}`);
+                        return parts.length ? parts.join('\n') : null;
+                    };
+                    const resolve = (key) => {
+                        const top = scenario[key];
+                        const gen = inv[key];
+                        if (top && (top.findings || Object.keys(top).length)) return top;
+                        return gen || null;
+                    };
+                    const findings = (key, fallback) => {
+                        const src = resolve(key);
+                        if (!src) return fallback;
+                        if (typeof src === 'string') return src;
+                        if (src.findings) return src.findings;
+                        if (key === 'urine') return fmtUrine(src) || fallback;
+                        if (key === 'pocus') return fmtPocus(src) || fallback;
+                        return fallback;
+                    };
+                    if (type === 'ECG') content = findings('ecg', "Normal Sinus Rhythm");
+                    else if (type === 'X-ray') content = findings('chestXray', "Lung fields clear.");
+                    else if (type === 'CT') content = findings('ct', "No acute intracranial pathology.");
+                    else if (type === 'Urine') content = findings('urine', "Urinalysis Normal.");
+                    else if (type === 'POCUS') content = findings('pocus', "No free fluid seen.");
                     else if (type === 'VBG' && scenario.vbg) {
                         const v = scenario.vbg;
                         content = (
@@ -205,7 +244,11 @@
             return <div className="h-full w-full bg-black"></div>;
         }
 
-        const handleEnableAudio = () => { enableAudio(); setAudioEnabled(true); };
+        const handleEnableAudio = () => {
+            const result = enableAudio();
+            if (result && typeof result.then === 'function') result.then(() => setAudioEnabled(true)).catch(() => setAudioEnabled(true));
+            else setAudioEnabled(true);
+        };
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
         const thresholds = (window.getAlarmThresholds && window.getAlarmThresholds(scenario?.patientAge ?? 40)) || { hr: {low:40,high:130}, rr:{low:8,high:30}, spO2:90 };
 
@@ -234,7 +277,7 @@
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
                             <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
                         </div>
-                        <div className="text-white text-sm font-medium leading-relaxed">
+                        <div className="text-white text-sm font-medium leading-relaxed whitespace-pre-line">
                             {invToast?.content}
                         </div>
                     </div>

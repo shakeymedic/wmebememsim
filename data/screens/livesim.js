@@ -143,8 +143,11 @@
         const [firedAlerts, setFiredAlerts] = useState(new Set());
         const firedAlertsRef = useRef(new Set());
         const [showKeyHelp, setShowKeyHelp] = useState(false);
-        const audioCtxRef = useRef(null);
-        const lastAlertRef = useRef({});
+        const [showFlagsModal, setShowFlagsModal] = useState(false);
+        // Alarm tones now live in the shared engine (so the STUDENT monitor alarms too) and are routed
+        // by `audioOutput`. This screen no longer owns an AudioContext, which also removes the risk of
+        // the controller double-playing every alarm.
+        const playAlertTone = sim.playAlertTone || (() => {});
 
         // Reset fired-alerts when sim resets to T=0
         useEffect(() => {
@@ -154,6 +157,8 @@
             }
         }, [time === 0]);
 
+        // Alarm thresholds are applied in the shared engine now (so students hear alarms too); kept
+        // here only for on-screen reference by future panels.
         const thresholds = (window.getAlarmThresholds && window.getAlarmThresholds(scenario?.patientAge ?? 40)) || { hr: {low:40,high:130}, rr:{low:8,high:30}, spO2:90 };
 
         const [assessments, setAssessments] = useState({
@@ -172,7 +177,10 @@
         
         const DRUG_GROUPS = {
             "Resus / Cardiac": ["AdrenalineIV", "Amiodarone", "Atropine", "Adenosine", "MagSulph", "Calcium", "CalciumChloride", "SodiumBicarb", "AdrenalineIM"],
-            "Sedation / Analgesia": ["Morphine", "Fentanyl", "Ketamine", "Midazolam", "Lorazepam", "Propofol", "Roc", "Sux", "Paracetamol", "Analgesia"],
+            // 'Morphine' was a dead slot here: the intervention key is 'Analgesia' (label "Morphine"),
+            // so the group rendered one permanently missing button.
+            "RSI / Induction": ["Propofol", "Ketamine", "Etomidate", "Thiopentone", "Midazolam", "Alfentanil", "Fentanyl", "Roc", "Sux", "Sugammadex"],
+            "Sedation / Analgesia": ["Analgesia", "Lorazepam", "Paracetamol"],
             "Vasoactive": ["Metaraminol", "Noradrenaline", "Labetalol", "Phentolamine"],
             "Antibiotics": ["Antibiotics", "Ceftriaxone", "Tazocin", "Gentamicin"],
             "Other": [] 
@@ -209,31 +217,6 @@
             sim.dispatch({type: 'UPDATE_ASSESSMENT', payload: assessments});
         }, [assessments]);
 
-        const playAlertTone = (type) => {
-            try {
-                if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || window.webkitAudioContext)();
-                const ctx = audioCtxRef.current;
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.frequency.value = type === 'critical' ? 880 : 660;
-                osc.type = 'sine';
-                gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.5);
-            } catch(e) {}
-        };
-
-        useEffect(() => {
-            if (isMuted || !isRunning) return;
-            const now = Date.now();
-            if (vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low) { if (now - (lastAlertRef.current.hr || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.hr = now; } }
-            if (vitals.spO2 < thresholds.spO2) { if (now - (lastAlertRef.current.spO2 || 0) > 10000) { playAlertTone('critical'); lastAlertRef.current.spO2 = now; } }
-            if (vitals.rr < thresholds.rr.low || vitals.rr > thresholds.rr.high) { if (now - (lastAlertRef.current.rr || 0) > 10000) { playAlertTone('alert'); lastAlertRef.current.rr = now; } }
-        }, [vitals.hr, vitals.spO2, vitals.rr, isMuted, isRunning, thresholds.hr.high, thresholds.hr.low, thresholds.rr.high, thresholds.rr.low, thresholds.spO2]);
-
         useEffect(() => {
             if (!isRunning) return;
             timerAlerts.forEach(alert => {
@@ -249,7 +232,7 @@
 
         useEffect(() => {
             const handler = (e) => {
-                const modalOpen = modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showArrestMenu || showROSCMenu || arrestPanelOpen;
+                const modalOpen = modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || arrestPanelOpen;
                 if (modalOpen) return;
                 const active = document.activeElement;
                 if (active?.matches?.('button, a, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
@@ -261,7 +244,7 @@
             };
             window.addEventListener('keydown', handler);
             return () => window.removeEventListener('keydown', handler);
-        }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showArrestMenu, showROSCMenu, arrestPanelOpen]);
+        }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
         const isMonitoringApplied = activeInterventions.has('Obs'); 
@@ -280,19 +263,31 @@
             else sim.dispatch({ type: 'DECREMENT_INTERVENTION', payload: key });
         };
 
+        // Nothing is ever disabled. An amber corner marker simply SHOWS what is not in place yet, so
+        // the facilitator can see a sequence deviation before clicking without being prevented.
+        const unmetFor = (action) => (window.getUnmetExpectations ? window.getUnmetExpectations(action, state) : []);
+
         const renderActionBtn = (key) => {
              const action = INTERVENTIONS[key];
              if (!action) return null;
              const count = interventionCounts[key] || 0;
              const isActive = activeInterventions.has(key);
              const variant = (count > 0 || isActive) ? "success" : "outline";
+             const missing = unmetFor(action);
+             const isContinuous = action.type === 'continuous';
+             const btnTitle = missing.length
+                 ? `Not in place yet: ${missing.join(', ')} \u2014 you can still do this, it will be flagged for the debrief.`
+                 : (isActive && isContinuous ? `${action.label} is ACTIVE \u2014 pressing again STOPS it.` : action.label);
              return (
-                 <button key={key} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border border-slate-600 flex flex-col justify-between overflow-hidden group/btn`}>
+                 <button key={key} title={btnTitle} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
-                        <span className="text-[10px] opacity-70 italic truncate">{action.category}</span>
+                        <span className={`text-[10px] truncate ${isActive && isContinuous ? 'text-emerald-400 font-bold uppercase not-italic' : 'opacity-70 italic'}`}>{isActive && isContinuous ? 'Active \u00b7 tap to stop' : action.category}</span>
                         {count > 0 && action.type !== 'continuous' && <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 rounded-full shadow-md">x{count}</span>}
                      </div>
+                     {missing.length > 0 && (
+                         <span aria-hidden="true" className="absolute top-0 left-0 w-0 h-0 border-t-[14px] border-l-[14px] border-t-amber-500 border-l-transparent"></span>
+                     )}
                      {isActive && action.type === 'continuous' && (
                          <div className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'continuous')}>
                              <Lucide icon="x" className="w-3 h-3"/>
@@ -382,15 +377,20 @@
             setNewAlertMsg(''); setNewAlertMins('5'); setTimerAlertError('');
         };
 
+        // Flagged entries are the debrief's teaching artefacts: sequence deviations recorded by the
+        // permissive gating, plus shocks and anything the facilitator flagged by hand.
+        const flaggedEntries = state.log.filter(l => l.flagged);
+        const deviationEntries = flaggedEntries.filter(l => l.deviation);
+
         const handleInvClick = (type) => { setInvModal(type); setInvCustomText(""); };
         const sendInv = (type, text) => { revealInvestigation(type, text); setInvModal(null); };
         const closeInv = () => { clearInvestigation(); setInvModal(null); };
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : 'border-sky-500'}`}>
+                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
-                        <Lucide icon={notification?.type === 'danger' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
+                        <Lucide icon={notification?.type === 'danger' || notification?.type === 'warning' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'warning' ? 'text-amber-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
                         <span className="font-bold text-white">{notification?.msg}</span>
                     </div>
                 </div>
@@ -419,6 +419,13 @@
                             <Lucide icon="list" className="w-4 h-4"/>
                             {state.log.some(l => l.flagged) && <span className="absolute top-0 right-0 w-2 h-2 bg-amber-500 rounded-full"></span>}
                         </Button>
+                        {/* Safety flags: a running count of flagged deviations (actions performed out of
+                            sequence, shocks, manual flags). Teaching artefact, facilitator-only. */}
+                        {flaggedEntries.length > 0 && (
+                            <Button ariaLabel={`Review ${flaggedEntries.length} safety flags`} variant="outline" onClick={() => setShowFlagsModal(true)} className="h-8 px-2 text-amber-400 border-amber-500/60 bg-amber-950/30 text-[10px] uppercase font-bold">
+                                <Lucide icon="flag" className="w-3 h-3 mr-1"/> Safety flags ({flaggedEntries.length})
+                            </Button>
+                        )}
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
                         <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
                         <Button variant="outline" href="defib/index.html" className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>
@@ -658,7 +665,7 @@
                                     <div key={i} className={`flex gap-4 border-b border-slate-800 pb-1 items-center ${entry.flagged ? 'bg-amber-900/20 -mx-2 px-2' : ''}`}>
                                         <button aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({type: 'TOGGLE_FLAG', payload: i})} className={`text-slate-500 hover:text-amber-500 transition-colors ${entry.flagged ? 'text-amber-500' : ''}`}><Lucide icon="flag" className="w-4 h-4"/></button>
                                         <span className="text-slate-500 w-20 flex-shrink-0">{entry.simTime}</span>
-                                        <span className={`flex-grow ${entry.type==='danger' ? 'text-red-400 font-bold' : entry.type==='success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>{entry.msg}</span>
+                                        <span className={`flex-grow ${entry.type==='danger' ? 'text-red-400 font-bold' : entry.type==='warning' ? 'text-amber-300 font-bold' : entry.type==='success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>{entry.msg}</span>
                                     </div>
                                 ))}
                             </div>
@@ -844,6 +851,44 @@
                                 ))}
                             </div>
                             <Button onClick={() => setShowTimerModal(false)} variant="outline" className="w-full mt-4">Close</Button>
+                        </div>
+                    </Modal>
+                )}
+
+                {showFlagsModal && (
+                    <Modal label="Safety flags" onClose={()=>setShowFlagsModal(false)}>
+                        <div className="bg-slate-800 p-6 rounded-lg border border-amber-600/60 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="text-lg font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Safety flags ({flaggedEntries.length})</h3>
+                                <button aria-label="Close safety flags" onClick={()=>setShowFlagsModal(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                            </div>
+                            <p className="text-xs text-slate-400 mb-3">Nothing was blocked. These are recorded deviations for the debrief conversation.</p>
+                            {deviationEntries.length > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Sequence deviations</h4>
+                                    <div className="space-y-2">
+                                        {deviationEntries.map((entry, i) => (
+                                            <div key={i} className="bg-amber-950/30 border border-amber-700/50 rounded p-2">
+                                                <div className="flex justify-between gap-2">
+                                                    <span className="text-sm font-bold text-amber-200">{entry.deviation.label || entry.deviation.action}</span>
+                                                    <span className="font-mono text-xs text-slate-400">{entry.simTime}</span>
+                                                </div>
+                                                <div className="text-xs text-slate-300 mt-0.5">Not in place: {entry.deviation.missing.join(', ')}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            <div className="flex-1 overflow-y-auto bg-slate-900 p-3 rounded border border-slate-700 font-mono text-xs space-y-1">
+                                {flaggedEntries.length === 0 && <div className="text-slate-500 text-center py-4">No flags recorded.</div>}
+                                {flaggedEntries.map((entry, i) => (
+                                    <div key={i} className="flex gap-3">
+                                        <span className="text-slate-500 w-14 flex-shrink-0">{entry.simTime}</span>
+                                        <span className="text-slate-200">{entry.msg}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button onClick={() => setShowFlagsModal(false)} variant="outline" className="w-full mt-4">Close</Button>
                         </div>
                     </Modal>
                 )}

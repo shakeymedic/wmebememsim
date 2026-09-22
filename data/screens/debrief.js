@@ -89,6 +89,11 @@
             return true;
         });
 
+        // Sequence deviations: structured records written by the engine's permissive gating. Nothing
+        // was blocked during the session; these are the teaching points that fell out of it.
+        const deviations = state.log.filter(l => l.deviation && Array.isArray(l.deviation.missing));
+        const flaggedCount = state.log.filter(l => l.flagged).length;
+
         const allObjectives = (() => {
             const a = scenario.learningObjectives || [];
             const b = scenario.instructorBrief?.learningObjectives || [];
@@ -103,8 +108,10 @@
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
             const objRows = allObjectives.map(obj => { const met = state.completedObjectives.has(obj); return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`; }).join('');
             const logRows = state.log.map(l => { const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1'; return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${esc(l.msg)}</td></tr>`; }).join('');
+            const devRows = deviations.map(d => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(d.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;font-weight:bold;">${esc(d.deviation.label || d.deviation.action)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#cbd5e1;">${esc(d.deviation.missing.join(', '))}</td></tr>`).join('');
+            const devCard = `<div class="card"><h3 style="color:#fbbf24;margin-top:0;">Sequence Deviations</h3>${deviations.length ? `<table><thead><tr><th>Time</th><th>Action</th><th>Not in place</th></tr></thead><tbody>${devRows}</tbody></table>` : '<div style="color:#94a3b8;">No sequence deviations recorded.</div>'}</div>`;
             const safeTitle = esc(scenario.title || 'Simulation');
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div><div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div><div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div><div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>${devCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
 
@@ -174,6 +181,26 @@
                                     </li>
                                 ))}
                             </ul>
+                        </div>
+
+                        <div className="bg-slate-800 p-4 rounded-lg border border-amber-600/50">
+                            <h3 className="text-lg font-bold text-amber-400 mb-1 flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Sequence Deviations</h3>
+                            <p className="text-xs text-slate-400 mb-3">Actions performed before their usual prerequisites were in place. Nothing was blocked — these are discussion points, not errors by definition. {flaggedCount} flagged event{flaggedCount === 1 ? '' : 's'} in total.</p>
+                            {deviations.length === 0 ? (
+                                <div className="text-sm text-slate-500">No sequence deviations recorded.</div>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {deviations.map((entry, i) => (
+                                        <li key={i} className="bg-slate-900 border border-amber-700/40 rounded p-2">
+                                            <div className="flex justify-between gap-2 items-baseline">
+                                                <span className="text-sm font-bold text-amber-200">{entry.deviation.label || entry.deviation.action}</span>
+                                                <span className="font-mono text-xs text-slate-500">{entry.simTime}</span>
+                                            </div>
+                                            <div className="text-xs text-slate-300 mt-0.5">Not in place: {entry.deviation.missing.join(', ')}</div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
 
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
