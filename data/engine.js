@@ -2,8 +2,16 @@
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
+    const DEFAULT_VITALS = { etco2: 4.5, temp: 36.5, bm: 5.5, ph: 7.4, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 };
+
     const initialVitalsState = {
-        vitals: { etco2: 4.5, temp: 36.5, bm: 5.5, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 },
+        vitals: { ...DEFAULT_VITALS },
+        // baseVitals is the UNDERLYING physiology at full float precision. `vitals` is what is
+        // displayed and synced: baseVitals + the additive drug envelope, rounded. Keeping the base
+        // unrounded is what lets slow processes (0.005 GCS/s of rising ICP, 0.02 degC/s of active
+        // warming) accumulate at all — Wave 1 already hit this with oxygen's +0.2%/s being rounded
+        // straight back to the same integer every tick.
+        baseVitals: { ...DEFAULT_VITALS },
         prevVitals: {},
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         hypoxiaTimer: 0
@@ -23,8 +31,16 @@
         flash: null, activeInterventions: new Set(), interventionCounts: {},
         activeDurations: {}, processedEvents: new Set(), isMuted: false,
         etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
-        // Paralysis is time-limited and actually consumed by the physiology (see vitalsReducer).
-        // WAVE 2: fold this into the general `pk` envelope rather than keeping a bespoke timer.
+        // Every administered drug that carries a `pk` envelope, with the time it was given. This is
+        // the single source of truth for drug timing: numeric effects, wear-off AND neuromuscular
+        // blockade all derive from these entries (Wave 1's bespoke paralysis timer is now folded in).
+        // Primitives only, so it passes sanitizeForRealtimeDatabase and JSON persistence unchanged.
+        activeDrugs: [],
+        // AUTO  = the scenario's declared deterioration type/rate drives the obs autonomously.
+        // MANUAL = complete manual control, nothing changes on its own.
+        // Switching is discontinuity-free by construction: see the deterioration comment above.
+        deteriorationMode: 'manual',
+        // Derived view of the paralytic entry in activeDrugs, kept for the UI, persistence and sync.
         paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 },
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
         speech: { text: null, timestamp: 0, source: null }, soundEffect: { type: null, timestamp: 0 },
@@ -130,9 +146,334 @@
     };
 
     const formatVital = (key, val) => {
+        if (key === 'ph') return Math.round(val * 100) / 100;
         if (['temp', 'bm', 'etco2'].includes(key)) return Math.round(val * 10) / 10;
         return Math.round(val);
     };
+
+    // =============================================================================================
+    // PHARMACOKINETIC ENVELOPE (Wave 2)
+    // ---------------------------------------------------------------------------------------------
+    // Every drug effect used to be an instantaneous clamped jump written straight into `vitals`, so
+    // nothing ever ramped, nothing ever wore off, repeat dosing was uncapped (3x atropine = HR +60),
+    // and any running trend erased the effect on the next 1 Hz tick because the trend interpolator
+    // rewrites ABSOLUTE values from a frozen `startVitals` snapshot.
+    //
+    // The fix is architectural: drug effects are never written into the physiology. They are held in
+    // `activeDrugs[]` and evaluated every tick as an ADDITIVE OFFSET on top of whatever the
+    // physiology produced:
+    //
+    //     displayed = clamp(baseVitals + SUM(drugOffset(t)))
+    //
+    // so trends, deterioration, the airway/apnoea model and manual adjustments all operate on the
+    // BASE and can never overwrite a drug, and wear-off is free: when an entry's envelope returns to
+    // zero the patient drifts back onto the underlying trajectory.
+    //
+    // FINAL COMPOSITION / PRECEDENCE ORDER (see vitalsReducer TICK_TIME, which implements it):
+    //   1. MANUAL facilitator writes (MANUAL_VITAL_UPDATE / UPDATE_VITALS / arrest / ROSC / rhythm)
+    //      set the BASE directly and win immediately — the facilitator is never overruled.
+    //   2. TRENDS interpolate the BASE from a base-space snapshot towards base-space targets.
+    //   3. AUTONOMOUS DETERIORATION integrates per-second deltas into the BASE (AUTO mode only,
+    //      skipped for any vital a trend currently owns, skipped in arrest).
+    //   4. AIRWAY / PARALYSIS / HYPOXIA / ETCO2 model adjusts the BASE (it owns RR while paralysed
+    //      and owns SpO2 while apnoeic, so it deliberately runs after 2 and 3).
+    //   5. DRUG PK ENVELOPE is summed and ADDED to the base — never written into it.
+    //   6. CLAMP to physiological limits, derive diastolic coherence, round -> `vitals`.
+    //   Arrest overrides 5 for hr/bpSys/bpDia/rr/spO2: a pulseless patient has no perfusion to
+    //   measure, matching the Wave 1 arrest guard in applyIntervention.
+    // =============================================================================================
+
+    // effect field -> [vital, scale]. BP moves the diastolic 0.6x with the systolic so the pair can
+    // never become incoherent (dia > sys) after an offset is applied.
+    const EFFECT_TARGETS = {
+        HR: [['hr', 1]], BP: [['bpSys', 1], ['bpDia', 0.6]], RR: [['rr', 1]], SpO2: [['spO2', 1]],
+        gcs: [['gcs', 1]], BM: [['bm', 1]], Temp: [['temp', 1]], pH: [['ph', 1]]
+    };
+    const PK_EFFECT_FIELDS = Object.keys(EFFECT_TARGETS);
+
+    const VITAL_LIMITS = {
+        hr: [0, 250], bpSys: [0, 300], bpDia: [0, 200], spO2: [0, 100], rr: [0, 60],
+        gcs: [3, 15], temp: [22, 43], bm: [0.5, 45], ph: [6.6, 7.9], etco2: [0, 15]
+    };
+    const clampVital = (key, v) => {
+        const lim = VITAL_LIMITS[key];
+        if (!lim) return v;
+        return Math.min(lim[1], Math.max(lim[0], v));
+    };
+    // Vitals a pulseless patient cannot express. Suppressed from the drug envelope during arrest.
+    const ARREST_SUPPRESSED = ['hr', 'bpSys', 'bpDia', 'rr', 'spO2'];
+    const PULSELESS_RHYTHMS = ['VF', 'VT', 'pVT', 'PEA', 'Asystole'];
+
+    const PK_DEFAULT_MAX_DOSES = 3;
+    const PK_PLATEAU_FRACTION = 0.35;   // share of the peak->offset window spent at full effect
+
+    // Build the stored activeDrugs entry for an intervention. Primitives only, so the entry passes
+    // sanitizeForRealtimeDatabase unchanged and survives JSON persistence.
+    const buildDrugEntry = (key, action, startTime, dose = 1) => {
+        if (!action || !action.pk) return null;
+        const pk = action.pk;
+        const effect = {};
+        PK_EFFECT_FIELDS.forEach(f => {
+            const v = action.effect ? action.effect[f] : undefined;
+            if (typeof v === 'number' && Number.isFinite(v) && v !== 0) effect[f] = v;
+        });
+        const paralytic = !!(action.effect && action.effect.paralysed);
+        // An entry with no numeric effect and no paralysis role would contribute nothing.
+        if (Object.keys(effect).length === 0 && !paralytic) return null;
+        const onset = Math.max(0, Number(pk.onset) || 0);
+        const peak = Math.max(onset, Number(pk.peak) || onset);
+        const offset = Math.max(0, Number(pk.offset) || 0);
+        const plateau = (pk.plateau === undefined || pk.plateau === null) ? null : Math.max(peak, Number(pk.plateau) || peak);
+        return {
+            key, label: action.label || key, startTime, dose,
+            onset, peak, offset,
+            plateau: plateau === null ? -1 : plateau,       // -1 == derive the default plateau
+            // A continuous intervention (infusion, ventilator, warming blanket) holds at peak while it
+            // is running; `offset` then means the decay tail AFTER it is stopped.
+            sustained: action.type === 'continuous',
+            stopTime: -1,                                   // -1 == still running
+            maxDoses: Math.max(1, Number(pk.maxDoses) || PK_DEFAULT_MAX_DOSES),
+            paralytic,
+            // Paralysis window: onset -> paralysisEnd. Folded into this single entry so there is no
+            // parallel timer (Wave 1 left a bespoke one with a note asking for exactly this).
+            paralysisEnd: paralytic ? (action.paralysis && action.paralysis.duration
+                ? onset + Math.max(1, Number(action.paralysis.duration))
+                : (offset || onset + 2700)) : -1,
+            reversed: false, effect
+        };
+    };
+
+    // 0 before onset -> linear ramp to 1 at peak -> plateau -> linear decay to 0 at offset.
+    const pkFactor = (d, t) => {
+        if (!d) return 0;
+        const el = t - d.startTime;
+        if (!Number.isFinite(el) || el <= d.onset) return 0;
+        if (el < d.peak) return (el - d.onset) / Math.max(1, d.peak - d.onset);
+        if (d.sustained) {
+            if (d.stopTime === undefined || d.stopTime === null || d.stopTime < 0) return 1;  // still running
+            const tail = d.offset > 0 ? d.offset : 120;
+            const since = t - d.stopTime;
+            if (since <= 0) return 1;
+            if (since >= tail) return 0;
+            return 1 - (since / tail);
+        }
+        if (!d.offset || d.offset <= d.peak) return 1;   // no modelled wear-off
+        const plateauEnd = (d.plateau !== undefined && d.plateau >= 0)
+            ? d.plateau
+            : d.peak + PK_PLATEAU_FRACTION * (d.offset - d.peak);
+        if (el <= plateauEnd) return 1;
+        if (el >= d.offset) return 0;
+        return 1 - ((el - plateauEnd) / Math.max(1, d.offset - plateauEnd));
+    };
+
+    // Human-readable phase for the facilitator's Active Drugs panel (A5).
+    const pkPhase = (d, t) => {
+        const el = t - d.startTime;
+        if (el < d.onset) return 'onset';
+        if (el < d.peak) return 'rising';
+        if (d.sustained) return (d.stopTime !== undefined && d.stopTime !== null && d.stopTime >= 0) ? 'wearing off' : 'running';
+        if (!d.offset || d.offset <= d.peak) return 'peak';
+        const plateauEnd = (d.plateau !== undefined && d.plateau >= 0) ? d.plateau : d.peak + PK_PLATEAU_FRACTION * (d.offset - d.peak);
+        if (el <= plateauEnd) return 'peak';
+        if (el < d.offset) return 'wearing off';
+        return 'gone';
+    };
+    // Seconds until the entry contributes nothing. null == indefinite (running infusion / no offset).
+    const pkRemaining = (d, t) => {
+        if (d.sustained) {
+            if (d.stopTime === undefined || d.stopTime === null || d.stopTime < 0) return null;
+            return Math.max(0, (d.stopTime + (d.offset > 0 ? d.offset : 120)) - t);
+        }
+        if (!d.offset || d.offset <= d.peak) return null;
+        return Math.max(0, (d.startTime + d.offset) - t);
+    };
+    const isDrugSpent = (d, t) => {
+        if (d.sustained) return (d.stopTime !== undefined && d.stopTime !== null && d.stopTime >= 0) && pkFactor(d, t) <= 0;
+        if (!d.offset || d.offset <= d.peak) return false;
+        return t >= d.startTime + d.offset;
+    };
+
+    // Sum every active drug's contribution per vital, with a PER-DRUG CEILING so repeat dosing is
+    // additive but not unbounded: two doses of atropine give +40, ten doses still give +40.
+    const drugOffsets = (activeDrugs, t) => {
+        const perKey = {};
+        (activeDrugs || []).forEach(d => {
+            const f = pkFactor(d, t);
+            if (!(f > 0)) return;
+            const bucket = perKey[d.key] || (perKey[d.key] = { f: 0, effect: d.effect || {}, maxDoses: d.maxDoses || PK_DEFAULT_MAX_DOSES });
+            bucket.f += f * (Number(d.dose) || 1);
+        });
+        const out = {};
+        Object.keys(perKey).forEach(k => {
+            const b = perKey[k];
+            const f = Math.min(b.f, b.maxDoses);
+            Object.keys(b.effect).forEach(field => {
+                const targets = EFFECT_TARGETS[field];
+                if (!targets) return;
+                const amt = Number(b.effect[field]);
+                if (!Number.isFinite(amt)) return;
+                targets.forEach(([vital, scale]) => { out[vital] = (out[vital] || 0) + amt * f * scale; });
+            });
+        });
+        return out;
+    };
+
+    // Step 5 + 6 of the precedence order: base + envelope -> clamp -> coherence -> round.
+    const composeVitals = (base, activeDrugs, t, inArrest) => {
+        const offs = drugOffsets(activeDrugs, t);
+        const out = {};
+        Object.keys(base).forEach(k => {
+            const bv = base[k];
+            if (typeof bv !== 'number' || !Number.isFinite(bv)) { out[k] = bv; return; }
+            let off = offs[k] || 0;
+            if (inArrest && ARREST_SUPPRESSED.indexOf(k) !== -1) off = 0;
+            out[k] = formatVital(k, clampVital(k, bv + off));
+        });
+        if (Number.isFinite(out.bpSys) && Number.isFinite(out.bpDia)) {
+            if (out.bpSys <= 0) out.bpDia = 0;
+            else if (out.bpDia > out.bpSys - 5) out.bpDia = Math.max(0, Math.round(out.bpSys * 0.62));
+        }
+        return out;
+    };
+
+    // Paralysis, derived from the SAME activeDrugs entries (one timer, not two).
+    const paralysisFromDrugs = (activeDrugs, t) => {
+        let best = null;
+        (activeDrugs || []).forEach(d => {
+            if (!d.paralytic || d.reversed) return;
+            const end = d.paralysisEnd > 0 ? d.startTime + d.paralysisEnd : Infinity;
+            if (t >= d.startTime + d.onset && t < end) {
+                if (!best || end > best.end) best = { agent: d.key, startTime: d.startTime, onset: d.onset, end, duration: end - (d.startTime + d.onset) };
+            }
+        });
+        return best;
+    };
+
+    // =============================================================================================
+    // AUTONOMOUS DETERIORATION (Wave 2, Group C)
+    // ---------------------------------------------------------------------------------------------
+    // 198 of 254 scenarios declare `deterioration.active` + `rate`, but only `type === 'neuro'` was
+    // ever consumed and `rate` was read NOWHERE, so every patient was physiologically static.
+    //
+    // Deltas below are per-second, per unit `rate` (scenario rates run 0.01 - 0.2). They are
+    // INTEGRATED into baseVitals, which is the whole reason the AUTO/MANUAL toggle cannot produce a
+    // discontinuity: toggling only gates the integration, it never recomputes a value from the
+    // scenario's original starting vitals. Stop integrating and the obs simply stay where they are;
+    // start again and they continue from there.
+    // =============================================================================================
+    const normaliseDeteriorationType = (t) => {
+        const s = String(t || '').toLowerCase();
+        if (!s) return null;
+        if (s.indexOf('resp') === 0) return 'resp';
+        if (s.indexOf('shock') === 0 || s.indexOf('sepsis') === 0 || s.indexOf('haemorrh') === 0) return 'shock';
+        if (s.indexOf('neuro') === 0) return 'neuro';
+        if (s.indexOf('airway') === 0) return 'airway';
+        if (s.indexOf('cardiac') === 0 || s.indexOf('cardio') === 0) return 'cardiac';
+        if (s.indexOf('arrest') === 0) return 'arrest';
+        return null;
+    };
+
+    // Interventions that address each pathology. Any of them slows the decline; enough of them
+    // reverses it (C4). Matching is permissive — a bolus given once counts, same as Wave 1's
+    // expectation test, so the facilitator is credited for treatment either way.
+    const DETERIORATION_TREATMENTS = {
+        shock: ['Fluids', 'FluidInfusion', 'Blood', 'Noradrenaline', 'Metaraminol', 'AdrenalineIM', 'TXA', 'Antibiotics', 'Ceftriaxone', 'Tazocin', 'Gentamicin', 'PelvicBinder', 'Tourniquet', 'REBOA', 'Thoracotomy', 'Pericardiocentesis', 'Hydrocortisone', 'Terlipressin', 'Octaplex', 'Albumin', 'Surgery', 'CalciumChloride'],
+        resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis'],
+        airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen', 'Chlorphenamine'],
+        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV'],
+        neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery'],
+        arrest: ['CPR', 'Lucas', 'AdrenalineIV', 'Defib', 'Amiodarone']
+    };
+
+    // 1 = full decline, 0 = halted, negative = actively recovering.
+    const deteriorationTreatmentFactor = (type, cs) => {
+        const list = DETERIORATION_TREATMENTS[type] || [];
+        let n = 0;
+        list.forEach(k => { if (isExpectationMet(k, cs)) n++; });
+        const stabilisers = (cs && cs.scenario && cs.scenario.stabilisers) || [];
+        // A declared stabiliser is the definitive treatment: decline reverses.
+        if (stabilisers.length && stabilisers.some(k => isExpectationMet(k, cs))) return -0.6;
+        return Math.max(-0.6, 1 - 0.45 * n);
+    };
+
+    // Bands the patient is allowed to recover INTO when the treatment factor is negative, so
+    // successful treatment normalises rather than overshooting into hypertension/hyperoxia.
+    const RECOVERY_BAND = { hr: [58, 110], bpSys: [95, 135], spO2: [92, 98], rr: [12, 22], gcs: [3, 15], etco2: [4.0, 6.0], temp: [36.0, 37.5] };
+    // Floors/ceilings autonomous deterioration alone may reach. Going all the way to zero is the
+    // facilitator's call (ARREST), not a slow drift's.
+    const DETERIORATION_BOUND = { hr: [25, 220], bpSys: [35, 240], spO2: [40, 100], rr: [4, 55], gcs: [3, 15], etco2: [1.5, 10], bm: [1.0, 40], temp: [30, 42] };
+
+    const deteriorationDeltas = (type, base) => {
+        const d = {};
+        const add = (k, v) => { d[k] = (d[k] || 0) + v; };
+        switch (type) {
+            case 'shock':
+                add('bpSys', -1.0);
+                if (base.bpSys > 70) { add('hr', 0.9); }                    // compensatory tachycardia
+                else { add('hr', -1.2); add('spO2', -0.35); add('gcs', -0.03); }  // decompensation
+                add('spO2', -0.1);
+                add('etco2', -0.004);
+                break;
+            case 'resp':
+                add('spO2', -0.45);
+                if (base.rr < 38) { add('rr', 0.9); } else { add('rr', -1.2); add('spO2', -1.0); }  // tiring
+                add('etco2', 0.01);
+                if (base.spO2 < 80) { add('hr', 0.6); add('gcs', -0.02); }
+                break;
+            case 'airway':
+                add('spO2', -0.8); add('etco2', 0.015);
+                if (base.spO2 > 85) add('rr', 0.7); else add('rr', -1.0);
+                if (base.spO2 < 80) { add('hr', 0.5); add('gcs', -0.04); }
+                break;
+            case 'cardiac':
+                add('bpSys', -0.6); add('spO2', -0.15);
+                if (base.hr >= 100) add('hr', 0.7); else if (base.hr <= 60) add('hr', -0.5); else add('hr', 0.3);
+                break;
+            case 'neuro':
+                // Cushing response: falling GCS, rising pressure, falling rate, irregular breathing.
+                add('gcs', -0.05); add('bpSys', 0.35); add('hr', -0.2); add('rr', -0.1);
+                break;
+            case 'arrest':
+                add('bpSys', -1.6); add('hr', -1.0); add('spO2', -0.8); add('gcs', -0.08);
+                break;
+            default: return null;
+        }
+        // Diastolic follows the systolic so the pair stays coherent through a long decline.
+        if (d.bpSys) add('bpDia', d.bpSys * 0.6);
+        return d;
+    };
+
+    // Integrate one second of deterioration into `base` IN PLACE. Returns true if anything moved.
+    const applyDeteriorationTick = (base, type, rate, factor, ownedByTrend) => {
+        const deltas = deteriorationDeltas(type, base);
+        if (!deltas) return false;
+        let moved = false;
+        const recovering = factor < 0;
+        Object.keys(deltas).forEach(k => {
+            if (ownedByTrend && ownedByTrend[k]) return;      // a running trend owns this vital
+            if (typeof base[k] !== 'number' || !Number.isFinite(base[k])) return;
+            const step = deltas[k] * rate * factor;
+            if (!Number.isFinite(step) || step === 0) return;
+            let next = base[k] + step;
+            const bound = DETERIORATION_BOUND[k];
+            if (bound) next = Math.min(bound[1], Math.max(bound[0], next));
+            if (recovering) {
+                const band = RECOVERY_BAND[k];
+                if (band) {
+                    // Do not push a vital past normal while recovering, and never move it the wrong
+                    // way if it is already inside the band.
+                    if (base[k] < band[0]) next = Math.min(next, band[0]);
+                    else if (base[k] > band[1]) next = Math.max(next, band[1]);
+                    else next = base[k];
+                }
+            }
+            next = clampVital(k, next);
+            if (next !== base[k]) { base[k] = next; moved = true; }
+        });
+        return moved;
+    };
+
+    window.__pkInternals = { pkFactor, pkPhase, pkRemaining, drugOffsets, composeVitals, buildDrugEntry, paralysisFromDrugs, deteriorationDeltas, applyDeteriorationTick, deteriorationTreatmentFactor, normaliseDeteriorationType, formatVital, clampVital, DEFAULT_VITALS, EFFECT_TARGETS, VITAL_LIMITS, isDrugSpent };
 
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
@@ -141,33 +482,66 @@
             case 'LOAD_SCENARIO': 
                 if(!action.payload) return { ...initialVitalsState };
                 const initialVitals = { ...initialVitalsState.vitals, ...action.payload.vitals };
-                return { ...initialVitalsState, vitals: initialVitals, prevVitals: { ...initialVitals } };
+                return { ...initialVitalsState, vitals: initialVitals, baseVitals: { ...initialVitals }, prevVitals: { ...initialVitals } };
             case 'RESTORE_SESSION': {
                 const restoredVitals = { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) };
-                return { ...state, vitals: restoredVitals, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0 };
+                return { ...state, vitals: restoredVitals, baseVitals: { ...restoredVitals, ...(action.payload.baseVitals || {}) }, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0 };
             }
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, trends: action.payload.trends || state.trends };
-            case 'UPDATE_VITALS': return { ...state, vitals: action.payload };
+            // The monitor does not run physiology; the authoritative composed vitals arrive over the
+            // wire, so base == displayed there.
+            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, baseVitals: { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) }, trends: action.payload.trends || state.trends };
+            // UPDATE_VITALS writes the BASE (precedence step 1). Displayed vitals are recomposed with
+            // the drug envelope so a facilitator/arrest/ROSC write can never silently delete an
+            // in-flight drug effect, and a drug effect can never fight an explicit write.
+            case 'UPDATE_VITALS': {
+                const base = { ...state.baseVitals, ...action.payload };
+                const t = cs ? cs.time : 0;
+                const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
+                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? cs.activeDrugs : [], t, inArrest) };
+            }
             case 'MANUAL_VITAL_UPDATE': {
                 // Boundary guard: a NaN here propagates into the Firebase payload, which RTDB rejects,
                 // and the rejected diff is then retried forever — freezing the student monitor.
                 const { key, value } = action.payload;
                 if (!isVitalValueSafe(key, value)) return state;
-                return { ...state, vitals: { ...state.vitals, [key]: value }, prevVitals: { ...state.vitals } };
+                const t = cs ? cs.time : 0;
+                const drugs = cs ? cs.activeDrugs : [];
+                const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
+                // The facilitator types the number they want to SEE. Store it in base space by
+                // removing whatever the drugs are currently contributing, so the displayed value is
+                // exactly what was asked for and any later wear-off still unwinds correctly.
+                let baseValue = value;
+                if (typeof value === 'number') {
+                    const offs = drugOffsets(drugs, t);
+                    const off = (inArrest && ARREST_SUPPRESSED.indexOf(key) !== -1) ? 0 : (offs[key] || 0);
+                    baseValue = clampVital(key, value - off);
+                }
+                const base = { ...state.baseVitals, [key]: baseValue };
+                return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals } };
             }
             case 'START_TREND': {
                 const safeTargets = {};
+                const t0 = cs ? cs.time : 0;
+                const offs = drugOffsets(cs ? cs.activeDrugs : [], t0);
                 Object.keys(action.payload.targets || {}).forEach(k => {
-                    if (isVitalValueSafe(k, action.payload.targets[k])) safeTargets[k] = action.payload.targets[k];
+                    if (!isVitalValueSafe(k, action.payload.targets[k])) return;
+                    const raw = action.payload.targets[k];
+                    // Targets are given in DISPLAYED space ("take the BP to 90"); convert to base space
+                    // by removing the drug contribution present at the moment the trend starts, so the
+                    // trend and the envelope add up to the number the facilitator asked for.
+                    safeTargets[k] = (typeof raw === 'number' && offs[k]) ? clampVital(k, raw - offs[k]) : raw;
                 });
                 if (Object.keys(safeTargets).length === 0) return state;
-                return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.vitals } } };
+                return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.baseVitals } } };
             }
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
             case 'TRIGGER_IMPROVE':
             case 'TRIGGER_DETERIORATE': return { ...state, trends: action.payload.trends };
-            case 'TICK_TIME':
-                let currentVitals = { ...state.vitals };
+            case 'TICK_TIME': {
+                // ===== THE COMPOSITION PIPELINE (precedence order documented at the top of this file).
+                // Everything from here to step 5 operates on `base` (unrounded underlying physiology).
+                // The drug envelope is added at the very end and is never written into `base`.
+                let base = { ...state.baseVitals };
                 let vitalsChanged = false;
                 let newTrends = { ...state.trends };
                 let currentHypoxiaTimer = state.hypoxiaTimer;
@@ -180,39 +554,69 @@
                 const inArrest = ['VF', 'VT', 'pVT', 'PEA', 'Asystole'].includes(rhythm);
                 const isBagging = isVentilated(activeInt);
                 const time0 = cs ? cs.time : 0;
+                // coreReducer increments `time` in the same dispatch, so the authoritative clock for
+                // this tick is time0 + 1. Every pk/deterioration calculation uses tNow.
+                const tNow = time0 + 1;
+                const activeDrugs = cs ? (cs.activeDrugs || []) : [];
 
-                // TRENDS FIRST. A trend interpolates from a snapshot towards a target, so if it runs
-                // after the airway/hypoxia model it simply overwrites it and a paralysed, unventilated
-                // patient never desaturates. Applying trends first lets the physiology below take
-                // precedence. (WAVE 2: the same ordering problem still erases drug effects between
-                // ticks; that needs the full pk/effect envelope, not a reorder.)
+                // ----- STEP 2: TRENDS. A trend interpolates the BASE from a base-space snapshot
+                // towards base-space targets. Because it no longer touches the displayed vitals, the
+                // Wave 1 defect where a trend erased a drug effect within one second is structurally
+                // impossible: the drug lives in a separate additive layer.
+                const trendOwned = {};
                 if (newTrends.active) {
                     newTrends.elapsed += 1;
                     const progress = Math.min(1, newTrends.elapsed / newTrends.duration);
                     Object.keys(newTrends.targets).forEach(key => {
                         const startVal = newTrends.startVitals[key];
                         const targetVal = newTrends.targets[key];
-                        if (startVal !== undefined && targetVal !== undefined) { currentVitals[key] = formatVital(key, startVal + ((targetVal - startVal) * progress)); }
+                        if (startVal !== undefined && targetVal !== undefined && typeof startVal === 'number' && typeof targetVal === 'number') {
+                            base[key] = startVal + ((targetVal - startVal) * progress);
+                            trendOwned[key] = true;
+                        } else if (startVal !== undefined && targetVal !== undefined) {
+                            base[key] = targetVal;   // non-numeric (pupils): snap, never interpolate
+                            trendOwned[key] = true;
+                        }
                     });
                     if (newTrends.elapsed >= newTrends.duration) {
-                        Object.keys(newTrends.targets).forEach(key => currentVitals[key] = formatVital(key, newTrends.targets[key]));
+                        Object.keys(newTrends.targets).forEach(key => { base[key] = newTrends.targets[key]; });
                         newTrends.active = false;
                     }
                     vitalsChanged = true;
                 }
 
-                // PARALYSIS, made real. `isParalysed` previously had zero consumers, so paralysis was
-                // cosmetic and permanent. Now, once the blocker's onset time has passed, respiration
-                // is the ventilator's rate if the patient is being ventilated and ZERO if not — which
-                // then feeds the hypoxia model below, so paralysing an unbagged patient desaturates.
-                const paraPhase = paralysisPhase(cs ? cs.paralysis : null, time0);
-                if (!inArrest && paraPhase === 'active') {
-                    const targetRr = isBagging ? VENTILATOR_RATE : 0;
-                    if (currentVitals.rr !== targetRr) { currentVitals.rr = targetRr; vitalsChanged = true; }
+                // ----- STEP 3: AUTONOMOUS DETERIORATION (Group C).
+                // Gated on deteriorationMode === 'auto'. Integrating into `base` is what guarantees C3:
+                // switching modes only starts/stops the integration, so there is no discontinuity in
+                // either direction — the current obs ARE the baseline.
+                const detMode = cs ? (cs.deteriorationMode || 'manual') : 'manual';
+                const det = scen && scen.deterioration ? scen.deterioration : null;
+                const detType = det ? normaliseDeteriorationType(det.type) : null;
+                const detRate = det ? Number(det.rate) : 0;
+                if (isRunning && detMode === 'auto' && det && det.active !== false && detType && Number.isFinite(detRate) && detRate > 0 && !inArrest) {
+                    const factor = deteriorationTreatmentFactor(detType, cs);
+                    if (factor !== 0 && applyDeteriorationTick(base, detType, detRate, factor, trendOwned)) vitalsChanged = true;
                 }
 
-                // Hypoxia: SpO2 falls if hypoventilating or apnoeic without ventilatory support
-                if (!inArrest && currentVitals.spO2 > 0 && (currentVitals.rr < 8 || currentVitals.rr <= 0) && !isBagging) {
+                // ----- STEP 4: AIRWAY / PARALYSIS / HYPOXIA / ETCO2.
+                // PARALYSIS is now derived from the SAME activeDrugs entry as the drug's numeric
+                // envelope (Wave 1 left a bespoke parallel timer with a note asking for this). Once the
+                // blocker's onset has passed, respiration is the ventilator rate if the patient is
+                // being ventilated and ZERO if not, which feeds the hypoxia model below.
+                const paraFromDrugs = paralysisFromDrugs(activeDrugs, tNow);
+                const paraPhase = paraFromDrugs ? 'active' : paralysisPhase(cs ? cs.paralysis : null, tNow);
+                if (!inArrest && paraPhase === 'active') {
+                    const targetRr = isBagging ? VENTILATOR_RATE : 0;
+                    if (base.rr !== targetRr) { base.rr = targetRr; vitalsChanged = true; }
+                }
+
+                // Hypoxia: SpO2 falls if hypoventilating or apnoeic without ventilatory support.
+                // NOTE this reads the DISPLAYED spO2/rr of the previous tick (state.vitals), because a
+                // drug that is currently supporting respiration or oxygenation genuinely should stop
+                // the patient desaturating — the model must see what the monitor sees.
+                const seenSpO2 = Number.isFinite(state.vitals.spO2) ? state.vitals.spO2 : base.spO2;
+                const seenRr = (!inArrest && paraPhase === 'active') ? base.rr : (Number.isFinite(state.vitals.rr) ? state.vitals.rr : base.rr);
+                if (!inArrest && seenSpO2 > 0 && (seenRr < 8 || seenRr <= 0) && !isBagging) {
                     currentHypoxiaTimer++;
                     // Pre-oxygenation buys a longer safe apnoea time; apnoeic (nasal) oxygenation
                     // halves the rate of desaturation once it starts.
@@ -221,41 +625,55 @@
                     const graceSeconds = preoxygenated ? 40 : 10;
                     if (currentHypoxiaTimer > graceSeconds) {
                         // Steeper drop below 88 (Severinghaus curve)
-                        let dropRate = currentVitals.spO2 < 88 ? 1.5 : 0.5;
+                        let dropRate = seenSpO2 < 88 ? 1.5 : 0.5;
                         if (apnoeicO2) dropRate = dropRate / 2;
-                        currentVitals.spO2 = Math.max(20, formatVital('spO2', currentVitals.spO2 - dropRate));
+                        base.spO2 = Math.max(20, base.spO2 - dropRate);
                         vitalsChanged = true;
                     }
                 } else {
                     currentHypoxiaTimer = 0;
-                    // Recovery. SpO2 is stored as an integer, so the old +0.2/s was rounded straight
-                    // back to the same value and a rescued airway never re-oxygenated: after a failed
-                    // intubation you could bag the patient and watch them sit at 45% forever. Step a
-                    // whole point every 3 s instead (~20 points/min), and count any positive-pressure
-                    // or high-flow source, not just the 'Oxygen' key.
+                    // Recovery. Wave 1 had to step a whole point every 3 s because SpO2 was stored as
+                    // an integer and +0.2/s rounded straight back. `base` is now unrounded, so a smooth
+                    // +0.35/s is both correct and visible. Count any positive-pressure or high-flow
+                    // source, not just the 'Oxygen' key.
                     const oxygenSource = activeInt.has('Oxygen') || activeInt.has('Preoxygenation') || activeInt.has('ApnoeicOxygenation') || isBagging;
-                    if (oxygenSource && currentVitals.spO2 < 98 && time0 % 3 === 0) { currentVitals.spO2 = Math.min(98, formatVital('spO2', currentVitals.spO2 + 1)); vitalsChanged = true; }
+                    if (oxygenSource && base.spO2 < 98) { base.spO2 = Math.min(98, base.spO2 + 0.35); vitalsChanged = true; }
                 }
 
-                if (scen && scen.deterioration && scen.deterioration.type === 'neuro' && isRunning) {
-                    if (icp > 25) { currentVitals.bpSys = Math.min(220, formatVital('bpSys', currentVitals.bpSys + 0.2)); currentVitals.hr = Math.max(30, formatVital('hr', currentVitals.hr - 0.1)); vitalsChanged = true; }
+                if (scen && scen.deterioration && normaliseDeteriorationType(scen.deterioration.type) === 'neuro' && isRunning) {
+                    if (icp > 25) { base.bpSys = Math.min(220, base.bpSys + 0.2); base.bpDia = Math.min(180, base.bpDia + 0.12); base.hr = Math.max(30, base.hr - 0.1); vitalsChanged = true; }
                 }
 
                 // ETCO2 dynamics — non-arrest hyperventilation/hypoventilation
                 if (!inArrest) {
-                    if (currentVitals.rr > 30) { currentVitals.etco2 = Math.max(2.5, formatVital('etco2', currentVitals.etco2 - 0.01)); vitalsChanged = true; }
-                    if (currentVitals.rr < 10 && currentVitals.rr > 0) { currentVitals.etco2 = Math.min(8.0, formatVital('etco2', currentVitals.etco2 + 0.01)); vitalsChanged = true; }
+                    if (base.rr > 30) { base.etco2 = Math.max(2.5, base.etco2 - 0.01); vitalsChanged = true; }
+                    if (base.rr < 10 && base.rr > 0) { base.etco2 = Math.min(8.0, base.etco2 + 0.01); vitalsChanged = true; }
                 } else {
                     // Arrest ETCO2 — responds to CPR quality and bagging (key clinical marker)
                     let targetEtco2 = 0.8; // poor/no perfusion baseline
                     if (cprActive) targetEtco2 += 1.2;
                     if (isBagging) targetEtco2 += 1.0;
                     if (cprActive && isBagging) targetEtco2 += 0.5; // synergy
-                    const delta = targetEtco2 - currentVitals.etco2;
-                    if (Math.abs(delta) > 0.05) {
-                        currentVitals.etco2 = formatVital('etco2', currentVitals.etco2 + delta * 0.15);
+                    const delta = targetEtco2 - base.etco2;
+                    if (Math.abs(delta) > 0.02) {
+                        base.etco2 = base.etco2 + delta * 0.15;
                         vitalsChanged = true;
                     }
+                }
+
+                // ----- STEPS 5 + 6: add the drug envelope, clamp, round. Recomposed EVERY tick from
+                // `base` so offsets can never accumulate rounding error, and so a drug wearing off
+                // unwinds exactly back onto the underlying trajectory.
+                Object.keys(base).forEach(k => {
+                    if (typeof base[k] === 'number') {
+                        if (!Number.isFinite(base[k])) base[k] = state.baseVitals[k];
+                        else base[k] = clampVital(k, base[k]);
+                    }
+                });
+                const composed = composeVitals(base, activeDrugs, tNow, inArrest);
+                // A live drug envelope changes the numbers even on a tick where nothing else moved.
+                if (!vitalsChanged) {
+                    for (const k in composed) { if (composed[k] !== state.vitals[k]) { vitalsChanged = true; break; } }
                 }
 
                 // Snapshot prevVitals every 15 seconds so trend arrows reflect recent direction.
@@ -265,7 +683,8 @@
                     nextPrev = { ...state.vitals };
                 }
 
-                return { ...state, vitals: vitalsChanged ? currentVitals : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer };
+                return { ...state, baseVitals: base, vitals: vitalsChanged ? composed : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer };
+            }
             default: return state;
         }
     };
@@ -292,7 +711,9 @@
                 const time = cs ? cs.time : 0;
                 const vitals = cs ? cs.vitals : {};
                 if (time % 5 === 0) {
-                    return { ...state, history: [...state.history, { time: time, hr: vitals.hr, bp: vitals.bpSys, spo2: vitals.spO2, rr: vitals.rr }] };
+                    // B2: temp / bm / ph are modelled vitals now, so they belong in the debrief trace
+                    // too (the graph plots HR/BP/SpO2; the replay scrubber reads the rest).
+                    return { ...state, history: [...state.history, { time: time, hr: vitals.hr, bp: vitals.bpSys, spo2: vitals.spO2, rr: vitals.rr, temp: vitals.temp, bm: vitals.bm, ph: vitals.ph, gcs: vitals.gcs }] };
                 }
                 return state;
             default: return state;
@@ -329,7 +750,12 @@
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
-                return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus, showWetflag: action.payload.showWetflag !== false };
+                // C5: default to AUTO for any scenario that declares deterioration, MANUAL otherwise.
+                // The mode is logged at scenario start and on every change so a facilitator who never
+                // touches the toggle is never surprised by moving numbers.
+                const det0 = action.payload.deterioration || null;
+                const detMode0 = (det0 && det0.active && normaliseDeteriorationType(det0.type) && Number(det0.rate) > 0) ? 'auto' : 'manual';
+                return { ...initialCoreState, rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus, showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0 };
             case 'RESTORE_SESSION': {
                 // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
                 // `log` or `scenario` key carried in from the snapshot would shadow the live values
@@ -342,6 +768,8 @@
                     isParalysed: !!p.isParalysed, paralysis: p.paralysis || { active: !!p.isParalysed, agent: null, startTime: 0, onset: 0, duration: 0 },
                     showWetflag: p.showWetflag !== false,
                     icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
+                    activeDrugs: Array.isArray(p.activeDrugs) ? p.activeDrugs : [],
+                    deteriorationMode: p.deteriorationMode === 'auto' ? 'auto' : 'manual',
                     activeInterventions: new Set(p.activeInterventions || []),
                     processedEvents: new Set(p.processedEvents || []),
                     completedObjectives: new Set(p.completedObjectives || []),
@@ -376,16 +804,36 @@
                 let newMonitorTimer = { ...state.monitorTimer };
                 if (newMonitorTimer.active) { newMonitorTimer.time += 1; }
 
+                const tNext = state.time + 1;
+
+                // Retire spent drug entries so activeDrugs cannot grow without bound over a long
+                // session. A spent entry contributes exactly zero, so pruning is observationally free.
+                let nextDrugs = state.activeDrugs || [];
+                const kept = nextDrugs.filter(d => !isDrugSpent(d, tNext) && !(d.reversed && pkFactor(d, tNext) <= 0));
+                if (kept.length !== nextDrugs.length) nextDrugs = kept;
+
                 // Neuromuscular blockade wears off. Sux (~8 min) and roc (~45 min) therefore diverge,
-                // and the patient is no longer permanently paralysed after a single dose.
+                // and the patient is no longer permanently paralysed after a single dose. Derived from
+                // the activeDrugs entry — ONE timer, per the Wave 1 note.
+                const para = paralysisFromDrugs(nextDrugs, tNext);
                 let nextParalysis = state.paralysis;
                 let nextIsParalysed = state.isParalysed;
-                if (paralysisPhase(state.paralysis, state.time + 1) === 'expired') {
-                    nextParalysis = { active: false, agent: null, startTime: 0, onset: 0, duration: 0 };
-                    nextIsParalysed = false;
+                if (para) {
+                    if (!state.paralysis.active || state.paralysis.agent !== para.agent || state.paralysis.startTime !== para.startTime) {
+                        nextParalysis = { active: true, agent: para.agent, startTime: para.startTime, onset: para.onset, duration: para.duration };
+                    }
+                    nextIsParalysed = true;
+                } else if (state.paralysis.active || state.isParalysed) {
+                    // Either the blockade expired or there never was an activeDrugs entry (legacy
+                    // restored session). Keep honouring an explicit legacy timer until it expires.
+                    const legacy = !state.activeDrugs.some(d => d.paralytic) && paralysisPhase(state.paralysis, tNext) === 'active';
+                    if (!legacy) {
+                        nextParalysis = { active: false, agent: null, startTime: 0, onset: 0, duration: 0 };
+                        nextIsParalysed = false;
+                    }
                 }
 
-                return { ...state, time: state.time + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer, paralysis: nextParalysis, isParalysed: nextIsParalysed };
+                return { ...state, time: tNext, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer, activeDrugs: nextDrugs, paralysis: nextParalysis, isParalysed: nextIsParalysed };
             
             case 'TOGGLE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, visible: !state.monitorTimer.visible } };
             case 'START_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: true } };
@@ -416,12 +864,53 @@
                 isMuted: !!action.payload.isMuted,
                 activeLoops: action.payload.activeLoops || {},
                 isParalysed: !!action.payload.isParalysed,
+                activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
+                deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
                 rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
+            // --- PK envelope bookkeeping -------------------------------------------------------
+            case 'ADD_ACTIVE_DRUG': {
+                if (!action.payload) return state;
+                // Re-starting a continuous infusion that is still decaying: revive that entry rather
+                // than stacking a second one, so stopping and restarting a pressor is not a dose.
+                const existing = (state.activeDrugs || []).findIndex(d => d.key === action.payload.key && d.sustained && d.stopTime >= 0);
+                if (existing !== -1 && action.payload.sustained) {
+                    const revived = state.activeDrugs.slice();
+                    revived[existing] = { ...revived[existing], stopTime: -1 };
+                    return { ...state, activeDrugs: revived };
+                }
+                return { ...state, activeDrugs: [...(state.activeDrugs || []), action.payload] };
+            }
+            case 'STOP_ACTIVE_DRUG': {
+                // A continuous intervention was switched off: start its offset tail from now.
+                let changed = false;
+                const next = (state.activeDrugs || []).map(d => {
+                    if (d.key === action.payload && d.sustained && d.stopTime < 0) { changed = true; return { ...d, stopTime: state.time }; }
+                    return d;
+                });
+                return changed ? { ...state, activeDrugs: next } : state;
+            }
+            case 'REVERSE_PARALYSIS_DRUGS': {
+                let changed = false;
+                const next = (state.activeDrugs || []).map(d => {
+                    if (d.paralytic && !d.reversed) { changed = true; return { ...d, reversed: true, paralysisEnd: Math.max(1, state.time - d.startTime) }; }
+                    return d;
+                });
+                if (!changed) return state;
+                return { ...state, activeDrugs: next, isParalysed: false, paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 } };
+            }
+            case 'SET_DETERIORATION_MODE':
+                return { ...state, deteriorationMode: action.payload === 'auto' ? 'auto' : 'manual' };
             case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
-            case 'REMOVE_INTERVENTION': const removedActive = new Set(state.activeInterventions); removedActive.delete(action.payload); const removedDurations = { ...state.activeDurations }; delete removedDurations[action.payload]; return { ...state, activeInterventions: removedActive, activeDurations: removedDurations };
+            case 'REMOVE_INTERVENTION': {
+                const removedActive = new Set(state.activeInterventions); removedActive.delete(action.payload);
+                const removedDurations = { ...state.activeDurations }; delete removedDurations[action.payload];
+                // Stopping an infusion/device starts its offset tail rather than deleting the effect.
+                const stopped = (state.activeDrugs || []).map(d => (d.key === action.payload && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
+                return { ...state, activeInterventions: removedActive, activeDurations: removedDurations, activeDrugs: stopped };
+            }
             case 'DECREMENT_INTERVENTION': const decKey = action.payload; const decCounts = { ...state.interventionCounts }; if (decCounts[decKey] > 0) decCounts[decKey]--; return { ...state, interventionCounts: decCounts };
             case 'SET_PARALYSIS': {
                 // Accepts either a bare boolean (legacy) or { active, agent, onset, duration }.
@@ -457,6 +946,13 @@
             default: return state;
         }
     };
+
+    // Test hook. The reducers are the physiology, so the Node verification harness reduces the REAL
+    // ones rather than a reimplementation — that is the only way the composition and no-discontinuity
+    // guarantees are actually proven rather than asserted about a copy.
+    window.__pkInternals.reducers = { vitalsReducer, coreReducer, logReducer, scenarioReducer, initialVitalsState, initialCoreState, initialLogState, initialScenarioState };
+    // The Firebase payload contract is verified too, so the sanitiser has to be reachable.
+    window.__pkInternals.sanitizeForRealtimeDatabase = sanitizeForRealtimeDatabase;
 
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [vitalsState, dispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
@@ -496,7 +992,9 @@
                 const vits = stateRef.current.vitals;
                 if (scen && scen.evolution && scen.evolution.improved && scen.evolution.improved.vitals) { impTargets = { ...scen.evolution.improved.vitals }; } 
                 else { impTargets.hr = Math.max(60, vits.hr - 15); impTargets.bpSys = Math.min(120, vits.bpSys + 15); impTargets.spO2 = Math.min(99, vits.spO2 + 5); }
-                enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...vits } } } };
+                // Trends operate in BASE space (see the precedence comment): snapshot the base, not
+                // the displayed vitals, or the trend would swallow whatever the drugs are contributing.
+                enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                 if (scen?.vbg && window.calculateDynamicVbg) {
                     dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'improve') }, currentState: stateRef.current });
                 }
@@ -508,7 +1006,7 @@
                  const vits = stateRef.current.vitals;
                  if (scen && scen.evolution && scen.evolution.deteriorated && scen.evolution.deteriorated.vitals) { detTargets = { ...scen.evolution.deteriorated.vitals }; } 
                  else { detTargets.hr = Math.min(170, vits.hr + 20); detTargets.bpSys = Math.max(60, vits.bpSys - 20); detTargets.spO2 = Math.max(80, vits.spO2 - 10); }
-                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...vits } } } };
+                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                  if (scen?.vbg && window.calculateDynamicVbg) {
                      dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'deteriorate') }, currentState: stateRef.current });
                  }
@@ -522,7 +1020,8 @@
                 const PULSELESS = ['VF', 'pVT', 'Asystole', 'PEA'];
                 const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(newRhythm);
                 const cur = stateRef.current;
-                let rhythmVitals = { ...cur.vitals };
+                // Rhythm-driven vitals are a facilitator-level write: they target the BASE.
+                let rhythmVitals = { ...cur.baseVitals };
 
                 if (PULSELESS.includes(newRhythm)) {
                     // A shockable/pulseless rhythm showing a pre-arrest BP and SpO2 is clinically
@@ -713,7 +1212,12 @@
                     showWetflag: cur.showWetflag, co2Pathology,
                     // Top-level keys only — the write diff is shallow and per-key. Never undefined.
                     isRunning: !!cur.isRunning, isMuted: !!cur.isMuted,
-                    activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed
+                    activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed,
+                    // Wave 2. BM / Temp / pH ride inside `vitals` (verified by the sync payload test);
+                    // activeDrugs and deteriorationMode are top-level, primitives only, never undefined,
+                    // so sanitizeForRealtimeDatabase passes them through untouched.
+                    activeDrugs: Array.isArray(cur.activeDrugs) ? cur.activeDrugs : [],
+                    deteriorationMode: cur.deteriorationMode || 'manual'
                 };
                 const sanitised = sanitizeForRealtimeDatabase(payload);
                 const safePayload = sanitised.value || {};
@@ -764,7 +1268,8 @@
             state.arrestPanelOpen, state.isFinished, state.monitorPopup, state.waveformGain,
             state.noise, state.notification, state.remotePacerState, state.pacingThreshold,
             state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
-            state.isRunning, state.isMuted, state.activeLoops, state.isParalysed
+            state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
+            state.activeDrugs, state.deteriorationMode
         ]);
 
         useEffect(() => {
@@ -805,7 +1310,8 @@
                         // The whole scenario, not just an identifier: every screen dereferences fields
                         // like patientProfileTemplate, and a stub makes them throw on resume.
                         scenario: cur.scenario,
-                        vitals: cur.vitals, prevVitals: cur.prevVitals, trends: cur.trends, hypoxiaTimer: cur.hypoxiaTimer,
+                        vitals: cur.vitals, baseVitals: cur.baseVitals, prevVitals: cur.prevVitals, trends: cur.trends, hypoxiaTimer: cur.hypoxiaTimer,
+                        activeDrugs: cur.activeDrugs, deteriorationMode: cur.deteriorationMode,
                         rhythm: cur.rhythm, time: cur.time, cycleTimer: cur.cycleTimer,
                         activeInterventions: Array.from(cur.activeInterventions),
                         interventionCounts: cur.interventionCounts, activeDurations: cur.activeDurations,
@@ -1036,6 +1542,8 @@
                  // Deliberate toggle-off. The button shows an explicit ACTIVE state and a tooltip saying
                  // a second press stops it, so removal cannot be mistaken for a repeat dose.
                  dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
+                 // B3: stopping compressions clears the flag as well as starting the drug's offset tail.
+                 if (action.effect && action.effect.cpr === true && cur.cprInProgress) dispatch({ type: 'TOGGLE_CPR', payload: false });
                  addLogEntry(`${action.label} removed.`, 'action');
                  dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} STOPPED (second press toggles off)`, type: 'info', id: Date.now() } });
                  return;
@@ -1051,11 +1559,28 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${scenario.wetflag.glucose}ml) administered.`;
             }
-            const newVitals = { ...cur.vitals };
+            // Instant (no-pk) effects are applied to the BASE physiology, exactly as before. Anything
+            // carrying a `pk` envelope is instead pushed onto activeDrugs and composed every tick.
+            const newVitals = { ...cur.baseVitals };
             let newActive = new Set(cur.activeInterventions);
             let newCounts = { ...cur.interventionCounts };
             const count = (newCounts[key] || 0) + 1;
             if (action.duration && !cur.activeDurations[key]) dispatch({ type: 'START_INTERVENTION_TIMER', payload: { key, duration: action.duration } });
+
+            // --- PK ENVELOPE (A1) ------------------------------------------------------------------
+            // Push an entry instead of mutating vitals. Repeat dosing pushes another entry, which is
+            // naturally cumulative, but each drug's total contribution is capped at pk.maxDoses.
+            const drugEntry = buildDrugEntry(key, action, cur.time, 1);
+            if (drugEntry) {
+                dispatch({ type: 'ADD_ACTIVE_DRUG', payload: drugEntry });
+                const priorDoses = (cur.activeDrugs || []).filter(d => d.key === key && pkFactor(d, cur.time) > 0).length;
+                const atCeiling = priorDoses >= drugEntry.maxDoses;
+                if (atCeiling) {
+                    addLogEntry(`${action.label}: already at the modelled maximum effect (${drugEntry.maxDoses} dose${drugEntry.maxDoses > 1 ? 's' : ''}) — further doses add no further response.`, 'warning', true);
+                } else if (!drugEntry.sustained && drugEntry.onset > 15) {
+                    addLogEntry(`${action.label}: onset ~${drugEntry.onset}s, peak ~${Math.round(drugEntry.peak / 60 * 10) / 10} min${drugEntry.offset > drugEntry.peak ? `, wears off by ~${Math.round(drugEntry.offset / 60)} min` : ''}.`, 'info');
+                }
+            }
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
 
@@ -1094,19 +1619,34 @@
 
             if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             if (scenario.title && scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
-            // --- PARALYSIS (roc vs sux now genuinely differ) ---
-            // Timing lives in the intervention data (`paralysis: { onset, duration }`). WAVE 2 should
-            // fold this into the general `pk` envelope instead of this bespoke timer.
+            // --- PARALYSIS (roc vs sux genuinely differ) ---
+            // WAVE 2: folded into the pk envelope. The blockade window is derived from the SAME
+            // activeDrugs entry pushed above (onset = pk.onset, end = pk.offset or paralysis.duration),
+            // so there is exactly one timer. SET_PARALYSIS is only used here as an immediate mirror for
+            // the UI/sync before the next tick recomputes it from activeDrugs.
             if (action.paralysis || action.effect.paralysed) {
-                const pz = action.paralysis || { onset: 60, duration: 2700 };
+                const pz = action.paralysis || { onset: (action.pk && action.pk.onset) || 60, duration: ((action.pk && action.pk.offset) || 2760) - ((action.pk && action.pk.onset) || 60) };
                 dispatch({ type: 'SET_PARALYSIS', payload: { active: true, agent: key, startTime: cur.time, onset: pz.onset, duration: pz.duration } });
                 if (key === 'Sux') addLogEntry('Fasciculations observed after suxamethonium.', 'info');
                 const ventilated = isVentilated(cur.activeInterventions);
                 addLogEntry(`${action.label}: paralysis in ~${pz.onset}s, lasting ~${Math.round(pz.duration / 60)} min.${ventilated ? '' : ' Patient is NOT being ventilated — expect apnoea and desaturation.'}`, ventilated ? 'info' : 'warning', !ventilated);
             }
             if (action.effect.reverseParalysis) {
+                // Reverse the activeDrugs entries themselves so nothing can resurrect the blockade.
+                dispatch({ type: 'REVERSE_PARALYSIS_DRUGS' });
                 dispatch({ type: 'SET_PARALYSIS', payload: { active: false } });
                 if (!isVentilated(cur.activeInterventions)) newVitals.rr = Math.max(newVitals.rr, 10);
+            }
+
+            // --- B3: effect.cpr. Wave 3 owns the full CPR/cprInProgress/defib work; this is the safe,
+            // non-overlapping part: an intervention that declares itself to be chest compressions sets
+            // the flag, and removing it clears the flag (see REMOVE_INTERVENTION above for the drug
+            // tail). That immediately activates the already-written arrest ETCO2 physiology, the CPR
+            // waveform artefact and the ROSC bonus, all of which were dead code. Wave 3 should extend
+            // this (compression quality, pauses, metronome) rather than re-adding the flag.
+            if (action.effect.cpr === true && !cur.cprInProgress) {
+                dispatch({ type: 'TOGGLE_CPR', payload: true });
+                addLogEntry('CPR in progress — arrest ETCO2 and compression artefact now modelled.', 'info');
             }
 
             // --- AIRWAY / RSI: clinically honest oxygenation instead of a jump to SpO2 99 ---
@@ -1156,6 +1696,10 @@
                     addLogEntry(`${action.label} given during arrest (${cur.rhythm}) — ${suppressed.join('/')} unchanged: a pulseless patient has no perfusion to measure. ETCO2 is the marker to watch.`, 'warning');
                 }
             }
+            // Any numeric field the pk envelope owns is deliberately NOT applied here — otherwise the
+            // drug would land twice (once instantly, once through the envelope). `pkOwned` is what
+            // preserves today's instant behaviour for everything WITHOUT a pk block.
+            const pkOwned = (field) => !!(drugEntry && drugEntry.effect && drugEntry.effect[field] !== undefined);
             if (!isArrest) {
                 if (action.effect.HR) {
                     if (action.effect.HR === 'reset') newVitals.hr = 80;
@@ -1169,22 +1713,34 @@
                             addLogEntry(`Pacing: no capture (output ${pacer.output}mA < threshold ${cur.pacingThreshold}mA)`, 'warning');
                         }
                     }
-                    else newVitals.hr = clamp(newVitals.hr + action.effect.HR, 0, 250);
+                    else if (!pkOwned('HR')) newVitals.hr = clampVital('hr', newVitals.hr + action.effect.HR);
                 }
-                if (action.effect.BP) newVitals.bpSys = clamp(newVitals.bpSys + action.effect.BP, 0, 300);
+                if (action.effect.BP && !pkOwned('BP')) {
+                    newVitals.bpSys = clampVital('bpSys', newVitals.bpSys + action.effect.BP);
+                    newVitals.bpDia = clampVital('bpDia', newVitals.bpDia + action.effect.BP * 0.6);
+                }
                 if (action.effect.RR) {
-                    if (action.effect.RR === 'vent') { newVitals.rr = 14; }
-                    else if (typeof action.effect.RR === 'number') { newVitals.rr = clamp(newVitals.rr + action.effect.RR, 0, 60); }
+                    if (action.effect.RR === 'vent') { newVitals.rr = VENTILATOR_RATE; }
+                    else if (typeof action.effect.RR === 'number' && !pkOwned('RR')) { newVitals.rr = clampVital('rr', newVitals.rr + action.effect.RR); }
                 }
             }
             // SpO2 is inside the arrest guard too: a pulse oximeter cannot read a saturation without
             // a pulse, so BVM in asystole must not display 25%.
-            if (!isArrest && action.effect.SpO2) newVitals.spO2 = clamp(newVitals.spO2 + action.effect.SpO2, 0, 100);
+            if (!isArrest && action.effect.SpO2 && !pkOwned('SpO2')) newVitals.spO2 = clampVital('spO2', newVitals.spO2 + action.effect.SpO2);
 
             if (action.effect.gcs) {
                 if (typeof action.effect.gcs === 'string') { if (action.effect.gcs === 'sedated') newVitals.gcs = 3; }
-                else { newVitals.gcs = clamp(newVitals.gcs + action.effect.gcs, 3, 15); }
+                else if (!pkOwned('gcs')) { newVitals.gcs = clampVital('gcs', newVitals.gcs + action.effect.gcs); }
             }
+
+            // --- GROUP B: BM / Temp / pH were authored on 12 interventions and read by NOTHING, so
+            // Dextrose could not change the glucose reading, Warming/Cooling could not change the
+            // temperature and SodiumBicarb's pH was dropped on the floor. They are now first-class
+            // modelled vitals. Anything with a pk block ramps through the envelope; anything without
+            // one still lands instantly, which keeps the schema backwards compatible.
+            if (action.effect.BM !== undefined && action.effect.BM !== null && !pkOwned('BM')) newVitals.bm = clampVital('bm', newVitals.bm + Number(action.effect.BM));
+            if (action.effect.Temp !== undefined && action.effect.Temp !== null && !pkOwned('Temp')) newVitals.temp = clampVital('temp', newVitals.temp + Number(action.effect.Temp));
+            if (action.effect.pH !== undefined && action.effect.pH !== null && !pkOwned('pH')) newVitals.ph = clampVital('ph', (Number.isFinite(newVitals.ph) ? newVitals.ph : 7.4) + Number(action.effect.pH));
 
             const updatedScenario = { ...scenario }; let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
@@ -1225,7 +1781,7 @@
         const triggerArrest = (type = 'VF') => {
             const cur = stateRef.current;
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.vitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 } });
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 } });
             dispatch({ type: 'UPDATE_RHYTHM', payload: type });
             addLogEntry(`CARDIAC ARREST - ${type}`, 'manual');
             dispatch({ type: 'SET_FLASH', payload: 'red' });
@@ -1237,7 +1793,7 @@
             const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
             const newEtco2 = Math.round((5.0 + (Math.random() * 1.5)) * 10) / 10;
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.vitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 } });
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 } });
             dispatch({ type: 'UPDATE_RHYTHM', payload: rhythm });
             if (cur.scenario) {
                 const updatedScenario = { ...cur.scenario, deterioration: { ...(cur.scenario.deterioration || {}), active: false } };
@@ -1423,7 +1979,76 @@
             Object.keys(wanted).forEach(type => { if (wanted[type] && !loopNodesRef.current[type]) startAudioLoop(type); });
         }, [state.activeLoops, state.isMuted, state.audioOutput, isMonitorMode, audioCtxState]);
 
-        const start = () => { resumeAudio(true); dispatch({ type: 'START_SIM' }); };
+        // --- GROUP C: the AUTO / MANUAL deterioration toggle -------------------------------------
+        // C3 is the critical requirement: "if switching from one to the other the obs should remain
+        // the same at the point of switching." That is guaranteed structurally rather than by fixing
+        // up numbers here — deterioration INTEGRATES into baseVitals, so the mode flag only gates
+        // whether the integration runs. No vital is recomputed, re-snapshotted or reset by either
+        // direction of the switch, so the displayed obs at second N are identical either way.
+        const describeDeterioration = () => {
+            const cur = stateRef.current;
+            const det = cur.scenario && cur.scenario.deterioration ? cur.scenario.deterioration : null;
+            const type = det ? normaliseDeteriorationType(det.type) : null;
+            const rate = det ? Number(det.rate) : 0;
+            return { type, rate: Number.isFinite(rate) ? rate : 0, declared: !!(det && det.active !== false && type && rate > 0) };
+        };
+        const setDeteriorationMode = (mode) => {
+            const next = mode === 'auto' ? 'auto' : 'manual';
+            const cur = stateRef.current;
+            if (cur.deteriorationMode === next) return;
+            const d = describeDeterioration();
+            dispatch({ type: 'SET_DETERIORATION_MODE', payload: next });
+            if (next === 'auto') {
+                addLogEntry(d.declared
+                    ? `Deterioration mode: AUTO — resuming ${d.type} decline at rate ${d.rate} FROM THE CURRENT OBS (HR ${cur.vitals.hr}, BP ${cur.vitals.bpSys}, SpO2 ${cur.vitals.spO2}%, RR ${cur.vitals.rr}, GCS ${cur.vitals.gcs}).`
+                    : 'Deterioration mode: AUTO — but this scenario declares no deterioration type/rate, so nothing will change on its own.', 'system');
+            } else {
+                addLogEntry(`Deterioration mode: MANUAL — autonomous change stopped at HR ${cur.vitals.hr}, BP ${cur.vitals.bpSys}, SpO2 ${cur.vitals.spO2}%, RR ${cur.vitals.rr}, GCS ${cur.vitals.gcs}. Obs unchanged; full manual control.`, 'system');
+            }
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: next === 'auto' ? 'AUTO: scenario deterioration active' : 'MANUAL: obs only change when you change them', type: 'info', id: Date.now() } });
+        };
+        const toggleDeteriorationMode = () => setDeteriorationMode(stateRef.current.deteriorationMode === 'auto' ? 'manual' : 'auto');
+
+        // A5: what the facilitator needs to see — which drugs are live, the phase they are in and how
+        // long is left, so "why are the obs still moving?" always has a visible answer.
+        const getActiveDrugStatus = () => {
+            const cur = stateRef.current;
+            const t = cur.time;
+            const rows = (cur.activeDrugs || []).map(d => {
+                const factor = pkFactor(d, t);
+                const remaining = pkRemaining(d, t);
+                return {
+                    key: d.key, label: d.label, phase: pkPhase(d, t),
+                    intensity: Math.round(Math.min(1, factor) * 100),
+                    remaining, elapsed: t - d.startTime, sustained: !!d.sustained,
+                    stopped: d.sustained && d.stopTime >= 0, paralytic: !!d.paralytic, reversed: !!d.reversed,
+                    effect: d.effect || {}
+                };
+            }).filter(r => r.phase !== 'gone');
+            // Collapse repeat doses of the same drug into one row showing the dose count.
+            const merged = {};
+            rows.forEach(r => {
+                const m = merged[r.key];
+                if (!m) { merged[r.key] = { ...r, doses: 1 }; return; }
+                m.doses += 1;
+                m.intensity = Math.min(100, m.intensity + r.intensity);
+                if (r.remaining === null || (m.remaining !== null && r.remaining > m.remaining)) m.remaining = r.remaining;
+                // Show the phase of the most recent dose, which is what is actually changing the obs.
+                if (r.elapsed < m.elapsed) { m.phase = r.phase; m.elapsed = r.elapsed; }
+            });
+            return Object.values(merged);
+        };
+
+        const start = () => {
+            resumeAudio(true);
+            // C5: state the mode explicitly at scenario start so an untouched toggle is never a surprise.
+            const d = describeDeterioration();
+            const mode = stateRef.current.deteriorationMode;
+            addLogEntry(mode === 'auto' && d.declared
+                ? `Deterioration mode: AUTO (scenario declares ${d.type}, rate ${d.rate}) — the patient will deteriorate on their own unless treated. Switch to MANUAL for full manual control.`
+                : 'Deterioration mode: MANUAL — the obs will only change when you change them, or when a drug/trend you start changes them.', 'system');
+            dispatch({ type: 'START_SIM' });
+        };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
         const reset = () => { shockCountRef.current = 0; dispatch({ type: 'CLEAR_SESSION' }); };
@@ -1458,7 +2083,7 @@
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
         }, [state.isRunning, isMonitorMode]);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone, audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current) };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone, audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus };
     };
     window.useSimulation = useSimulation;
 })();

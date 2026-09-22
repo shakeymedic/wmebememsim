@@ -565,6 +565,7 @@
         if (label === 'ETCO2') color = "text-purple-500";
         if (label === 'Temp') color = "text-white";
         if (label === 'Glucose') color = "text-white";
+        if (label === 'pH') color = "text-white";
 
         const trendIcon = trend?.active && Number.isFinite(trend.target) && Number.isFinite(value)
             ? (trend.target > value ? '↑' : trend.target < value ? '↓' : '') : '';
@@ -573,7 +574,9 @@
         // numeric fields use one finite-value formatter; the only text vital is the pupil descriptor.
         const hasValue2 = Number.isFinite(value2);
         const show = (v) => label === 'Pupils' && typeof v === 'string'
-            ? v : formatVitalValue(v, label === 'ETCO2' ? 1 : undefined);
+            // pH needs 2 dp and temp/glucose 1 dp, otherwise a modelled value like 7.35 or 36.85
+            // would render at full float precision on the tile.
+            ? v : formatVitalValue(v, label === 'pH' ? 2 : (label === 'ETCO2' || label === 'Temp' || label === 'Glucose') ? 1 : undefined);
 
         const Tile = onClick ? 'button' : 'div';
         const tileProps = onClick ? { type: 'button', onClick, 'aria-label': `Adjust ${label}` } : {};

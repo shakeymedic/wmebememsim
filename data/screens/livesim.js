@@ -100,6 +100,23 @@
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
 
         const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
+        // WAVE 2: deterioration mode + live drug timing.
+        const deteriorationMode = state.deteriorationMode || 'manual';
+        const detInfo = sim.describeDeterioration ? sim.describeDeterioration() : { declared: false, type: null, rate: 0 };
+        // Recomputed on every render; `time` changes at 1 Hz so the panel counts down live.
+        const activeDrugRows = sim.getActiveDrugStatus ? sim.getActiveDrugStatus() : [];
+        const fmtRemaining = (s) => {
+            if (s === null || s === undefined) return '\u2014';
+            if (s >= 60) return `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`;
+            return `${Math.max(0, Math.round(s))}s`;
+        };
+        const PHASE_STYLE = {
+            onset: { cls: 'text-sky-300 border-sky-500/50 bg-sky-950/40', label: 'ONSET' },
+            rising: { cls: 'text-amber-300 border-amber-500/50 bg-amber-950/40', label: 'RISING' },
+            peak: { cls: 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40', label: 'PEAK' },
+            running: { cls: 'text-emerald-300 border-emerald-500/50 bg-emerald-950/40', label: 'RUNNING' },
+            'wearing off': { cls: 'text-orange-300 border-orange-500/50 bg-orange-950/40', label: 'WEARING OFF' }
+        };
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // A restored or partially-synced session can arrive without a scenario; every field read below
@@ -480,8 +497,63 @@
                                  <VitalDisplay label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} />
                                  <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} />
                                  <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
+                                 {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
+                                 <VitalDisplay label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} />
                              </div>
                         </div>
+
+                        {/* ---- GROUP C2: AUTO / MANUAL deterioration toggle. Sits directly under the obs
+                             panel so it is impossible to miss during a running sim, and the current mode
+                             is spelled out rather than implied by a colour. ---- */}
+                        <div title="Switching either way leaves the obs exactly where they are — there is no jump in either direction." className={`flex-none rounded border-l-4 p-2 ${deteriorationMode === 'auto' ? 'bg-amber-950/30 border-amber-500' : 'bg-slate-800 border-slate-500'}`}>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Patient deterioration</div>
+                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
+                                        {deteriorationMode === 'auto' ? 'AUTO — deteriorating on its own' : 'MANUAL — obs only change when you change them'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {detInfo.declared
+                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
+                                            : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
+                                    </div>
+                                </div>
+                                <Button
+                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
+                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
+                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
+                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
+                                    {/* Only icons present in the Lucide shim render; 'pause'/'play' read
+                                        correctly here anyway (stop vs resume the autonomous decline). */}
+                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
+                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* ---- A5: live drug timing. The facilitator needs to know WHY the obs are still
+                             moving, which is exactly what the pk envelope makes invisible otherwise. ---- */}
+                        {activeDrugRows.length > 0 && (
+                            <div className="flex-none bg-slate-800 rounded border-l-4 border-violet-500 p-2">
+                                <h3 className="text-[10px] font-bold text-violet-300 uppercase tracking-widest mb-1 flex items-center gap-1">
+                                    <Lucide icon="pill" className="w-3 h-3"/> Active drugs ({activeDrugRows.length})
+                                </h3>
+                                <div className="flex flex-col gap-1">
+                                    {activeDrugRows.map(d => {
+                                        const style = PHASE_STYLE[d.phase] || { cls: 'text-slate-300 border-slate-600 bg-slate-900', label: String(d.phase).toUpperCase() };
+                                        return (
+                                            <div key={d.key} className="flex items-center gap-2 text-[11px]">
+                                                <span className="text-white font-bold truncate flex-1 min-w-0">{d.label}{d.doses > 1 ? ` x${d.doses}` : ''}</span>
+                                                <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider flex-none ${style.cls}`}>{style.label}</span>
+                                                <span className="font-mono text-slate-400 w-10 text-right flex-none">{d.intensity}%</span>
+                                                <span className="font-mono text-slate-400 w-16 text-right flex-none" title={d.sustained && !d.stopped ? 'Runs until you stop it' : 'Time until the effect is gone'}>{d.sustained && !d.stopped ? 'running' : fmtRemaining(d.remaining)}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="text-[9px] text-slate-500 mt-1">Effects are added on top of the underlying physiology and wear off on their own.</div>
+                            </div>
+                        )}
                         
                         <div className="flex-none grid grid-cols-2 gap-2">
                             <div className="relative">
@@ -741,7 +813,7 @@
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
                             <div className="space-y-4">
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">Target</label><input type="number" value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">Target</label><input type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
                                 {modalVital === 'etco2' && (

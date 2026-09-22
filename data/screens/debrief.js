@@ -41,6 +41,24 @@
         const bpPath = buildPath('bp', bpMax);
         const spo2Path = buildPath('spo2', spo2Max);
 
+        // WAVE 2 / B2: temp, glucose and pH are modelled vitals now, so a warming, dextrose or
+        // bicarbonate scenario has a real trace worth debriefing. Each needs its OWN scale (a pH of
+        // 7.2 on an HR axis is a flat line at the bottom), and a channel that never moved and sat at
+        // its normal value is omitted rather than drawing a meaningless straight line.
+        const bandedPath = (key, lo, hi) => {
+            const pts = history.filter(h => Number.isFinite(Number(h[key])));
+            if (pts.length < 2) return null;
+            const vals = pts.map(h => Number(h[key]));
+            const span = Math.max(...vals) - Math.min(...vals);
+            if (span < (hi - lo) * 0.02) return null;
+            const y = (v) => (height - paddingBottom) - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * graphH;
+            return { d: 'M ' + pts.map(h => `${getX(h.time)},${y(Number(h[key]))}`).join(' L '), lo, hi };
+        };
+        const tempTrace = bandedPath('temp', 30, 42);
+        const bmTrace = bandedPath('bm', 0, 30);
+        const phTrace = bandedPath('ph', 6.8, 7.7);
+        let extraLegendRow = 3;
+
         return (
             <div className="w-full bg-slate-900 border border-slate-700 rounded p-4 mb-4 overflow-hidden">
                 <h4 className="text-xs font-bold text-slate-400 mb-2 uppercase">Vitals Trend & Interventions</h4>
@@ -51,6 +69,9 @@
                     <path d={hrPath} fill="none" stroke="#22c55e" strokeWidth="4" />
                     <path d={bpPath} fill="none" stroke="#ef4444" strokeWidth="4" />
                     <path d={spo2Path} fill="none" stroke="#3b82f6" strokeWidth="3" strokeDasharray="8" />
+                    {tempTrace && <path d={tempTrace.d} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="2 6" />}
+                    {bmTrace && <path d={bmTrace.d} fill="none" stroke="#a78bfa" strokeWidth="2" strokeDasharray="2 6" />}
+                    {phTrace && <path d={phTrace.d} fill="none" stroke="#facc15" strokeWidth="2" strokeDasharray="2 6" />}
 
                     {(() => {
                         let lastLabelX = -Infinity;
@@ -66,6 +87,9 @@
                     <text x={width-90} y={paddingTop + 20} fill="#22c55e" fontSize="18" fontWeight="bold">HR /{hrMax}</text>
                     <text x={width-90} y={paddingTop + 45} fill="#ef4444" fontSize="18" fontWeight="bold">BP /{bpMax}</text>
                     <text x={width-90} y={paddingTop + 70} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2 /100</text>
+                    {tempTrace && <text x={width-90} y={paddingTop + 70 + 25 * (extraLegendRow++ - 2)} fill="#f97316" fontSize="14" fontWeight="bold">Temp {tempTrace.lo}-{tempTrace.hi}</text>}
+                    {bmTrace && <text x={width-90} y={paddingTop + 70 + 25 * (extraLegendRow++ - 2)} fill="#a78bfa" fontSize="14" fontWeight="bold">BM {bmTrace.lo}-{bmTrace.hi}</text>}
+                    {phTrace && <text x={width-90} y={paddingTop + 70 + 25 * (extraLegendRow++ - 2)} fill="#facc15" fontSize="14" fontWeight="bold">pH {phTrace.lo}-{phTrace.hi}</text>}
                 </svg>
             </div>
         );
@@ -155,7 +179,11 @@
                                             {[['HR', state.history[replayIdx].hr, 'bpm', '#22c55e'],
                                               ['BP', state.history[replayIdx].bp, 'mmHg', '#ef4444'],
                                               ['SpO2', state.history[replayIdx].spo2, '%', '#3b82f6'],
-                                              ['RR', state.history[replayIdx].rr, '/min', '#a78bfa']].map(([lbl, val, unit, col]) => (
+                                              ['RR', state.history[replayIdx].rr, '/min', '#a78bfa'],
+                                              // Wave 2: the point-of-care channels are recorded too.
+                                              ['Temp', Number.isFinite(state.history[replayIdx].temp) ? state.history[replayIdx].temp.toFixed(1) : '--', '°C', '#f97316'],
+                                              ['BM', Number.isFinite(state.history[replayIdx].bm) ? state.history[replayIdx].bm.toFixed(1) : '--', 'mmol', '#c4b5fd'],
+                                              ['pH', Number.isFinite(state.history[replayIdx].ph) ? state.history[replayIdx].ph.toFixed(2) : '--', '', '#facc15']].map(([lbl, val, unit, col]) => (
                                                 <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
                                                     <div className="text-[10px] font-bold uppercase" style={{color: col}}>{lbl}</div>
                                                     <div className="text-lg font-mono font-bold text-white">{val ?? '--'}</div>

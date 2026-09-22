@@ -74,6 +74,9 @@ window.BUILDER_LIMITS = {
     etco2: { min: 0,  max: 15,  label: 'EtCO2',       unit: 'kPa' },
     bm:    { min: 0,  max: 50,  label: 'Glucose',     unit: 'mmol/L' },
     icp:   { min: 0,  max: 80,  label: 'ICP',         unit: 'mmHg' },
+    // WAVE 2: pH is a modelled vital now (bicarbonate/ventilation teaching), so the facilitator's
+    // manual-control modal needs a limit entry or it would silently accept any number.
+    ph:    { min: 6.5, max: 7.9, label: 'pH',         unit: '' },
     // 0.5 kg is a 23-week neonate; 300 kg covers bariatric. Zero or negative previously divided
     // through the WETFLAG maths and produced 0 J shock energy and 0 mL fluid boluses.
     weight: { min: 0.5, max: 300, label: 'Weight',    unit: 'kg' }

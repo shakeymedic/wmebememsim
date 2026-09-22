@@ -369,6 +369,25 @@
                         )}
                     </div>
 
+                    {/* B2: Temp / capillary glucose / pH are point-of-care measurements rather than
+                        continuous monitored channels, so they get their own slim strip instead of
+                        shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
+                        (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
+                    <div className="flex-none grid grid-cols-3 gap-2 mt-1">
+                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.temp) && (vitals.temp < 35 || vitals.temp >= 38.5) ? 'border-amber-600' : 'border-slate-800'}`}>
+                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">Temp</span>
+                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.temp) && (vitals.temp < 35 || vitals.temp >= 38.5) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.temp) ? vitals.temp.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">°C</span></span>
+                        </div>
+                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.bm) && (vitals.bm < 4 || vitals.bm > 11) ? 'border-amber-600' : 'border-slate-800'}`}>
+                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">Glucose</span>
+                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.bm) && (vitals.bm < 4 || vitals.bm > 11) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">mmol/L</span></span>
+                        </div>
+                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.ph) && (vitals.ph < 7.30 || vitals.ph > 7.50) ? 'border-amber-600' : 'border-slate-800'}`}>
+                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">pH</span>
+                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.ph) && (vitals.ph < 7.30 || vitals.ph > 7.50) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'}</span>
+                        </div>
+                    </div>
+
                     <div className="flex-none h-14 md:h-16 bg-slate-950 border border-slate-800 rounded flex overflow-hidden shadow-lg mt-1">
                         <InvBtn label="12-Lead" icon="activity" onClick={() => sim.dispatch({type: 'REQUEST_12LEAD'})} loading={loadingInvestigations?.['ECG']} />
                         <InvBtn label="VBG" icon="droplet" onClick={() => revealInvestigation('VBG')} loading={loadingInvestigations?.['VBG']} />
