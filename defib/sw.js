@@ -1,11 +1,15 @@
 // defib/sw.js
 // Bump this cache version on every deploy so tablets do not retain an old simulator build.
-const CACHE_NAME = 'wmebem-sim-v19';
+// Wave 3 (defib on monitor, shared rhythm registry) — bumped so tablets cannot keep serving
+// the pre-Wave-3 defibrillator from cache. This SW is cache-FIRST, so a stale cache means a stale
+// clinical device.
+const CACHE_NAME = 'wmebem-sim-v20';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './images/logo.png',
   '../index.html',
+  '../data/rhythms.js',
   '../data/engine.js',
   '../data/scenarios.js',
   '../data/components.js',

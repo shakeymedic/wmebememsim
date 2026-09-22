@@ -6,63 +6,26 @@
     <title>EM Evidence — Defib Simulator</title>
     <link rel="manifest" href="manifest.json">
     <script>
+      // Wrapped: reading navigator.serviceWorker THROWS in a sandboxed iframe and in some private
+      // browsing modes, and an uncaught error here aborted the rest of this inline block.
+      try {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker Registered'));
+        navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker Registered')).catch(() => {});
       }
+      } catch (e) { /* service workers unavailable — the page works fine without offline caching */ }
     </script>
     
+    <!-- WAVE 3 / C1+C2: this page used to carry its OWN waveform dictionary and its OWN
+         shockability list, both of which disagreed with the engine's. It now loads the single
+         shared rhythm registry, exactly as index.html does, so a rhythm is drawn and judged
+         identically on the controller, the student monitor and this device.
+         NOTE: the old `rhythmMap` near the top of the main script was DEAD CODE (never called) —
+         the live dictionary was the getECGValue branch list. Both are gone; there is one source. -->
+    <script src="../data/rhythms.js"></script>
     <script>
     (function(){'use strict';
-    
-    // --- WAVEFORM GENERATION ENGINE (MATCHING MONITOR.JS) ---
-    window.getECGValue = function(t, pT, absoluteTime, type, pathology, cpr) {
-        if (cpr) return (Math.sin(t * 2 * Math.PI) * 45) + (Math.random() * 5); 
-        let noise = (Math.random() - 0.5) * 1.5; 
-        
-        if (type === 'Asystole') return noise;
-        if (type === 'VF' || type === 'Coarse VF') return (Math.sin(t * 20) * 15) + (Math.sin(t * 7) * 10) + noise * 5;
-        if (type === 'Fine VF') return (Math.sin(t * 25) * 4) + (Math.sin(t * 10) * 3) + noise * 3;
-        if (type === 'VT' || type === 'pVT' || type === 'vt_pulseless') return Math.sin(t * 2 * Math.PI) * 35;
-
-        let y = 0;
-        
-        // Baseline/Atrial
-        if (type === 'AF' || type === 'afib') {
-            y += (Math.sin(absoluteTime * 25) * 2) + (Math.random() * 1.5); 
-        } else if (type === 'Atrial Flutter') {
-            y += Math.sin(absoluteTime * 10 * Math.PI) * 6;
-        } else if (type === 'Complete Heart Block' || type === 'chb') {
-            y += 5 * Math.exp(-Math.pow(pT - 0.5, 2) / 0.002);
-        } else {
-            if (type !== 'SVT' && type !== 'svt' && type !== 'Junctional') {
-                y += 4 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002); // P Wave
-            }
-        }
-
-        // QRS
-        let width = 0.0008;
-        if (type === 'SVT' || type === 'svt') width = 0.0004;
-        if (['LBBB', 'RBBB', 'Hyperkalemia', 'paced'].includes(type) || type === 'paced') width = 0.002;
-
-        y -= 5 * Math.exp(-Math.pow(t - 0.33, 2) / (width * 0.6)); // Q
-        y += 50 * Math.exp(-Math.pow(t - 0.35, 2) / width); // R
-        y -= 12 * Math.exp(-Math.pow(t - 0.37, 2) / (width * 0.6)); // S
-
-        // T Wave
-        if (type !== 'SVT' && type !== 'svt') {
-             let tAmp = 8;
-             if (pathology === 'Hyperkalemia') tAmp = 25; 
-             y += tAmp * Math.exp(-Math.pow(t - 0.6, 2) / 0.012);
-        }
-        
-        return y + noise;
-    };
-
-    // --- GRID DRAWER ---
-    window.drawECGGrid = function(ctx, w, h) {
-        ctx.fillStyle = '#050505'; 
-        // We do NOT clearRect here because we use the "eraser bar" method
-    };
+    // Grid drawer retained (the canvas uses an "eraser bar" rather than clearRect).
+    window.drawECGGrid = function(ctx, w, h) { ctx.fillStyle = '#050505'; };
     })();
     </script>
     
@@ -117,6 +80,15 @@
 .screen.screen-off .screen-header, .screen.screen-off .ecg-canvas-container, .screen.screen-off .vitals-display, .screen.screen-off .message-bar{visibility:hidden}
 .screen.screen-off{background:#1a1a1a}
 .hidden { display: none !important; }
+/* A7: unmissable "this device is not linked" state. A silently-wrong defibrillator is worse than
+   no defibrillator: before Wave 3 an unlinked device showed normal sinus at HR 75 and answered
+   "NO SHOCK ADVISED" while the patient was in VF on the controller. */
+.link-banner { position:absolute; top:0; left:0; right:0; z-index:60; background:#7f1d1d; color:#fff;
+    padding:10px 12px; text-align:center; font-family:Arial,sans-serif; font-size:14px; font-weight:bold;
+    border-bottom:3px solid #ef4444; line-height:1.4; }
+.ended-banner { position:absolute; top:0; left:0; right:0; bottom:0; z-index:70; background:rgba(0,0,0,0.92);
+    color:#94a3b8; display:flex; align-items:center; justify-content:center; font-family:'Share Tech Mono',monospace;
+    font-size:28px; letter-spacing:4px; }
 #paperOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
 #paperCanvas { max-width: 100%; max-height: 80%; border: 5px solid white; box-shadow: 0 0 30px rgba(255,255,255,0.2); background: white; }
 .side-btn.active-ghost, .btn-analyze.active-ghost, .btn-charge.active-ghost, .btn-sync.active-ghost, .btn-shock.active-ghost { background-color: #3498db !important; border-color: #2980b9 !important; transform: scale(0.95); box-shadow: 0 0 15px rgba(52, 152, 219, 0.8); }
@@ -132,6 +104,8 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
         <div class="device-screen-section">
             <div class="screen">
+                <div id="linkBanner" class="link-banner">Checking link to controller...</div>
+                <div id="endedBanner" class="ended-banner hidden">SESSION ENDED</div>
                 <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="EM Evidence Logo"></div>
                 <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead analysis" tabindex="-1"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
                 <div class="screen-header">
@@ -140,9 +114,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 </div>
                 <div class="ecg-canvas-container"><canvas id="ecgCanvas"></canvas></div>
                 <div class="vitals-display">
-                    <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">75</div><div class="vital-unit">bpm</div></div>
-                    <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">98</div><div class="vital-unit">%</div></div>
-                    <div class="vital-item"><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">5.1</div><div class="vital-unit">kPa</div></div>
+                    <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
+                    <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
+                    <div class="vital-item"><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
                     <div class="vital-item"><div class="vital-label">NIBP</div><div class="vital-value" id="bpDisplay" style="font-size: 24px;">120/80</div><div class="vital-unit">mmHg</div></div>
                 </div>
                 <div class="message-bar ready" id="messageBar">SIMULATOR READY</div>
@@ -157,7 +131,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             <div class="action-buttons-group">
                 <button class="btn-analyze" id="analyseBtn"><span>ANALYSE</span><span class="btn-number">2</span></button>
                 <button class="btn-charge" id="chargeBtn"><span>CHARGE</span><span class="btn-number">2</span></button>
-                <div class="energy-selector"><div style="font-size: 11px;">ENERGY SELECT</div><div class="energy-display" id="energyDisplay">120</div><div style="font-size: 12px;">JOULES</div><div class="energy-arrows"><button class="energy-arrow" data-energy-dir="-1">▼</button><button class="energy-arrow" data-energy-dir="1">▲</button></div></div>
+                <div class="energy-selector"><div style="font-size: 11px;">ENERGY SELECT</div><div class="energy-display" id="energyDisplay">120</div><div style="font-size: 12px;">JOULES</div><div id="energyRec" style="font-size:10px;opacity:0.9;"></div><div class="energy-arrows"><button class="energy-arrow" data-energy-dir="-1">▼</button><button class="energy-arrow" data-energy-dir="1">▲</button></div></div>
             </div>
             <div class="mode-dial-container">
                 <div class="mode-dial" id="modeDial" style="--dial-rotation: 0deg;"></div>
@@ -181,31 +155,29 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         try { simChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('sim_channel') : null; }
         catch (e) { console.warn('BroadcastChannel unavailable — running defib standalone', e); }
 
-        // CORRECTED RHYTHM MAP
-        const rhythmMap = {
-            'Sinus Rhythm': 'nsr',
-            'Sinus Tachycardia': 'sinus_tach',
-            'Sinus Tachy': 'sinus_tach',
-            'Sinus Bradycardia': 'sinus_brady',
-            'Sinus Brady': 'sinus_brady',
-            'AF': 'afib',
-            'SVT': 'svt',
-            'VT': 'vtach',
-            'VF': 'vfib',
-            'Coarse VF': 'vfib',
-            'Fine VF': 'vfib',
-            'Asystole': 'asystole',
-            'PEA': 'pea',
-            '1st Deg Block': 'nsr',
-            '3rd Deg Block': 'chb',
-            '3rd Degree AV Block': 'chb',
-            'pVT': 'vt_pulseless',
-            'Agonal Rhythm': 'pea',
-            'Complete Heart Block': 'chb',
-            'Atrial Flutter': 'Atrial Flutter'
-        };
+        // The rhythm dictionary lives in data/rhythms.js. Nothing local.
+        const RG = window.RHYTHMS;
 
-        const mapRhythm = (r) => rhythmMap[r] || 'nsr';
+        // ---- A7: FAIL LOUDLY WHEN NOT LINKED ------------------------------------------------
+        // window.isRemoteControlled existed but was NEVER READ. On a second physical device this
+        // page has no way to reach the controller (BroadcastChannel is same-browser only and there
+        // is no Firebase here), so it showed a confident HR 75 / SpO2 98 normal sinus patient and
+        // answered "NO SHOCK ADVISED" in VF. It must say so instead of lying.
+        function setLinkState(linked, reason) {
+            window.isRemoteControlled = !!linked;
+            const el = document.getElementById('linkBanner');
+            if (!el) return;
+            if (linked) { el.classList.add('hidden'); return; }
+            el.classList.remove('hidden');
+            try { updateDisplays(); } catch (e) {}
+            el.innerHTML = '<b>NOT LINKED TO SESSION</b><br><span style="font-weight:normal;font-size:12px;">'
+                + (reason || 'No patient data. This device is a standalone demo — the numbers and rhythm below are NOT your patient.')
+                + '<br>Use the monitor-hosted defibrillator instead: open the room monitor and press <b>Defib</b> on the controller.</span>';
+        }
+        function setSessionEnded(ended) {
+            const el = document.getElementById('endedBanner');
+            if (el) el.classList.toggle('hidden', !ended);
+        }
 
         function render12LeadDefib(canvas, rhythm, scenario) {
             if (!canvas) return;
@@ -274,16 +246,31 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         if (simChannel) simChannel.onmessage = (event) => {
             const data = event.data;
             if (data.type === 'SYNC_VITALS') {
-                window.isRemoteControlled = true;
-                const mappedRhythm = data.payload.rhythm; // Use RAW rhythm name for getECGValue
-                
+                setLinkState(true);
+                lastSyncAt = Date.now();
+                setSessionEnded(!!data.payload.isFinished);
+                const mappedRhythm = RG.canonical(data.payload.rhythm);
+
                 // Demand Pacing Logic: If in Pacer Mode, and Pacer Rate > Patient HR, override rhythm
+                state.originalRhythm = mappedRhythm;
                 if (state.deviceMode === 'pacer' && state.pacerRate > data.payload.hr) {
-                    state.rhythm = 'paced';
-                } else if (state.rhythm !== mappedRhythm) {
-                     state.rhythm = mappedRhythm;
-                     state.originalRhythm = mappedRhythm; 
+                    state.rhythm = 'Paced';
+                } else {
+                    state.rhythm = mappedRhythm;
                 }
+
+                // C4: the energy ladder and default energy are WEIGHT-BASED and arrive from the
+                // controller. This page previously hardcoded [50,70,85,100,120,150,170,200] and
+                // defaulted to 120 J for every patient, including a 3.5 kg neonate (needs 14 J).
+                if (Array.isArray(data.payload.energyLevels) && data.payload.energyLevels.length) {
+                    state.energyLevels = data.payload.energyLevels.slice();
+                    if (state.energyLevels.indexOf(state.energy) === -1 || !state.energyTouched) {
+                        state.energy = Number(data.payload.recommendedEnergy) || state.energyLevels[0];
+                    }
+                }
+                state.weight = data.payload.weight || null;
+                state.patientAge = data.payload.patientAge;
+                state.recommendedEnergy = Number(data.payload.recommendedEnergy) || null;
                 
                 state.hr = data.payload.hr;
                 state.spo2 = data.payload.spO2;
@@ -321,7 +308,29 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             try { simChannel.postMessage({ type, payload }); }
             catch (e) { console.warn('Channel post failed', e); }
         }
+        // A7: REQUEST_SYNC was broadcast once and NOTHING handled it (the engine now answers it).
+        // Retry a few times, then declare the device unlinked rather than silently showing fiction.
+        let lastSyncAt = 0;
         broadcast('REQUEST_SYNC', {});
+        let syncAttempts = 0;
+        const syncProbe = setInterval(() => {
+            syncAttempts += 1;
+            if (lastSyncAt) { clearInterval(syncProbe); return; }
+            if (syncAttempts > 6) {
+                clearInterval(syncProbe);
+                setLinkState(false, simChannel
+                    ? 'The controller did not respond. It is probably running on a DIFFERENT DEVICE — this page can only reach a controller in another tab of the same browser.'
+                    : 'This browser does not support the local device channel, so this page can never link to a controller.');
+                return;
+            }
+            broadcast('REQUEST_SYNC', {});
+        }, 2000);
+        // Detect a link that goes stale mid-session (controller tab closed).
+        setInterval(() => {
+            if (lastSyncAt && Date.now() - lastSyncAt > 15000) {
+                setLinkState(false, 'Lost contact with the controller ' + Math.round((Date.now() - lastSyncAt) / 1000) + 's ago. The numbers below are frozen and are NOT live.');
+            }
+        }, 5000);
         let overlayReturnFocus = null;
         function closePaperOverlay() {
             const overlay = document.getElementById('paperOverlay');
@@ -349,7 +358,11 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
         const state = {
             deviceMode: 'off', rhythm: 'Sinus Rhythm', hr: 75, spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80,
-            energy: 120, energyLevels: [50, 70, 85, 100, 120, 150, 170, 200], charged: false, syncMode: false, shockCount: 0,
+            // C4: no hardcoded ladder and no hardcoded 120 J default. Both are replaced by the
+            // weight-based values the controller sends; the adult ladder is only the fallback.
+            energy: RG.ADULT_DEFAULT_ENERGY, energyLevels: RG.ADULT_ENERGY_STEPS.slice(), energyTouched: false,
+            weight: null, patientAge: null, recommendedEnergy: null,
+            charged: false, syncMode: false, shockCount: 0,
             pacerOutput: 0, pacerRate: 60, pacingActive: false, isCaptured: false, originalRhythm: null,
             chargeTimer: null, noise: {}, captureThreshold: 70, cprActive: false
         };
@@ -430,11 +443,21 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             ? (decimals === null ? value : (Math.round(value * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals)) : '--';
         function updateDisplays() {
             if(state.deviceMode==='off') return;
+            // A7: an UNLINKED device has no patient, so it must not display numbers. Showing HR 75 /
+            // SpO2 98 / 120/80 on a tablet that cannot reach the controller is what made the old
+            // standalone page dangerous as a teaching tool.
+            if (!window.isRemoteControlled) {
+                ['hrDisplay','spo2Display','etco2Display'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '--'; });
+                const bp = document.getElementById('bpDisplay'); if (bp) bp.textContent = '--/--';
+            } else {
             document.getElementById('hrDisplay').textContent = fmt(state.hr);
             document.getElementById('spo2Display').textContent = fmt(state.spo2);
             document.getElementById('etco2Display').textContent = fmt(state.etco2, 1);
             document.getElementById('bpDisplay').textContent = `${fmt(state.bpSys)}/${fmt(state.bpDia)}`;
+            }
             document.getElementById('energyDisplay').textContent = state.energy;
+            const rec = document.getElementById('energyRec');
+            if (rec) rec.textContent = state.recommendedEnergy ? ('REC ' + state.recommendedEnergy + ' J' + (state.weight ? ' (' + state.weight + 'kg)' : '')) : '';
             document.getElementById('outputDisplay').textContent = state.pacerOutput;
             document.getElementById('rateDisplay').textContent = state.pacerRate;
             document.getElementById('syncIndicator').textContent = state.syncMode ? 'SYNC' : '';
@@ -495,13 +518,20 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
 
         function toggleSync() {
             state.syncMode = !state.syncMode;
+            // The flag used to be purely local on the shock message; the engine now models
+            // synchronised cardioversion, so tell it.
+            broadcast('SYNC_TOGGLE', { sync: state.syncMode });
+            document.getElementById('syncBtn')?.classList.toggle('active', state.syncMode);
             updateDisplays();
         }
         
         function adjustEnergy(dir) {
-            const idx = state.energyLevels.indexOf(state.energy);
+            let idx = state.energyLevels.indexOf(state.energy);
+            if (idx === -1) idx = 0;
             if (dir > 0 && idx < state.energyLevels.length - 1) state.energy = state.energyLevels[idx + 1];
             else if (dir < 0 && idx > 0) state.energy = state.energyLevels[idx - 1];
+            state.energyTouched = true;
+            broadcast('ENERGY_SELECT', { energy: state.energy });
             state.charged = false;
             document.getElementById('shockBtn').disabled = true;
             updateDisplays();
@@ -515,9 +545,17 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
 
         function analyseRhythm() {
             if (state.deviceMode === 'off') return;
+            // A7: an unlinked device has no patient. Saying "NO SHOCK ADVISED" here was the single
+            // most dangerous teaching artefact in the app.
+            if (!window.isRemoteControlled) {
+                setMessage('NOT LINKED \u2014 NO PATIENT DATA', 'alert');
+                return;
+            }
             setMessage('ANALYSING...', 'alert');
             setTimeout(() => {
-                const shockable = ['VF', 'Coarse VF', 'Fine VF', 'VT', 'pVT', 'vt_pulseless'].includes(state.originalRhythm || state.rhythm);
+                // C1: the registry decides, not a second private list that disagreed with the engine
+                // (it called plain 'VT' shockable while the engine's own list did not include it).
+                const shockable = RG.isShockable(state.originalRhythm || state.rhythm);
                 const result = shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED';
                 setMessage(result, shockable ? 'alert' : 'ready');
                 broadcast('ANALYSIS_RESULT', { result, rhythm: state.originalRhythm || state.rhythm });
@@ -617,14 +655,20 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
 
             // Handle Heart Rate & Jitter
             let effectiveHR = state.hr;
-            if (state.rhythm === 'AF' || state.rhythm === 'afib') {
+            if (RG.canonical(state.rhythm) === 'AF') {
                 if (drawState.beatProgress < 0.05 && Math.random() < 0.2) {
                      jitterRef.current = (Math.random() * 70) - 35; 
                 }
                 effectiveHR += jitterRef.current;
             }
             if (state.cprActive) effectiveHR = 110;
-            else if (effectiveHR === 0 && ['VF','VT','pVT','PEA','vt_pulseless'].includes(state.rhythm)) effectiveHR = 150; 
+            else if (!(effectiveHR > 0)) {
+                // C2: the old line forced EVERY pulseless rhythm to 150/min, which is why PEA was
+                // drawn as a perfusing-looking rhythm at 150 bpm in 9 scenarios. Rhythm-appropriate
+                // intrinsic rates instead.
+                const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'VF': 240, 'Fine VF': 300, 'Asystole': 6, 'Paced': 70 };
+                effectiveHR = INTRINSIC[RG.canonical(state.rhythm)] || 70;
+            } 
 
             let beatDuration = 60 / Math.max(10, effectiveHR); 
             drawState.beatProgress += dt / beatDuration; 
@@ -639,7 +683,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             }
 
             // Calculate Y
-            let rawECG = window.getECGValue(drawState.beatProgress, drawState.pWaveProgress, (timestamp / 1000), state.rhythm, null, state.cprActive);
+            // A7: with no linked patient there is no rhythm to draw — flat, undriven baseline only.
+            let rawECG = window.isRemoteControlled
+                ? RG.ecgValue(drawState.beatProgress, (timestamp / 1000), state.rhythm, { cpr: state.cprActive })
+                : 0;
             const gain = window.waveformGain || 1.0;
             let yECG = baselineECG - (rawECG * gain);
             if (window.interferenceActive) yECG += Math.sin(timestamp / 20) * 5;

@@ -4,74 +4,22 @@
     const BUFFER_SIZE = 1000;
     const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), co2: { normal: new Float32Array(BUFFER_SIZE), bronchospastic: new Float32Array(BUFFER_SIZE) }, art: new Float32Array(BUFFER_SIZE) };
 
-    // --- Waveform components (cycle normalised to [0,1]) ---
-    // Tuned for realistic morphology at 60 bpm: P ~80ms, QRS ~70ms, T ~160ms
-    const pWave = (t) => 4.5 * Math.exp(-Math.pow(t - 0.10, 2) / 0.0015);
+    // --- WAVE 3: waveforms now come from THE SHARED RHYTHM REGISTRY (data/rhythms.js) ---
+    // Every cycle-normalised morphology lives in window.RHYTHMS.waveforms and is shared verbatim
+    // with the standalone defibrillator page. Previously this file carried its own private list of
+    // 10 rhythm names and its own ECG_NORM alias table, while defib/index.html carried a different
+    // list with different aliases; 115/254 scenarios fell through to a generic sinus complex and
+    // PEA was drawn as a normal sinus rhythm.
+    const RG = window.RHYTHMS;
+    if (!RG) throw new Error('data/rhythms.js must load before data/components.js');
 
-    const qrsComplex = (t) => {
-        let val = 0;
-        val -= 6  * Math.exp(-Math.pow(t - 0.170, 2) / 0.00030);  // Q
-        val += 45 * Math.exp(-Math.pow(t - 0.205, 2) / 0.00020);  // R
-        val -= 14 * Math.exp(-Math.pow(t - 0.240, 2) / 0.00030);  // S
-        return val;
-    };
-
-    const tWave = (t) => 9 * Math.exp(-Math.pow(t - 0.42, 2) / 0.009);
-
-    const warnedRhythms = new Set();
-    const rhythms = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'SVT', 'PEA', '1st Deg Heart Block', 'Complete Heart Block', 'Atrial Flutter', 'VT', 'STEMI'];
-    rhythms.forEach(r => {
-        precomputed.ecg[r] = new Float32Array(BUFFER_SIZE);
-        for (let i = 0; i < BUFFER_SIZE; i++) {
-            const t = i / BUFFER_SIZE;
-            let val = 0;
-
-            if (r === 'Sinus Rhythm' || r === 'Sinus Tachycardia' || r === 'Sinus Bradycardia' || r === 'PEA') {
-                val = pWave(t) + qrsComplex(t) + tWave(t);
-            }
-            else if (r === 'SVT') {
-                // Narrow-complex tachy. P absent / buried; T present but smaller.
-                val = qrsComplex(t) + tWave(t) * 0.85;
-            }
-            else if (r === '1st Deg Heart Block') {
-                // Prolonged PR — keep P at 0.10, push QRS + T later by 0.10 (~100 ms at 60 bpm)
-                val = pWave(t) + qrsComplex(t - 0.10) + tWave(t - 0.10);
-            }
-            else if (r === 'Complete Heart Block') {
-                // Buffer carries the slow ventricular escape only (QRS + T).
-                // Independent atrial P waves are added in real-time in getECGValue() so AV dissociation drifts visibly across the strip.
-                val = qrsComplex(t) + tWave(t);
-            }
-            else if (r === 'Atrial Flutter') {
-                // Sharkfin sawtooth at 2:1 conduction (2 flutter waves per ventricular cycle).
-                // Sharp downstroke, slow upstroke — averaging close to zero so QRS sits on a sensible baseline.
-                const fp = (t * 2) % 1;
-                let saw;
-                if (fp < 0.18) {
-                    saw = 4 - fp * 45;                          // sharp negative downstroke (+4 → -4)
-                } else {
-                    saw = -4 + ((fp - 0.18) / 0.82) * 8;        // slow rise back to baseline (-4 → +4)
-                }
-                val = saw + qrsComplex(t) + tWave(t) * 0.35;    // T partly buried in flutter wave
-            }
-            else if (r === 'VT') {
-                // Wide bizarre QRS, no P, discordant T (deflected opposite the dominant QRS direction).
-                val += 38 * Math.exp(-Math.pow(t - 0.20, 2) / 0.0050);  // wide R
-                val -= 22 * Math.exp(-Math.pow(t - 0.32, 2) / 0.0040);  // wide S
-                val -= 9  * Math.exp(-Math.pow(t - 0.55, 2) / 0.0180);  // discordant (negative) T
-            }
-            else if (r === 'STEMI') {
-                // P + QRS as normal. ST-T fused into a single elevated coved dome from J-point onward.
-                // SIGN: positive val == upward on screen (canvas inverted-y handled in render).
-                val = pWave(t) + qrsComplex(t);
-                if (t > 0.27 && t < 0.65) {
-                    const phase = (t - 0.27) / 0.38;
-                    val += 14 * Math.sin(phase * Math.PI);              // smooth dome from J-point, returns to baseline
-                }
-            }
-
-            precomputed.ecg[r][i] = val;
-        }
+    // Precompute one buffer per WAVEFORM (not per rhythm name), so rhythms that legitimately share
+    // a morphology (VT / pulseless VT) share one buffer and can never diverge.
+    Object.keys(RG.waveforms).forEach(wf => {
+        const fn = RG.waveforms[wf];
+        const buf = new Float32Array(BUFFER_SIZE);
+        for (let i = 0; i < BUFFER_SIZE; i++) buf[i] = fn(i / BUFFER_SIZE);
+        precomputed.ecg[wf] = buf;
     });
 
     for(let i=0; i<BUFFER_SIZE; i++) {
@@ -296,79 +244,49 @@
         </div>
     );
 
-    const ECGMonitor = ({ rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology = 'normal', isCPR = false, className = '', rhythmLabel }) => {
+    const ECGMonitor = ({ rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology = 'normal', isCPR = false, className = '', rhythmLabel, showSyncMarkers = false }) => {
         const canvasRef = useRef(null);
         const [width, setWidth] = useState(0);
 
         // Keep frequently-changing values in refs so vitals updates don't tear down
         // and restart the animation loop (which would reset xPos and leave stale
         // trace to the right of the sweep).
-        const liveRef = useRef({ rhythmType, hr, rr, spO2, co2Pathology, isCPR });
-        liveRef.current = { rhythmType, hr, rr, spO2, co2Pathology, isCPR };
+        const liveRef = useRef({ rhythmType, hr, rr, spO2, co2Pathology, isCPR, showSyncMarkers });
+        liveRef.current = { rhythmType, hr, rr, spO2, co2Pathology, isCPR, showSyncMarkers };
 
-        // Safety normalisation — maps legacy/shorthand rhythm names to canonical precomputed keys
-        const ECG_NORM = {
-            'Sinus Tachy': 'Sinus Tachycardia', 'Sinus Brady': 'Sinus Bradycardia',
-            '1st Deg Block': '1st Deg Heart Block', '3rd Deg Block': 'Complete Heart Block',
-            'NSR': 'Sinus Rhythm', 'Normal Sinus': 'Sinus Rhythm',
-            'CHB': 'Complete Heart Block', 'chb': 'Complete Heart Block',
-            'sinus_tach': 'Sinus Tachycardia', 'sinus_brady': 'Sinus Bradycardia', 'nsr': 'Sinus Rhythm',
-            // Arrest rhythms the facilitator can select but which had no waveform of their own, so they
-            // silently fell through to Sinus Rhythm — a normal-looking trace during a cardiac arrest.
-            'pVT': 'VT', 'pvt': 'VT', 'vt_pulseless': 'VT', 'Pulseless VT': 'VT', 'VT (Pulseless)': 'VT',
-            'Coarse VF': 'VF', 'Fine VF': 'VF', 'coarse_vf': 'VF', 'fine_vf': 'VF', 'vf': 'VF',
-            'Agonal Rhythm': 'PEA', 'agonal': 'PEA', 'asystole': 'Asystole', 'pea': 'PEA',
-        };
-
+        // Rhythm resolution and waveform evaluation are delegated ENTIRELY to the registry.
+        // There is no local alias table and no local fallback-to-sinus any more: an unknown
+        // rhythm is warned about once by RHYTHMS.canonical() rather than silently drawn normal.
         const getECGValue = (t, type, cpr, absTime = 0) => {
-            const normType = ECG_NORM[type] || type;
+            if (cpr) return RG.realtime.cpr(absTime);
 
-            if (cpr) {
-                // CPR artefact at ~110/min compression rate (1.83 Hz) with irregular noise on top
-                return Math.sin(absTime * 2 * Math.PI * 1.83) * 28 + (Math.random() - 0.5) * 8;
+            const id = RG.canonical(type);
+            const rt = RG.realtimeFor(id);
+            if (rt && RG.realtime[rt]) return RG.realtime[rt](absTime);
+
+            const wf = RG.waveformFor(id);
+            const buf = precomputed.ecg[wf];
+            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
+            let y = buf ? buf[idx] : precomputed.ecg[RG.waveforms.sinus ? 'sinus' : wf][idx];
+
+            // Components that are dissociated from (or independent of) the ventricular cycle are
+            // added in real time so they visibly drift across the strip rather than being frozen
+            // into the precomputed buffer.
+            if (wf === 'af') y += RG.realtime.af_baseline(absTime);
+            if (wf === 'chb') y += RG.realtime.chb_p(absTime);
+            if (wf === 'mobitz2') {
+                const beat = Math.floor(absTime / 1.2);
+                if (beat % 4 === 3) y = RG.waveforms.first_degree((t % 1)) - RG.waveforms.sinus((t % 1)) + RG.waveforms.sinus(0.10);
             }
-
-            if (normType === 'VF') {
-                // Chaotic — three incommensurate frequencies + noise + slow waxing/waning amplitude
-                const ampMod = 0.65 + 0.45 * Math.sin(absTime * 1.7);
-                const w1 = Math.sin(absTime * 13.2) * 20;
-                const w2 = Math.sin(absTime * 25.6 + 1.3) * 13;
-                const w3 = Math.sin(absTime * 41.7 + 2.4) * 7;
-                const noise = (Math.random() - 0.5) * 6;
-                return (w1 + w2 + w3) * ampMod + noise;
-            }
-
-            if (normType === 'Asystole') {
-                return (Math.random() - 0.5) * 1.2;
-            }
-
-            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
-
-            if (normType === 'AF') {
-                // Absent P, fine fibrillatory baseline. R-R remains regular by design (precomputed buffer).
-                const fib = Math.sin(absTime * 28) * 1.2 + Math.sin(absTime * 47 + 1.1) * 0.7 + (Math.random() - 0.5) * 1.4;
-                return fib + (precomputed.ecg['SVT'] ? precomputed.ecg['SVT'][idx] : 0);
-            }
-
-            if (normType === 'Complete Heart Block') {
-                // Buffer = ventricular escape (QRS+T at the slow set rate).
-                // Add atrial P waves at an INDEPENDENT rate driven by absolute time → AV dissociation drifts visibly across the strip.
-                const qrs = precomputed.ecg['Complete Heart Block'] ? precomputed.ecg['Complete Heart Block'][idx] : 0;
-                const atrialHz = 75 / 60;        // ~75/min atrial rate
-                const period = 1 / atrialHz;
-                const pPhase = (absTime % period) / period;
-                const pVal = 4.2 * Math.exp(-Math.pow(pPhase - 0.5, 2) / 0.005);
-                return qrs + pVal;
-            }
-
-            if (precomputed.ecg[normType]) return precomputed.ecg[normType][idx];
-            // Falling back to a normal trace is clinically misleading, so make it loud rather than silent.
-            if (!warnedRhythms.has(type)) {
-                warnedRhythms.add(type);
-                console.warn(`ECG: no waveform for rhythm "${type}" — falling back to Sinus Rhythm. Add an ECG_NORM alias.`);
-            }
-            return precomputed.ecg['Sinus Rhythm'][idx];
+            return y + RG.realtime.baselineNoise();
         };
+
+        // R-wave sync markers for synchronised cardioversion (C6). The registry knows where the R
+        // wave sits in the cycle for every organised waveform, so the marker is drawn at the same
+        // phase the complex actually peaks at.
+        const R_PHASE = { sinus: 0.205, svt: 0.205, junctional: 0.205, af: 0.205, flutter: 0.205,
+                          first_degree: 0.305, mobitz2: 0.205, chb: 0.205, vt: 0.20, pea: 0.26,
+                          agonal: 0.30, paced: 0.205, stemi: 0.205, hyperkalaemia: 0.205, bbb: 0.200 };
 
         const getSPO2Value = (t, sat) => {
             if (sat < 10) return 0;
@@ -444,13 +362,23 @@
                     return y;
                 };
 
-                let ecgFreq = (live.hr > 0 ? live.hr : 60) / 60;
-                if (live.rhythmType === 'VF') ecgFreq = 4;
-                if (live.rhythmType === 'Asystole') ecgFreq = 0.1;
+                // Rate selection is registry-driven. A pulseless ORGANISED rhythm displays HR 0 but
+                // still has electrical activity, so it must be drawn at a rhythm-appropriate
+                // intrinsic rate instead of silently defaulting to 60/min (PEA previously drew a
+                // perfusing-looking trace at whatever rate the numbers happened to hold).
+                const rid = RG.canonical(live.rhythmType);
+                const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
+                let ecgFreq;
+                if (rid === 'VF') ecgFreq = 4;
+                else if (rid === 'Fine VF') ecgFreq = 5;
+                else if (rid === 'Asystole') ecgFreq = 0.1;
+                else if (live.hr > 0) ecgFreq = live.hr / 60;
+                else ecgFreq = (INTRINSIC[rid] || 60) / 60;
 
                 const cycleT = (time * ecgFreq) % 1;
                 const ecgBaseY = getBaseY();
-                const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR, time) * (live.rhythmType === 'VF' ? 0.5 : 1);
+                const ecgAmp = (rid === 'VF' || rid === 'Fine VF') ? 0.5 : 1;
+                const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR, time) * ecgAmp;
 
                 ctx.strokeStyle = '#22c55e';
                 ctx.lineWidth = 2;
@@ -461,6 +389,27 @@
                 ctx.lineTo(xPos, ecgY);
                 ctx.stroke();
                 lastY.ecg = ecgY;
+
+                // C6: R-wave synchronisation markers. When the defibrillator is in SYNC mode the
+                // device must visibly mark the R waves it will fire on, otherwise "synchronised"
+                // is an invisible flag (which is exactly what it was before Wave 3).
+                if (live.showSyncMarkers && !live.isCPR) {
+                    const rPhase = R_PHASE[RG.waveformFor(rid)];
+                    if (rPhase !== undefined) {
+                        const prevT = ((time - elapsed) * ecgFreq) % 1;
+                        const crossed = (prevT <= rPhase && cycleT >= rPhase) || (cycleT < prevT && (prevT <= rPhase || cycleT >= rPhase));
+                        if (crossed) {
+                            ctx.save();
+                            ctx.strokeStyle = '#facc15';
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(xPos, ecgBaseY - traceHeight * 0.42);
+                            ctx.lineTo(xPos, ecgBaseY - traceHeight * 0.30);
+                            ctx.stroke();
+                            ctx.restore();
+                        }
+                    }
+                }
 
                 if (showTraces) {
                     const spo2BaseY = getBaseY();
@@ -546,7 +495,8 @@
                 {showTraces && showArt && <div className="absolute left-2 text-red-500 font-mono text-xs font-bold" style={{ top: getTop(2) }}>ART</div>}
                 {showTraces && <div className="absolute left-2 text-yellow-500 font-mono text-xs font-bold" style={{ top: getTop(showArt ? 3 : 2) }}>RESP</div>}
                 {showTraces && showEtco2 && <div className="absolute left-2 text-purple-500 font-mono text-xs font-bold" style={{ top: getTop(showArt ? 4 : 3) }}>CO2</div>}
-                {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR DETECTED</div>}
+                {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR IN PROGRESS</div>}
+                {showSyncMarkers && !isCPR && <div className="absolute bottom-1 right-2 text-yellow-400 font-mono text-[10px] font-bold tracking-widest">SYNC</div>}
             </div>
         );
     };

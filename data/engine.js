@@ -2,6 +2,12 @@
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
+    // WAVE 3 / C1: the single shared rhythm registry. Every shockability, pulseless and
+    // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
+    // arrays (two shockability lists, seven arrest lists) are gone.
+    const RG = window.RHYTHMS;
+    if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
+
     const DEFAULT_VITALS = { etco2: 4.5, temp: 36.5, bm: 5.5, ph: 7.4, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 };
 
     const initialVitalsState = {
@@ -50,6 +56,36 @@
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
         icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
         lastUpdate: 0, isOffline: false, showWetflag: true,
+        // ---- WAVE 3 -------------------------------------------------------------------
+        // A3: the assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
+        // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
+        defibPanelOpen: false,
+        // B5: defibrillator device + metrics state. Previously shockCountRef was a bare useRef
+        // that never reached state, Firebase, localStorage OR the debrief, and reset on resume.
+        defib: {
+            mode: 'monitor',            // monitor | defib | pacer | aed
+            energy: null,               // currently selected energy (null = not yet resolved from weight)
+            charged: false,
+            chargeEnergy: null,
+            syncMode: false,
+            shockCount: 0,              // EVERY shock delivered, including into non-shockable rhythms
+            shockableShocks: 0,         // shocks into a shockable rhythm — the only ones that drive ROSC
+            totalEnergy: 0,
+            lastEnergy: null,
+            lastShockAt: null,          // ms epoch; drives the inter-shock refractory period
+            analysing: false,
+            lastAnalysis: null,
+            shockBonus: 0               // additive ROSC bonus banked by adrenaline/amiodarone
+        },
+        // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
+        // deliberately absent from the Firebase sync payload (verified by
+        // verify_wave3.js :: conversion announcements are not synced) because `notification`
+        // IS synced and IS rendered on the student monitor. Conversion announcements must never
+        // appear on the patient-facing screen — that would tell the team the answer.
+        rhythmEvent: null,              // { id, from, to, cause, detail, at } — drives the toast
+        lastConversion: null,           // last CONVERSION (from !== to) — drives the persistent strip
+        // A5: which remote devices are connected and what each is displaying.
+        remotePresence: { clients: [], updatedAt: null },
         // `isOffline` is kept for existing UI behaviour; syncStatus carries the actionable
         // reason that the controller and second-screen monitor display to the user.
         syncStatus: { state: 'connecting', message: null, lastWriteAt: null }
@@ -202,7 +238,9 @@
     };
     // Vitals a pulseless patient cannot express. Suppressed from the drug envelope during arrest.
     const ARREST_SUPPRESSED = ['hr', 'bpSys', 'bpDia', 'rr', 'spO2'];
-    const PULSELESS_RHYTHMS = ['VF', 'VT', 'pVT', 'PEA', 'Asystole'];
+    // C1: derived from the registry, NOT a local copy. The old literal included 'VT', which is
+    // why VT-with-a-pulse (AM024) was treated as an arrest by the drug envelope.
+    const PULSELESS_RHYTHMS = RG.PULSELESS;
 
     const PK_DEFAULT_MAX_DOSES = 3;
     const PK_PLATEAU_FRACTION = 0.35;   // share of the peak->offset window spent at full effect
@@ -551,7 +589,7 @@
                 const scen = cs ? cs.scenario : null;
                 const rhythm = cs ? cs.rhythm : 'Sinus Rhythm';
                 const cprActive = cs ? cs.cprInProgress : false;
-                const inArrest = ['VF', 'VT', 'pVT', 'PEA', 'Asystole'].includes(rhythm);
+                const inArrest = RG.inArrest(rhythm);   // C1: registry, not a seventh private list
                 const isBagging = isVentilated(activeInt);
                 const time0 = cs ? cs.time : 0;
                 // coreReducer increments `time` in the same dispatch, so the authoritative clock for
@@ -770,6 +808,10 @@
                     icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
                     activeDrugs: Array.isArray(p.activeDrugs) ? p.activeDrugs : [],
                     deteriorationMode: p.deteriorationMode === 'auto' ? 'auto' : 'manual',
+                    // B5: shock count / cumulative energy survive a resume now that they live in
+                    // state rather than in a useRef that reset to zero.
+                    defib: { ...initialCoreState.defib, ...(p.defib || {}) },
+                    lastConversion: p.lastConversion || null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     processedEvents: new Set(p.processedEvents || []),
                     completedObjectives: new Set(p.completedObjectives || []),
@@ -841,7 +883,29 @@
             case 'RESET_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, time: 0 } };
             
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
-            case 'UPDATE_RHYTHM': return { ...state, rhythm: action.payload };
+            case 'UPDATE_RHYTHM': {
+                // B1/B2: UPDATE_RHYTHM used to log NOTHING; logging was scattered across five
+                // call sites with five different formats and three of them logged nothing at all.
+                // Every transition now arrives here carrying `cause`/`detail` (see changeRhythm()),
+                // and the reducer records the assessor-local announcement state.
+                const to = RG.canonical(action.payload);
+                const from = state.rhythm;
+                const ev = {
+                    id: (action.eventId || Date.now()),
+                    from, to,
+                    cause: action.cause || 'unspecified',
+                    detail: action.detail || null,
+                    converted: from !== to,
+                    at: Date.now()
+                };
+                return { ...state, rhythm: to, rhythmEvent: ev, lastConversion: ev.converted ? ev : state.lastConversion };
+            }
+            case 'CLEAR_RHYTHM_EVENT': return { ...state, rhythmEvent: null };
+            // B5 / A: defibrillator device state + metrics. Merge semantics so a charge does not
+            // clobber the running shock tally.
+            case 'SET_DEFIB_STATE': return { ...state, defib: { ...state.defib, ...(action.payload || {}) } };
+            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
+            case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
             case 'COMMIT_NIBP': 
                 const safeSys = cs && cs.vitals.bpSys ? cs.vitals.bpSys : 0;
@@ -866,7 +930,7 @@
                 isParalysed: !!action.payload.isParalysed,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -1014,23 +1078,23 @@
             }
 
             if (action.type === 'UPDATE_RHYTHM') {
-                const newRhythm = action.payload;
-                // 'VT' is deliberately absent: it is offered in the general rhythm list and is commonly
-                // taught as VT-with-a-pulse. Only the unambiguously pulseless rhythms zero the numbers.
-                const PULSELESS = ['VF', 'pVT', 'Asystole', 'PEA'];
-                const isArrest = ['VF', 'VT', 'pVT', 'Asystole', 'PEA'].includes(newRhythm);
+                const newRhythm = RG.canonical(action.payload);
+                // C1: ONE definition. `pulseless` and `isArrest` are the SAME registry predicate —
+                // the pre-Wave-3 code had two different lists here that disagreed about VT, so
+                // VT-with-a-pulse got arrest physiology while also being excluded from zeroing.
+                const isArrest = RG.inArrest(newRhythm);
                 const cur = stateRef.current;
                 // Rhythm-driven vitals are a facilitator-level write: they target the BASE.
                 let rhythmVitals = { ...cur.baseVitals };
 
-                if (PULSELESS.includes(newRhythm)) {
+                if (RG.isPulseless(newRhythm)) {
                     // A shockable/pulseless rhythm showing a pre-arrest BP and SpO2 is clinically
                     // contradictory; the numeric panel must agree with the trace.
                     if (rhythmVitals.hr > 0 || rhythmVitals.bpSys > 0) {
                         dispatchVitals({ type: 'STOP_TREND', currentState: cur });
                         rhythmVitals = { ...rhythmVitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 };
                     }
-                } else if (PULSELESS.includes(cur.rhythm)) {
+                } else if (RG.isPulseless(cur.rhythm)) {
                     // Coming out of a pulseless rhythm into an organised one — an organised rhythm must
                     // never be left displaying HR 0.
                     const age = cur.scenario?.patientAge ?? 40;
@@ -1039,13 +1103,12 @@
                     rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: Math.round((5.0 + Math.random() * 1.5) * 10) / 10 };
                 }
 
-                if (!cur.arrestPanelOpen && !isArrest) {
-                    if (newRhythm === 'AF') rhythmVitals.hr = getRandomInt(110, 150);
-                    if (newRhythm === 'SVT') rhythmVitals.hr = getRandomInt(170, 200);
-                    if (newRhythm === 'Complete Heart Block') rhythmVitals.hr = getRandomInt(35, 45);
-                    if (newRhythm === 'Sinus Bradycardia') rhythmVitals.hr = getRandomInt(40, 50);
-                    if (newRhythm === 'Sinus Tachycardia') rhythmVitals.hr = getRandomInt(110, 130);
-                    if (newRhythm === 'Atrial Flutter') rhythmVitals.hr = 150; 
+                // Registry-supplied rate band for the new rhythm, so every organised rhythm
+                // (including the ones previously missing: Atrial Flutter, VT, 1st/2nd degree block,
+                // Junctional, STEMI) lands on a clinically sensible heart rate.
+                if (!cur.arrestPanelOpen && !cur.defibPanelOpen && !isArrest) {
+                    const band = RG.defaultHrRange(newRhythm);
+                    if (band) rhythmVitals.hr = getRandomInt(band[0], band[1]);
                 }
                 dispatchVitals({ type: 'UPDATE_VITALS', payload: rhythmVitals, currentState: stateRef.current });
             }
@@ -1067,6 +1130,14 @@
                 // own local banner, so a dropped press leaves the two screens silently disagreeing.
                 // PACER_UPDATE is device state, not a clinical action — it must stay in sync even paused,
                 // otherwise the facilitator's capture threshold view drifts from the student's dial.
+                // A7: REQUEST_SYNC is a handshake. The standalone defib broadcasts it on load and
+                // NOTHING handled it, so a defib opened mid-scenario sat on frozen fake normals
+                // until the next vitals tick. Answer it immediately, running or not.
+                if (data.type === 'REQUEST_SYNC') {
+                    postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayloadRef.current() });
+                    return;
+                }
+
                 if (!cur.isRunning && data.type !== 'PACER_UPDATE') {
                     const pausedLabels = {
                         SHOCK_DELIVERED: `student pressed SHOCK (${data.payload?.energy ?? '?'}J)`,
@@ -1089,7 +1160,13 @@
                 } else if (data.type === 'CHARGE_INIT') {
                     initCharge(data.payload.energy);
                 } else if (data.type === 'SHOCK_DELIVERED') {
-                    deliverShock(data.payload.energy, 'student');
+                    // The sync flag was transmitted and then DISCARDED here before Wave 3.
+                    deliverShock(data.payload.energy, 'student (standalone defib)', { sync: !!data.payload.sync });
+                } else if (data.type === 'SYNC_TOGGLE') {
+                    dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!data.payload?.sync } });
+                    addLogEntry(`SYNC ${data.payload?.sync ? 'ON' : 'OFF'} (student, standalone defib)`, 'action');
+                } else if (data.type === 'ENERGY_SELECT') {
+                    setDefibEnergy(data.payload?.energy, 'student (standalone defib)');
                 } else if (data.type === 'CHECK_PULSE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Checked Pulse', type: 'action' } });
                 } else if (data.type === 'ANALYSIS_RESULT') {
@@ -1108,6 +1185,7 @@
                         scenario: { patientName: s.patientName, ecg: s.ecg || null, investigations: { ecg: s.investigations?.ecg || null } }
                     } });
                 } else if (data.type === 'DEVICE_MODE') {
+                    dispatch({ type: 'SET_DEFIB_STATE', payload: { mode: data.payload.mode } });
                     if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
                         dispatch({ type: 'SET_ARREST_PANEL', payload: true });
                     }
@@ -1116,20 +1194,42 @@
             return () => { if (simChannel.current) simChannel.current.onmessage = null; };
         }, [isMonitorMode]);
 
+        // A7 / C4: the standalone defib page previously received rhythm + 5 numbers and NOTHING
+        // else — no weight, no age, no recommended energy, no session-ended flag — which is why it
+        // hardcoded 120 J for a 3.5 kg neonate and kept showing a live-looking trace after the end
+        // of the session. One builder, used by both the periodic broadcast and REQUEST_SYNC.
+        const buildDefibSyncPayload = () => {
+            const cur = stateRef.current;
+            const weight = Number(cur.scenario?.wetflag?.weight);
+            const age = cur.scenario?.patientAge;
+            return {
+                linked: true,
+                sessionID: sessionID || null,
+                rhythm: cur.rhythm, hr: cur.vitals.hr, spO2: cur.vitals.spO2,
+                etco2: cur.vitals.etco2, bpSys: cur.vitals.bpSys, bpDia: cur.vitals.bpDia,
+                gain: cur.waveformGain, interference: cur.noise.interference,
+                cpr: cur.cprInProgress, captureThreshold: cur.pacingThreshold,
+                audioOutput: cur.audioOutput,
+                isRunning: !!cur.isRunning, isFinished: !!cur.isFinished,
+                patientName: cur.scenario?.patientName || null,
+                ageRange: cur.scenario?.ageRange || null,
+                patientAge: Number.isFinite(Number(age)) ? Number(age) : null,
+                weight: Number.isFinite(weight) && weight > 0 ? weight : null,
+                wetflag: cur.scenario?.wetflag || null,
+                recommendedEnergy: RG.recommendedEnergy(Number.isFinite(weight) && weight > 0 ? weight : null, age),
+                energyLevels: RG.energySteps(Number.isFinite(weight) && weight > 0 ? weight : null, age),
+                defib: cur.defib || {}
+            };
+        };
+        const buildDefibSyncPayloadRef = useRef(buildDefibSyncPayload);
+        buildDefibSyncPayloadRef.current = buildDefibSyncPayload;
+
         useEffect(() => {
             if (!isMonitorMode) {
-                postToChannel({
-                    type: 'SYNC_VITALS',
-                    payload: {
-                        rhythm: state.rhythm, hr: state.vitals.hr, spO2: state.vitals.spO2,
-                        etco2: state.vitals.etco2, bpSys: state.vitals.bpSys, bpDia: state.vitals.bpDia,
-                        gain: state.waveformGain, interference: state.noise.interference,
-                        cpr: state.cprInProgress, captureThreshold: state.pacingThreshold,
-                        audioOutput: state.audioOutput 
-                    }
-                });
+                postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayload() });
             }
-        }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput]);
+        }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput,
+            state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib]);
 
         useEffect(() => {
             const db = window.db;
@@ -1206,6 +1306,16 @@
                     nibp: cur.nibp, speech: cur.speech, soundEffect: cur.soundEffect,
                     audioOutput: cur.audioOutput, trends: cur.trends,
                     arrestPanelOpen: cur.arrestPanelOpen, isFinished: cur.isFinished,
+                    // A3: the assessor's Defib open/close toggle, and the defib device state the
+                    // student's monitor-hosted defibrillator renders (mode, selected energy, charge
+                    // state, SYNC, running shock tally).
+                    //
+                    // B4 LEAK BARRIER — DO NOT ADD `rhythmEvent`, `lastConversion` OR ANY
+                    // CONVERSION ANNOUNCEMENT TO THIS PAYLOAD. `notification` below is rendered on
+                    // the STUDENT monitor; conversion announcements are assessor-only by design and
+                    // verify_wave3.js asserts their absence from this object.
+                    defibPanelOpen: !!cur.defibPanelOpen,
+                    defib: cur.defib || {},
                     monitorPopup: cur.monitorPopup, waveformGain: cur.waveformGain,
                     noise: cur.noise, notification: cur.notification,
                     remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
@@ -1269,7 +1379,8 @@
             state.noise, state.notification, state.remotePacerState, state.pacingThreshold,
             state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
             state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
-            state.activeDrugs, state.deteriorationMode
+            state.activeDrugs, state.deteriorationMode,
+            state.defibPanelOpen, state.defib
         ]);
 
         useEffect(() => {
@@ -1297,6 +1408,135 @@
             return () => sessionRef.off('value', handleUpdate);
         }, [isMonitorMode, sessionID]);
 
+        // =====================================================================================
+        // A5: PRESENCE / CONNECTION INDICATOR.
+        // Modelled on the existing syncStatus state machine: the monitor writes a presence child
+        // under sessions/<CODE>/presence/<clientId> with an onDisconnect() removal and a 10s
+        // heartbeat; the controller reduces the children into state.remotePresence and shows a
+        // badge next to the existing sync badge saying WHAT each remote device is displaying.
+        // =====================================================================================
+        const presenceIdRef = useRef(null);
+        if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10);
+
+        // --- monitor side: announce ourselves and what we are showing.
+        const presenceDisplay = isMonitorMode
+            ? (state.defibPanelOpen ? 'defib' : (state.arrestPanelOpen ? 'arrest view' : 'patient monitor'))
+            : null;
+        useEffect(() => {
+            const db = window.db;
+            if (!db || !sessionID || !isMonitorMode) return;
+            const ref = db.ref(`sessions/${sessionID}/presence/${presenceIdRef.current}`);
+            const write = () => {
+                ref.update({
+                    role: 'monitor',
+                    display: presenceDisplay,
+                    ua: (navigator.userAgent || '').slice(0, 120),
+                    ts: Date.now()
+                }).catch(e => console.warn('Presence write failed', e));
+            };
+            // onDisconnect() is what makes a closed tab / dead tablet disappear promptly; the
+            // heartbeat is what makes a WIFI dropout (where onDisconnect never fires) detectable.
+            ref.onDisconnect().remove().catch(() => {});
+            write();
+            const hb = setInterval(write, 10000);
+            return () => { clearInterval(hb); ref.remove().catch(() => {}); };
+        }, [isMonitorMode, sessionID, presenceDisplay]);
+
+        // --- controller side: reduce the presence children, expiring stale heartbeats.
+        useEffect(() => {
+            const db = window.db;
+            if (!db || !sessionID || isMonitorMode) return;
+            const ref = db.ref(`sessions/${sessionID}/presence`);
+            const STALE_MS = 30000;
+            let latest = {};
+            const push = () => {
+                const now = Date.now();
+                const clients = Object.keys(latest)
+                    .map(k => ({ id: k, ...(latest[k] || {}) }))
+                    .filter(c => Number.isFinite(Number(c.ts)) && (now - Number(c.ts)) < STALE_MS);
+                dispatch({ type: 'SET_REMOTE_PRESENCE', payload: clients });
+            };
+            const onVal = (snap) => { latest = snap.val() || {}; push(); };
+            const onErr = (e) => {
+                console.error('Presence read failed:', e);
+                dispatch({ type: 'SET_REMOTE_PRESENCE', payload: [] });
+            };
+            ref.on('value', onVal, onErr);
+            const sweep = setInterval(push, 5000);
+            return () => { ref.off('value', onVal); clearInterval(sweep); };
+        }, [isMonitorMode, sessionID]);
+
+        // =====================================================================================
+        // A6: STUDENT DEVICE EVENTS.
+        // sessions/<CODE>/command is a single set() slot already owned by the monitor's NIBP
+        // control, so reusing it for defib events would clobber an in-flight NIBP command (and
+        // vice versa). Device events therefore get their OWN node with PUSH semantics.
+        // Every event converges on the same shared outcome helpers the facilitator uses
+        // (initCharge / deliverShock / applyShockOutcome / applyCardioversion).
+        // =====================================================================================
+        const deviceEventsSinceRef = useRef(Date.now());
+        const sendDeviceEvent = (type, payload = {}) => {
+            if (!isMonitorMode || !sessionID || !window.db) return false;
+            const safe = sanitizeForRealtimeDatabase({ type, payload, ts: Date.now(), from: presenceIdRef.current });
+            if (!safe.value || safe.dropped.length) {
+                console.error('Invalid device event not sent:', safe.dropped.join(', '));
+                return false;
+            }
+            try {
+                window.db.ref(`sessions/${sessionID}/deviceEvents`).push(safe.value).catch(e => {
+                    console.error('Device event send failed:', e);
+                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Defib event write failed: ${e.message || 'unknown error'}` } });
+                });
+                return true;
+            } catch (e) {
+                console.error('Device event send failed:', e);
+                return false;
+            }
+        };
+
+        useEffect(() => {
+            const db = window.db;
+            if (!db || !sessionID || isMonitorMode) return;
+            const ref = db.ref(`sessions/${sessionID}/deviceEvents`);
+            // Only ever act on events newer than this listener, so a re-mount cannot replay a
+            // whole arrest's worth of shocks.
+            const startedAt = deviceEventsSinceRef.current;
+            const onChild = (snap) => {
+                const ev = snap.val();
+                if (!ev || !ev.type) return;
+                if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
+                const cur = stateRef.current;
+                const src = 'student (monitor defib)';
+                const p = ev.payload || {};
+                switch (ev.type) {
+                    case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
+                    case 'ENERGY_SELECT': setDefibEnergy(p.energy, src); break;
+                    case 'SYNC_TOGGLE': dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!p.sync } });
+                        addLogEntry(`SYNC ${p.sync ? 'ON' : 'OFF'} (${src})${p.sync && RG.isPulseless(cur.rhythm) ? ' — armed in a pulseless rhythm; the device will not discharge. Flagged.' : ''}`,
+                            p.sync && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', !!(p.sync && RG.isPulseless(cur.rhythm)));
+                        break;
+                    case 'CHARGE_INIT': initCharge(p.energy); break;
+                    case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
+                    case 'ANALYSE': analyseRhythm(src); break;
+                    case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: p.rate, output: p.output } }); break;
+                    case 'CHECK_PULSE': addLogEntry('Student checked pulse (monitor defib)', 'action'); break;
+                    case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
+                    case 'MARKER_EVENT': addLogEntry('Student marked event (monitor defib)', 'manual', true); break;
+                    case 'ALARM_SILENCE': addLogEntry('Alarm silenced by student (monitor defib)', 'info'); break;
+                    case 'REQUEST_12LEAD': addLogEntry('Student requested 12-lead (monitor)', 'action'); break;
+                    default: addLogEntry(`Unhandled student device event: ${ev.type}`, 'system'); break;
+                }
+                // Consume the event so the queue cannot grow without bound across a long session.
+                snap.ref.remove().catch(() => {});
+            };
+            const onErr = (e) => {
+                console.error('Device event listener failed:', e);
+                dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Defib event read failed: ${e.message || 'unknown error'}` } });
+            };
+            ref.limitToLast(25).on('child_added', onChild, onErr);
+            return () => ref.off('child_added', onChild);
+        }, [isMonitorMode, sessionID]);
+
         // Persist a slim snapshot to localStorage every 5s. This is a single interval keyed only on
         // isMonitorMode: the previous effect re-ran on every vitals tick, and its cleanup cleared the
         // pending timeout each time, so at 1Hz the 5s write never actually fired and resume was dead.
@@ -1319,7 +1559,9 @@
                         completedObjectives: Array.from(cur.completedObjectives),
                         log: cur.log.slice(-200), // recent log only
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
-                        showWetflag: cur.showWetflag, icp: cur.icp
+                        showWetflag: cur.showWetflag, icp: cur.icp,
+                        // B5: shock count / cumulative energy must survive a resume.
+                        defib: cur.defib, lastConversion: cur.lastConversion
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
                 } catch (e) {
@@ -1387,7 +1629,9 @@
         useEffect(() => {
             let timerId;
             let cancelled = false;
-            const SILENT_RHYTHMS = ['VF', 'Asystole', 'pVT', 'PEA'];
+            // C1: no pulse means no beep. Registry-derived, so it cannot drift from the
+            // physiology the way the old private list did.
+            const SILENT_RHYTHMS = RG.PULSELESS;
             const scheduleBeep = () => {
                 if (cancelled) return;
                 const current = stateRef.current;
@@ -1458,7 +1702,7 @@
             const fire = (key, tone) => {
                 if (now - (lastAlarmRef.current[key] || 0) > 10000) { playAlertTone(tone); lastAlarmRef.current[key] = now; }
             };
-            const pulseless = ['VF', 'pVT', 'Asystole', 'PEA'].includes(current.rhythm);
+            const pulseless = RG.isPulseless(current.rhythm);   // C1: registry
             if (pulseless) { fire('arrest', 'critical'); return; }
             if (v.hr > th.hr.high || v.hr < th.hr.low) fire('hr', 'critical');
             if (v.spO2 < th.spO2) fire('spO2', 'critical');
@@ -1645,8 +1889,10 @@
             // waveform artefact and the ROSC bonus, all of which were dead code. Wave 3 should extend
             // this (compression quality, pauses, metronome) rather than re-adding the flag.
             if (action.effect.cpr === true && !cur.cprInProgress) {
-                dispatch({ type: 'TOGGLE_CPR', payload: true });
-                addLogEntry('CPR in progress — arrest ETCO2 and compression artefact now modelled.', 'info');
+                // C5 (Wave 3): route through the shared helper so the cycle timer resets, the
+                // assessor gets the CPR indicator and the coaching line is consistent wherever
+                // compressions are started from.
+                toggleCPR(true, action.label || 'intervention');
             }
 
             // --- AIRWAY / RSI: clinically honest oxygenation instead of a jump to SpO2 99 ---
@@ -1680,15 +1926,25 @@
                 addLogEntry(key === 'CICO' ? 'CICO: airway NOT secured. Oxygenate by any means, then front-of-neck access.' : 'Airway NOT secured after failed attempt. Oxygenate between attempts.', 'danger', true);
             }
 
+            // C6: all three changeRhythm modes are handled now. 'sync' and 'chance' were silently
+            // ignored before Wave 3, which is why the Cardioversion intervention did nothing and
+            // Adrenaline IV / Amiodarone changed no rhythm in any scenario.
             if (action.effect.changeRhythm === 'defib') {
-                applyShockOutcome(cur);
+                applyShockOutcome(cur, { energy: (cur.defib && cur.defib.energy) || undefined, sync: false, source: 'facilitator' });
+            } else if (action.effect.changeRhythm === 'sync') {
+                applyCardioversion(cur, { energy: (cur.defib && cur.defib.energy) || undefined, source: 'facilitator' });
+            } else if (action.effect.changeRhythm === 'chance') {
+                applyDrugConversion(cur, key, action.label || key);
+            } else if (typeof action.effect.changeRhythm === 'string' && RG.isKnown(action.effect.changeRhythm)) {
+                // A scenario/intervention may name a specific target rhythm outright.
+                changeRhythm(action.effect.changeRhythm, 'intervention', { agent: action.label || key });
             }
 
             // ARREST PHYSIOLOGY. During a pulseless rhythm there is no cardiac output, so drugs cannot
             // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
             // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
             // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
-            const isArrest = cur.vitals.bpSys < 10 && (['VF','VT','Asystole','PEA','pVT'].includes(cur.rhythm));
+            const isArrest = RG.inArrest(cur.rhythm);   // C1: registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
             if (isArrest) {
                 const e = action.effect || {};
                 const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
@@ -1778,71 +2034,380 @@
 
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
-        const triggerArrest = (type = 'VF') => {
+        // =====================================================================================
+        // B1: THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
+        // Before Wave 3 the rhythm could change from FIVE places (manual grid, ARREST menu, ROSC
+        // menu, shock outcome, nextCycle) with three of them logging nothing, and UPDATE_RHYTHM
+        // itself logging nothing at all. Nothing may dispatch UPDATE_RHYTHM directly any more.
+        //
+        // `cause` is a short machine-ish token ('defibrillation', 'manual selection', 'arrest',
+        // 'ROSC', 'drug', 'cardioversion', 'deterioration', 'rhythm check', 'refibrillation').
+        // `meta` carries the clinical detail the assessor needs: energy, synchronised, drug label.
+        //
+        // B4 LEAK BARRIER: the announcement is written to state.rhythmEvent / state.lastConversion,
+        // which are ASSESSOR-LOCAL and deliberately excluded from the Firebase payload. It is NOT
+        // written to `notification`, because `notification` is synced and rendered on the student
+        // monitor — announcing "VF → Sinus (defibrillation)" there would hand the team the answer.
+        // =====================================================================================
+        const conversionSeqRef = useRef(0);
+        const changeRhythm = (next, cause = 'unspecified', meta = {}) => {
+            const cur = stateRef.current;
+            const from = RG.canonical(cur.rhythm);
+            const to = RG.canonical(next);
+            if (!RG.isKnown(next)) {
+                addLogEntry(`Rhythm "${next}" is not in the rhythm registry — showing ${RG.labelFor(to)} instead. This is a content bug, please report it.`, 'warning', true);
+            }
+
+            // Human-readable detail: energy + synchronisation for shocks, agent for drugs.
+            const bits = [];
+            if (cause) bits.push(cause);
+            if (Number.isFinite(Number(meta.energy))) bits.push(`${Math.round(Number(meta.energy))}J`);
+            if (meta.sync === true) bits.push('synchronised');
+            if (meta.sync === false && meta.energy) bits.push('unsynchronised');
+            if (meta.agent) bits.push(meta.agent);
+            if (meta.note) bits.push(meta.note);
+            const detail = bits.join(', ');
+
+            conversionSeqRef.current += 1;
+            const eventId = `${Date.now()}-${conversionSeqRef.current}`;
+
+            // B2: one consistent, assessor-readable line for EVERY transition, converted or not.
+            if (from === to) {
+                addLogEntry(`Rhythm: ${RG.labelFor(from)} unchanged (${detail || cause})`, 'info');
+            } else {
+                addLogEntry(`Rhythm: ${RG.labelFor(from)} \u2192 ${RG.labelFor(to)} (${detail || cause})`, 'action', false);
+            }
+
+            dispatch({ type: 'UPDATE_RHYTHM', payload: to, cause, detail, eventId });
+            return to;
+        };
+
+        // Cosmetic: auto-expire the assessor toast so it behaves like the existing notification toast.
+        useEffect(() => {
+            if (!coreState.rhythmEvent) return;
+            const id = setTimeout(() => dispatchCore({ type: 'CLEAR_RHYTHM_EVENT', currentState: stateRef.current }), 6000);
+            return () => clearTimeout(id);
+        }, [coreState.rhythmEvent && coreState.rhythmEvent.id]);
+
+        const arrestVitals = (base) => ({ ...base, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 });
+
+        const triggerArrest = (type = 'VF', cause = 'arrest') => {
             const cur = stateRef.current;
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 } });
-            dispatch({ type: 'UPDATE_RHYTHM', payload: type });
-            addLogEntry(`CARDIAC ARREST - ${type}`, 'manual');
+            dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+            changeRhythm(type, cause);
+            addLogEntry(`CARDIAC ARREST - ${RG.labelFor(type)}`, 'manual', true);
             dispatch({ type: 'SET_FLASH', payload: 'red' });
         };
 
-        const triggerROSC = (rhythm = 'Sinus Rhythm') => {
+        const triggerROSC = (rhythm = 'Sinus Rhythm', cause = 'ROSC', meta = {}) => {
             const cur = stateRef.current;
             const age = cur.scenario?.patientAge ?? 40;
             const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
             const newEtco2 = Math.round((5.0 + (Math.random() * 1.5)) * 10) / 10;
+            // C7: ROSC is no longer always exactly Sinus Rhythm. Honour the rhythm we were given,
+            // and let the registry supply its rate band so a ROSC into AF is not shown at 80/min.
+            const target = RG.canonical(rhythm);
+            const band = RG.defaultHrRange(target);
+            const hr = band ? getRandomInt(band[0], band[1]) : base.hr;
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 } });
-            dispatch({ type: 'UPDATE_RHYTHM', payload: rhythm });
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 } });
+            changeRhythm(target, cause, meta);
             if (cur.scenario) {
                 const updatedScenario = { ...cur.scenario, deterioration: { ...(cur.scenario.deterioration || {}), active: false } };
                 dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
             }
-            addLogEntry(`ROSC achieved (${rhythm}).`, 'success');
+            addLogEntry(`ROSC achieved (${RG.labelFor(target)}). Post-ROSC care: 12-lead, targeted oxygenation, treat the cause.`, 'success', true);
             dispatch({ type: 'SET_FLASH', payload: 'green' });
         };
 
-        // Shared shock outcome. Both the facilitator's Defib intervention and a student shock arriving
-        // over the channel route through here so the two paths cannot drift apart again.
-        const shockCountRef = useRef(0);
-        const SHOCKABLE = ['VF', 'VT', 'pVT'];
-        function applyShockOutcome(cur) {
-            shockCountRef.current += 1;
-            if (!SHOCKABLE.includes(cur.rhythm)) {
-                addLogEntry(`Shock delivered into non-shockable rhythm (${cur.rhythm}) — no effect.`, 'warning');
+        // =====================================================================================
+        // DEFIBRILLATION (C4 / C6 / C7) — one shared outcome helper, reached by:
+        //   * the facilitator's arrest/defib panel (initCharge / deliverShock)
+        //   * the 'Defib' intervention (effect.changeRhythm === 'defib')
+        //   * a student pressing SHOCK on the monitor-hosted defib (Firebase deviceEvents)
+        //   * a student pressing SHOCK on the standalone defib page (BroadcastChannel)
+        // =====================================================================================
+        const SHOCK_REFRACTORY_MS = 5000;   // C7: stops charge/shock button-mashing maximising ROSC
+        const refibTimerRef = useRef(null);
+
+        const defibWeight = () => {
+            const cur = stateRef.current;
+            const w = Number(cur.scenario?.wetflag?.weight);
+            return Number.isFinite(w) && w > 0 ? w : null;
+        };
+        const recommendedShockEnergy = () => {
+            const cur = stateRef.current;
+            return RG.recommendedEnergy(defibWeight(), cur.scenario?.patientAge);
+        };
+
+        const scheduleRefibrillation = (fromRhythm) => {
+            const table = RG.SHOCK_OUTCOMES[RG.canonical(fromRhythm)];
+            if (!table || !table.refibChance) return;
+            if (Math.random() >= table.refibChance) return;
+            if (refibTimerRef.current) clearTimeout(refibTimerRef.current);
+            const delay = 20000 + Math.random() * 40000;
+            refibTimerRef.current = setTimeout(() => {
+                refibTimerRef.current = null;
+                const cur = stateRef.current;
+                if (!cur.isRunning || cur.isFinished) return;
+                if (RG.isPulseless(cur.rhythm)) return;     // already re-arrested another way
+                dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+                changeRhythm(fromRhythm, 'refibrillation', { note: 're-arrest after ROSC' });
+                dispatch({ type: 'SET_FLASH', payload: 'red' });
+            }, delay);
+        };
+
+        // The ONE place a shock outcome is decided.
+        function applyShockOutcome(cur, opts = {}) {
+            const joules = Number.isFinite(Number(opts.energy)) ? Math.round(Number(opts.energy)) : recommendedShockEnergy();
+            const sync = !!opts.sync;
+            const source = opts.source || 'facilitator';
+            const now = Date.now();
+            const d = cur.defib || {};
+
+            // --- Metrics (B5). EVERY delivered shock counts here, shockable or not, and these
+            // numbers live in state so they reach Firebase, localStorage and the debrief.
+            const nextDefib = {
+                shockCount: (d.shockCount || 0) + 1,
+                totalEnergy: (d.totalEnergy || 0) + joules,
+                lastEnergy: joules,
+                lastShockAt: now,
+                charged: false,
+                chargeEnergy: null
+            };
+
+            // --- C4: paediatric energy. Never blocked, always flagged (Wave 1 philosophy).
+            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
+            if (dev) {
+                addLogEntry(`Shock energy deviation: ${dev.reason}. Recommended for this patient: ${dev.expected}J (4 J/kg for a child).`, 'warning', true,
+                    { action: 'Defib', label: 'Defibrillation', missing: [`correct energy (${dev.expected}J)`] });
+            }
+
+            const shockable = RG.isShockable(cur.rhythm);
+
+            // --- C7 FIX: the shock counter used to increment BEFORE this guard, so shocking a
+            // non-shockable rhythm silently inflated the ROSC probability of the next real shock.
+            if (!shockable) {
+                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                if (RG.isSyncCardiovertible(cur.rhythm) && !sync) {
+                    addLogEntry(`Unsynchronised shock delivered into ${RG.labelFor(cur.rhythm)} — this rhythm needs SYNCHRONISED cardioversion. Not blocked, but flagged.`, 'warning', true,
+                        { action: 'Defib', label: 'Defibrillation', missing: ['synchronisation'] });
+                } else {
+                    addLogEntry(`Shock delivered into non-shockable rhythm (${RG.labelFor(cur.rhythm)}) — no effect. Check the rhythm before shocking.`, 'warning', true,
+                        { action: 'Defib', label: 'Defibrillation', missing: ['a shockable rhythm'] });
+                }
+                changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync, note: 'non-shockable, no change' });
                 return;
             }
+
+            if (sync) {
+                addLogEntry(`SYNCHRONISED shock delivered into ${RG.labelFor(cur.rhythm)} — a pulseless rhythm has no R wave to synchronise to, so the device would not fire in sync. Treat as unsynchronised. Flagged.`, 'warning', true,
+                    { action: 'Defib', label: 'Defibrillation', missing: ['unsynchronised mode'] });
+            }
+
+            nextDefib.shockableShocks = (d.shockableShocks || 0) + 1;
+
+            // --- C7: refractory period. A shock stacked on top of the previous one within 5s is
+            // still delivered and still logged, but earns no new physiological roll.
+            const stacked = d.lastShockAt && (now - d.lastShockAt) < SHOCK_REFRACTORY_MS;
+            if (stacked) {
+                nextDefib.shockableShocks = d.shockableShocks || 0;   // does not advance the ROSC ladder
+                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                addLogEntry(`Second shock delivered ${Math.round((now - d.lastShockAt) / 1000)}s after the last one — stacked shocks give no additional benefit. Two minutes of good CPR between shocks is the intervention. Flagged.`, 'warning', true,
+                    { action: 'Defib', label: 'Defibrillation', missing: ['2 minutes of CPR between shocks'] });
+                changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync: false, note: 'stacked shock, no change' });
+                return;
+            }
+
+            dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+
+            // --- FACILITATOR OVERRIDE (C7): "next shock converts to X". Uses the previously
+            // unreachable queuedRhythm / SET_QUEUED_RHYTHM code, which is now driven by a real
+            // control on the assessor's defib panel.
             if (cur.queuedRhythm) {
-                dispatch({ type: 'UPDATE_RHYTHM', payload: cur.queuedRhythm });
-                if (cur.queuedRhythm === 'Sinus Rhythm') triggerROSC();
-                else addLogEntry(`Rhythm changed to ${cur.queuedRhythm}`, 'manual');
+                const q = RG.canonical(cur.queuedRhythm);
                 dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
+                if (RG.isPulseless(q)) {
+                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+                    changeRhythm(q, 'defibrillation (facilitator override)', { energy: joules });
+                } else {
+                    triggerROSC(q, 'defibrillation (facilitator override)', { energy: joules });
+                    scheduleRefibrillation(cur.rhythm);
+                }
                 return;
             }
-            // ROSC chance rises with shocks and good CPR; capped at 50%. Defib never causes asystole.
-            const roscChance = Math.min(0.5, 0.08 + 0.07 * shockCountRef.current + 0.1 * (cur.cprInProgress ? 1 : 0));
-            if (Math.random() < roscChance) triggerROSC();
-            else addLogEntry('Defib: No change in rhythm. Resume CPR.', 'warning');
+
+            // --- C7: energy-, rhythm-, CPR- and drug-sensitive ROSC probability.
+            const shocks = nextDefib.shockableShocks;
+            const expected = recommendedShockEnergy();
+            // Under-dosing genuinely reduces defibrillation success; over-dosing does not help.
+            const energyFactor = Math.max(0.4, Math.min(1.1, joules / Math.max(1, expected)));
+            const rhythmFactor = (RG.canonical(cur.rhythm) === 'Fine VF') ? 0.6 : 1.0;   // fine VF defibrillates poorly
+            const cprBonus = cur.cprInProgress ? 0.10 : 0;
+            const drugBonus = Math.min(0.15, Number(d.shockBonus) || 0);
+            const base = 0.08 + 0.07 * Math.min(shocks, 5);
+            const roscChance = Math.max(0.02, Math.min(0.55, (base + cprBonus + drugBonus) * energyFactor * rhythmFactor));
+
+            const fromRhythm = RG.canonical(cur.rhythm);
+            const table = RG.SHOCK_OUTCOMES[fromRhythm] || RG.SHOCK_OUTCOMES['VF'];
+            if (Math.random() < roscChance) {
+                const target = RG.weightedPick(table.rosc);
+                // Banked drug bonus is consumed by a successful shock.
+                dispatch({ type: 'SET_DEFIB_STATE', payload: { shockBonus: 0 } });
+                triggerROSC(target, 'defibrillation', { energy: joules, sync: false });
+                scheduleRefibrillation(fromRhythm);
+            } else {
+                const target = RG.weightedPick(table.noRosc);
+                if (target !== fromRhythm) {
+                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+                }
+                changeRhythm(target, 'defibrillation', { energy: joules, sync: false, note: target === fromRhythm ? 'no change — resume CPR' : 'post-shock rhythm change' });
+                if (target === fromRhythm) {
+                    addLogEntry('No change after shock. Resume compressions immediately, 2-minute cycle, consider escalating energy.', 'warning');
+                }
+            }
+        }
+
+        // --- C6: SYNCHRONISED CARDIOVERSION. `toggleSync` used to only flip a flag; the flag was
+        // transmitted and then DISCARDED engine-side, and the 'Cardioversion' intervention's
+        // changeRhythm:'sync' was never handled at all.
+        function applyCardioversion(cur, opts = {}) {
+            const joules = Number.isFinite(Number(opts.energy)) ? Math.round(Number(opts.energy)) : recommendedShockEnergy();
+            const d = cur.defib || {};
+            const now = Date.now();
+            dispatch({ type: 'SET_DEFIB_STATE', payload: {
+                shockCount: (d.shockCount || 0) + 1,
+                totalEnergy: (d.totalEnergy || 0) + joules,
+                lastEnergy: joules, lastShockAt: now, charged: false, chargeEnergy: null, syncMode: true
+            } });
+
+            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
+            if (dev) addLogEntry(`Cardioversion energy deviation: ${dev.reason}. Recommended: ${dev.expected}J.`, 'warning', true,
+                { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: [`correct energy (${dev.expected}J)`] });
+
+            if (RG.isPulseless(cur.rhythm)) {
+                // Never blocked — flagged. A defibrillator in SYNC mode will not discharge into VF,
+                // and that is itself the teaching point.
+                addLogEntry(`SYNC mode armed in ${RG.labelFor(cur.rhythm)} — a real defibrillator will not discharge in SYNC without an R wave. Switch to unsynchronised defibrillation. Flagged.`, 'danger', true,
+                    { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: ['unsynchronised mode for a pulseless rhythm'] });
+                changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'no R wave, device would not fire' });
+                return;
+            }
+            if (!RG.isSyncCardiovertible(cur.rhythm)) {
+                addLogEntry(`Synchronised shock delivered into ${RG.labelFor(cur.rhythm)} — cardioversion is not indicated for this rhythm. Flagged.`, 'warning', true,
+                    { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: ['an indication for cardioversion'] });
+                changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'not indicated, no change' });
+                return;
+            }
+
+            // Success depends on the rhythm and on adequate energy.
+            const baseSuccess = { 'SVT': 0.85, 'VT': 0.80, 'AF': 0.6, 'Atrial Flutter': 0.9 }[RG.canonical(cur.rhythm)] || 0.7;
+            const expected = recommendedShockEnergy();
+            const energyFactor = Math.max(0.5, Math.min(1.1, joules / Math.max(1, expected)));
+            if (Math.random() < baseSuccess * energyFactor) {
+                const band = RG.defaultHrRange('Sinus Rhythm');
+                dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: getRandomInt(70, 95) } });
+                changeRhythm('Sinus Rhythm', 'cardioversion', { energy: joules, sync: true });
+            } else {
+                changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'unsuccessful — escalate energy, check sedation and synchronisation' });
+            }
+        }
+
+        // --- C6: DRUG-MEDIATED CONVERSION. `changeRhythm: 'chance'` was unhandled, so Adrenaline IV
+        // and Amiodarone — the two most important drugs in a shockable arrest — changed NOTHING.
+        function applyDrugConversion(cur, key, label) {
+            const table = RG.DRUG_CONVERSION[key];
+            const rid = RG.canonical(cur.rhythm);
+            const rule = table && table[rid];
+            if (!rule) {
+                addLogEntry(`${label} given in ${RG.labelFor(rid)} — no direct rhythm effect expected for this combination.`, 'info');
+                return;
+            }
+            if (rule.shockBonus) {
+                const d = cur.defib || {};
+                dispatch({ type: 'SET_DEFIB_STATE', payload: { shockBonus: Math.min(0.15, (Number(d.shockBonus) || 0) + rule.shockBonus) } });
+                addLogEntry(`${label} on board — improves the chance that the NEXT shock is successful (${Math.round(rule.shockBonus * 100)}% added).`, 'info');
+            }
+            if (!rule.chance || !rule.to) return;
+            if (Math.random() < rule.chance) {
+                if (RG.isPulseless(rule.to)) {
+                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+                    changeRhythm(rule.to, 'drug', { agent: label });
+                } else if (RG.isPulseless(rid)) {
+                    triggerROSC(rule.to, 'drug', { agent: label });
+                } else {
+                    changeRhythm(rule.to, 'drug', { agent: label });
+                }
+            } else {
+                addLogEntry(`${label} given — rhythm unchanged (${RG.labelFor(rid)}).`, 'info');
+            }
         }
 
         function initCharge(energy) {
-            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : 150;
+            const cur = stateRef.current;
+            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : recommendedShockEnergy();
             dispatch({ type: 'SET_FLASH', payload: 'yellow' });
-            addLogEntry(`Defib Charging (${j}J)`, 'warning');
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { charged: true, chargeEnergy: j, energy: j } });
+            addLogEntry(`Defib charging (${j}J${cur.defib?.syncMode ? ', SYNC' : ''})`, 'warning');
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Charging ${j}J...`, type: 'warning', id: Date.now() } });
             setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
         }
 
-        function deliverShock(energy, source = 'facilitator') {
+        function deliverShock(energy, source = 'facilitator', opts = {}) {
             const cur = stateRef.current;
-            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : 150;
+            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : recommendedShockEnergy();
+            const sync = opts.sync !== undefined ? !!opts.sync : !!(cur.defib && cur.defib.syncMode);
             dispatch({ type: 'SET_FLASH', payload: 'red' });
-            addLogEntry(`Shock Delivered ${j}J (${source})`, 'danger', true);
+            // B5: logged as 'danger' AND flagged, and the debrief now plots danger-type markers.
+            addLogEntry(`Shock delivered ${j}J${sync ? ' (SYNC)' : ''} (${source})`, 'danger', true);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${j}J`, type: 'danger', id: Date.now() } });
             setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
-            applyShockOutcome(cur);
+            if (sync) applyCardioversion(cur, { energy: j, source });
+            else applyShockOutcome(cur, { energy: j, sync: false, source });
         }
+
+        // Assessor-facing defib device controls, shared by the controller panel and by student
+        // events arriving over Firebase / BroadcastChannel.
+        const setDefibMode = (mode, source = 'facilitator') => {
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { mode, charged: false, chargeEnergy: null } });
+            addLogEntry(`Defibrillator mode: ${String(mode).toUpperCase()} (${source})`, 'action');
+        };
+        const setDefibEnergy = (j, source = 'facilitator') => {
+            const v = Math.max(1, Math.round(Number(j) || 0));
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { energy: v, charged: false, chargeEnergy: null } });
+            addLogEntry(`Energy selected: ${v}J (${source})`, 'action');
+        };
+        const toggleDefibSync = (source = 'facilitator') => {
+            const cur = stateRef.current;
+            const next = !(cur.defib && cur.defib.syncMode);
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: next } });
+            addLogEntry(`SYNC ${next ? 'ON' : 'OFF'} (${source})${next && RG.isPulseless(cur.rhythm) ? ' — SYNC armed in a pulseless rhythm; the device will not discharge. Flagged.' : ''}`, next && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', next && RG.isPulseless(cur.rhythm));
+        };
+        const analyseRhythm = (source = 'student') => {
+            const cur = stateRef.current;
+            const shockable = RG.isShockable(cur.rhythm);
+            const result = shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED';
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { analysing: false, lastAnalysis: { result, rhythm: RG.canonical(cur.rhythm), at: Date.now() } } });
+            addLogEntry(`Defib analysis (${source}): ${result} — ${RG.labelFor(cur.rhythm)}`, 'action');
+            return result;
+        };
+        const setQueuedRhythm = (r) => {
+            if (!r) { dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); addLogEntry('Facilitator override cleared: next shock follows the model.', 'system'); return; }
+            const q = RG.canonical(r);
+            dispatch({ type: 'SET_QUEUED_RHYTHM', payload: q });
+            addLogEntry(`Facilitator override armed: the NEXT shock will convert to ${RG.labelFor(q)}.`, 'system');
+        };
+        const toggleCPR = (on, source = 'facilitator') => {
+            const cur = stateRef.current;
+            const next = on === undefined ? !cur.cprInProgress : !!on;
+            if (next === cur.cprInProgress) return;
+            dispatch({ type: 'TOGGLE_CPR', payload: next });
+            if (next) dispatch({ type: 'RESET_CYCLE_TIMER' });
+            addLogEntry(next
+                ? `CPR started (${source}) — arrest ETCO2, compression artefact and the ROSC bonus are now active. Aim for 100-120/min, minimise pauses.`
+                : `CPR stopped (${source}).`, next ? 'action' : 'warning', !next && RG.isPulseless(cur.rhythm));
+        };
 
         const revealInvestigation = (type, customText = null) => {
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type });
@@ -1851,8 +2416,17 @@
                 let finalCustomText = customText;
 
                 // VBG: if no manual override supplied, derive from current state
+                // D1: the AUTHORED VBG is authoritative for the baseline. It used to be bypassed
+                // whenever scenario.vbg was null (113/254 scenarios, because enrichScenario wrote
+                // the resolved default block to scenario.investigations.vbg but left the top-level
+                // scenario.vbg null), so generateVbg('normal') supplied its VENOUS default of
+                // pO2 5.0 over an authored arterial pO2 of 12.
+                // PRECEDENCE, deliberately: authored scenario.vbg  >  enriched
+                // scenario.investigations.vbg  >  generateVbg('normal'). calculateDynamicVbg then
+                // applies TIME/TREATMENT DELTAS on top of that baseline; every key it does not
+                // model (pO2, Na, Ca) is carried through from the authored block untouched.
                 if (type === 'VBG' && !customText && cur.scenario && window.calculateDynamicVbg) {
-                    const startVbg = cur.scenario.vbg || window.generateVbg?.('normal');
+                    const startVbg = cur.scenario.vbg || cur.scenario.investigations?.vbg || window.generateVbg?.('normal');
                     const dynamic = window.calculateDynamicVbg(startVbg, cur.vitals, cur.activeInterventions, cur.time);
                     // Pass the structured object — monitor.js will detect and render the table.
                     finalCustomText = { __vbg: true, ...dynamic };
@@ -1864,15 +2438,22 @@
             }, 100);
         };
         const clearInvestigation = () => { dispatch({ type: 'CLEAR_POPUP' }); };
+        // 2-minute ALS cycle. Wired to a real button on the assessor's defib panel in Wave 3
+        // (it previously existed but nothing could reach it).
         const nextCycle = () => {
             const cur = stateRef.current;
             dispatch({ type: 'FAST_FORWARD', payload: 120 });
-            addLogEntry('Fast Forward: +2 Minutes (Next Cycle)', 'system');
+            dispatch({ type: 'RESET_CYCLE_TIMER' });
+            addLogEntry('Rhythm check at 2 minutes (+2:00 fast forward)', 'system');
             if (cur.queuedRhythm) {
-                dispatch({ type: 'UPDATE_RHYTHM', payload: cur.queuedRhythm });
-                if (cur.queuedRhythm === 'Sinus Rhythm') triggerROSC();
-                else addLogEntry(`Rhythm Check: Changed to ${cur.queuedRhythm}`, 'manual');
+                const q = RG.canonical(cur.queuedRhythm);
                 dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
+                if (RG.isPulseless(q)) {
+                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+                    changeRhythm(q, 'rhythm check (facilitator override)');
+                } else {
+                    triggerROSC(q, 'rhythm check (facilitator override)');
+                }
             }
         };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
@@ -2051,7 +2632,7 @@
         };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
-        const reset = () => { shockCountRef.current = 0; dispatch({ type: 'CLEAR_SESSION' }); };
+        const reset = () => { if (refibTimerRef.current) { clearTimeout(refibTimerRef.current); refibTimerRef.current = null; } dispatch({ type: 'CLEAR_SESSION' }); };
         // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
         // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
         const enableAudio = () => {
@@ -2083,7 +2664,12 @@
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
         }, [state.isRunning, isMonitorMode]);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone, audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus };
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        // Wave 3 surface
+        changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
+        setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,
+        sendDeviceEvent, recommendedShockEnergy,
+        defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus };
     };
     window.useSimulation = useSimulation;
 })();

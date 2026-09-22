@@ -165,7 +165,10 @@ window.calculateWetflag = (age, weightStr) => {
     let glucoseVol = Math.round(weight * 2);
     return { 
         weight: weight, 
-        energy: Math.round(weight * 4),
+        // C4: 4 J/kg, but computed by the shared registry so the WETFLAG card, the assessor's
+        // energy ladder, the monitor-hosted defib and the standalone defib page can never disagree
+        // about what this patient needs (the standalone page used to hardcode 120 J for everyone).
+        energy: (window.RHYTHMS ? window.RHYTHMS.recommendedEnergy(weight, age) : Math.round(weight * 4)),
         tube: tubeSize.toString(), 
         fluids: Math.round(weight * 10),
         lorazepam: Math.min(4, weight * 0.1).toFixed(1),
@@ -196,8 +199,20 @@ window.generateVbg = (clinicalState = "normal") => {
     return vbg;
 };
 
+// D1 — HOW THE AUTHORED VBG AND THE DYNAMIC MODEL ARE RECONCILED (documented deliberately):
+//   * The AUTHORED block WINS for the baseline. `startVbg` is the scenario's own authored `vbg`
+//     (or the block materialised from `vbgClinicalState`), resolved once in enrichScenario and
+//     stored on BOTH scenario.vbg and scenario.investigations.vbg so they cannot disagree.
+//   * This function only ever applies DELTAS on top of that baseline, for the analytes it actually
+//     models: pH, pCO2, HCO3, Lac, K, Glu, Ketones.
+//   * Any authored analyte this model does NOT touch — pO2, Na, Ca — is carried through verbatim.
+//     An authored pO2 of 12 therefore stays 12. (Before Wave 3, scenario.vbg was null for 113/254
+//     scenarios, so revealInvestigation fell back to generateVbg('normal'), whose VENOUS default
+//     pO2 is 5.0 — the reported "authored pO2 12 rendered as 5.0" defect.)
+//   * A facilitator improve/deteriorate trigger is an explicit clinical state change and moves the
+//     baseline itself, so the next repeat gas differs even before time-based physiology accrues.
 window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, timeSeconds, trendDirection = null) => {
-    if (!startVbg) return { pH: 7.4, pCO2: 5.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
+    if (!startVbg) return { pH: 7.4, pCO2: 5.0, pO2: 12.0, HCO3: 24, Lac: 1.0, K: 4.0, Glu: 5.5, Ketones: 0.2 };
     let vbg = { ...startVbg };
     // A facilitator-triggered improvement/deterioration is an explicit clinical state change. Apply it
     // to the runtime VBG baseline so the next repeat gas changes even before time-based physiology accrues.

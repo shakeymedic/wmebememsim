@@ -75,12 +75,20 @@
 
                     {(() => {
                         let lastLabelX = -Infinity;
-                        return log.filter(l => (l.type === 'action' || l.type === 'manual') && l.timeSeconds !== undefined && l.timeSeconds !== null).map((l, i) => {
+                        // B5: 'danger' and 'warning' are now plotted too. Shocks are logged as
+                        // 'danger', so every defibrillation in the session was previously INVISIBLE
+                        // on the debrief timeline — the single most important event in an arrest
+                        // scenario did not appear in the debrief at all.
+                        const PLOTTED = ['action', 'manual', 'danger', 'warning'];
+                        const MARKER_FILL = { danger: '#ef4444', warning: '#f59e0b', manual: '#a78bfa', action: '#0ea5e9' };
+                        return log.filter(l => PLOTTED.includes(l.type) && l.timeSeconds !== undefined && l.timeSeconds !== null).map((l, i) => {
                             const x = getX(l.timeSeconds);
                             const showLabel = x - lastLabelX >= 80;
                             if (showLabel) lastLabelX = x;
                             const yPos = height - paddingBottom + 15;
-                            return <g key={i}><line x1={x} y1={paddingTop} x2={x} y2={yPos} stroke="#94a3b8" strokeWidth="1" strokeOpacity="0.4" strokeDasharray="4"/><circle cx={x} cy={yPos} r="5" fill="#0ea5e9"/>{showLabel && <text x={x} y={yPos + 15} fill="#f8fafc" fontSize="12" fontWeight="bold" textAnchor="start" transform={`rotate(45, ${x}, ${yPos + 15})`}>{l.msg}</text>}</g>;
+                            const fill = MARKER_FILL[l.type] || '#0ea5e9';
+                            const isShock = l.type === 'danger' && /shock/i.test(l.msg || '');
+                            return <g key={i}><line x1={x} y1={paddingTop} x2={x} y2={yPos} stroke={l.type === 'danger' ? '#ef4444' : '#94a3b8'} strokeWidth={isShock ? 2 : 1} strokeOpacity={isShock ? 0.7 : 0.4} strokeDasharray="4"/><circle cx={x} cy={yPos} r={isShock ? 7 : 5} fill={fill}/>{isShock && <text x={x} y={paddingTop + 14} fill="#fca5a5" fontSize="13" fontWeight="bold" textAnchor="middle">\u26a1</text>}{showLabel && <text x={x} y={yPos + 15} fill="#f8fafc" fontSize="12" fontWeight="bold" textAnchor="start" transform={`rotate(45, ${x}, ${yPos + 15})`}>{l.msg}</text>}</g>;
                         });
                     })()}
                     
@@ -110,8 +118,20 @@
             if (filter === 'actions') return entry.type === 'action';
             if (filter === 'manual') return entry.type === 'manual' || entry.flagged;
             if (filter === 'system') return entry.type === 'system';
+            // B5: the log filter had no way of showing 'danger'/'warning' entries at all, so shocks
+            // and flagged deviations could not be isolated in the debrief.
+            if (filter === 'shocks') return entry.type === 'danger' || /shock|defib|cardiovers/i.test(entry.msg || '');
+            if (filter === 'rhythm') return /^Rhythm:/i.test(entry.msg || '') || /ROSC|CARDIAC ARREST/i.test(entry.msg || '');
             return true;
         });
+
+        // ---- B5: SHOCK METRICS IN THE DEBRIEF ------------------------------------------------
+        // These now exist because Wave 3 moved the shock tally out of a bare useRef (which never
+        // reached state, Firebase, localStorage or this screen, and reset on resume) into
+        // state.defib, which is synced and persisted.
+        const defibMetrics = state.defib || {};
+        const shockEvents = state.log.filter(l => l.type === 'danger' && /shock delivered/i.test(l.msg || ''));
+        const conversionEvents = state.log.filter(l => /^Rhythm:/.test(l.msg || '') && /\u2192/.test(l.msg || ''));
 
         // Sequence deviations: structured records written by the engine's permissive gating. Nothing
         // was blocked during the session; these are the teaching points that fell out of it.
@@ -133,9 +153,13 @@
             const objRows = allObjectives.map(obj => { const met = state.completedObjectives.has(obj); return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`; }).join('');
             const logRows = state.log.map(l => { const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1'; return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${esc(l.msg)}</td></tr>`; }).join('');
             const devRows = deviations.map(d => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(d.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;font-weight:bold;">${esc(d.deviation.label || d.deviation.action)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#cbd5e1;">${esc(d.deviation.missing.join(', '))}</td></tr>`).join('');
+            const shockRows = shockEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fca5a5;">${esc(l.msg)}</td></tr>`).join('');
+            const convRows = conversionEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;">${esc(l.msg)}</td></tr>`).join('');
+            // B5: defibrillation data reaches the downloadable debrief report too.
+            const defibCard = `<div class="card"><h3 style="color:#ef4444;margin-top:0;">Defibrillation &amp; Rhythm</h3><div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Shocks</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockCount || shockEvents.length || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Into shockable rhythm</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockableShocks || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Cumulative energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.totalEnergy || 0)} J</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Last energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.lastEnergy ?? '--')} J</div></div></div>${shockRows ? `<table><thead><tr><th>Time</th><th>Shock</th></tr></thead><tbody>${shockRows}</tbody></table>` : '<div style="color:#94a3b8;">No shocks delivered.</div>'}${convRows ? `<h4 style="color:#fbbf24;">Rhythm transitions</h4><table><thead><tr><th>Time</th><th>Transition</th></tr></thead><tbody>${convRows}</tbody></table>` : ''}</div>`;
             const devCard = `<div class="card"><h3 style="color:#fbbf24;margin-top:0;">Sequence Deviations</h3>${deviations.length ? `<table><thead><tr><th>Time</th><th>Action</th><th>Not in place</th></tr></thead><tbody>${devRows}</tbody></table>` : '<div style="color:#94a3b8;">No sequence deviations recorded.</div>'}</div>`;
             const safeTitle = esc(scenario.title || 'Simulation');
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div><div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>${devCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;"><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div><div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
 
@@ -161,6 +185,38 @@
                                 <div className="text-sm text-slate-400">Objectives Met: {objectivesMet}/{objectivesTotal}</div>
                             </div>
                             
+                            {/* B5: shock summary. Shock count, cumulative energy and the last energy
+                                used are teaching data (energy escalation, 4 J/kg in children,
+                                shocks-per-ROSC) and were previously unavailable after the session. */}
+                            <div className="mb-4 bg-slate-900 border border-red-900/60 rounded p-3">
+                                <h4 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillation</h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {[['Shocks', defibMetrics.shockCount || shockEvents.length || 0, ''],
+                                      ['Into shockable', defibMetrics.shockableShocks || 0, ''],
+                                      ['Cumulative', defibMetrics.totalEnergy || 0, 'J'],
+                                      ['Last energy', defibMetrics.lastEnergy ?? '--', 'J']].map(([lbl, val, unit]) => (
+                                        <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
+                                            <div className="text-[10px] font-bold uppercase text-slate-400">{lbl}</div>
+                                            <div className="text-lg font-mono font-bold text-white">{val}<span className="text-[9px] text-slate-500 ml-0.5">{unit}</span></div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-2">
+                                    Device left in {String(defibMetrics.mode || 'monitor').toUpperCase()} mode{defibMetrics.syncMode ? ', SYNC armed' : ''}.
+                                    {' '}{conversionEvents.length} rhythm transition{conversionEvents.length === 1 ? '' : 's'} recorded.
+                                </div>
+                                {shockEvents.length > 0 && (
+                                    <div className="mt-2 max-h-28 overflow-y-auto space-y-1">
+                                        {shockEvents.map((l, i) => (
+                                            <div key={i} className="flex gap-2 text-[11px]">
+                                                <span className="font-mono text-slate-500 flex-none">{l.simTime}</span>
+                                                <span className="text-red-300">{l.msg}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             <DebriefGraph history={state.history} log={state.log} />
 
                             {state.history && state.history.length > 1 && (
@@ -239,7 +295,7 @@
 
                     <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
                         <div className="flex border-b border-slate-700 bg-slate-900 p-2 gap-2">
-                            {['all', 'actions', 'manual', 'system'].map(f => (
+                            {['all', 'actions', 'manual', 'shocks', 'rhythm', 'system'].map(f => (
                                 <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold uppercase ${filter === f ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                                     {f}
                                 </button>

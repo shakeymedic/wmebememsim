@@ -78,6 +78,11 @@
         </div>
     </div>
 
+    <!-- WAVE 3: the shared rhythm registry. Plain JS (no JSX), loaded with a bare script tag so it
+         executes BEFORE any text/babel module and is therefore available to components.js and
+         engine.js at definition time. The standalone defib page loads the SAME file. -->
+    <script src="data/rhythms.js"></script>
+
     <script type="text/babel" src="data/interventions.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
     <script type="text/babel" src="data/scenarios.js"></script>

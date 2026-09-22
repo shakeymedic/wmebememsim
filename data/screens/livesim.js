@@ -98,8 +98,19 @@
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
+        // WAVE 3 defibrillator + rhythm surface.
+        const RG = window.RHYTHMS;
+        const changeRhythm = sim.changeRhythm;
+        const nextCycle = sim.nextCycle;
 
         const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
+        // WAVE 3: defibPanelOpen (the monitor-hosted defib), the defib device/metrics block and the
+        // ASSESSOR-LOCAL conversion announcements. rhythmEvent/lastConversion never reach Firebase.
+        const defibPanelOpen = !!state.defibPanelOpen;
+        const defib = state.defib || {};
+        const rhythmEvent = state.rhythmEvent;
+        const lastConversion = state.lastConversion;
+        const remoteClients = (state.remotePresence && state.remotePresence.clients) || [];
         // WAVE 2: deterioration mode + live drug timing.
         const deteriorationMode = state.deteriorationMode || 'manual';
         const detInfo = sim.describeDeterioration ? sim.describeDeterioration() : { declared: false, type: null, rate: 0 };
@@ -187,9 +198,12 @@
             "Re-evaluation": null
         });
 
-        const RHYTHMS = ["Sinus Rhythm", "Sinus Tachycardia", "Sinus Bradycardia", "AF", "Atrial Flutter", "SVT", "VT", "VF", "PEA", "Asystole", "1st Deg Heart Block", "Complete Heart Block"];
-        const ARREST_RHYTHMS = ["VF", "pVT", "PEA", "Asystole"];
-        const ROSC_RHYTHMS = ["Sinus Rhythm", "Sinus Tachycardia", "Sinus Bradycardia", "AF", "SVT"];
+        // C1/C3: every rhythm menu is now derived from the shared registry, so the arrest menu can
+        // no longer offer a rhythm no scenario uses, and the ROSC menu can no longer omit Atrial
+        // Flutter or Complete Heart Block.
+        const RHYTHMS = RG.SELECTABLE;
+        const ARREST_RHYTHMS = RG.ARREST;
+        const ROSC_RHYTHMS = RG.ROSC;
         const VOICE_PHRASES = ["My chest hurts", "I can't breathe", "I feel sick", "Who are you?", "My tummy hurts", "I feel dizzy", "Am I going to die?", "Yes", "No", "I'm thirsty", "Where am I?", "Please help me"];
         
         const DRUG_GROUPS = {
@@ -381,9 +395,13 @@
             setModalVital(null);
         };
 
-        // Paediatric arrests are weight-based (4 J/kg); 150 J on a 12 kg child is not a teachable number.
-        const shockEnergy = Number.isFinite(Number(scenario.wetflag?.energy)) && Number(scenario.wetflag.energy) > 0
-            ? Math.round(Number(scenario.wetflag.energy)) : 150;
+        // C4: paediatric arrests are weight-based (4 J/kg). The energy ladder and the recommended
+        // dose both come from the registry, so the controller, the monitor-hosted defib and the
+        // standalone defib page cannot disagree about what 3.5 kg or 10 kg needs.
+        const energySteps = sim.defibEnergySteps ? sim.defibEnergySteps() : RG.ADULT_ENERGY_STEPS;
+        const recommendedEnergy = sim.recommendedShockEnergy ? sim.recommendedShockEnergy() : RG.ADULT_DEFAULT_ENERGY;
+        const shockEnergy = Number.isFinite(Number(defib.energy)) && Number(defib.energy) > 0
+            ? Math.round(Number(defib.energy)) : recommendedEnergy;
 
         const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration, target: trends.targets[key] } : null;
         const addTimerAlert = () => {
@@ -399,9 +417,17 @@
         const flaggedEntries = state.log.filter(l => l.flagged);
         const deviationEntries = flaggedEntries.filter(l => l.deviation);
 
+        // D3: the flow is now CHOOSE / CUSTOMISE, then SEND. Opening the chooser sends nothing, and
+        // dismissing it sends nothing and does not wipe a result already on the student monitor.
+        // "Clear result on monitor" is a separate, explicitly-labelled destructive action.
         const handleInvClick = (type) => { setInvModal(type); setInvCustomText(""); };
         const sendInv = (type, text) => { revealInvestigation(type, text); setInvModal(null); };
-        const closeInv = () => { clearInvestigation(); setInvModal(null); };
+        // Passing null makes the engine/monitor resolve the scenario's OWN authored finding.
+        // The previous "Scenario Default" button sent the literal placeholder string
+        // "Abnormal (See scenario)" to the students' screen.
+        const sendScenarioDefault = (type) => { revealInvestigation(type, null); setInvModal(null); };
+        const dismissInv = () => setInvModal(null);
+        const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
 
         return (
             <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -411,6 +437,25 @@
                         <span className="font-bold text-white">{notification?.msg}</span>
                     </div>
                 </div>
+
+                {/* B3 RHYTHM CONVERSION TOAST — ASSESSOR ONLY.
+                    Driven by state.rhythmEvent, which is deliberately NOT part of the Firebase sync
+                    payload (unlike `notification`, which IS synced and IS rendered on the student
+                    monitor). Nothing about a conversion can therefore reach the team's screen. */}
+                {rhythmEvent && (
+                    <div role="status" className={`absolute top-32 left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
+                        <div className="flex items-center gap-3">
+                            <Lucide icon="activity" className={`w-5 h-5 ${rhythmEvent.converted ? 'text-amber-400' : 'text-slate-400'}`} />
+                            <div>
+                                <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">{rhythmEvent.converted ? 'Rhythm converted' : 'Rhythm unchanged'}</div>
+                                <div className="font-bold text-white text-sm">
+                                    {RG.labelFor(rhythmEvent.from)} <span className="text-slate-500">&rarr;</span> {RG.labelFor(rhythmEvent.to)}
+                                </div>
+                                <div className="text-[10px] text-amber-300/80">{rhythmEvent.detail || rhythmEvent.cause}</div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Wraps instead of overflowing: at ~375px this was one non-scrolling row and Back/Finish/
                     START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
@@ -426,6 +471,24 @@
                             <Lucide icon={syncProblem ? 'wifi-off' : 'wifi'} className="w-3 h-3" />
                             {syncProblem ? 'Sync error' : syncStatus.state === 'connected' ? 'Monitor live' : 'Syncing'}
                         </div>
+                        {/* A5 PRESENCE BADGE. Deliberately the same markup, sizing and colour logic as
+                            the sync badge above, but it answers a different question: is a remote
+                            monitor actually THERE, and what is it showing? Driven by Firebase
+                            onDisconnect() presence plus a 10s heartbeat (engine.js). */}
+                        {(() => {
+                            const n = remoteClients.length;
+                            const shows = Array.from(new Set(remoteClients.map(c => c.display || 'patient monitor')));
+                            const label = n === 0 ? 'No remote' : (n === 1 ? shows[0] : `${n} remotes`);
+                            const tip = n === 0
+                                ? 'No student monitor is connected to this session. Open Launch Monitor on the room screen or tablet.'
+                                : remoteClients.map(c => `${c.display || 'patient monitor'} (last seen ${Math.max(0, Math.round((Date.now() - Number(c.ts)) / 1000))}s ago)`).join('\n');
+                            return (
+                                <div role="status" title={tip} className={`h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold ${n === 0 ? 'border-slate-600 bg-slate-900 text-slate-400' : shows.includes('defib') ? 'border-amber-500 bg-amber-950/40 text-amber-300' : 'border-sky-700 bg-sky-950/40 text-sky-300'}`}>
+                                    <Lucide icon={n === 0 ? 'monitor-off' : (shows.includes('defib') ? 'zap' : 'monitor')} className="w-3 h-3" />
+                                    {label}
+                                </div>
+                            );
+                        })()}
                         <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold w-32 justify-between">
                             <Lucide icon="monitor" className="w-4 h-4"/> {audioOutput === 'both' ? 'Audio: Both' : (audioOutput === 'controller' ? 'Audio: Ctrl' : 'Audio: Mon')}
                         </Button>
@@ -561,7 +624,7 @@
                                 {showArrestMenu && (
                                     <div className="absolute bottom-12 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         {ARREST_RHYTHMS.map(r => (
-                                            <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
+                                            <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
                                         ))}
                                     </div>
                                 )}
@@ -571,16 +634,27 @@
                                 {showROSCMenu && (
                                     <div className="absolute bottom-12 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         {ROSC_RHYTHMS.map(r => (
-                                            <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{r}</button>
+                                            <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
                                         ))}
                                     </div>
                                 )}
                             </div>
                         </div>
                         
-                        <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full flex-none ${arrestPanelOpen ? 'bg-red-900/30 border-red-500 text-red-400' : ''}`}>
-                             <Lucide icon="zap" className="w-4 h-4"/> {arrestPanelOpen ? "Close Defib on Monitor" : "Open Defib on Monitor"}
-                        </Button>
+                        {/* A4 NAMING COLLISION FIX. This button has ALWAYS toggled arrestPanelOpen —
+                            the dual-trace LEAD II / PADS arrest layout on the student monitor — and
+                            has never opened a defibrillator. It is now called what it is. The button
+                            below it is the actual defibrillator (A1-A3). */}
+                        <div className="flex-none grid grid-cols-2 gap-2">
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full ${arrestPanelOpen ? 'bg-red-900/30 border-red-500 text-red-400' : ''}`}
+                                title="Dual-trace LEAD II / PADS arrest layout on the student monitor. Does not open the defibrillator.">
+                                 <Lucide icon="activity" className="w-4 h-4"/> {arrestPanelOpen ? "Close Arrest View" : "Arrest View"}
+                            </Button>
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_DEFIB_PANEL', payload: !defibPanelOpen})} className={`w-full ${defibPanelOpen ? 'bg-amber-900/30 border-amber-500 text-amber-300' : 'text-amber-400 border-amber-500/50'}`}
+                                title="Opens a working defibrillator ON the student monitor, with the obs still visible alongside it.">
+                                 <Lucide icon="zap" className="w-4 h-4"/> {defibPanelOpen ? "Close Defib" : "Defib"}
+                            </Button>
+                        </div>
                         <Button variant="outline" onClick={triggerNIBP} className="w-full flex-none text-sky-400 border-sky-500/50 hover:bg-sky-900/30">
                              <Lucide icon="activity" className="w-4 h-4"/> Cycle NIBP Now
                         </Button>
@@ -591,19 +665,95 @@
                             </Button>
                         )}
 
-                        {arrestPanelOpen && (
+                        {/* ================= B3 / B5: PERSISTENT RHYTHM + DEFIB STRIP =================
+                            Always visible while the sim runs, styled to match the CPR-timer row it
+                            sits above. The facilitator can read the current rhythm, the last
+                            conversion and the running shock tally without opening anything.
+                            ASSESSOR-LOCAL: lastConversion is never synced. */}
+                        <div className="flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2">
+                            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                                <div className="min-w-0">
+                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Current rhythm</div>
+                                    <div className={`font-bold text-sm ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>
+                                        {RG.labelFor(state.rhythm)}
+                                        {RG.isShockable(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-red-900/60 border border-red-500 text-red-200 text-[9px] uppercase font-bold tracking-wider">shockable</span>}
+                                        {RG.isSyncCardiovertible(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-900/50 border border-amber-500 text-amber-200 text-[9px] uppercase font-bold tracking-wider">sync cardiovert</span>}
+                                        {RG.isPulseless(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-500 text-slate-300 text-[9px] uppercase font-bold tracking-wider">pulseless</span>}
+                                    </div>
+                                </div>
+                                <div className="min-w-0 text-right">
+                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Last conversion</div>
+                                    <div className="text-xs font-bold text-amber-300 truncate">
+                                        {lastConversion
+                                            ? `${RG.labelFor(lastConversion.from)} \u2192 ${RG.labelFor(lastConversion.to)}`
+                                            : <span className="text-slate-500">none yet</span>}
+                                    </div>
+                                    {lastConversion && <div className="text-[10px] text-slate-400 truncate">{lastConversion.detail || lastConversion.cause}</div>}
+                                </div>
+                            </div>
+                            <div className="mt-1 grid grid-cols-4 gap-1 text-center bg-black/40 rounded p-1">
+                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">Shocks</div><div className="font-mono font-bold text-white">{defib.shockCount || 0}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">Total J</div><div className="font-mono font-bold text-white">{defib.totalEnergy || 0}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">Last J</div><div className="font-mono font-bold text-white">{defib.lastEnergy ?? '\u2014'}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">CPR</div><div className={`font-mono font-bold ${cprInProgress ? 'text-red-400 animate-pulse' : 'text-slate-500'}`}>{cprInProgress ? 'ON' : 'off'}</div></div>
+                            </div>
+                        </div>
+
+                        {(arrestPanelOpen || defibPanelOpen) && (
                              <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
-                                     <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator Active</h3>
-                                     <button aria-label="Close defibrillator panel" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: false})} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
+                                     <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator {defibPanelOpen ? '(on monitor)' : '(arrest view)'}</h3>
+                                     <button aria-label="Close defibrillator panel" onClick={() => { sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
+
+                                 {/* C4: weight-based energy ladder. 4 J/kg is highlighted as recommended;
+                                     anything else is permitted and flagged, never blocked. */}
+                                 <div className="mb-2">
+                                     <div className="flex items-center justify-between mb-1">
+                                        <span className="text-slate-400 text-[10px] uppercase font-bold">Energy</span>
+                                        <span className="text-[10px] text-slate-400">Recommended <b className="text-emerald-400">{recommendedEnergy}J</b>{scenario.wetflag?.weight ? ` (4 J/kg, ${scenario.wetflag.weight}kg)` : ''}</span>
+                                     </div>
+                                     <div className="flex flex-wrap gap-1">
+                                        {energySteps.map(j => (
+                                            <button key={j} onClick={() => sim.setDefibEnergy(j)} className={`px-2 py-1 rounded border text-[11px] font-mono font-bold ${shockEnergy === j ? 'bg-amber-600 border-amber-400 text-white' : (j === recommendedEnergy ? 'bg-emerald-950/50 border-emerald-600 text-emerald-300' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700')}`}>{j}J</button>
+                                        ))}
+                                     </div>
+                                 </div>
+
                                  <div className="grid grid-cols-2 gap-2">
-                                     <Button onClick={() => { initCharge(shockEnergy); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">Charge {shockEnergy}J</Button>
-                                     <Button onClick={() => { deliverShock(shockEnergy, 'facilitator'); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">SHOCK {shockEnergy}J</Button>
+                                     <Button onClick={() => { initCharge(shockEnergy); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">{defib.charged ? `CHARGED ${defib.chargeEnergy}J` : `Charge ${shockEnergy}J`}</Button>
+                                     <Button onClick={() => { deliverShock(shockEnergy, 'facilitator'); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">{defib.syncMode ? 'SYNC SHOCK' : 'SHOCK'} {shockEnergy}J</Button>
                                  </div>
+
+                                 <div className="grid grid-cols-3 gap-2 mt-2">
+                                     <Button onClick={() => sim.toggleDefibSync()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${defib.syncMode ? 'bg-amber-900/40 border-amber-500 text-amber-300' : ''}`}>
+                                        SYNC {defib.syncMode ? 'ON' : 'OFF'}
+                                     </Button>
+                                     <Button onClick={() => sim.toggleCPR()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${cprInProgress ? 'bg-red-900/40 border-red-500 text-red-300' : ''}`}>
+                                        CPR {cprInProgress ? 'stop' : 'start'}
+                                     </Button>
+                                     <Button onClick={() => nextCycle && nextCycle()} variant="outline" className="h-9 text-[10px] uppercase font-bold">Rhythm check +2m</Button>
+                                 </div>
+
+                                 {/* C7 FACILITATOR OVERRIDE. This drives the previously unreachable
+                                     queuedRhythm / SET_QUEUED_RHYTHM code: the next shock converts to
+                                     exactly what the facilitator chose, instead of rolling the model. */}
+                                 <div className="mt-2 bg-black/50 p-2 rounded">
+                                     <div className="flex items-center justify-between mb-1">
+                                        <span className="text-slate-400 text-[10px] uppercase font-bold">Next shock converts to</span>
+                                        {state.queuedRhythm && <button onClick={() => sim.setQueuedRhythm(null)} className="text-[10px] text-sky-400 hover:text-sky-200 underline">clear</button>}
+                                     </div>
+                                     <div className="flex flex-wrap gap-1">
+                                        {RG.SELECTABLE.filter(r => RG.isRoscEligible(r) || RG.inArrest(r)).map(r => (
+                                            <button key={r} onClick={() => sim.setQueuedRhythm(r)} className={`px-2 py-1 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>{RG.shortFor(r)}</button>
+                                        ))}
+                                     </div>
+                                     <div className="text-[9px] text-slate-500 mt-1">Leave unset to let the outcome model decide (energy, rhythm, CPR and drugs all count).</div>
+                                 </div>
+
                                  <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
-                                     <span className="text-slate-400 text-[10px] uppercase">CPR Timer</span>
-                                     <span className="font-mono text-xl font-bold text-white">{formatTime(state.cycleTimer)}</span>
+                                     <span className="text-slate-400 text-[10px] uppercase">CPR / cycle timer</span>
+                                     <span className={`font-mono text-xl font-bold ${cprInProgress ? 'text-red-300' : 'text-white'}`}>{formatTime(state.cycleTimer)}</span>
                                  </div>
                              </div>
                         )}
@@ -764,17 +914,20 @@
                 )}
 
                 {invModal && (
-                    <Modal label="Investigation result" onClose={()=>closeInv()}>
+                    <Modal label="Investigation result" onClose={dismissInv}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-lg shadow-2xl h-[90vh] flex flex-col">
                              <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-bold text-white uppercase tracking-wider flex-shrink-0">Send {invModal} Result</h3>
-                                <button aria-label="Close investigation result" onClick={()=>setInvModal(null)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                <div className="min-w-0">
+                                    <h3 className="text-lg font-bold text-white uppercase tracking-wider">Choose {invModal} result</h3>
+                                    <p className="text-[11px] text-slate-400">Nothing has been sent yet. Pick a finding (or type one) and it goes to the student monitor.</p>
+                                </div>
+                                <button aria-label="Dismiss without sending" onClick={dismissInv} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                              </div>
                              
                              <div className="space-y-4 overflow-y-auto flex-grow pr-2">
                                  <div className="grid grid-cols-2 gap-2">
                                      <Button onClick={()=>sendInv(invModal, "Normal / Unremarkable")} variant="secondary">Normal</Button>
-                                     <Button onClick={()=>sendInv(invModal, "Abnormal (See scenario)")} variant="secondary">Scenario Default</Button>
+                                     <Button onClick={()=>sendScenarioDefault(invModal)} variant="secondary" title="Sends this scenario's own authored finding.">Scenario Finding</Button>
                                  </div>
                                  
                                  {PREDEFINED_FINDINGS[invModal] && (
@@ -801,8 +954,9 @@
                                     <Button onClick={()=>sendInv(invModal, invCustomText)} variant="primary" className="w-full mt-2" disabled={!invCustomText}>Send Custom</Button>
                                  </div>
                              </div>
-                             <div className="border-t border-slate-700 pt-4 mt-2 flex-shrink-0">
-                                 <Button onClick={closeInv} variant="danger" className="w-full">Clear/Close Result on Monitor</Button>
+                             <div className="border-t border-slate-700 pt-4 mt-2 flex-shrink-0 grid grid-cols-2 gap-2">
+                                 <Button onClick={dismissInv} variant="outline" className="w-full">Cancel (send nothing)</Button>
+                                 <Button onClick={clearInvOnMonitor} variant="danger" className="w-full">Clear result on monitor</Button>
                              </div>
                         </div>
                     </Modal>
@@ -843,8 +997,8 @@
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Select Rhythm</h3>
                             <div className="grid grid-cols-3 gap-2">
                                 {RHYTHMS.map(r => (
-                                    <button key={r} onClick={() => { sim.dispatch({type: 'UPDATE_RHYTHM', payload: r}); addLogEntry(`Rhythm changed to ${r}`, 'manual'); setShowRhythmModal(false); }} className={`p-3 text-sm font-bold rounded border ${state.rhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
-                                        {r}
+                                    <button key={r} onClick={() => { changeRhythm(r, 'manual selection'); setShowRhythmModal(false); }} className={`p-3 text-sm font-bold rounded border ${state.rhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
+                                        {RG.labelFor(r)}
                                     </button>
                                 ))}
                             </div>

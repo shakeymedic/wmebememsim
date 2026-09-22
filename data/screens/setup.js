@@ -444,7 +444,7 @@
                             </div>
                             <div>
                                 <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
-                                <select onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{['Sinus Rhythm', 'Sinus Tachycardia', 'AF', 'VT', 'VF', 'Asystole', 'PEA', '3rd Deg Block'].map(r => <option key={r} value={r}>{r}</option>)}</select>
+                                <select onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{(window.RHYTHMS ? window.RHYTHMS.SELECTABLE : ['Sinus Rhythm']).map(r => <option key={r} value={r}>{window.RHYTHMS ? window.RHYTHMS.labelFor(r) : r}</option>)}</select>
                             </div>
                             <div>
                                 <label className="text-[10px] text-slate-500 uppercase">Human Factors</label>
