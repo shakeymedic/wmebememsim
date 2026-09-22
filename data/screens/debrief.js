@@ -146,7 +146,11 @@
         // Sequence deviations: structured records written by the engine's permissive gating. Nothing
         // was blocked during the session; these are the teaching points that fell out of it.
         const deviations = state.log.filter(l => l.deviation && Array.isArray(l.deviation.missing));
+        // WAVE 5 / ITEM 3: `flagged` marks BOTH deviations and merely-significant events (arrests,
+        // shocks, hand flags). The two counts are now reported separately and labelled, so neither
+        // screen shows a deviation count that disagrees with the deviation list.
         const flaggedCount = state.log.filter(l => l.flagged).length;
+        const significanceCount = flaggedCount - deviations.length;
 
         const allObjectives = (() => {
             // A5: no scenario means no objectives. Array.isArray guards a restricted/pasted scenario
@@ -158,14 +162,45 @@
         })();
         const objectivesTotal = allObjectives.length;
         const completed = state.completedObjectives instanceof Set ? state.completedObjectives : new Set();
-        const objectivesMet = allObjectives.filter(o => completed.has(o)).length;
+        // ---- WAVE 5 / ITEM 2: PARTIAL CREDIT ON MULTI-COMPONENT OBJECTIVES --------------------
+        // "Hyperkalaemia treatment" needs calcium AND insulin/dextrose. Giving only calcium used to
+        // read "0% — Objectives Met: 0/1", which a facilitator reasonably mistakes for a bug. The
+        // engine now derives each objective's COMPONENTS from the scenario's own recommended actions
+        // and reports which were done and which were missing. Scores are not inflated: the headline
+        // number still counts only fully-completed objectives, and the partial-credit number is
+        // shown next to it, explicitly labelled.
+        const progress = (window.computeObjectiveProgress
+            ? window.computeObjectiveProgress(state.scenario || {}, {
+                interventionCounts: state.interventionCounts,
+                activeInterventions: state.activeInterventions,
+                completedObjectives: completed
+            })
+            : { objectives: [], total: objectivesTotal, fullyMet: 0, partial: 0, score: null, partialScore: null, hasPartial: false });
+        const objectiveRows = progress.objectives || [];
+        const objectivesMet = progress.fullyMet;
         // A score of "100%" against zero objectives is meaningless and actively misleading in Quick
         // Sim, so the score is null when there is nothing to score and the card is omitted.
-        const score = objectivesTotal > 0 ? Math.round((objectivesMet / objectivesTotal) * 100) : null;
+        const score = objectivesTotal > 0 ? (progress.score ?? 0) : null;
+        const partialScore = objectivesTotal > 0 ? (progress.partialScore ?? 0) : null;
+        const partialCount = progress.partial || 0;
+        const statusOf = (obj) => {
+            const row = objectiveRows.find(r => r.objective === obj);
+            return row || { objective: obj, status: completed.has(obj) ? 'met' : 'none', components: [], metComponents: [], missingComponents: [], multiComponent: false };
+        };
 
         const generateReport = () => {
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
-            const objRows = allObjectives.map(obj => { const met = completed.has(obj); return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${met ? '#22c55e' : '#ef4444'};font-weight:bold;">${met ? '\u2713 Met' : '\u2715 Not Met'}</td></tr>`; }).join('');
+            // WAVE 5 / ITEM 2: the report shows the same three-state status and names the components
+            // that were and were not done, so a partial objective is never printed as a bare failure.
+            const objRows = allObjectives.map(obj => {
+                const r = statusOf(obj);
+                const colour = r.status === 'met' ? '#22c55e' : r.status === 'partial' ? '#fbbf24' : '#ef4444';
+                const label = r.status === 'met' ? '\u2713 Met' : r.status === 'partial' ? '\u25D0 Partly done' : '\u2715 Not Met';
+                const detail = (r.components && r.components.length)
+                    ? `${r.metComponents.length ? 'Done: ' + esc(r.metComponents.join(', ')) : ''}${r.metComponents.length && r.missingComponents.length ? '<br>' : ''}${r.missingComponents.length ? 'Not done: ' + esc(r.missingComponents.join(', ')) : ''}`
+                    : '<span style="color:#64748b;">No component breakdown available for this objective.</span>';
+                return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${colour};font-weight:bold;white-space:nowrap;">${label}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:#cbd5e1;font-size:.85rem;">${detail}</td></tr>`;
+            }).join('');
             const logRows = state.log.map(l => { const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1'; return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${esc(l.msg)}</td></tr>`; }).join('');
             const devRows = deviations.map(d => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(d.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;font-weight:bold;">${esc(d.deviation.label || d.deviation.action)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#cbd5e1;">${esc(d.deviation.missing.join(', '))}</td></tr>`).join('');
             const shockRows = shockEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fca5a5;">${esc(l.msg)}</td></tr>`).join('');
@@ -178,8 +213,8 @@
             // there are no objectives, rather than printing "100% of 0".
             const scoreBlock = score === null
                 ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Mode</div><div style="font-size:1.5rem;font-weight:bold;">Quick Sim</div><div style="font-size:.7rem;color:#64748b;">No scenario \u2014 nothing to score</div></div>`
-                : `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div></div>`;
-            const objCard = objectivesTotal === 0 ? '' : `<div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><table><thead><tr><th>Objective</th><th>Status</th></tr></thead><tbody>${objRows}</tbody></table></div>`;
+                : `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score (fully met)</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div>${partialCount ? `<div style="font-size:.7rem;color:#fbbf24;">+ ${esc(partialCount)} partly done</div>` : ''}</div>${partialCount ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">With partial credit</div><div style="font-size:1.5rem;font-weight:bold;color:#fbbf24;">${esc(partialScore)}%</div><div style="font-size:.7rem;color:#64748b;">components done / components expected</div></div>` : ''}`;
+            const objCard = objectivesTotal === 0 ? '' : `<div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><p style="color:#94a3b8;font-size:.8rem;margin-top:0;">Objectives made of more than one component are only \u201cmet\u201d when every component was done. Anything started but incomplete is shown as partly done, with the missing component named \u2014 a low score here is a discussion point, not a verdict.</p><table><thead><tr><th>Objective</th><th>Status</th><th>Components</th></tr></thead><tbody>${objRows}</tbody></table></div>`;
             const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${objCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
@@ -214,9 +249,24 @@
                                         : 'This session declared no learning objectives, so there is nothing to score.'}
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className="text-4xl font-bold text-sky-400">{score}%</div>
-                                    <div className="text-sm text-slate-400">Objectives Met: {objectivesMet}/{objectivesTotal}</div>
+                                <div className="flex items-center gap-4 mb-4 flex-wrap">
+                                    <div>
+                                        <div className="text-4xl font-bold text-sky-400">{score}%</div>
+                                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Fully met</div>
+                                    </div>
+                                    {/* WAVE 5 / ITEM 2: partial credit is shown next to the strict score, never
+                                        folded into it, so a part-treated multi-component objective reads as
+                                        "1 of 2 components done" rather than as a flat 0%. */}
+                                    {partialCount > 0 && (
+                                        <div>
+                                            <div className="text-4xl font-bold text-amber-400">{partialScore}%</div>
+                                            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">With partial credit</div>
+                                        </div>
+                                    )}
+                                    <div className="text-sm text-slate-400">
+                                        Objectives Met: {objectivesMet}/{objectivesTotal}
+                                        {partialCount > 0 && <span className="text-amber-400"> · {partialCount} partly done</span>}
+                                    </div>
                                 </div>
                             )}
                             
@@ -296,13 +346,32 @@
                                 <>
                                     <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
                                     <ul className="space-y-2">
-                                        {allObjectives.map((obj, i) => (
-                                            <li key={i} className="flex items-start gap-2 text-sm text-slate-300">
-                                                <Lucide icon={completed.has(obj) ? "check-square" : "square"} className={completed.has(obj) ? "text-emerald-500 w-4 h-4" : "text-slate-600 w-4 h-4"} />
-                                                {obj}
-                                            </li>
-                                        ))}
+                                        {allObjectives.map((obj, i) => {
+                                            const r = statusOf(obj);
+                                            const icon = r.status === 'met' ? 'check-square' : r.status === 'partial' ? 'minus-square' : 'square';
+                                            const colour = r.status === 'met' ? 'text-emerald-500' : r.status === 'partial' ? 'text-amber-400' : 'text-slate-600';
+                                            return (
+                                                <li key={i} className="text-sm text-slate-300">
+                                                    <div className="flex items-start gap-2">
+                                                        <Lucide icon={icon} className={`${colour} w-4 h-4 flex-none mt-0.5`} />
+                                                        <span className="flex-1">{obj}</span>
+                                                        {r.status === 'partial' && <span className="text-[9px] uppercase font-bold text-amber-300 border border-amber-700 bg-amber-950/40 rounded px-1 py-0.5 flex-none">partly done</span>}
+                                                    </div>
+                                                    {/* WAVE 5 / ITEM 2: name the components, so "not met" is never opaque. */}
+                                                    {r.components && r.components.length > 0 && (
+                                                        <div className="ml-6 mt-1 flex flex-wrap gap-1">
+                                                            {r.components.map(c => (
+                                                                <span key={c.key} className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${c.met ? 'text-emerald-300 border-emerald-800 bg-emerald-950/40' : 'text-slate-400 border-slate-700 bg-slate-900'}`}>
+                                                                    {c.met ? '\u2713' : '\u2715'} {c.label}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
+                                    <p className="text-[10px] text-slate-500 mt-2">A multi-component objective counts as met only when every component was done. Partly-done objectives show the missing component above and are excluded from the fully-met score.</p>
                                 </>
                             )}
                         </div>
@@ -314,7 +383,7 @@
                         {!isQuickSim && (
                         <div className="bg-slate-800 p-4 rounded-lg border border-amber-600/50">
                             <h3 className="text-lg font-bold text-amber-400 mb-1 flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Sequence Deviations</h3>
-                            <p className="text-xs text-slate-400 mb-3">Actions performed before their usual prerequisites were in place. Nothing was blocked — these are discussion points, not errors by definition. {flaggedCount} flagged event{flaggedCount === 1 ? '' : 's'} in total.</p>
+                            <p className="text-xs text-slate-400 mb-3">Actions performed before their usual prerequisites were in place. Nothing was blocked — these are discussion points, not errors by definition. {deviations.length} deviation{deviations.length === 1 ? '' : 's'}; {significanceCount} other flagged event{significanceCount === 1 ? '' : 's'} (arrests, shocks and manual flags) are highlighted in the timeline but are not deviations.</p>
                             {deviations.length === 0 ? (
                                 <div className="text-sm text-slate-500">No sequence deviations recorded.</div>
                             ) : (

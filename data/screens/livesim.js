@@ -246,6 +246,13 @@
             "Vasoactive": ["Metaraminol", "Noradrenaline", "Labetalol", "LabetalolInfusion", "Phentolamine"],
             "Antibiotics": ["Antibiotics", "Ceftriaxone", "Tazocin", "Gentamicin", "Benzylpenicillin", "BenzylpenicillinIM"],
             "Glucose / Insulin": ["InsulinInfusion", "InsulinDextrose", "InsulinSubcut", "Dextrose", "GlucoseOral", "Glucagon"],
+            // WAVE 5 (minor note): "Salbutamol IV infusion" is categorised under BREATHING, which is
+            // correct — it is a respiratory escalation — but a facilitator looking for a drug looks in
+            // DRUGS and concluded it was missing. Cross-listing it (and the other respiratory agents
+            // that live under Breathing) makes it discoverable from BOTH tabs; the buttons are rendered
+            // from the intervention key, so this is a second route to the same action, not a duplicate
+            // definition.
+            "Respiratory (also under Breathing)": ["Nebs", "NebsContinuous", "SalbutamolIV"].filter(k => INTERVENTIONS[k]),
             "Other": [] 
         };
         const KNOWN_DRUGS = new Set(Object.values(DRUG_GROUPS).flat());
@@ -456,7 +463,17 @@
         // Flagged entries are the debrief's teaching artefacts: sequence deviations recorded by the
         // permissive gating, plus shocks and anything the facilitator flagged by hand.
         const flaggedEntries = state.log.filter(l => l.flagged);
-        const deviationEntries = flaggedEntries.filter(l => l.deviation);
+        // ---- WAVE 5 / ITEM 3: THE COUNTER MUST MATCH THE LIST --------------------------------
+        // `flagged: true` is used for TWO different things: a genuine prerequisite deviation (which
+        // always also carries a structured `deviation` record) and mere SIGNIFICANCE, so that arrests,
+        // shocks and hand-flagged moments stand out in the debrief timeline. The toolbar chip counted
+        // every flagged entry, so a run with two real deviations plus an arrest and four shocks read
+        // "Safety flags (7)" while the Sequence Deviations list below it correctly showed 2 — the
+        // facilitator could not tell which number to believe.
+        // The chip now counts ONLY deviations, and the significance flag keeps its debrief-timeline
+        // behaviour untouched (it is still what highlights those rows, here and in debrief.js).
+        const deviationEntries = flaggedEntries.filter(l => l.deviation && Array.isArray(l.deviation.missing));
+        const significanceEntries = flaggedEntries.filter(l => !(l.deviation && Array.isArray(l.deviation.missing)));
 
         // D3: the flow is now CHOOSE / CUSTOMISE, then SEND. Opening the chooser sends nothing, and
         // dismissing it sends nothing and does not wipe a result already on the student monitor.
@@ -540,12 +557,16 @@
                             <Lucide icon="list" className="w-4 h-4"/>
                             {state.log.some(l => l.flagged) && <span className="absolute top-0 right-0 w-2 h-2 bg-amber-500 rounded-full"></span>}
                         </Button>
-                        {/* Safety flags: a running count of flagged deviations (actions performed out of
-                            sequence, shocks, manual flags). Teaching artefact, facilitator-only.
+                        {/* Safety flags: a running count of genuine SEQUENCE DEVIATIONS (actions
+                            performed before their usual prerequisites were in place). ITEM 3: this is
+                            deviationEntries, not flaggedEntries — arrests and shocks are flagged for
+                            significance, not because anything was done out of order, and counting them
+                            here made the chip disagree with the deviations list it opens.
+                            Teaching artefact, facilitator-only.
                             A2: suppressed in Quick Sim — there are no interventions to flag. */}
-                        {!quickSim && flaggedEntries.length > 0 && (
-                            <Button ariaLabel={`Review ${flaggedEntries.length} safety flags`} variant="outline" onClick={() => setShowFlagsModal(true)} className="h-8 px-2 text-amber-400 border-amber-500/60 bg-amber-950/30 text-[10px] uppercase font-bold">
-                                <Lucide icon="flag" className="w-3 h-3 mr-1"/> Safety flags ({flaggedEntries.length})
+                        {!quickSim && deviationEntries.length > 0 && (
+                            <Button ariaLabel={`Review ${deviationEntries.length} sequence deviations`} variant="outline" onClick={() => setShowFlagsModal(true)} className="h-8 px-2 text-amber-400 border-amber-500/60 bg-amber-950/30 text-[10px] uppercase font-bold">
+                                <Lucide icon="flag" className="w-3 h-3 mr-1"/> Safety flags ({deviationEntries.length})
                             </Button>
                         )}
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
@@ -705,22 +726,51 @@
                                     {activeDrugRows.map(d => {
                                         const style = PHASE_STYLE[d.phase] || { cls: 'text-slate-300 border-slate-600 bg-slate-900', label: String(d.phase).toUpperCase() };
                                         return (
-                                            <div key={d.key} className="flex items-center gap-2 text-[11px]">
-                                                <span className="text-white font-bold truncate flex-1 min-w-0">{d.label}{d.doses > 1 ? ` x${d.doses}` : ''}</span>
-                                                <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider flex-none ${style.cls}`}>{style.label}</span>
-                                                <span className="font-mono text-slate-400 w-10 text-right flex-none">{d.intensity}%</span>
-                                                <span className="font-mono text-slate-400 w-16 text-right flex-none" title={d.sustained && !d.stopped ? 'Runs until you stop it' : 'Time until the effect is gone'}>{d.sustained && !d.stopped ? 'running' : fmtRemaining(d.remaining)}</span>
+                                            <div key={d.key} className="border-b border-slate-700/40 last:border-0 pb-1 last:pb-0">
+                                                <div className="flex items-center gap-2 text-[11px]">
+                                                    <span className="text-white font-bold truncate flex-1 min-w-0">{d.label}{d.doses > 1 ? ` x${d.doses}` : ''}</span>
+                                                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider flex-none ${style.cls}`}>{style.label}</span>
+                                                    <span className="font-mono text-slate-400 w-10 text-right flex-none">{d.intensity}%</span>
+                                                    <span className="font-mono text-slate-400 w-16 text-right flex-none" title={d.sustained && !d.stopped ? 'Runs until you stop it' : 'Time until the effect is gone'}>{d.sustained && !d.stopped ? 'running' : fmtRemaining(d.remaining)}</span>
+                                                </div>
+                                                {/* ---- WAVE 5 / ITEM 10: WHAT IT WILL DO, AND WHEN ----------------------
+                                                     A correctly-modelled long-onset drug (IV paracetamol: onset ~15 min,
+                                                     peak ~90 min, −0.5 °C) does nothing at all inside a 4-minute sim
+                                                     segment. The pharmacology is right and is NOT shortened; instead the
+                                                     pending effect and the countdown to it are stated here, so "working as
+                                                     intended" is visibly different from "did nothing". */}
+                                                {(d.expected || d.onsetIn > 0) && (
+                                                    <div className="text-[9px] text-slate-400 flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                                                        {d.expected && <span className="text-slate-300">{d.expected}</span>}
+                                                        {d.onsetIn > 0
+                                                            ? <span className="text-sky-300 font-bold">starts in {fmtRemaining(d.onsetIn)} (onset ~{Math.round(d.onsetSeconds / 60) >= 1 ? Math.round(d.onsetSeconds / 60) + ' min' : d.onsetSeconds + 's'})</span>
+                                                            : (d.peakIn > 0 && <span className="text-amber-300">peaks in {fmtRemaining(d.peakIn)}</span>)}
+                                                    </div>
+                                                )}
+                                                {/* ITEM 9 + 10: a rate-driven intervention reports its live unrounded value,
+                                                     its declared rate and an ETA, so 2 °C/h of cooling is visibly in progress
+                                                     between two 0.1 °C display steps instead of looking frozen. */}
+                                                {(d.drives || []).map(dr => (
+                                                    <div key={dr.vital} className="text-[9px] text-cyan-300 mt-0.5 font-mono">
+                                                        {dr.vital === 'temp' ? 'temp' : dr.vital} {dr.current !== null ? dr.current.toFixed(2) : '--'}
+                                                        {' → '}{dr.target}{' at '}{dr.ratePerHour > 0 ? '+' : '−'}{Math.abs(dr.ratePerHour)}{dr.vital === 'temp' ? ' °C/h' : '/h'}
+                                                        {dr.active ? (dr.etaSeconds !== null ? ` · ETA ${fmtRemaining(dr.etaSeconds)}` : '') : ' · not started yet'}
+                                                    </div>
+                                                ))}
                                             </div>
                                         );
                                     })}
                                 </div>
-                                <div className="text-[9px] text-slate-500 mt-1">Effects are added on top of the underlying physiology and wear off on their own.</div>
+                                <div className="text-[9px] text-slate-500 mt-1">Effects are added on top of the underlying physiology and wear off on their own. A drug in ONSET has not started acting yet — the countdown says when it will.</div>
                             </div>
                         )}
                         
                         <div className="flex-none grid grid-cols-2 gap-2">
                             <div className="relative">
-                                <Button variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST</Button>
+                                {/* WAVE 5 (minor note, with ITEM 7): both of these OPEN A MENU — a bare
+                                    click was mistaken for an action that did nothing. The caret and the
+                                    aria-expanded state say so explicitly. */}
+                                <Button ariaLabel={`Choose an arrest rhythm (${showArrestMenu ? 'menu open' : 'menu closed'})`} variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST ▾</Button>
                                 {showArrestMenu && (
                                     <div className="absolute bottom-12 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         {ARREST_RHYTHMS.map(r => (
@@ -730,9 +780,10 @@
                                 )}
                             </div>
                             <div className="relative">
-                                <Button variant="success" onClick={()=>setShowROSCMenu(!showROSCMenu)} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC</Button>
+                                <Button ariaLabel={`Choose a ROSC rhythm (${showROSCMenu ? 'menu open' : 'menu closed'})`} variant="success" onClick={()=>setShowROSCMenu(!showROSCMenu)} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC ▾</Button>
                                 {showROSCMenu && (
                                     <div className="absolute bottom-12 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                        <div className="text-[9px] text-slate-400 px-2 py-1 border-b border-slate-700 uppercase tracking-wider font-bold">Pick the post-ROSC rhythm</div>
                                         {ROSC_RHYTHMS.map(r => (
                                             <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
                                         ))}
@@ -889,7 +940,10 @@
                                 defibrillator's shockability logic or the arrest model. Arrest rhythms
                                 are marked so the facilitator can see what will zero the obs. */}
                             <div>
-                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Select rhythm ({RG.SELECTABLE.length})</div>
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Select rhythm ({RG.SELECTABLE.length})</div>
+                                {/* WAVE 5 / ITEM 6: the precedence rule, documented in the Quick Sim pane where
+                                    the HR-then-rhythm sequence is most commonly used. */}
+                                <div className="text-[9px] text-slate-500 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                     {RG.SELECTABLE.map(r => {
                                         const isCur = state.rhythm === r;
@@ -1158,6 +1212,12 @@
                                 <div className="grid grid-cols-4 gap-1 mt-2">
                                     {[0, 30, 120, 300].map(d => <button key={d} onClick={()=>setTrendDuration(d)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===d ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{d}s</button>)}
                                 </div>
+                                {/* WAVE 5 / ITEM 6 — the rule, stated where the facilitator sets the value. */}
+                                {modalVital === 'hr' && (
+                                    <div className="bg-slate-900 border border-slate-700 rounded p-2 text-[10px] text-slate-400 leading-relaxed">
+                                        <b className="text-slate-200">Your value wins.</b> A later rhythm change will <b>not</b> overwrite an HR you set here — it keeps your number and says so in the log. Only ARREST and ROSC reset it, because those define a new baseline. Set HR here again at any time to change it.
+                                    </div>
+                                )}
                                 {vitalModalError && <div className="bg-red-900/30 border border-red-600 rounded p-2 text-red-200 text-xs font-bold text-center">{vitalModalError}</div>}
                                 <Button onClick={confirmVitalUpdate} variant="success" disabled={!!vitalModalError} className={`w-full mt-4 h-12 text-lg font-bold ${vitalModalError ? 'opacity-40 cursor-not-allowed' : ''}`}>CONFIRM</Button>
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
@@ -1169,7 +1229,9 @@
                 {showRhythmModal && (
                     <Modal label="Select rhythm" onClose={()=>setShowRhythmModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl">
-                            <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Select Rhythm</h3>
+                            <h3 className="text-lg font-bold text-white mb-1 uppercase tracking-wider">Select Rhythm</h3>
+                            {/* WAVE 5 / ITEM 6: state the precedence rule at the point of use. */}
+                            <p className="text-[10px] text-slate-400 mb-3">Each rhythm carries a typical rate, which is applied only if you have not set HR yourself. If you have, your HR stands and the log records why — facilitator values are never silently overwritten.</p>
                             <div className="grid grid-cols-3 gap-2">
                                 {RHYTHMS.map(r => (
                                     <button key={r} onClick={() => { changeRhythm(r, 'manual selection'); setShowRhythmModal(false); }} className={`p-3 text-sm font-bold rounded border ${state.rhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
@@ -1260,10 +1322,10 @@
                     <Modal label="Safety flags" onClose={()=>setShowFlagsModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-amber-600/60 w-full max-w-2xl shadow-2xl max-h-[80vh] flex flex-col">
                             <div className="flex justify-between items-center mb-3">
-                                <h3 className="text-lg font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Safety flags ({flaggedEntries.length})</h3>
+                                <h3 className="text-lg font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Safety flags ({deviationEntries.length})</h3>
                                 <button aria-label="Close safety flags" onClick={()=>setShowFlagsModal(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                             </div>
-                            <p className="text-xs text-slate-400 mb-3">Nothing was blocked. These are recorded deviations for the debrief conversation.</p>
+                            <p className="text-xs text-slate-400 mb-3">Nothing was blocked. The count is the number of <b>sequence deviations</b> — actions performed before their usual prerequisites were in place. Arrests, shocks and hand-flagged moments are listed separately below as significant events; they are not deviations and are not counted.</p>
                             {deviationEntries.length > 0 && (
                                 <div className="mb-4">
                                     <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Sequence deviations</h4>
@@ -1280,9 +1342,10 @@
                                     </div>
                                 </div>
                             )}
+                            <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Other significant events ({significanceEntries.length})</h4>
                             <div className="flex-1 overflow-y-auto bg-slate-900 p-3 rounded border border-slate-700 font-mono text-xs space-y-1">
-                                {flaggedEntries.length === 0 && <div className="text-slate-500 text-center py-4">No flags recorded.</div>}
-                                {flaggedEntries.map((entry, i) => (
+                                {significanceEntries.length === 0 && <div className="text-slate-500 text-center py-4">No other flagged events.</div>}
+                                {significanceEntries.map((entry, i) => (
                                     <div key={i} className="flex gap-3">
                                         <span className="text-slate-500 w-14 flex-shrink-0">{entry.simTime}</span>
                                         <span className="text-slate-200">{entry.msg}</span>

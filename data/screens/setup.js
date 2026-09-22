@@ -32,6 +32,11 @@
         // ---- WAVE 4b / PART C: restricted (RCUK) scenarios ----------------------------------
         // Loaded FROM FIREBASE at runtime, never bundled. Shipped empty but fully wired.
         const [restricted, setRestricted] = useState({ phase: 'idle', scenarios: [], reason: null });
+        // WAVE 5 / ITEM 5: the locked panel used to tell a signed-out user to "request access below"
+        // when the request-access button only renders once signed in, so it promised a control that was
+        // not on screen. The panel now carries its OWN sign-in button, and the instructions for each of
+        // the three states name only controls that are actually visible in that state.
+        const [restrictedAuthOpen, setRestrictedAuthOpen] = useState(false);
 
         const [buildId, setBuildId] = useState(null);
         const [buildTitle, setBuildTitle] = useState("");
@@ -366,6 +371,9 @@
         const RestrictedSection = () => {
             const signedIn = !!(auth && auth.phase === 'signedIn');
             const status = (auth && auth.profile && auth.profile.status) || null;
+            // ITEM 5: the same modal the header's account button opens. Read off window so this screen
+            // keeps working if data/auth.js never loaded (the no-accounts deployment).
+            const AuthModalComponent = window.AuthModal || null;
             return (
                 <div className="space-y-3">
                     <div className="flex items-center gap-2 mb-2">
@@ -390,7 +398,19 @@
                                 {!auth || !auth.available ? (
                                     <p className="text-slate-400">Accounts are not switched on for this deployment yet, so there is nothing to sign in to. Nothing is broken — this section will unlock once the owner enables it.</p>
                                 ) : !signedIn ? (
-                                    <p className="text-slate-400">Sign in with the account button in the header, then request access below.</p>
+                                    /* SIGNED OUT. Exactly one control is offered and it is right here; the
+                                       request-access button is described as appearing AFTER sign-in, which
+                                       is what actually happens. */
+                                    <div className="space-y-2">
+                                        <p className="text-slate-400">You are not signed in. Sign in first — the <b>Request access</b> button appears here once you are, and access is then granted by the owner.</p>
+                                        <Button onClick={() => setRestrictedAuthOpen(true)} variant="outline" className="h-8 px-3 text-xs text-sky-300 border-sky-500/60">
+                                            <Lucide icon="log-in" className="w-3 h-3 mr-1"/> Sign in or create an account
+                                        </Button>
+                                        <p className="text-slate-500">The account button in the header does the same thing.</p>
+                                        {AuthModalComponent && restrictedAuthOpen && (
+                                            <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setRestrictedAuthOpen(false); }} context="restricted" />
+                                        )}
+                                    </div>
                                 ) : (
                                     <div className="space-y-2">
                                         <p className="text-slate-400">
@@ -400,6 +420,7 @@
                                                 : status === 'rejected'
                                                     ? ' Your access request was declined.'
                                                     : ' Your account is awaiting approval.'}
+                                            {' '}Use the <b>Request access</b> button below — the owner grants it manually.
                                         </p>
                                         <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-400 border-amber-500/60">
                                             Request access

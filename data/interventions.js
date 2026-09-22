@@ -215,8 +215,15 @@ window.INTERVENTIONS = {
     // nominal excursion (it is excluded from the additive envelope while the drive is running, so
     // it can never be applied twice). Bair Hugger + warmed fluids ~1.5 degC/h; active cooling
     // (cold fluids, ice packs, surface cooling) ~2 degC/h.
-    'Warming': { label: 'Active Warming', route: 'external', effect: { Temp: 3 }, category: 'Procedures', log: 'Active warming started (Bair Hugger / warmed fluids).', type: 'continuous', duration: 600, pk: { onset: 300, peak: 10800, offset: 3600 }, drive: { vital: 'temp', ratePerHour: 1.5, target: 36.8 } },
-    'Cooling': { label: 'Active Cooling', route: 'external', effect: { Temp: -3 }, category: 'Procedures', log: 'Active cooling started.', type: 'continuous', duration: 600, pk: { onset: 300, peak: 7200, offset: 3600 }, drive: { vital: 'temp', ratePerHour: -2.0, target: 36.8 } },
+    // WAVE 5 / ITEM 9: pk.onset 300s -> 60s for both. A drive's `onset` is dead time before the RATE
+    // starts at all; adding a 300 s dead period to the 300 s rate ramp meant active cooling took ten
+    // minutes to reach its declared 2 degC/h, so the observed rate was roughly a third of the declared
+    // one and the temperature looked frozen for the first several minutes. A forced-air blanket or
+    // surface cooling starts removing heat within a minute, so 60 s of dead time is the honest value;
+    // the declared rates themselves (1.5 degC/h warming, 2.0 degC/h cooling) are unchanged and are
+    // now actually achieved. DRIVE_RAMP_SECONDS in engine.js is also reduced, 300s -> 120s.
+    'Warming': { label: 'Active Warming', route: 'external', effect: { Temp: 3 }, category: 'Procedures', log: 'Active warming started (Bair Hugger / warmed fluids). Warms at ~1.5 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 10800, offset: 3600 }, drive: { vital: 'temp', ratePerHour: 1.5, target: 36.8 } },
+    'Cooling': { label: 'Active Cooling', route: 'external', effect: { Temp: -3 }, category: 'Procedures', log: 'Active cooling started. Cools at ~2.0 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 7200, offset: 3600 }, drive: { vital: 'temp', ratePerHour: -2.0, target: 36.8 } },
     'CPR': { label: 'Start CPR', route: 'manual', effect: { BP: 40, cpr: true }, category: 'Procedures', log: 'Chest compressions started.', type: 'continuous', duration: 5 },
     'Splinting': { label: 'Splint / Immobilise', route: 'external', effect: {}, category: 'Procedures', log: 'Limb splinted / immobilised.', type: 'continuous', duration: 60 },
     'Collar': { label: 'C-Spine Collar', route: 'external', effect: {}, category: 'Procedures', log: 'C-Spine immobilisation applied.', type: 'continuous', duration: 15 },
@@ -266,7 +273,12 @@ window.INTERVENTIONS = {
     'Phenytoin': { label: 'Phenytoin (20 mg/kg infusion)', route: 'IV infusion over >=20 min', effect: { BP: -10, HR: -10 }, category: 'Drugs', log: 'IV Phenytoin (20 mg/kg) infusion started over >=20 min. Cardiac monitoring mandatory.', type: 'bolus', duration: 1200, pk: { onset: 300, peak: 1200, offset: 0, maxDoses: 1 }, expects: ['IV Access'] },
     'Flumazenil': { label: 'Flumazenil', route: 'IV', effect: { gcs: 6, RR: 5 }, category: 'Drugs', log: 'IV Flumazenil administered. CAUTION: seizure risk; shorter-acting than the benzodiazepine.', type: 'bolus', duration: 60, pk: { onset: 60, peak: 420, offset: 2700, maxDoses: 2 }, expects: ['IV Access'] },
     // --- SEDATION / ANALGESIA BY ROUTE
-    'KetamineIM': { label: 'Ketamine IM (sedation / ABD)', route: 'IM', effect: { gcs: -12, BP: 8, HR: 10 }, category: 'Drugs', log: 'IM Ketamine administered (4-5 mg/kg). Onset 3-5 min — WAIT, do not stack doses.', type: 'bolus', duration: 300, pk: { onset: 90, peak: 240, plateau: 600, offset: 1800, maxDoses: 2 } },
+    // WAVE 5 / ITEM 8: peak 240s -> 180s. IM ketamine for acute behavioural disturbance is specified
+    // as ~3 minutes to PEAK effect (4-5 mg/kg IM; dissociation typically 3-4 min). The deployed
+    // 240 s peaked at ~4 min, a minute late. Onset (90 s, first effect) and the 600 s plateau /
+    // 1800 s offset are unchanged and still bracket the peak correctly. IV ketamine is untouched
+    // (onset 30 / peak 60 = 1 min, verified correct in live testing).
+    'KetamineIM': { label: 'Ketamine IM (sedation / ABD)', route: 'IM', effect: { gcs: -12, BP: 8, HR: 10 }, category: 'Drugs', log: 'IM Ketamine administered (4-5 mg/kg). Onset ~90s, PEAK at ~3 min — WAIT, do not stack doses.', type: 'bolus', duration: 300, pk: { onset: 90, peak: 180, plateau: 600, offset: 1800, maxDoses: 2 } },
     'MorphineIM': { label: 'Morphine IM', route: 'IM', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Drugs', log: 'IM Morphine administered. Onset 10-20 min, peak 30-60 min — slow analgesia.', type: 'bolus', duration: 300, pk: { onset: 600, peak: 1800, offset: 14400, maxDoses: 3 } },
     'MorphineOral': { label: 'Morphine oral (Oramorph)', route: 'oral', effect: { HR: -3, RR: -2 }, category: 'Drugs', log: 'Oral Morphine (Oramorph) administered. Onset 20-30 min.', type: 'bolus', duration: 300, pk: { onset: 1200, peak: 3600, offset: 14400, maxDoses: 3 } },
     'ParacetamolOral': { label: 'Paracetamol oral', route: 'oral', effect: { Temp: -0.5 }, category: 'Drugs', log: 'Oral Paracetamol administered. Peak plasma 45-50 min; antipyresis over 1-2 h.', type: 'bolus', duration: 60, pk: { onset: 1800, peak: 7200, offset: 14400, maxDoses: 2 } },

@@ -25,7 +25,20 @@
         baseVitals: { ...DEFAULT_VITALS },
         prevVitals: {},
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
-        hypoxiaTimer: 0
+        hypoxiaTimer: 0,
+        // ---- WAVE 5 / ITEM 6: FACILITATOR SUPREMACY OVER RHYTHM-DERIVED RATES ------------------
+        // A map of vital keys the facilitator has TYPED a value for (`{ hr: true }`). It exists for
+        // one reason: a rhythm change used to overwrite a manually-set HR with the new rhythm's
+        // registry rate band, so typing HR 130 and then selecting Atrial Fibrillation showed 140 and
+        // the tile no longer agreed with what was typed. Manual writes are precedence step 1 in the
+        // Wave 2 order (manual -> trends -> deterioration -> airway -> drug envelope -> clamp), and
+        // the rhythm band is a step-1 write too, so the tie has to be broken explicitly. It is broken
+        // in the facilitator's favour, consistently with the rest of the app.
+        // The hold is released only by an explicit release (arrest / ROSC / pulseless transitions,
+        // which are themselves deliberate facilitator writes that define a new baseline) or by
+        // loading a new scenario. Booleans only, so it survives JSON persistence untouched; it is
+        // NOT part of the sync payload (the monitor does not run physiology).
+        manualHold: {}
     };
 
     const initialLogState = {
@@ -324,8 +337,14 @@
                 }
             });
         }
-        // An entry with no numeric effect and no paralysis role would contribute nothing.
-        if (Object.keys(effect).length === 0 && !paralytic) return null;
+        // An entry with no numeric effect, no paralysis role and no rate drive contributes nothing to
+        // the vitals — but it is still a drug that is running, and WAVE 5 / ITEM 10 is precisely about
+        // a facilitator being unable to tell "pending, working as intended" from "nothing happened".
+        // Levetiracetam and the other agents whose modelled effect is anticonvulsant rather than
+        // haemodynamic used to vanish from the Active Drugs panel entirely. They now appear, with
+        // their onset countdown, and contribute exactly zero to the envelope (there is nothing in
+        // `effect` to add), so no vitals behaviour changes anywhere.
+        if (Object.keys(effect).length === 0 && !paralytic && !drives.length && !action.pk) return null;
         const onset = Math.max(0, Number(pk.onset) || 0);
         const peak = Math.max(onset, Number(pk.peak) || onset);
         const offset = Math.max(0, Number(pk.offset) || 0);
@@ -378,7 +397,13 @@
     // corrected at all. Integrates into `base` IN PLACE; returns true if anything moved.
     // How long a rate-driven intervention (warming blanket, cooling, insulin infusion) takes to
     // reach its full rate after its onset.
-    const DRIVE_RAMP_SECONDS = 300;
+    // WAVE 5 / ITEM 9: 300s -> 120s. The declared rate (2 degC/h of cooling) was only ever reached
+    // after a 300 s pk onset PLUS a 300 s linear ramp, and the ramp costs half of its own window, so
+    // the first ten minutes delivered roughly a third of the declared rate — which is exactly the
+    // discrepancy live testing measured (0.1 degC per 8-10 min instead of per ~3 min). 120 s keeps the
+    // switch-on smooth without hiding the rate. The rate itself is unchanged and the base integration
+    // is unrounded, so nothing is lost per tick.
+    const DRIVE_RAMP_SECONDS = 120;
     const applyDriveTick = (base, activeDrugs, t) => {
         let moved = false;
         (activeDrugs || []).forEach(d => {
@@ -831,6 +856,197 @@
         ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
         FLUID_RESPONSE_LEVELS };
 
+    const OBJECTIVE_TRIGGERS = {
+        'Antibiotics':   ['antibio', 'sepsis', 'infection', 'antimicro'],
+        'Fluids':        ['fluid', 'resus', 'bolus', 'iv fluid', 'saline'],
+        'AdrenalineIM':  ['adrenaline', 'anaphyl', 'epinephrine'],
+        'AdrenalineIV':  ['adrenaline', 'cardiac arrest', 'epinephrine'],
+        // E10: 'Adrenaline', 'O2', 'NaloxoneIV', 'Tranexamic', 'ChestDrain' and
+        // 'NeedleDecomp' were DEAD KEYS — no such intervention exists, so those learning
+        // objectives could never auto-complete. Remapped to the real keys.
+        'AdrenalinePush':      ['adrenaline', 'epinephrine', 'hypotension'],
+        'AdrenalineInfusion':  ['adrenaline', 'anaphyl', 'epinephrine', 'refractory'],
+        'Oxygen':        ['oxygen', 'o2', 'airway'],
+        'Aspirin':       ['aspirin', 'acs', 'stemi', 'nstemi'],
+        'GTN':           ['gtn', 'nitrate', 'acs'],
+        'InsulinInfusion': ['insulin', 'dka', 'glucose'],
+        'InsulinDextrose': ['insulin', 'dka', 'glucose', 'hyperkalaemia', 'hyperkalemia'],
+        'Atropine':      ['atropine', 'bradycardia', 'heart block'],
+        'Lorazepam':     ['lorazepam', 'seizure', 'benzodiazep'],
+        'LorazepamIM':   ['lorazepam', 'seizure', 'benzodiazep'],
+        'MidazolamBuccal': ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+        'MidazolamIN':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+        'MidazolamIM':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+        'DiazepamPR':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+        'DiazepamIV':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+        'Levetiracetam': ['seizure', 'status epilepticus', 'anticonvuls'],
+        'Phenytoin':     ['seizure', 'status epilepticus', 'anticonvuls'],
+        'Naloxone':      ['naloxone', 'opiate', 'opioid'],
+        'NaloxoneIM':    ['naloxone', 'opiate', 'opioid'],
+        'NaloxoneIN':    ['naloxone', 'opiate', 'opioid'],
+        'TXA':           ['tranexam', 'haemorrhage', 'trauma'],
+        'RSI':           ['rsi', 'intubat', 'airway management'],
+        'SeldingerDrain':['chest drain', 'pneumothorax', 'haemothorax'],
+        'SurgicalDrain': ['chest drain', 'pneumothorax', 'haemothorax'],
+        'Needle':        ['needle', 'pneumothorax', 'tension'],
+        'Benzylpenicillin':   ['meningo', 'meningitis', 'antibio', 'sepsis'],
+        'BenzylpenicillinIM': ['meningo', 'meningitis', 'antibio', 'sepsis'],
+        'NebsContinuous':     ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
+        'Nebs':               ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
+        // WAVE 5 / ITEM 2: keys that were missing entirely, so an objective they should satisfy
+        // could never be credited and a correctly-treated scenario could read 0%. 'Calcium' is the
+        // one that produced the reported bug: giving Calcium Gluconate in Hyperkalaemia (Renal)
+        // matched nothing at all, so "Hyperkalaemia treatment" stayed at 0/1.
+        'Calcium':            ['calcium', 'hyperkalaemia', 'hyperkalemia', 'membrane'],
+        'SalbutamolIV':       ['hyperkalaemia', 'hyperkalemia', 'asthma', 'salbutamol', 'nebuli'],
+        'MagSulph':           ['magnesium', 'asthma', 'torsade', 'eclampsia', 'pre-eclampsia'],
+        'Amiodarone':         ['amiodarone', 'tachycardia algorithm', 'antiarrhythmic', 'refractory vf'],
+        'Adenosine':          ['adenosine', 'svt', 'narrow complex'],
+        'Manoeuvres':         ['vagal', 'svt', 'manoeuvre'],
+        'Cardioversion':      ['cardiovers', 'tachycardia algorithm', 'safe cardioversion'],
+        'Pacing':             ['pacing', 'bradycardia algorithm', 'heart block'],
+        'Thrombolysis':       ['thrombolysis', 'thrombolytic'],
+        'Blood':              ['haemorrhage', 'transfus', 'blood protocol', 'major haemorrhage'],
+        'Hydrocortisone':     ['steroid', 'adrenal', 'addison', 'anaphyl', 'thyroid'],
+        'Dexamethasone':      ['steroid', 'asthma', 'copd', 'meningitis', 'croup'],
+        'Furosemide':         ['furosemide', 'diuretic', 'heart failure', 'pulmonary oedema'],
+        'GTNInfusion':        ['gtn', 'nitrate', 'heart failure', 'pulmonary oedema'],
+        'CPAP':               ['cpap', 'heart failure', 'pulmonary oedema', 'non-invasive'],
+        'NIV':                ['niv', 'non-invasive', 'copd', 'oxygen targets'],
+        'Cooling':            ['cooling', 'hyperthermia', 'heat'],
+        'Warming':            ['warming', 'hypothermia', 'myxoedema'],
+        'HypertonicSaline':   ['hyponatr', 'sodium correction', 'cerebral oedema'],
+        'Bisphosphonate':     ['hypercalcaem', 'hypercalcem', 'bisphosphonate'],
+        'Terlipressin':       ['variceal', 'terlipressin'],
+        'Labetalol':          ['bp control', 'bp target', 'hypertensive', 'dissection'],
+        'Surgery':            ['surgical', 'surgery', 'theatre', 'definitive care'],
+        'FingerThoracostomy': ['thoracostomy', 'pneumothorax', 'tension'],
+        'Cyproheptadine':     ['serotonin', 'cyproheptadine'],
+        'T3T4':               ['myxoedema', 'thyroid', 'liothyronine'],
+        'Nimodipine':         ['sah', 'subarachnoid', 'nimodipine', 'vasospasm'],
+        'Chlorphenamine':     ['antihistamine', 'anaphyl'],
+        'Heparin':            ['lmwh', 'anticoagul', 'heparin', 'thrombo'],
+    };
+
+    // =============================================================================================
+    // WAVE 5 / ITEM 2 — MULTI-COMPONENT OBJECTIVE PROGRESS
+    // ---------------------------------------------------------------------------------------------
+    // Objectives are authored as free text ("Hyperkalaemia treatment") and credited by keyword
+    // matching an intervention key against that text. That is fine for a single-drug objective and
+    // badly misleading for a multi-component one: hyperkalaemia needs BOTH calcium (membrane
+    // stabilisation) AND insulin/dextrose (potassium shift), so giving one of the two produced a
+    // flat "0% — Objectives Met: 0/1" that reads like a bug rather than like partial credit.
+    //
+    // `computeObjectiveProgress` derives the COMPONENTS of each objective from data that already
+    // exists — the scenario's own recommendedActions/stabilisers/instructorBrief interventions,
+    // intersected with OBJECTIVE_TRIGGERS — and reports which were done and which were not.
+    // It is deliberately honest rather than generous:
+    //   * an objective with >= 2 known components is 'met' ONLY when every component was given;
+    //   * one of two components is 'partial' with a fraction of 0.5 and the missing item named;
+    //   * an objective with no derivable components falls back to the engine's completedObjectives
+    //     set exactly as before, so nothing regresses.
+    // The score is reported twice and labelled: a strict fully-met percentage, and a
+    // component-weighted partial-credit percentage. Neither is inflated; both are explained.
+    // =============================================================================================
+    const objectiveComponentKeys = (scenario, objective) => {
+        const objLower = String(objective == null ? '' : objective).toLowerCase();
+        if (!objLower) return [];
+        const pool = [];
+        const push = (arr) => { if (Array.isArray(arr)) arr.forEach(k => { if (typeof k === 'string' && pool.indexOf(k) === -1) pool.push(k); }); };
+        push(scenario && scenario.recommendedActions);
+        push(scenario && scenario.stabilisers);
+        push(scenario && scenario.instructorBrief && scenario.instructorBrief.interventions);
+        return pool.filter(key => {
+            const triggers = OBJECTIVE_TRIGGERS[key];
+            return !!triggers && triggers.some(kw => objLower.indexOf(kw) !== -1);
+        });
+    };
+
+    // WAVE 5 / ITEM 6: the whole precedence decision in one pure, exported predicate, so "does a
+    // rhythm change overwrite a manually typed HR?" is answerable by a test rather than by reading
+    // the dispatch wrapper. TRUE = apply the rhythm's registry rate band; FALSE = the facilitator's
+    // own HR stands. `releaseManual` is the list of keys the transition itself has just reset
+    // (arrest / ROSC / pulseless <-> organised), which legitimately clears the hold.
+    const applyRhythmHrBand = (cur, releaseManual) => {
+        const held = !!(cur && cur.manualHold && cur.manualHold.hr);
+        const released = Array.isArray(releaseManual) && releaseManual.indexOf('hr') !== -1;
+        return !held || released;
+    };
+
+    const computeObjectiveProgress = (scenario, opts) => {
+        const o = opts || {};
+        const scen = scenario || {};
+        const a = Array.isArray(scen.learningObjectives) ? scen.learningObjectives : [];
+        const b = Array.isArray(scen.instructorBrief && scen.instructorBrief.learningObjectives) ? scen.instructorBrief.learningObjectives : [];
+        const seen = new Set();
+        const objectives = [...a, ...b].filter(x => typeof x === 'string' && x.length && !seen.has(x) && seen.add(x) !== false);
+        const counts = o.interventionCounts || {};
+        const activeSet = o.activeInterventions instanceof Set ? o.activeInterventions : new Set(Array.isArray(o.activeInterventions) ? o.activeInterventions : []);
+        const completed = o.completedObjectives instanceof Set ? o.completedObjectives : new Set(Array.isArray(o.completedObjectives) ? o.completedObjectives : []);
+        const given = (key) => (Number(counts[key]) || 0) > 0 || activeSet.has(key);
+        const labelOf = (key) => {
+            const defs = window.INTERVENTIONS || {};
+            return (defs[key] && defs[key].label) || key;
+        };
+
+        const rows = objectives.map(objective => {
+            const keys = objectiveComponentKeys(scen, objective);
+            const components = keys.map(key => ({ key, label: labelOf(key), met: given(key) }));
+            const metCount = components.filter(c => c.met).length;
+            const touched = completed.has(objective);
+            let status, fraction;
+            if (components.length === 0) {
+                // No derivable components: fall back to the legacy keyword credit, unchanged.
+                status = touched ? 'met' : 'none';
+                fraction = touched ? 1 : 0;
+            } else if (metCount === components.length) {
+                status = 'met';
+                fraction = 1;
+            } else if (metCount > 0 || touched) {
+                status = 'partial';
+                // `touched` with no component evidence still counts as started, never as complete.
+                fraction = metCount > 0 ? metCount / components.length : 0;
+            } else {
+                status = 'none';
+                fraction = 0;
+            }
+            return {
+                objective,
+                components,
+                metComponents: components.filter(c => c.met).map(c => c.label),
+                missingComponents: components.filter(c => !c.met).map(c => c.label),
+                multiComponent: components.length > 1,
+                touched,
+                status,
+                fraction
+            };
+        });
+
+        const total = rows.length;
+        const fullyMet = rows.filter(r => r.status === 'met').length;
+        const partial = rows.filter(r => r.status === 'partial').length;
+        const creditSum = rows.reduce((sum, r) => sum + r.fraction, 0);
+        return {
+            objectives: rows,
+            total,
+            fullyMet,
+            partial,
+            notStarted: rows.filter(r => r.status === 'none').length,
+            // Strict: only fully-completed objectives count. This is the headline number and it never
+            // goes up because of partial work.
+            score: total > 0 ? Math.round((fullyMet / total) * 100) : null,
+            // Component-weighted partial credit, always shown alongside and always labelled.
+            partialScore: total > 0 ? Math.round((creditSum / total) * 100) : null,
+            hasPartial: partial > 0
+        };
+    };
+
+    window.OBJECTIVE_TRIGGERS = OBJECTIVE_TRIGGERS;
+    window.computeObjectiveProgress = computeObjectiveProgress;
+    window.__pkInternals = window.__pkInternals || {};
+    window.__pkInternals.objectiveComponentKeys = objectiveComponentKeys;
+    window.__pkInternals.applyRhythmHrBand = applyRhythmHrBand;
+
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
@@ -848,7 +1064,7 @@
                 return { ...initialVitalsState, vitals: initialVitals, baseVitals: { ...initialVitals }, prevVitals: { ...initialVitals } };
             case 'RESTORE_SESSION': {
                 const restoredVitals = { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) };
-                return { ...state, vitals: restoredVitals, baseVitals: { ...restoredVitals, ...(action.payload.baseVitals || {}) }, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0 };
+                return { ...state, vitals: restoredVitals, baseVitals: { ...restoredVitals, ...(action.payload.baseVitals || {}) }, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0, manualHold: action.payload.manualHold || {} };
             }
             // The monitor does not run physiology; the authoritative composed vitals arrive over the
             // wire, so base == displayed there.
@@ -860,7 +1076,14 @@
                 const base = { ...state.baseVitals, ...action.payload };
                 const t = cs ? cs.time : 0;
                 const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
-                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? cs.activeDrugs : [], t, inArrest) };
+                // WAVE 5 / ITEM 6: arrest, ROSC and pulseless<->organised transitions define a NEW
+                // baseline, so they explicitly release the manual hold on the vitals they rewrite.
+                let hold = state.manualHold || {};
+                if (Array.isArray(action.releaseManual) && action.releaseManual.length) {
+                    hold = { ...hold };
+                    action.releaseManual.forEach(k => { delete hold[k]; });
+                }
+                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? cs.activeDrugs : [], t, inArrest), manualHold: hold };
             }
             case 'MANUAL_VITAL_UPDATE': {
                 // Boundary guard: a NaN here propagates into the Firebase payload, which RTDB rejects,
@@ -872,7 +1095,7 @@
                 if (isCategoricalVital(key)) {
                     const pv = normalisePupils(value);
                     const pbase = { ...state.baseVitals, [key]: pv };
-                    return { ...state, baseVitals: pbase, vitals: { ...state.vitals, [key]: pv }, prevVitals: { ...state.vitals } };
+                    return { ...state, baseVitals: pbase, vitals: { ...state.vitals, [key]: pv }, prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
                 }
                 const t = cs ? cs.time : 0;
                 const drugs = cs ? cs.activeDrugs : [];
@@ -888,7 +1111,8 @@
                     baseValue = clampVital(key, baseForDisplayed(key, value, off, ceils[key]));
                 }
                 const base = { ...state.baseVitals, [key]: baseValue };
-                return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals } };
+                // WAVE 5 / ITEM 6: record that the facilitator typed this one. See `manualHold`.
+                return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
             }
             case 'START_TREND': {
                 const safeTargets = {};
@@ -973,9 +1197,17 @@
                 const det = scen && scen.deterioration ? scen.deterioration : null;
                 const detType = det ? normaliseDeteriorationType(det.type) : null;
                 const detRate = det ? Number(det.rate) : 0;
+                // WAVE 5 / ITEM 9: a RATE-DRIVEN vital (active warming/cooling, fixed-rate insulin)
+                // is owned by its drive for exactly as long as the drive runs, in the same way a
+                // running trend owns its targets. Without this, autonomous deterioration and the drive
+                // both integrate into the same base value in the same tick and the net movement no
+                // longer matches either declared rate. No current deterioration type touches `temp`,
+                // so this is defensive today and correct by construction tomorrow.
+                const driveOwned = drivenVitals(activeDrugs, tNow);
+                const ownedBySomething = { ...trendOwned, ...driveOwned };
                 if (isRunning && detMode === 'auto' && det && det.active !== false && detType && Number.isFinite(detRate) && detRate > 0 && !inArrest) {
                     const factor = deteriorationTreatmentFactor(detType, cs);
-                    if (factor !== 0 && applyDeteriorationTick(base, detType, detRate, factor, trendOwned)) vitalsChanged = true;
+                    if (factor !== 0 && applyDeteriorationTick(base, detType, detRate, factor, ownedBySomething)) vitalsChanged = true;
                 }
 
                 // ----- STEP 3b: RATE-DRIVEN VITALS (Wave 4a, PART 2D).
@@ -1488,12 +1720,18 @@
                 // Rhythm-driven vitals are a facilitator-level write: they target the BASE.
                 let rhythmVitals = { ...cur.baseVitals };
 
+                // WAVE 5 / ITEM 6: does the facilitator hold HR? A pulseless/organised transition
+                // releases the hold (it defines a new baseline); an organised -> organised rhythm
+                // change respects it.
+                let releaseManual = [];
+
                 if (RG.isPulseless(newRhythm)) {
                     // A shockable/pulseless rhythm showing a pre-arrest BP and SpO2 is clinically
                     // contradictory; the numeric panel must agree with the trace.
                     if (rhythmVitals.hr > 0 || rhythmVitals.bpSys > 0) {
                         dispatchVitals({ type: 'STOP_TREND', currentState: cur });
                         rhythmVitals = { ...rhythmVitals, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 };
+                        releaseManual = ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'pupils', 'etco2'];
                     }
                 } else if (RG.isPulseless(cur.rhythm)) {
                     // Coming out of a pulseless rhythm into an organised one — an organised rhythm must
@@ -1502,16 +1740,31 @@
                     const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
                     dispatchVitals({ type: 'STOP_TREND', currentState: cur });
                     rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: Math.round((5.0 + Math.random() * 1.5) * 10) / 10 };
+                    releaseManual = ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'pupils', 'etco2'];
                 }
 
                 // Registry-supplied rate band for the new rhythm, so every organised rhythm
                 // (including the ones previously missing: Atrial Flutter, VT, 1st/2nd degree block,
                 // Junctional, STEMI) lands on a clinically sensible heart rate.
+                //
+                // WAVE 5 / ITEM 6 — FACILITATOR SUPREMACY. The band is applied only when the
+                // facilitator has NOT typed an HR of their own (or has just had the hold released by
+                // an arrest/ROSC transition above). If they have, their number stands and the rhythm
+                // change says so in the log, rather than silently replacing 130 with 140.
                 if (!cur.arrestPanelOpen && !cur.defibPanelOpen && !isArrest) {
                     const band = RG.defaultHrRange(newRhythm);
-                    if (band) rhythmVitals.hr = getRandomInt(band[0], band[1]);
+                    const stillHeld = !applyRhythmHrBand(cur, releaseManual);
+                    if (band && !stillHeld) {
+                        rhythmVitals.hr = getRandomInt(band[0], band[1]);
+                    } else if (band && stillHeld) {
+                        const shown = Math.round(cur.vitals.hr);
+                        dispatchLog({ type: 'ADD_LOG', currentState: cur, payload: {
+                            msg: `HR left at your manual value of ${shown} for ${RG.labelFor(newRhythm)} (typical ${band[0]}-${band[1]}/min). Manual values always win — set HR again from the HR tile to change it.`,
+                            type: 'info', flagged: false, deviation: null
+                        } });
+                    }
                 }
-                dispatchVitals({ type: 'UPDATE_VITALS', payload: rhythmVitals, currentState: stateRef.current });
+                dispatchVitals({ type: 'UPDATE_VITALS', payload: rhythmVitals, releaseManual, currentState: stateRef.current });
             }
 
             dispatchVitals(enhancedAction);
@@ -2306,45 +2559,10 @@
 
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
-            // Generic objective completion — matches intervention key against learning objective text
-            const OBJECTIVE_TRIGGERS = {
-                'Antibiotics':   ['antibio', 'sepsis', 'infection', 'antimicro'],
-                'Fluids':        ['fluid', 'resus', 'bolus', 'iv fluid', 'saline'],
-                'AdrenalineIM':  ['adrenaline', 'anaphyl', 'epinephrine'],
-                'AdrenalineIV':  ['adrenaline', 'cardiac arrest', 'epinephrine'],
-                // E10: 'Adrenaline', 'O2', 'NaloxoneIV', 'Tranexamic', 'ChestDrain' and
-                // 'NeedleDecomp' were DEAD KEYS — no such intervention exists, so those learning
-                // objectives could never auto-complete. Remapped to the real keys.
-                'AdrenalinePush':      ['adrenaline', 'epinephrine', 'hypotension'],
-                'AdrenalineInfusion':  ['adrenaline', 'anaphyl', 'epinephrine', 'refractory'],
-                'Oxygen':        ['oxygen', 'o2', 'airway'],
-                'Aspirin':       ['aspirin', 'acs', 'stemi', 'nstemi'],
-                'GTN':           ['gtn', 'nitrate', 'acs'],
-                'InsulinInfusion': ['insulin', 'dka', 'glucose'],
-                'InsulinDextrose': ['insulin', 'dka', 'glucose', 'hyperkalaemia', 'hyperkalemia'],
-                'Atropine':      ['atropine', 'bradycardia', 'heart block'],
-                'Lorazepam':     ['lorazepam', 'seizure', 'benzodiazep'],
-                'LorazepamIM':   ['lorazepam', 'seizure', 'benzodiazep'],
-                'MidazolamBuccal': ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-                'MidazolamIN':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-                'MidazolamIM':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-                'DiazepamPR':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-                'DiazepamIV':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-                'Levetiracetam': ['seizure', 'status epilepticus', 'anticonvuls'],
-                'Phenytoin':     ['seizure', 'status epilepticus', 'anticonvuls'],
-                'Naloxone':      ['naloxone', 'opiate', 'opioid'],
-                'NaloxoneIM':    ['naloxone', 'opiate', 'opioid'],
-                'NaloxoneIN':    ['naloxone', 'opiate', 'opioid'],
-                'TXA':           ['tranexam', 'haemorrhage', 'trauma'],
-                'RSI':           ['rsi', 'intubat', 'airway management'],
-                'SeldingerDrain':['chest drain', 'pneumothorax', 'haemothorax'],
-                'SurgicalDrain': ['chest drain', 'pneumothorax', 'haemothorax'],
-                'Needle':        ['needle', 'pneumothorax', 'tension'],
-                'Benzylpenicillin':   ['meningo', 'meningitis', 'antibio', 'sepsis'],
-                'BenzylpenicillinIM': ['meningo', 'meningitis', 'antibio', 'sepsis'],
-                'NebsContinuous':     ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
-                'Nebs':               ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
-            };
+            // WAVE 5 / ITEM 2: the trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
+            // above) so the debrief can derive the COMPONENTS of a multi-component objective from the
+            // same data the engine credits from. Behaviour here is unchanged: any matching key marks
+            // the objective as touched; the debrief decides met vs partial.
             const triggers = OBJECTIVE_TRIGGERS[key];
             const objList = (scenario.learningObjectives || []).concat(scenario.instructorBrief?.learningObjectives || []);
             if (triggers && objList.length) {
@@ -2678,11 +2896,14 @@
         }, [coreState.rhythmEvent && coreState.rhythmEvent.id]);
 
         const arrestVitals = (base) => ({ ...base, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 });
+        // WAVE 5 / ITEM 6: the vitals an arrest / ROSC write owns outright. Writing them releases the
+        // facilitator's manual hold, because the transition itself establishes a new baseline.
+        const RESET_HOLD_KEYS = ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'pupils', 'etco2'];
 
         const triggerArrest = (type = 'VF', cause = 'arrest') => {
             const cur = stateRef.current;
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+            dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals), releaseManual: RESET_HOLD_KEYS });
             changeRhythm(type, cause);
             addLogEntry(`CARDIAC ARREST - ${RG.labelFor(type)}`, 'manual', true);
             dispatch({ type: 'SET_FLASH', payload: 'red' });
@@ -2690,6 +2911,30 @@
 
         const triggerROSC = (rhythm = 'Sinus Rhythm', cause = 'ROSC', meta = {}) => {
             const cur = stateRef.current;
+            // ---- WAVE 5 / ITEM 7: ROSC IS NEVER A SILENT NO-OP -----------------------------------
+            // "Return of spontaneous circulation" only means something if there was no spontaneous
+            // circulation to start with. Clicking a ROSC rhythm when the patient already has an
+            // organised rhythm with output used to overwrite the obs with post-ROSC values (GCS 8,
+            // SpO2 94, a rhythm-band HR) on a patient who was never pulseless — and when the chosen
+            // rhythm equalled the current one it produced no visible change at all, so the
+            // facilitator could not tell whether the click had registered.
+            // Permissive philosophy: nothing is blocked. The rhythm change is still performed, the
+            // post-arrest obs are NOT forced onto a patient who never arrested, and the reason is
+            // both logged and shown as a toast.
+            if (!RG.isPulseless(cur.rhythm)) {
+                const target0 = RG.canonical(rhythm);
+                const same = target0 === RG.canonical(cur.rhythm);
+                addLogEntry(
+                    same
+                        ? `ROSC selected (${RG.labelFor(target0)}) but the patient is not in a pulseless rhythm and is already in ${RG.labelFor(target0)} \u2014 nothing to restore, so the obs were left exactly as they are. Use ARREST first, or the rhythm grid / vitals tiles to change anything.`
+                        : `ROSC selected (${RG.labelFor(target0)}) but the patient is not in a pulseless rhythm (currently ${RG.labelFor(cur.rhythm)}) \u2014 treated as a plain rhythm change. Post-arrest obs were NOT applied, because there was no arrest to recover from.`,
+                    'warning', true);
+                dispatch({ type: 'SET_NOTIFICATION', payload: {
+                    msg: same ? `Already in ${RG.labelFor(target0)} \u2014 no change made` : `Not in arrest \u2014 rhythm changed to ${RG.labelFor(target0)} only`,
+                    type: 'warning', id: Date.now() } });
+                if (!same) changeRhythm(target0, `${cause} (patient not in arrest \u2014 rhythm change only)`, meta);
+                return;
+            }
             const age = cur.scenario?.patientAge ?? 40;
             const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
             const newEtco2 = Math.round((5.0 + (Math.random() * 1.5)) * 10) / 10;
@@ -2699,7 +2944,7 @@
             const band = RG.defaultHrRange(target);
             const hr = band ? getRandomInt(band[0], band[1]) : base.hr;
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 } });
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 }, releaseManual: RESET_HOLD_KEYS });
             changeRhythm(target, cause, meta);
             if (cur.scenario) {
                 const updatedScenario = { ...cur.scenario, deterioration: { ...(cur.scenario.deterioration || {}), active: false } };
@@ -3129,7 +3374,14 @@
         };
 
         const toggleAudioLoop = (type) => {
-            if (!audioCtxRef.current) return;
+            // WAVE 5 / ITEM 7 (same class of defect as the ROSC no-op): with no audio context yet
+            // — the "Tap to Enable Sound" gesture not having happened — this returned silently, so the
+            // button looked broken. Say why instead.
+            if (!audioCtxRef.current) {
+                addLogEntry(`Continuous sound "${type}" was not started: audio has not been enabled on this device yet. Tap the sound prompt on the monitor (or any control on this page) first.`, 'warning');
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: 'Audio not enabled yet — tap to enable sound first', type: 'warning', id: Date.now() } });
+                return;
+            }
             if (loopNodesRef.current[type]) {
                 stopAudioLoop(type);
                 const newLoops = {...state.activeLoops}; delete newLoops[type];
@@ -3183,18 +3435,80 @@
 
         // A5: what the facilitator needs to see — which drugs are live, the phase they are in and how
         // long is left, so "why are the obs still moving?" always has a visible answer.
+        // ---- WAVE 5 / ITEM 10: A LONG-ONSET DRUG MUST LOOK LIKE IT IS WORKING ------------------
+        // IV paracetamol is correctly modelled (onset ~900 s, peak ~90 min, Temp -0.5), and correct
+        // pharmacology means NOTHING moves inside a 4-minute sim segment. That is right and must not
+        // be falsified — but the facilitator had no way to tell "working as intended, 12 minutes to
+        // go" from "did nothing". The panel row now carries the countdown to onset, the countdown to
+        // peak, and a plain-English summary of the effect that is coming.
+        const EFFECT_WORDS = {
+            HR: (v) => `HR ${v > 0 ? '+' : ''}${v}`,
+            BP: (v) => `BP ${v > 0 ? '+' : ''}${v} mmHg`,
+            RR: (v) => `RR ${v > 0 ? '+' : ''}${v}`,
+            SpO2: (v) => `SpO2 ${v > 0 ? '+' : ''}${v}%`,
+            gcs: (v) => `GCS ${v > 0 ? '+' : ''}${v}`,
+            BM: (v) => `glucose ${v > 0 ? '+' : ''}${v} mmol/L`,
+            Temp: (v) => `${v < 0 ? '\u2212' : '+'}${Math.abs(v)} \u00b0C`,
+            pH: (v) => `pH ${v > 0 ? '+' : ''}${v}`,
+            K: (v) => `K+ ${v > 0 ? '+' : ''}${v} mmol/L`,
+            ETCO2: (v) => `ETCO2 ${v > 0 ? '+' : ''}${v} kPa`
+        };
+        const describeDrugEffect = (d) => {
+            const bits = [];
+            const defn = (window.INTERVENTIONS || {})[d.key] || {};
+            if (defn.antipyretic) bits.push('antipyretic');
+            Object.keys(d.effect || {}).forEach(f => {
+                const fn = EFFECT_WORDS[f];
+                if (fn) bits.push(fn(d.effect[f]));
+            });
+            (d.drives || []).forEach(dr => {
+                const per = Number(dr.ratePerHour);
+                if (!Number.isFinite(per) || !per) return;
+                const unit = dr.vital === 'temp' ? '\u00b0C/h' : dr.vital === 'bm' ? 'mmol/L/h' : '/h';
+                bits.push(`${dr.vital === 'temp' ? 'temperature' : dr.vital} ${per > 0 ? '+' : '\u2212'}${Math.abs(per)} ${unit}${dr.target !== null && dr.target !== undefined ? ` toward ${dr.target}` : ''}`);
+            });
+            if (d.paralytic) bits.push('neuromuscular blockade');
+            // ITEM 10: an agent whose modelled action is clinical rather than haemodynamic (the
+            // anticonvulsants) must still say something, or its row looks broken.
+            if (!bits.length) bits.push('clinical effect only \u2014 no modelled change to the obs');
+            return bits.join(', ');
+        };
+
         const getActiveDrugStatus = () => {
             const cur = stateRef.current;
             const t = cur.time;
             const rows = (cur.activeDrugs || []).map(d => {
                 const factor = pkFactor(d, t);
                 const remaining = pkRemaining(d, t);
+                const el = t - d.startTime;
+                // Live drive telemetry: current value, rate, target and an honest ETA, so a slow but
+                // correct 2 degC/h of cooling is visibly in progress even between two 0.1 degC display
+                // steps. `baseVitals` is the unrounded physiology, which is why sub-display-step
+                // movement is real here and never lost (ITEM 9).
+                const drives = (d.drives || []).map(dr => {
+                    const nowVal = cur.baseVitals ? cur.baseVitals[dr.vital] : undefined;
+                    const perHour = Number(dr.ratePerHour);
+                    let etaSeconds = null;
+                    if (Number.isFinite(nowVal) && Number.isFinite(perHour) && perHour !== 0 && dr.target !== null && dr.target !== undefined) {
+                        const gap = dr.target - nowVal;
+                        if ((gap > 0) === (perHour > 0) && Math.abs(gap) > 0.001) etaSeconds = Math.round(Math.abs(gap / perHour) * 3600);
+                        else etaSeconds = 0;
+                    }
+                    return { vital: dr.vital, ratePerHour: perHour, target: dr.target, current: Number.isFinite(nowVal) ? Math.round(nowVal * 100) / 100 : null, etaSeconds, active: el >= d.onset };
+                });
                 return {
                     key: d.key, label: d.label, phase: pkPhase(d, t),
                     intensity: Math.round(Math.min(1, factor) * 100),
-                    remaining, elapsed: t - d.startTime, sustained: !!d.sustained,
+                    remaining, elapsed: el, sustained: !!d.sustained,
                     stopped: d.sustained && d.stopTime >= 0, paralytic: !!d.paralytic, reversed: !!d.reversed,
-                    effect: d.effect || {}
+                    effect: d.effect || {},
+                    // ITEM 10: countdowns and the plain-English expectation.
+                    onsetIn: Math.max(0, d.onset - el),
+                    peakIn: Math.max(0, d.peak - el),
+                    onsetSeconds: d.onset, peakSeconds: d.peak,
+                    expected: describeDrugEffect(d),
+                    drives,
+                    route: d.route || null
                 };
             }).filter(r => r.phase !== 'gone');
             // Collapse repeat doses of the same drug into one row showing the dose count.
@@ -3206,7 +3520,7 @@
                 m.intensity = Math.min(100, m.intensity + r.intensity);
                 if (r.remaining === null || (m.remaining !== null && r.remaining > m.remaining)) m.remaining = r.remaining;
                 // Show the phase of the most recent dose, which is what is actually changing the obs.
-                if (r.elapsed < m.elapsed) { m.phase = r.phase; m.elapsed = r.elapsed; }
+                if (r.elapsed < m.elapsed) { m.phase = r.phase; m.elapsed = r.elapsed; m.onsetIn = r.onsetIn; m.peakIn = r.peakIn; }
             });
             return Object.values(merged);
         };

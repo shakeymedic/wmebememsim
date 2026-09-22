@@ -104,7 +104,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
         <div class="device-screen-section">
             <div class="screen">
-                <div id="linkBanner" class="link-banner">Checking link to controller...</div>
+                <!-- WAVE 5 / ITEM 4: the never-linked state is the DEFAULT markup, shown on first paint
+                     instead of after a ~25 s timeout, and worded for "no session was ever supplied"
+                     rather than "lost contact". -->
+                <div id="linkBanner" class="link-banner"><b>NOT LINKED TO SESSION</b><br><span style="font-weight:normal;font-size:12px;">No session has been supplied to this page, so there is no patient. Looking for a controller in another tab of this browser&hellip;</span></div>
                 <div id="endedBanner" class="ended-banner hidden">SESSION ENDED</div>
                 <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="EM Evidence Logo"></div>
                 <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead analysis" tabindex="-1"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
@@ -117,7 +120,8 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                     <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
                     <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
                     <div class="vital-item"><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
-                    <div class="vital-item"><div class="vital-label">NIBP</div><div class="vital-value" id="bpDisplay" style="font-size: 24px;">120/80</div><div class="vital-unit">mmHg</div></div>
+                    <div class="vital-item"><div class="vital-label">NIBP</div><!-- WAVE 5 / ITEM 4: was a hardcoded 120/80, which stayed frozen on screen while HR / SpO2 /
+                         ETCO2 correctly showed '--' on an unlinked device. --><div class="vital-value" id="bpDisplay" style="font-size: 24px;">--/--</div><div class="vital-unit">mmHg</div></div>
                 </div>
                 <div class="message-bar ready" id="messageBar">SIMULATOR READY</div>
             </div>
@@ -163,15 +167,27 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         // page has no way to reach the controller (BroadcastChannel is same-browser only and there
         // is no Firebase here), so it showed a confident HR 75 / SpO2 98 normal sinus patient and
         // answered "NO SHOCK ADVISED" in VF. It must say so instead of lying.
-        function setLinkState(linked, reason) {
+        // WAVE 5 / ITEM 4: "never linked" and "lost contact" are DIFFERENT facts and must not share
+        // one message. `everLinked` is the discriminator: until a single SYNC_VITALS has arrived this
+        // page has never had a patient, so saying "Lost contact with the controller 35s ago" (which it
+        // did, counting from page load) was simply untrue.
+        let everLinked = false;
+        const NEVER_LINKED_HEADLINE = 'NOT LINKED TO SESSION';
+        const LOST_LINK_HEADLINE = 'LOST CONTACT WITH THE CONTROLLER';
+        function setLinkState(linked, reason, kind) {
             window.isRemoteControlled = !!linked;
+            if (linked) everLinked = true;
             const el = document.getElementById('linkBanner');
             if (!el) return;
             if (linked) { el.classList.add('hidden'); return; }
             el.classList.remove('hidden');
             try { updateDisplays(); } catch (e) {}
-            el.innerHTML = '<b>NOT LINKED TO SESSION</b><br><span style="font-weight:normal;font-size:12px;">'
-                + (reason || 'No patient data. This device is a standalone demo — the numbers and rhythm below are NOT your patient.')
+            const lost = kind === 'lost' || (kind === undefined && everLinked);
+            const fallback = lost
+                ? 'The link to the controller has dropped. The numbers below are no longer live.'
+                : 'No session has been supplied to this page, so there is no patient. The numbers and rhythm below are NOT your patient.';
+            el.innerHTML = '<b>' + (lost ? LOST_LINK_HEADLINE : NEVER_LINKED_HEADLINE) + '</b><br><span style="font-weight:normal;font-size:12px;">'
+                + (reason || fallback)
                 + '<br>Use the monitor-hosted defibrillator instead: open the room monitor and press <b>Defib</b> on the controller.</span>';
         }
         function setSessionEnded(ended) {
@@ -324,17 +340,20 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             if (lastSyncAt) { clearInterval(syncProbe); return; }
             if (syncAttempts > 6) {
                 clearInterval(syncProbe);
+                // Still a NEVER-linked state, not a lost one — kind is pinned explicitly.
                 setLinkState(false, simChannel
-                    ? 'The controller did not respond. It is probably running on a DIFFERENT DEVICE — this page can only reach a controller in another tab of the same browser.'
-                    : 'This browser does not support the local device channel, so this page can never link to a controller.');
+                    ? 'No session was supplied and no controller answered. A controller is probably running on a DIFFERENT DEVICE — this page can only reach a controller in another tab of the same browser.'
+                    : 'This browser does not support the local device channel, so this page can never link to a controller.', 'never');
                 return;
             }
             broadcast('REQUEST_SYNC', {});
         }, 2000);
         // Detect a link that goes stale mid-session (controller tab closed).
         setInterval(() => {
-            if (lastSyncAt && Date.now() - lastSyncAt > 15000) {
-                setLinkState(false, 'Lost contact with the controller ' + Math.round((Date.now() - lastSyncAt) / 1000) + 's ago. The numbers below are frozen and are NOT live.');
+            // Only a page that HAS been linked can lose contact; `lastSyncAt` is null until then, so
+            // the elapsed time is real rather than being measured from page load.
+            if (everLinked && lastSyncAt && Date.now() - lastSyncAt > 15000) {
+                setLinkState(false, 'Contact with the controller was lost ' + Math.round((Date.now() - lastSyncAt) / 1000) + 's ago. The numbers below are frozen and are NOT live.', 'lost');
             }
         }, 5000);
         let overlayReturnFocus = null;
@@ -445,13 +464,19 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         const fmt = (value, decimals = null) => Number.isFinite(value)
             ? (decimals === null ? value : (Math.round(value * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals)) : '--';
         function updateDisplays() {
-            if(state.deviceMode==='off') return;
             // A7: an UNLINKED device has no patient, so it must not display numbers. Showing HR 75 /
             // SpO2 98 / 120/80 on a tablet that cannot reach the controller is what made the old
             // standalone page dangerous as a teaching tool.
+            // WAVE 5 / ITEM 4: the blanking now runs BEFORE the deviceMode==='off' early return.
+            // With the device off, the old order left whatever was last painted (including the
+            // hardcoded 120/80) sitting on screen.
             if (!window.isRemoteControlled) {
                 ['hrDisplay','spo2Display','etco2Display'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '--'; });
-                const bp = document.getElementById('bpDisplay'); if (bp) bp.textContent = '--/--';
+                const bp0 = document.getElementById('bpDisplay'); if (bp0) bp0.textContent = '--/--';
+            }
+            if(state.deviceMode==='off') return;
+            if (!window.isRemoteControlled) {
+                // Already blanked above; nothing further to paint for the vitals.
             } else {
             document.getElementById('hrDisplay').textContent = fmt(state.hr);
             document.getElementById('spo2Display').textContent = fmt(state.spo2);

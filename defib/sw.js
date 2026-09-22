@@ -5,7 +5,7 @@
 // running the old defibrillator page (with the dead GHOST_PRESS receiver) and, worse, an old
 // ../data/engine.js without the Quick Sim, runId and pupil-guard changes, against a controller that
 // has them. Bump this on EVERY deploy.
-const CACHE_NAME = 'wmebem-sim-v21';
+const CACHE_NAME = 'wmebem-sim-v22';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',

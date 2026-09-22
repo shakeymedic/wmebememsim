@@ -453,8 +453,28 @@
             }
         }, [monitorPopup, scenario]);
 
+        // ---- WAVE 5 / ITEM 1: SESSION-COMPLETE STATE -----------------------------------------
+        // The monitor used to render a bare black div when the facilitator pressed Finish, so the
+        // trainees' screen simply went blank with no explanation — no crash, no console error, just
+        // nothing. `isFinished` already travels in the sync payload (set by STOP_SIM, carried by
+        // SYNC_FROM_MASTER), so this state is reused rather than invented.
+        //
+        // ASSESSOR-ONLY BOUNDARY (Wave 3 / B4). This card is PATIENT-FACING. It deliberately shows
+        // no outcome, no diagnosis, no score, no rhythm and no conversion history — exactly like the
+        // rest of the monitor, which never receives rhythmEvent/lastConversion at all. It says only
+        // that the session has ended and to turn to the facilitator for the debrief.
         if (state.isFinished) {
-            return <div className="h-full w-full bg-black"></div>;
+            return (
+                <div className="h-full w-full bg-black text-white flex items-center justify-center p-6" role="status" aria-live="polite">
+                    <div className="max-w-xl w-full bg-slate-900 border border-slate-700 rounded-lg shadow-2xl p-8 text-center animate-fadeIn">
+                        <Lucide icon="check-circle" className="w-14 h-14 text-emerald-500 mx-auto mb-4" />
+                        <h1 className="text-3xl font-bold tracking-wide mb-2">Simulation complete</h1>
+                        <p className="text-slate-300 text-lg mb-4">This session has ended. The monitor is no longer live.</p>
+                        <p className="text-slate-400 text-sm">Please turn to your facilitator — the debrief happens with them, not on this screen.</p>
+                        <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-500 font-mono uppercase tracking-widest">Monitor standby</div>
+                    </div>
+                </div>
+            );
         }
 
         const handleEnableAudio = () => {
