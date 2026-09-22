@@ -8,7 +8,12 @@
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
 
-    const DEFAULT_VITALS = { etco2: 4.5, temp: 36.5, bm: 5.5, ph: 7.4, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 };
+    // WAVE 4a / E8: serum potassium is a MODELLED VITAL. Hyperkalaemia and DKA were the two
+    // flagship metabolic scenarios with no measurable endpoint at all: the app had
+    // Insulin/Dextrose, calcium salts, salbutamol and bicarbonate but K+ existed only inside a
+    // log string. `k` is a first-class vital now (controller + student monitor + sync payload),
+    // so "did the K+ actually come down?" is answerable.
+    const DEFAULT_VITALS = { etco2: 4.5, temp: 36.5, bm: 5.5, ph: 7.4, k: 4.2, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 };
 
     const initialVitalsState = {
         vitals: { ...DEFAULT_VITALS },
@@ -56,6 +61,8 @@
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
         icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
         lastUpdate: 0, isOffline: false, showWetflag: true,
+        // WAVE 4a / E8: mirrored top-level serum K+ (the authoritative copy lives in vitals.k).
+        potassium: 4.2,
         // ---- WAVE 3 -------------------------------------------------------------------
         // A3: the assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
         // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
@@ -183,7 +190,7 @@
 
     const formatVital = (key, val) => {
         if (key === 'ph') return Math.round(val * 100) / 100;
-        if (['temp', 'bm', 'etco2'].includes(key)) return Math.round(val * 10) / 10;
+        if (['temp', 'bm', 'etco2', 'k'].includes(key)) return Math.round(val * 10) / 10;
         return Math.round(val);
     };
 
@@ -223,13 +230,19 @@
     // never become incoherent (dia > sys) after an offset is applied.
     const EFFECT_TARGETS = {
         HR: [['hr', 1]], BP: [['bpSys', 1], ['bpDia', 0.6]], RR: [['rr', 1]], SpO2: [['spO2', 1]],
-        gcs: [['gcs', 1]], BM: [['bm', 1]], Temp: [['temp', 1]], pH: [['ph', 1]]
+        gcs: [['gcs', 1]], BM: [['bm', 1]], Temp: [['temp', 1]], pH: [['ph', 1]],
+        // WAVE 4a: K = serum potassium (mmol/L), ETCO2 = end-tidal CO2 (kPa, e.g. the CO2 load
+        // after sodium bicarbonate).
+        K: [['k', 1]], ETCO2: [['etco2', 1]]
     };
     const PK_EFFECT_FIELDS = Object.keys(EFFECT_TARGETS);
 
     const VITAL_LIMITS = {
         hr: [0, 250], bpSys: [0, 300], bpDia: [0, 200], spO2: [0, 100], rr: [0, 60],
-        gcs: [3, 15], temp: [22, 43], bm: [0.5, 45], ph: [6.6, 7.9], etco2: [0, 15]
+        gcs: [3, 15], temp: [22, 43], bm: [0.5, 45], ph: [6.6, 7.9], etco2: [0, 15],
+        // Survivable-and-recordable range for serum K+. Below 1.5 / above 9.5 is not a number a
+        // simulator needs to display, and clamping keeps the RTDB payload finite.
+        k: [1.5, 9.5]
     };
     const clampVital = (key, v) => {
         const lim = VITAL_LIMITS[key];
@@ -247,15 +260,37 @@
 
     // Build the stored activeDrugs entry for an intervention. Primitives only, so the entry passes
     // sanitizeForRealtimeDatabase unchanged and survives JSON persistence.
-    const buildDrugEntry = (key, action, startTime, dose = 1) => {
+    const buildDrugEntry = (key, action, startTime, dose = 1, opts = {}) => {
         if (!action || !action.pk) return null;
-        const pk = action.pk;
+        const pk = opts.pk || action.pk;
         const effect = {};
+        const srcEffect = opts.effect || action.effect;
+        // WAVE 4a / E6 + paediatric notes: per-field magnitude scaling. A fixed HR +15 is a large
+        // change in an adult and a small one in an infant whose baseline is 150, and BP responses
+        // are proportionally smaller in children. `fieldScale` carries that (and any dosing
+        // multiplier) into the STORED entry, so it survives sync, persistence and the debrief.
+        const fieldScale = opts.fieldScale || null;
         PK_EFFECT_FIELDS.forEach(f => {
-            const v = action.effect ? action.effect[f] : undefined;
-            if (typeof v === 'number' && Number.isFinite(v) && v !== 0) effect[f] = v;
+            let v = srcEffect ? srcEffect[f] : undefined;
+            if (typeof v === 'number' && Number.isFinite(v) && v !== 0) {
+                if (fieldScale && Number.isFinite(fieldScale[f])) v = v * fieldScale[f];
+                effect[f] = Math.round(v * 1000) / 1000;
+            }
         });
-        const paralytic = !!(action.effect && action.effect.paralysed);
+        const paralytic = !!(srcEffect && srcEffect.paralysed);
+        // WAVE 4a / PART 2D: a `drive` declares that this intervention moves a vital at a RATE
+        // towards a TARGET (active warming/cooling, a fixed-rate insulin infusion) instead of
+        // parking it at a fixed offset. The driven vitals are integrated into baseVitals by
+        // applyDriveTick and are therefore EXCLUDED from this entry's additive envelope, so the
+        // effect can never be counted twice.
+        const drives = [];
+        if (action.drive) {
+            [action.drive, action.drive.secondary].forEach(dr => {
+                if (dr && dr.vital && Number.isFinite(Number(dr.ratePerHour))) {
+                    drives.push({ vital: dr.vital, ratePerHour: Number(dr.ratePerHour), target: Number.isFinite(Number(dr.target)) ? Number(dr.target) : null });
+                }
+            });
+        }
         // An entry with no numeric effect and no paralysis role would contribute nothing.
         if (Object.keys(effect).length === 0 && !paralytic) return null;
         const onset = Math.max(0, Number(pk.onset) || 0);
@@ -277,23 +312,96 @@
             paralysisEnd: paralytic ? (action.paralysis && action.paralysis.duration
                 ? onset + Math.max(1, Number(action.paralysis.duration))
                 : (offset || onset + 2700)) : -1,
-            reversed: false, effect
+            reversed: false, effect,
+            // Descriptive only (E1). Rendered on the button/label and in the debrief so IM vs IV
+            // is visible at a glance; route BEHAVIOUR always comes from a separate key.
+            route: action.route || null,
+            drives,
+            // E7: an ABSOLUTE ceiling on the composed vital, not just an additive dose cap.
+            // Atropine cannot take the heart rate past full vagal blockade however many doses are
+            // given, and a beta-agonist cannot push it past ~155.
+            ceilingVital: (action.ceiling && action.ceiling.vital) || null,
+            ceilingValue: (action.ceiling && Number.isFinite(Number(action.ceiling.value))) ? Number(action.ceiling.value) : null
         };
     };
 
-    // 0 before onset -> linear ramp to 1 at peak -> plateau -> linear decay to 0 at offset.
+    // Vitals currently being RATE-DRIVEN by a running intervention, so the additive envelope must
+    // not also apply them. Keyed by vital name.
+    const drivenVitals = (activeDrugs, t) => {
+        const out = {};
+        (activeDrugs || []).forEach(d => {
+            if (!d.drives || !d.drives.length) return;
+            if (d.sustained && d.stopTime >= 0) return;          // stopped: no longer driving
+            if (t - d.startTime < d.onset) return;               // not started yet
+            d.drives.forEach(dr => { out[dr.vital] = true; });
+        });
+        return out;
+    };
+
+    // PART 2D — ONE realistic warming rate and ONE realistic cooling rate, with NO artificial
+    // plateau: integrate towards normothermia (or, for insulin, towards a target glucose) and STOP
+    // on arrival. The old model held Temp at +/-1.5 degC of wherever the patient started, so a
+    // patient at 30.0 degC could never be warmed past 31.5 and hyperthermia could never be
+    // corrected at all. Integrates into `base` IN PLACE; returns true if anything moved.
+    // How long a rate-driven intervention (warming blanket, cooling, insulin infusion) takes to
+    // reach its full rate after its onset.
+    const DRIVE_RAMP_SECONDS = 300;
+    const applyDriveTick = (base, activeDrugs, t) => {
+        let moved = false;
+        (activeDrugs || []).forEach(d => {
+            if (!d.drives || !d.drives.length) return;
+            if (d.sustained && d.stopTime >= 0) return;
+            const el = t - d.startTime;
+            if (el < d.onset) return;
+            // Ramp in over a FIXED short window after onset (not onset -> peak). A drive is a RATE,
+            // so `peak` here means "time to the full nominal excursion" and is measured in hours for
+            // warming/cooling — ramping the rate itself over that window would make a Bair Hugger
+            // take half a day to reach 1.5 degC/h and the earlier build's temperature looked frozen.
+            // 300 s of spin-up keeps the switch-on smooth without blunting the rate.
+            const ramp = Math.max(0, Math.min(1, (el - d.onset) / DRIVE_RAMP_SECONDS));
+            d.drives.forEach(dr => {
+                const cur = base[dr.vital];
+                if (typeof cur !== 'number' || !Number.isFinite(cur)) return;
+                const perSecond = (dr.ratePerHour / 3600) * ramp * (Number(d.dose) || 1);
+                if (!perSecond) return;
+                let next = cur + perSecond;
+                if (dr.target !== null && dr.target !== undefined) {
+                    // Never overshoot the target, and never push a vital the wrong way if it is
+                    // already past it (warming a pyrexial patient does not cool them).
+                    if (perSecond > 0) next = Math.min(next, Math.max(cur, dr.target));
+                    else next = Math.max(next, Math.min(cur, dr.target));
+                }
+                next = clampVital(dr.vital, next);
+                if (next !== cur) { base[dr.vital] = next; moved = true; }
+            });
+        });
+        return moved;
+    };
+
+    // WAVE 4a / E11: the Wave 2 documentation promised COSINE-SMOOTHED ramps; the code shipped a bare
+    // linear interpolation. Rather than downgrade the documentation, the smoothing is now implemented:
+    // a raised-cosine ease maps 0..1 -> 0..1 with zero slope at both ends, so a drug's effect eases in
+    // and eases out instead of starting and stopping with a visible kink on the trend graph. Midpoint
+    // is still exactly 0.5, so every pk timing (onset/peak/plateau/offset) is unchanged.
+    const easeRamp = (x) => {
+        if (!(x > 0)) return 0;
+        if (x >= 1) return 1;
+        return 0.5 - 0.5 * Math.cos(Math.PI * x);
+    };
+
+    // 0 before onset -> cosine-eased ramp to 1 at peak -> plateau -> eased decay to 0 at offset.
     const pkFactor = (d, t) => {
         if (!d) return 0;
         const el = t - d.startTime;
         if (!Number.isFinite(el) || el <= d.onset) return 0;
-        if (el < d.peak) return (el - d.onset) / Math.max(1, d.peak - d.onset);
+        if (el < d.peak) return easeRamp((el - d.onset) / Math.max(1, d.peak - d.onset));
         if (d.sustained) {
             if (d.stopTime === undefined || d.stopTime === null || d.stopTime < 0) return 1;  // still running
             const tail = d.offset > 0 ? d.offset : 120;
             const since = t - d.stopTime;
             if (since <= 0) return 1;
             if (since >= tail) return 0;
-            return 1 - (since / tail);
+            return easeRamp(1 - (since / tail));
         }
         if (!d.offset || d.offset <= d.peak) return 1;   // no modelled wear-off
         const plateauEnd = (d.plateau !== undefined && d.plateau >= 0)
@@ -301,7 +409,7 @@
             : d.peak + PK_PLATEAU_FRACTION * (d.offset - d.peak);
         if (el <= plateauEnd) return 1;
         if (el >= d.offset) return 0;
-        return 1 - ((el - plateauEnd) / Math.max(1, d.offset - plateauEnd));
+        return easeRamp(1 - ((el - plateauEnd) / Math.max(1, d.offset - plateauEnd)));
     };
 
     // Human-readable phase for the facilitator's Active Drugs panel (A5).
@@ -335,6 +443,7 @@
     // additive but not unbounded: two doses of atropine give +40, ten doses still give +40.
     const drugOffsets = (activeDrugs, t) => {
         const perKey = {};
+        const driven = drivenVitals(activeDrugs, t);
         (activeDrugs || []).forEach(d => {
             const f = pkFactor(d, t);
             if (!(f > 0)) return;
@@ -350,22 +459,61 @@
                 if (!targets) return;
                 const amt = Number(b.effect[field]);
                 if (!Number.isFinite(amt)) return;
-                targets.forEach(([vital, scale]) => { out[vital] = (out[vital] || 0) + amt * f * scale; });
+                targets.forEach(([vital, scale]) => {
+                    // A rate-driven vital (warming/cooling temperature, insulin glucose/K+) is owned
+                    // by applyDriveTick in base space. Adding the envelope too would double-count.
+                    if (driven[vital]) return;
+                    out[vital] = (out[vital] || 0) + amt * f * scale;
+                });
             });
         });
         return out;
     };
 
+    // E7: absolute, saturating ceilings. Collected from whichever entries are currently live so a
+    // spent dose stops constraining anything.
+    const drugCeilings = (activeDrugs, t) => {
+        const out = {};
+        (activeDrugs || []).forEach(d => {
+            if (!d.ceilingVital || d.ceilingValue === null || d.ceilingValue === undefined) return;
+            if (!(pkFactor(d, t) > 0)) return;
+            const prev = out[d.ceilingVital];
+            out[d.ceilingVital] = prev === undefined ? d.ceilingValue : Math.max(prev, d.ceilingValue);
+        });
+        return out;
+    };
+
     // Step 5 + 6 of the precedence order: base + envelope -> clamp -> coherence -> round.
+    // FACILITATOR SUPREMACY vs the E7 ceiling. The facilitator types the number they want to SEE,
+    // so a displayed target has to be inverted through the composition. composeVitals maps
+    //     base -> base + min(off, max(0, ceil - base))
+    // which is monotone with a plateau at the ceiling, so the inverse is simply: a target ABOVE the
+    // ceiling is stored as-is (the drug legitimately contributes nothing once the patient's own
+    // rate already exceeds full vagal blockade), and anything at or below it has the current drug
+    // contribution removed. Without this a ceilinged drug would silently swallow part of a manual
+    // write or trend target, which Waves 1-2 guarantee can never happen.
+    const baseForDisplayed = (key, value, off, ceil) => {
+        if (typeof value !== 'number' || !Number.isFinite(value)) return value;
+        if (!off) return value;
+        if (Number.isFinite(ceil) && off > 0 && value > ceil) return value;
+        return value - off;
+    };
+
     const composeVitals = (base, activeDrugs, t, inArrest) => {
         const offs = drugOffsets(activeDrugs, t);
+        const ceil = drugCeilings(activeDrugs, t);
         const out = {};
         Object.keys(base).forEach(k => {
             const bv = base[k];
             if (typeof bv !== 'number' || !Number.isFinite(bv)) { out[k] = bv; return; }
             let off = offs[k] || 0;
             if (inArrest && ARREST_SUPPRESSED.indexOf(k) !== -1) off = 0;
-            out[k] = formatVital(k, clampVital(k, bv + off));
+            let composed = bv + off;
+            // E7: a saturating ceiling only ever removes DRUG-DRIVEN excess — it can never pull a
+            // vital below where the underlying physiology already is (a tachycardic septic patient
+            // given atropine does not have their heart rate "capped" down to 115).
+            if (off > 0 && ceil[k] !== undefined && composed > ceil[k]) composed = Math.max(bv, ceil[k]);
+            out[k] = formatVital(k, clampVital(k, composed));
         });
         if (Number.isFinite(out.bpSys) && Number.isFinite(out.bpDia)) {
             if (out.bpSys <= 0) out.bpDia = 0;
@@ -414,14 +562,145 @@
     // Interventions that address each pathology. Any of them slows the decline; enough of them
     // reverses it (C4). Matching is permissive — a bolus given once counts, same as Wave 1's
     // expectation test, so the facilitator is credited for treatment either way.
+    // WAVE 4a: the new route-specific keys are wired in here too. A clinically correct treatment
+    // given by a route the engine did not know about (buccal midazolam for status, IM adrenaline
+    // escalated to an infusion, IM benzylpenicillin pre-hospital) previously did NOT slow the
+    // autonomous deterioration at all, so the learner was punished for correct non-IV practice.
     const DETERIORATION_TREATMENTS = {
-        shock: ['Fluids', 'FluidInfusion', 'Blood', 'Noradrenaline', 'Metaraminol', 'AdrenalineIM', 'TXA', 'Antibiotics', 'Ceftriaxone', 'Tazocin', 'Gentamicin', 'PelvicBinder', 'Tourniquet', 'REBOA', 'Thoracotomy', 'Pericardiocentesis', 'Hydrocortisone', 'Terlipressin', 'Octaplex', 'Albumin', 'Surgery', 'CalciumChloride'],
-        resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis'],
-        airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen', 'Chlorphenamine'],
-        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV'],
-        neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery'],
+        shock: ['Fluids', 'FluidInfusion', 'Blood', 'Noradrenaline', 'Metaraminol', 'AdrenalineIM', 'TXA', 'Antibiotics', 'Ceftriaxone', 'Tazocin', 'Gentamicin', 'PelvicBinder', 'Tourniquet', 'REBOA', 'Thoracotomy', 'Pericardiocentesis', 'Hydrocortisone', 'Terlipressin', 'Octaplex', 'Albumin', 'Surgery', 'CalciumChloride',
+            'AdrenalineInfusion', 'AdrenalinePush'],
+        resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis',
+            'NebsContinuous', 'SalbutamolIV', 'MagnesiumInfusion'],
+        airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen', 'Chlorphenamine',
+            'AdrenalineInfusion'],
+        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
+            'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
+        neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
+            'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM'],
         arrest: ['CPR', 'Lucas', 'AdrenalineIV', 'Defib', 'Amiodarone']
     };
+
+    // =============================================================================================
+    // PART 2B — VOLUME RESPONSIVENESS
+    // ---------------------------------------------------------------------------------------------
+    // A 500 mL bolus raised the BP by exactly +8 mmHg in every one of the 254 scenarios, which
+    // taught that fluid is the answer to cardiogenic shock and APO. Responsiveness is now a
+    // PROPERTY OF THE PATIENT: it scales the dose multiplier of every volume intervention
+    // (crystalloid bolus, maintenance infusion, blood, albumin).
+    //
+    // A scenario may declare it explicitly — `fluidResponse: 'high' | 'moderate' | 'low' | 'none'`
+    // or a raw 0-1.2 number, plus `fluidOverload: true` — but it does NOT have to: the default is
+    // INFERRED from the scenario's deterioration `type` and its title/diagnosis text, so all 254
+    // existing scenarios behave sensibly with no hand-authoring.
+    // =============================================================================================
+    const FLUID_RESPONSE_LEVELS = { high: 1.15, moderate: 0.8, low: 0.3, none: 0.08 };
+    const FLUID_UNRESPONSIVE_HINTS = ['cardiogenic', 'pulmonary oedema', 'pulmonary edema', ' apo', 'apo ', 'heart failure', 'lvf', 'fluid overload', 'overload', 'decompensated heart', 'cardiac failure', 'tamponade', 'myocarditis', 'dialysis', 'renal failure', 'esrf', 'end stage renal'];
+    const FLUID_RESPONSIVE_HINTS = ['haemorrh', 'hemorrh', 'bleed', 'trauma', 'ruptured', 'aaa', 'ectopic', 'pph', 'postpartum', 'burn', 'dka', 'hhs', 'dehydr', 'gastroenteritis', 'diarrhoea', 'vomit', 'sepsis', 'septic', 'hypovol', 'anaphyla', 'addisonian', 'adrenal', 'hyperemesis', 'heat stroke', 'rhabdo', 'obstruction', 'pancreatitis', 'stab', 'gunshot', 'fracture', 'splenic', 'liver lac'];
+    const scenarioText = (s) => [s && s.title, s && s.presentingComplaint, s && s.diagnosis,
+        s && s.instructorBrief && s.instructorBrief.progression,
+        s && s.instructorBrief && s.instructorBrief.diagnosis].filter(Boolean).join(' ').toLowerCase();
+
+    const fluidResponsiveness = (scenario) => {
+        const s = scenario || {};
+        // 1. Explicit declaration always wins.
+        if (typeof s.fluidResponse === 'number' && Number.isFinite(s.fluidResponse)) {
+            return { factor: Math.max(0, Math.min(1.2, s.fluidResponse)), overload: !!s.fluidOverload, source: 'scenario' };
+        }
+        if (typeof s.fluidResponse === 'string' && FLUID_RESPONSE_LEVELS[s.fluidResponse.toLowerCase()] !== undefined) {
+            const lvl = s.fluidResponse.toLowerCase();
+            return { factor: FLUID_RESPONSE_LEVELS[lvl], overload: !!s.fluidOverload || lvl === 'none', source: 'scenario' };
+        }
+        // 2. Inferred default.
+        const txt = scenarioText(s);
+        if (FLUID_UNRESPONSIVE_HINTS.some(h => txt.indexOf(h) !== -1)) {
+            return { factor: FLUID_RESPONSE_LEVELS.none, overload: true, source: 'inferred:overload' };
+        }
+        if (FLUID_RESPONSIVE_HINTS.some(h => txt.indexOf(h) !== -1)) {
+            return { factor: FLUID_RESPONSE_LEVELS.high, overload: false, source: 'inferred:hypovolaemic' };
+        }
+        const type = normaliseDeteriorationType(s.deterioration && s.deterioration.type);
+        if (type === 'shock') return { factor: FLUID_RESPONSE_LEVELS.high, overload: false, source: 'inferred:shock' };
+        if (type === 'cardiac') return { factor: FLUID_RESPONSE_LEVELS.low, overload: false, source: 'inferred:cardiac' };
+        if (type === 'resp') return { factor: FLUID_RESPONSE_LEVELS.low, overload: false, source: 'inferred:resp' };
+        return { factor: FLUID_RESPONSE_LEVELS.moderate, overload: false, source: 'inferred:default' };
+    };
+    const VOLUME_KEYS = ['Fluids', 'FluidInfusion', 'Blood', 'Albumin'];
+
+    // E8 support: a sensible STARTING potassium for scenarios that never declared one, so the two
+    // flagship metabolic scenarios have a real endpoint. Explicit scenario vitals always win.
+    const inferPotassium = (scenario) => {
+        const txt = scenarioText(scenario);
+        if (txt.indexOf('hyperkal') !== -1) return 7.1;
+        if (txt.indexOf('hypokal') !== -1) return 2.4;
+        if (txt.indexOf('dka') !== -1 || txt.indexOf('ketoacid') !== -1) return 5.4;
+        if (txt.indexOf('crush') !== -1 || txt.indexOf('rhabdo') !== -1) return 6.2;
+        if (txt.indexOf('renal failure') !== -1 || txt.indexOf('dialysis') !== -1) return 6.0;
+        if (txt.indexOf('addisonian') !== -1) return 5.8;
+        if (txt.indexOf('pyloric') !== -1 || txt.indexOf('vomit') !== -1) return 3.2;
+        return null;
+    };
+
+    // =============================================================================================
+    // PART 5 / E4 + E6 — AGE-AWARE PHYSIOLOGY
+    // ---------------------------------------------------------------------------------------------
+    // WETFLAG weight-based dosing already exists but only ever edited a LOG STRING, so a paediatric
+    // dose and an adult dose were physiologically identical. Two age-dependent things matter most:
+    //   1. SAFE APNOEA TIME. A well pre-oxygenated healthy adult tolerates 6-10 min of apnoea; an
+    //      infant desaturates in 60-90 s. The old model gave 40 s WITH pre-oxygenation and 10 s
+    //      without, for every patient of every age — which actively mis-teaches RSI.
+    //   2. EFFECT MAGNITUDE relative to baseline: HR/RR responses are proportionally larger in a
+    //      small child (baseline HR 150), BP responses smaller.
+    // =============================================================================================
+    const ageBandOf = (scenario) => {
+        const s = scenario || {};
+        let age = Number(s.patientAge);
+        if (!Number.isFinite(age)) {
+            if (s.ageRange === 'Paediatric') age = 5;
+            else if (s.ageRange === 'Neonate' || /neonat/i.test(s.title || '')) age = 0;
+            else age = 40;
+        }
+        if (age < 1) return 'infant';
+        if (age < 5) return 'toddler';
+        if (age < 12) return 'child';
+        return 'adult';
+    };
+    // Seconds of apnoea tolerated BEFORE the saturation starts to fall. Pre-oxygenation is the
+    // dominant term; the floor is the un-preoxygenated value.
+    const SAFE_APNOEA = {
+        adult:   { preox: 360, none: 45 },
+        child:   { preox: 210, none: 35 },
+        toddler: { preox: 150, none: 25 },
+        infant:  { preox: 105, none: 20 }
+    };
+    const safeApnoeaSeconds = (scenario, opts = {}) => {
+        const band = ageBandOf(scenario);
+        const table = SAFE_APNOEA[band] || SAFE_APNOEA.adult;
+        let grace = opts.preoxygenated ? table.preox : table.none;
+        // Pre-oxygenation has to have been RUNNING long enough to denitrogenate. Less than ~120 s
+        // of 15 L/min buys proportionally less.
+        if (opts.preoxygenated && Number.isFinite(opts.preoxSeconds) && opts.preoxSeconds < 120) {
+            grace = table.none + (grace - table.none) * Math.max(0, opts.preoxSeconds) / 120;
+        }
+        // Apnoeic (nasal) oxygenation extends the safe window as well as halving the drop rate.
+        if (opts.apnoeicO2) grace *= 1.5;
+        // Physiology that shortens it: shunt, sepsis, pregnancy, obesity, a low starting SpO2.
+        if (Number.isFinite(opts.startingSpO2) && opts.startingSpO2 < 94) grace *= Math.max(0.25, (opts.startingSpO2 - 80) / 14);
+        if (opts.highConsumption) grace *= 0.6;
+        return Math.max(8, Math.round(grace));
+    };
+    const HIGH_CONSUMPTION_HINTS = ['sepsis', 'septic', 'pregnan', 'eclamp', 'obes', 'bariatric', 'peritonitis', 'dka', 'burn', 'anaphyla', 'status asthmaticus'];
+    const hasHighO2Consumption = (scenario) => {
+        const txt = scenarioText(scenario);
+        return HIGH_CONSUMPTION_HINTS.some(h => txt.indexOf(h) !== -1);
+    };
+    // E6 / paediatric note 2: per-effect-field magnitude scaling by age band.
+    const PAEDIATRIC_FIELD_SCALE = {
+        infant:  { HR: 1.4, RR: 1.35, BP: 0.7 },
+        toddler: { HR: 1.3, RR: 1.25, BP: 0.8 },
+        child:   { HR: 1.15, RR: 1.1, BP: 0.9 },
+        adult:   null
+    };
+    const paediatricFieldScale = (scenario) => PAEDIATRIC_FIELD_SCALE[ageBandOf(scenario)] || null;
 
     // 1 = full decline, 0 = halted, negative = actively recovering.
     const deteriorationTreatmentFactor = (type, cs) => {
@@ -511,7 +790,11 @@
         return moved;
     };
 
-    window.__pkInternals = { pkFactor, pkPhase, pkRemaining, drugOffsets, composeVitals, buildDrugEntry, paralysisFromDrugs, deteriorationDeltas, applyDeteriorationTick, deteriorationTreatmentFactor, normaliseDeteriorationType, formatVital, clampVital, DEFAULT_VITALS, EFFECT_TARGETS, VITAL_LIMITS, isDrugSpent };
+    window.__pkInternals = { pkFactor, pkPhase, pkRemaining, drugOffsets, composeVitals, buildDrugEntry, paralysisFromDrugs, deteriorationDeltas, applyDeteriorationTick, deteriorationTreatmentFactor, normaliseDeteriorationType, formatVital, clampVital, DEFAULT_VITALS, EFFECT_TARGETS, VITAL_LIMITS, isDrugSpent,
+        // WAVE 4a additions, all exercised directly by the Node verification harness.
+        drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
+        ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
+        FLUID_RESPONSE_LEVELS };
 
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
@@ -520,6 +803,13 @@
             case 'LOAD_SCENARIO': 
                 if(!action.payload) return { ...initialVitalsState };
                 const initialVitals = { ...initialVitalsState.vitals, ...action.payload.vitals };
+                // E8: give the scenario a clinically coherent starting K+ if it never declared one,
+                // so hyperkalaemia scenarios actually start hyperkalaemic and the treatment has a
+                // measurable endpoint. An explicit scenario/vitalsMod value always wins.
+                if (action.payload.vitals === undefined || action.payload.vitals === null || action.payload.vitals.k === undefined) {
+                    const inferredK = inferPotassium(action.payload);
+                    if (inferredK !== null) initialVitals.k = inferredK;
+                }
                 return { ...initialVitalsState, vitals: initialVitals, baseVitals: { ...initialVitals }, prevVitals: { ...initialVitals } };
             case 'RESTORE_SESSION': {
                 const restoredVitals = { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) };
@@ -551,8 +841,9 @@
                 let baseValue = value;
                 if (typeof value === 'number') {
                     const offs = drugOffsets(drugs, t);
+                    const ceils = drugCeilings(drugs, t);
                     const off = (inArrest && ARREST_SUPPRESSED.indexOf(key) !== -1) ? 0 : (offs[key] || 0);
-                    baseValue = clampVital(key, value - off);
+                    baseValue = clampVital(key, baseForDisplayed(key, value, off, ceils[key]));
                 }
                 const base = { ...state.baseVitals, [key]: baseValue };
                 return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals } };
@@ -561,13 +852,14 @@
                 const safeTargets = {};
                 const t0 = cs ? cs.time : 0;
                 const offs = drugOffsets(cs ? cs.activeDrugs : [], t0);
+                const ceils = drugCeilings(cs ? cs.activeDrugs : [], t0);
                 Object.keys(action.payload.targets || {}).forEach(k => {
                     if (!isVitalValueSafe(k, action.payload.targets[k])) return;
                     const raw = action.payload.targets[k];
                     // Targets are given in DISPLAYED space ("take the BP to 90"); convert to base space
                     // by removing the drug contribution present at the moment the trend starts, so the
                     // trend and the envelope add up to the number the facilitator asked for.
-                    safeTargets[k] = (typeof raw === 'number' && offs[k]) ? clampVital(k, raw - offs[k]) : raw;
+                    safeTargets[k] = (typeof raw === 'number' && offs[k]) ? clampVital(k, baseForDisplayed(k, raw, offs[k], ceils[k])) : raw;
                 });
                 if (Object.keys(safeTargets).length === 0) return state;
                 return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.baseVitals } } };
@@ -636,6 +928,15 @@
                     if (factor !== 0 && applyDeteriorationTick(base, detType, detRate, factor, trendOwned)) vitalsChanged = true;
                 }
 
+                // ----- STEP 3b: RATE-DRIVEN VITALS (Wave 4a, PART 2D).
+                // Active warming/cooling and a fixed-rate insulin infusion move a vital at a RATE
+                // towards a TARGET. They integrate into the BASE (like deterioration) rather than
+                // sitting in the additive envelope, which is what lets a 30.0 degC patient actually
+                // reach 36.8 and a pyrexial one actually come down. drugOffsets() excludes these
+                // vitals from the envelope for exactly as long as the drive is running, so no
+                // effect is ever applied twice.
+                if (isRunning && applyDriveTick(base, activeDrugs, tNow)) vitalsChanged = true;
+
                 // ----- STEP 4: AIRWAY / PARALYSIS / HYPOXIA / ETCO2.
                 // PARALYSIS is now derived from the SAME activeDrugs entry as the drug's numeric
                 // envelope (Wave 1 left a bespoke parallel timer with a note asking for this). Once the
@@ -656,11 +957,19 @@
                 const seenRr = (!inArrest && paraPhase === 'active') ? base.rr : (Number.isFinite(state.vitals.rr) ? state.vitals.rr : base.rr);
                 if (!inArrest && seenSpO2 > 0 && (seenRr < 8 || seenRr <= 0) && !isBagging) {
                     currentHypoxiaTimer++;
-                    // Pre-oxygenation buys a longer safe apnoea time; apnoeic (nasal) oxygenation
-                    // halves the rate of desaturation once it starts.
-                    const preoxygenated = activeInt.has('Preoxygenation');
+                    // E4 / WAVE 4a: SAFE APNOEA TIME, age- and physiology-appropriate.
+                    // Was: 40 s with pre-oxygenation, 10 s without, for every patient of every age.
+                    // Three minutes of good pre-oxygenation buys a healthy adult 6-10 minutes; an
+                    // infant gets 90-120 s; a septic/pregnant/obese patient far less. Teaching that
+                    // pre-oxygenation buys 30 extra seconds is dangerous in RSI and in paediatrics.
+                    const preoxygenated = activeInt.has('Preoxygenation') || activeInt.has('Bagging') || activeInt.has('NIV') || activeInt.has('CPAP');
                     const apnoeicO2 = activeInt.has('ApnoeicOxygenation');
-                    const graceSeconds = preoxygenated ? 40 : 10;
+                    const preoxDur = (cs && cs.activeDurations && cs.activeDurations['Preoxygenation'])
+                        ? Math.max(0, tNow - cs.activeDurations['Preoxygenation'].startTime) : (preoxygenated ? 180 : 0);
+                    const graceSeconds = safeApnoeaSeconds(scen, {
+                        preoxygenated, apnoeicO2, preoxSeconds: preoxDur,
+                        startingSpO2: seenSpO2, highConsumption: hasHighO2Consumption(scen)
+                    });
                     if (currentHypoxiaTimer > graceSeconds) {
                         // Steeper drop below 88 (Severinghaus curve)
                         let dropRate = seenSpO2 < 88 ? 1.5 : 0.5;
@@ -928,6 +1237,7 @@
                 isMuted: !!action.payload.isMuted,
                 activeLoops: action.payload.activeLoops || {},
                 isParalysed: !!action.payload.isParalysed,
+                potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
                 rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
@@ -946,6 +1256,24 @@
                     return { ...state, activeDrugs: revived };
                 }
                 return { ...state, activeDrugs: [...(state.activeDrugs || []), action.payload] };
+            }
+            // WAVE 4a / E13: TITRATABLE INFUSIONS. A running infusion was locked to the magnitude it
+            // was started at, so noradrenaline, GTN, adrenaline, labetalol and insulin could only be
+            // ON or OFF - titration to effect, the whole teaching point of a vasoactive infusion, was
+            // impossible. `dose` is already the multiplier the envelope is scaled by, so the rate
+            // change is a single field edit and the next tick composes it (no new entry, no reset of
+            // the pk clock, nothing double-counted). Bounded 0.25x - 3x; permissive, never blocking.
+            case 'SET_DRUG_DOSE': {
+                const { key, dose } = action.payload || {};
+                if (!key || !Number.isFinite(Number(dose))) return state;
+                const next = Math.max(0.25, Math.min(3, Number(dose)));
+                let changed = false;
+                const drugs = (state.activeDrugs || []).map(d => {
+                    if (d.key !== key || !d.sustained || d.stopTime >= 0) return d;
+                    changed = true;
+                    return { ...d, dose: next };
+                });
+                return changed ? { ...state, activeDrugs: drugs } : state;
             }
             case 'STOP_ACTIVE_DRUG': {
                 // A continuous intervention was switched off: start its offset tail from now.
@@ -1327,7 +1655,11 @@
                     // activeDrugs and deteriorationMode are top-level, primitives only, never undefined,
                     // so sanitizeForRealtimeDatabase passes them through untouched.
                     activeDrugs: Array.isArray(cur.activeDrugs) ? cur.activeDrugs : [],
-                    deteriorationMode: cur.deteriorationMode || 'manual'
+                    deteriorationMode: cur.deteriorationMode || 'manual',
+                    // WAVE 4a / E8. K+ rides inside `vitals` like temp/bm/ph AND is published as its
+                    // own TOP-LEVEL key, because the write diff is shallow and per-key: a lab value
+                    // the student monitor renders must never be undefined or NaN on the wire.
+                    potassium: (cur.vitals && Number.isFinite(cur.vitals.k)) ? cur.vitals.k : DEFAULT_VITALS.k
                 };
                 const sanitised = sanitizeForRealtimeDatabase(payload);
                 const safePayload = sanitised.value || {};
@@ -1803,6 +2135,17 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${scenario.wetflag.glucose}ml) administered.`;
             }
+            // PART 5 — PAEDIATRIC DOSING NOTES the review flagged as mattering clinically. These are
+            // COACHING LINES, never blocks: the facilitator always gets to give the drug.
+            if (scenario.ageRange === 'Paediatric' || ageBandOf(scenario) !== 'adult') {
+                const wt = scenario.wetflag && scenario.wetflag.weight;
+                if (key === 'Atropine') addLogEntry(`Paediatric atropine: 20 mcg/kg${wt ? ` = ${Math.round(20 * wt)} mcg` : ''}, MINIMUM 100 mcg (smaller doses cause paradoxical bradycardia), maximum single dose 500 mcg.`, 'info');
+                if (key === 'MidazolamBuccal') addLogEntry(`Buccal midazolam 0.5 mg/kg${wt ? ` ≈ ${Math.round(0.5 * wt * 10) / 10} mg` : ''} — APLS step 1 when there is no IV/IO access. Second dose after 10 min, then escalate to a second-line agent.`, 'info');
+                if (key === 'KetamineIM') addLogEntry(`Paediatric IM ketamine for procedural sedation: 4 mg/kg${wt ? ` = ${Math.round(4 * wt)} mg` : ''}. Peak dissociation ~5 min, 15-30 min of usable sedation — do NOT stack doses while waiting.`, 'info');
+                if (key === 'Sux') addLogEntry('Suxamethonium in a child: bradycardia is common (and marked with a second dose) — have atropine drawn up.', 'warning');
+                if (key === 'Dextrose' && wt) addLogEntry(`WETFLAG glucose: 2 ml/kg of 10% = ${Math.round(2 * wt)} ml.`, 'info');
+                if (key === 'Adenosine') addLogEntry('Paediatric adenosine: 0.1 mg/kg, then 0.2 mg/kg. Same near-instant transient kinetics as an adult.', 'info');
+            }
             // Instant (no-pk) effects are applied to the BASE physiology, exactly as before. Anything
             // carrying a `pk` envelope is instead pushed onto activeDrugs and composed every tick.
             const newVitals = { ...cur.baseVitals };
@@ -1814,15 +2157,73 @@
             // --- PK ENVELOPE (A1) ------------------------------------------------------------------
             // Push an entry instead of mutating vitals. Repeat dosing pushes another entry, which is
             // naturally cumulative, but each drug's total contribution is capped at pk.maxDoses.
-            const drugEntry = buildDrugEntry(key, action, cur.time, 1);
+            //
+            // WAVE 4a adds three things to the entry:
+            //   * PART 2B volume responsiveness  -> `dose` multiplier for fluid/blood/albumin
+            //   * PART 5  paediatric scaling      -> per-field magnitude scale by age band
+            //   * PART 2C cumulative-dose ceiling -> an explicit, VISIBLE max-dose warning
+            const entryOpts = {};
+            let volumeNote = null;
+            if (VOLUME_KEYS.indexOf(key) !== -1) {
+                const vr = fluidResponsiveness(scenario);
+                entryOpts.dose = vr.factor;
+                volumeNote = vr;
+            }
+            const pScale = paediatricFieldScale(scenario);
+            if (pScale) entryOpts.fieldScale = pScale;
+            // Paediatric note: suxamethonium bradycardia is common in children, and marked with a
+            // second dose. The adult entry has no haemodynamic effect at all.
+            if (key === 'Sux' && pScale) {
+                entryOpts.effect = { ...(action.effect || {}), HR: -20 };
+            }
+            const drugEntry = buildDrugEntry(key, action, cur.time, entryOpts.dose === undefined ? 1 : entryOpts.dose, entryOpts);
             if (drugEntry) {
                 dispatch({ type: 'ADD_ACTIVE_DRUG', payload: drugEntry });
-                const priorDoses = (cur.activeDrugs || []).filter(d => d.key === key && pkFactor(d, cur.time) > 0).length;
-                const atCeiling = priorDoses >= drugEntry.maxDoses;
-                if (atCeiling) {
-                    addLogEntry(`${action.label}: already at the modelled maximum effect (${drugEntry.maxDoses} dose${drugEntry.maxDoses > 1 ? 's' : ''}) — further doses add no further response.`, 'warning', true);
+                // PART 2C: the ceiling used to be reached SILENTLY. It is counted from every dose
+                // given (interventionCounts), not only from the entries that happen to still be
+                // pharmacologically live, and it is announced in the log (flagged, so it reaches the
+                // debrief) AND as a toast. Nothing is ever blocked.
+                const givenBefore = (cur.interventionCounts || {})[key] || 0;
+                const cum = action.cumulative || null;
+                const capDoses = cum ? Math.max(1, Math.round(Number(cum.max) / Number(cum.perDose))) : drugEntry.maxDoses;
+                const effectiveCap = Math.min(drugEntry.maxDoses, capDoses);
+                if (givenBefore + 1 >= effectiveCap) {
+                    const totalText = cum ? ` (cumulative ${((givenBefore + 1) * Number(cum.perDose)).toLocaleString()} ${cum.unit} of a ${Number(cum.max).toLocaleString()} ${cum.unit} maximum)` : '';
+                    const atOrPast = givenBefore + 1 > effectiveCap;
+                    const msg = atOrPast
+                        ? `${action.label}: MAXIMUM MODELLED DOSE ALREADY REACHED${totalText} — this dose adds NO further response.${cum ? ' ' + cum.message : ''}`
+                        : `${action.label}: maximum modelled dose reached${totalText}.${cum ? ' ' + cum.message : ' Further doses will add no further response.'}`;
+                    addLogEntry(msg, 'warning', true, { action: key, label: action.label, missing: ['within maximum cumulative dose'] });
+                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — MAX DOSE reached (no further effect)`, type: 'warning', id: Date.now() } });
                 } else if (!drugEntry.sustained && drugEntry.onset > 15) {
                     addLogEntry(`${action.label}: onset ~${drugEntry.onset}s, peak ~${Math.round(drugEntry.peak / 60 * 10) / 10} min${drugEntry.offset > drugEntry.peak ? `, wears off by ~${Math.round(drugEntry.offset / 60)} min` : ''}.`, 'info');
+                }
+                if (volumeNote) {
+                    // The facilitator is told WHY the bolus did or did not work, because that is the
+                    // teaching point the sim was previously unable to make.
+                    if (volumeNote.factor >= 1) addLogEntry(`${action.label}: this patient is FLUID RESPONSIVE (${volumeNote.source}) — expect a meaningful rise in blood pressure over the next few minutes.`, 'info');
+                    else if (volumeNote.factor <= 0.35) addLogEntry(`${action.label}: this patient is NOT fluid responsive (${volumeNote.source}) — the pressure will barely move. Reassess: does this shock need a pressor, an inotrope, blood or the operating theatre?`, 'warning', true, { action: key, label: action.label, missing: ['fluid responsiveness'] });
+                    else addLogEntry(`${action.label}: partial fluid responsiveness (${volumeNote.source}) — reassess after the bolus.`, 'info');
+                    if (volumeNote.overload) {
+                        // Fluid into a wet patient worsens gas exchange. Time-limited via the envelope.
+                        const oedema = buildDrugEntry(key + 'Overload', action, cur.time, 1, {
+                            effect: { SpO2: -5, RR: 3 },
+                            pk: { onset: 60, peak: 600, offset: 3600, maxDoses: 3 }
+                        });
+                        if (oedema) dispatch({ type: 'ADD_ACTIVE_DRUG', payload: oedema });
+                        addLogEntry(`${action.label} given to a fluid-overloaded patient — oxygenation is WORSENING. Consider stopping fluid, sitting them up, CPAP/NIV, GTN and diuresis.`, 'danger', true, { action: key, label: action.label, missing: ['fluid responsiveness'] });
+                    }
+                }
+                // E9: a declared REBOUND phase is pushed as a second, delayed entry (late
+                // hypoglycaemia after insulin/dextrose being the archetype). pkFactor already
+                // returns 0 for an entry whose startTime is in the future, so nothing else changes.
+                if (action.rebound) {
+                    const rb = buildDrugEntry(key + 'Rebound', action, cur.time + (Number(action.rebound.delay) || 0), 1,
+                        { effect: action.rebound.effect, pk: action.rebound.pk || action.pk });
+                    if (rb) {
+                        dispatch({ type: 'ADD_ACTIVE_DRUG', payload: rb });
+                        if (action.rebound.log) addLogEntry(action.rebound.log, 'info');
+                    }
                 }
             }
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
@@ -1836,19 +2237,38 @@
                 'Fluids':        ['fluid', 'resus', 'bolus', 'iv fluid', 'saline'],
                 'AdrenalineIM':  ['adrenaline', 'anaphyl', 'epinephrine'],
                 'AdrenalineIV':  ['adrenaline', 'cardiac arrest', 'epinephrine'],
-                'Adrenaline':    ['adrenaline', 'anaphyl', 'epinephrine'],
-                'O2':            ['oxygen', 'o2', 'airway'],
+                // E10: 'Adrenaline', 'O2', 'NaloxoneIV', 'Tranexamic', 'ChestDrain' and
+                // 'NeedleDecomp' were DEAD KEYS — no such intervention exists, so those learning
+                // objectives could never auto-complete. Remapped to the real keys.
+                'AdrenalinePush':      ['adrenaline', 'epinephrine', 'hypotension'],
+                'AdrenalineInfusion':  ['adrenaline', 'anaphyl', 'epinephrine', 'refractory'],
+                'Oxygen':        ['oxygen', 'o2', 'airway'],
                 'Aspirin':       ['aspirin', 'acs', 'stemi', 'nstemi'],
                 'GTN':           ['gtn', 'nitrate', 'acs'],
                 'InsulinInfusion': ['insulin', 'dka', 'glucose'],
                 'InsulinDextrose': ['insulin', 'dka', 'glucose', 'hyperkalaemia', 'hyperkalemia'],
                 'Atropine':      ['atropine', 'bradycardia', 'heart block'],
                 'Lorazepam':     ['lorazepam', 'seizure', 'benzodiazep'],
-                'NaloxoneIV':    ['naloxone', 'opiate', 'opioid'],
-                'Tranexamic':    ['tranexam', 'haemorrhage', 'trauma'],
+                'LorazepamIM':   ['lorazepam', 'seizure', 'benzodiazep'],
+                'MidazolamBuccal': ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+                'MidazolamIN':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+                'MidazolamIM':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+                'DiazepamPR':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+                'DiazepamIV':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
+                'Levetiracetam': ['seizure', 'status epilepticus', 'anticonvuls'],
+                'Phenytoin':     ['seizure', 'status epilepticus', 'anticonvuls'],
+                'Naloxone':      ['naloxone', 'opiate', 'opioid'],
+                'NaloxoneIM':    ['naloxone', 'opiate', 'opioid'],
+                'NaloxoneIN':    ['naloxone', 'opiate', 'opioid'],
+                'TXA':           ['tranexam', 'haemorrhage', 'trauma'],
                 'RSI':           ['rsi', 'intubat', 'airway management'],
-                'ChestDrain':    ['chest drain', 'pneumothorax', 'haemothorax'],
-                'NeedleDecomp':  ['needle', 'pneumothorax', 'tension'],
+                'SeldingerDrain':['chest drain', 'pneumothorax', 'haemothorax'],
+                'SurgicalDrain': ['chest drain', 'pneumothorax', 'haemothorax'],
+                'Needle':        ['needle', 'pneumothorax', 'tension'],
+                'Benzylpenicillin':   ['meningo', 'meningitis', 'antibio', 'sepsis'],
+                'BenzylpenicillinIM': ['meningo', 'meningitis', 'antibio', 'sepsis'],
+                'NebsContinuous':     ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
+                'Nebs':               ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
             };
             const triggers = OBJECTIVE_TRIGGERS[key];
             const objList = (scenario.learningObjectives || []).concat(scenario.instructorBrief?.learningObjectives || []);
@@ -1862,7 +2282,23 @@
             }
 
             if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
-            if (scenario.title && scenario.title.includes('Anaphylaxis') && key === 'Adrenaline' && count >= 2) { dispatch({ type: 'TRIGGER_IMPROVE' }); }
+            // ---- E10: THE DEAD KEY. This test used to be `key === 'Adrenaline' && count >= 2`, and
+            // there is NO intervention called 'Adrenaline' in INTERVENTIONS — the key is
+            // 'AdrenalineIM' (or AdrenalineIV/AdrenalinePush/AdrenalineInfusion). Anaphylaxis
+            // scenarios therefore NEVER improved, no matter how correctly they were treated.
+            // It also only matched scenarios whose TITLE contained "Anaphylaxis", so an
+            // anaphylaxis presenting as "Peanut reaction" was excluded.
+            const ANAPHYLAXIS_ADRENALINE = ['AdrenalineIM', 'AdrenalineIV', 'AdrenalinePush', 'AdrenalineInfusion'];
+            const looksAnaphylactic = (() => {
+                const txt = scenarioText(scenario);
+                return txt.indexOf('anaphyla') !== -1 || txt.indexOf('allergic reaction') !== -1 || txt.indexOf('angio-oedema') !== -1 || txt.indexOf('angiooedema') !== -1;
+            })();
+            if (looksAnaphylactic && ANAPHYLAXIS_ADRENALINE.indexOf(key) !== -1) {
+                // RCUK: improvement after the FIRST correct dose of IM adrenaline is the expected
+                // clinical course, and the 5-minute repeat is the next step if it does not come.
+                dispatch({ type: 'TRIGGER_IMPROVE' });
+                addLogEntry(`${action.label} in anaphylaxis — patient condition IMPROVING. Reassess at 5 minutes and repeat IM adrenaline if the improvement is incomplete.`, 'success');
+            }
             // --- PARALYSIS (roc vs sux genuinely differ) ---
             // WAVE 2: folded into the pk envelope. The blockade window is derived from the SAME
             // activeDrugs entry pushed above (onset = pk.onset, end = pk.offset or paralysis.duration),
@@ -1876,10 +2312,32 @@
                 addLogEntry(`${action.label}: paralysis in ~${pz.onset}s, lasting ~${Math.round(pz.duration / 60)} min.${ventilated ? '' : ' Patient is NOT being ventilated — expect apnoea and desaturation.'}`, ventilated ? 'info' : 'warning', !ventilated);
             }
             if (action.effect.reverseParalysis) {
-                // Reverse the activeDrugs entries themselves so nothing can resurrect the blockade.
-                dispatch({ type: 'REVERSE_PARALYSIS_DRUGS' });
-                dispatch({ type: 'SET_PARALYSIS', payload: { active: false } });
-                if (!isVentilated(cur.activeInterventions)) newVitals.rr = Math.max(newVitals.rr, 10);
+                // E3: REVERSAL IS NOT INSTANT. Sugammadex restores a train-of-four ratio > 0.9 in
+                // roughly 1.5-3 min (longer for a deep block), and the whole teaching point is that
+                // you keep ventilating while you wait. Previously the blockade vanished on the
+                // administering tick, which taught the opposite.
+                const rev = action.reversalOver || { onset: (action.pk && action.pk.onset) || 60, full: (action.pk && action.pk.peak) || 180 };
+                const onsetS = Math.max(0, Number(rev.onset) || 0);
+                const fullS = Math.max(onsetS + 1, Number(rev.full) || onsetS + 120);
+                addLogEntry(`${action.label}: reversal is NOT instant — first twitches at ~${onsetS}s, full reversal by ~${Math.round(fullS / 60 * 10) / 10} min. KEEP VENTILATING until spontaneous effort is adequate.`, 'warning', true, { action: key, label: action.label, missing: ['continued ventilation during reversal'] });
+                const startedAt = Date.now();
+                const finishReversal = () => {
+                    const now = stateRef.current;
+                    if (!now || now.isFinished) return;
+                    dispatch({ type: 'REVERSE_PARALYSIS_DRUGS' });
+                    dispatch({ type: 'SET_PARALYSIS', payload: { active: false } });
+                    if (!isVentilated(now.activeInterventions)) {
+                        dispatch({ type: 'UPDATE_VITALS', payload: { ...now.baseVitals, rr: Math.max(now.baseVitals.rr || 0, 10) } });
+                    }
+                    addLogEntry(`${action.label}: neuromuscular blockade now fully reversed (${Math.round((Date.now() - startedAt) / 1000)}s) — spontaneous ventilation returning.`, 'success');
+                };
+                // Partial reversal first (weak, inadequate effort), then full reversal.
+                setTimeout(() => {
+                    const now = stateRef.current;
+                    if (!now || now.isFinished) return;
+                    addLogEntry(`${action.label}: first twitches returning — respiratory effort is present but INADEQUATE. Continue to support ventilation.`, 'info');
+                }, onsetS * 1000);
+                setTimeout(finishReversal, fullS * 1000);
             }
 
             // --- B3: effect.cpr. Wave 3 owns the full CPR/cprInProgress/defib work; this is the safe,
@@ -1926,10 +2384,55 @@
                 addLogEntry(key === 'CICO' ? 'CICO: airway NOT secured. Oxygenate by any means, then front-of-neck access.' : 'Airway NOT secured after failed attempt. Oxygenate between attempts.', 'danger', true);
             }
 
+            // =====================================================================================
+            // PART 2A — 1 mg IV ADRENALINE IN A PERFUSING PATIENT: "yes, and model the consequence".
+            // Never blocked. A prominent FLAGGED DEVIATION is raised, and the realistic consequence
+            // (marked hypertension and tachycardia, occasionally arrhythmia) is simulated through
+            // the pk envelope so it is time-limited and wears off, exactly like the real thing.
+            // =====================================================================================
+            if (key === 'AdrenalineIV' && !isArrest) {
+                addLogEntry(`⚠ 1 mg IV ADRENALINE GIVEN TO A PATIENT WITH A PULSE (${RG.labelFor(cur.rhythm)}). This is a TEN-FOLD to TWENTY-FOLD overdose for a perfusing patient — the peri-arrest / anaphylaxis doses are 50-100 mcg IV (push-dose) or 500 mcg IM. Expect a hypertensive, tachycardic response; watch for arrhythmia, pulmonary oedema and myocardial ischaemia.`, 'danger', true, { action: key, label: action.label, missing: ['a pulseless rhythm (1 mg IV is an ARREST dose)'] });
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: '1mg IV adrenaline in a PERFUSING patient — flagged. Modelling the consequence.', type: 'danger', id: Date.now() } });
+                // The consequence rides on its own entry so it is additive to the drug's normal
+                // effect, independently capped, and fully gone within ~10 min.
+                const overdose = buildDrugEntry('AdrenalineIVOverdose', action, cur.time, 1, {
+                    effect: { HR: 35, BP: 55 },
+                    pk: { onset: 15, peak: 75, plateau: 180, offset: 600, maxDoses: 3 }
+                });
+                if (overdose) dispatch({ type: 'ADD_ACTIVE_DRUG', payload: overdose });
+                dispatch({ type: 'TRIGGER_SPEAK', payload: 'My heart is pounding — my chest feels tight and my head is thumping.' });
+            }
+
+            // =====================================================================================
+            // E2 — ADENOSINE: a SCRIPTED, TRANSIENT sequence, not a jump to HR 80.
+            // Half-life is under 10 s. What the team must see is: flush → a few seconds of AV block
+            // or sinus pause (the frightening bit) → either conversion to sinus at ~15 s or the SVT
+            // simply carrying on, in which case you escalate 6 → 12 → 12 mg. Everything is resolved
+            // inside ~45 s, and nothing lingers (pk offset 40 s).
+            // =====================================================================================
+            if (action.avBlock && !isArrest) {
+                const ab = action.avBlock;
+                const doseNo = count;                    // 1st = 6 mg, 2nd/3rd = 12 mg
+                const doseMg = doseNo === 1 ? 6 : 12;
+                addLogEntry(`Adenosine ${doseMg} mg given as a RAPID push into a large proximal vein with an immediate saline flush. Warn the patient: flushing, chest tightness and a feeling of doom are expected and last seconds.`, 'action');
+                dispatch({ type: 'TRIGGER_SPEAK', payload: 'Oh — that feels horrible. My chest is tight. I feel like something awful is happening.' });
+                addLogEntry(`Transient AV block / sinus pause for ~${ab.pause || 8}s — run a rhythm strip NOW: this is the diagnostic window.`, 'warning');
+                const chances = Array.isArray(ab.chanceByDose) ? ab.chanceByDose : [0.55, 0.75, 0.8];
+                const chance = chances[Math.min(doseNo, chances.length) - 1];
+                setTimeout(() => {
+                    const now = stateRef.current;
+                    if (!now || !now.isRunning || now.isFinished) return;
+                    if (RG.inArrest(now.rhythm)) return;
+                    applyDrugConversion(now, 'Adenosine', `Adenosine ${doseMg} mg`, { chance });
+                }, Math.max(1, Number(ab.convertAt) || 12) * 1000);
+            }
+
             // C6: all three changeRhythm modes are handled now. 'sync' and 'chance' were silently
             // ignored before Wave 3, which is why the Cardioversion intervention did nothing and
             // Adrenaline IV / Amiodarone changed no rhythm in any scenario.
-            if (action.effect.changeRhythm === 'defib') {
+            if (action.avBlock) {
+                // handled above as a timed sequence — do NOT convert on the administering tick.
+            } else if (action.effect.changeRhythm === 'defib') {
                 applyShockOutcome(cur, { energy: (cur.defib && cur.defib.energy) || undefined, sync: false, source: 'facilitator' });
             } else if (action.effect.changeRhythm === 'sync') {
                 applyCardioversion(cur, { energy: (cur.defib && cur.defib.energy) || undefined, source: 'facilitator' });
@@ -1956,22 +2459,32 @@
             // drug would land twice (once instantly, once through the envelope). `pkOwned` is what
             // preserves today's instant behaviour for everything WITHOUT a pk block.
             const pkOwned = (field) => !!(drugEntry && drugEntry.effect && drugEntry.effect[field] !== undefined);
+            let paceCaptured = false;
             if (!isArrest) {
                 if (action.effect.HR) {
+                    // 'reset' is retained for backwards compatibility with saved/custom interventions.
+                    // Adenosine no longer uses it: an instant jump to HR 80 in one tick was exactly
+                    // the behaviour that hid the pause-then-conversion teaching point (see the
+                    // adenosine sequence below).
                     if (action.effect.HR === 'reset') newVitals.hr = 80;
                     else if (action.effect.HR === 'pace') {
                         // Pacing only captures if output exceeds threshold
                         const pacer = cur.remotePacerState || { rate: 0, output: 0 };
                         if (pacer.output >= cur.pacingThreshold && pacer.rate > 0) {
                             newVitals.hr = pacer.rate;
-                            addLogEntry(`Pacing: capture at ${pacer.output}mA, rate ${pacer.rate}`, 'success');
+                            paceCaptured = true;
+                            // E5: electrical capture without mechanical capture is worthless, and a
+                            // rate number alone taught trainees not to feel for a pulse.
+                            addLogEntry(`Pacing: ELECTRICAL capture at ${pacer.output}mA, rate ${pacer.rate}. Now CONFIRM MECHANICAL CAPTURE — feel a central pulse / check the SpO2 trace. Give analgesia and sedation: pacing hurts.`, 'success');
                         } else {
-                            addLogEntry(`Pacing: no capture (output ${pacer.output}mA < threshold ${cur.pacingThreshold}mA)`, 'warning');
+                            addLogEntry(`Pacing: no capture (output ${pacer.output}mA < threshold ${cur.pacingThreshold}mA) — increase the output until every pacing spike is followed by a QRS AND a pulse.`, 'warning');
                         }
                     }
                     else if (!pkOwned('HR')) newVitals.hr = clampVital('hr', newVitals.hr + action.effect.HR);
                 }
-                if (action.effect.BP && !pkOwned('BP')) {
+                // E5: perfusion only improves if the pacer actually captured.
+                if (key === 'Pacing' && !paceCaptured) { /* no haemodynamic benefit without capture */ }
+                else if (action.effect.BP && !pkOwned('BP')) {
                     newVitals.bpSys = clampVital('bpSys', newVitals.bpSys + action.effect.BP);
                     newVitals.bpDia = clampVital('bpDia', newVitals.bpDia + action.effect.BP * 0.6);
                 }
@@ -2316,10 +2829,13 @@
 
         // --- C6: DRUG-MEDIATED CONVERSION. `changeRhythm: 'chance'` was unhandled, so Adrenaline IV
         // and Amiodarone — the two most important drugs in a shockable arrest — changed NOTHING.
-        function applyDrugConversion(cur, key, label) {
+        function applyDrugConversion(cur, key, label, opts = {}) {
             const table = RG.DRUG_CONVERSION[key];
             const rid = RG.canonical(cur.rhythm);
-            const rule = table && table[rid];
+            let rule = table && table[rid];
+            // E2: adenosine's success probability escalates with the 6 → 12 → 12 mg sequence, so the
+            // caller may supply the chance for THIS dose. The registry still owns the target rhythm.
+            if (rule && Number.isFinite(opts.chance)) rule = { ...rule, chance: opts.chance };
             if (!rule) {
                 addLogEntry(`${label} given in ${RG.labelFor(rid)} — no direct rhythm effect expected for this combination.`, 'info');
                 return;

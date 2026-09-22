@@ -278,7 +278,10 @@
                                 ['RR', vitals.rr, '/min', 'text-yellow-400'],
                                 ...(etco2Enabled ? [['ETCO2', Number.isFinite(vitals.etco2) ? vitals.etco2.toFixed(1) : '--', 'kPa', 'text-purple-400']] : []),
                                 ['Temp', Number.isFinite(vitals.temp) ? vitals.temp.toFixed(1) : '--', '\u00b0C', 'text-sky-300'],
-                                ['Glucose', Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--', 'mmol/L', 'text-sky-300']
+                                ['Glucose', Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--', 'mmol/L', 'text-sky-300'],
+                                // WAVE 4a / E8: serum K+ is a modelled vital, so the team can see
+                                // whether the hyperkalaemia treatment actually worked.
+                                ['K+', Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--', 'mmol/L', (Number.isFinite(vitals.k) && (vitals.k < 3.0 || vitals.k > 5.5)) ? 'text-amber-400' : 'text-sky-300']
                             ].map(([label, value, unit, cls]) => (
                                 <div key={label} className="bg-black border border-slate-800 rounded px-2 py-1 flex items-baseline justify-between min-w-0">
                                     <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold truncate">{label}</span>
@@ -588,7 +591,7 @@
                         continuous monitored channels, so they get their own slim strip instead of
                         shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
                         (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
-                    <div className="flex-none grid grid-cols-3 gap-2 mt-1">
+                    <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
                         <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.temp) && (vitals.temp < 35 || vitals.temp >= 38.5) ? 'border-amber-600' : 'border-slate-800'}`}>
                             <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">Temp</span>
                             <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.temp) && (vitals.temp < 35 || vitals.temp >= 38.5) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.temp) ? vitals.temp.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">°C</span></span>
@@ -600,6 +603,13 @@
                         <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.ph) && (vitals.ph < 7.30 || vitals.ph > 7.50) ? 'border-amber-600' : 'border-slate-800'}`}>
                             <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">pH</span>
                             <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.ph) && (vitals.ph < 7.30 || vitals.ph > 7.50) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'}</span>
+                        </div>
+                        {/* WAVE 4a / E8: serum potassium. Hyperkalaemia and DKA previously had NO
+                            measurable endpoint anywhere in the app — K+ existed only inside a log
+                            string, despite calcium/insulin-dextrose/salbutamol all being available. */}
+                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.k) && (vitals.k < 3.0 || vitals.k > 5.5) ? 'border-amber-600' : 'border-slate-800'}`}>
+                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">K+</span>
+                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.k) && (vitals.k < 3.0 || vitals.k > 5.5) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">mmol/L</span></span>
                         </div>
                     </div>
 

@@ -1,5 +1,8 @@
 (() => {
     const { useState, useEffect, useRef } = React;
+    // WAVE 4a: the pk helpers are the engine's own (window.__pkInternals), never a reimplementation,
+    // so the Active Drugs panel always agrees with the physiology.
+    const PKI = window.__pkInternals || {};
 
     const PREDEFINED_FINDINGS = {
         'CT': [
@@ -206,14 +209,20 @@
         const ROSC_RHYTHMS = RG.ROSC;
         const VOICE_PHRASES = ["My chest hurts", "I can't breathe", "I feel sick", "Who are you?", "My tummy hurts", "I feel dizzy", "Am I going to die?", "Yes", "No", "I'm thirsty", "Where am I?", "Please help me"];
         
+        // WAVE 4a: the 28 new route-specific keys are grouped here so they are reachable in two taps
+        // and sit beside their IV equivalents (the route is printed on every button).
         const DRUG_GROUPS = {
-            "Resus / Cardiac": ["AdrenalineIV", "Amiodarone", "Atropine", "Adenosine", "MagSulph", "Calcium", "CalciumChloride", "SodiumBicarb", "AdrenalineIM"],
+            "Resus / Cardiac": ["AdrenalineIV", "AdrenalinePush", "AdrenalineInfusion", "Amiodarone", "AmiodaroneInfusion", "Atropine", "Adenosine", "Digoxin", "MagSulph", "MagnesiumInfusion", "Calcium", "CalciumChloride", "SodiumBicarb", "AdrenalineIM"],
             // 'Morphine' was a dead slot here: the intervention key is 'Analgesia' (label "Morphine"),
             // so the group rendered one permanently missing button.
-            "RSI / Induction": ["Propofol", "Ketamine", "Etomidate", "Thiopentone", "Midazolam", "Alfentanil", "Fentanyl", "Roc", "Sux", "Sugammadex"],
-            "Sedation / Analgesia": ["Analgesia", "Lorazepam", "Paracetamol"],
-            "Vasoactive": ["Metaraminol", "Noradrenaline", "Labetalol", "Phentolamine"],
-            "Antibiotics": ["Antibiotics", "Ceftriaxone", "Tazocin", "Gentamicin"],
+            "RSI / Induction": ["Propofol", "Ketamine", "KetamineIM", "Etomidate", "Thiopentone", "Midazolam", "Alfentanil", "Fentanyl", "Roc", "Sux", "Sugammadex"],
+            "Sedation / Analgesia": ["Analgesia", "MorphineIM", "MorphineOral", "Paracetamol", "ParacetamolOral", "Metoclopramide", "Naloxone", "NaloxoneIM", "NaloxoneIN", "Flumazenil"],
+            // NICE NG217 / APLS: buccal midazolam is step 1 when there is no IV/IO access, and PR
+            // diazepam is the community alternative. Neither existed before Wave 4a.
+            "Seizures (by route)": ["MidazolamBuccal", "MidazolamIN", "MidazolamIM", "Lorazepam", "LorazepamIM", "DiazepamIV", "DiazepamPR", "Levetiracetam", "Phenytoin"],
+            "Vasoactive": ["Metaraminol", "Noradrenaline", "Labetalol", "LabetalolInfusion", "Phentolamine"],
+            "Antibiotics": ["Antibiotics", "Ceftriaxone", "Tazocin", "Gentamicin", "Benzylpenicillin", "BenzylpenicillinIM"],
+            "Glucose / Insulin": ["InsulinInfusion", "InsulinDextrose", "InsulinSubcut", "Dextrose", "GlucoseOral", "Glucagon"],
             "Other": [] 
         };
         const KNOWN_DRUGS = new Set(Object.values(DRUG_GROUPS).flat());
@@ -223,7 +232,10 @@
             const term = searchTerm.toLowerCase();
             const matches = Object.keys(INTERVENTIONS).filter(key => {
                 const item = INTERVENTIONS[key];
-                return item.label.toLowerCase().includes(term) || key.toLowerCase().includes(term);
+                // WAVE 4a: route is searchable too, so "IM", "buccal", "PR" or "intranasal" finds the
+                // right key without knowing the label.
+                return item.label.toLowerCase().includes(term) || key.toLowerCase().includes(term)
+                    || (item.route || '').toLowerCase().includes(term);
             });
             setSearchResults(matches);
         }, [searchTerm]);
@@ -313,7 +325,10 @@
                  <button key={key} title={btnTitle} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
-                        <span className={`text-[10px] truncate ${isActive && isContinuous ? 'text-emerald-400 font-bold uppercase not-italic' : 'opacity-70 italic'}`}>{isActive && isContinuous ? 'Active \u00b7 tap to stop' : action.category}</span>
+                        {/* WAVE 4a / E1: the ROUTE is shown on every button, because IM vs IV vs buccal
+                            is the whole point of the new route-specific keys and a facilitator must be
+                            able to tell them apart at a glance mid-resus. */}
+                        <span className={`text-[10px] truncate ${isActive && isContinuous ? 'text-emerald-400 font-bold uppercase not-italic' : 'opacity-70 italic'}`}>{isActive && isContinuous ? 'Active \u00b7 tap to stop' : (action.route && action.route !== 'n/a' ? action.route : action.category)}</span>
                         {count > 0 && action.type !== 'continuous' && <span className="bg-emerald-500 text-white text-[9px] font-bold px-1.5 rounded-full shadow-md">x{count}</span>}
                      </div>
                      {missing.length > 0 && (
@@ -562,8 +577,47 @@
                                  <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
                                  {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
                                  <VitalDisplay label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} />
+                                 {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
+                                     measurable endpoint the facilitator can steer and the team can read. */}
+                                 <VitalDisplay label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} />
                              </div>
                         </div>
+
+                        {/* ---- WAVE 4a: ACTIVE DRUGS / PHARMACOKINETICS.
+                             The pk envelope has existed since Wave 2 but was completely invisible, so a
+                             facilitator could not tell whether a drug was still in its onset phase, at
+                             peak, or already worn off - which is exactly the information needed to decide
+                             whether a repeat dose is due (IM adrenaline at 5 min) or futile. The ROUTE is
+                             printed per entry so IM/IV/buccal are distinguishable at a glance. ---- */}
+                        {(state.activeDrugs || []).length > 0 && (
+                            <div className="flex-none rounded border border-slate-700 bg-slate-900/70 p-2">
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Active drugs / pharmacokinetics</div>
+                                <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
+                                    {(state.activeDrugs || []).map((d, i) => {
+                                        const phase = PKI.pkPhase ? PKI.pkPhase(d, time) : '';
+                                        const remaining = PKI.pkRemaining ? PKI.pkRemaining(d, time) : null;
+                                        const f = PKI.pkFactor ? PKI.pkFactor(d, time) : 0;
+                                        if (!(f > 0) && phase === 'gone') return null;
+                                        const colour = phase === 'onset' ? 'text-slate-400' : (phase === 'rising' ? 'text-amber-300' : (phase === 'wearing off' ? 'text-orange-300' : 'text-emerald-300'));
+                                        return (
+                                            <div key={`${d.key}-${d.startTime}-${i}`} className="flex items-center justify-between gap-2 text-[11px] border-b border-slate-800 last:border-0 pb-0.5">
+                                                <span className="text-slate-200 truncate">{d.label || d.key}{d.route ? <span className="text-slate-500"> &middot; {d.route}</span> : null}</span>
+                                                <span className={`font-mono font-bold uppercase shrink-0 ${colour}`}>{phase}{(remaining !== null && remaining !== undefined) ? ` ${Math.round(remaining / 60)}m` : ''} {Math.round(Math.min(1, f) * 100)}%</span>
+                                                {/* E13: TITRATION. A running infusion can be turned up or down
+                                                    while it runs - the defining skill of vasoactive infusions. */}
+                                                {d.sustained && d.stopTime < 0 && (
+                                                    <span className="flex items-center gap-1 shrink-0">
+                                                        <button title="Turn the infusion DOWN" onClick={() => sim.dispatch({ type: 'SET_DRUG_DOSE', payload: { key: d.key, dose: (Number(d.dose) || 1) - 0.25 } })} className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 leading-none font-bold">-</button>
+                                                        <span className="font-mono text-sky-300 w-10 text-center">x{(Number(d.dose) || 1).toFixed(2)}</span>
+                                                        <button title="Turn the infusion UP" onClick={() => sim.dispatch({ type: 'SET_DRUG_DOSE', payload: { key: d.key, dose: (Number(d.dose) || 1) + 0.25 } })} className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 leading-none font-bold">+</button>
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {/* ---- GROUP C2: AUTO / MANUAL deterioration toggle. Sits directly under the obs
                              panel so it is impossible to miss during a running sim, and the current mode
@@ -764,7 +818,7 @@
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
                                 {searchResults.map(key => (
                                     <button key={key} onClick={() => { applyIntervention(key); setSearchTerm(""); setSearchResults([]); }} className="w-full text-left p-3 hover:bg-slate-700 border-b border-slate-700 last:border-0 flex justify-between items-center group">
-                                        <span className="font-bold text-sky-400">{INTERVENTIONS[key].label}</span>
+                                        <span className="font-bold text-sky-400">{INTERVENTIONS[key].label}{INTERVENTIONS[key].route && INTERVENTIONS[key].route !== 'n/a' ? <span className="ml-2 text-[10px] font-normal text-slate-400 uppercase tracking-wide">{INTERVENTIONS[key].route}</span> : null}</span>
                                         <span className="text-xs text-slate-500 uppercase">{INTERVENTIONS[key].category}</span>
                                     </button>
                                 ))}
