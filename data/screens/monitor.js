@@ -331,6 +331,10 @@
         // than tracking live (the clinically important distinction, and what NIBP already does).
         const poc = state.pocReadings || {};
         const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
+        // WAVE 8 / FINDING 1: the shark-fin severity arrives as a plain top-level number on the wire
+        // (`co2Severity`), computed once from the authoritative controller state, so the student
+        // monitor and the facilitator strip draw the identical capnogram shape and can never disagree.
+        const co2Severity = Number.isFinite(state.co2Severity) ? state.co2Severity : 0;
         
         const [audioEnabled, setAudioEnabled] = useState(false);
         // The overlay must be able to come BACK: iOS and tab-backgrounding re-suspend the
@@ -589,6 +593,7 @@
                                         showEcg={sEcg} showPleth={sSpo2} showResp={sEcg}
                                         showEtco2={etco2Enabled} showArt={hasArtLine}
                                         isCPR={cprInProgress} co2Pathology={etco2Pathology || 'normal'}
+                                        co2Severity={co2Severity}
                                         ventilating={capnoVentilating} className="h-full" rhythmLabel="ECG" />
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>

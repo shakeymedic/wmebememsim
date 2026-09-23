@@ -289,7 +289,11 @@
     const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 30 };
 
     const ECGMonitor = ({ rhythmType, hr, rr, spO2, etco2, isPaused, showTraces, showEtco2, showArt,
-                          co2Pathology = 'normal', ventilating = true, isCPR = false, className = '',
+                          // WAVE 8 / FINDING 1: how obstructed the patient is, 0-1. Supplied by the
+                          // engine's bronchospasm model (window.getObstruction); it scales the
+                          // capnogram continuously from a normal trapezoid to a full shark fin.
+                          co2Pathology = 'normal', co2Severity = 0,
+                          ventilating = true, isCPR = false, className = '',
                           rhythmLabel, showSyncMarkers = false,
                           // WAVE 7 / ITEM 4: individually attachable sensors. Each trace can now be
                           // gated on its own sensor instead of one all-or-nothing flag. They default
@@ -307,8 +311,8 @@
         // Keep frequently-changing values in refs so vitals updates don't tear down
         // and restart the animation loop (which would reset the sweep cursors and leave stale
         // trace to the right of the sweep).
-        const liveRef = useRef({ rhythmType, hr, rr, spO2, etco2, co2Pathology, ventilating, isCPR, showSyncMarkers });
-        liveRef.current = { rhythmType, hr, rr, spO2, etco2, co2Pathology, ventilating, isCPR, showSyncMarkers };
+        const liveRef = useRef({ rhythmType, hr, rr, spO2, etco2, co2Pathology, co2Severity, ventilating, isCPR, showSyncMarkers });
+        liveRef.current = { rhythmType, hr, rr, spO2, etco2, co2Pathology, co2Severity, ventilating, isCPR, showSyncMarkers };
 
         // Rhythm resolution and waveform evaluation are delegated ENTIRELY to the registry
         // (data/rhythms.js). WAVE 7 removed the last of the duplicated evaluation logic that used
@@ -399,28 +403,75 @@
                 const laneIdx = {};
                 laneKeys.forEach((k, i) => { laneIdx[k] = i; });
 
-                // Draws one segment of one lane, advancing that lane's own cursor.
+                // Draws one frame's worth of one lane, advancing that lane's own cursor.
                 // `colour` is set immediately before the stroke so a recording context can attribute
                 // each stroke to its trace.
-                const drawLane = (key, colour, y) => {
+                //
+                // WAVE 8 (lower-priority live finding): A COMPLEX SITTING EXACTLY AT THE SWEEP CURSOR
+                // RENDERED AS A ROUNDED HUMP. Two causes, both here, both fixed:
+                //
+                //  1. THE WRAP SEAM. The cursor was advanced past the right edge, the segment was
+                //     drawn to that off-canvas x, and then `lastY` was thrown away (`lastY = null`)
+                //     so the next frame restarted at the left edge from nowhere. A complex straddling
+                //     the wrap therefore lost its steep limb and was drawn as a short near-horizontal
+                //     stub — which, with `lineCap: 'round'` on a 2 px line, is exactly a rounded hump.
+                //     The frame's travel is now SPLIT at the edge: the part before the wrap is drawn to
+                //     x = W with the y interpolated at that instant, and drawing continues from x = 0
+                //     at the SAME y. Continuity is preserved, nothing is drawn off-canvas, and the
+                //     whole frame is still one path and one `stroke()` (two subpaths), so stroke
+                //     accounting is unchanged.
+                //
+                //  2. FRAME-RATE ALIASING OF A NARROW R WAVE. One sample per frame means the R peak
+                //     is hit only when a frame lands on it; at 60 bpm/60 fps a frame advances 1.7% of
+                //     the cardiac cycle while the R wave occupies ~1%, so some beats were drawn tall
+                //     and others clipped — the beat-to-beat amplitude variation the live tester saw.
+                //     Callers may now pass SUB-SAMPLES for the frame (see the ECG lane below): the
+                //     waveform is evaluated several times within the frame and drawn as a polyline,
+                //     so the peak is captured whatever the frame rate.
+                //
+                // `samples` is an ordered array of y values across this frame; the last one is the
+                // value AT the new cursor position. Omitted = one sample, as before.
+                const drawLane = (key, colour, y, samples) => {
                     const st = laneState(key);
                     const sweep = SWEEP_SECONDS[key] || 8;
                     const speed = (W / sweep) * elapsed;
                     const top = traceHeight * laneIdx[key];
-                    // erase bar ahead of this lane's cursor, inside this lane only
+                    const eraseW = Math.max(3, (W / sweep) * 0.12);
+                    // erase bar ahead of this lane's cursor, inside this lane only (wrapping round the
+                    // right edge so the bar never disappears for a frame)
                     ctx.fillStyle = 'rgba(0,0,0,1)';
-                    ctx.fillRect(st.x, top, Math.max(3, (W / sweep) * 0.12), traceHeight);
+                    ctx.fillRect(st.x, top, eraseW, traceHeight);
+                    if (st.x + eraseW > W) ctx.fillRect(0, top, st.x + eraseW - W, traceHeight);
+
+                    const ys = (samples && samples.length) ? samples : [y];
+                    const x0 = st.x;                       // where the previous frame left the cursor
                     ctx.strokeStyle = colour;
                     ctx.lineWidth = 2;
                     ctx.lineJoin = 'round';
                     ctx.lineCap = 'round';
                     ctx.beginPath();
-                    ctx.moveTo(st.x - speed, st.lastY !== null ? st.lastY : y);
-                    ctx.lineTo(st.x, y);
+                    let px = x0, py = st.lastY !== null ? st.lastY : ys[0];
+                    ctx.moveTo(px, py);
+                    for (let i = 0; i < ys.length; i++) {
+                        const nx = x0 + speed * ((i + 1) / ys.length);
+                        const ny = ys[i];
+                        if (nx >= W && px < W) {
+                            // split this sub-segment at the right edge, interpolating y at the edge
+                            const f = (W - px) / Math.max(1e-6, nx - px);
+                            const edgeY = py + (ny - py) * f;
+                            ctx.lineTo(W, edgeY);
+                            ctx.moveTo(0, edgeY);          // same path, new subpath: one stroke, no seam
+                            px = 0; py = edgeY;
+                            ctx.lineTo(nx - W, ny);
+                        } else {
+                            ctx.lineTo(nx >= W ? nx - W : nx, ny);
+                        }
+                        px = nx >= W ? nx - W : nx; py = ny;
+                    }
                     ctx.stroke();
-                    st.lastY = y;
-                    st.x += speed;
-                    if (st.x >= W) { st.x -= W; st.lastY = null; }  // no wrap-around artefact
+                    st.lastY = ys[ys.length - 1];
+                    st.x = x0 + speed;
+                    if (st.x >= W) st.x -= W;
                     return st;
                 };
 
@@ -457,8 +508,22 @@
                 if (showEcg) {
                     ecgBaseY = traceHeight * (laneIdx.ecg + 0.5);
                     const ecgAmp = (rid === 'VF' || rid === 'Fine VF') ? 0.5 : 1;
-                    const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR, time, beatIdx) * ecgAmp;
-                    drawLane('ecg', '#22c55e', ecgY);
+                    // WAVE 8: sub-sample the cardiac cycle WITHIN the frame. The R wave occupies about
+                    // 1% of the cycle, so one sample per frame could straddle it and clip the peak —
+                    // the beat-to-beat amplitude wobble seen live. One sample per <=0.4% of the cycle
+                    // (up to 8) captures the peak at any heart rate and any frame rate, and the whole
+                    // frame is still drawn as a single path with a single stroke().
+                    const phaseAdvance = ecgPhase - prevEcgPhase;
+                    const nSub = Math.max(1, Math.min(8, Math.ceil(phaseAdvance / 0.004)));
+                    const ecgSamples = [];
+                    for (let i = 1; i <= nSub; i++) {
+                        const f = i / nSub;
+                        const ph = prevEcgPhase + phaseAdvance * f;
+                        const bi = Math.floor(ph);
+                        ecgSamples.push(ecgBaseY - getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi) * ecgAmp);
+                    }
+                    const ecgY = ecgSamples[ecgSamples.length - 1];
+                    drawLane('ecg', '#22c55e', ecgY, ecgSamples);
 
                     // C6: R-wave synchronisation markers. When the defibrillator is in SYNC mode the
                     // device must visibly mark the R waves it will fire on, otherwise "synchronised"
@@ -528,7 +593,10 @@
                         // Capnography lags the compression/breath cycle in the airway, hence the
                         // half-cycle offset kept from the previous implementation.
                         const phase = (respCycle + 0.5) % 1;
-                        let v = RG.capnogram(phase, kPa, live.co2Pathology);
+                        // WAVE 8 / FINDING 1: the obstruction severity scales the shape continuously
+                        // from a normal trapezoid (0) to an unmistakable shark fin (1). Treating the
+                        // bronchospasm lowers the severity, so the trace visibly normalises.
+                        let v = RG.capnogram(phase, kPa, live.co2Pathology, live.co2Severity);
                         // During CPR the capnogram is small and shows the compression rate; ETCO2
                         // RISING is the classic sign of ROSC, and that falls out of the numeric
                         // value driving the amplitude.

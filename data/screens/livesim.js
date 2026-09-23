@@ -243,6 +243,14 @@
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
+        // WAVE 8 / FINDINGS 3 + 4. Two-way sensor toggles and the two honest fast paths. Fall back to
+        // the plain intervention path if an older engine is loaded, so the panel is never dead.
+        const toggleSensor = sim.toggleSensor || ((id) => {
+            const def = (window.SENSOR_DEFS || []).filter(d => d.id === id)[0];
+            if (def) applyIntervention(def.key);
+        });
+        const attachStandard = sim.attachStandardMonitoring || (() => applyIntervention('Obs'));
+        const attachInvasive = sim.attachInvasiveMonitoring || (() => { applyIntervention('IV Access'); applyIntervention('ArtLine'); applyIntervention('ToggleETCO2'); });
         // WAVE 3 defibrillator + rhythm surface.
         const RG = window.RHYTHMS;
         const changeRhythm = sim.changeRhythm;
@@ -478,6 +486,15 @@
         const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
         // Bronchospasm drives the shark-fin capnogram through the EXISTING etco2Pathology state.
         const capnoPattern = etco2Pathology || 'normal';
+        // WAVE 8 / FINDING 1. HOW obstructed, not just whether: one severity number from the engine's
+        // existing bronchospasm model (scenario diagnosis + how hard the patient is working −
+        // bronchodilator pk relief), which scales the capnogram from a normal trapezoid through a
+        // slant to an unmistakable shark fin, and falls again as treatment takes effect. The
+        // facilitator's explicit Normal/Obstructive choice still overrides it (Wave 5 supremacy).
+        const obstruction = window.getObstruction
+            ? window.getObstruction(state, vitals, scenario)
+            : { severity: capnoPattern === 'bronchospastic' ? 0.9 : 0, band: 'none', base: 0, relief: 0, tiring: 0, source: '' };
+        const capnoSeverity = Number.isFinite(obstruction.severity) ? obstruction.severity : 0;
         // WAVE 7 / FEATURE: the facilitator's own panel size (drag handles + localStorage).
         const panel = useResizablePanel();
         // WAVE 6 / QUICK SIM WAVEFORMS. The strip used to be frozen whenever the session clock was
@@ -488,7 +505,17 @@
         // drew normally. A facilitator must be able to see the rhythm they have selected before the
         // clock starts, so the trace now freezes ONLY on a deliberate pause of a session that has
         // actually run — i.e. never at 00:00, in any launch mode.
-        const traceFrozen = !isRunning && time > 0;
+        //
+        // WAVE 8 / FINDING 2. `!isRunning && time > 0` also matched a RESUMED session: "Resume
+        // Previous" restores a non-zero clock and does not start the sim, so the strip was read as
+        // deliberately paused and stayed BLANK until START was pressed (a fresh Quick Sim drew
+        // correctly, which is what made it look inconsistent). The two cases are now distinguished by
+        // the only thing that actually differs — whether the FACILITATOR paused this session: the
+        // reducer sets `pausedAt` on PAUSE_SIM and clears it on START_SIM and on RESTORE_SESSION,
+        // and it is deliberately not persisted, so a reload can only ever produce "restored, not yet
+        // started". A deliberate pause of a running session still genuinely freezes the strip.
+        const pausedByFacilitator = state.pausedAt !== null && state.pausedAt !== undefined;
+        const traceFrozen = !isRunning && (pausedByFacilitator || state.isFinished);
         const showEtco2 = etco2Enabled;
         const showArt = activeInterventions.has('ArtLine');
         const isPaeds = scenario.ageRange === 'Paediatric' || scenario.wetflag;
@@ -779,15 +806,34 @@
 
                             Each chip toggles ONE sensor through the ordinary applyIntervention path, so
                             it is logged, appears in the debrief timeline, syncs to the student monitor
-                            inside activeInterventions and obeys the existing permissive rules. ATTACH
-                            ALL keeps the one-click habit: it applies 'Obs', which implies every
-                            continuous sensor. Nothing here is ever a prerequisite for anything. */}
+                            inside activeInterventions and obeys the existing permissive rules.
+                            Nothing here is ever a prerequisite for anything.
+
+                            WAVE 8 / FINDING 3: every chip is a TWO-WAY TOGGLE (sim.toggleSensor), so
+                            pressing an attached sensor detaches it instead of doing nothing, and the
+                            chip says which a press will do. Both this route and the PROCEDURES cards
+                            resolve through getSensors() over one set, so they cannot disagree.
+
+                            WAVE 8 / FINDING 4: the fast path attaches the STANDARD four and is named
+                            for exactly that. It never claimed the arterial line, capnography or IV
+                            access and it still does not attach them — but it no longer says "all".
+                            "All on" appears only when literally everything is on. Full invasive
+                            monitoring is its own clearly-labelled button. */}
                         <div className="flex-none rounded border border-slate-700 bg-slate-900/70 p-2">
                             <div className="flex items-center justify-between mb-1 gap-2">
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Monitoring &amp; access</div>
                                 <div className="flex gap-1">
-                                    <Button onClick={() => applyIntervention('Obs')} variant={sensors.ecg && sensors.spo2 && sensors.nibp && sensors.temp ? 'secondary' : 'primary'} className="h-6 px-2 text-[10px] uppercase font-bold">
-                                        {sensors.ecg && sensors.spo2 && sensors.nibp && sensors.temp ? 'All on' : 'Attach all'}
+                                    <Button onClick={attachStandard} variant={sensors.all ? 'secondary' : (sensors.standard ? 'secondary' : 'primary')}
+                                            title={sensors.standard
+                                                ? 'ECG, SpO2, NIBP and temperature are all attached. Capnography, the arterial line and IV access are separate deliberate acts.'
+                                                : 'Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe. Capnography, art line and IV access are NOT included.'}
+                                            className="h-6 px-2 text-[10px] uppercase font-bold">
+                                        {sensors.all ? 'All on' : (sensors.standard ? 'Standard on' : 'Attach standard')}
+                                    </Button>
+                                    <Button onClick={attachInvasive} variant={sensors.etco2 && sensors.art && sensors.iv ? 'secondary' : 'outline'}
+                                            title="Deliberate, invasive additions: IV/IO access, an arterial line and capnography. Kept OUT of the standard fast path on purpose."
+                                            className="h-6 px-2 text-[10px] uppercase font-bold">
+                                        {sensors.etco2 && sensors.art && sensors.iv ? 'Invasive on' : '+ Invasive'}
                                     </Button>
                                 </div>
                             </div>
@@ -800,18 +846,24 @@
                                               ? `pH ${Number.isFinite(reading.value) ? reading.value.toFixed(2) : '--'} / K ${Number.isFinite(reading.value2) ? reading.value2.toFixed(1) : '--'}`
                                               : (Number.isFinite(reading.value) ? reading.value.toFixed(1) : '--')} @ ${reading.clock}`
                                         : def.label;
+                                    // What a click will DO, spelled out, because a one-way chip is what
+                                    // confused the live tester.
+                                    const doesWhat = def.kind === 'poc'
+                                        ? (reading ? 'click to REPEAT the check (fresh, newly timestamped sample)' : 'click to CHECK now (one-off, timestamped)')
+                                        : (on ? 'ATTACHED \u2014 click to DETACH' : 'not attached \u2014 click to ATTACH');
                                     return (
-                                        <button key={def.id} onClick={() => applyIntervention(def.key)}
-                                            title={`${def.label} — reveals ${def.reveals}${def.kind === 'poc' ? ' (one-off, timestamped)' : ' (press again to detach)'}`}
+                                        <button key={def.id} onClick={() => toggleSensor(def.id)}
+                                            aria-pressed={def.kind === 'poc' ? undefined : on}
+                                            title={`${def.label} \u2014 reveals ${def.reveals}. ${doesWhat}.`}
                                             className={`px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wide ${on
-                                                ? (def.kind === 'poc' ? 'bg-purple-950/50 border-purple-500 text-purple-200' : 'bg-emerald-950/50 border-emerald-500 text-emerald-200')
+                                                ? (def.kind === 'poc' ? 'bg-purple-950/50 border-purple-500 text-purple-200' : 'bg-emerald-950/50 border-emerald-500 text-emerald-200 hover:bg-rose-950/60 hover:border-rose-500 hover:text-rose-200')
                                                 : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>
-                                            {on && def.kind !== 'poc' ? '\u25cf ' : ''}{label}
+                                            {on && def.kind !== 'poc' ? '\u25cf ' : (def.kind === 'poc' ? '' : '\u25cb ')}{label}
                                         </button>
                                     );
                                 })}
                             </div>
-                            <div className="text-[9px] text-slate-500 mt-1 leading-relaxed">Continuous sensors reveal a live value on the student monitor; POC checks report the value at the moment they are taken. Nothing is ever blocked \u2014 missing items are only flagged.</div>
+                            <div className="text-[9px] text-slate-500 mt-1 leading-relaxed">Continuous sensors reveal a live value on the student monitor; a filled dot means attached and clicking it detaches that one channel. POC checks report the value at the moment they are taken, and clicking again resamples. Nothing is ever blocked — missing items are only flagged.</div>
                         </div>
 
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
@@ -854,7 +906,7 @@
                                              isPaused={traceFrozen} showTraces={isMonitoringApplied || sensors.any}
                                              showEcg={sEcg || !sensors.any} showPleth={sSpo2 || !sensors.any} showResp={sResp || !sensors.any}
                                              showEtco2={showEtco2} showArt={showArt}
-                                             co2Pathology={capnoPattern} ventilating={capnoVentilating}
+                                             co2Pathology={capnoPattern} co2Severity={capnoSeverity} ventilating={capnoVentilating}
                                              className="h-full"/>
                                  </div>
                                  {!sensors.any && !quickSim && (
@@ -1453,10 +1505,22 @@
                                 
                                 {modalVital === 'etco2' && (
                                     <div>
-                                        <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Waveform Shape</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <button onClick={()=>setEtco2Shape('normal')} className={`p-2 rounded border text-xs font-bold ${etco2Shape==='normal' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Normal</button>
-                                            <button onClick={()=>setEtco2Shape('bronchospastic')} className={`p-2 rounded border text-xs font-bold ${etco2Shape==='bronchospastic' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Obstructive</button>
+                                        {/* WAVE 8 / FINDING 1. The capnogram shape is now scaled by the
+                                            engine's obstruction severity, so the default is AUTO: an
+                                            asthmatic with a silent chest shows a shark fin without the
+                                            facilitator having to find this menu, and the fin flattens as
+                                            bronchodilators take effect. The two override buttons keep
+                                            Wave 5 facilitator supremacy in both directions. */}
+                                        <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Capnogram shape</label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <button onClick={()=>setEtco2Shape('normal')} title="Follow the patient: the scenario's bronchospasm severity shapes the trace and treatment normalises it." className={`p-2 rounded border text-xs font-bold ${etco2Shape==='normal' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Auto</button>
+                                            <button onClick={()=>setEtco2Shape('bronchospastic')} title="Force a severe shark fin regardless of the model." className={`p-2 rounded border text-xs font-bold ${etco2Shape==='bronchospastic' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Obstructive</button>
+                                            <button onClick={()=>setEtco2Shape('nonobstructive')} title="Force a normal square capnogram regardless of the model." className={`p-2 rounded border text-xs font-bold ${etco2Shape==='nonobstructive' ? 'bg-sky-600 border-sky-500 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>Force normal</button>
+                                        </div>
+                                        <div className="text-[10px] text-slate-400 mt-2 font-mono">
+                                            obstruction {Math.round(capnoSeverity * 100)}% · {obstruction.band}
+                                            {obstruction.relief > 0 ? ` \u00b7 bronchodilator relief ${Math.round(obstruction.relief * 100)}%` : ''}
+                                            {obstruction.source ? ` \u00b7 ${obstruction.source}` : ''}
                                         </div>
                                     </div>
                                 )}

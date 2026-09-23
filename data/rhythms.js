@@ -337,49 +337,93 @@
     }
 
     // -------------------------------------------------------------------------
-    // 1c. WAVE 7 — CAPNOGRAPHY
+    // 1c. WAVE 7 — CAPNOGRAPHY, WAVE 8 — SEVERITY-SCALED SHARK FIN
     // A real capnogram is a trapezoid, not a sine wave. Returned in kPa so the plateau can be
     // asserted against the numeric ETCO2 the monitor displays.
     //   phase 0.00-0.06  II   steep expiratory upstroke
     //   phase 0.06-0.62  III  alveolar plateau, slight positive slope, ENDING at ETCO2
     //   phase 0.62-0.72  0    rapid inspiratory downstroke
     //   phase 0.72-1.00  I    inspiratory baseline at zero
-    // Patterns: 'normal' | 'bronchospastic' (shark fin) | 'rebreathing' (baseline fails to reach
-    // zero) | 'curare' (curare cleft in the plateau).
+    // Patterns: 'normal' | 'bronchospastic' (shark fin) | 'nonobstructive' (an explicit
+    // facilitator override that forces severity 0) | 'rebreathing' (baseline fails to reach zero)
+    // | 'curare' (curare cleft in the plateau).
+    //
+    // WAVE 8 / FINDING 1. Wave 7 drew ONE fixed obstructive shape, and live verification measured
+    // an upstroke occupying only 5-9% of the breath cycle in every case: the alveolar plateau
+    // stayed visibly separate from the upstroke, so even "asthma" read as mild obstruction rather
+    // than the shark fin of a silent chest. There is now a single CONTINUOUS shape family
+    // parametrised by an obstruction severity 0-1:
+    //
+    //   * severity 0    -> byte-identical to the Wave 7 normal trapezoid (steep phase II, flat
+    //                      slightly-upsloping phase III). Non-obstructive patients are unchanged.
+    //   * rising severity pushes the phase II "knee" later, LOWERS the fraction of the ETCO2 that
+    //     phase II reaches, slurs the rising limb and curves phase III, so the upstroke and the
+    //     plateau progressively merge into one rising limb. Expiration also lengthens, as it does
+    //     clinically.
+    //   * severity ~1   -> there is no identifiable flat segment anywhere in expiration: one
+    //                      continuous slurred rise to a rounded shoulder that only reaches the
+    //                      ETCO2 at the very end of expiration. That is the shark fin.
+    //
+    // Severity is supplied by the engine's existing bronchospasm model (see
+    // window.getObstruction in data/engine.js) — it is NOT a parallel piece of state, and it falls
+    // as bronchodilators take effect, so treating the patient visibly normalises the trace.
     // -------------------------------------------------------------------------
-    function capnogram(phase, etco2Kpa, pattern) {
+    var CAPNO_EXP_END = 0.62;        // expiration ends here at severity 0
+    var CAPNO_EXP_STRETCH = 0.045;   // severe obstruction prolongs expiration by this much
+    var CAPNO_DOWN = 0.10;           // duration of the inspiratory downstroke
+    var CAPNO_KNEE0 = 0.06 / CAPNO_EXP_END;   // phase II as a fraction of expiration, severity 0
+
+    // The shape of the capnogram as a continuous function of obstruction severity. Exported so
+    // verification measures the SHIPPING parameters rather than a copy of them.
+    function capnoShapeParams(severity) {
+        var s = Number(severity);
+        if (!isFinite(s)) s = 0;
+        s = s < 0 ? 0 : (s > 1 ? 1 : s);
+        return {
+            severity: s,
+            expEnd: CAPNO_EXP_END + CAPNO_EXP_STRETCH * s,
+            downEnd: CAPNO_EXP_END + CAPNO_EXP_STRETCH * s + CAPNO_DOWN,
+            // Phase II as a fraction of expiration: 9.7% normal -> 40% severe.
+            kneeFrac: CAPNO_KNEE0 + 0.303 * Math.pow(s, 1.5),
+            // Fraction of the ETCO2 reached at the end of phase II: 0.90 normal -> 0.60 severe.
+            // This is what destroys the boundary between the two phases — the upstroke stops well
+            // short of the plateau level and simply keeps climbing.
+            kneeLevel: 0.90 - 0.30 * s * s,
+            upstrokeExp: 0.65 + 0.15 * s,    // slurring of the rising limb
+            plateauExp: 1.00 - 0.15 * s      // phase III curvature: the rounded fin shoulder
+        };
+    }
+
+    // Resolve the severity actually used for a (pattern, severity) pair. The facilitator's explicit
+    // pattern override wins (Wave 5 facilitator supremacy); an omitted severity keeps the Wave 7
+    // behaviour for any caller that has not been updated.
+    function capnoSeverity(pattern, severity) {
+        if (pattern === 'nonobstructive') return 0;
+        var s = Number(severity);
+        if (!isFinite(s)) s = (pattern === 'bronchospastic' ? 0.9 : 0);
+        if (pattern === 'bronchospastic') s = Math.max(s, 0.15);
+        return s < 0 ? 0 : (s > 1 ? 1 : s);
+    }
+
+    function capnogram(phase, etco2Kpa, pattern, severity) {
         var E = Number(etco2Kpa);
         if (!isFinite(E) || E <= 0) return 0;
         var t = phase - Math.floor(phase);
         var floorKpa = pattern === 'rebreathing' ? E * 0.14 : 0;   // failure to return to zero
+        var P = capnoShapeParams(capnoSeverity(pattern, severity));
+        var knee = P.expEnd * P.kneeFrac;
         var y;
 
-        if (pattern === 'bronchospastic') {
-            // SHARK FIN: the sharp upstroke is lost and phase III never flattens — it climbs all
-            // the way to the end of expiration, so ETCO2 is only reached at the very last moment.
-            if (t < 0.30) {
-                y = floorKpa + (E * 0.62) * Math.pow(t / 0.30, 0.75);
-            } else if (t < 0.66) {
-                var x = (t - 0.30) / 0.36;
-                y = floorKpa + E * 0.62 + (E - E * 0.62) * Math.pow(x, 1.25);
-            } else if (t < 0.78) {
-                y = floorKpa + E * (1 - (t - 0.66) / 0.12);
-            } else {
-                y = floorKpa;
-            }
-            return Math.max(0, y);
-        }
-
-        if (t < 0.06) {                                    // phase II — steep upstroke
-            y = floorKpa + (E * 0.90 - floorKpa) * Math.pow(t / 0.06, 0.65);
-        } else if (t < 0.62) {                             // phase III — alveolar plateau
-            var p = (t - 0.06) / 0.56;
-            y = E * 0.90 + E * 0.10 * p;                   // reaches exactly E at the end
+        if (t < knee) {                                    // phase II — expiratory upstroke
+            y = floorKpa + (E * P.kneeLevel - floorKpa) * Math.pow(t / knee, P.upstrokeExp);
+        } else if (t < P.expEnd) {                         // phase III — alveolar plateau / fin
+            var x = (t - knee) / (P.expEnd - knee);
+            y = E * P.kneeLevel + E * (1 - P.kneeLevel) * Math.pow(x, P.plateauExp);  // ends at E
             if (pattern === 'curare' && t > 0.30 && t < 0.40) {
                 y -= E * 0.28 * Math.sin((t - 0.30) / 0.10 * Math.PI);   // curare cleft
             }
-        } else if (t < 0.72) {                             // phase 0 — inspiratory downstroke
-            y = floorKpa + (E - floorKpa) * (1 - (t - 0.62) / 0.10);
+        } else if (t < P.downEnd) {                        // phase 0 — inspiratory downstroke
+            y = floorKpa + (E - floorKpa) * (1 - (t - P.expEnd) / CAPNO_DOWN);
         } else {                                           // phase I — inspiratory baseline
             y = floorKpa;
         }
@@ -626,6 +670,10 @@
         droppedBeat: droppedBeat,
         beatHash: beatHash,
         capnogram: capnogram,
+        // WAVE 8: the capnogram shape family, exported so the obstruction severity that drives it
+        // has exactly one definition and verification measures the shipping parameters.
+        capnoShapeParams: capnoShapeParams,
+        capnoSeverity: capnoSeverity,
         // Rhythms whose R-R is MEANT to vary. Verification reads this list rather than keeping its
         // own copy, so "which rhythms are irregular" has one definition like everything else here.
         IRREGULAR: ['AF', 'Atrial Flutter', '2nd Deg Heart Block', 'Agonal Rhythm'],

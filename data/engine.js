@@ -80,6 +80,15 @@
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
         speech: { text: null, timestamp: 0, source: null }, soundEffect: { type: null, timestamp: 0 },
         audioOutput: 'monitor', arrestPanelOpen: false, isFinished: false, etco2Pathology: 'normal',
+        // WAVE 8 / FINDING 1: the obstruction severity that shapes the capnogram. On the controller
+        // this is DERIVED every render by getObstruction(); it is stored only on the student monitor,
+        // where it arrives over the wire as `co2Severity` so both views draw the identical shape.
+        co2Severity: 0,
+        // WAVE 8 / FINDING 2: the sim-clock second at which the FACILITATOR deliberately paused a
+        // running session, or null. A session restored from storage is `null` even though its clock
+        // is non-zero, which is exactly what tells "resumed, not yet started" apart from "paused
+        // mid-session". Never persisted: reloading the page can only ever produce the former.
+        pausedAt: null,
         monitorPopup: { type: null, timestamp: 0, customText: null },
         waveformGain: 1.0, noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
@@ -231,6 +240,14 @@
     // Attaching everything = 'Obs' plus the individual continuous keys, so the monitor is fully
     // populated in a single action.
     const ATTACH_ALL_KEYS = ['Obs', 'MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp'];
+    // WAVE 8 / FINDING 4. The four sensors the ONE-PRESS fast path attaches, and the deliberate
+    // clinical acts it does NOT. 'Obs' is a shorthand for exactly the standard four; it has never
+    // implied capnography, an arterial line or IV access, and that clinical default is unchanged.
+    // What changes is the honesty of the label: the fast path is now called "Attach standard", and
+    // an "all on" state is only ever shown when everything really is on (see getSensors().all).
+    const STANDARD_SENSOR_KEYS = ['MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp'];
+    // Offered as its own clearly-labelled action, never as part of the fast path.
+    const INVASIVE_SENSOR_KEYS = ['IV Access', 'ArtLine', 'ToggleETCO2'];
 
     const getSensors = (coreState) => {
         const active = (coreState && coreState.activeInterventions) || new Set();
@@ -246,12 +263,18 @@
             art: has('ArtLine'),
             iv: has('IV Access') || has('IO Access'),
             any: !!all || has('MonECG') || has('MonSpO2') || has('MonNIBP') || has('MonTemp') ||
-                 has('ArtLine') || !!(coreState && coreState.etco2Enabled)
+                 has('ArtLine') || !!(coreState && coreState.etco2Enabled),
+            // WAVE 8 / FINDING 4: two HONEST summary flags, so no button can claim more than it did.
+            // `standard` = the four sensors the fast path attaches. `all` = literally everything.
+            get standard() { return this.ecg && this.spo2 && this.nibp && this.temp; },
+            get all() { return this.ecg && this.spo2 && this.nibp && this.temp && this.etco2 && this.art && this.iv; }
         };
     };
     window.getSensors = getSensors;
     window.SENSOR_DEFS = SENSOR_DEFS;
     window.ATTACH_ALL_KEYS = ATTACH_ALL_KEYS;
+    window.STANDARD_SENSOR_KEYS = STANDARD_SENSOR_KEYS;
+    window.INVASIVE_SENSOR_KEYS = INVASIVE_SENSOR_KEYS;
 
     // Is the patient moving gas? Reads the EXISTING airway/paralysis model rather than inventing a
     // parallel one: a respiratory rate the monitor can see, or a device that delivers breaths.
@@ -841,6 +864,113 @@
         return Math.max(-0.6, 1 - 0.45 * n);
     };
 
+    // =============================================================================================
+    // WAVE 8 / FINDING 1 — HOW OBSTRUCTED IS THIS PATIENT RIGHT NOW?
+    // ---------------------------------------------------------------------------------------------
+    // ONE number, 0 (not obstructed) to 1 (life-threatening bronchospasm, silent chest), derived
+    // entirely from state the engine already holds. It is the single source of truth for the
+    // capnogram's shark fin (RHYTHMS.capnogram) — there is no parallel "obstruction" state, nothing
+    // new is persisted and nothing new has to be authored into the 254 scenarios.
+    //
+    //   base     the obstructive diagnosis, INFERRED from the scenario text exactly the way
+    //            fluidResponsiveness() infers volume responsiveness.
+    //   tiring   how hard the patient is working right now (hypoxia + tachypnoea), up to +0.20.
+    //   relief   bronchodilator effect, read from each drug's OWN pk envelope in activeDrugs, so
+    //            salbutamol/ipratropium nebs, IV salbutamol, magnesium, nebulised or IM adrenaline
+    //            and steroids normalise the capnogram OVER MINUTES as they take effect, and the fin
+    //            relapses if they are allowed to wear off. This is the teaching point.
+    //   override the facilitator's explicit etco2Pathology choice always wins (Wave 5 supremacy).
+    // =============================================================================================
+    const OBSTRUCTION_HINTS = [
+        { re: /silent chest|status asthmaticus|life.?threatening asthma|near.?fatal asthma/, v: 0.95, why: 'life-threatening asthma' },
+        { re: /acute severe asthma|severe asthma/, v: 0.85, why: 'acute severe asthma' },
+        { re: /asthma|asthmatic/, v: 0.65, why: 'asthma' },
+        { re: /bronchospasm/, v: 0.60, why: 'bronchospasm' },
+        { re: /bronchiolitis/, v: 0.60, why: 'bronchiolitis' },
+        { re: /copd|chronic obstructive|emphysema/, v: 0.55, why: 'COPD' },
+        { re: /anaphyla/, v: 0.45, why: 'anaphylaxis' },
+        { re: /wheez/, v: 0.45, why: 'wheeze' }
+    ];
+    // Relief weight per bronchodilator/anti-inflammatory. Each is multiplied by that dose's own pk
+    // factor, so relief RAMPS with the drug rather than appearing the instant the button is pressed.
+    const BRONCHODILATORS = {
+        'Nebs': 0.40, 'NebsContinuous': 0.50, 'NebAdrenaline': 0.35, 'SalbutamolIV': 0.45,
+        'MagSulph': 0.35, 'MagnesiumInfusion': 0.35,
+        'AdrenalineIM': 0.35, 'AdrenalineInfusion': 0.35, 'AdrenalineIV': 0.25, 'AdrenalinePush': 0.20,
+        'Hydrocortisone': 0.12, 'Dexamethasone': 0.12
+    };
+    const OBSTRUCTION_BANDS = [
+        { at: 0.06, label: 'none' }, { at: 0.35, label: 'mild' },
+        { at: 0.70, label: 'moderate' }, { at: 1.01, label: 'severe' }
+    ];
+    const obstructionBand = (s) => {
+        for (let i = 0; i < OBSTRUCTION_BANDS.length; i++) if (s < OBSTRUCTION_BANDS[i].at) return OBSTRUCTION_BANDS[i].label;
+        return 'severe';
+    };
+    // "No rash, no wheeze" must NOT read as bronchospasm (ACE-inhibitor angioedema says exactly
+    // that, and is bradykinin-mediated: adrenaline and nebs do little, which is its whole point).
+    const scrubNegations = (txt) => String(txt || '')
+        .replace(/\b(?:no|without|not?)\s+(?:[a-z]+\s+)?(?:wheez\w*|bronchospasm)/g, ' ')
+        .replace(/\bno\s+rash,?\s*no\s+wheez\w*/g, ' ');
+
+    const inferObstruction = (scenario) => {
+        const txt = scrubNegations(scenarioText(scenario));
+        let base = 0, why = null;
+        OBSTRUCTION_HINTS.forEach(h => { if (h.re.test(txt) && h.v > base) { base = h.v; why = h.why; } });
+        if (!base) return { base: 0, why: null };
+        // Acuity is a real severity signal in this data set: the same diagnosis is authored at
+        // Resus or at Majors.
+        const acuity = String((scenario && scenario.acuity) || '').toLowerCase();
+        if (acuity === 'resus') base = Math.min(1, base * 1.1);
+        else if (acuity === 'majors') base = base * 0.85;
+        else if (acuity === 'minors') base = base * 0.6;
+        return { base: Math.max(0, Math.min(1, base)), why };
+    };
+
+    const getObstruction = (coreState, vitals, scenarioArg) => {
+        const cs = coreState || {};
+        const scenario = scenarioArg || cs.scenario || null;
+        const pattern = cs.etco2Pathology || 'normal';
+        const inferred = inferObstruction(scenario);
+        let base = inferred.base;
+        const v = vitals || cs.vitals || {};
+        let tiring = 0;
+        if (base > 0) {
+            if (Number.isFinite(v.spO2)) tiring += Math.min(0.12, Math.max(0, (92 - v.spO2) / 100));
+            if (Number.isFinite(v.rr)) tiring += Math.min(0.08, Math.max(0, (v.rr - 24) / 200));
+        }
+        // Bronchodilator relief, from the pk envelopes that are already running.
+        const t = Number.isFinite(cs.time) ? cs.time : 0;
+        const perKey = {};
+        (Array.isArray(cs.activeDrugs) ? cs.activeDrugs : []).forEach(d => {
+            const w = BRONCHODILATORS[d && d.key];
+            if (!w) return;
+            const f = pkFactor(d, t);
+            if (!(f > 0)) return;
+            // Two doses of the same agent count; a sixth neb does not keep adding.
+            perKey[d.key] = Math.min(w * 2, (perKey[d.key] || 0) + w * f);
+        });
+        let relief = Object.keys(perKey).reduce((a, k) => a + perKey[k], 0);
+        relief = Math.max(0, Math.min(0.95, relief));
+        let severity = (base + tiring) * (1 - relief);
+        severity = Math.max(0, Math.min(1, severity));
+        // Facilitator override (Wave 5): an explicit choice is never overruled by the model.
+        let source = inferred.why ? `scenario: ${inferred.why}` : 'no obstructive diagnosis';
+        if (pattern === 'bronchospastic') { severity = Math.max(severity, 0.85); source = 'facilitator: forced obstructive'; }
+        else if (pattern === 'nonobstructive') { severity = 0; source = 'facilitator: forced non-obstructive'; }
+        return {
+            severity: Math.round(severity * 1000) / 1000,
+            band: obstructionBand(severity),
+            base: Math.round(base * 1000) / 1000,
+            tiring: Math.round(tiring * 1000) / 1000,
+            relief: Math.round(relief * 1000) / 1000,
+            pattern, source
+        };
+    };
+    window.getObstruction = getObstruction;
+    window.OBSTRUCTION_HINTS = OBSTRUCTION_HINTS;
+    window.BRONCHODILATORS = BRONCHODILATORS;
+
     // Bands the patient is allowed to recover INTO when the treatment factor is negative, so
     // successful treatment normalises rather than overshooting into hypertension/hyperoxia.
     const RECOVERY_BAND = { hr: [58, 110], bpSys: [95, 135], spO2: [92, 98], rr: [12, 22], gcs: [3, 15], etco2: [4.0, 6.0], temp: [36.0, 37.5] };
@@ -924,7 +1054,9 @@
         // WAVE 4a additions, all exercised directly by the Node verification harness.
         drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
         ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
-        FLUID_RESPONSE_LEVELS };
+        FLUID_RESPONSE_LEVELS,
+        // WAVE 8: the bronchospasm severity model behind the shark-fin capnogram.
+        getObstruction, inferObstruction, obstructionBand, BRONCHODILATORS, OBSTRUCTION_HINTS };
 
     const OBJECTIVE_TRIGGERS = {
         'Antibiotics':   ['antibio', 'sepsis', 'infection', 'antimicro'],
@@ -1554,10 +1686,18 @@
                     lastConversion: p.lastConversion || null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
+                    // WAVE 8 / FINDING 2. A resumed session is NOT a paused session. Its clock is
+                    // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
+                    // therefore froze the controller's waveform strip until START was pressed. The
+                    // pause marker is deliberately NOT restored from the snapshot: a page reload can
+                    // only ever produce "restored, not yet started".
+                    pausedAt: null,
                     isRunning: false };
             }
-            case 'START_SIM': return { ...state, isRunning: true, isFinished: false };
-            case 'PAUSE_SIM': return { ...state, isRunning: false };
+            case 'START_SIM': return { ...state, isRunning: true, isFinished: false, pausedAt: null };
+            // A deliberate facilitator pause — and the ONLY thing that sets the pause marker. The
+            // marker is the sim-clock second it happened at, so it is a primitive and survives sync.
+            case 'PAUSE_SIM': return { ...state, isRunning: false, pausedAt: Number.isFinite(state.time) ? state.time : 0 };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
             case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
             case 'SET_SYNC_STATUS': {
@@ -1670,7 +1810,7 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -1732,6 +1872,34 @@
                 // Stopping an infusion/device starts its offset tail rather than deleting the effect.
                 const stopped = (state.activeDrugs || []).map(d => (d.key === action.payload && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
                 return { ...state, activeInterventions: removedActive, activeDurations: removedDurations, activeDrugs: stopped };
+            }
+            // WAVE 8 / FINDING 3 — DETACHING ONE SENSOR.
+            // 'Obs' is a SHORTHAND for the four standard sensors, which is why a second press on an
+            // "attached" chip previously appeared to do nothing: the chip read as on (via 'Obs') but
+            // its own key was not in the set, so the press ATTACHED the individual key and changed
+            // nothing visible. Detaching therefore has to expand the shorthand first: 'Obs' is
+            // replaced by the individual keys for the sensors that STAY, and only the requested one
+            // comes off. The chips and the PROCEDURES cards both read getSensors(), so they cannot
+            // get out of sync, and exactly one channel goes dark on the student monitor.
+            case 'DETACH_SENSOR': {
+                const dkey = action.payload;
+                const next = new Set(state.activeInterventions);
+                if (dkey === 'Obs') {
+                    // Detaching the fast path itself removes all four standard sensors.
+                    next.delete('Obs');
+                    STANDARD_SENSOR_KEYS.forEach(k => next.delete(k));
+                } else {
+                    if (next.has('Obs') && STANDARD_SENSOR_KEYS.indexOf(dkey) !== -1) {
+                        next.delete('Obs');
+                        STANDARD_SENSOR_KEYS.forEach(k => { if (k !== dkey) next.add(k); });
+                    }
+                    next.delete(dkey);
+                }
+                const dDurations = { ...state.activeDurations };
+                delete dDurations[dkey];
+                if (dkey === 'Obs') STANDARD_SENSOR_KEYS.forEach(k => { delete dDurations[k]; });
+                const dStopped = (state.activeDrugs || []).map(d => (d.key === dkey && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
+                return { ...state, activeInterventions: next, activeDurations: dDurations, activeDrugs: dStopped };
             }
             case 'DECREMENT_INTERVENTION': const decKey = action.payload; const decCounts = { ...state.interventionCounts }; if (decCounts[decKey] > 0) decCounts[decKey]--; return { ...state, interventionCounts: decCounts };
             case 'SET_PARALYSIS': {
@@ -2072,6 +2240,12 @@
                 const cur = stateRef.current;
                 if (!cur.scenario) return;
                 const co2Pathology = cur.etco2Pathology || 'normal';
+                // WAVE 8 / FINDING 1. The obstruction severity behind the shark fin is computed HERE,
+                // from the authoritative controller state, and published as a plain number so the
+                // student monitor draws exactly the same capnogram shape the facilitator sees. Never
+                // undefined, never NaN: sanitizeForRealtimeDatabase passes a finite number through.
+                const obstruction = getObstruction(cur, cur.vitals, cur.scenario);
+                const co2Severity = Number.isFinite(obstruction.severity) ? obstruction.severity : 0;
                 const payload = {
                     vitals: cur.vitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
                     etco2Enabled: cur.etco2Enabled, flash: cur.flash, cycleTimer: cur.cycleTimer,
@@ -2116,7 +2290,7 @@
                     monitorPopup: cur.monitorPopup, waveformGain: cur.waveformGain,
                     noise: cur.noise, notification: cur.notification,
                     remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
-                    showWetflag: cur.showWetflag, co2Pathology,
+                    showWetflag: cur.showWetflag, co2Pathology, co2Severity,
                     // Top-level keys only — the write diff is shallow and per-key. Never undefined.
                     isRunning: !!cur.isRunning, isMuted: !!cur.isMuted,
                     activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed,
@@ -2614,7 +2788,11 @@
             if (action.type === 'continuous' && isActive) {
                  // Deliberate toggle-off. The button shows an explicit ACTIVE state and a tooltip saying
                  // a second press stops it, so removal cannot be mistaken for a repeat dose.
-                 dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
+                 // WAVE 8 / FINDING 3: monitoring keys take the sensor-aware removal, which expands the
+                 // 'Obs' shorthand. Without this the PROCEDURES card and the chip could disagree about
+                 // what is attached; both now resolve through getSensors() over the same set.
+                 if (key === 'Obs' || STANDARD_SENSOR_KEYS.indexOf(key) !== -1) dispatch({ type: 'DETACH_SENSOR', payload: key });
+                 else dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
                  // B3: stopping compressions clears the flag as well as starting the drug's offset tail.
                  if (action.effect && action.effect.cpr === true && cur.cprInProgress) dispatch({ type: 'TOGGLE_CPR', payload: false });
                  addLogEntry(`${action.label} removed.`, 'action');
@@ -3743,12 +3921,50 @@
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
         }, [state.isRunning, isMonitorMode, !!(state.trends && state.trends.active)]);
 
+        // =====================================================================================
+        // WAVE 8 / FINDING 3 — EVERY MONITORING CHIP IS A TRUE TWO-WAY TOGGLE.
+        // One press attaches, the next press DETACHES, and the chip's own state is what decides
+        // which. The whole class of confusion came from the chip reading its state through
+        // getSensors() (so 'Obs' made it look attached) while pressing it applied its INDIVIDUAL
+        // key: the press was a no-op to look at. Attachment and detachment are both logged, so both
+        // appear in the timeline and the debrief.
+        //
+        // Not a toggle, deliberately: a point-of-care check. Repeating a glucose or a VBG takes a
+        // FRESH, newly-timestamped sample, which is the clinically important behaviour and is what
+        // a facilitator pressing it again means.
+        // =====================================================================================
+        const toggleSensor = (id) => {
+            const cur = stateRef.current;
+            const def = SENSOR_DEFS.filter(d => d.id === id)[0];
+            if (!def) { console.warn(`toggleSensor('${id}') ignored: no such sensor.`); return; }
+            if (def.kind === 'poc') { applyIntervention(def.key); return; }
+            const on = !!getSensors(cur)[def.id];
+            // Capnography keeps its own long-standing toggle, which already goes both ways and logs.
+            if (def.key === 'ToggleETCO2' || !on) { applyIntervention(def.key); return; }
+            dispatch({ type: 'DETACH_SENSOR', payload: def.key });
+            addLogEntry(`${def.label} removed \u2014 ${def.reveals} no longer visible to the team.`, 'action');
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${def.label} DETACHED (press again to re-attach)`, type: 'info', id: Date.now() } });
+        };
+        // WAVE 8 / FINDING 4. The fast path attaches the STANDARD four and says so. The invasive
+        // action is separate and explicitly labelled, because an arterial line, IV access and
+        // capnography are deliberate clinical acts, not a default.
+        const attachStandardMonitoring = () => applyIntervention('Obs');
+        const attachInvasiveMonitoring = () => {
+            const s = getSensors(stateRef.current);
+            if (!s.iv) applyIntervention('IV Access');
+            if (!s.art) applyIntervention('ArtLine');
+            if (!s.etco2) applyIntervention('ToggleETCO2');
+        };
+
         return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,
         sendDeviceEvent, recommendedShockEnergy,
-        defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus };
+        defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,
+        // Wave 8 surface: two-way sensor toggles, the honest fast paths and the derived obstruction.
+        toggleSensor, attachStandardMonitoring, attachInvasiveMonitoring,
+        getObstruction: () => getObstruction(stateRef.current, stateRef.current.vitals, stateRef.current.scenario) };
     };
     window.useSimulation = useSimulation;
 })();

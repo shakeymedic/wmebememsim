@@ -202,7 +202,11 @@ window.INTERVENTIONS = {
     'TopicalEyeDrops': { label: 'Topical Eye Drops', route: 'topical', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
 
     // --- PROCEDURES ---
-    'Obs': { label: 'Attach Monitoring (all)', route: 'n/a', effect: {}, category: 'Procedures', log: 'Full monitoring applied (ECG, SpO2, NIBP, temp). Vitals now visible.', type: 'continuous', duration: 5 },
+    // WAVE 8 / FINDING 4: renamed from "Attach Monitoring (all)". The behaviour is UNCHANGED and
+    // deliberately so — it attaches the standard four — but the old label promised everything and
+    // then sat next to an "ALL ON" state while capnography and the arterial line were still off.
+    // The key is untouched, so all 254 scenarios, saved sessions and sync payloads are unaffected.
+    'Obs': { label: 'Standard Monitoring (ECG, SpO2, NIBP, temp)', route: 'n/a', effect: {}, category: 'Procedures', log: 'Standard monitoring applied (ECG, SpO2, NIBP, temp). Capnography, arterial line and IV access are separate.', type: 'continuous', duration: 5 },
     // ---- WAVE 7 / ITEM 4: INDIVIDUALLY ATTACHABLE MONITORING ----------------------------------
     // Each item gates exactly its own value/trace on the student monitor (see engine getSensors).
     // 'Obs' above is the unchanged ONE-CLICK FAST PATH and implies all four continuous sensors, so
