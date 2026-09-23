@@ -324,6 +324,15 @@
         // the explicit `|| quickSim` is a belt-and-braces guard so a resumed or synced Quick Sim can
         // never show "No Monitoring" over a screen whose entire purpose is the monitor.
         const isMonitoringApplied = activeInterventions.has('Obs') || quickSim; 
+        // WAVE 6 / QUICK SIM WAVEFORMS. The strip used to be frozen whenever the session clock was
+        // not running (isPaused={!isRunning}), which meant the rAF loop sized the canvas, painted it
+        // black and returned WITHOUT DRAWING. Quick Sim reaches this controller without ever passing
+        // through the briefing screen's START, so the facilitator saw an entirely black trace panel
+        // for the whole session while the student monitor (which never gates its strips on the clock)
+        // drew normally. A facilitator must be able to see the rhythm they have selected before the
+        // clock starts, so the trace now freezes ONLY on a deliberate pause of a session that has
+        // actually run — i.e. never at 00:00, in any launch mode.
+        const traceFrozen = !isRunning && time > 0;
         const showEtco2 = etco2Enabled;
         const showArt = activeInterventions.has('ArtLine');
         const isPaeds = scenario.ageRange === 'Paediatric' || scenario.wetflag;
@@ -605,12 +614,12 @@
 
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
                              <div className="relative">
-                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={!isRunning} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-64"/>
+                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={traceFrozen} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-64"/>
                                  {!isMonitoringApplied && (
                                      <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">No Monitoring</div>
                                  )}
                                  <button onClick={()=>setShowRhythmModal(true)} className="absolute top-1 right-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded z-30 font-bold uppercase tracking-wider backdrop-blur-sm">Change Rhythm</button>
-                                 <div className="absolute top-1 left-1 flex gap-1 z-30">
+                                 <div className="absolute top-1 left-20 flex gap-1 z-30">
                                      <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800/80 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded font-bold uppercase tracking-wider backdrop-blur-sm`}>
                                          <Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{state.monitorTimer?.visible ? 'Hide Timer' : 'Show Timer'}
                                      </button>

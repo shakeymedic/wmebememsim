@@ -1047,6 +1047,66 @@
     window.__pkInternals.objectiveComponentKeys = objectiveComponentKeys;
     window.__pkInternals.applyRhythmHrBand = applyRhythmHrBand;
 
+    // ================= WAVE 6: ONE definition of "advance a ramp by one second" ===================
+    // Mutates `base` (base space) and `trends` (elapsed / active) in place and returns { owned, ran }:
+    // `owned` is the set of keys the ramp owns this second, so autonomous deterioration and
+    // rate-driven drives do not fight it. Used by BOTH the full physiology tick (TICK_TIME) and the
+    // clock-independent trend tick (TICK_TRENDS), so there is exactly ONE interpolation and a ramp
+    // cannot behave differently before and after START.
+    const advanceTrendsOneSecond = (base, trends) => {
+        const owned = {};
+        if (!trends || !trends.active) return { owned, ran: false };
+        const targets = trends.targets || {};
+        const startVitals = trends.startVitals || {};
+        const duration = Number(trends.duration);
+        trends.elapsed = (Number(trends.elapsed) || 0) + 1;
+        // A 0 s / invalid duration means "now": progress 1 on the first tick, never NaN.
+        const progress = (Number.isFinite(duration) && duration > 0) ? Math.min(1, trends.elapsed / duration) : 1;
+        Object.keys(targets).forEach(key => {
+            const startVal = startVitals[key];
+            const targetVal = targets[key];
+            // D5: categorical vitals snap on the FIRST tick and are never interpolated, even when
+            // both ends happen to be numbers (there is no such thing as 3.4 mm of pupil on a
+            // clinical chart, and a half-way value between 3 and 'Dilated' is NaN).
+            if (isCategoricalVital(key)) {
+                if (targetVal !== undefined) { base[key] = normalisePupils(targetVal); owned[key] = true; }
+            } else if (startVal !== undefined && targetVal !== undefined && typeof startVal === 'number' && typeof targetVal === 'number') {
+                base[key] = startVal + ((targetVal - startVal) * progress);
+                owned[key] = true;
+            } else if (startVal !== undefined && targetVal !== undefined) {
+                base[key] = targetVal;   // other non-numeric: snap, never interpolate
+                owned[key] = true;
+            }
+        });
+        if (!Number.isFinite(duration) || trends.elapsed >= duration) {
+            Object.keys(targets).forEach(key => {
+                base[key] = isCategoricalVital(key) ? normalisePupils(targets[key]) : targets[key];
+                owned[key] = true;
+            });
+            trends.active = false;
+        }
+        return { owned, ran: true };
+    };
+    window.__pkInternals.advanceTrendsOneSecond = advanceTrendsOneSecond;
+
+    // WAVE 6: what should the 1 Hz interval dispatch this second? Pulled out of the effect so the
+    // whole gating decision is one pure, exported function that a test can interrogate.
+    //   * the student monitor NEVER runs physiology (it would fight the authoritative vitals
+    //     arriving over Firebase);
+    //   * a running session runs the full pipeline;
+    //   * a session that has not been started (or has been paused) still advances an ACTIVE RAMP,
+    //     because a ramp is an explicit facilitator instruction, not a property of scenario time.
+    //     This is what makes the vitals-modal ramp and Trend Better/Worse work in Quick Sim, where
+    //     the controller is reached without ever passing through the briefing screen's START.
+    const tickActionFor = (state, isMonitorMode) => {
+        if (isMonitorMode) return null;
+        if (!state) return null;
+        if (state.isRunning) return 'TICK_TIME';
+        if (state.trends && state.trends.active) return 'TICK_TRENDS';
+        return null;
+    };
+    window.__pkInternals.tickActionFor = tickActionFor;
+
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
@@ -1133,6 +1193,30 @@
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
             case 'TRIGGER_IMPROVE':
             case 'TRIGGER_DETERIORATE': return { ...state, trends: action.payload.trends };
+            // ======================= WAVE 6 / QUICK SIM RAMPS ==========================================
+            // A ramp ("take the HR to 130 over 120 s") is the facilitator's own instruction and must
+            // progress as soon as it is given. Before Wave 6 the ONLY thing that advanced a trend was
+            // TICK_TIME, and the 1 Hz interval that dispatches it is gated on isRunning — so a ramp
+            // started before START silently did nothing. Quick Sim skips the briefing screen and
+            // therefore never calls engine.start(), which is why the bug showed up there first: in
+            // Quick Sim the controller normally sits at 00:00 for the whole teaching session.
+            //
+            // TICK_TRENDS advances ONLY the trend layer. It does not touch the session clock, the
+            // drug pk clock, autonomous deterioration, the airway model, the hypoxia timer or the
+            // debrief history — all of those are properties of elapsed scenario time and must stay
+            // gated on the clock. The precedence order is unchanged: this is step 2 running on its
+            // own, with the drug envelope still applied last by composeVitals().
+            case 'TICK_TRENDS': {
+                if (!state.trends || !state.trends.active) return state;
+                const base = { ...state.baseVitals };
+                const newTrends = { ...state.trends };
+                const step = advanceTrendsOneSecond(base, newTrends);
+                if (!step.ran) return state;
+                const t = cs ? cs.time : 0;
+                const inArrest = cs ? RG.inArrest(cs.rhythm || 'Sinus Rhythm') : false;
+                const composed = composeVitals(base, cs ? (cs.activeDrugs || []) : [], t, inArrest);
+                return { ...state, baseVitals: base, vitals: composed, prevVitals: state.prevVitals, trends: newTrends };
+            }
             case 'TICK_TIME': {
                 // ===== THE COMPOSITION PIPELINE (precedence order documented at the top of this file).
                 // Everything from here to step 5 operates on `base` (unrounded underlying physiology).
@@ -1159,35 +1243,12 @@
                 // towards base-space targets. Because it no longer touches the displayed vitals, the
                 // Wave 1 defect where a trend erased a drug effect within one second is structurally
                 // impossible: the drug lives in a separate additive layer.
-                const trendOwned = {};
-                if (newTrends.active) {
-                    newTrends.elapsed += 1;
-                    const progress = Math.min(1, newTrends.elapsed / newTrends.duration);
-                    Object.keys(newTrends.targets).forEach(key => {
-                        const startVal = newTrends.startVitals[key];
-                        const targetVal = newTrends.targets[key];
-                        // D5: categorical vitals snap on the FIRST tick and are never interpolated,
-                        // even when both ends happen to be numbers (there is no such thing as 3.4 mm
-                        // of pupil on a clinical chart, and a half-way value between 3 and 'Dilated'
-                        // is NaN). Everything else interpolates as before.
-                        if (isCategoricalVital(key)) {
-                            if (targetVal !== undefined) { base[key] = normalisePupils(targetVal); trendOwned[key] = true; }
-                        } else if (startVal !== undefined && targetVal !== undefined && typeof startVal === 'number' && typeof targetVal === 'number') {
-                            base[key] = startVal + ((targetVal - startVal) * progress);
-                            trendOwned[key] = true;
-                        } else if (startVal !== undefined && targetVal !== undefined) {
-                            base[key] = targetVal;   // other non-numeric: snap, never interpolate
-                            trendOwned[key] = true;
-                        }
-                    });
-                    if (newTrends.elapsed >= newTrends.duration) {
-                        Object.keys(newTrends.targets).forEach(key => {
-                            base[key] = isCategoricalVital(key) ? normalisePupils(newTrends.targets[key]) : newTrends.targets[key];
-                        });
-                        newTrends.active = false;
-                    }
-                    vitalsChanged = true;
-                }
+                // WAVE 6: the interpolation itself now lives in advanceTrendsOneSecond() so the
+                // clock-independent trend tick (TICK_TRENDS) runs the IDENTICAL maths — a ramp must
+                // behave the same whether or not the session clock is running.
+                const trendStep = advanceTrendsOneSecond(base, newTrends);
+                const trendOwned = trendStep.owned;
+                if (trendStep.ran) vitalsChanged = true;
 
                 // ----- STEP 3: AUTONOMOUS DETERIORATION (Group C).
                 // Gated on deteriorationMode === 'auto'. Integrating into `base` is what guarantees C3:
@@ -3558,16 +3619,21 @@
             // Physiology is owned by the controller. isRunning is now synced so the monitor can make
             // sound, but the monitor must NOT run its own 1 Hz physiology tick or it would fight the
             // authoritative vitals arriving over Firebase.
-            if (state.isRunning && !isMonitorMode) {
+            // WAVE 6: the decision of WHAT to tick is tickActionFor's, not this effect's. A stopped
+            // clock with an active ramp still ticks — trend-only — so a facilitator's "take the HR to
+            // 130 over 2 minutes" works the moment it is set, including in Quick Sim where START is
+            // never pressed.
+            const action = tickActionFor(state, isMonitorMode);
+            if (action) {
                 timerRef.current = setInterval(() => {
                     tickRef.current = Date.now();
-                    dispatch({ type: 'TICK_TIME' }); 
+                    dispatch({ type: action });
                 }, 1000);
             } else {
                 if (timerRef.current) clearInterval(timerRef.current);
             }
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
-        }, [state.isRunning, isMonitorMode]);
+        }, [state.isRunning, isMonitorMode, !!(state.trends && state.trends.active)]);
 
         return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
