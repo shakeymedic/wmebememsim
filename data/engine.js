@@ -1865,7 +1865,58 @@
             }
             case 'SET_DETERIORATION_MODE':
                 return { ...state, deteriorationMode: action.payload === 'auto' ? 'auto' : 'manual' };
-            case 'UPDATE_INTERVENTION_STATE': return { ...state, activeInterventions: action.payload.active, interventionCounts: action.payload.counts };
+            // =================================================================================
+            // WAVE 9 / ROOT FIX — THIS ACTION IS A DELTA, NOT A WHOLE-SET REPLACEMENT.
+            //
+            // It used to carry `{ active: <a whole new Set>, counts: <a whole new object> }`, both
+            // built by applyIntervention from `stateRef.current`. stateRef only catches up in an
+            // effect AFTER a commit, so TWO applyIntervention calls in the SAME tick (React 18
+            // batches them into one commit) each computed their replacement set from the same
+            // pre-batch snapshot, and the second dispatch silently threw away the first one's
+            // addition. That is exactly how "+ INVASIVE" attached the arterial line and lost IV
+            // access while still logging both. It also lost interventionCounts for every drug but
+            // the last when two drugs were given in one tick.
+            //
+            // A delta is immune: every dispatch in the batch is folded through the reducer in
+            // order, each one seeing the accumulated `state`, so nothing can be overwritten.
+            // The legacy whole-set payload is still honoured for any external/older caller.
+            // =================================================================================
+            case 'UPDATE_INTERVENTION_STATE': {
+                const p = action.payload || {};
+                const isDelta = Array.isArray(p.add) || Array.isArray(p.remove) || Array.isArray(p.inc);
+                if (!isDelta) return { ...state, activeInterventions: p.active, interventionCounts: p.counts };
+                const nextActive = new Set(state.activeInterventions);
+                (p.add || []).forEach(k => nextActive.add(k));
+                (p.remove || []).forEach(k => nextActive.delete(k));
+                const nextCounts = { ...state.interventionCounts };
+                (p.inc || []).forEach(k => { nextCounts[k] = (nextCounts[k] || 0) + 1; });
+                return { ...state, activeInterventions: nextActive, interventionCounts: nextCounts };
+            }
+            // =================================================================================
+            // WAVE 9 — ATOMIC BATCH ATTACH. One press = ONE reducer action, however many sensors
+            // it puts on. The controller's "+ Invasive" and "Attach standard" buttons, the
+            // PROCEDURES monitoring cards and the individual chips all come through here, so no
+            // attach path can ever again lose a sensor to batching.
+            //
+            // Capnography is part of the same action rather than a separate TOGGLE_ETCO2 dispatch,
+            // and it is SET rather than toggled — pressing "+ Invasive" twice in one tick can no
+            // longer turn the capnograph back off.
+            // =================================================================================
+            case 'ATTACH_SENSORS': {
+                const p = (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) ? action.payload : { keys: action.payload };
+                const keys = (Array.isArray(p.keys) ? p.keys : (p.keys ? [p.keys] : [])).filter(k => k && k !== 'ToggleETCO2');
+                const next = new Set(state.activeInterventions);
+                keys.forEach(k => next.add(k));
+                // Durations are started in the same action, so the PROCEDURES card countdown cannot
+                // disagree with the chip either.
+                const durs = { ...state.activeDurations };
+                keys.forEach(k => {
+                    const d = INTERVENTIONS[k] && INTERVENTIONS[k].duration;
+                    if (d && !durs[k]) durs[k] = { startTime: state.time, duration: d };
+                });
+                const etco2 = p.etco2 === undefined ? state.etco2Enabled : !!p.etco2;
+                return { ...state, activeInterventions: next, activeDurations: durs, etco2Enabled: etco2 };
+            }
             case 'REMOVE_INTERVENTION': {
                 const removedActive = new Set(state.activeInterventions); removedActive.delete(action.payload);
                 const removedDurations = { ...state.activeDurations }; delete removedDurations[action.payload];
@@ -1881,25 +1932,40 @@
             // replaced by the individual keys for the sensors that STAY, and only the requested one
             // comes off. The chips and the PROCEDURES cards both read getSensors(), so they cannot
             // get out of sync, and exactly one channel goes dark on the student monitor.
-            case 'DETACH_SENSOR': {
-                const dkey = action.payload;
+            // WAVE 9: ONE implementation, taking a LIST. 'DETACH_SENSOR' (one key) is now literally
+            // 'DETACH_SENSORS' with a single-element list, so a batch detach expands the 'Obs'
+            // shorthand exactly once for the whole batch and cannot lose a removal to batching
+            // either — the previous code path was only safe because it happened to be dispatched
+            // one key at a time.
+            case 'DETACH_SENSOR':
+            case 'DETACH_SENSORS': {
+                const p = (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) ? action.payload : { keys: action.payload };
+                const raw = Array.isArray(p.keys) ? p.keys : (p.keys ? [p.keys] : []);
+                const dkeys = raw.filter(k => !!k);
                 const next = new Set(state.activeInterventions);
-                if (dkey === 'Obs') {
-                    // Detaching the fast path itself removes all four standard sensors.
-                    next.delete('Obs');
-                    STANDARD_SENSOR_KEYS.forEach(k => next.delete(k));
-                } else {
-                    if (next.has('Obs') && STANDARD_SENSOR_KEYS.indexOf(dkey) !== -1) {
-                        next.delete('Obs');
-                        STANDARD_SENSOR_KEYS.forEach(k => { if (k !== dkey) next.add(k); });
-                    }
-                    next.delete(dkey);
-                }
                 const dDurations = { ...state.activeDurations };
-                delete dDurations[dkey];
-                if (dkey === 'Obs') STANDARD_SENSOR_KEYS.forEach(k => { delete dDurations[k]; });
-                const dStopped = (state.activeDrugs || []).map(d => (d.key === dkey && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
-                return { ...state, activeInterventions: next, activeDurations: dDurations, activeDrugs: dStopped };
+                const wantsEtco2Off = dkeys.indexOf('ToggleETCO2') !== -1;
+                // Expand the 'Obs' shorthand ONCE, for the whole batch: every standard sensor that
+                // is NOT being detached is re-added as its own key, then every requested key goes.
+                const detachingObs = dkeys.indexOf('Obs') !== -1;
+                const touchesStandard = detachingObs || dkeys.some(k => STANDARD_SENSOR_KEYS.indexOf(k) !== -1);
+                if (touchesStandard && next.has('Obs')) {
+                    next.delete('Obs');
+                    delete dDurations['Obs'];
+                    if (!detachingObs) STANDARD_SENSOR_KEYS.forEach(k => { if (dkeys.indexOf(k) === -1) next.add(k); });
+                }
+                dkeys.forEach(dkey => {
+                    if (dkey === 'Obs') {
+                        next.delete('Obs');
+                        STANDARD_SENSOR_KEYS.forEach(k => { next.delete(k); delete dDurations[k]; });
+                    } else {
+                        next.delete(dkey);
+                    }
+                    delete dDurations[dkey];
+                });
+                const dStopped = (state.activeDrugs || []).map(d => (dkeys.indexOf(d.key) !== -1 && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
+                return { ...state, activeInterventions: next, activeDurations: dDurations, activeDrugs: dStopped,
+                         etco2Enabled: wantsEtco2Off ? false : state.etco2Enabled };
             }
             case 'DECREMENT_INTERVENTION': const decKey = action.payload; const decCounts = { ...state.interventionCounts }; if (decCounts[decKey] > 0) decCounts[decKey]--; return { ...state, interventionCounts: decCounts };
             case 'SET_PARALYSIS': {
@@ -2902,7 +2968,12 @@
                 }
             }
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
-            dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { active: newActive, counts: newCounts } });
+            // WAVE 9 / ROOT FIX: a DELTA, not the whole set/counts object. Two interventions applied
+            // in the same tick (two clicks in one batch, a batch helper, or the Firebase command
+            // listener firing twice) used to lose everything but the last one, because both payloads
+            // were built from the same pre-commit `stateRef.current`.
+            if (action.type === 'continuous') dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { add: [key], inc: [] } });
+            else dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { add: [], inc: [key] } });
 
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
 
@@ -3154,7 +3225,15 @@
             const updatedScenario = { ...scenario }; let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
-            dispatch({ type: 'UPDATE_VITALS', payload: newVitals });
+            // WAVE 9 / ROOT FIX (same class): send only the fields this intervention actually
+            // CHANGED. The payload is merged onto the LIVE baseVitals by the reducer, so a whole
+            // snapshot-derived object here meant two instant-effect interventions in one tick
+            // overwrote each other's vitals. A field-level diff composes instead.
+            const vitalsDelta = {};
+            Object.keys(newVitals).forEach(f => { if (newVitals[f] !== cur.baseVitals[f]) vitalsDelta[f] = newVitals[f]; });
+            // Still dispatched unconditionally (an empty delta simply recomposes the displayed
+            // vitals from the live base + the drug envelope, exactly as before).
+            dispatch({ type: 'UPDATE_VITALS', payload: vitalsDelta });
         };
 
         const applyInterventionRef = useRef(applyIntervention);
@@ -3933,28 +4012,114 @@
         // FRESH, newly-timestamped sample, which is the clinically important behaviour and is what
         // a facilitator pressing it again means.
         // =====================================================================================
+        // =====================================================================================
+        // WAVE 9 — EVERY BATCH ATTACH/DETACH IS ONE REDUCER ACTION.
+        //
+        // ROOT CAUSE of the "+ INVASIVE attaches the art line but not IV" bug: these helpers used
+        // to make SEQUENTIAL applyIntervention() calls. React 18 batches everything a click handler
+        // dispatches into ONE commit, and `stateRef.current` is only refreshed by an effect AFTER a
+        // commit — so every call in the batch read the SAME pre-press snapshot and sent a
+        // whole-replacement `activeInterventions` Set built from it. The last dispatch won and the
+        // earlier attachment vanished, while BOTH log lines were still written (which is exactly
+        // what the live event log showed at 00:39).
+        //
+        // Both halves are fixed: UPDATE_INTERVENTION_STATE is now a delta (so even sequential
+        // dispatches compose), and every batch path below resolves to a SINGLE ATTACH_SENSORS /
+        // DETACH_SENSORS action, decided from one snapshot and applied atomically in the reducer.
+        // Each sensor is logged exactly once, only when it genuinely changed.
+        // =====================================================================================
+        const sensorDefFor = (idOrKey) => SENSOR_DEFS.filter(d => d.id === idOrKey || d.key === idOrKey)[0] || null;
+        // 'Obs' is the long-standing SHORTHAND for the standard four (all 254 scenarios, saved
+        // sessions and sync payloads use it), so it stays a first-class batch member.
+        const sensorKeyOf = (idOrKey) => (idOrKey === 'Obs' ? 'Obs' : (sensorDefFor(idOrKey) || {}).key || null);
+        const isSensorAttached = (s, key) => {
+            if (key === 'Obs') return s.standard;
+            const def = sensorDefFor(key);
+            return def ? !!s[def.id] : false;
+        };
+        // The objective/stabiliser credit an intervention earns, factored out of applyIntervention so
+        // a batched attach credits exactly what an individual press would.
+        const creditIntervention = (key, scenario) => {
+            const triggers = OBJECTIVE_TRIGGERS[key];
+            const objList = (scenario.learningObjectives || []).concat(scenario.instructorBrief?.learningObjectives || []);
+            if (triggers && objList.length) {
+                objList.forEach(obj => {
+                    const objLower = obj.toLowerCase();
+                    if (triggers.some(kw => objLower.includes(kw))) dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj });
+                });
+            }
+            if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
+        };
+        const attachSensors = (keys) => {
+            const cur = stateRef.current;
+            if (!cur.scenario) {
+                console.warn('attachSensors ignored: no scenario is loaded.');
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: 'No scenario loaded — load a scenario first.', type: 'danger', id: Date.now() } });
+                return;
+            }
+            const list = (Array.isArray(keys) ? keys : [keys]).map(sensorKeyOf).filter(k => !!k);
+            const s0 = getSensors(cur);
+            const add = [], logs = [];
+            let etco2 = null;
+            list.forEach(key => {
+                if (isSensorAttached(s0, key)) return;                  // already on: never logged twice
+                if (add.indexOf(key) !== -1) return;                     // de-duplicated within the batch
+                if (key === 'ToggleETCO2') { etco2 = true; logs.push('ETCO2 Connected'); return; }
+                add.push(key);
+                const def = INTERVENTIONS[key];
+                logs.push((def && def.log) || `${key} attached.`);
+            });
+            if (!add.length && etco2 === null) {
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: 'Already attached — nothing to add.', type: 'info', id: Date.now() } });
+                return;
+            }
+            // ONE action for the whole batch: sensor set, durations and capnography together.
+            dispatch({ type: 'ATTACH_SENSORS', payload: { keys: add, etco2: etco2 === null ? undefined : etco2 } });
+            logs.forEach(msg => addLogEntry(msg, 'action'));
+            // Permissive as ever: an unmet expectation is FLAGGED, never blocking.
+            add.forEach(key => {
+                const def = INTERVENTIONS[key];
+                if (!def) return;
+                const missing = getUnmetExpectations(def, cur);
+                if (missing.length) addLogEntry(`${def.label} performed WITHOUT: ${missing.join(', ')}`, 'warning', true, { action: key, label: def.label, missing });
+                creditIntervention(key, cur.scenario);
+            });
+            const labels = add.map(k => (INTERVENTIONS[k] && INTERVENTIONS[k].label) || k).concat(etco2 ? ['Capnography'] : []);
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${labels.join(' + ')} attached`, type: 'success', id: Date.now() } });
+        };
+        const detachSensors = (keys) => {
+            const cur = stateRef.current;
+            const list = (Array.isArray(keys) ? keys : [keys]).map(sensorKeyOf).filter(k => !!k);
+            const s0 = getSensors(cur);
+            const remove = [];
+            list.forEach(key => {
+                if (!isSensorAttached(s0, key)) return;                  // already off: no phantom log
+                if (remove.indexOf(key) === -1) remove.push(key);
+            });
+            if (!remove.length) return;
+            dispatch({ type: 'DETACH_SENSORS', payload: { keys: remove } });
+            remove.forEach(key => {
+                const def = sensorDefFor(key);
+                if (def) addLogEntry(`${def.label} removed \u2014 ${def.reveals} no longer visible to the team.`, 'action');
+                else addLogEntry(`${(INTERVENTIONS[key] && INTERVENTIONS[key].label) || key} removed.`, 'action');
+            });
+            const labels = remove.map(k => (sensorDefFor(k) || INTERVENTIONS[k] || {}).label || k);
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${labels.join(' + ')} DETACHED (press again to re-attach)`, type: 'info', id: Date.now() } });
+        };
         const toggleSensor = (id) => {
             const cur = stateRef.current;
             const def = SENSOR_DEFS.filter(d => d.id === id)[0];
             if (!def) { console.warn(`toggleSensor('${id}') ignored: no such sensor.`); return; }
             if (def.kind === 'poc') { applyIntervention(def.key); return; }
             const on = !!getSensors(cur)[def.id];
-            // Capnography keeps its own long-standing toggle, which already goes both ways and logs.
-            if (def.key === 'ToggleETCO2' || !on) { applyIntervention(def.key); return; }
-            dispatch({ type: 'DETACH_SENSOR', payload: def.key });
-            addLogEntry(`${def.label} removed \u2014 ${def.reveals} no longer visible to the team.`, 'action');
-            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${def.label} DETACHED (press again to re-attach)`, type: 'info', id: Date.now() } });
+            if (on) detachSensors([def.key]); else attachSensors([def.key]);
         };
         // WAVE 8 / FINDING 4. The fast path attaches the STANDARD four and says so. The invasive
         // action is separate and explicitly labelled, because an arterial line, IV access and
         // capnography are deliberate clinical acts, not a default.
-        const attachStandardMonitoring = () => applyIntervention('Obs');
-        const attachInvasiveMonitoring = () => {
-            const s = getSensors(stateRef.current);
-            if (!s.iv) applyIntervention('IV Access');
-            if (!s.art) applyIntervention('ArtLine');
-            if (!s.etco2) applyIntervention('ToggleETCO2');
-        };
+        // WAVE 9: both are single atomic actions.
+        const attachStandardMonitoring = () => attachSensors(['Obs']);
+        const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
         return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
@@ -3964,6 +4129,9 @@
         defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,
         // Wave 8 surface: two-way sensor toggles, the honest fast paths and the derived obstruction.
         toggleSensor, attachStandardMonitoring, attachInvasiveMonitoring,
+        // Wave 9 surface: the atomic batch primitives themselves, so any future multi-sensor button
+        // is one action by construction rather than a sequence of presses.
+        attachSensors, detachSensors,
         getObstruction: () => getObstruction(stateRef.current, stateRef.current.vitals, stateRef.current.scenario) };
     };
     window.useSimulation = useSimulation;

@@ -249,8 +249,14 @@
             const def = (window.SENSOR_DEFS || []).filter(d => d.id === id)[0];
             if (def) applyIntervention(def.key);
         });
-        const attachStandard = sim.attachStandardMonitoring || (() => applyIntervention('Obs'));
-        const attachInvasive = sim.attachInvasiveMonitoring || (() => { applyIntervention('IV Access'); applyIntervention('ArtLine'); applyIntervention('ToggleETCO2'); });
+        // WAVE 9: the fallbacks are ATOMIC too. The old invasive fallback made three sequential
+        // applyIntervention calls inside one click handler, which is precisely the pattern that lost
+        // IV access to React's batching; it now prefers the engine's single-action batch primitive
+        // and only ever falls back to one dispatch.
+        const attachStandard = sim.attachStandardMonitoring || (sim.attachSensors ? (() => sim.attachSensors(['Obs'])) : (() => applyIntervention('Obs')));
+        const attachInvasive = sim.attachInvasiveMonitoring || (sim.attachSensors
+            ? (() => sim.attachSensors(window.INVASIVE_SENSOR_KEYS || ['IV Access', 'ArtLine', 'ToggleETCO2']))
+            : (() => sim.dispatch({ type: 'ATTACH_SENSORS', payload: { keys: ['IV Access', 'ArtLine'], etco2: true } })));
         // WAVE 3 defibrillator + rhythm surface.
         const RG = window.RHYTHMS;
         const changeRhythm = sim.changeRhythm;
