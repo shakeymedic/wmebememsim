@@ -54,16 +54,29 @@
     // Paced: sharp pacing spike followed by a wide, LBBB-like paced complex and
     // discordant T. Previously existed only on the standalone defib — the React monitor
     // had no paced waveform at all, so transcutaneous pacing showed nothing.
+    // WAVE 7: the spike was a gaussian with sigma ~0.004 of a cycle — about 3.5 ms. Both renderers
+    // SAMPLE the waveform once per animation frame (6-16 ms), so more than half of all pacing spikes
+    // were never drawn at all: measured 17 spikes where 35 beats were paced. A pacing spike that is
+    // invisible half the time is the one feature of a paced rhythm a trainee must see, so the spike
+    // now carries a short flat top (~13 ms of cycle) with gaussian shoulders. On screen it is still
+    // a 1-2 px hairline at the 8 s sweep.
     var qrsPaced = function (t) {
-        return g(t, 0.150, 30, 0.000035)                       // pacing spike (very narrow, tall)
+        var spike = Math.abs(t - 0.150) < 0.0075 ? 32 : g(t, 0.150, 32, 0.00004);
+        return spike
             + g(t, 0.205, -30, 0.0018)                         // wide negative paced QRS
             + g(t, 0.300, 10, 0.0030)
             + g(t, 0.470, 11, 0.0140);                         // discordant (positive) T
     };
 
-    // Sawtooth flutter baseline at 2:1 conduction (2 flutter waves per ventricular cycle).
-    var flutterBaseline = function (t) {
-        var fp = (t * 2) % 1;
+    // Sawtooth flutter baseline, one flutter wave per `fp` cycle.
+    // WAVE 7: the atrial sawtooth is NOT a function of the ventricular cycle. Atrial flutter
+    // fibrillates the atria at a fixed ~300/min regardless of how many of those waves the AV node
+    // conducts, so with variable block the sawtooth must keep marching at its own rate while the
+    // QRS complexes fall irregularly on top of it. Previously it was locked to 2 waves per
+    // ventricular cycle, which made the flutter rate change whenever the ventricular rate did
+    // (240/min flutter at HR 120, 300/min at HR 150) and made variable block impossible to draw.
+    var sawtooth = function (fp) {
+        fp = fp - Math.floor(fp);
         if (fp < 0.18) return 4 - fp * 45;
         return -4 + ((fp - 0.18) / 0.82) * 8;
     };
@@ -97,7 +110,9 @@
         // Complete heart block carries the slow ventricular escape only; the dissociated
         // atrial P waves are added in real time so AV dissociation visibly drifts.
         chb:          function (t) { return qrsNarrow(t) + tWave(t); },
-        flutter:      function (t) { return flutterBaseline(t) + qrsNarrow(t) + tWave(t) * 0.35; },
+        // WAVE 7: the sawtooth is now added in REAL TIME at a fixed 300/min (REALTIME.flutter_baseline)
+        // so it is independent of the ventricular rate and survives variable AV block.
+        flutter:      function (t) { return qrsNarrow(t) + tWave(t) * 0.35; },
         // AF has no organised P wave; the fibrillatory baseline is added in real time.
         af:           function (t) { return qrsNarrow(t) + tWave(t) * 0.85; },
         vt:           function (t) { return qrsVentricular(t); },
@@ -138,6 +153,8 @@
         asystole: function () { return (Math.random() - 0.5) * 1.2; },
         // CPR compression artefact at ~110/min.
         cpr: function (absTime) { return Math.sin(absTime * 2 * Math.PI * 1.83) * 28 + (Math.random() - 0.5) * 8; },
+        // Atrial flutter sawtooth at a fixed 300/min (5 Hz), dissociated from the ventricular rate.
+        flutter_baseline: function (absTime) { return sawtooth(absTime * 5); },
         af_baseline: function (absTime) {
             return Math.sin(absTime * 28) * 1.2 + Math.sin(absTime * 47 + 1.1) * 0.7 + (Math.random() - 0.5) * 1.4;
         },
@@ -256,6 +273,119 @@
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: null }
     ];
 
+    // -------------------------------------------------------------------------
+    // 1b. WAVE 7 — PER-BEAT R-R MODULATION (the irregularity model)
+    //
+    // The renderers advance a monotonically increasing BEAT PHASE (see data/components.js and
+    // defib/index.html). The integer part of that phase is the beat index, so irregularity can be
+    // expressed exactly the way it works clinically: as a per-beat multiplier on the R-R interval,
+    // decided once for each beat and never revised. That is what makes AF irregularly IRREGULAR
+    // rather than "regular with a wobbly baseline" (the pre-Wave-7 behaviour: AF measured a 0.3%
+    // R-R coefficient of variation, i.e. metronomic, with only the fibrillatory baseline to hint
+    // at the diagnosis), and it is what lets atrial flutter carry variable AV block.
+    //
+    // The multiplier is a deterministic hash of the beat index, NOT Math.random(), so:
+    //   * the same beat always has the same length however many times it is re-evaluated,
+    //   * nothing depends on frame rate or on how often the component re-renders,
+    //   * verification can assert an exact expected variability.
+    // -------------------------------------------------------------------------
+    function beatHash(beat, salt) {
+        var x = Math.sin((beat + 1) * 12.9898 + (salt || 0) * 78.233) * 43758.5453;
+        return x - Math.floor(x);
+    }
+
+    // Multiplier applied to the NEXT R-R interval for `rhythmId` at beat `beat`.
+    // 1 = perfectly regular. Anything that is supposed to look regular on a real monitor returns
+    // exactly 1 and therefore cannot drift.
+    function beatIntervalFactor(rhythmId, beat) {
+        var id = canonical(rhythmId);
+        var b = Math.floor(beat) || 0;
+        if (id === 'AF') {
+            // Irregularly irregular: a broad spread of intervals PLUS the occasional longer pause,
+            // which is what makes AF recognisable at the bedside. CV lands around 18-22%.
+            var f = 0.70 + 0.60 * beatHash(b, 1);
+            if (beatHash(b, 2) < 0.12) f += 0.35;
+            return f;
+        }
+        if (id === 'Atrial Flutter') {
+            // Variable AV block: predominantly 2:1, with intermittent 3:1 and 4:1 beats. The
+            // sawtooth underneath keeps running at 300/min regardless (REALTIME.flutter_baseline).
+            var h = beatHash(b, 3);
+            if (h < 0.60) return 1;
+            if (h < 0.88) return 1.5;
+            return 2;
+        }
+        if (id === 'Agonal Rhythm') {
+            // Dying heart: wide, slow and grossly irregular.
+            return 0.55 + 0.95 * beatHash(b, 4);
+        }
+        // Everything else — sinus at any rate, SVT, VT, the bundle branch blocks, STEMI,
+        // hyperkalaemia, junctional, paced, PEA and complete heart block (whose VENTRICULAR escape
+        // is regular; its irregularity is P-QRS dissociation, added in real time) — is regular.
+        // Mobitz II is regular between beats and irregular because QRS complexes are DROPPED
+        // (see `droppedBeat` below), which is the correct mechanism.
+        return 1;
+    }
+
+    // Mobitz II drops roughly every 4th conducted beat: the P wave arrives on time, the QRS never
+    // comes, and the R-R across the dropped beat is double. Keyed to the BEAT INDEX, so it is
+    // correct at every heart rate. (Before Wave 7 it was keyed to `Math.floor(absTime / 1.2)` — a
+    // hardcoded 1.2 s that only lined up with the cardiac cycle at exactly 50/min, and at any
+    // other rate chopped the middle out of a complex.)
+    function droppedBeat(rhythmId, beat) {
+        return canonical(rhythmId) === '2nd Deg Heart Block' && (Math.floor(beat) % 4) === 3;
+    }
+
+    // -------------------------------------------------------------------------
+    // 1c. WAVE 7 — CAPNOGRAPHY
+    // A real capnogram is a trapezoid, not a sine wave. Returned in kPa so the plateau can be
+    // asserted against the numeric ETCO2 the monitor displays.
+    //   phase 0.00-0.06  II   steep expiratory upstroke
+    //   phase 0.06-0.62  III  alveolar plateau, slight positive slope, ENDING at ETCO2
+    //   phase 0.62-0.72  0    rapid inspiratory downstroke
+    //   phase 0.72-1.00  I    inspiratory baseline at zero
+    // Patterns: 'normal' | 'bronchospastic' (shark fin) | 'rebreathing' (baseline fails to reach
+    // zero) | 'curare' (curare cleft in the plateau).
+    // -------------------------------------------------------------------------
+    function capnogram(phase, etco2Kpa, pattern) {
+        var E = Number(etco2Kpa);
+        if (!isFinite(E) || E <= 0) return 0;
+        var t = phase - Math.floor(phase);
+        var floorKpa = pattern === 'rebreathing' ? E * 0.14 : 0;   // failure to return to zero
+        var y;
+
+        if (pattern === 'bronchospastic') {
+            // SHARK FIN: the sharp upstroke is lost and phase III never flattens — it climbs all
+            // the way to the end of expiration, so ETCO2 is only reached at the very last moment.
+            if (t < 0.30) {
+                y = floorKpa + (E * 0.62) * Math.pow(t / 0.30, 0.75);
+            } else if (t < 0.66) {
+                var x = (t - 0.30) / 0.36;
+                y = floorKpa + E * 0.62 + (E - E * 0.62) * Math.pow(x, 1.25);
+            } else if (t < 0.78) {
+                y = floorKpa + E * (1 - (t - 0.66) / 0.12);
+            } else {
+                y = floorKpa;
+            }
+            return Math.max(0, y);
+        }
+
+        if (t < 0.06) {                                    // phase II — steep upstroke
+            y = floorKpa + (E * 0.90 - floorKpa) * Math.pow(t / 0.06, 0.65);
+        } else if (t < 0.62) {                             // phase III — alveolar plateau
+            var p = (t - 0.06) / 0.56;
+            y = E * 0.90 + E * 0.10 * p;                   // reaches exactly E at the end
+            if (pattern === 'curare' && t > 0.30 && t < 0.40) {
+                y -= E * 0.28 * Math.sin((t - 0.30) / 0.10 * Math.PI);   // curare cleft
+            }
+        } else if (t < 0.72) {                             // phase 0 — inspiratory downstroke
+            y = floorKpa + (E - floorKpa) * (1 - (t - 0.62) / 0.10);
+        } else {                                           // phase I — inspiratory baseline
+            y = floorKpa;
+        }
+        return Math.max(0, y);
+    }
+
     var BY_ID = {};
     var ALIAS = {};
     R.forEach(function (r) {
@@ -338,10 +468,13 @@
         var y = fn ? fn(cyclePhase % 1) : WAVEFORMS.sinus(cyclePhase % 1);
 
         if (r.waveform === 'af') y += REALTIME.af_baseline(absTime);
+        if (r.waveform === 'flutter') y += REALTIME.flutter_baseline(absTime);
         if (r.waveform === 'chb') y += REALTIME.chb_p(absTime);
         if (r.waveform === 'mobitz2') {
-            // Drop roughly every 4th ventricular beat: remove the QRS+T, keep the P.
-            var beat = Math.floor(absTime / 1.2);
+            // Drop roughly every 4th ventricular beat: remove the QRS+T, keep the P. The beat index
+            // comes from the caller's PHASE ACCUMULATOR (opts.beat) so the drop is rate-correct;
+            // the absTime fallback preserves behaviour for any caller that has not been updated.
+            var beat = (opts.beat !== undefined && opts.beat !== null) ? Math.floor(opts.beat) : Math.floor(absTime / 1.2);
             if (beat % 4 === 3) y = pWave(cyclePhase % 1);
         }
         return y + (noise === 0 ? 0 : REALTIME.baselineNoise());
@@ -488,6 +621,14 @@
         waveforms: WAVEFORMS,
         realtime: REALTIME,
         ecgValue: ecgValue,
+        // WAVE 7 — shared by the React monitor AND the standalone defibrillator.
+        beatIntervalFactor: beatIntervalFactor,
+        droppedBeat: droppedBeat,
+        beatHash: beatHash,
+        capnogram: capnogram,
+        // Rhythms whose R-R is MEANT to vary. Verification reads this list rather than keeping its
+        // own copy, so "which rhythms are irregular" has one definition like everything else here.
+        IRREGULAR: ['AF', 'Atrial Flutter', '2nd Deg Heart Block', 'Agonal Rhythm'],
         ADULT_ENERGY_STEPS: ADULT_ENERGY_STEPS,
         ADULT_DEFAULT_ENERGY: ADULT_DEFAULT_ENERGY,
         recommendedEnergy: recommendedEnergy,

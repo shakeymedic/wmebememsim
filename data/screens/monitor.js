@@ -315,8 +315,22 @@
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
-        const hasMonitoring = activeInterventions.has('Obs'); 
+        // WAVE 7 / ITEM 4: each sensor gates exactly its own value/trace. Derived from the shared
+        // engine helper (window.getSensors) off activeInterventions, which is already on the wire, so
+        // the student monitor needs no new sync key and can never disagree with the controller.
+        // 'Obs' (Attach Monitoring) still implies every continuous sensor, so all 254 premade
+        // scenarios, resumed sessions and Quick Sim behave exactly as before.
+        const sensors = window.getSensors ? window.getSensors(state) : null;
+        const hasMonitoring = sensors ? sensors.any : activeInterventions.has('Obs');
+        const sEcg = sensors ? sensors.ecg : hasMonitoring;
+        const sSpo2 = sensors ? sensors.spo2 : hasMonitoring;
+        const sNibp = sensors ? sensors.nibp : hasMonitoring;
+        const sTemp = sensors ? sensors.temp : hasMonitoring;
         const hasArtLine = activeInterventions.has('ArtLine');
+        // Point-of-care readings: revealed AT THE MOMENT THEY WERE TAKEN, with a timestamp, rather
+        // than tracking live (the clinically important distinction, and what NIBP already does).
+        const poc = state.pocReadings || {};
+        const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
         
         const [audioEnabled, setAudioEnabled] = useState(false);
         // The overlay must be able to come BACK: iOS and tab-backgrounding re-suspend the
@@ -570,7 +584,12 @@
                 <div className={`flex-grow flex flex-col p-2 md:p-3 gap-2 h-full relative z-10 ${isPaeds && showWetflag && scenario?.wetflag ? 'md:pr-52' : ''}`}>
                     <div className="flex-grow relative border border-slate-800 rounded overflow-hidden flex flex-col min-h-0 bg-black">
                         {hasMonitoring ? (
-                            <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={false} showEtco2={etco2Enabled} showTraces={true} showArt={hasArtLine} isCPR={cprInProgress} co2Pathology={etco2Pathology || 'normal'} className="h-full" rhythmLabel="ECG" />
+                            <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
+                                        isPaused={false} showTraces={true}
+                                        showEcg={sEcg} showPleth={sSpo2} showResp={sEcg}
+                                        showEtco2={etco2Enabled} showArt={hasArtLine}
+                                        isCPR={cprInProgress} co2Pathology={etco2Pathology || 'normal'}
+                                        ventilating={capnoVentilating} className="h-full" rhythmLabel="ECG" />
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>
                         )}
@@ -582,11 +601,11 @@
                     </div>
 
                     <div className={`flex-none grid grid-cols-2 ${getGridCols()} gap-2 h-[25vh] md:h-[28vh]`}>
-                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} />
                         
                         <div className="relative h-full">
-                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={hasMonitoring} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
-                            {hasMonitoring && (
+                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={sNibp} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
+                            {sNibp && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
                                     <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
                                     <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
@@ -594,16 +613,16 @@
                             )}
                         </div>
 
-                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={sSpo2} isMonitor={true} hideTrends={true} />
 
                         {hasArtLine && (
                             <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
                         )}
 
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg} isMonitor={true} hideTrends={true} />
 
                         {etco2Enabled && (
-                            <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={hasMonitoring} isMonitor={true} hideTrends={true} />
+                            <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={etco2Enabled} isMonitor={true} hideTrends={true} />
                         )}
                     </div>
 
@@ -611,26 +630,41 @@
                         continuous monitored channels, so they get their own slim strip instead of
                         shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
                         (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
+                    {/* B2 / WAVE 7 — POINT-OF-CARE STRIP.
+                        Temp is a CONTINUOUS channel: it needs its probe attached and then tracks live.
+                        Glucose, pH and K+ are INTERMITTENT: they show the value from the moment the
+                        sample was taken, with its timestamp, and do NOT follow the live model. An
+                        unattached sensor / untaken sample reads NO SENSOR / NO SAMPLE in the same
+                        styling as the main trace, so the team can see what is missing. */}
                     <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
-                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.temp) && (vitals.temp < 35 || vitals.temp >= 38.5) ? 'border-amber-600' : 'border-slate-800'}`}>
-                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">Temp</span>
-                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.temp) && (vitals.temp < 35 || vitals.temp >= 38.5) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.temp) ? vitals.temp.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">°C</span></span>
-                        </div>
-                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.bm) && (vitals.bm < 4 || vitals.bm > 11) ? 'border-amber-600' : 'border-slate-800'}`}>
-                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">Glucose</span>
-                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.bm) && (vitals.bm < 4 || vitals.bm > 11) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">mmol/L</span></span>
-                        </div>
-                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.ph) && (vitals.ph < 7.30 || vitals.ph > 7.50) ? 'border-amber-600' : 'border-slate-800'}`}>
-                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">pH</span>
-                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.ph) && (vitals.ph < 7.30 || vitals.ph > 7.50) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'}</span>
-                        </div>
-                        {/* WAVE 4a / E8: serum potassium. Hyperkalaemia and DKA previously had NO
-                            measurable endpoint anywhere in the app — K+ existed only inside a log
-                            string, despite calcium/insulin-dextrose/salbutamol all being available. */}
-                        <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${Number.isFinite(vitals.k) && (vitals.k < 3.0 || vitals.k > 5.5) ? 'border-amber-600' : 'border-slate-800'}`}>
-                            <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">K+</span>
-                            <span className={`font-mono font-bold text-xl md:text-3xl ${Number.isFinite(vitals.k) && (vitals.k < 3.0 || vitals.k > 5.5) ? 'text-amber-400' : 'text-sky-300'}`}>{Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}<span className="text-[10px] md:text-xs text-slate-500 ml-1">mmol/L</span></span>
-                        </div>
+                        {(() => {
+                            const tempOn = sTemp && Number.isFinite(vitals.temp);
+                            const bm = poc.bm || null;
+                            const vbg = poc.vbg || null;
+                            const cell = (label, value, unit, sub, alert) => (
+                                <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${alert ? 'border-amber-600' : 'border-slate-800'}`}>
+                                    <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[9px] text-slate-500 normal-case tracking-normal">{sub}</span> : null}</span>
+                                    <span className={`font-mono font-bold text-xl md:text-3xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[10px] md:text-xs text-slate-500 ml-1">{unit}</span> : null}</span>
+                                </div>
+                            );
+                            return (
+                                <>
+                                    {cell('Temp', tempOn ? vitals.temp.toFixed(1) : null, '\u00b0C', sTemp ? null : 'no probe',
+                                          tempOn && (vitals.temp < 35 || vitals.temp >= 38.5))}
+                                    {cell('Glucose', (bm && Number.isFinite(bm.value)) ? bm.value.toFixed(1) : null, 'mmol/L',
+                                          bm ? bm.clock : 'no sample',
+                                          !!(bm && Number.isFinite(bm.value) && (bm.value < 4 || bm.value > 11)))}
+                                    {cell('pH', (vbg && Number.isFinite(vbg.value)) ? vbg.value.toFixed(2) : null, '',
+                                          vbg ? vbg.clock : 'no gas',
+                                          !!(vbg && Number.isFinite(vbg.value) && (vbg.value < 7.30 || vbg.value > 7.50)))}
+                                    {/* WAVE 4a / E8: serum potassium — hyperkalaemia and DKA finally have a
+                                        measurable endpoint. Reported from the VBG sample, like the real thing. */}
+                                    {cell('K+', (vbg && Number.isFinite(vbg.value2)) ? vbg.value2.toFixed(1) : null, 'mmol/L',
+                                          vbg ? vbg.clock : 'no gas',
+                                          !!(vbg && Number.isFinite(vbg.value2) && (vbg.value2 < 3.0 || vbg.value2 > 5.5)))}
+                                </>
+                            );
+                        })()}
                     </div>
 
                     <div className="flex-none h-14 md:h-16 bg-slate-950 border border-slate-800 rounded flex overflow-hidden shadow-lg mt-1">

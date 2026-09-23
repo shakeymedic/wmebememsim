@@ -87,6 +87,13 @@
         lastUpdate: 0, isOffline: false, showWetflag: true,
         // WAVE 4a / E8: mirrored top-level serum K+ (the authoritative copy lives in vitals.k).
         potassium: 4.2,
+        // ---- WAVE 7 / ITEM 4: INTERMITTENT (POINT-OF-CARE) READINGS ------------------
+        // Continuous monitoring (ECG, SpO2, capnography, art line, temperature probe) reveals a
+        // LIVE value. A point-of-care check reveals the value AT THE MOMENT IT WAS TAKEN and must
+        // then stop tracking, exactly as NIBP already does with its "LAST: 09:47" stamp. Each entry
+        // is { value, at (sim seconds), clock (wall-clock string) } — primitives only, so the whole
+        // object passes sanitizeForRealtimeDatabase untouched.
+        pocReadings: {},
         // ---- WAVE 3 -------------------------------------------------------------------
         // A3: the assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
         // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
@@ -193,6 +200,69 @@
     // paralysis model so "paralysed but unbagged" desaturates and "paralysed and ventilated" does not.
     const VENTILATING = ['Bagging', 'RSI', 'i-gel', 'NIV', 'CPAP', 'FONA'];
     const isVentilated = (activeInt) => !!activeInt && VENTILATING.some(k => activeInt.has(k));
+
+    // =====================================================================================
+    // WAVE 7 / ITEM 4 — INDIVIDUALLY ATTACHABLE MONITORING
+    //
+    // One helper, derived from the SAME activeInterventions set that is already logged, already
+    // flagged and already synced to the student monitor. No parallel state, nothing new on the
+    // wire, and no scenario data changes: a scenario still starts with nothing attached, which is
+    // the existing designed default ("NO SENSOR DETECTED").
+    //
+    // 'Obs' (Attach Monitoring) remains the ONE-CLICK FAST PATH and implies every continuous
+    // sensor, so existing muscle memory, all 254 premade scenarios and the Quick Sim seed behave
+    // exactly as before. The individual keys are additive.
+    //
+    // PERMISSIVE PHILOSOPHY UNCHANGED: sensors gate what the MONITOR DISPLAYS. They are never
+    // prerequisites. Giving a drug with no IV access still proceeds and still raises the existing
+    // amber deviation flag via `expects: ['IV Access']`.
+    // =====================================================================================
+    const SENSOR_DEFS = [
+        { id: 'ecg',   key: 'MonECG',   label: 'ECG electrodes',  reveals: 'ECG trace + HR',        kind: 'continuous' },
+        { id: 'spo2',  key: 'MonSpO2',  label: 'SpO2 probe',      reveals: 'pleth + SpO2',          kind: 'continuous' },
+        { id: 'nibp',  key: 'MonNIBP',  label: 'NIBP cuff',       reveals: 'blood pressure',        kind: 'continuous' },
+        { id: 'etco2', key: 'ToggleETCO2', label: 'Capnography',  reveals: 'capnogram + ETCO2',     kind: 'continuous' },
+        { id: 'temp',  key: 'MonTemp',  label: 'Temp probe',      reveals: 'temperature',           kind: 'continuous' },
+        { id: 'art',   key: 'ArtLine',  label: 'Arterial line',   reveals: 'continuous ABP',        kind: 'continuous' },
+        { id: 'iv',    key: 'IV Access', label: 'IV / IO access', reveals: 'route for drugs',       kind: 'access' },
+        { id: 'bm',    key: 'CheckGlucose', label: 'POC glucose', reveals: 'glucose (one-off)',     kind: 'poc', poc: 'bm' },
+        { id: 'vbg',   key: 'CheckVBG', label: 'POC VBG',         reveals: 'pH + K+ (one-off)',     kind: 'poc', poc: 'vbg' }
+    ];
+    // Attaching everything = 'Obs' plus the individual continuous keys, so the monitor is fully
+    // populated in a single action.
+    const ATTACH_ALL_KEYS = ['Obs', 'MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp'];
+
+    const getSensors = (coreState) => {
+        const active = (coreState && coreState.activeInterventions) || new Set();
+        const all = active.has && active.has('Obs');
+        const has = (k) => !!(active.has && active.has(k));
+        return {
+            ecg: !!all || has('MonECG'),
+            spo2: !!all || has('MonSpO2'),
+            nibp: !!all || has('MonNIBP'),
+            temp: !!all || has('MonTemp'),
+            // Capnography keeps its own long-standing toggle rather than gaining a second switch.
+            etco2: !!(coreState && coreState.etco2Enabled),
+            art: has('ArtLine'),
+            iv: has('IV Access') || has('IO Access'),
+            any: !!all || has('MonECG') || has('MonSpO2') || has('MonNIBP') || has('MonTemp') ||
+                 has('ArtLine') || !!(coreState && coreState.etco2Enabled)
+        };
+    };
+    window.getSensors = getSensors;
+    window.SENSOR_DEFS = SENSOR_DEFS;
+    window.ATTACH_ALL_KEYS = ATTACH_ALL_KEYS;
+
+    // Is the patient moving gas? Reads the EXISTING airway/paralysis model rather than inventing a
+    // parallel one: a respiratory rate the monitor can see, or a device that delivers breaths.
+    // Oesophageal intubation / disconnection / apnoea / paralysis-without-ventilation therefore all
+    // resolve to "not ventilating" for free, and capnography correctly shows NO waveform.
+    const isCapnoVentilating = (coreState, vitals) => {
+        const rr = vitals && Number.isFinite(vitals.rr) ? vitals.rr : 0;
+        if (rr > 0) return true;
+        return isVentilated(coreState && coreState.activeInterventions) || !!(coreState && coreState.cprInProgress);
+    };
+    window.isCapnoVentilating = isCapnoVentilating;
     const VENTILATOR_RATE = 14;
 
     // Paralysis only bites after the drug's onset time, and stops at the end of its duration.
@@ -1600,7 +1670,7 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -1683,6 +1753,18 @@
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
             case 'SET_ETCO2_PATHOLOGY': return { ...state, etco2Pathology: action.payload };
+            // WAVE 7 / ITEM 4: a point-of-care check. Records the value AT THIS MOMENT with both a
+            // sim-clock offset and a wall-clock stamp, so the monitor can render it as a reading
+            // ("GLUCOSE 4.1 @ 09:47") rather than a live channel.
+            case 'RECORD_POC': {
+                const p = action.payload || {};
+                if (!p.key) return state;
+                const entry = { at: Number.isFinite(p.at) ? p.at : state.time,
+                                clock: p.clock || new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                                value: Number.isFinite(p.value) ? p.value : null,
+                                value2: Number.isFinite(p.value2) ? p.value2 : null };
+                return { ...state, pocReadings: { ...(state.pocReadings || {}), [p.key]: entry } };
+            }
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
             case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
             case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
@@ -2046,7 +2128,13 @@
                     // WAVE 4a / E8. K+ rides inside `vitals` like temp/bm/ph AND is published as its
                     // own TOP-LEVEL key, because the write diff is shallow and per-key: a lab value
                     // the student monitor renders must never be undefined or NaN on the wire.
-                    potassium: (cur.vitals && Number.isFinite(cur.vitals.k)) ? cur.vitals.k : DEFAULT_VITALS.k
+                    potassium: (cur.vitals && Number.isFinite(cur.vitals.k)) ? cur.vitals.k : DEFAULT_VITALS.k,
+                    // WAVE 7 / ITEM 4. Which sensors are attached already rides on the wire inside
+                    // `activeInterventions` (the monitor derives them with getSensors), so nothing new
+                    // is needed for those. Point-of-care readings DO need their own top-level key:
+                    // primitives only, never undefined, so sanitizeForRealtimeDatabase passes it
+                    // through untouched. Assessor-only conversion announcements are still absent.
+                    pocReadings: cur.pocReadings || {}
                 };
                 const sanitised = sanitizeForRealtimeDatabase(payload);
                 const safePayload = sanitised.value || {};
@@ -2482,6 +2570,7 @@
             }
 
             if (key === 'ToggleETCO2') { dispatch({ type: 'TOGGLE_ETCO2' }); addLogEntry(cur.etco2Enabled ? 'ETCO2 Disconnected' : 'ETCO2 Connected', 'action'); return; }
+
             const action = INTERVENTIONS[key];
             if (!action) {
                 console.warn(`Unknown intervention key '${key}' — no definition in INTERVENTIONS.`);
@@ -2500,6 +2589,25 @@
                 const missingText = missingLabels.join(', ');
                 addLogEntry(`${action.label} performed WITHOUT: ${missingText}`, 'warning', true, { action: key, label: action.label, missing: missingLabels });
                 dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — missing ${missingText} (proceeding)`, type: 'warning', id: Date.now() } });
+            }
+
+            // WAVE 7 / ITEM 4 — POINT-OF-CARE CHECKS. These are INTERMITTENT: they publish the value
+            // as it is right now, timestamped, and then stop tracking. Repeating the check takes a
+            // fresh sample. (A continuous sensor, by contrast, keeps updating.) Fully permissive: a
+            // VBG with no IV access has already raised its amber flag above and still proceeds.
+            if (key === 'CheckGlucose' || key === 'CheckVBG') {
+                const v = cur.vitals || {};
+                const clock = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                if (key === 'CheckGlucose') {
+                    dispatch({ type: 'RECORD_POC', payload: { key: 'bm', value: Number.isFinite(v.bm) ? v.bm : null, at: cur.time, clock } });
+                    addLogEntry(`Capillary glucose ${Number.isFinite(v.bm) ? v.bm.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
+                } else {
+                    // The VBG reports pH and potassium at the moment the sample was taken.
+                    dispatch({ type: 'RECORD_POC', payload: { key: 'vbg', value: Number.isFinite(v.ph) ? v.ph : null, value2: Number.isFinite(v.k) ? v.k : null, at: cur.time, clock } });
+                    addLogEntry(`VBG: pH ${Number.isFinite(v.ph) ? v.ph.toFixed(2) : '--'}, K+ ${Number.isFinite(v.k) ? v.k.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
+                }
+                // Execution deliberately CONTINUES into the normal intervention path below, so the
+                // check is counted and logged by exactly the same machinery as everything else.
             }
 
             const isActive = cur.activeInterventions.has(key);

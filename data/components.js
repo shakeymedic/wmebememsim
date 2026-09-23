@@ -2,7 +2,7 @@
     const { useState, useEffect, useRef } = React;
 
     const BUFFER_SIZE = 1000;
-    const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), co2: { normal: new Float32Array(BUFFER_SIZE), bronchospastic: new Float32Array(BUFFER_SIZE) }, art: new Float32Array(BUFFER_SIZE) };
+    const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), art: new Float32Array(BUFFER_SIZE) };
 
     // --- WAVE 3: waveforms now come from THE SHARED RHYTHM REGISTRY (data/rhythms.js) ---
     // Every cycle-normalised morphology lives in window.RHYTHMS.waveforms and is shared verbatim
@@ -30,14 +30,11 @@
         
         precomputed.resp[i] = Math.sin(t * Math.PI * 2) * 15;
         
-        let co2N = 0;
-        let co2B = 0;
-        if (t < 0.1) { co2N = (t / 0.1) * 20; co2B = (t / 0.1) * 20; }
-        else if (t < 0.5) { co2N = 20; co2B = 20 + ((t - 0.1) / 0.4) * 5; }
-        else if (t < 0.6) { co2N = 20 - ((t - 0.5) / 0.1) * 20; co2B = 20 - ((t - 0.5) / 0.1) * 20; }
-        precomputed.co2.normal[i] = co2N;
-        precomputed.co2.bronchospastic[i] = co2B;
-        
+        // WAVE 7: the old precomputed capnography buffers (a 20-unit trapezoid with no relation to
+        // the numeric ETCO2 and no correct phase III) are GONE. Capnography is now generated from
+        // RHYTHMS.capnogram(phase, kPa, pattern) at draw time so its amplitude equals the displayed
+        // ETCO2 and abnormal patterns (shark fin, rebreathing, curare cleft) are expressible.
+
         // --- Arterial line (radial) ---
         // Anchored to ECG cycle: R wave at t≈0.205. Mechanical pulse arrives ~210 ms later
         // at the radial artery (peak at t≈0.42 of the cardiac cycle at 60 bpm).
@@ -261,42 +258,65 @@
         </div>
     );
 
-    const ECGMonitor = ({ rhythmType, hr, rr, spO2, isPaused, showTraces, showEtco2, showArt, co2Pathology = 'normal', isCPR = false, className = '', rhythmLabel, showSyncMarkers = false }) => {
+    // =========================================================================================
+    // WAVE 7 — ECGMonitor
+    //
+    // ROOT CAUSE OF THE REPORTED "ECG LOOKS IRREGULAR WHILE THE RATE RAMPS":
+    // every trace derived its cycle position from ABSOLUTE animation time multiplied by the
+    // CURRENT instantaneous rate — `const cycleT = (time * ecgFreq) % 1;`, with
+    // `ecgFreq = live.hr / 60`. With a static HR that is fine. The moment the HR changes, the
+    // WHOLE history is retroactively reinterpreted at the new rate: at t = 20 s, HR 75 puts the
+    // cycle at phase 0.00 and HR 76 puts it at 0.33. Measured on the real draw loop, a
+    // 75 -> 130 bpm ramp over 30 s produced a single-frame phase jump of up to 0.505 cycle and an
+    // R-R coefficient of variation of 41.8% (0.4% at a static rate) with 13 of 51 intervals
+    // getting LONGER while the rate rose. Sinus rhythm looked irregular because it WAS being
+    // drawn irregular. The pleth (28.2% CV) and the resp trace (36.9% CV through an RR ramp) had
+    // exactly the same defect.
+    //
+    // THE FIX: PHASE ACCUMULATORS. `ecgPhase` and `respPhase` increase monotonically and are
+    // advanced each frame by `deltaTime * currentRate`, so a beat that has been drawn can never
+    // move and only the spacing of FUTURE beats responds to a rate change — which is what a real
+    // monitor does. The integer part of `ecgPhase` is the beat index, which is also what makes
+    // per-beat irregularity (AF, flutter with variable block, Mobitz II dropped beats) expressible
+    // and stable: see RHYTHMS.beatIntervalFactor / RHYTHMS.droppedBeat.
+    //
+    // ALSO WAVE 7: PER-TRACE TIME BASES. Real monitors run capnography far slower than the ECG
+    // (~6.25-12.5 mm/s vs 25 mm/s) so several breaths are visible at once. Each trace is now a
+    // LANE with its own sweep duration and its own sweep cursor: ECG/pleth/art/resp keep the 8 s
+    // sweep, CO2 sweeps 30 s. Phase accumulation is completely independent of sweep speed, so a
+    // slower time base cannot reintroduce the phase defect.
+    // =========================================================================================
+    const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 30 };
+
+    const ECGMonitor = ({ rhythmType, hr, rr, spO2, etco2, isPaused, showTraces, showEtco2, showArt,
+                          co2Pathology = 'normal', ventilating = true, isCPR = false, className = '',
+                          rhythmLabel, showSyncMarkers = false,
+                          // WAVE 7 / ITEM 4: individually attachable sensors. Each trace can now be
+                          // gated on its own sensor instead of one all-or-nothing flag. They default
+                          // to the legacy behaviour (`showTraces` drives pleth + resp) so every
+                          // existing call site keeps working unchanged.
+                          showEcg = true, showPleth, showResp }) => {
         const canvasRef = useRef(null);
         const [width, setWidth] = useState(0);
 
+        const plethOn = showPleth === undefined ? !!showTraces : !!showPleth;
+        const respOn = showResp === undefined ? !!showTraces : !!showResp;
+        const artOn = !!showTraces && !!showArt;
+        const co2On = !!showTraces && !!showEtco2;
+
         // Keep frequently-changing values in refs so vitals updates don't tear down
-        // and restart the animation loop (which would reset xPos and leave stale
+        // and restart the animation loop (which would reset the sweep cursors and leave stale
         // trace to the right of the sweep).
-        const liveRef = useRef({ rhythmType, hr, rr, spO2, co2Pathology, isCPR, showSyncMarkers });
-        liveRef.current = { rhythmType, hr, rr, spO2, co2Pathology, isCPR, showSyncMarkers };
+        const liveRef = useRef({ rhythmType, hr, rr, spO2, etco2, co2Pathology, ventilating, isCPR, showSyncMarkers });
+        liveRef.current = { rhythmType, hr, rr, spO2, etco2, co2Pathology, ventilating, isCPR, showSyncMarkers };
 
-        // Rhythm resolution and waveform evaluation are delegated ENTIRELY to the registry.
-        // There is no local alias table and no local fallback-to-sinus any more: an unknown
-        // rhythm is warned about once by RHYTHMS.canonical() rather than silently drawn normal.
-        const getECGValue = (t, type, cpr, absTime = 0) => {
-            if (cpr) return RG.realtime.cpr(absTime);
-
-            const id = RG.canonical(type);
-            const rt = RG.realtimeFor(id);
-            if (rt && RG.realtime[rt]) return RG.realtime[rt](absTime);
-
-            const wf = RG.waveformFor(id);
-            const buf = precomputed.ecg[wf];
-            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
-            let y = buf ? buf[idx] : precomputed.ecg[RG.waveforms.sinus ? 'sinus' : wf][idx];
-
-            // Components that are dissociated from (or independent of) the ventricular cycle are
-            // added in real time so they visibly drift across the strip rather than being frozen
-            // into the precomputed buffer.
-            if (wf === 'af') y += RG.realtime.af_baseline(absTime);
-            if (wf === 'chb') y += RG.realtime.chb_p(absTime);
-            if (wf === 'mobitz2') {
-                const beat = Math.floor(absTime / 1.2);
-                if (beat % 4 === 3) y = RG.waveforms.first_degree((t % 1)) - RG.waveforms.sinus((t % 1)) + RG.waveforms.sinus(0.10);
-            }
-            return y + RG.realtime.baselineNoise();
-        };
+        // Rhythm resolution and waveform evaluation are delegated ENTIRELY to the registry
+        // (data/rhythms.js). WAVE 7 removed the last of the duplicated evaluation logic that used
+        // to live here — including a local Mobitz II branch that keyed the dropped beat to
+        // `Math.floor(absTime / 1.2)` and produced a DIFFERENT dropped complex from the registry's.
+        // `beat` is the beat index from the phase accumulator, so the drop is correct at any rate.
+        const getECGValue = (cyclePhase, type, cpr, absTime = 0, beat = 0) =>
+            RG.ecgValue(cyclePhase, absTime, type, { cpr, beat });
 
         // R-wave sync markers for synchronised cardioversion (C6). The registry knows where the R
         // wave sits in the cycle for every organised waveform, so the marker is drawn at the same
@@ -307,22 +327,17 @@
 
         const getSPO2Value = (t, sat) => {
             if (sat < 10) return 0;
-            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.spo2[idx];
         };
 
         const getRespValue = (t) => {
-            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.resp[idx];
         };
 
-        const getCO2Value = (t, pathology) => {
-            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.co2[pathology] ? precomputed.co2[pathology][idx] : precomputed.co2.normal[idx];
-        };
-
         const getArtValue = (t) => {
-            const idx = Math.floor(t * BUFFER_SIZE) % BUFFER_SIZE;
+            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.art[idx];
         };
 
@@ -332,12 +347,19 @@
 
             const ctx = canvas.getContext('2d');
             let animationFrameId;
-            let time = 0;
-            let xPos = 0;
+            let time = 0;            // absolute animation seconds — chaotic (VF) and dissociated
+                                     // (AF baseline, CHB P waves, flutter sawtooth) components only
             let lastTs = null;
-            const SWEEP_SECONDS = 8; // real-monitor sweep: ~8s per full canvas width
 
-            let lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null };
+            // ---- PHASE ACCUMULATORS (the Wave 7 fix). Monotonically increasing, never recomputed
+            // from absolute time, so past beats are immutable.
+            let ecgPhase = 0;        // cardiac cycles since mount; Math.floor() is the beat index
+            let respPhase = 0;       // respiratory cycles since mount
+
+            // ---- per-lane sweep cursors. Each trace sweeps at its own speed, so they must not
+            // share an x position or a lastY.
+            const lanes = {};
+            const laneState = (key) => lanes[key] || (lanes[key] = { x: 0, lastY: null });
 
             const render = (ts) => {
                 if (!canvas.parentElement) return;
@@ -349,6 +371,10 @@
                     setWidth(newWidth);
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, newWidth, newHeight);
+                    // WAVE 7 / resizable controller panel: a resize invalidates every sweep cursor.
+                    // Without this, a cursor left beyond the new width drew nothing until it wrapped
+                    // and a stale lastY drew one long diagonal across the strip.
+                    Object.keys(lanes).forEach(k => { lanes[k].x = Math.min(lanes[k].x, Math.max(0, newWidth - 1)); lanes[k].lastY = null; });
                 }
 
                 if (isPaused) return;
@@ -357,32 +383,52 @@
                 if (lastTs === null) { lastTs = ts; animationFrameId = requestAnimationFrame(render); return; }
                 const elapsed = Math.min((ts - lastTs) / 1000, 0.05); // seconds, capped to handle tab blur
                 lastTs = ts;
-                const speed = (canvas.width / SWEEP_SECONDS) * elapsed;
 
                 const live = liveRef.current;
+                const W = canvas.width, Hgt = canvas.height;
 
-                ctx.fillStyle = 'rgba(0,0,0,1)';
-                ctx.fillRect(xPos, 0, 12, canvas.height);
+                // -------- trace layout: one lane per enabled trace, top to bottom
+                const laneKeys = [];
+                if (showEcg) laneKeys.push('ecg');
+                if (plethOn) laneKeys.push('pleth');
+                if (artOn) laneKeys.push('art');
+                if (respOn) laneKeys.push('resp');
+                if (co2On) laneKeys.push('co2');
+                const numTraces = Math.max(1, laneKeys.length);
+                const traceHeight = Hgt / numTraces;
+                const laneIdx = {};
+                laneKeys.forEach((k, i) => { laneIdx[k] = i; });
 
-                let numTraces = 1;
-                if (showTraces) {
-                    numTraces = 3;
-                    if (showArt) numTraces++;
-                    if (showEtco2) numTraces++;
-                }
-                const traceHeight = canvas.height / numTraces;
-                let traceIdx = 0;
-
-                const getBaseY = () => {
-                    const y = traceHeight * (traceIdx + 0.5);
-                    traceIdx++;
-                    return y;
+                // Draws one segment of one lane, advancing that lane's own cursor.
+                // `colour` is set immediately before the stroke so a recording context can attribute
+                // each stroke to its trace.
+                const drawLane = (key, colour, y) => {
+                    const st = laneState(key);
+                    const sweep = SWEEP_SECONDS[key] || 8;
+                    const speed = (W / sweep) * elapsed;
+                    const top = traceHeight * laneIdx[key];
+                    // erase bar ahead of this lane's cursor, inside this lane only
+                    ctx.fillStyle = 'rgba(0,0,0,1)';
+                    ctx.fillRect(st.x, top, Math.max(3, (W / sweep) * 0.12), traceHeight);
+                    ctx.strokeStyle = colour;
+                    ctx.lineWidth = 2;
+                    ctx.lineJoin = 'round';
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(st.x - speed, st.lastY !== null ? st.lastY : y);
+                    ctx.lineTo(st.x, y);
+                    ctx.stroke();
+                    st.lastY = y;
+                    st.x += speed;
+                    if (st.x >= W) { st.x -= W; st.lastY = null; }  // no wrap-around artefact
+                    return st;
                 };
 
-                // Rate selection is registry-driven. A pulseless ORGANISED rhythm displays HR 0 but
-                // still has electrical activity, so it must be drawn at a rhythm-appropriate
-                // intrinsic rate instead of silently defaulting to 60/min (PEA previously drew a
-                // perfusing-looking trace at whatever rate the numbers happened to hold).
+                // -------- RATE SELECTION (registry-driven).
+                // A pulseless ORGANISED rhythm displays HR 0 but still has electrical activity, so it
+                // must be drawn at a rhythm-appropriate intrinsic rate instead of silently defaulting
+                // to 60/min (PEA previously drew a perfusing-looking trace at whatever rate the
+                // numbers happened to hold).
                 const rid = RG.canonical(live.rhythmType);
                 const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
                 let ecgFreq;
@@ -392,99 +438,104 @@
                 else if (live.hr > 0) ecgFreq = live.hr / 60;
                 else ecgFreq = (INTRINSIC[rid] || 60) / 60;
 
-                const cycleT = (time * ecgFreq) % 1;
-                const ecgBaseY = getBaseY();
-                const ecgAmp = (rid === 'VF' || rid === 'Fine VF') ? 0.5 : 1;
-                const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR, time) * ecgAmp;
+                // ---- ADVANCE THE PHASE. `beatIntervalFactor` lengthens or shortens INDIVIDUAL beats
+                // for the rhythms that are supposed to be irregular; it returns exactly 1 for
+                // everything that must stay regular, so a regular rhythm advances at precisely
+                // deltaTime * rate and cannot drift.
+                const prevEcgPhase = ecgPhase;
+                const beatIdx = Math.floor(ecgPhase);
+                const factor = RG.beatIntervalFactor ? RG.beatIntervalFactor(rid, beatIdx) : 1;
+                ecgPhase += elapsed * ecgFreq / (factor > 0 ? factor : 1);
+                const cycleT = ecgPhase - Math.floor(ecgPhase);
 
-                ctx.strokeStyle = '#22c55e';
-                ctx.lineWidth = 2;
-                ctx.lineJoin = 'round';
-                ctx.lineCap = 'round';
-                ctx.beginPath();
-                ctx.moveTo(xPos - speed, (lastY.ecg !== null ? lastY.ecg : ecgY));
-                ctx.lineTo(xPos, ecgY);
-                ctx.stroke();
-                lastY.ecg = ecgY;
+                const respFreq = (live.rr > 0 ? live.rr : 12) / 60;
+                respPhase += elapsed * respFreq;
+                const respCycle = respPhase - Math.floor(respPhase);
 
-                // C6: R-wave synchronisation markers. When the defibrillator is in SYNC mode the
-                // device must visibly mark the R waves it will fire on, otherwise "synchronised"
-                // is an invisible flag (which is exactly what it was before Wave 3).
-                if (live.showSyncMarkers && !live.isCPR) {
-                    const rPhase = R_PHASE[RG.waveformFor(rid)];
-                    if (rPhase !== undefined) {
-                        const prevT = ((time - elapsed) * ecgFreq) % 1;
-                        const crossed = (prevT <= rPhase && cycleT >= rPhase) || (cycleT < prevT && (prevT <= rPhase || cycleT >= rPhase));
-                        if (crossed) {
-                            ctx.save();
-                            ctx.strokeStyle = '#facc15';
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            ctx.moveTo(xPos, ecgBaseY - traceHeight * 0.42);
-                            ctx.lineTo(xPos, ecgBaseY - traceHeight * 0.30);
-                            ctx.stroke();
-                            ctx.restore();
+                // -------------------------------------------------- ECG
+                let ecgBaseY = 0;
+                if (showEcg) {
+                    ecgBaseY = traceHeight * (laneIdx.ecg + 0.5);
+                    const ecgAmp = (rid === 'VF' || rid === 'Fine VF') ? 0.5 : 1;
+                    const ecgY = ecgBaseY - getECGValue(cycleT, live.rhythmType, live.isCPR, time, beatIdx) * ecgAmp;
+                    drawLane('ecg', '#22c55e', ecgY);
+
+                    // C6: R-wave synchronisation markers. When the defibrillator is in SYNC mode the
+                    // device must visibly mark the R waves it will fire on, otherwise "synchronised"
+                    // is an invisible flag (which is exactly what it was before Wave 3).
+                    if (live.showSyncMarkers && !live.isCPR) {
+                        const rPhase = R_PHASE[RG.waveformFor(rid)];
+                        if (rPhase !== undefined) {
+                            // Phase is monotonic now, so "did we cross the R wave this frame?" is a
+                            // plain comparison on the accumulator instead of modulo gymnastics.
+                            const crossed = Math.floor(prevEcgPhase - rPhase + 1) !== Math.floor(ecgPhase - rPhase + 1);
+                            if (crossed && !(RG.droppedBeat && RG.droppedBeat(rid, beatIdx))) {
+                                const st = laneState('ecg');
+                                ctx.save();
+                                ctx.strokeStyle = '#facc15';
+                                ctx.lineWidth = 2;
+                                ctx.beginPath();
+                                ctx.moveTo(st.x, ecgBaseY - traceHeight * 0.42);
+                                ctx.lineTo(st.x, ecgBaseY - traceHeight * 0.30);
+                                ctx.stroke();
+                                ctx.restore();
+                            }
                         }
                     }
                 }
 
-                if (showTraces) {
-                    const spo2BaseY = getBaseY();
-                    const spo2Cycle = (time * ecgFreq) % 1;
-                    const spo2Y = spo2BaseY - getSPO2Value(spo2Cycle, live.spO2);
-
-                    ctx.strokeStyle = '#3b82f6';
-                    ctx.beginPath();
-                    ctx.moveTo(xPos - speed, (lastY.spo2 !== null ? lastY.spo2 : spo2Y));
-                    ctx.lineTo(xPos, spo2Y);
-                    ctx.stroke();
-                    lastY.spo2 = spo2Y;
-
-                    if (showArt) {
-                        const artBaseY = getBaseY();
-                        const artCycle = (time * ecgFreq) % 1;
-                        const artY = artBaseY - getArtValue(artCycle);
-
-                        ctx.strokeStyle = '#ef4444';
-                        ctx.beginPath();
-                        ctx.moveTo(xPos - speed, (lastY.art !== null ? lastY.art : artY));
-                        ctx.lineTo(xPos, artY);
-                        ctx.stroke();
-                        lastY.art = artY;
-                    }
-
-                    const respBaseY = getBaseY();
-                    const respFreq = (live.rr > 0 ? live.rr : 12) / 60;
-                    const respCycle = (time * respFreq) % 1;
-                    const respY = respBaseY - getRespValue(respCycle);
-
-                    ctx.strokeStyle = '#eab308';
-                    ctx.beginPath();
-                    ctx.moveTo(xPos - speed, (lastY.resp !== null ? lastY.resp : respY));
-                    ctx.lineTo(xPos, respY);
-                    ctx.stroke();
-                    lastY.resp = respY;
-
-                    if (showEtco2) {
-                        const co2BaseY = getBaseY();
-                        const co2Freq = (live.rr > 0 ? live.rr : 12) / 60;
-                        const co2Cycle = (time * co2Freq) % 1;
-                        const shiftedCycle = (co2Cycle + 0.5) % 1;
-                        const co2Y = co2BaseY - getCO2Value(shiftedCycle, live.co2Pathology);
-
-                        ctx.strokeStyle = '#a855f7';
-                        ctx.beginPath();
-                        ctx.moveTo(xPos - speed, (lastY.co2 !== null ? lastY.co2 : co2Y));
-                        ctx.lineTo(xPos, co2Y);
-                        ctx.stroke();
-                        lastY.co2 = co2Y;
-                    }
+                // -------------------------------------------------- PLETH
+                // Driven by the SAME cardiac phase accumulator as the ECG, so there is exactly one
+                // pulse wave per QRS and the pleth tracks the heart rate through a ramp by
+                // construction rather than by coincidence.
+                if (plethOn) {
+                    const spo2BaseY = traceHeight * (laneIdx.pleth + 0.5);
+                    const spo2Y = spo2BaseY - getSPO2Value(cycleT, live.spO2);
+                    drawLane('pleth', '#3b82f6', spo2Y);
                 }
 
-                xPos += speed;
-                if (xPos >= canvas.width) {
-                    xPos -= canvas.width;
-                    lastY = { ecg: null, spo2: null, art: null, resp: null, co2: null }; // reset to prevent wrap-around line artifact
+                // -------------------------------------------------- ARTERIAL LINE
+                if (artOn) {
+                    const artBaseY = traceHeight * (laneIdx.art + 0.5);
+                    const artY = artBaseY - getArtValue(cycleT);
+                    drawLane('art', '#ef4444', artY);
+                }
+
+                // -------------------------------------------------- RESP (chest-wall impedance)
+                // A smooth sinusoid is the CORRECT shape for a thoracic impedance trace. It is a
+                // different measurement from capnography, which is drawn below with a real
+                // capnogram morphology on its own slower time base.
+                if (respOn) {
+                    const respBaseY = traceHeight * (laneIdx.resp + 0.5);
+                    const respY = respBaseY - getRespValue(respCycle);
+                    drawLane('resp', '#eab308', respY);
+                }
+
+                // -------------------------------------------------- CAPNOGRAPHY (ETCO2)
+                // 30 s sweep, real trapezoidal capnogram, amplitude scaled from the DISPLAYED
+                // numeric ETCO2 so the plateau and the number always agree. No ventilation means no
+                // capnogram at all (oesophageal intubation / disconnection / apnoea): a flat line is
+                // the teaching point, and drawing a waveform there would teach the opposite.
+                if (co2On) {
+                    const co2Lane = traceHeight * laneIdx.co2;
+                    const co2ZeroY = co2Lane + traceHeight * 0.86;     // zero baseline near lane floor
+                    const co2Scale = (traceHeight * 0.72) / 8;         // px per kPa (8 kPa full scale)
+                    const kPa = Number.isFinite(live.etco2) ? live.etco2 : 5.0;
+                    let co2Y;
+                    if (!live.ventilating || !(kPa > 0)) {
+                        co2Y = co2ZeroY;                                // flat zero, no waveform
+                    } else {
+                        // Capnography lags the compression/breath cycle in the airway, hence the
+                        // half-cycle offset kept from the previous implementation.
+                        const phase = (respCycle + 0.5) % 1;
+                        let v = RG.capnogram(phase, kPa, live.co2Pathology);
+                        // During CPR the capnogram is small and shows the compression rate; ETCO2
+                        // RISING is the classic sign of ROSC, and that falls out of the numeric
+                        // value driving the amplitude.
+                        if (live.isCPR) v += Math.max(0, kPa * 0.10) * Math.sin(time * 2 * Math.PI * 1.83);
+                        co2Y = co2ZeroY - v * co2Scale;
+                    }
+                    drawLane('co2', '#a855f7', co2Y);
                 }
 
                 time += elapsed;
@@ -493,25 +544,33 @@
 
             animationFrameId = requestAnimationFrame(render);
             return () => cancelAnimationFrame(animationFrameId);
-        }, [isPaused, showTraces, showEtco2, showArt]);
+        }, [isPaused, showEcg, plethOn, respOn, artOn, co2On]);
 
-        let numTraces = 1;
-        if (showTraces) {
-            numTraces = 3;
-            if (showArt) numTraces++;
-            if (showEtco2) numTraces++;
-        }
-
-        const getTop = (idx) => `calc(${(100 / numTraces) * idx}% + 4px)`;
+        // Labels follow the SAME lane order the draw loop uses, so a label can never sit over the
+        // wrong trace when a sensor is attached or detached mid-session.
+        const laneKeys = [];
+        if (showEcg) laneKeys.push('ecg');
+        if (plethOn) laneKeys.push('pleth');
+        if (artOn) laneKeys.push('art');
+        if (respOn) laneKeys.push('resp');
+        if (co2On) laneKeys.push('co2');
+        const numTraces = Math.max(1, laneKeys.length);
+        const topOf = (key) => `calc(${(100 / numTraces) * laneKeys.indexOf(key)}% + 4px)`;
+        // WAVE 7 / BUG 2: the trace labels carry their own opaque chip. The previous fix nudged the
+        // controller's overlay buttons sideways, which still clipped "LEAD II" at narrow panel
+        // widths; the buttons have now moved OUT of the canvas entirely (see livesim.js) and the
+        // chip guarantees the label stays legible against any trace behind it.
+        const labelClass = 'absolute left-2 font-mono text-xs font-bold px-1 rounded bg-black/70 pointer-events-none z-20';
 
         return (
             <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
-                <div className="absolute left-2 text-green-500 font-mono text-xs font-bold" style={{ top: '4px' }}>{rhythmLabel || "LEAD II"}</div>
-                {showTraces && <div className="absolute left-2 text-blue-500 font-mono text-xs font-bold" style={{ top: getTop(1) }}>PLETH</div>}
-                {showTraces && showArt && <div className="absolute left-2 text-red-500 font-mono text-xs font-bold" style={{ top: getTop(2) }}>ART</div>}
-                {showTraces && <div className="absolute left-2 text-yellow-500 font-mono text-xs font-bold" style={{ top: getTop(showArt ? 3 : 2) }}>RESP</div>}
-                {showTraces && showEtco2 && <div className="absolute left-2 text-purple-500 font-mono text-xs font-bold" style={{ top: getTop(showArt ? 4 : 3) }}>CO2</div>}
+                {showEcg && <div className={`${labelClass} text-green-500`} style={{ top: topOf('ecg') }}>{rhythmLabel || "LEAD II"}</div>}
+                {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH</div>}
+                {artOn && <div className={`${labelClass} text-red-500`} style={{ top: topOf('art') }}>ART</div>}
+                {respOn && <div className={`${labelClass} text-yellow-500`} style={{ top: topOf('resp') }}>RESP</div>}
+                {co2On && <div className={`${labelClass} text-purple-500`} style={{ top: topOf('co2') }}>CO2 <span className="text-purple-300/70 font-normal">30s</span></div>}
+                {co2On && !ventilating && <div className="absolute right-2 text-purple-300 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ top: topOf('co2') }}>no capnogram — not ventilating</div>}
                 {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR IN PROGRESS</div>}
                 {showSyncMarkers && !isCPR && <div className="absolute bottom-1 right-2 text-yellow-400 font-mono text-[10px] font-bold tracking-widest">SYNC</div>}
             </div>

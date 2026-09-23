@@ -202,7 +202,21 @@ window.INTERVENTIONS = {
     'TopicalEyeDrops': { label: 'Topical Eye Drops', route: 'topical', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
 
     // --- PROCEDURES ---
-    'Obs': { label: 'Attach Monitoring', route: 'n/a', effect: {}, category: 'Procedures', log: 'Monitoring applied. Vitals now visible.', type: 'continuous', duration: 5 },
+    'Obs': { label: 'Attach Monitoring (all)', route: 'n/a', effect: {}, category: 'Procedures', log: 'Full monitoring applied (ECG, SpO2, NIBP, temp). Vitals now visible.', type: 'continuous', duration: 5 },
+    // ---- WAVE 7 / ITEM 4: INDIVIDUALLY ATTACHABLE MONITORING ----------------------------------
+    // Each item gates exactly its own value/trace on the student monitor (see engine getSensors).
+    // 'Obs' above is the unchanged ONE-CLICK FAST PATH and implies all four continuous sensors, so
+    // nothing that already exists has to know these keys. They are `continuous`, so the existing
+    // second-press-to-remove behaviour in applyIntervention detaches them and logs it, with no new
+    // machinery. NEVER prerequisites for anything — the permissive philosophy is unchanged.
+    'MonECG': { label: 'ECG electrodes', route: '3-lead', effect: {}, category: 'Procedures', log: 'ECG electrodes attached — rhythm and heart rate now visible.', type: 'continuous', duration: 5 },
+    'MonSpO2': { label: 'SpO2 probe', route: 'digit probe', effect: {}, category: 'Procedures', log: 'SpO2 probe attached — pleth and saturations now visible.', type: 'continuous', duration: 5 },
+    'MonNIBP': { label: 'NIBP cuff', route: 'cuff', effect: {}, category: 'Procedures', log: 'NIBP cuff attached — blood pressure available (cycle to measure).', type: 'continuous', duration: 5 },
+    'MonTemp': { label: 'Temperature probe', route: 'probe', effect: {}, category: 'Procedures', log: 'Temperature probe attached — temperature now visible.', type: 'continuous', duration: 5 },
+    // Intermittent point-of-care checks: these reveal a value AT THIS MOMENT (timestamped) rather
+    // than a live channel, which is the clinically important distinction.
+    'CheckGlucose': { label: 'POC glucose (BM)', route: 'capillary', effect: {}, category: 'Procedures', log: 'Capillary blood glucose checked.', type: 'bolus', duration: 0 },
+    'CheckVBG': { label: 'POC VBG (pH + K+)', route: 'venous sample', effect: {}, category: 'Procedures', log: 'Venous blood gas sent — pH and potassium reported.', type: 'bolus', duration: 0, expects: ['IV Access'] },
     'ArtLine': { label: 'Arterial Line', route: 'arterial', effect: {}, category: 'Procedures', log: 'Arterial line inserted.', type: 'continuous', duration: 120 },
     'CVC': { label: 'Central Line', route: 'central IV', effect: {}, category: 'Procedures', log: 'Central venous catheter inserted.', type: 'continuous', duration: 180, expects: ['IV Access'] },
     'Catheter': { label: 'Urinary Catheter', route: 'urethral', effect: {}, category: 'Procedures', log: 'Urinary catheter inserted.', type: 'continuous', duration: 60 },

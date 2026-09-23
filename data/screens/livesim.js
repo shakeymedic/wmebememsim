@@ -98,6 +98,148 @@
         { name: 'MgSO4 (Asthma / Seizure)', perKg: 40, unit: 'mg', max: 2000, info: '500 mg/ml IV slow 20 min' },
     ];
 
+    // =============================================================================================
+    // WAVE 7 / FEATURE — USER-RESIZABLE MONITOR / OBS PANEL ON THE CONTROLLER
+    //
+    // Requested verbatim: "I want to be able to expand or shrink the size of the monitor / obs
+    // section on the controller screen please. Ideally by clicking and dragging with my mouse."
+    //
+    // Two drags, both persisted to localStorage and both bounded so the panel can never be made
+    // unusable or squash the rhythm selector / event log out of reach:
+    //   * a VERTICAL grip on the panel's right edge  -> panel WIDTH   (md+ only; below md the layout
+    //     is a single stacked column and a width drag is meaningless, so the handle is not rendered)
+    //   * a HORIZONTAL grip under the waveform card  -> STRIP HEIGHT (all widths)
+    // Pointer events cover mouse, pen and touch with one code path. Both handles are focusable
+    // `separator`s with arrow-key / Home / End support, so the feature is keyboard-accessible.
+    // =============================================================================================
+    const PANEL_STORE_KEY = 'wmebem.controllerPanel.v1';
+    const PANEL_DEFAULTS = { width: null, stripHeight: 256 };   // width null = the classic ~34% column
+    const PANEL_BOUNDS = { minWidth: 280, minRight: 380, maxFraction: 0.72, minStrip: 140, maxStrip: 560 };
+
+    const readPanelPrefs = () => {
+        try {
+            const raw = window.localStorage && window.localStorage.getItem(PANEL_STORE_KEY);
+            if (!raw) return { ...PANEL_DEFAULTS };
+            const p = JSON.parse(raw);
+            return {
+                width: Number.isFinite(Number(p.width)) && Number(p.width) > 0 ? Number(p.width) : null,
+                stripHeight: Number.isFinite(Number(p.stripHeight)) ? Number(p.stripHeight) : PANEL_DEFAULTS.stripHeight
+            };
+        } catch (e) { return { ...PANEL_DEFAULTS }; }
+    };
+    const writePanelPrefs = (p) => {
+        try { if (window.localStorage) window.localStorage.setItem(PANEL_STORE_KEY, JSON.stringify(p)); } catch (e) { /* private mode: size simply does not persist */ }
+    };
+    const clampPanelWidth = (px, containerWidth) => {
+        const cw = containerWidth > 0 ? containerWidth : (window.innerWidth || 1280);
+        const max = Math.max(PANEL_BOUNDS.minWidth, Math.min(cw * PANEL_BOUNDS.maxFraction, cw - PANEL_BOUNDS.minRight));
+        return Math.round(Math.max(PANEL_BOUNDS.minWidth, Math.min(max, px)));
+    };
+    const clampStripHeight = (px) => Math.round(Math.max(PANEL_BOUNDS.minStrip, Math.min(PANEL_BOUNDS.maxStrip, px)));
+    // Exported so the verifier exercises the SHIPPING bounds arithmetic rather than a copy of it.
+    window.__controllerPanel = { PANEL_STORE_KEY, PANEL_DEFAULTS, PANEL_BOUNDS, readPanelPrefs, writePanelPrefs, clampPanelWidth, clampStripHeight };
+
+    const useResizablePanel = () => {
+        const [prefs, setPrefs] = useState(readPanelPrefs);
+        const rowRef = useRef(null);
+        const [isWide, setIsWide] = useState(() => {
+            try { return !!(window.matchMedia && window.matchMedia('(min-width: 768px)').matches); } catch (e) { return true; }
+        });
+        useEffect(() => {
+            const onResize = () => {
+                let wide = true;
+                try { wide = !!(window.matchMedia && window.matchMedia('(min-width: 768px)').matches); } catch (e) { wide = true; }
+                setIsWide(wide);
+                // Re-clamp against the new container so a saved width can never overflow a smaller
+                // window (which is what would reintroduce horizontal scrolling).
+                setPrefs(p => (p.width === null ? p : { ...p, width: clampPanelWidth(p.width, rowRef.current ? rowRef.current.clientWidth : 0) }));
+            };
+            window.addEventListener('resize', onResize);
+            return () => window.removeEventListener('resize', onResize);
+        }, []);
+
+        const commit = (next) => { setPrefs(next); writePanelPrefs(next); };
+
+        // One pointer-driven drag for both axes.
+        const beginDrag = (axis) => (e) => {
+            if (axis === 'x' && !isWide) return;
+            const row = rowRef.current;
+            const containerWidth = row ? row.clientWidth : 0;
+            const startX = e.clientX, startY = e.clientY;
+            const startWidth = prefs.width !== null ? prefs.width
+                : (row ? Math.round(row.clientWidth * 0.34) : 420);
+            const startStrip = prefs.stripHeight;
+            const target = e.currentTarget;
+            try { if (target && target.setPointerCapture && e.pointerId !== undefined) target.setPointerCapture(e.pointerId); } catch (err) { /* no capture: move events still arrive on window */ }
+            if (e.preventDefault) e.preventDefault();
+            let latest = { ...prefs };
+            const onMove = (ev) => {
+                if (axis === 'x') latest = { ...latest, width: clampPanelWidth(startWidth + (ev.clientX - startX), containerWidth) };
+                else latest = { ...latest, stripHeight: clampStripHeight(startStrip + (ev.clientY - startY)) };
+                setPrefs(latest);
+            };
+            const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+                window.removeEventListener('pointercancel', onUp);
+                commit(latest);
+            };
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', onUp);
+            window.addEventListener('pointercancel', onUp);
+        };
+
+        const nudge = (axis, delta) => {
+            const row = rowRef.current;
+            if (axis === 'x') {
+                const base = prefs.width !== null ? prefs.width : (row ? Math.round(row.clientWidth * 0.34) : 420);
+                commit({ ...prefs, width: clampPanelWidth(base + delta, row ? row.clientWidth : 0) });
+            } else {
+                commit({ ...prefs, stripHeight: clampStripHeight(prefs.stripHeight + delta) });
+            }
+        };
+        const reset = () => commit({ ...PANEL_DEFAULTS });
+
+        const panelStyle = (isWide && prefs.width !== null)
+            ? { width: clampPanelWidth(prefs.width, rowRef.current ? rowRef.current.clientWidth : 0) + 'px', flex: '0 0 auto' }
+            : undefined;
+
+        return { prefs, isWide, rowRef, beginDrag, nudge, reset, panelStyle,
+                 isCustom: prefs.width !== null || prefs.stripHeight !== PANEL_DEFAULTS.stripHeight };
+    };
+
+    // The grip itself: a wide, obvious, grabbable bar with the right cursor, a tooltip, and
+    // keyboard support. Deliberately 10 px of hit area with a visible 3-dot grip so it is
+    // discoverable without being told it exists.
+    const ResizeGrip = ({ axis, onPointerDown, onNudge, onReset, value, min, max }) => (
+        <div
+            role="separator"
+            aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
+            aria-label={axis === 'x' ? 'Resize the monitor and obs panel width (drag, or use the arrow keys)' : 'Resize the waveform strip height (drag, or use the arrow keys)'}
+            aria-valuenow={Math.round(value)} aria-valuemin={min} aria-valuemax={max}
+            tabIndex={0}
+            title={axis === 'x' ? 'Drag to resize the monitor / obs panel — double-click to reset' : 'Drag to resize the waveform strip — double-click to reset'}
+            onPointerDown={onPointerDown}
+            onDoubleClick={onReset}
+            onKeyDown={(e) => {
+                const step = e.shiftKey ? 64 : 16;
+                if (axis === 'x' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { e.preventDefault(); onNudge(e.key === 'ArrowLeft' ? -step : step); }
+                if (axis === 'y' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); onNudge(e.key === 'ArrowUp' ? -step : step); }
+                if (e.key === 'Home' || e.key === 'Escape') { e.preventDefault(); onReset(); }
+            }}
+            style={{ touchAction: 'none' }}
+            className={axis === 'x'
+                ? 'hidden md:flex flex-none w-2.5 self-stretch items-center justify-center cursor-col-resize group bg-slate-800 hover:bg-sky-700 focus:bg-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-400 rounded'
+                : 'flex h-2.5 w-full items-center justify-center cursor-row-resize group bg-slate-800 hover:bg-sky-700 focus:bg-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-400 rounded'}
+        >
+            <span className={axis === 'x' ? 'flex flex-col gap-0.5' : 'flex gap-0.5'} aria-hidden="true">
+                <span className="block w-1 h-1 rounded-full bg-slate-500 group-hover:bg-white"></span>
+                <span className="block w-1 h-1 rounded-full bg-slate-500 group-hover:bg-white"></span>
+                <span className="block w-1 h-1 rounded-full bg-slate-500 group-hover:bg-white"></span>
+            </span>
+        </div>
+    );
+
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
@@ -324,6 +466,20 @@
         // the explicit `|| quickSim` is a belt-and-braces guard so a resumed or synced Quick Sim can
         // never show "No Monitoring" over a screen whose entire purpose is the monitor.
         const isMonitoringApplied = activeInterventions.has('Obs') || quickSim; 
+        // WAVE 7 / ITEM 4: individual sensors, derived from the shared engine helper so the
+        // controller and the student monitor can never disagree about what is attached.
+        const sensors = window.getSensors ? window.getSensors(state) : { ecg: isMonitoringApplied, spo2: isMonitoringApplied, nibp: isMonitoringApplied, temp: isMonitoringApplied, etco2: etco2Enabled, art: false, iv: false, any: isMonitoringApplied };
+        // Quick Sim seeds 'Obs', so everything is attached there from the start (unchanged).
+        const sEcg = sensors.ecg || quickSim;
+        const sSpo2 = sensors.spo2 || quickSim;
+        const sResp = sensors.ecg || quickSim;          // impedance respiration comes off the ECG electrodes
+        const pocReadings = state.pocReadings || {};
+        // Capnography: no ventilation means NO capnogram (the absence is the teaching point).
+        const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
+        // Bronchospasm drives the shark-fin capnogram through the EXISTING etco2Pathology state.
+        const capnoPattern = etco2Pathology || 'normal';
+        // WAVE 7 / FEATURE: the facilitator's own panel size (drag handles + localStorage).
+        const panel = useResizablePanel();
         // WAVE 6 / QUICK SIM WAVEFORMS. The strip used to be frozen whenever the session clock was
         // not running (isPaused={!isRunning}), which meant the rAF loop sized the canvas, painted it
         // black and returned WITHOUT DRAWING. Quick Sim reaches this controller without ever passing
@@ -588,8 +744,13 @@
                     </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2 overflow-hidden min-h-0">
-                    <div className="md:col-span-5 lg:col-span-4 flex flex-col gap-2 overflow-y-auto h-full pr-1">
+                {/* WAVE 7 / FEATURE: this row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
+                    + md:col-span-7 lg:col-span-8). It is now a flex row so the left monitor/obs panel
+                    can carry a dragged pixel width, with the right pane taking the remainder. Below
+                    md it stacks exactly as before (flex-col, full width), so the verified 375 px
+                    layout is untouched. */}
+                <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0">
+                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 overflow-y-auto h-full pr-1">
                          {/* A2: the scenario brief card is replaced in Quick Sim by a one-line factual
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
@@ -612,28 +773,104 @@
                          </div>
                          )}
 
+                        {/* ============ WAVE 7 / ITEM 4: ATTACH EACH PIECE OF MONITORING INDIVIDUALLY ============
+                            "I also want to be able to put on each bit of monitoring individually
+                            (e.g. ECG monitoring, sats probe, BP cuff, a line, check glucose etc)."
+
+                            Each chip toggles ONE sensor through the ordinary applyIntervention path, so
+                            it is logged, appears in the debrief timeline, syncs to the student monitor
+                            inside activeInterventions and obeys the existing permissive rules. ATTACH
+                            ALL keeps the one-click habit: it applies 'Obs', which implies every
+                            continuous sensor. Nothing here is ever a prerequisite for anything. */}
+                        <div className="flex-none rounded border border-slate-700 bg-slate-900/70 p-2">
+                            <div className="flex items-center justify-between mb-1 gap-2">
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Monitoring &amp; access</div>
+                                <div className="flex gap-1">
+                                    <Button onClick={() => applyIntervention('Obs')} variant={sensors.ecg && sensors.spo2 && sensors.nibp && sensors.temp ? 'secondary' : 'primary'} className="h-6 px-2 text-[10px] uppercase font-bold">
+                                        {sensors.ecg && sensors.spo2 && sensors.nibp && sensors.temp ? 'All on' : 'Attach all'}
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                                {(window.SENSOR_DEFS || []).map(def => {
+                                    const on = def.kind === 'poc' ? !!pocReadings[def.poc] : !!sensors[def.id];
+                                    const reading = def.kind === 'poc' ? pocReadings[def.poc] : null;
+                                    const label = def.kind === 'poc' && reading
+                                        ? `${def.label}: ${def.poc === 'vbg'
+                                              ? `pH ${Number.isFinite(reading.value) ? reading.value.toFixed(2) : '--'} / K ${Number.isFinite(reading.value2) ? reading.value2.toFixed(1) : '--'}`
+                                              : (Number.isFinite(reading.value) ? reading.value.toFixed(1) : '--')} @ ${reading.clock}`
+                                        : def.label;
+                                    return (
+                                        <button key={def.id} onClick={() => applyIntervention(def.key)}
+                                            title={`${def.label} — reveals ${def.reveals}${def.kind === 'poc' ? ' (one-off, timestamped)' : ' (press again to detach)'}`}
+                                            className={`px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-wide ${on
+                                                ? (def.kind === 'poc' ? 'bg-purple-950/50 border-purple-500 text-purple-200' : 'bg-emerald-950/50 border-emerald-500 text-emerald-200')
+                                                : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>
+                                            {on && def.kind !== 'poc' ? '\u25cf ' : ''}{label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <div className="text-[9px] text-slate-500 mt-1 leading-relaxed">Continuous sensors reveal a live value on the student monitor; POC checks report the value at the moment they are taken. Nothing is ever blocked \u2014 missing items are only flagged.</div>
+                        </div>
+
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
                              <div className="relative">
-                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} isPaused={traceFrozen} showTraces={isMonitoringApplied} showEtco2={showEtco2} showArt={showArt} co2Pathology={etco2Shape} className="h-64"/>
-                                 {!isMonitoringApplied && (
-                                     <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">No Monitoring</div>
-                                 )}
-                                 <button onClick={()=>setShowRhythmModal(true)} className="absolute top-1 right-1 bg-slate-800/80 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded z-30 font-bold uppercase tracking-wider backdrop-blur-sm">Change Rhythm</button>
-                                 <div className="absolute top-1 left-20 flex gap-1 z-30">
-                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800/80 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded font-bold uppercase tracking-wider backdrop-blur-sm`}>
+                                 {/* WAVE 7 / BUG 2 — THE "LEAD II" LABEL.
+                                     Wave 6 moved this button cluster from left-1 to left-20, but the
+                                     user's next screenshot still showed "LEAD I|" with SHOW TIMER on
+                                     top of it: an absolutely-positioned overlay inside the canvas box
+                                     can always collide with a label inside the same box, and the
+                                     resizable panel below makes the panel narrower still. The cluster
+                                     is therefore OUT of the trace area entirely, in its own toolbar
+                                     row above the strip. Nothing overlaps the label at any width. */}
+                                 <div className="flex items-center gap-1 bg-slate-900/90 border-b border-slate-800 px-1 py-1">
+                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded font-bold uppercase tracking-wider`}>
                                          <Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{state.monitorTimer?.visible ? 'Hide Timer' : 'Show Timer'}
                                      </button>
                                      {state.monitorTimer?.visible && (
                                          <>
-                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800/80 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700 backdrop-blur-sm">
+                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
                                                  {state.monitorTimer?.active ? 'Pause' : 'Start'}
                                              </button>
-                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800/80 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700 backdrop-blur-sm">
+                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
                                                  Reset
                                              </button>
                                          </>
                                      )}
+                                     <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
                                  </div>
+                                 {/* The strip height is the facilitator's dragged value. ECGMonitor
+                                     re-measures parentElement.clientWidth/clientHeight every frame and
+                                     resets its per-lane sweep cursors on a size change, so the canvas
+                                     keeps drawing correctly DURING the drag with no blank strip, no
+                                     stretching and no lost animation. */}
+                                 {/* Sensor gating: when NOTHING is attached the facilitator still gets the
+                                     full preview behind the existing "No Monitoring" overlay, exactly as before
+                                     Wave 7. As soon as they attach individual sensors the controller strip shows
+                                     precisely what the students can see. */}
+                                 <div style={{ height: panel.prefs.stripHeight + 'px' }}>
+                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
+                                             isPaused={traceFrozen} showTraces={isMonitoringApplied || sensors.any}
+                                             showEcg={sEcg || !sensors.any} showPleth={sSpo2 || !sensors.any} showResp={sResp || !sensors.any}
+                                             showEtco2={showEtco2} showArt={showArt}
+                                             co2Pathology={capnoPattern} ventilating={capnoVentilating}
+                                             className="h-full"/>
+                                 </div>
+                                 {!sensors.any && !quickSim && (
+                                     <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">No Monitoring</div>
+                                 )}
+                             </div>
+
+                             {/* Strip-height grip + an explicit RESET back to the default size. */}
+                             <div className="flex items-center gap-2 px-1 bg-black">
+                                 <ResizeGrip axis="y" onPointerDown={panel.beginDrag('y')}
+                                             onNudge={(d) => panel.nudge('y', d)} onReset={panel.reset}
+                                             value={panel.prefs.stripHeight} min={PANEL_BOUNDS.minStrip} max={PANEL_BOUNDS.maxStrip} />
+                                 {panel.isCustom && (
+                                     <button onClick={panel.reset} title="Reset the monitor panel to its default size"
+                                             className="flex-none text-[9px] uppercase tracking-widest font-bold text-slate-400 hover:text-white border border-slate-700 rounded px-1.5 py-0.5">reset size</button>
+                                 )}
                              </div>
 
                              <div className="grid grid-cols-2 gap-1 p-1 bg-black">
@@ -919,6 +1156,12 @@
                         )}
                     </div>
                     
+                    {/* The drag handle. Vertical grip, col-resize cursor, keyboard-accessible,
+                        md+ only (a width drag means nothing in the stacked mobile layout). */}
+                    <ResizeGrip axis="x" onPointerDown={panel.beginDrag('x')}
+                                onNudge={(d) => panel.nudge('x', d)} onReset={panel.reset}
+                                value={panel.prefs.width || 0} min={PANEL_BOUNDS.minWidth} max={2000} />
+
                     {/* =================== WAVE 4b / A2: THE QUICK SIM RIGHT-HAND PANE ===================
                         Replaces the intervention library entirely. Everything here is scenario-free:
                         the full rhythm registry (including every arrest rhythm), the two relative trend
@@ -926,7 +1169,7 @@
                         search, no tabs, no drug groups, no investigations, no voice and no assessment
                         checklist, because none of those mean anything without a scenario. */}
                     {quickSim ? (
-                    <div className="md:col-span-7 lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
                             <div className="flex-1 min-w-[12rem]">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Rhythm</div>
@@ -996,7 +1239,7 @@
                         </div>
                     </div>
                     ) : (
-                    <div className="md:col-span-7 lg:col-span-8 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
                         {searchTerm.length > 0 && searchResults.length > 0 && (
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
                                 {searchResults.map(key => (

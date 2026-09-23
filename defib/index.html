@@ -640,8 +640,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         window.addEventListener('resize', resize); resize();
 
         // --- NEW ANIMATION LOGIC (MATCHING MONITOR.JS) ---
-        const drawState = { x: 0, lastY: 100, beatProgress: 0, pWaveProgress: 0, lastTime: 0 };
-        const jitterRef = { current: 0 };
+        const drawState = { x: 0, lastY: 100, beatPhase: 0, beatProgress: 0, pWaveProgress: 0, lastTime: 0 };
 
         // Exactly one rAF loop at a time. setMode() used to call requestAnimationFrame unconditionally,
         // so every dial turn spawned another loop and the trace drew progressively faster.
@@ -681,14 +680,14 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             const height = canvas.height / window.devicePixelRatio;
             const baselineECG = height * 0.5;
 
-            // Handle Heart Rate & Jitter
+            // Handle Heart Rate
+            // WAVE 7: the old AF "jitter" added a random offset to the HR on random FRAMES
+            // (Math.random() every frame while beatProgress < 0.05), so the irregularity depended on
+            // frame rate and could change part-way through a beat. Irregularity is now a property of
+            // the BEAT, shared with the React monitor through RHYTHMS.beatIntervalFactor, so the
+            // standalone defibrillator and the monitor draw the same AF, the same flutter with
+            // variable block and the same Mobitz II dropped beats.
             let effectiveHR = state.hr;
-            if (RG.canonical(state.rhythm) === 'AF') {
-                if (drawState.beatProgress < 0.05 && Math.random() < 0.2) {
-                     jitterRef.current = (Math.random() * 70) - 35; 
-                }
-                effectiveHR += jitterRef.current;
-            }
             if (state.cprActive) effectiveHR = 110;
             else if (!(effectiveHR > 0)) {
                 // C2: the old line forced EVERY pulseless rhythm to 150/min, which is why PEA was
@@ -698,12 +697,19 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 effectiveHR = INTRINSIC[RG.canonical(state.rhythm)] || 70;
             } 
 
-            let beatDuration = 60 / Math.max(10, effectiveHR); 
-            drawState.beatProgress += dt / beatDuration; 
-            if (drawState.beatProgress >= 1) drawState.beatProgress = 0;
+            // PHASE ACCUMULATOR. `beatPhase` increases monotonically; its integer part is the beat
+            // index. Advancing by dt/beatDuration (never recomputing the phase from absolute time)
+            // is what keeps the trace regular while the rate changes, and the per-beat interval
+            // factor is what keeps the rhythms that SHOULD be irregular irregular.
+            const beatDuration = 60 / Math.max(10, effectiveHR);
+            const beatIdx = Math.floor(drawState.beatPhase);
+            const rrFactor = (RG.beatIntervalFactor ? RG.beatIntervalFactor(state.rhythm, beatIdx) : 1) || 1;
+            drawState.beatPhase += (dt / beatDuration) / rrFactor;
+            // Keep the legacy field in step for anything that still reads it.
+            drawState.beatProgress = drawState.beatPhase - Math.floor(drawState.beatPhase);
 
             drawState.pWaveProgress += dt * (75 / 60);
-            if (drawState.pWaveProgress >= 1) drawState.pWaveProgress = 0;
+            if (drawState.pWaveProgress >= 1) drawState.pWaveProgress -= 1;
 
             if (drawState.x > canvas.width / window.devicePixelRatio) { 
                 drawState.x = 0; 
@@ -713,7 +719,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             // Calculate Y
             // A7: with no linked patient there is no rhythm to draw — flat, undriven baseline only.
             let rawECG = window.isRemoteControlled
-                ? RG.ecgValue(drawState.beatProgress, (timestamp / 1000), state.rhythm, { cpr: state.cprActive })
+                ? RG.ecgValue(drawState.beatProgress, (timestamp / 1000), state.rhythm, { cpr: state.cprActive, beat: Math.floor(drawState.beatPhase) })
                 : 0;
             const gain = window.waveformGain || 1.0;
             let yECG = baselineECG - (rawECG * gain);
