@@ -90,7 +90,8 @@ flag. Consequences worth knowing:
   monitor and the controller strip at once (ECG/SpO2 lanes stay in place, labelled "leads off" /
   "no probe"). The exception is NIBP: removing the cuff keeps the last measured reading on screen (marked "cuff
   off") and no new reading can be taken until it is back on. The pulse beep and each alarm follow the
-  sensor that measures them.
+  sensor that measures them, and in Quick Sim they sound before START too (like the trace), falling
+  silent only when you deliberately pause or finish.
 - Deterioration is always **MANUAL** (the synthetic patient declares no rate, so AUTO could never do
   anything) and the AUTO/MANUAL toggle is hidden. Ramp obs with the trend control on any vitals tile.
 - Age and weight are optional. Set a paediatric age and **WETFLAG, paediatric defibrillation energies
