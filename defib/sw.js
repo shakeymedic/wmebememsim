@@ -19,6 +19,7 @@ const ASSETS_TO_CACHE = [
   '../data/components.js',
   '../data/interventions.js',
   '../data/generators.js',
+  '../data/presets.js',
   // WAVE 4b: the auth/entitlements module. Cached so the Restricted section degrades identically
   // offline (locked, with a message) instead of throwing on a missing script.
   '../data/auth.js',

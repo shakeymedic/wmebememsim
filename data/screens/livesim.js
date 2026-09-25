@@ -545,6 +545,105 @@
         const capnoSeverity = Number.isFinite(obstruction.severity) ? obstruction.severity : 0;
         // WAVE 7 / FEATURE: the facilitator's own panel size (drag handles + localStorage).
         const panel = useResizablePanel();
+
+        // ======================= QUICK SIM PRESETS (scripted sequences) =======================
+        // A preset steps through rhythm/obs changes on a timer, or waits for Next. Elapsed time only
+        // accrues while the session is not deliberately paused, so PAUSE freezes the script too.
+        // Rhythms go through the same entry points as the menus: a pulseless target is an ARREST,
+        // leaving a pulseless rhythm is a ROSC, anything else is an ordinary rhythm change.
+        const QSP = window.QuickSimPresets;
+        const [presetList, setPresetList] = useState(() => (QSP ? QSP.all() : []));
+        const [presetView, setPresetView] = useState(null);    // { name, idx, total, note, nextIn, waiting }
+        const presetRunRef = useRef(null);                      // { preset, idx, accMs, lastTs, lastNote }
+        const liveStateRef = useRef(state);
+        liveStateRef.current = state;
+        const presetActionsRef = useRef(null);
+        presetActionsRef.current = { changeRhythm, triggerArrest, triggerROSC, startTrend, manualUpdateVital, addLogEntry };
+        const applyPresetStep = (preset, step, i) => {
+            const a = presetActionsRef.current;
+            const cause = `preset: ${preset.name}`;
+            if (step.rhythm && RG.isKnown(step.rhythm)) {
+                const cur = liveStateRef.current.rhythm;
+                if (RG.isPulseless(step.rhythm)) { if (RG.canonical(cur) !== RG.canonical(step.rhythm)) a.triggerArrest(step.rhythm, cause); }
+                else if (RG.isPulseless(cur)) a.triggerROSC(step.rhythm, cause);
+                else if (RG.canonical(cur) !== RG.canonical(step.rhythm)) a.changeRhythm(step.rhythm, cause);
+            }
+            const targets = {};
+            Object.keys(step.vitals || {}).forEach(k => { const v = Number(step.vitals[k]); if (Number.isFinite(v)) targets[k] = v; });
+            if (Object.keys(targets).length) {
+                if (Number(step.over) > 0) a.startTrend(targets, Number(step.over));
+                else Object.keys(targets).forEach(k => a.manualUpdateVital(k, targets[k]));
+            }
+            a.addLogEntry(`Preset "${preset.name}" \u2014 step ${i + 1}/${preset.steps.length}: ${step.note || 'applied'}`, 'system');
+        };
+        const refreshPresetView = () => {
+            const run = presetRunRef.current;
+            if (!run) { setPresetView(null); return; }
+            const next = run.preset.steps[run.idx];
+            setPresetView({
+                name: run.preset.name, idx: run.idx, total: run.preset.steps.length, note: run.lastNote,
+                waiting: !!(next && next.wait), nextNote: next ? next.note : null,
+                nextIn: next && !next.wait ? Math.max(0, Math.ceil((Number(next.after) || 0) - run.accMs / 1000)) : null
+            });
+        };
+        const firePresetStep = () => {
+            const run = presetRunRef.current;
+            if (!run) return;
+            const step = run.preset.steps[run.idx];
+            if (!step) return;
+            applyPresetStep(run.preset, step, run.idx);
+            run.lastNote = step.note || null;
+            run.idx += 1; run.accMs = 0;
+            if (run.idx >= run.preset.steps.length) {
+                presetActionsRef.current.addLogEntry(`Preset "${run.preset.name}" complete.`, 'system');
+                presetRunRef.current = null;
+            }
+            refreshPresetView();
+        };
+        const startPreset = (preset) => {
+            if (presetRunRef.current && !window.confirm(`Stop "${presetRunRef.current.preset.name}" and start "${preset.name}"?`)) return;
+            presetRunRef.current = { preset, idx: 0, accMs: 0, lastTs: Date.now(), lastNote: null };
+            addLogEntry(`Preset started: "${preset.name}"`, 'system');
+            // A first step with no delay fires at once, so pressing the preset changes something now.
+            if (!preset.steps[0].wait && !(Number(preset.steps[0].after) > 0)) firePresetStep();
+            else refreshPresetView();
+        };
+        const stopPreset = () => {
+            if (!presetRunRef.current) return;
+            addLogEntry(`Preset stopped: "${presetRunRef.current.preset.name}"`, 'system');
+            presetRunRef.current = null;
+            refreshPresetView();
+        };
+        const presetActive = !!presetView;
+        useEffect(() => {
+            if (!presetActive) return;
+            const id = setInterval(() => {
+                const run = presetRunRef.current;
+                if (!run) return;
+                const now = Date.now();
+                const st = liveStateRef.current;
+                const paused = (st.pausedAt !== null && st.pausedAt !== undefined) || st.isFinished;
+                if (!paused) run.accMs += now - run.lastTs;
+                run.lastTs = now;
+                const next = run.preset.steps[run.idx];
+                if (next && !next.wait && run.accMs >= (Number(next.after) || 0) * 1000) firePresetStep();
+                else refreshPresetView();
+            }, 250);
+            return () => clearInterval(id);
+        }, [presetActive]);
+        const savePresetSnapshot = () => {
+            if (!QSP) return;
+            const name = window.prompt('Name for this preset (saves the current rhythm and obs on this device):', RG.labelFor(state.rhythm));
+            if (!name || !name.trim()) return;
+            const ok = QSP.save(QSP.snapshotPreset(name.trim(), state.rhythm, vitals));
+            if (!ok) { window.alert('This browser is not allowing storage, so the preset could not be saved.'); return; }
+            setPresetList(QSP.all());
+        };
+        const deletePreset = (p) => {
+            if (!QSP || !window.confirm(`Delete the saved preset "${p.name}"?`)) return;
+            QSP.remove(p.id);
+            setPresetList(QSP.all());
+        };
         // WAVE 6 / QUICK SIM WAVEFORMS. The strip used to be frozen whenever the session clock was
         // not running (isPaused={!isRunning}), which meant the rAF loop sized the canvas, painted it
         // black and returned WITHOUT DRAWING. Quick Sim reaches this controller without ever passing
@@ -1332,6 +1431,50 @@
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                            {/* SCRIPTED PRESETS: one press runs a timed sequence of rhythm/obs changes. */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1 gap-2">
+                                    <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Presets</div>
+                                    <button onClick={savePresetSnapshot} className="text-[10px] uppercase font-bold text-sky-400 hover:text-sky-200 border border-sky-800 rounded px-1.5 py-0.5"
+                                            title="Save the current rhythm and obs as a one-press preset on this device">+ Save current</button>
+                                </div>
+                                {presetView && (
+                                    <div className="mb-2 rounded border border-sky-600 bg-sky-950/40 p-2" role="status">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-bold text-sky-200 truncate">{presetView.name}</div>
+                                                <div className="text-[10px] text-slate-300">
+                                                    {presetView.note ? `Now: ${presetView.note}` : 'Starting\u2026'}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">
+                                                    {presetView.waiting
+                                                        ? <span className="text-amber-300 font-bold">Next: {presetView.nextNote} &mdash; waiting for you</span>
+                                                        : presetView.nextNote ? <>Next in <b className="font-mono text-white">{presetView.nextIn}s</b>: {presetView.nextNote}</> : null}
+                                                    {(pausedByFacilitator || state.isFinished) && <span className="ml-1 text-amber-300">(paused)</span>}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1 flex-none">
+                                                <Button onClick={firePresetStep} variant={presetView.waiting ? 'primary' : 'secondary'} className="h-8 px-2 text-[10px] uppercase font-bold" title="Apply the next step now">Next &rsaquo;</Button>
+                                                <Button onClick={stopPreset} variant="outline" className="h-8 px-2 text-[10px] uppercase font-bold" title="Stop the preset (the patient stays as they are now)">Stop</Button>
+                                            </div>
+                                        </div>
+                                        <div className="mt-1 h-1 bg-slate-800 rounded overflow-hidden"><div className="h-full bg-sky-500" style={{ width: `${Math.round((presetView.idx / presetView.total) * 100)}%` }}></div></div>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {presetList.map(p => (
+                                        <div key={p.id} className="relative">
+                                            <button onClick={() => startPreset(p)} title={p.description}
+                                                className={`w-full p-2 pr-6 rounded border text-left text-[11px] font-bold leading-tight min-h-[2.75rem] ${presetView && presetView.name === p.name ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>
+                                                {p.name}
+                                                <div className="text-[9px] font-normal text-slate-400">{p.steps.length} step{p.steps.length === 1 ? '' : 's'}{p.user ? ' \u00b7 saved' : ''}{p.steps.some(x => x.wait) ? ' \u00b7 waits for you' : ''}</div>
+                                            </button>
+                                            {p.user && <button aria-label={`Delete preset ${p.name}`} onClick={() => deletePreset(p)} className="absolute top-1 right-1 text-slate-400 hover:text-red-400"><Lucide icon="x" className="w-3 h-3"/></button>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* FULL RHYTHM REGISTRY. RG.SELECTABLE is the single shared registry from
                                 data/rhythms.js, so this list can never disagree with the monitor, the
                                 defibrillator's shockability logic or the arrest model. Arrest rhythms

@@ -94,6 +94,10 @@ flag. Consequences worth knowing:
   silent only when you deliberately pause or finish.
 - Deterioration is always **MANUAL** (the synthetic patient declares no rate, so AUTO could never do
   anything) and the AUTO/MANUAL toggle is hidden. Ramp obs with the trend control on any vitals tile.
+- **Presets** run a scripted sequence of rhythm and obs changes with one press (for example
+  bradycardia → complete heart block, or SVT that reverts when you press Next). Steps fire on a timer
+  that freezes while you pause, or wait for **Next**. **+ Save current** stores the present rhythm and
+  obs as a one-press preset on that device. Built-in presets live in `data/presets.js`.
 - Age and weight are optional. Set a paediatric age and **WETFLAG, paediatric defibrillation energies
   and weight-based dosing all work**; leave them alone and you get a sensible 40-year-old adult.
 - It **does** produce a debrief — event log, vitals trend, instructor notes — but no score and no
