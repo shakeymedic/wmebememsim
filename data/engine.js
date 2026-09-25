@@ -219,8 +219,8 @@
     // the existing designed default ("NO SENSOR DETECTED").
     //
     // 'Obs' (Attach Monitoring) remains the ONE-CLICK FAST PATH and implies every continuous
-    // sensor, so existing muscle memory, all 254 premade scenarios and the Quick Sim seed behave
-    // exactly as before. The individual keys are additive.
+    // sensor, so existing muscle memory and all 254 premade scenarios behave exactly as before.
+    // The individual keys are additive. (Quick Sim now starts with nothing attached too.)
     //
     // PERMISSIVE PHILOSOPHY UNCHANGED: sensors gate what the MONITOR DISPLAYS. They are never
     // prerequisites. Giving a drug with no IV access still proceeds and still raises the existing
@@ -1651,18 +1651,16 @@
                 // block, so detMode0 resolves to 'manual' with no special case — requirement A6 — while
                 // the AUTO/MANUAL toggle stays available because it is state-driven, not scenario-driven.
                 //
-                // The one thing Quick Sim DOES need seeding is monitoring. 'Obs' (Monitoring) is the
-                // gate on the ECG trace, the pulse-ox beep scheduler and the alarm limits, and Quick
-                // Sim has no intervention library to attach it from. Seeding the REAL intervention key
-                // means the monitor, the beeps and the alarms all work through their existing,
-                // unmodified code paths instead of needing a quickSim branch in each of them.
-                const quick0 = !!action.payload.quickSim;
+                // Monitoring is NOT seeded, in Quick Sim or anywhere else: every launch mode starts
+                // with nothing attached ("NO SENSOR DETECTED"), and the facilitator attaches the
+                // standard set or individual sensors from the controller's Monitoring & access panel.
+                // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
                 return { ...initialCoreState, runId: newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
                     showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
                     // would hand every session the same object.
-                    activeInterventions: new Set(quick0 ? ['Obs'] : []),
-                    interventionCounts: quick0 ? { Obs: 1 } : {} };
+                    activeInterventions: new Set(),
+                    interventionCounts: {} };
             case 'RESTORE_SESSION': {
                 // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
                 // `log` or `scenario` key carried in from the snapshot would shadow the live values
@@ -1786,6 +1784,9 @@
             case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
             case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
+            // Abandons a measurement in progress: no reading is committed (the commit timer is
+            // cleared by the effect that owns it as soon as `inflating` goes false).
+            case 'STOP_NIBP': return { ...state, nibp: { ...state.nibp, inflating: false } };
             case 'COMMIT_NIBP': 
                 const safeSys = cs && cs.vitals.bpSys ? cs.vitals.bpSys : 0;
                 const safeDia = cs && cs.vitals.bpDia ? cs.vitals.bpDia : 0;
@@ -2689,7 +2690,12 @@
 
                 if (!current.isRunning) { retry(1000); return; }
                 if (current.vitals.hr <= 0 || SILENT_RHYTHMS.includes(current.rhythm)) { retry(1000); return; }
-                if (!current.activeInterventions.has('Obs')) { retry(1000); return; }
+                // Follows the INDIVIDUAL sensors, not the 'Obs' shorthand: detaching one standard
+                // sensor expands 'Obs' into its individual keys, so keying on 'Obs' silenced the beep
+                // as soon as anything was removed, and a lone SpO2 probe never beeped at all.
+                // The pulse tone comes from the SpO2 probe or, with no probe on, the ECG (QRS tone).
+                const beepSensors = getSensors(current);
+                if (!beepSensors.spo2 && !beepSensors.ecg) { retry(1000); return; }
 
                 if (!current.isMuted && ctx && isAudioRouted(current)) {
                     if (ctx.state === 'suspended') { resumeAudio(); retry(500); return; }
@@ -2701,7 +2707,9 @@
                         // at 400 Hz from 85% downwards — exactly where the cue matters most. Now the
                         // tone continues to fall to a floor of 180 Hz at 50%, and stays recognisable.
                         let freq = 800;
-                        if (spO2 >= 85) freq = 400 + ((spO2 - 85) * (400 / 15));
+                        // Pitch tracks saturation only when a probe is actually measuring it.
+                        if (!beepSensors.spo2) freq = 800;
+                        else if (spO2 >= 85) freq = 400 + ((spO2 - 85) * (400 / 15));
                         else freq = Math.max(180, 400 - ((85 - spO2) * (220 / 35)));
                         osc.frequency.value = Math.max(120, Math.min(900, freq));
                         osc.connect(gain); gain.connect(ctx.destination);
@@ -2742,8 +2750,12 @@
             const current = state;
             if (!current.isRunning || current.isMuted) return;
             if (!isAudioRouted(current)) return;
-            // No monitoring attached means no alarm limits are being watched — same rule as the beep.
-            if (!current.activeInterventions.has('Obs')) return;
+            // Each alarm is watched only by the sensor that measures it — same rule as the beep.
+            // (This used to key on the 'Obs' shorthand, which disappears as soon as any single
+            // standard sensor is detached, so removing one probe silenced every alarm.)
+            const alarmSensors = getSensors(current);
+            const pulseWatched = alarmSensors.ecg || alarmSensors.spo2;
+            if (!pulseWatched) return;
             const age = current.scenario?.patientAge ?? 40;
             const th = (window.getAlarmThresholds && window.getAlarmThresholds(age)) || { hr: { low: 40, high: 130 }, rr: { low: 8, high: 30 }, spO2: 90 };
             const v = current.vitals || {};
@@ -2754,14 +2766,26 @@
             const pulseless = RG.isPulseless(current.rhythm);   // C1: registry
             if (pulseless) { fire('arrest', 'critical'); return; }
             if (v.hr > th.hr.high || v.hr < th.hr.low) fire('hr', 'critical');
-            if (v.spO2 < th.spO2) fire('spO2', 'critical');
-            if (v.rr < th.rr.low || v.rr > th.rr.high) fire('rr', 'alert');
-        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode]);
+            if (alarmSensors.spo2 && v.spO2 < th.spO2) fire('spO2', 'critical');
+            // Respiratory rate is chest-wall impedance off the ECG electrodes.
+            if (alarmSensors.ecg && (v.rr < th.rr.low || v.rr > th.rr.high)) fire('rr', 'alert');
+        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions]);
         
-        useEffect(() => { 
-            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating) { dispatch({ type: 'START_NIBP' }); }
-            if (state.nibp.inflating) { playInflationSound(); const timeout = setTimeout(() => { dispatch({ type: 'COMMIT_NIBP' }); }, 5000); return () => clearTimeout(timeout); }
-        }, [state.nibp.timer, state.isRunning, state.nibp.inflating]);
+        // Auto mode only measures while a cuff is actually on (it resumes when the cuff goes back on).
+        useEffect(() => {
+            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating && getSensors(state).nibp) { dispatch({ type: 'START_NIBP' }); }
+        }, [state.nibp.timer, state.nibp.mode, state.isRunning, state.nibp.inflating, state.activeInterventions]);
+        // The measurement itself: ~5 s of inflation, then the reading is committed. This is its OWN
+        // effect, keyed only on `inflating`. It used to share the auto-trigger effect above, whose
+        // dependencies include the auto-mode countdown — which changes every second while the sim
+        // runs — so each tick cancelled the commit and restarted the inflation sound, and an
+        // auto-mode reading never completed.
+        useEffect(() => {
+            if (!state.nibp.inflating) return;
+            playInflationSound();
+            const timeout = setTimeout(() => { dispatch({ type: 'COMMIT_NIBP' }); }, 5000);
+            return () => clearTimeout(timeout);
+        }, [state.nibp.inflating]);
         
         const lastSoundRef = useRef(0);
         useEffect(() => { 
@@ -2975,7 +2999,9 @@
             if (action.type === 'continuous') dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { add: [key], inc: [] } });
             else dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { add: [], inc: [key] } });
 
-            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + " Administered", type: 'success', id: Date.now() } });
+            // A point-of-care test is taken, not given.
+            const isPocCheck = SENSOR_DEFS.some(d => d.kind === 'poc' && d.key === key);
+            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + (isPocCheck ? " checked" : " Administered"), type: 'success', id: Date.now() } });
 
             // WAVE 5 / ITEM 2: the trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
             // above) so the debrief can derive the COMPONENTS of a multi-component objective from the
@@ -3249,6 +3275,7 @@
                 if (val && val.ts > lastCmdRef.current) {
                     lastCmdRef.current = val.ts;
                     if (val.type === 'START_NIBP') dispatch({ type: 'START_NIBP' });
+                    if (val.type === 'STOP_NIBP') dispatch({ type: 'STOP_NIBP' });
                     if (val.type === 'TOGGLE_NIBP_MODE') dispatch({ type: 'TOGGLE_NIBP_MODE' });
                     if (val.type === 'TRIGGER_ACTION') { if (applyInterventionRef.current) { applyInterventionRef.current(val.payload); } }
                 }
@@ -3750,6 +3777,7 @@
             }
         };
         const triggerNIBP = () => { if (!sendCommand({ type: 'START_NIBP' })) dispatch({ type: 'START_NIBP' }); };
+        const stopNIBP = () => { if (!sendCommand({ type: 'STOP_NIBP' })) dispatch({ type: 'STOP_NIBP' }); };
         const toggleNIBPMode = () => { if (!sendCommand({ type: 'TOGGLE_NIBP_MODE' })) dispatch({ type: 'TOGGLE_NIBP_MODE' }); };
         const triggerAction = (action) => { if (!sendCommand({ type: 'TRIGGER_ACTION', payload: action })) applyIntervention(action); };
         
@@ -4121,7 +4149,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,

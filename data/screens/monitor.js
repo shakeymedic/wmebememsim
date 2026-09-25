@@ -319,7 +319,8 @@
         // engine helper (window.getSensors) off activeInterventions, which is already on the wire, so
         // the student monitor needs no new sync key and can never disagree with the controller.
         // 'Obs' (Attach Monitoring) still implies every continuous sensor, so all 254 premade
-        // scenarios, resumed sessions and Quick Sim behave exactly as before.
+        // scenarios and resumed sessions behave exactly as before. Quick Sim starts with nothing
+        // attached, like every other mode.
         const sensors = window.getSensors ? window.getSensors(state) : null;
         const hasMonitoring = sensors ? sensors.any : activeInterventions.has('Obs');
         const sEcg = sensors ? sensors.ecg : hasMonitoring;
@@ -591,6 +592,10 @@
                             <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
                                         isPaused={false} showTraces={true}
                                         showEcg={sEcg} showPleth={sSpo2} showResp={sEcg}
+                                        // A removed ECG/SpO2 sensor leaves its lane in place and
+                                        // BLANK ("leads off" / "no probe"), matching the numeric
+                                        // tiles, which also stay put and read "Off".
+                                        reserveLanes={['ecg', 'pleth', 'resp']}
                                         showEtco2={etco2Enabled} showArt={hasArtLine}
                                         isCPR={cprInProgress} co2Pathology={etco2Pathology || 'normal'}
                                         co2Severity={co2Severity}
@@ -609,10 +614,13 @@
                         <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} />
                         
                         <div className="relative h-full">
-                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={sNibp} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={triggerNIBP} />
+                            {/* NIBP is the one sensor that does NOT blank when removed: like a real
+                                monitor, the last measured reading stays up with its time, marked
+                                CUFF OFF, and no new reading can be taken until the cuff is back on. */}
+                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={sNibp || !!nibp.sys} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={sNibp ? triggerNIBP : undefined} note={sNibp ? null : 'cuff off'} />
                             {sNibp && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
-                                    <button onClick={(e) => { e.stopPropagation(); triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
+                                    <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
                                     <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
                                 </div>
                             )}

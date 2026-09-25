@@ -56,8 +56,13 @@ it is not a separate implementation. It sets `scenario.quickSim = true` on a syn
 `window.buildQuickSimScenario()`, and the controller, the monitor and the debrief all read that one
 flag. Consequences worth knowing:
 
-- Monitoring (`Obs`) is **seeded at load**, so the ECG, the pulse-oximeter beep and the alarm limits all
-  work through their normal code paths with no intervention library to attach them from.
+- It starts with **no monitoring attached**, like every other mode: the team's monitor reads "No sensor
+  detected" until the facilitator attaches the standard set (one press, on the strip or in *Monitoring &
+  access*) or individual sensors. Removing a sensor blanks its trace and number on both the team's
+  monitor and the controller strip at once (ECG/SpO2 lanes stay in place, labelled "leads off" /
+  "no probe"). The exception is NIBP: removing the cuff keeps the last measured reading on screen (marked "cuff
+  off") and no new reading can be taken until it is back on. The pulse beep and each alarm follow the
+  sensor that measures them.
 - Deterioration starts in **MANUAL** (the synthetic patient declares no rate). The AUTO/MANUAL toggle is
   still there. Ramp obs with the trend control on any vitals tile.
 - Age and weight are optional. Set a paediatric age and **WETFLAG, paediatric defibrillation energies
