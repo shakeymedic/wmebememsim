@@ -480,13 +480,15 @@
 
         return (
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
-                <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-center justify-between">
+                {/* Wraps on a phone: the code, Launch Monitor and Join used to be forced onto one
+                    row, which squeezed "Join Another Session" into three overflowing lines. */}
+                <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex flex-wrap items-center justify-between gap-3">
                     <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         {/* New tab, not same tab: the facilitator keeps the controller on this laptop and
                             drags the monitor window to the second screen. */}
-                        <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
-                        <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Join Another Session</Button>
+                        <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1 whitespace-nowrap"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
+                        <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs whitespace-nowrap">Join Another Session</Button>
                     </div>
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">

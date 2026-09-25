@@ -290,7 +290,10 @@
             // --- RENDER ---
             // Controller Views (Header + Footer)
             return (
-                <div className="h-full flex flex-col">
+                // PHONE LAYOUT: during a live sim the WHOLE page scrolls as one on narrow screens
+                // (header included), instead of a fixed top section with small scroll boxes inside
+                // it. Desktop/tablet (md+) keeps the fixed-height, panel-scrolling layout.
+                <div className={`h-full flex flex-col ${view === 'livesim' ? 'max-md:overflow-y-auto' : ''}`}>
                     {/* Header */}
                     <header className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
                         <div className="flex items-center gap-3">
@@ -313,7 +316,7 @@
                     </header>
 
                     {/* Main Content */}
-                    <main className="flex-grow overflow-hidden relative bg-slate-900">
+                    <main className={`flex-grow overflow-hidden relative bg-slate-900 ${view === 'livesim' ? 'max-md:overflow-visible max-md:flex-none' : ''}`}>
                       <ErrorBoundary onReset={() => { try { engine.reset(); } catch (e) {} setView('setup'); }}>
                         {view === 'setup' && (
                             <SetupScreen 

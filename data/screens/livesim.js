@@ -830,9 +830,35 @@
         const dismissInv = () => setInvModal(null);
         const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
 
+        // The vital tiles, rendered once for the desktop panel and once, compact, for the phone view.
+        const renderVitalTiles = (compact) => (
+            <>
+                                     {/* The tiles always show the patient's TRUE value (the facilitator must be
+                                         able to steer a vital before its sensor goes on). The amber note says
+                                         when the team cannot currently see it. */}
+                                     <VitalDisplay compact={compact} label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={getTrend('hr')} note={sEcg ? null : 'not on monitor'} />
+                                     {/* BP opens the same control as every other vital, so it sets the patient's
+                                         actual BP (with a ramp if wanted). The old NIBP-only dialog changed just
+                                         the displayed cuff reading, which the next cycle and the art line ignored. */}
+                                     <VitalDisplay compact={compact} label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={getTrend('bpSys')}
+                                                   note={sensors.art ? null : (state.nibp && state.nibp.sys ? `${sensors.nibp ? 'cuff' : 'cuff off · last'} ${state.nibp.sys}/${state.nibp.dia}` : (sensors.nibp ? 'cuff not cycled' : 'not on monitor'))} />
+                                     <VitalDisplay compact={compact} label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={getTrend('spO2')} note={sSpo2 ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={getTrend('rr')} note={sResp ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={getTrend('temp')} note={sensors.temp ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
+                                     <VitalDisplay compact={compact} label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
+                                     {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
+                                     <VitalDisplay compact={compact} label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
+                                     {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
+                                         measurable endpoint the facilitator can steer and the team can read. */}
+                                     <VitalDisplay compact={compact} label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
+            </>
+        );
+
         return (
-            <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
+            <div className={`h-full overflow-hidden max-md:h-auto max-md:overflow-visible flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                <div className={`absolute top-20 max-md:fixed max-md:top-auto max-md:bottom-3 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
                         <Lucide icon={notification?.type === 'danger' || notification?.type === 'warning' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'warning' ? 'text-amber-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
                         <span className="font-bold text-white">{notification?.msg}</span>
@@ -844,7 +870,7 @@
                     payload (unlike `notification`, which IS synced and IS rendered on the student
                     monitor). Nothing about a conversion can therefore reach the team's screen. */}
                 {rhythmEvent && (
-                    <div role="status" className={`absolute top-32 left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
+                    <div role="status" className={`absolute top-32 max-md:fixed max-md:top-auto max-md:bottom-20 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
                         <div className="flex items-center gap-3">
                             <Lucide icon="activity" className={`w-5 h-5 ${rhythmEvent.converted ? 'text-amber-400' : 'text-slate-400'}`} />
                             <div>
@@ -858,13 +884,35 @@
                     </div>
                 )}
 
+                {/* ===================== PHONE OBS (below md only) =====================
+                    On a phone the obs come FIRST: every vital as a compact tile (tap to change),
+                    with the clock, the current rhythm and START/PAUSE beside them, so the whole
+                    patient can be driven from one screen without scrolling. The page scrolls as one
+                    below this (no fixed toolbar eating the screen). */}
+                <div className="md:hidden mb-2">
+                    <div className="flex items-center gap-2 mb-1">
+                        <div className="min-w-0 flex-1">
+                            <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold leading-none">Obs &middot; tap to change</div>
+                            <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
+                        </div>
+                        <div className="font-mono text-xl font-bold text-white">{formatTime(time)}</div>
+                        {!isRunning
+                            ? <Button variant="success" onClick={start} className="h-9 px-3 font-bold text-sm"><Lucide icon="play" className="w-4 h-4"/> START</Button>
+                            : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
+                    </div>
+                    <div className="grid grid-cols-3 min-[400px]:grid-cols-4 gap-1">
+                        {renderVitalTiles(true)}
+                    </div>
+                </div>
+
                 {/* Wraps instead of overflowing: at ~375px this was one non-scrolling row and Back/Finish/
                     START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
                 <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
-                        <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
-                        <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold"><Lucide icon="square"/> Finish</Button>
-                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
+                        <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
+                        <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
+                        {/* START/PAUSE lives beside the phone obs on small screens. */}
+                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold max-md:hidden"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -890,7 +938,7 @@
                                 </div>
                             );
                         })()}
-                        <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold w-32 justify-between">
+                        <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold whitespace-nowrap gap-1" title="Which device plays the sounds: the room monitor, this controller, or both">
                             <Lucide icon="monitor" className="w-4 h-4"/> {audioOutput === 'both' ? 'Audio: Both' : (audioOutput === 'controller' ? 'Audio: Ctrl' : 'Audio: Mon')}
                         </Button>
                         <Button ariaLabel={isMuted ? "Unmute alarms" : "Mute alarms"} variant={isMuted ? "danger" : "secondary"} onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className="h-8 px-2">
@@ -912,17 +960,17 @@
                                 <Lucide icon="flag" className="w-3 h-3 mr-1"/> Safety flags ({deviationEntries.length})
                             </Button>
                         )}
-                        <div className="w-px h-6 bg-slate-600 mx-1"></div>
-                        <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
+                        <div className="w-px h-6 bg-slate-600 mx-1 max-md:hidden"></div>
+                        <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-2 sm:px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30 whitespace-nowrap"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> <span className="sm:hidden">Monitor</span><span className="hidden sm:inline">Launch Monitor</span></Button>
                         {/* Pair a tablet by pointing its camera at the screen instead of typing a code. */}
                         <Button ariaLabel="Show QR codes to join the monitor or defib" variant="outline" onClick={() => setShowJoin(true)} className="h-8 px-2 text-sky-300 border-sky-500/50 hover:bg-sky-900/30" title="QR codes: scan with a tablet to open the room monitor or the defib for this session">
                             <Lucide icon="qr-code" className="w-4 h-4 mr-1"/> Join
                         </Button>
                         {!quickSim && <Button variant="outline" href={`defib/index.html?session=${sessionID}`} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
-                        <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
-                        <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
+                        <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-2 sm:px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30 whitespace-nowrap"><Lucide icon="pill" className="w-4 h-4 mr-1"/> <span className="sm:hidden">Drugs</span><span className="hidden sm:inline">Drug Calc</span></Button>
+                        <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-2 sm:px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30 whitespace-nowrap"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
                         <Button ariaLabel="Open keyboard shortcuts" variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
-                        <div className="font-mono text-2xl font-bold text-white ml-2">{formatTime(time)}</div>
+                        <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(time)}</div>
                     </div>
                 </div>
 
@@ -931,8 +979,8 @@
                     can carry a dragged pixel width, with the right pane taking the remainder. Below
                     md it stacks exactly as before (flex-col, full width), so the verified 375 px
                     layout is untouched. */}
-                <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0">
-                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 overflow-y-auto h-full pr-1">
+                <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0 max-md:flex-none max-md:overflow-visible">
+                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 md:overflow-y-auto md:h-full md:pr-1">
                          {/* A2: the scenario brief card is replaced in Quick Sim by a one-line factual
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
@@ -1100,27 +1148,10 @@
                                  )}
                              </div>
 
-                             <div className="grid grid-cols-2 gap-1 p-1 bg-black">
-                                 {/* The tiles always show the patient's TRUE value (the facilitator must be
-                                     able to steer a vital before its sensor goes on). The amber note says
-                                     when the team cannot currently see it. */}
-                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={getTrend('hr')} note={sEcg ? null : 'not on monitor'} />
-                                 {/* BP opens the same control as every other vital, so it sets the patient's
-                                     actual BP (with a ramp if wanted). The old NIBP-only dialog changed just
-                                     the displayed cuff reading, which the next cycle and the art line ignored. */}
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={getTrend('bpSys')}
-                                               note={sensors.art ? null : (state.nibp && state.nibp.sys ? `${sensors.nibp ? 'cuff' : 'cuff off · last'} ${state.nibp.sys}/${state.nibp.dia}` : (sensors.nibp ? 'cuff not cycled' : 'not on monitor'))} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={getTrend('spO2')} note={sSpo2 ? null : 'not on monitor'} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={getTrend('rr')} note={sResp ? null : 'not on monitor'} />
-                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={getTrend('temp')} note={sensors.temp ? null : 'not on monitor'} />
-                                 <VitalDisplay label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
-                                 <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
-                                 <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
-                                 {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
-                                 <VitalDisplay label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
-                                 {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
-                                     measurable endpoint the facilitator can steer and the team can read. */}
-                                 <VitalDisplay label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
+                             {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
+                                 very top of the page instead (see PHONE OBS below). */}
+                             <div className="hidden md:grid grid-cols-2 gap-1 p-1 bg-black">
+                                 {renderVitalTiles(false)}
                              </div>
                         </div>
 
@@ -1288,13 +1319,13 @@
                         <div className="flex-none flex gap-2">
                             <Button variant="outline" onClick={cycleNibp} className={`flex-1 ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-500 border-slate-600'}`}
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
-                                 <Lucide icon="activity" className="w-4 h-4"/> {sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP (no cuff)'}
+                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
                             </Button>
                             {/* A one-off displayed reading that does NOT change the patient (e.g. a
                                 spurious cuff reading). To change the actual BP, tap the BP tile. */}
                             <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
                                     title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
-                                    className="flex-none px-3 text-[10px] uppercase font-bold text-slate-400">
+                                    className="flex-none px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
                                  Manual reading
                             </Button>
                         </div>
@@ -1412,7 +1443,7 @@
                         search, no tabs, no drug groups, no investigations, no voice and no assessment
                         checklist, because none of those mean anything without a scenario. */}
                     {quickSim ? (
-                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
                             <div className="flex-1 min-w-[12rem]">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Rhythm</div>
@@ -1430,7 +1461,7 @@
                             </Button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                        <div className="md:flex-1 md:overflow-y-auto p-3 space-y-3">
                             {/* SCRIPTED PRESETS: one press runs a timed sequence of rhythm/obs changes. */}
                             <div>
                                 <div className="flex items-center justify-between mb-1 gap-2">
@@ -1527,7 +1558,7 @@
                         </div>
                     </div>
                     ) : (
-                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         {searchTerm.length > 0 && searchResults.length > 0 && (
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
                                 {searchResults.map(key => (
@@ -1563,7 +1594,7 @@
                              ))}
                         </div>
                         
-                        <div className="flex-1 p-3 overflow-y-auto bg-slate-800 relative">
+                        <div className="md:flex-1 p-3 md:overflow-y-auto bg-slate-800 relative">
                             {activeTab === 'Assessment' ? (
                                 <div className="space-y-4 p-2">
                                     <div className="bg-sky-900/20 border border-sky-500/30 p-4 rounded-lg">

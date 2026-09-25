@@ -242,7 +242,10 @@
             };
         }, []);
         return (
-            <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+            // max-md:fixed — on a phone the controller is one long scrolling page, so an absolutely
+            // positioned overlay was centred in the middle of that page (jumping the view away from
+            // the obs); fixed keeps every dialog over the screen the facilitator is looking at.
+            <div className="absolute max-md:fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm max-md:overflow-y-auto">
                 <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelIdRef.current} tabIndex="-1" className={className}>
                     <span id={labelIdRef.current} className="sr-only">{label}</span>
                     {children}
@@ -691,7 +694,9 @@
     const VitalDisplay = ({ label, value, value2, unit, alert, prev, visible, onClick, trend, isMonitor, hideTrends, isNIBP, lastNIBP,
                             // Controller-only hint (e.g. "not on monitor"): the facilitator always sees the
                             // true value, and this says whether the team can currently see it too.
-                            note }) => {
+                            note,
+                            // Phone controller: small tiles so all the obs fit on one screen.
+                            compact = false }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
                 <span className="text-slate-600 text-xs uppercase">{label} Off</span>
@@ -736,6 +741,24 @@
                          {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
+                </Tile>
+            );
+        }
+
+        if (compact) {
+            return (
+                <Tile {...tileProps} className={`relative bg-slate-900 border rounded px-1.5 pt-1 ${note ? 'pb-3' : 'pb-1'} flex flex-col text-left min-w-0 ${onClick ? 'cursor-pointer active:bg-slate-800' : ''} overflow-hidden ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                    <div className="flex justify-between items-baseline gap-1 min-w-0">
+                        <span className={`text-[10px] font-bold uppercase leading-none ${color}`}>{label}</span>
+                        {unit && <span className="text-[9px] text-slate-500 leading-none truncate">{unit}</span>}
+                    </div>
+                    <div className={`font-mono font-bold leading-tight tracking-tight text-center whitespace-nowrap ${color} ${hasValue2 ? 'text-xl' : 'text-2xl'}`}>
+                        {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}{trendIcon && <span className="text-sm text-sky-400 ml-0.5">{trendIcon}</span>}
+                    </div>
+                    {note && <span className="absolute left-1.5 right-1 bottom-0.5 text-[8px] leading-none uppercase tracking-wide font-bold text-amber-400/90 truncate pointer-events-none">{note}</span>}
+                    {!hideTrends && trend && trend.active && (
+                        <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-800"><div className="bg-sky-500 h-full" style={{ width: `${trend.progress * 100}%` }}></div></div>
+                    )}
                 </Tile>
             );
         }
