@@ -308,9 +308,9 @@
         //   * safety-flag chip + expectation hints  — expectations are properties of interventions;
         //                                             with no interventions there is nothing to flag.
         //   * investigations / voice / assessment   — all scenario-content driven.
-        // What is explicitly KEPT in Quick Sim despite being "extra": the AUTO/MANUAL deterioration
-        // toggle (requirement A6 — defaults to MANUAL because the synthetic patient declares no rate,
-        // but the facilitator can still switch to AUTO), Trend Better/Worse (they fall back to
+        // The AUTO/MANUAL deterioration toggle is HIDDEN in Quick Sim (it always runs MANUAL: the
+        // synthetic patient declares no rate, so AUTO could never do anything).
+        // What is explicitly KEPT in Quick Sim despite being "extra": Trend Better/Worse (they fall back to
         // relative adjustments when no scenario evolution exists), the custom log entry with its Flag
         // button, NIBP, the drug-dose calculator and the timer alerts — all facilitator tools that
         // are useful without a scenario.
@@ -1058,7 +1058,11 @@
 
                         {/* ---- GROUP C2: AUTO / MANUAL deterioration toggle. Sits directly under the obs
                              panel so it is impossible to miss during a running sim, and the current mode
-                             is spelled out rather than implied by a colour. ---- */}
+                             is spelled out rather than implied by a colour.
+                             Hidden in Quick Sim: there is no scenario and so no declared deterioration
+                             rate, which means AUTO could never change anything there. Quick Sim always
+                             runs MANUAL; the trend control on each tile drives any decline. ---- */}
+                        {!quickSim && (
                         <div title="Switching either way leaves the obs exactly where they are — there is no jump in either direction." className={`flex-none rounded border-l-4 p-2 ${deteriorationMode === 'auto' ? 'bg-amber-950/30 border-amber-500' : 'bg-slate-800 border-slate-500'}`}>
                             <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
@@ -1067,15 +1071,9 @@
                                         {deteriorationMode === 'auto' ? 'AUTO — deteriorating on its own' : 'MANUAL — obs only change when you change them'}
                                     </div>
                                     <div className="text-[10px] text-slate-400 mt-0.5">
-                                        {/* A6: Quick Sim has no scenario and therefore no declared
-                                            deterioration rate, so it starts in MANUAL and the toggle
-                                            says so plainly rather than implying AUTO will do something.
-                                            Use the vitals tiles' trend control to drive a decline. */}
                                         {detInfo.declared
                                             ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
-                                            : quickSim
-                                                ? 'Quick Sim has no declared deterioration rate, so AUTO would change nothing on its own. Ramp the obs with the trend control on any tile instead.'
-                                                : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
+                                            : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
                                     </div>
                                 </div>
                                 <Button
@@ -1090,6 +1088,7 @@
                                 </Button>
                             </div>
                         </div>
+                        )}
 
                         {/* ---- A5: live drug timing. The facilitator needs to know WHY the obs are still
                              moving, which is exactly what the pk envelope makes invisible otherwise. ---- */}

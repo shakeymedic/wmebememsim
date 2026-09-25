@@ -63,8 +63,8 @@ flag. Consequences worth knowing:
   "no probe"). The exception is NIBP: removing the cuff keeps the last measured reading on screen (marked "cuff
   off") and no new reading can be taken until it is back on. The pulse beep and each alarm follow the
   sensor that measures them.
-- Deterioration starts in **MANUAL** (the synthetic patient declares no rate). The AUTO/MANUAL toggle is
-  still there. Ramp obs with the trend control on any vitals tile.
+- Deterioration is always **MANUAL** (the synthetic patient declares no rate, so AUTO could never do
+  anything) and the AUTO/MANUAL toggle is hidden. Ramp obs with the trend control on any vitals tile.
 - Age and weight are optional. Set a paediatric age and **WETFLAG, paediatric defibrillation energies
   and weight-based dosing all work**; leave them alone and you get a sensible 40-year-old adult.
 - It **does** produce a debrief — event log, vitals trend, instructor notes — but no score and no
