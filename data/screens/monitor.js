@@ -11,86 +11,114 @@
         );
     };
 
+    // =========================================================================================
+    // THE 12-LEAD, DRAWN FROM THE SAME RHYTHM REGISTRY AS THE MONITOR.
+    // It used to draw one fixed sinus complex for EVERY rhythm (only STEMI changed it), so VF, AF,
+    // heart block or hyperkalaemia on the monitor produced a normal 12-lead — the two screens
+    // contradicted each other. Now it is a 10-second recording laid out the standard way (four
+    // 2.5 s columns x three rows, then a 10 s lead II rhythm strip) at 25 mm/s and 10 mm/mV,
+    // sampled from RHYTHMS.ecgValue with the same phase accumulation, beat irregularity (AF,
+    // variable flutter, agonal) and dropped beats (Mobitz II) the live trace uses.
+    // Per-lead morphology is an approximation by lead gain/polarity (aVR inverted, V1 mostly
+    // negative, R-wave progression across V2-V6); STEMI draws its ST elevation only in the
+    // territory's leads with reciprocal depression. It prints NO rhythm interpretation — reading
+    // it is the team's job.
+    // =========================================================================================
+    const TWELVE_LEAD_LAYOUT = [['I', 'aVR', 'V1', 'V4'], ['II', 'aVL', 'V2', 'V5'], ['III', 'aVF', 'V3', 'V6']];
+    const LEAD_GAIN = { I: 0.65, II: 1.0, III: 0.45, aVR: -0.8, aVL: 0.35, aVF: 0.75, V1: -0.7, V2: 0.45, V3: 0.8, V4: 1.15, V5: 1.05, V6: 0.85 };
+    // STEMI territory -> [leads with ST elevation, leads with reciprocal depression]
+    const STEMI_TERRITORY = {
+        anterior: [['V1', 'V2', 'V3', 'V4'], ['II', 'III', 'aVF']],
+        inferior: [['II', 'III', 'aVF'], ['I', 'aVL']],
+        lateral:  [['I', 'aVL', 'V5', 'V6'], ['II', 'III', 'aVF']]
+    };
+    const stemiTerritoryFor = (scenario) => {
+        const txt = [scenario?.ecg?.findings, scenario?.investigations?.ecg?.findings, scenario?.title, scenario?.presentingComplaint]
+            .filter(Boolean).join(' ').toLowerCase();
+        if (/inferior|ii, iii|avf/.test(txt)) return 'inferior';
+        if (/lateral|v5|v6|avl/.test(txt)) return 'lateral';
+        return 'anterior';
+    };
+
     const render12Lead = (canvas, rhythm, scenario, hr = 75) => {
         if (!canvas) return;
         try {
+            const RG = window.RHYTHMS;
             const ctx = canvas.getContext('2d');
-            const w = canvas.width;
-            const h = canvas.height;
-            
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, w, h);
-            ctx.strokeStyle = '#ffcccc'; 
-            ctx.lineWidth = 1;
-            
-            ctx.beginPath();
-            for(let x=0; x<=w; x+=10) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-            for(let y=0; y<=h; y+=10) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+            const w = canvas.width, h = canvas.height;
+            const pxPerSec = w / 10;                 // 10 s across the page = 25 mm/s
+            const small = pxPerSec * 0.04;           // 1 mm small square
+            const pxPerUnit = (small * 10) / 40;     // registry units: ~40 = 1 mV (10 mm)
+
+            ctx.fillStyle = 'white'; ctx.fillRect(0, 0, w, h);
+            ctx.lineWidth = 1; ctx.strokeStyle = '#ffd6d6'; ctx.beginPath();
+            for (let x = 0; x <= w; x += small) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+            for (let y = 0; y <= h; y += small) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
             ctx.stroke();
-            
-            ctx.strokeStyle = '#ff9999';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-            for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
+            ctx.strokeStyle = '#ff9f9f'; ctx.beginPath();
+            for (let x = 0; x <= w; x += small * 5) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+            for (let y = 0; y <= h; y += small * 5) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
             ctx.stroke();
 
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1.2;
-            ctx.lineJoin = 'round';
-
-            const leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
-            
-            let stElev = 0; 
-            if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI') || (scenario && scenario.investigations?.ecg?.type === 'STEMI')) stElev = 1.5;
-            if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2; 
-
-            const getComplex = (t, leadIndex) => {
-                let y = 0;
-                y -= 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
-                y += 20 * Math.exp(-Math.pow(t - 0.22, 2) / 0.001); 
-                y -= 8 * Math.exp(-Math.pow(t - 0.24, 2) / 0.001); 
-                y -= 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005); 
-
-                if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
-                    if (t > 0.26 && t < 0.45) {
-                        y -= stElev * 10;
-                    }
+            // ---- one 10 s recording, sampled once and shared by every lead (a real 12-lead is
+            // simultaneous; the columns are consecutive 2.5 s windows of the same recording).
+            const rid = RG.canonical(rhythm);
+            const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
+            let freq;
+            if (rid === 'VF') freq = 4; else if (rid === 'Fine VF') freq = 5; else if (rid === 'Asystole') freq = 0.1;
+            else if (hr > 0) freq = hr / 60; else freq = (INTRINSIC[rid] || 60) / 60;
+            const N = Math.round(w);                 // one sample per pixel across 10 s
+            const phase = new Float64Array(N), beat = new Int32Array(N);
+            let ph = 0; let beats = 0;
+            for (let i = 0; i < N; i++) {
+                phase[i] = ph - Math.floor(ph); beat[i] = Math.floor(ph);
+                const f = RG.beatIntervalFactor ? RG.beatIntervalFactor(rid, Math.floor(ph)) : 1;
+                const next = ph + (10 / N) * freq / (f > 0 ? f : 1);
+                if (Math.floor(next) !== Math.floor(ph) && !(RG.droppedBeat && RG.droppedBeat(rid, Math.floor(ph)))) beats++;
+                ph = next;
+            }
+            const baseWave = RG.waveformFor(rid);
+            const scenarioStemi = scenario && (scenario?.ecg?.type === 'STEMI' || scenario?.investigations?.ecg?.type === 'STEMI');
+            const isStemi = baseWave === 'stemi' || (scenarioStemi && ['sinus', 'svt'].indexOf(baseWave) !== -1);
+            const terr = isStemi ? STEMI_TERRITORY[stemiTerritoryFor(scenario)] : null;
+            const sample = (i, lead) => {
+                const t = i * 10 / N;
+                const gain = LEAD_GAIN[lead] || 1;
+                if (!isStemi) return RG.ecgValue(phase[i], t, rhythm, { beat: beat[i], noise: false }) * gain;
+                // Sinus complex everywhere; the ST shift is added AFTER the lead gain so that it is
+                // elevation in every territory lead (including V1, whose gain is negative).
+                let y = RG.ecgValue(phase[i], t, 'Sinus Rhythm', { beat: beat[i], noise: false }) * gain;
+                const p = phase[i];
+                if (p > 0.25 && p < 0.42) {
+                    const ramp = Math.sin((p - 0.25) / 0.17 * Math.PI) * 0.35 + 0.65;   // coved segment
+                    if (terr[0].indexOf(lead) !== -1) y += 9 * ramp;
+                    if (terr[1].indexOf(lead) !== -1) y -= 4 * ramp;
                 }
                 return y;
             };
 
-            const colW = w / 4;
-            const rowH = h / 3;
-            
-            // Period in pixels per QRS — 25mm/s paper speed at typical resolution → adjust by HR.
-            // Faster HR → tighter complexes; clamp to keep waveform legible.
-            const safeHr = Math.max(20, Math.min(220, hr || 75));
-            const period = Math.max(60, Math.min(400, Math.round(15000 / safeHr)));
-
-            leads.forEach((lead, i) => {
-                const col = Math.floor(i / 3);
-                const row = i % 3;
-                const originX = col * colW;
-                const originY = row * rowH + (rowH / 2);
-
-                ctx.fillStyle = 'black';
-                ctx.font = '12px sans-serif';
-                ctx.fillText(lead, originX + 10, originY - 30);
-
+            const rows = 4, rowH = h / rows, colW = w / 4;
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2; ctx.lineJoin = 'round';
+            ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#111';
+            const trace = (lead, x0, x1, midY) => {
                 ctx.beginPath();
-                for (let x = 0; x < colW; x++) {
-                    const t = (x % period) / period;
-                    const y = getComplex(t, i);
-                    if (x === 0) ctx.moveTo(originX + x, originY + y);
-                    else ctx.lineTo(originX + x, originY + y);
+                for (let x = Math.floor(x0); x < Math.min(N, Math.floor(x1)); x++) {
+                    const y = midY - sample(x, lead) * pxPerUnit;
+                    if (x === Math.floor(x0)) ctx.moveTo(x, y); else ctx.lineTo(x, y);
                 }
                 ctx.stroke();
-            });
-            
-            ctx.fillStyle = 'black';
-            ctx.font = '14px monospace';
-            ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
+                ctx.fillText(lead, x0 + 6, midY - rowH * 0.32);
+            };
+            TWELVE_LEAD_LAYOUT.forEach((row, r) => row.forEach((lead, c) => {
+                const x0 = c * colW;
+                trace(lead, x0, x0 + colW, r * rowH + rowH * 0.55);
+                if (c > 0) { ctx.beginPath(); ctx.moveTo(x0, r * rowH + rowH * 0.35); ctx.lineTo(x0, r * rowH + rowH * 0.75); ctx.stroke(); }
+            }));
+            trace('II', 0, w, 3 * rowH + rowH * 0.5);
+
+            const rate = Math.round(beats * 6);
+            ctx.font = '13px monospace'; ctx.fillStyle = '#111';
+            ctx.fillText(`ID: ${scenario && scenario.patientName ? scenario.patientName : 'UNKNOWN'}   ${new Date().toLocaleDateString('en-GB')}   25 mm/s  10 mm/mV   Vent. rate ${rate} bpm`, 10, h - 8);
         } catch (e) {
             console.error("12-Lead Render Error", e);
         }
@@ -338,6 +366,56 @@
         const co2Severity = Number.isFinite(state.co2Severity) ? state.co2Severity : 0;
         
         const [audioEnabled, setAudioEnabled] = useState(false);
+
+        // ---- KEEP THE ROOM MONITOR AWAKE ------------------------------------------------------
+        // A tablet on the wall used to dim and lock mid-scenario, because nothing asked it not to.
+        // The Screen Wake Lock API holds the screen on while this page is visible. The browser
+        // drops the lock whenever the tab is hidden, so it is re-requested on every return to
+        // visible, and again inside the "Tap to Enable Sound" gesture (some browsers want one).
+        // Unsupported browsers (older iOS) simply carry on as before; the chip below says so.
+        const wakeLockRef = useRef(null);
+        const [wakeState, setWakeState] = useState(('wakeLock' in navigator) ? 'pending' : 'unsupported');
+        const requestWakeLock = async () => {
+            if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+            if (wakeLockRef.current && !wakeLockRef.current.released) return;
+            try {
+                const lock = await navigator.wakeLock.request('screen');
+                wakeLockRef.current = lock;
+                setWakeState('on');
+                lock.addEventListener('release', () => { if (wakeLockRef.current === lock) setWakeState('released'); });
+            } catch (e) { setWakeState('denied'); }
+        };
+        useEffect(() => {
+            requestWakeLock();
+            const onVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); };
+            document.addEventListener('visibilitychange', onVis);
+            return () => {
+                document.removeEventListener('visibilitychange', onVis);
+                try { if (wakeLockRef.current) wakeLockRef.current.release(); } catch (e) {}
+                wakeLockRef.current = null;
+            };
+        }, []);
+        // Full screen: hides the browser chrome on the room screen. Prefixed for older Safari.
+        const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement));
+        useEffect(() => {
+            const onFs = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+            document.addEventListener('fullscreenchange', onFs);
+            document.addEventListener('webkitfullscreenchange', onFs);
+            return () => { document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('webkitfullscreenchange', onFs); };
+        }, []);
+        const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+        const toggleFullscreen = () => {
+            try {
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                } else {
+                    const el = document.documentElement;
+                    const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+                    if (p && p.catch) p.catch(() => {});
+                }
+            } catch (e) { /* not allowed here: nothing to do */ }
+            requestWakeLock();
+        };
         // The overlay must be able to come BACK: iOS and tab-backgrounding re-suspend the
         // AudioContext, and a one-way flag left the monitor permanently silent with no way to fix it.
         const audioContextState = sim.audioContextState;
@@ -497,6 +575,7 @@
         }
 
         const handleEnableAudio = () => {
+            requestWakeLock();
             const result = enableAudio();
             if (result && typeof result.then === 'function') result.then(() => setAudioEnabled(true)).catch(() => setAudioEnabled(true));
             else setAudioEnabled(true);
@@ -539,8 +618,8 @@
                     <Modal label="12-lead analysis" onClose={() => setShow12Lead(false)}>
                         <div className="bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn">
                             <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
-                            <canvas ref={canvasRef} width="800" height="500" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
-                            <div className="text-slate-400 text-xs mt-2">Analysis: {state.rhythm}</div>
+                            <canvas ref={canvasRef} width="1000" height="640" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
+                            {/* No printed interpretation: naming the rhythm here handed the team the answer. */}
                         </div>
                     </Modal>
                 )}
@@ -603,6 +682,20 @@
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>
                         )}
+                        {/* Screen controls, deliberately small and dim so they never compete with
+                            the patient's data. The chip says whether the screen will stay awake. */}
+                        <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                            <span title={wakeState === 'on' ? 'This screen will stay on while the monitor is open.' : wakeState === 'unsupported' ? 'This browser cannot keep the screen awake. Set the tablet\'s auto-lock to Never for the session.' : 'Screen may sleep. Tap the screen (or Full screen) to try again, or set auto-lock to Never.'}
+                                  className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${wakeState === 'on' ? 'border-slate-700 text-slate-500' : 'border-amber-700 text-amber-400'}`}>
+                                <Lucide icon="sun" className="w-3 h-3" /> {wakeState === 'on' ? 'Awake' : 'May sleep'}
+                            </span>
+                            {fsSupported && (
+                                <button onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'} title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                                        className="p-1.5 rounded border border-slate-700 bg-black/60 text-slate-400 hover:text-white">
+                                    <Lucide icon={isFullscreen ? 'minimize' : 'maximize'} className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
                         {state.monitorTimer?.visible && (
                             <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-4xl md:text-6xl px-4 py-2 rounded border border-slate-700 shadow-2xl">
                                 {Math.floor(state.monitorTimer.time/60).toString().padStart(2,'0')}:{(state.monitorTimer.time%60).toString().padStart(2,'0')}
