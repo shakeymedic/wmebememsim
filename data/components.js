@@ -299,7 +299,12 @@
                           // gated on its own sensor instead of one all-or-nothing flag. They default
                           // to the legacy behaviour (`showTraces` drives pleth + resp) so every
                           // existing call site keeps working unchanged.
-                          showEcg = true, showPleth, showResp }) => {
+                          showEcg = true, showPleth, showResp,
+                          // Lanes that keep their place when their sensor is removed: the lane
+                          // stays in the layout, goes BLANK immediately and is labelled as off,
+                          // exactly as a real monitor shows "LEADS OFF" / "NO PROBE" rather than
+                          // silently re-flowing the other traces. Default [] = legacy behaviour.
+                          reserveLanes = [] }) => {
         const canvasRef = useRef(null);
         const [width, setWidth] = useState(0);
 
@@ -307,6 +312,23 @@
         const respOn = showResp === undefined ? !!showTraces : !!showResp;
         const artOn = !!showTraces && !!showArt;
         const co2On = !!showTraces && !!showEtco2;
+        const drawn = { ecg: !!showEcg, pleth: plethOn, art: artOn, resp: respOn, co2: co2On };
+        const reserved = (reserveLanes || []).reduce((m, k) => { m[k] = true; return m; }, {});
+        // ONE lane order, shared by the draw loop and the labels, so a label can never sit over
+        // the wrong trace. A lane is laid out if its trace is drawn OR it is reserved.
+        const LANE_ORDER = ['ecg', 'pleth', 'art', 'resp', 'co2'];
+        const layoutKeys = LANE_ORDER.filter(k => drawn[k] || reserved[k]);
+        const drawnKeys = layoutKeys.filter(k => drawn[k]);
+        const layoutSig = layoutKeys.join(',');
+        const drawnSig = drawnKeys.join(',');
+
+        // The animation state outlives any single run of the draw effect. Attaching or detaching a
+        // sensor re-runs the effect; previously every re-run restarted the phase accumulators and
+        // the sweep cursors from zero AND left the old picture on the canvas, so a removed trace
+        // stayed on screen until the sweep happened to overwrite it (8 s, 30 s for CO2) — and
+        // stayed FOREVER when no drawn lane was left to sweep over it.
+        const animRef = useRef(null);
+        if (animRef.current === null) animRef.current = { time: 0, ecgPhase: 0, respPhase: 0, lanes: {}, layoutSig: null, drawnSig: '' };
 
         // Keep frequently-changing values in refs so vitals updates don't tear down
         // and restart the animation loop (which would reset the sweep cursors and leave stale
@@ -351,19 +373,42 @@
 
             const ctx = canvas.getContext('2d');
             let animationFrameId;
-            let time = 0;            // absolute animation seconds — chaotic (VF) and dissociated
+            const anim = animRef.current;
+            let time = anim.time;    // absolute animation seconds — chaotic (VF) and dissociated
                                      // (AF baseline, CHB P waves, flutter sawtooth) components only
             let lastTs = null;
 
             // ---- PHASE ACCUMULATORS (the Wave 7 fix). Monotonically increasing, never recomputed
-            // from absolute time, so past beats are immutable.
-            let ecgPhase = 0;        // cardiac cycles since mount; Math.floor() is the beat index
-            let respPhase = 0;       // respiratory cycles since mount
+            // from absolute time, so past beats are immutable. Carried across effect re-runs.
+            let ecgPhase = anim.ecgPhase;   // cardiac cycles since mount; Math.floor() is the beat index
+            let respPhase = anim.respPhase; // respiratory cycles since mount
 
             // ---- per-lane sweep cursors. Each trace sweeps at its own speed, so they must not
-            // share an x position or a lastY.
-            const lanes = {};
+            // share an x position or a lastY. Carried across re-runs so toggling one sensor does not
+            // restart every other trace's sweep.
+            const lanes = anim.lanes;
             const laneState = (key) => lanes[key] || (lanes[key] = { x: 0, lastY: null });
+
+            // ---- BLANK WHAT WAS REMOVED, IMMEDIATELY (paused or not).
+            // Layout changed (a lane added or dropped) -> the whole picture is stale: clear it and
+            // restart every cursor. Same layout, a trace switched off -> clear just that lane.
+            if (canvas.width > 0 && canvas.height > 0) {
+                const prevDrawn = anim.drawnSig ? anim.drawnSig.split(',') : [];
+                if (anim.layoutSig !== null && anim.layoutSig !== layoutSig) {
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    Object.keys(lanes).forEach(k => delete lanes[k]);
+                } else if (anim.layoutSig === layoutSig) {
+                    const h = canvas.height / Math.max(1, layoutKeys.length);
+                    prevDrawn.filter(k => drawnKeys.indexOf(k) === -1).forEach(k => {
+                        const i = layoutKeys.indexOf(k);
+                        if (i !== -1) { ctx.fillStyle = '#000'; ctx.fillRect(0, h * i, canvas.width, h); }
+                        delete lanes[k];
+                    });
+                }
+            }
+            anim.layoutSig = layoutSig;
+            anim.drawnSig = drawnSig;
 
             const render = (ts) => {
                 if (!canvas.parentElement) return;
@@ -391,17 +436,11 @@
                 const live = liveRef.current;
                 const W = canvas.width, Hgt = canvas.height;
 
-                // -------- trace layout: one lane per enabled trace, top to bottom
-                const laneKeys = [];
-                if (showEcg) laneKeys.push('ecg');
-                if (plethOn) laneKeys.push('pleth');
-                if (artOn) laneKeys.push('art');
-                if (respOn) laneKeys.push('resp');
-                if (co2On) laneKeys.push('co2');
-                const numTraces = Math.max(1, laneKeys.length);
+                // -------- trace layout: one lane per drawn or reserved trace, top to bottom
+                const numTraces = Math.max(1, layoutKeys.length);
                 const traceHeight = Hgt / numTraces;
                 const laneIdx = {};
-                laneKeys.forEach((k, i) => { laneIdx[k] = i; });
+                layoutKeys.forEach((k, i) => { laneIdx[k] = i; });
 
                 // Draws one frame's worth of one lane, advancing that lane's own cursor.
                 // `colour` is set immediately before the stroke so a recording context can attribute
@@ -607,23 +646,21 @@
                 }
 
                 time += elapsed;
+                anim.time = time; anim.ecgPhase = ecgPhase; anim.respPhase = respPhase;
                 animationFrameId = requestAnimationFrame(render);
             };
 
             animationFrameId = requestAnimationFrame(render);
             return () => cancelAnimationFrame(animationFrameId);
-        }, [isPaused, showEcg, plethOn, respOn, artOn, co2On]);
+        }, [isPaused, layoutSig, drawnSig]);
 
         // Labels follow the SAME lane order the draw loop uses, so a label can never sit over the
         // wrong trace when a sensor is attached or detached mid-session.
-        const laneKeys = [];
-        if (showEcg) laneKeys.push('ecg');
-        if (plethOn) laneKeys.push('pleth');
-        if (artOn) laneKeys.push('art');
-        if (respOn) laneKeys.push('resp');
-        if (co2On) laneKeys.push('co2');
-        const numTraces = Math.max(1, laneKeys.length);
-        const topOf = (key) => `calc(${(100 / numTraces) * laneKeys.indexOf(key)}% + 4px)`;
+        const numTraces = Math.max(1, layoutKeys.length);
+        const topOf = (key) => `calc(${(100 / numTraces) * layoutKeys.indexOf(key)}% + 4px)`;
+        // A reserved lane whose sensor is off: blank, with the reason in dim grey.
+        const OFF_TEXT = { ecg: `${rhythmLabel || 'LEAD II'} \u2014 leads off`, pleth: 'PLETH \u2014 no probe', art: 'ART \u2014 off', resp: 'RESP \u2014 leads off', co2: 'CO2 \u2014 off' };
+        const offLanes = layoutKeys.filter(k => !drawn[k]);
         // WAVE 7 / BUG 2: the trace labels carry their own opaque chip. The previous fix nudged the
         // controller's overlay buttons sideways, which still clipped "LEAD II" at narrow panel
         // widths; the buttons have now moved OUT of the canvas entirely (see livesim.js) and the
@@ -633,6 +670,7 @@
         return (
             <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
+                {offLanes.map(k => <div key={`off-${k}`} className={`${labelClass} text-slate-500 uppercase tracking-wider`} style={{ top: topOf(k) }}>{OFF_TEXT[k]}</div>)}
                 {showEcg && <div className={`${labelClass} text-green-500`} style={{ top: topOf('ecg') }}>{rhythmLabel || "LEAD II"}</div>}
                 {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH</div>}
                 {artOn && <div className={`${labelClass} text-red-500`} style={{ top: topOf('art') }}>ART</div>}
@@ -645,7 +683,10 @@
         );
     };
 
-    const VitalDisplay = ({ label, value, value2, unit, alert, prev, visible, onClick, trend, isMonitor, hideTrends, isNIBP, lastNIBP }) => {
+    const VitalDisplay = ({ label, value, value2, unit, alert, prev, visible, onClick, trend, isMonitor, hideTrends, isNIBP, lastNIBP,
+                            // Controller-only hint (e.g. "not on monitor"): the facilitator always sees the
+                            // true value, and this says whether the team can currently see it too.
+                            note }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
                 <span className="text-slate-600 text-xs uppercase">{label} Off</span>
@@ -687,6 +728,7 @@
                          <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
                      </div>
                      <div className="text-right text-[10px] text-slate-500 uppercase font-mono mt-auto">
+                         {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
                 </Tile>
@@ -707,6 +749,7 @@
                     {trendIcon && <span className="text-xl md:text-3xl text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
                 </div>
 
+                {note && <span className="absolute right-2 top-6 md:top-7 text-right text-[9px] leading-none uppercase tracking-wider font-bold text-amber-400/90 pointer-events-none">{note}</span>}
                 {!hideTrends && trend && trend.active && (
                     <div className="w-full bg-slate-800 h-1 mt-2 rounded overflow-hidden">
                         <div className="bg-sky-500 h-full transition-all duration-1000" style={{width: `${trend.progress * 100}%`}}></div>

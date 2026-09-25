@@ -326,11 +326,29 @@
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
+        // BP only: after an immediate change, cycle the cuff so the team's NIBP shows the new value
+        // (a real NIBP only updates when it measures).
+        const [cycleCuffAfter, setCycleCuffAfter] = useState(true);
         const [showLogModal, setShowLogModal] = useState(false);
         const [showRhythmModal, setShowRhythmModal] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
+        // The ARREST / ROSC pop-up menus close on an outside click or Escape, like any menu.
+        const arrestMenuRef = useRef(null);
+        const roscMenuRef = useRef(null);
+        useEffect(() => {
+            if (!showArrestMenu && !showROSCMenu) return;
+            const onDown = (e) => {
+                if (arrestMenuRef.current && arrestMenuRef.current.contains(e.target)) return;
+                if (roscMenuRef.current && roscMenuRef.current.contains(e.target)) return;
+                setShowArrestMenu(false); setShowROSCMenu(false);
+            };
+            const onKey = (e) => { if (e.key === 'Escape') { setShowArrestMenu(false); setShowROSCMenu(false); } };
+            document.addEventListener('pointerdown', onDown);
+            document.addEventListener('keydown', onKey);
+            return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+        }, [showArrestMenu, showROSCMenu]);
 
         const [invModal, setInvModal] = useState(null);
         const [invCustomText, setInvCustomText] = useState("");
@@ -466,7 +484,7 @@
                 const active = document.activeElement;
                 if (active?.matches?.('button, a, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
                 if (e.key === ' ') { e.preventDefault(); isRunning ? pause() : start(); }
-                if (e.key === 'f' || e.key === 'F') { if (window.confirm('End the simulation and go to debrief?')) onFinish(); }
+                if (e.key === 'f' || e.key === 'F') confirmFinish();
                 if (e.key === 'd' || e.key === 'D') setShowDrugCalc(v => !v);
                 if (e.key === 't' || e.key === 'T') setShowTimerModal(v => !v);
                 if (e.key === '?') setShowKeyHelp(v => !v);
@@ -475,18 +493,41 @@
             return () => window.removeEventListener('keydown', handler);
         }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
 
+        // A blank entry is never logged (Enter or a stray click on an empty box used to add empty
+        // lines to the log and the debrief timeline).
+        const submitCustomLog = (flagged) => {
+            const msg = customLog.trim();
+            if (!msg) return;
+            addLogEntry(msg, 'manual', !!flagged);
+            setCustomLog('');
+        };
+        // Finish is irreversible (it ends the session and opens the debrief), and it sits next to
+        // Back and START, so the button confirms exactly as the F shortcut always has.
+        // A cuff that is not on cannot measure; say so rather than silently changing the team's
+        // retained last reading.
+        const cycleNibp = () => {
+            if (!sensors.nibp) { sim.dispatch({ type: 'SET_NOTIFICATION', payload: { msg: 'No NIBP cuff attached — attach it first.', type: 'warning', id: Date.now() } }); return; }
+            triggerNIBP();
+        };
+        const confirmFinish = () => { if (window.confirm('End the simulation and go to debrief?')) onFinish(); };
+
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-        // In Quick Sim the engine seeds the real 'Obs' key at LOAD_SCENARIO, so this is already true;
-        // the explicit `|| quickSim` is a belt-and-braces guard so a resumed or synced Quick Sim can
-        // never show "No Monitoring" over a screen whose entire purpose is the monitor.
-        const isMonitoringApplied = activeInterventions.has('Obs') || quickSim; 
         // WAVE 7 / ITEM 4: individual sensors, derived from the shared engine helper so the
         // controller and the student monitor can never disagree about what is attached.
+        // Quick Sim is NOT special-cased here any more: it starts with nothing attached, and the
+        // strip below shows exactly what the team sees — a removed sensor's trace goes blank.
+        const isMonitoringApplied = activeInterventions.has('Obs');
         const sensors = window.getSensors ? window.getSensors(state) : { ecg: isMonitoringApplied, spo2: isMonitoringApplied, nibp: isMonitoringApplied, temp: isMonitoringApplied, etco2: etco2Enabled, art: false, iv: false, any: isMonitoringApplied };
-        // Quick Sim seeds 'Obs', so everything is attached there from the start (unchanged).
-        const sEcg = sensors.ecg || quickSim;
-        const sSpo2 = sensors.spo2 || quickSim;
-        const sResp = sensors.ecg || quickSim;          // impedance respiration comes off the ECG electrodes
+        const sEcg = sensors.ecg;
+        const sSpo2 = sensors.spo2;
+        const sResp = sensors.ecg;          // impedance respiration comes off the ECG electrodes
+        // Every continuous sensor except IV access (which is a route, not a monitor).
+        const MONITOR_SENSOR_KEYS = ['MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp', 'ToggleETCO2', 'ArtLine'];
+        const anyMonitorOn = sensors.ecg || sensors.spo2 || sensors.nibp || sensors.temp || sensors.etco2 || sensors.art;
+        const removeAllMonitoring = () => {
+            if (sim.detachSensors) sim.detachSensors(MONITOR_SENSOR_KEYS);
+            else (window.SENSOR_DEFS || []).filter(d => d.kind === 'continuous' && sensors[d.id]).forEach(d => toggleSensor(d.id));
+        };
         const pocReadings = state.pocReadings || {};
         // Capnography: no ventilation means NO capnogram (the absence is the teaching point).
         const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
@@ -638,8 +679,12 @@
             else { targets[modalVital] = parseFloat(modalTarget); }
             if (trendDuration === 0) Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k]));
             else startTrend(targets, trendDuration);
+            // The cuff reads the patient when it finishes inflating (~5 s), by which time an
+            // immediate change has landed.
+            if (modalVital === 'bp' && trendDuration === 0 && cycleCuffAfter && sensors.nibp) triggerNIBP();
             setModalVital(null);
         };
+        const VITAL_NAMES = { hr: 'Heart rate', bp: 'Blood pressure', spO2: 'SpO2', rr: 'Respiratory rate', temp: 'Temperature', bm: 'Glucose', etco2: 'ETCO2', gcs: 'GCS', ph: 'pH', k: 'Potassium (K+)', pupils: 'Pupils' };
 
         // C4: paediatric arrests are weight-based (4 J/kg). The energy ladder and the recommended
         // dose both come from the registry, so the controller, the monitor-hosted defib and the
@@ -718,7 +763,7 @@
                 <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
-                        <Button variant="danger" onClick={onFinish} className="h-8 px-2 font-bold"><Lucide icon="square"/> Finish</Button>
+                        <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold"><Lucide icon="square"/> Finish</Button>
                         {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
                     </div>
 
@@ -828,7 +873,7 @@
                         <div className="flex-none rounded border border-slate-700 bg-slate-900/70 p-2">
                             <div className="flex items-center justify-between mb-1 gap-2">
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Monitoring &amp; access</div>
-                                <div className="flex gap-1">
+                                <div className="flex flex-wrap justify-end gap-1">
                                     <Button onClick={attachStandard} variant={sensors.all ? 'secondary' : (sensors.standard ? 'secondary' : 'primary')}
                                             title={sensors.standard
                                                 ? 'ECG, SpO2, NIBP and temperature are all attached. Capnography, the arterial line and IV access are separate deliberate acts.'
@@ -841,6 +886,16 @@
                                             className="h-6 px-2 text-[10px] uppercase font-bold">
                                         {sensors.etco2 && sensors.art && sensors.iv ? 'Invasive on' : '+ Invasive'}
                                     </Button>
+                                    {/* One press takes every monitor off (IV access stays: it is a
+                                        route, not a monitor). Every removed trace goes blank on the
+                                        team's screen at once, and each removal is logged. */}
+                                    {anyMonitorOn && (
+                                        <Button onClick={removeAllMonitoring} variant="outline"
+                                                title="Detach every monitor (ECG, SpO2, NIBP, temperature, capnography, arterial line). IV access is left in place. Each removal is logged."
+                                                className="h-6 px-2 text-[10px] uppercase font-bold text-rose-300 border-rose-700/70 hover:border-rose-400 hover:text-rose-200">
+                                            Remove all
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex flex-wrap gap-1">
@@ -869,7 +924,7 @@
                                     );
                                 })}
                             </div>
-                            <div className="text-[9px] text-slate-500 mt-1 leading-relaxed">Continuous sensors reveal a live value on the student monitor; a filled dot means attached and clicking it detaches that one channel. POC checks report the value at the moment they are taken, and clicking again resamples. Nothing is ever blocked — missing items are only flagged.</div>
+                            <div className="text-[9px] text-slate-500 mt-1 leading-relaxed">&#9679; attached (click to remove — its trace and number go blank on the team's monitor) &middot; &#9675; not attached (click to attach). POC checks show the value at the moment taken; click again to resample.</div>
                         </div>
 
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
@@ -903,21 +958,31 @@
                                      resets its per-lane sweep cursors on a size change, so the canvas
                                      keeps drawing correctly DURING the drag with no blank strip, no
                                      stretching and no lost animation. */}
-                                 {/* Sensor gating: when NOTHING is attached the facilitator still gets the
-                                     full preview behind the existing "No Monitoring" overlay, exactly as before
-                                     Wave 7. As soon as they attach individual sensors the controller strip shows
-                                     precisely what the students can see. */}
-                                 <div style={{ height: panel.prefs.stripHeight + 'px' }}>
+                                 {/* Sensor gating: the strip shows EXACTLY what the team's monitor shows.
+                                     A removed sensor's lane goes blank at once and says why ("leads off",
+                                     "no probe"); with nothing attached the strip is blank and offers the
+                                     one-press attach. (It used to show a full preview behind a "No
+                                     Monitoring" veil, and Quick Sim forced every trace on, so removing a
+                                     sensor changed nothing on the facilitator's screen.) */}
+                                 <div className="relative" style={{ height: panel.prefs.stripHeight + 'px' }}>
                                  <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
-                                             isPaused={traceFrozen} showTraces={isMonitoringApplied || sensors.any}
-                                             showEcg={sEcg || !sensors.any} showPleth={sSpo2 || !sensors.any} showResp={sResp || !sensors.any}
-                                             showEtco2={showEtco2} showArt={showArt}
+                                             isPaused={traceFrozen} showTraces={sensors.any}
+                                             showEcg={sEcg} showPleth={sSpo2} showResp={sResp}
+                                             reserveLanes={sensors.any ? ['ecg', 'pleth', 'resp'] : []}
+                                             showEtco2={showEtco2} showArt={showArt} isCPR={cprInProgress}
                                              co2Pathology={capnoPattern} co2Severity={capnoSeverity} ventilating={capnoVentilating}
                                              className="h-full"/>
-                                 </div>
-                                 {!sensors.any && !quickSim && (
-                                     <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-slate-500 text-xs font-mono uppercase tracking-widest z-10 pointer-events-none">No Monitoring</div>
+                                 {!sensors.any && (
+                                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black z-10 p-2 text-center">
+                                         <div className="text-slate-500 text-xs font-mono uppercase tracking-widest">No monitoring attached</div>
+                                         <div className="text-[10px] text-slate-600">The team's monitor reads "No sensor detected".</div>
+                                         <Button onClick={attachStandard} variant="primary" className="h-8 px-3 text-[11px] uppercase font-bold"
+                                                 title="Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe.">
+                                             Attach standard monitoring
+                                         </Button>
+                                     </div>
                                  )}
+                                 </div>
                              </div>
 
                              {/* Strip-height grip + an explicit RESET back to the default size. */}
@@ -932,19 +997,26 @@
                              </div>
 
                              <div className="grid grid-cols-2 gap-1 p-1 bg-black">
-                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={getTrend('hr')} />
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>setShowNIBPModal(true)} visible={true} trend={getTrend('bpSys')} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={getTrend('spO2')} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={getTrend('rr')} />
-                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={getTrend('temp')} />
-                                 <VitalDisplay label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} />
-                                 <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} />
+                                 {/* The tiles always show the patient's TRUE value (the facilitator must be
+                                     able to steer a vital before its sensor goes on). The amber note says
+                                     when the team cannot currently see it. */}
+                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={getTrend('hr')} note={sEcg ? null : 'not on monitor'} />
+                                 {/* BP opens the same control as every other vital, so it sets the patient's
+                                     actual BP (with a ramp if wanted). The old NIBP-only dialog changed just
+                                     the displayed cuff reading, which the next cycle and the art line ignored. */}
+                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={getTrend('bpSys')}
+                                               note={sensors.art ? null : (state.nibp && state.nibp.sys ? `${sensors.nibp ? 'cuff' : 'cuff off · last'} ${state.nibp.sys}/${state.nibp.dia}` : (sensors.nibp ? 'cuff not cycled' : 'not on monitor'))} />
+                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={getTrend('spO2')} note={sSpo2 ? null : 'not on monitor'} />
+                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={getTrend('rr')} note={sResp ? null : 'not on monitor'} />
+                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={getTrend('temp')} note={sensors.temp ? null : 'not on monitor'} />
+                                 <VitalDisplay label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
+                                 <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
                                  <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
                                  {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
-                                 <VitalDisplay label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} />
+                                 <VitalDisplay label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
                                  {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
                                      measurable endpoint the facilitator can steer and the team can read. */}
-                                 <VitalDisplay label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} />
+                                 <VitalDisplay label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
                              </div>
                         </div>
 
@@ -1070,11 +1142,11 @@
                         )}
                         
                         <div className="flex-none grid grid-cols-2 gap-2">
-                            <div className="relative">
+                            <div className="relative" ref={arrestMenuRef}>
                                 {/* WAVE 5 (minor note, with ITEM 7): both of these OPEN A MENU — a bare
                                     click was mistaken for an action that did nothing. The caret and the
                                     aria-expanded state say so explicitly. */}
-                                <Button ariaLabel={`Choose an arrest rhythm (${showArrestMenu ? 'menu open' : 'menu closed'})`} variant="danger" onClick={()=>setShowArrestMenu(!showArrestMenu)} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST ▾</Button>
+                                <Button ariaLabel={`Choose an arrest rhythm (${showArrestMenu ? 'menu open' : 'menu closed'})`} variant="danger" onClick={()=>{ setShowArrestMenu(!showArrestMenu); setShowROSCMenu(false); }} className="w-full font-bold animate-pulse"><Lucide icon="activity" className="w-4 h-4"/> ARREST ▾</Button>
                                 {showArrestMenu && (
                                     <div className="absolute bottom-12 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         {ARREST_RHYTHMS.map(r => (
@@ -1083,8 +1155,8 @@
                                     </div>
                                 )}
                             </div>
-                            <div className="relative">
-                                <Button ariaLabel={`Choose a ROSC rhythm (${showROSCMenu ? 'menu open' : 'menu closed'})`} variant="success" onClick={()=>setShowROSCMenu(!showROSCMenu)} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC ▾</Button>
+                            <div className="relative" ref={roscMenuRef}>
+                                <Button ariaLabel={`Choose a ROSC rhythm (${showROSCMenu ? 'menu open' : 'menu closed'})`} variant="success" onClick={()=>{ setShowROSCMenu(!showROSCMenu); setShowArrestMenu(false); }} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC ▾</Button>
                                 {showROSCMenu && (
                                     <div className="absolute bottom-12 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         <div className="text-[9px] text-slate-400 px-2 py-1 border-b border-slate-700 uppercase tracking-wider font-bold">Pick the post-ROSC rhythm</div>
@@ -1110,9 +1182,19 @@
                                  <Lucide icon="zap" className="w-4 h-4"/> {defibPanelOpen ? "Close Defib" : "Defib"}
                             </Button>
                         </div>
-                        <Button variant="outline" onClick={triggerNIBP} className="w-full flex-none text-sky-400 border-sky-500/50 hover:bg-sky-900/30">
-                             <Lucide icon="activity" className="w-4 h-4"/> Cycle NIBP Now
-                        </Button>
+                        <div className="flex-none flex gap-2">
+                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-500 border-slate-600'}`}
+                                    title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
+                                 <Lucide icon="activity" className="w-4 h-4"/> {sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP (no cuff)'}
+                            </Button>
+                            {/* A one-off displayed reading that does NOT change the patient (e.g. a
+                                spurious cuff reading). To change the actual BP, tap the BP tile. */}
+                            <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
+                                    title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
+                                    className="flex-none px-3 text-[10px] uppercase font-bold text-slate-400">
+                                 Manual reading
+                            </Button>
+                        </div>
 
                         {isPaeds && (
                             <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} className={`w-full flex-none mt-1 ${!showWetflag ? 'text-slate-500 border-slate-600' : 'text-purple-400 border-purple-500/50 bg-purple-900/20'}`}>
@@ -1235,12 +1317,13 @@
                             </div>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
-                            {/* The ETCO2 tile is always present, but the capnography TRACE is only
-                                meaningful once the facilitator says the patient is on capnography.
-                                Same TOGGLE_ETCO2 action the 'ToggleETCO2' intervention dispatches. */}
-                            <Button onClick={() => sim.dispatch({ type: 'TOGGLE_ETCO2' })} variant="outline"
+                            {/* Same two-way sensor toggle as the Capnography chip, so it is logged
+                                and notified like every other attach/detach (it used to flip
+                                TOGGLE_ETCO2 directly and leave no trace in the event log). */}
+                            <Button onClick={() => toggleSensor('etco2')} variant="outline"
+                                title={etco2Enabled ? 'Capnography attached — click to remove (the CO2 trace and ETCO2 go blank on the team monitor).' : 'Capnography not attached — click to attach.'}
                                 className={`h-11 px-3 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
-                                ETCO2 {etco2Enabled ? 'on' : 'off'}
+                                Capnography {etco2Enabled ? 'on' : 'off'}
                             </Button>
                         </div>
 
@@ -1279,7 +1362,7 @@
                             <div>
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Event log ({state.log.length})</div>
                                 <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 overflow-y-auto">
-                                    {state.log.length === 0 && <div className="text-slate-500 text-center py-4">Nothing logged yet. Press START, then change the obs or the rhythm.</div>}
+                                    {state.log.length === 0 && <div className="text-slate-500 text-center py-4">Nothing logged yet. Attach monitoring, press START, then change the obs or the rhythm.</div>}
                                     {state.log.slice().reverse().map((entry, i) => (
                                         <div key={i} className={`flex gap-3 border-b border-slate-800 last:border-0 pb-0.5 ${entry.flagged ? 'bg-amber-900/20 -mx-1 px-1 rounded' : ''}`}>
                                             <span className="text-slate-500 w-12 flex-shrink-0">{entry.simTime}</span>
@@ -1291,9 +1374,9 @@
                         </div>
 
                         <div className="bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2">
-                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                            <Button onClick={() => {addLogEntry(customLog, 'manual', true); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
-                            <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
+                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
+                            <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
+                            <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
                         </div>
                     </div>
                     ) : (
@@ -1319,9 +1402,9 @@
                                 <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-12 w-20 shrink-0 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => e.key === 'Enter' && (addLogEntry(customLog, 'manual') || setCustomLog(""))} />
-                                <Button onClick={() => {addLogEntry(customLog, 'manual', true); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
-                                <Button onClick={() => {addLogEntry(customLog, 'manual'); setCustomLog("");}} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
+                                <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
+                                <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
+                                <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
                             </div>
                         </div>
 
@@ -1437,7 +1520,8 @@
                 {showNIBPModal && (
                     <Modal label="NIBP control" onClose={()=>setShowNIBPModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
-                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">NIBP Control</h3>
+                             <h3 className="text-lg font-bold text-white mb-1 uppercase tracking-wider">Manual NIBP reading</h3>
+                             <p className="text-[10px] text-slate-400 mb-4">Shows this one reading on the team's NIBP without changing the patient's BP — the next cuff cycle measures the real value again. To change the patient's BP, use the BP tile.</p>
                              <div className="space-y-4">
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Systolic</label><input type="number" value={nibpSys} onChange={e=>setNibpSys(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
                                 <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={nibpDia} onChange={e=>setNibpDia(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
@@ -1504,10 +1588,11 @@
                 {modalVital && (
                     <Modal label="Vital control" onClose={()=>setModalVital(null)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
-                            <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Control: {modalVital}</h3>
-                            <div className="space-y-4">
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">Target</label><input type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
-                                {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
+                            <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Set {VITAL_NAMES[modalVital] || modalVital}</h3>
+                            {/* Enter confirms from either field, so a value can be typed and sent without the mouse. */}
+                            <div className="space-y-4" onKeyDown={e => { if (e.key === 'Enter' && e.target && e.target.type === 'number') { e.preventDefault(); confirmVitalUpdate(); } }}>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
                                 {modalVital === 'etco2' && (
                                     <div>
@@ -1531,9 +1616,21 @@
                                     </div>
                                 )}
 
-                                <div className="grid grid-cols-4 gap-1 mt-2">
-                                    {[0, 30, 120, 300].map(d => <button key={d} onClick={()=>setTrendDuration(d)} className={`p-2 rounded text-[10px] font-bold border ${trendDuration===d ? 'bg-sky-600 text-white' : 'bg-slate-700 text-slate-400'}`}>{d}s</button>)}
+                                <div>
+                                    <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Get there</label>
+                                    <div className="grid grid-cols-4 gap-1">
+                                        {[[0, 'Now'], [30, '30 s'], [120, '2 min'], [300, '5 min']].map(([d, lbl]) => <button key={d} onClick={()=>setTrendDuration(d)} aria-pressed={trendDuration===d} className={`p-2 rounded text-[11px] font-bold border ${trendDuration===d ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>{lbl}</button>)}
+                                    </div>
                                 </div>
+                                {modalVital === 'bp' && (
+                                    <div className="bg-slate-900 border border-slate-700 rounded p-2 text-[10px] text-slate-400 leading-relaxed">
+                                        {!sensors.nibp && !sensors.art
+                                            ? <span><b className="text-amber-300">No NIBP cuff or arterial line attached</b> — the team will not see this until one is.</span>
+                                            : trendDuration === 0 && sensors.nibp
+                                                ? <label className="flex items-center gap-2 cursor-pointer text-slate-300"><input type="checkbox" checked={cycleCuffAfter} onChange={e => setCycleCuffAfter(e.target.checked)} /> Cycle the NIBP cuff so the team sees it</label>
+                                                : <span>{sensors.art ? 'The arterial line follows this live. ' : ''}{sensors.nibp ? 'The NIBP shows it the next time the cuff cycles.' : ''}</span>}
+                                    </div>
+                                )}
                                 {/* WAVE 5 / ITEM 6 — the rule, stated where the facilitator sets the value. */}
                                 {modalVital === 'hr' && (
                                     <div className="bg-slate-900 border border-slate-700 rounded p-2 text-[10px] text-slate-400 leading-relaxed">
