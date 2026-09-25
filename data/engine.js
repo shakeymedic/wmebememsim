@@ -2554,7 +2554,8 @@
                 if (!ev || !ev.type) return;
                 if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
                 const cur = stateRef.current;
-                const src = 'student (monitor defib)';
+                const where = ev.device === 'standalone-defib' ? 'standalone defib' : 'monitor defib';
+                const src = `student (${where})`;
                 const p = ev.payload || {};
                 switch (ev.type) {
                     case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
@@ -2567,11 +2568,11 @@
                     case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
                     case 'ANALYSE': analyseRhythm(src); break;
                     case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: p.rate, output: p.output } }); break;
-                    case 'CHECK_PULSE': addLogEntry('Student checked pulse (monitor defib)', 'action'); break;
+                    case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
                     case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
-                    case 'MARKER_EVENT': addLogEntry('Student marked event (monitor defib)', 'manual', true); break;
-                    case 'ALARM_SILENCE': addLogEntry('Alarm silenced by student (monitor defib)', 'info'); break;
-                    case 'REQUEST_12LEAD': addLogEntry('Student requested 12-lead (monitor)', 'action'); break;
+                    case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
+                    case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
+                    case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
                     default: addLogEntry(`Unhandled student device event: ${ev.type}`, 'system'); break;
                 }
                 // Consume the event so the queue cannot grow without bound across a long session.

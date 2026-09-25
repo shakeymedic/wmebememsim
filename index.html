@@ -94,6 +94,7 @@
          executes BEFORE any text/babel module and is therefore available to components.js and
          engine.js at definition time. The standalone defib page loads the SAME file. -->
     <script src="data/rhythms.js"></script>
+    <script src="data/firebase-config.js"></script>
 
     <script type="text/babel" src="data/interventions.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
@@ -115,18 +116,7 @@
 
     <script type="text/babel">
         // --- CONFIGURATION ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
-            authDomain: "wmebem-sim.firebaseapp.com",
-            // This project uses Realtime Database, not Firestore. Keep the exact database host
-            // explicit rather than relying on the SDK's projectId-derived fallback.
-            databaseURL: "https://wmebem-sim-default-rtdb.firebaseio.com",
-            projectId: "wmebem-sim",
-            storageBucket: "wmebem-sim.firebasestorage.app",
-            messagingSenderId: "143041936940",
-            appId: "1:143041936940:web:4d15c3fc3ce7e10c081b89",
-            measurementId: "G-8C6WW1EWXJ"
-        };
+        const firebaseConfig = window.FIREBASE_CONFIG;
 
         // --- INIT FIREBASE ---
         window.firebaseSyncBootstrap = { state: 'connecting', message: null };

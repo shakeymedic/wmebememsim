@@ -12,6 +12,7 @@ const ASSETS_TO_CACHE = [
   './images/logo.png',
   '../index.html',
   '../data/rhythms.js',
+  '../data/firebase-config.js',
   '../data/engine.js',
   '../data/scenarios.js',
   '../data/components.js',
@@ -56,6 +57,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   // Cache Storage only accepts GET requests. Let form/API writes use the browser normally.
   if (e.request.method !== 'GET') return;
+  // Never cache the live session: Firebase falls back to long-polling GETs when WebSockets are
+  // blocked, and serving those from cache would freeze the device on a stale patient.
+  const host = new URL(e.request.url).hostname;
+  if (/firebaseio\.com$|firebasedatabase\.app$|googleapis\.com$/.test(host)) return;
   e.respondWith(
     caches.match(e.request).then((cachedResponse) => {
       const fetchPromise = fetch(e.request).then((networkResponse) => {

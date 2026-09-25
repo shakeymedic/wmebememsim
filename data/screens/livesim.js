@@ -814,7 +814,7 @@
                         )}
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
                         <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
-                        {!quickSim && <Button variant="outline" href="defib/index.html" className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
+                        {!quickSim && <Button variant="outline" href={`defib/index.html?session=${sessionID}`} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
                         <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
                         <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
                         <Button ariaLabel="Open keyboard shortcuts" variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
