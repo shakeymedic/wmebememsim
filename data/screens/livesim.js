@@ -371,6 +371,7 @@
         const [firedAlerts, setFiredAlerts] = useState(new Set());
         const firedAlertsRef = useRef(new Set());
         const [showKeyHelp, setShowKeyHelp] = useState(false);
+        const [showJoin, setShowJoin] = useState(false);
         const [showFlagsModal, setShowFlagsModal] = useState(false);
         // Alarm tones now live in the shared engine (so the STUDENT monitor alarms too) and are routed
         // by `audioOutput`. This screen no longer owns an AudioContext, which also removes the risk of
@@ -479,7 +480,7 @@
 
         useEffect(() => {
             const handler = (e) => {
-                const modalOpen = modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || arrestPanelOpen;
+                const modalOpen = showJoin || modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || arrestPanelOpen;
                 if (modalOpen) return;
                 const active = document.activeElement;
                 if (active?.matches?.('button, a, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
@@ -491,7 +492,7 @@
             };
             window.addEventListener('keydown', handler);
             return () => window.removeEventListener('keydown', handler);
-        }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
+        }, [isRunning, showJoin, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
 
         // A blank entry is never logged (Enter or a stray click on an empty box used to add empty
         // lines to the log and the debrief timeline).
@@ -814,6 +815,10 @@
                         )}
                         <div className="w-px h-6 bg-slate-600 mx-1"></div>
                         <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
+                        {/* Pair a tablet by pointing its camera at the screen instead of typing a code. */}
+                        <Button ariaLabel="Show QR codes to join the monitor or defib" variant="outline" onClick={() => setShowJoin(true)} className="h-8 px-2 text-sky-300 border-sky-500/50 hover:bg-sky-900/30" title="QR codes: scan with a tablet to open the room monitor or the defib for this session">
+                            <Lucide icon="qr-code" className="w-4 h-4 mr-1"/> Join
+                        </Button>
                         {!quickSim && <Button variant="outline" href={`defib/index.html?session=${sessionID}`} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
                         <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
                         <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
@@ -1774,6 +1779,46 @@
                         </div>
                     </Modal>
                 )}
+
+                {showJoin && (() => {
+                    // Absolute URLs, so a camera app opens exactly this session on this deployment.
+                    const base = window.location.origin + window.location.pathname;
+                    const links = [
+                        { key: 'monitor', title: 'Room monitor', url: `${base}?mode=monitor&session=${sessionID}`, hint: 'The patient monitor the team watches.' },
+                        { key: 'defib', title: 'Defibrillator', url: new URL(`defib/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'Standalone defib on a second tablet.' }
+                    ];
+                    const svgFor = (url) => {
+                        try { const q = window.qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" '); }
+                        catch (e) { return null; }
+                    };
+                    return (
+                        <Modal label="Join this session" onClose={() => setShowJoin(false)}>
+                            <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-lg font-bold text-white uppercase tracking-wider">Join session</h3>
+                                    <button aria-label="Close join codes" onClick={() => setShowJoin(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                </div>
+                                <p className="text-xs text-slate-400 mb-4">Point the tablet's camera at a code, or type the session code <b className="font-mono text-white text-base tracking-widest">{sessionID}</b> on the tablet.</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {links.map(l => {
+                                        const svg = svgFor(l.url);
+                                        return (
+                                            <div key={l.key} className="bg-slate-900 border border-slate-700 rounded p-3 flex flex-col items-center gap-2">
+                                                <div className="text-sm font-bold text-sky-300 uppercase tracking-wider">{l.title}</div>
+                                                {svg
+                                                    ? <div className="bg-white p-2 rounded w-48 h-48" dangerouslySetInnerHTML={{ __html: svg }} />
+                                                    : <div className="w-48 h-48 flex items-center justify-center text-xs text-slate-500 text-center">QR code unavailable — use the link below.</div>}
+                                                <div className="text-[10px] text-slate-400 text-center">{l.hint}</div>
+                                                <div className="text-[10px] text-slate-500 font-mono break-all text-center select-all">{l.url}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <Button onClick={() => setShowJoin(false)} variant="outline" className="w-full mt-4">Close</Button>
+                            </div>
+                        </Modal>
+                    );
+                })()}
 
                 {showKeyHelp && (
                     <Modal label="Keyboard shortcuts" onClose={()=>setShowKeyHelp(false)}>

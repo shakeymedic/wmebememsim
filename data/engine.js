@@ -2375,7 +2375,11 @@
                     // is needed for those. Point-of-care readings DO need their own top-level key:
                     // primitives only, never undefined, so sanitizeForRealtimeDatabase passes it
                     // through untouched. Assessor-only conversion announcements are still absent.
-                    pocReadings: cur.pocReadings || {}
+                    pocReadings: cur.pocReadings || {},
+                    // SESSION HYGIENE: when this session last carried live data, rounded to the minute
+                    // so it adds at most one tiny write a minute. RTDB cannot expire data on its own;
+                    // a scheduled cleanup job (see README) deletes sessions whose updatedAt is old.
+                    updatedAt: Math.floor(Date.now() / 60000) * 60000
                 };
                 const sanitised = sanitizeForRealtimeDatabase(payload);
                 const safePayload = sanitised.value || {};

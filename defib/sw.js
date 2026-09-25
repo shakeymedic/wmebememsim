@@ -13,6 +13,7 @@ const ASSETS_TO_CACHE = [
   '../index.html',
   '../data/rhythms.js',
   '../data/firebase-config.js',
+  '../vendor/qrcode-generator.js',
   '../data/engine.js',
   '../data/scenarios.js',
   '../data/components.js',

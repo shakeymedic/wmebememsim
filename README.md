@@ -31,10 +31,38 @@ python3 -m http.server 8000
 
 - Controller: `http://localhost:8000/`
 - Monitor: `http://localhost:8000/?mode=monitor&session=ABCD`
-- Defibrillator: `http://localhost:8000/defib/`
+- Defibrillator: `http://localhost:8000/defib/?session=ABCD`
 
 The **Session ID** shown in the controller header is what pairs the screens. It maps to
-`sessions/<CODE>` in the Realtime Database.
+`sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
+characters (no 0/O, 1/I/L); a code already stored on a device is kept, and old four-character codes
+still work. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
+tablet can pair by scanning instead of typing.
+
+The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code
+into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
+**Defib** button) remains available too.
+
+### Clearing out old sessions (optional, needs a server job)
+
+`sessions/*` is deliberately open so monitors join with nothing but a code, and the Realtime Database
+cannot expire data by itself, so old sessions accumulate. Each session carries `updatedAt` (epoch ms,
+rounded to the minute) for a cleanup job to key on. **This job is not deployed**; if you want it, a
+scheduled Cloud Function along these lines deletes sessions idle for more than a day:
+
+```js
+// functions/index.js — requires the Blaze plan. Not part of this repository's deployment.
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const admin = require('firebase-admin'); admin.initializeApp();
+exports.purgeOldSessions = onSchedule('every 24 hours', async () => {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const snap = await admin.database().ref('sessions').orderByChild('updatedAt').endAt(cutoff).once('value');
+  const updates = {}; snap.forEach(c => { updates[c.key] = null; });
+  if (Object.keys(updates).length) await admin.database().ref('sessions').update(updates);
+});
+```
+
+(Add `".indexOn": ["updatedAt"]` under `sessions` in the rules if you deploy it.)
 
 ---
 

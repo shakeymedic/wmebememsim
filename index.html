@@ -95,6 +95,8 @@
          engine.js at definition time. The standalone defib page loads the SAME file. -->
     <script src="data/rhythms.js"></script>
     <script src="data/firebase-config.js"></script>
+    <!-- QR codes for joining the room monitor / defib from a tablet camera. Vendored (MIT). -->
+    <script src="vendor/qrcode-generator.js"></script>
 
     <script type="text/babel" src="data/interventions.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
@@ -138,6 +140,25 @@
         // stale-while-revalidate cache here would risk serving last session's code after a fix ships —
         // unacceptable for clinical content. defib/index.html keeps its own SW at its own scope.
 
+        // --- SESSION CODES ---
+        // Six characters from an alphabet with no look-alikes (no 0/O, 1/I/L), drawn from the
+        // crypto RNG: ~887 million codes instead of 4 characters of Math.random() (~1.7 million,
+        // including ambiguous ones that were easy to mistype on a tablet). A code already stored on
+        // this device is kept, so a monitor that is paired right now is never orphaned.
+        window.SESSION_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        window.newSessionCode = () => {
+            const A = window.SESSION_CODE_ALPHABET, n = 6;
+            const out = [];
+            try {
+                const buf = new Uint32Array(n);
+                window.crypto.getRandomValues(buf);
+                for (let i = 0; i < n; i++) out.push(A[buf[i] % A.length]);
+            } catch (e) {
+                for (let i = 0; i < n; i++) out.push(A[Math.floor(Math.random() * A.length)]);
+            }
+            return out.join('');
+        };
+
         // --- APP COMPONENT ---
         // App owns only session/view routing. The simulation engine lives in ControllerApp, so that in
         // monitor mode exactly ONE useSimulation instance exists (MonitorContainer's). Previously both
@@ -161,7 +182,7 @@
                 if (initialMode === 'monitor') return null;
                 let stored = null;
                 try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
-                return stored || Math.random().toString(36).substring(2, 6).toUpperCase();
+                return stored || window.newSessionCode();
             });
 
             useEffect(() => {
