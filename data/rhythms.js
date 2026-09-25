@@ -637,6 +637,122 @@
 
     // -------------------------------------------------------------------------
     // PUBLIC API
+    // =========================================================================================
+    // THE 12-LEAD, DRAWN FROM THE SAME RHYTHM REGISTRY AS THE MONITOR.
+    // It used to draw one fixed sinus complex for EVERY rhythm (only STEMI changed it), so VF, AF,
+    // heart block or hyperkalaemia on the monitor produced a normal 12-lead — the two screens
+    // contradicted each other. Now it is a 10-second recording laid out the standard way (four
+    // 2.5 s columns x three rows, then a 10 s lead II rhythm strip) at 25 mm/s and 10 mm/mV,
+    // sampled from RHYTHMS.ecgValue with the same phase accumulation, beat irregularity (AF,
+    // variable flutter, agonal) and dropped beats (Mobitz II) the live trace uses.
+    // Per-lead morphology is an approximation by lead gain/polarity (aVR inverted, V1 mostly
+    // negative, R-wave progression across V2-V6); STEMI draws its ST elevation only in the
+    // territory's leads with reciprocal depression. It prints NO rhythm interpretation — reading
+    // it is the team's job.
+    // =========================================================================================
+    const TWELVE_LEAD_LAYOUT = [['I', 'aVR', 'V1', 'V4'], ['II', 'aVL', 'V2', 'V5'], ['III', 'aVF', 'V3', 'V6']];
+    const LEAD_GAIN = { I: 0.65, II: 1.0, III: 0.45, aVR: -0.8, aVL: 0.35, aVF: 0.75, V1: -0.7, V2: 0.45, V3: 0.8, V4: 1.15, V5: 1.05, V6: 0.85 };
+    // STEMI territory -> [leads with ST elevation, leads with reciprocal depression]
+    const STEMI_TERRITORY = {
+        anterior: [['V1', 'V2', 'V3', 'V4'], ['II', 'III', 'aVF']],
+        inferior: [['II', 'III', 'aVF'], ['I', 'aVL']],
+        lateral:  [['I', 'aVL', 'V5', 'V6'], ['II', 'III', 'aVF']]
+    };
+    const stemiTerritoryFor = (scenario) => {
+        const txt = [scenario?.ecg?.findings, scenario?.investigations?.ecg?.findings, scenario?.title, scenario?.presentingComplaint]
+            .filter(Boolean).join(' ').toLowerCase();
+        if (/inferior|ii, iii|avf/.test(txt)) return 'inferior';
+        if (/lateral|v5|v6|avl/.test(txt)) return 'lateral';
+        return 'anterior';
+    };
+
+    function render12Lead(canvas, rhythm, scenario, hr) {
+        if (!canvas) return;
+        if (hr === undefined || hr === null) hr = 75;
+        try {
+            const RG = window.RHYTHMS;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width, h = canvas.height;
+            const pxPerSec = w / 10;                 // 10 s across the page = 25 mm/s
+            const small = pxPerSec * 0.04;           // 1 mm small square
+            const pxPerUnit = (small * 10) / 40;     // registry units: ~40 = 1 mV (10 mm)
+
+            ctx.fillStyle = 'white'; ctx.fillRect(0, 0, w, h);
+            ctx.lineWidth = 1; ctx.strokeStyle = '#ffd6d6'; ctx.beginPath();
+            for (let x = 0; x <= w; x += small) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+            for (let y = 0; y <= h; y += small) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+            ctx.stroke();
+            ctx.strokeStyle = '#ff9f9f'; ctx.beginPath();
+            for (let x = 0; x <= w; x += small * 5) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+            for (let y = 0; y <= h; y += small * 5) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+            ctx.stroke();
+
+            // ---- one 10 s recording, sampled once and shared by every lead (a real 12-lead is
+            // simultaneous; the columns are consecutive 2.5 s windows of the same recording).
+            const rid = RG.canonical(rhythm);
+            const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
+            let freq;
+            if (rid === 'VF') freq = 4; else if (rid === 'Fine VF') freq = 5; else if (rid === 'Asystole') freq = 0.1;
+            else if (hr > 0) freq = hr / 60; else freq = (INTRINSIC[rid] || 60) / 60;
+            const N = Math.round(w);                 // one sample per pixel across 10 s
+            const phase = new Float64Array(N), beat = new Int32Array(N);
+            let ph = 0; let beats = 0;
+            for (let i = 0; i < N; i++) {
+                phase[i] = ph - Math.floor(ph); beat[i] = Math.floor(ph);
+                const f = RG.beatIntervalFactor ? RG.beatIntervalFactor(rid, Math.floor(ph)) : 1;
+                const next = ph + (10 / N) * freq / (f > 0 ? f : 1);
+                if (Math.floor(next) !== Math.floor(ph) && !(RG.droppedBeat && RG.droppedBeat(rid, Math.floor(ph)))) beats++;
+                ph = next;
+            }
+            const baseWave = RG.waveformFor(rid);
+            const scenarioStemi = scenario && (scenario?.ecg?.type === 'STEMI' || scenario?.investigations?.ecg?.type === 'STEMI');
+            const isStemi = baseWave === 'stemi' || (scenarioStemi && ['sinus', 'svt'].indexOf(baseWave) !== -1);
+            const terr = isStemi ? STEMI_TERRITORY[stemiTerritoryFor(scenario)] : null;
+            const sample = (i, lead) => {
+                const t = i * 10 / N;
+                const gain = LEAD_GAIN[lead] || 1;
+                if (!isStemi) return RG.ecgValue(phase[i], t, rhythm, { beat: beat[i], noise: false }) * gain;
+                // Sinus complex everywhere; the ST shift is added AFTER the lead gain so that it is
+                // elevation in every territory lead (including V1, whose gain is negative).
+                let y = RG.ecgValue(phase[i], t, 'Sinus Rhythm', { beat: beat[i], noise: false }) * gain;
+                const p = phase[i];
+                if (p > 0.25 && p < 0.42) {
+                    const ramp = Math.sin((p - 0.25) / 0.17 * Math.PI) * 0.35 + 0.65;   // coved segment
+                    if (terr[0].indexOf(lead) !== -1) y += 9 * ramp;
+                    if (terr[1].indexOf(lead) !== -1) y -= 4 * ramp;
+                }
+                return y;
+            };
+
+            const rows = 4, rowH = h / rows, colW = w / 4;
+            ctx.strokeStyle = '#111'; ctx.lineWidth = 1.2; ctx.lineJoin = 'round';
+            ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#111';
+            const trace = (lead, x0, x1, midY) => {
+                ctx.beginPath();
+                for (let x = Math.floor(x0); x < Math.min(N, Math.floor(x1)); x++) {
+                    const y = midY - sample(x, lead) * pxPerUnit;
+                    if (x === Math.floor(x0)) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+                ctx.fillText(lead, x0 + 6, midY - rowH * 0.32);
+            };
+            TWELVE_LEAD_LAYOUT.forEach((row, r) => row.forEach((lead, c) => {
+                const x0 = c * colW;
+                trace(lead, x0, x0 + colW, r * rowH + rowH * 0.55);
+                if (c > 0) { ctx.beginPath(); ctx.moveTo(x0, r * rowH + rowH * 0.35); ctx.lineTo(x0, r * rowH + rowH * 0.75); ctx.stroke(); }
+            }));
+            trace('II', 0, w, 3 * rowH + rowH * 0.5);
+
+            // No organised ventricular rate to report for chaotic / absent activity (VF, asystole).
+            const rate = RG.realtimeFor(rid) ? '--' : Math.round(beats * 6);
+            ctx.font = '13px monospace'; ctx.fillStyle = '#111';
+            ctx.fillText(`ID: ${scenario && scenario.patientName ? scenario.patientName : 'UNKNOWN'}   ${new Date().toLocaleDateString('en-GB')}   25 mm/s  10 mm/mV   Vent. rate ${rate} bpm`, 10, h - 8);
+        } catch (e) {
+            console.error("12-Lead Render Error", e);
+        }
+    }
+
+
     // -------------------------------------------------------------------------
     window.RHYTHMS = {
         registry: R,
@@ -684,7 +800,9 @@
         energyDeviation: energyDeviation,
         DRUG_CONVERSION: DRUG_CONVERSION,
         SHOCK_OUTCOMES: SHOCK_OUTCOMES,
-        weightedPick: weightedPick
+        weightedPick: weightedPick,
+        // The 12-lead recording, shared by the React monitor and the standalone defibrillator.
+        render12Lead: render12Lead
     };
 
     // Back-compat shim for the standalone defib page, which called a bare global.

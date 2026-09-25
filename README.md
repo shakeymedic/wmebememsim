@@ -2,8 +2,10 @@
 
 A facilitator-driven clinical simulation suite: a **controller** the facilitator drives, a **monitor**
 screen the candidates watch, and a **defibrillator** simulator for a second tablet. Vanilla React 18 +
-Tailwind, both loaded from CDN with in-browser Babel. **There is no build step.** Editing a file and
-pushing is the whole deployment process (Netlify serves the repo root).
+Tailwind. **Editing a file and pushing is still the whole deployment process**: the source runs
+as-is in a browser (CDN React, in-browser Babel, the Tailwind CDN), and on every push Netlify runs
+`npm run build`, which precompiles it into `dist/` with React, Firebase and the CSS self-hosted (see
+*Production build* below). If that build ever fails, Netlify keeps serving the previous version.
 
 | Path | What it is |
 | --- | --- |
@@ -31,10 +33,38 @@ python3 -m http.server 8000
 
 - Controller: `http://localhost:8000/`
 - Monitor: `http://localhost:8000/?mode=monitor&session=ABCD`
-- Defibrillator: `http://localhost:8000/defib/`
+- Defibrillator: `http://localhost:8000/defib/?session=ABCD`
 
 The **Session ID** shown in the controller header is what pairs the screens. It maps to
-`sessions/<CODE>` in the Realtime Database.
+`sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
+characters (no 0/O, 1/I/L); a code already stored on a device is kept, and old four-character codes
+still work. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
+tablet can pair by scanning instead of typing.
+
+The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code
+into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
+**Defib** button) remains available too.
+
+### Clearing out old sessions (optional, needs a server job)
+
+`sessions/*` is deliberately open so monitors join with nothing but a code, and the Realtime Database
+cannot expire data by itself, so old sessions accumulate. Each session carries `updatedAt` (epoch ms,
+rounded to the minute) for a cleanup job to key on. **This job is not deployed**; if you want it, a
+scheduled Cloud Function along these lines deletes sessions idle for more than a day:
+
+```js
+// functions/index.js — requires the Blaze plan. Not part of this repository's deployment.
+const { onSchedule } = require('firebase-functions/v2/scheduler');
+const admin = require('firebase-admin'); admin.initializeApp();
+exports.purgeOldSessions = onSchedule('every 24 hours', async () => {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const snap = await admin.database().ref('sessions').orderByChild('updatedAt').endAt(cutoff).once('value');
+  const updates = {}; snap.forEach(c => { updates[c.key] = null; });
+  if (Object.keys(updates).length) await admin.database().ref('sessions').update(updates);
+});
+```
+
+(Add `".indexOn": ["updatedAt"]` under `sessions` in the rules if you deploy it.)
 
 ---
 
@@ -62,9 +92,14 @@ flag. Consequences worth knowing:
   monitor and the controller strip at once (ECG/SpO2 lanes stay in place, labelled "leads off" /
   "no probe"). The exception is NIBP: removing the cuff keeps the last measured reading on screen (marked "cuff
   off") and no new reading can be taken until it is back on. The pulse beep and each alarm follow the
-  sensor that measures them.
-- Deterioration starts in **MANUAL** (the synthetic patient declares no rate). The AUTO/MANUAL toggle is
-  still there. Ramp obs with the trend control on any vitals tile.
+  sensor that measures them, and in Quick Sim they sound before START too (like the trace), falling
+  silent only when you deliberately pause or finish.
+- Deterioration is always **MANUAL** (the synthetic patient declares no rate, so AUTO could never do
+  anything) and the AUTO/MANUAL toggle is hidden. Ramp obs with the trend control on any vitals tile.
+- **Presets** run a scripted sequence of rhythm and obs changes with one press (for example
+  bradycardia → complete heart block, or SVT that reverts when you press Next). Steps fire on a timer
+  that freezes while you pause, or wait for **Next**. **+ Save current** stores the present rhythm and
+  obs as a one-press preset on that device. Built-in presets live in `data/presets.js`.
 - Age and weight are optional. Set a paediatric age and **WETFLAG, paediatric defibrillation energies
   and weight-based dosing all work**; leave them alone and you get a sensible 40-year-old adult.
 - It **does** produce a debrief — event log, vitals trend, instructor notes — but no score and no
@@ -222,9 +257,18 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
 
 ## Development notes
 
-- **No build system.** Every `.js` file under `data/` is loaded as `<script type="text/babel">` and
-  compiled in the browser. JSX is fine; ES modules, imports and bare `export` are not. Each file is an
-  IIFE that assigns to `window`.
+- **No build is needed to develop.** Every `.js` file under `data/` is loaded as
+  `<script type="text/babel">` and compiled in the browser, so `python3 -m http.server` on the repo
+  root runs the app. JSX is fine; ES modules, imports and bare `export` are not. Each file is an IIFE
+  that assigns to `window`. A plain (non-JSX) file such as `data/rhythms.js` or `data/presets.js` is
+  loaded with a bare `<script>` tag.
+- **Production build.** `npm install && npm run build` writes `dist/` (Netlify does this on every
+  deploy; `netlify.toml` sets the command and publish directory). It compiles every `text/babel`
+  script ahead of time with the same Babel library and options the browser used, serves React,
+  ReactDOM and the Firebase SDK from `dist/vendor/`, generates the Tailwind stylesheet
+  (`dist/assets/app.css`, from `tailwind.config.js`), and points the defib service worker at those
+  local files. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
+  `data/` file only needs its `<script>` tag in `index.html`, as before; the build finds it.
 - **The service worker in `defib/sw.js` is cache-first.** Bump `CACHE_NAME` on every deploy or tablets
   will keep serving a stale build of a clinical device.
 - **Permissive philosophy: never block, only flag.** The simulator does not stop the facilitator doing

@@ -11,90 +11,9 @@
         );
     };
 
-    const render12Lead = (canvas, rhythm, scenario, hr = 75) => {
-        if (!canvas) return;
-        try {
-            const ctx = canvas.getContext('2d');
-            const w = canvas.width;
-            const h = canvas.height;
-            
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, w, h);
-            ctx.strokeStyle = '#ffcccc'; 
-            ctx.lineWidth = 1;
-            
-            ctx.beginPath();
-            for(let x=0; x<=w; x+=10) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-            for(let y=0; y<=h; y+=10) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
-            ctx.stroke();
-            
-            ctx.strokeStyle = '#ff9999';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            for(let x=0; x<=w; x+=50) { ctx.moveTo(x,0); ctx.lineTo(x,h); }
-            for(let y=0; y<=h; y+=50) { ctx.moveTo(0,y); ctx.lineTo(w,y); }
-            ctx.stroke();
-
-            ctx.strokeStyle = 'black';
-            ctx.lineWidth = 1.2;
-            ctx.lineJoin = 'round';
-
-            const leads = ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6'];
-            
-            let stElev = 0; 
-            if (rhythm === 'STEMI' || (scenario && scenario.ecg && scenario.ecg.type === 'STEMI') || (scenario && scenario.investigations?.ecg?.type === 'STEMI')) stElev = 1.5;
-            if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2; 
-
-            const getComplex = (t, leadIndex) => {
-                let y = 0;
-                y -= 5 * Math.exp(-Math.pow(t - 0.1, 2) / 0.002);
-                y += 20 * Math.exp(-Math.pow(t - 0.22, 2) / 0.001); 
-                y -= 8 * Math.exp(-Math.pow(t - 0.24, 2) / 0.001); 
-                y -= 8 * Math.exp(-Math.pow(t - 0.45, 2) / 0.005); 
-
-                if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
-                    if (t > 0.26 && t < 0.45) {
-                        y -= stElev * 10;
-                    }
-                }
-                return y;
-            };
-
-            const colW = w / 4;
-            const rowH = h / 3;
-            
-            // Period in pixels per QRS — 25mm/s paper speed at typical resolution → adjust by HR.
-            // Faster HR → tighter complexes; clamp to keep waveform legible.
-            const safeHr = Math.max(20, Math.min(220, hr || 75));
-            const period = Math.max(60, Math.min(400, Math.round(15000 / safeHr)));
-
-            leads.forEach((lead, i) => {
-                const col = Math.floor(i / 3);
-                const row = i % 3;
-                const originX = col * colW;
-                const originY = row * rowH + (rowH / 2);
-
-                ctx.fillStyle = 'black';
-                ctx.font = '12px sans-serif';
-                ctx.fillText(lead, originX + 10, originY - 30);
-
-                ctx.beginPath();
-                for (let x = 0; x < colW; x++) {
-                    const t = (x % period) / period;
-                    const y = getComplex(t, i);
-                    if (x === 0) ctx.moveTo(originX + x, originY + y);
-                    else ctx.lineTo(originX + x, originY + y);
-                }
-                ctx.stroke();
-            });
-            
-            ctx.fillStyle = 'black';
-            ctx.font = '14px monospace';
-            ctx.fillText(`ID: ${scenario ? scenario.patientName : 'UNKNOWN'}   DATE: ${new Date().toLocaleDateString()}   Paper Speed: 25mm/s`, 20, h - 20);
-        } catch (e) {
-            console.error("12-Lead Render Error", e);
-        }
-    };
+    // The 12-lead renderer lives in data/rhythms.js (RHYTHMS.render12Lead) so this monitor and the
+    // standalone defibrillator page draw the identical recording from the identical registry.
+    const render12Lead = (canvas, rhythm, scenario, hr) => window.RHYTHMS.render12Lead(canvas, rhythm, scenario, hr);
 
     // =========================================================================================
     // A1/A2: THE DEFIBRILLATOR, HOSTED ON THE STUDENT MONITOR.
@@ -338,6 +257,56 @@
         const co2Severity = Number.isFinite(state.co2Severity) ? state.co2Severity : 0;
         
         const [audioEnabled, setAudioEnabled] = useState(false);
+
+        // ---- KEEP THE ROOM MONITOR AWAKE ------------------------------------------------------
+        // A tablet on the wall used to dim and lock mid-scenario, because nothing asked it not to.
+        // The Screen Wake Lock API holds the screen on while this page is visible. The browser
+        // drops the lock whenever the tab is hidden, so it is re-requested on every return to
+        // visible, and again inside the "Tap to Enable Sound" gesture (some browsers want one).
+        // Unsupported browsers (older iOS) simply carry on as before; the chip below says so.
+        const wakeLockRef = useRef(null);
+        const [wakeState, setWakeState] = useState(('wakeLock' in navigator) ? 'pending' : 'unsupported');
+        const requestWakeLock = async () => {
+            if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+            if (wakeLockRef.current && !wakeLockRef.current.released) return;
+            try {
+                const lock = await navigator.wakeLock.request('screen');
+                wakeLockRef.current = lock;
+                setWakeState('on');
+                lock.addEventListener('release', () => { if (wakeLockRef.current === lock) setWakeState('released'); });
+            } catch (e) { setWakeState('denied'); }
+        };
+        useEffect(() => {
+            requestWakeLock();
+            const onVis = () => { if (document.visibilityState === 'visible') requestWakeLock(); };
+            document.addEventListener('visibilitychange', onVis);
+            return () => {
+                document.removeEventListener('visibilitychange', onVis);
+                try { if (wakeLockRef.current) wakeLockRef.current.release(); } catch (e) {}
+                wakeLockRef.current = null;
+            };
+        }, []);
+        // Full screen: hides the browser chrome on the room screen. Prefixed for older Safari.
+        const [isFullscreen, setIsFullscreen] = useState(!!(document.fullscreenElement || document.webkitFullscreenElement));
+        useEffect(() => {
+            const onFs = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
+            document.addEventListener('fullscreenchange', onFs);
+            document.addEventListener('webkitfullscreenchange', onFs);
+            return () => { document.removeEventListener('fullscreenchange', onFs); document.removeEventListener('webkitfullscreenchange', onFs); };
+        }, []);
+        const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+        const toggleFullscreen = () => {
+            try {
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+                } else {
+                    const el = document.documentElement;
+                    const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+                    if (p && p.catch) p.catch(() => {});
+                }
+            } catch (e) { /* not allowed here: nothing to do */ }
+            requestWakeLock();
+        };
         // The overlay must be able to come BACK: iOS and tab-backgrounding re-suspend the
         // AudioContext, and a one-way flag left the monitor permanently silent with no way to fix it.
         const audioContextState = sim.audioContextState;
@@ -497,6 +466,7 @@
         }
 
         const handleEnableAudio = () => {
+            requestWakeLock();
             const result = enableAudio();
             if (result && typeof result.then === 'function') result.then(() => setAudioEnabled(true)).catch(() => setAudioEnabled(true));
             else setAudioEnabled(true);
@@ -539,8 +509,8 @@
                     <Modal label="12-lead analysis" onClose={() => setShow12Lead(false)}>
                         <div className="bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn">
                             <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
-                            <canvas ref={canvasRef} width="800" height="500" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
-                            <div className="text-slate-400 text-xs mt-2">Analysis: {state.rhythm}</div>
+                            <canvas ref={canvasRef} width="1000" height="640" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
+                            {/* No printed interpretation: naming the rhythm here handed the team the answer. */}
                         </div>
                     </Modal>
                 )}
@@ -603,6 +573,20 @@
                         ) : (
                             <div className="flex items-center justify-center h-full text-slate-700 font-mono text-xl animate-pulse">NO SENSOR DETECTED</div>
                         )}
+                        {/* Screen controls, deliberately small and dim so they never compete with
+                            the patient's data. The chip says whether the screen will stay awake. */}
+                        <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
+                            <span title={wakeState === 'on' ? 'This screen will stay on while the monitor is open.' : wakeState === 'unsupported' ? 'This browser cannot keep the screen awake. Set the tablet\'s auto-lock to Never for the session.' : 'Screen may sleep. Tap the screen (or Full screen) to try again, or set auto-lock to Never.'}
+                                  className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${wakeState === 'on' ? 'border-slate-700 text-slate-500' : 'border-amber-700 text-amber-400'}`}>
+                                <Lucide icon="sun" className="w-3 h-3" /> {wakeState === 'on' ? 'Awake' : 'May sleep'}
+                            </span>
+                            {fsSupported && (
+                                <button onClick={toggleFullscreen} aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'} title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                                        className="p-1.5 rounded border border-slate-700 bg-black/60 text-slate-400 hover:text-white">
+                                    <Lucide icon={isFullscreen ? 'minimize' : 'maximize'} className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
                         {state.monitorTimer?.visible && (
                             <div className="absolute top-2 right-2 bg-black/50 text-slate-300 font-mono font-bold text-4xl md:text-6xl px-4 py-2 rounded border border-slate-700 shadow-2xl">
                                 {Math.floor(state.monitorTimer.time/60).toString().padStart(2,'0')}:{(state.monitorTimer.time%60).toString().padStart(2,'0')}

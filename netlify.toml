@@ -1,0 +1,13 @@
+# Netlify builds the site from the source: JSX precompiled, React/Firebase/Tailwind self-hosted.
+# If the build fails, Netlify keeps serving the previous deploy.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # Netlify's smart secret detection fails the build on the Firebase web API key in
+  # data/firebase-config.js. That key is a PUBLIC client identifier by design (it has always been
+  # visible in the served page; access is enforced by database.rules.json), so exactly this one
+  # value is exempted. Scanning stays on for everything else.
+  SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II"

@@ -308,9 +308,9 @@
         //   * safety-flag chip + expectation hints  — expectations are properties of interventions;
         //                                             with no interventions there is nothing to flag.
         //   * investigations / voice / assessment   — all scenario-content driven.
-        // What is explicitly KEPT in Quick Sim despite being "extra": the AUTO/MANUAL deterioration
-        // toggle (requirement A6 — defaults to MANUAL because the synthetic patient declares no rate,
-        // but the facilitator can still switch to AUTO), Trend Better/Worse (they fall back to
+        // The AUTO/MANUAL deterioration toggle is HIDDEN in Quick Sim (it always runs MANUAL: the
+        // synthetic patient declares no rate, so AUTO could never do anything).
+        // What is explicitly KEPT in Quick Sim despite being "extra": Trend Better/Worse (they fall back to
         // relative adjustments when no scenario evolution exists), the custom log entry with its Flag
         // button, NIBP, the drug-dose calculator and the timer alerts — all facilitator tools that
         // are useful without a scenario.
@@ -371,6 +371,7 @@
         const [firedAlerts, setFiredAlerts] = useState(new Set());
         const firedAlertsRef = useRef(new Set());
         const [showKeyHelp, setShowKeyHelp] = useState(false);
+        const [showJoin, setShowJoin] = useState(false);
         const [showFlagsModal, setShowFlagsModal] = useState(false);
         // Alarm tones now live in the shared engine (so the STUDENT monitor alarms too) and are routed
         // by `audioOutput`. This screen no longer owns an AudioContext, which also removes the risk of
@@ -479,7 +480,7 @@
 
         useEffect(() => {
             const handler = (e) => {
-                const modalOpen = modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || arrestPanelOpen;
+                const modalOpen = showJoin || modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || arrestPanelOpen;
                 if (modalOpen) return;
                 const active = document.activeElement;
                 if (active?.matches?.('button, a, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
@@ -491,7 +492,7 @@
             };
             window.addEventListener('keydown', handler);
             return () => window.removeEventListener('keydown', handler);
-        }, [isRunning, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
+        }, [isRunning, showJoin, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
 
         // A blank entry is never logged (Enter or a stray click on an empty box used to add empty
         // lines to the log and the debrief timeline).
@@ -544,6 +545,105 @@
         const capnoSeverity = Number.isFinite(obstruction.severity) ? obstruction.severity : 0;
         // WAVE 7 / FEATURE: the facilitator's own panel size (drag handles + localStorage).
         const panel = useResizablePanel();
+
+        // ======================= QUICK SIM PRESETS (scripted sequences) =======================
+        // A preset steps through rhythm/obs changes on a timer, or waits for Next. Elapsed time only
+        // accrues while the session is not deliberately paused, so PAUSE freezes the script too.
+        // Rhythms go through the same entry points as the menus: a pulseless target is an ARREST,
+        // leaving a pulseless rhythm is a ROSC, anything else is an ordinary rhythm change.
+        const QSP = window.QuickSimPresets;
+        const [presetList, setPresetList] = useState(() => (QSP ? QSP.all() : []));
+        const [presetView, setPresetView] = useState(null);    // { name, idx, total, note, nextIn, waiting }
+        const presetRunRef = useRef(null);                      // { preset, idx, accMs, lastTs, lastNote }
+        const liveStateRef = useRef(state);
+        liveStateRef.current = state;
+        const presetActionsRef = useRef(null);
+        presetActionsRef.current = { changeRhythm, triggerArrest, triggerROSC, startTrend, manualUpdateVital, addLogEntry };
+        const applyPresetStep = (preset, step, i) => {
+            const a = presetActionsRef.current;
+            const cause = `preset: ${preset.name}`;
+            if (step.rhythm && RG.isKnown(step.rhythm)) {
+                const cur = liveStateRef.current.rhythm;
+                if (RG.isPulseless(step.rhythm)) { if (RG.canonical(cur) !== RG.canonical(step.rhythm)) a.triggerArrest(step.rhythm, cause); }
+                else if (RG.isPulseless(cur)) a.triggerROSC(step.rhythm, cause);
+                else if (RG.canonical(cur) !== RG.canonical(step.rhythm)) a.changeRhythm(step.rhythm, cause);
+            }
+            const targets = {};
+            Object.keys(step.vitals || {}).forEach(k => { const v = Number(step.vitals[k]); if (Number.isFinite(v)) targets[k] = v; });
+            if (Object.keys(targets).length) {
+                if (Number(step.over) > 0) a.startTrend(targets, Number(step.over));
+                else Object.keys(targets).forEach(k => a.manualUpdateVital(k, targets[k]));
+            }
+            a.addLogEntry(`Preset "${preset.name}" \u2014 step ${i + 1}/${preset.steps.length}: ${step.note || 'applied'}`, 'system');
+        };
+        const refreshPresetView = () => {
+            const run = presetRunRef.current;
+            if (!run) { setPresetView(null); return; }
+            const next = run.preset.steps[run.idx];
+            setPresetView({
+                name: run.preset.name, idx: run.idx, total: run.preset.steps.length, note: run.lastNote,
+                waiting: !!(next && next.wait), nextNote: next ? next.note : null,
+                nextIn: next && !next.wait ? Math.max(0, Math.ceil((Number(next.after) || 0) - run.accMs / 1000)) : null
+            });
+        };
+        const firePresetStep = () => {
+            const run = presetRunRef.current;
+            if (!run) return;
+            const step = run.preset.steps[run.idx];
+            if (!step) return;
+            applyPresetStep(run.preset, step, run.idx);
+            run.lastNote = step.note || null;
+            run.idx += 1; run.accMs = 0;
+            if (run.idx >= run.preset.steps.length) {
+                presetActionsRef.current.addLogEntry(`Preset "${run.preset.name}" complete.`, 'system');
+                presetRunRef.current = null;
+            }
+            refreshPresetView();
+        };
+        const startPreset = (preset) => {
+            if (presetRunRef.current && !window.confirm(`Stop "${presetRunRef.current.preset.name}" and start "${preset.name}"?`)) return;
+            presetRunRef.current = { preset, idx: 0, accMs: 0, lastTs: Date.now(), lastNote: null };
+            addLogEntry(`Preset started: "${preset.name}"`, 'system');
+            // A first step with no delay fires at once, so pressing the preset changes something now.
+            if (!preset.steps[0].wait && !(Number(preset.steps[0].after) > 0)) firePresetStep();
+            else refreshPresetView();
+        };
+        const stopPreset = () => {
+            if (!presetRunRef.current) return;
+            addLogEntry(`Preset stopped: "${presetRunRef.current.preset.name}"`, 'system');
+            presetRunRef.current = null;
+            refreshPresetView();
+        };
+        const presetActive = !!presetView;
+        useEffect(() => {
+            if (!presetActive) return;
+            const id = setInterval(() => {
+                const run = presetRunRef.current;
+                if (!run) return;
+                const now = Date.now();
+                const st = liveStateRef.current;
+                const paused = (st.pausedAt !== null && st.pausedAt !== undefined) || st.isFinished;
+                if (!paused) run.accMs += now - run.lastTs;
+                run.lastTs = now;
+                const next = run.preset.steps[run.idx];
+                if (next && !next.wait && run.accMs >= (Number(next.after) || 0) * 1000) firePresetStep();
+                else refreshPresetView();
+            }, 250);
+            return () => clearInterval(id);
+        }, [presetActive]);
+        const savePresetSnapshot = () => {
+            if (!QSP) return;
+            const name = window.prompt('Name for this preset (saves the current rhythm and obs on this device):', RG.labelFor(state.rhythm));
+            if (!name || !name.trim()) return;
+            const ok = QSP.save(QSP.snapshotPreset(name.trim(), state.rhythm, vitals));
+            if (!ok) { window.alert('This browser is not allowing storage, so the preset could not be saved.'); return; }
+            setPresetList(QSP.all());
+        };
+        const deletePreset = (p) => {
+            if (!QSP || !window.confirm(`Delete the saved preset "${p.name}"?`)) return;
+            QSP.remove(p.id);
+            setPresetList(QSP.all());
+        };
         // WAVE 6 / QUICK SIM WAVEFORMS. The strip used to be frozen whenever the session clock was
         // not running (isPaused={!isRunning}), which meant the rAF loop sized the canvas, painted it
         // black and returned WITHOUT DRAWING. Quick Sim reaches this controller without ever passing
@@ -730,9 +830,35 @@
         const dismissInv = () => setInvModal(null);
         const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
 
+        // The vital tiles, rendered once for the desktop panel and once, compact, for the phone view.
+        const renderVitalTiles = (compact) => (
+            <>
+                                     {/* The tiles always show the patient's TRUE value (the facilitator must be
+                                         able to steer a vital before its sensor goes on). The amber note says
+                                         when the team cannot currently see it. */}
+                                     <VitalDisplay compact={compact} label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={getTrend('hr')} note={sEcg ? null : 'not on monitor'} />
+                                     {/* BP opens the same control as every other vital, so it sets the patient's
+                                         actual BP (with a ramp if wanted). The old NIBP-only dialog changed just
+                                         the displayed cuff reading, which the next cycle and the art line ignored. */}
+                                     <VitalDisplay compact={compact} label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={getTrend('bpSys')}
+                                                   note={sensors.art ? null : (state.nibp && state.nibp.sys ? `${sensors.nibp ? 'cuff' : 'cuff off · last'} ${state.nibp.sys}/${state.nibp.dia}` : (sensors.nibp ? 'cuff not cycled' : 'not on monitor'))} />
+                                     <VitalDisplay compact={compact} label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={getTrend('spO2')} note={sSpo2 ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={getTrend('rr')} note={sResp ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={getTrend('temp')} note={sensors.temp ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
+                                     <VitalDisplay compact={compact} label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
+                                     <VitalDisplay compact={compact} label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
+                                     {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
+                                     <VitalDisplay compact={compact} label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
+                                     {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
+                                         measurable endpoint the facilitator can steer and the team can read. */}
+                                     <VitalDisplay compact={compact} label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
+            </>
+        );
+
         return (
-            <div className={`h-full overflow-hidden flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className={`absolute top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
+            <div className={`h-full overflow-hidden max-md:h-auto max-md:overflow-visible flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
+                <div className={`absolute top-20 max-md:fixed max-md:top-auto max-md:bottom-3 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
                         <Lucide icon={notification?.type === 'danger' || notification?.type === 'warning' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'warning' ? 'text-amber-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
                         <span className="font-bold text-white">{notification?.msg}</span>
@@ -744,7 +870,7 @@
                     payload (unlike `notification`, which IS synced and IS rendered on the student
                     monitor). Nothing about a conversion can therefore reach the team's screen. */}
                 {rhythmEvent && (
-                    <div role="status" className={`absolute top-32 left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
+                    <div role="status" className={`absolute top-32 max-md:fixed max-md:top-auto max-md:bottom-20 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
                         <div className="flex items-center gap-3">
                             <Lucide icon="activity" className={`w-5 h-5 ${rhythmEvent.converted ? 'text-amber-400' : 'text-slate-400'}`} />
                             <div>
@@ -758,13 +884,35 @@
                     </div>
                 )}
 
+                {/* ===================== PHONE OBS (below md only) =====================
+                    On a phone the obs come FIRST: every vital as a compact tile (tap to change),
+                    with the clock, the current rhythm and START/PAUSE beside them, so the whole
+                    patient can be driven from one screen without scrolling. The page scrolls as one
+                    below this (no fixed toolbar eating the screen). */}
+                <div className="md:hidden mb-2">
+                    <div className="flex items-center gap-2 mb-1">
+                        <div className="min-w-0 flex-1">
+                            <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold leading-none">Obs &middot; tap to change</div>
+                            <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
+                        </div>
+                        <div className="font-mono text-xl font-bold text-white">{formatTime(time)}</div>
+                        {!isRunning
+                            ? <Button variant="success" onClick={start} className="h-9 px-3 font-bold text-sm"><Lucide icon="play" className="w-4 h-4"/> START</Button>
+                            : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
+                    </div>
+                    <div className="grid grid-cols-3 min-[400px]:grid-cols-4 gap-1">
+                        {renderVitalTiles(true)}
+                    </div>
+                </div>
+
                 {/* Wraps instead of overflowing: at ~375px this was one non-scrolling row and Back/Finish/
                     START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
                 <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
-                        <Button variant="secondary" onClick={onBack} className="h-8 px-2"><Lucide icon="arrow-left"/> Back</Button>
-                        <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold"><Lucide icon="square"/> Finish</Button>
-                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4"><Lucide icon="pause"/> PAUSE</Button> )}
+                        <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
+                        <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
+                        {/* START/PAUSE lives beside the phone obs on small screens. */}
+                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold max-md:hidden"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -790,7 +938,7 @@
                                 </div>
                             );
                         })()}
-                        <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold w-32 justify-between">
+                        <Button variant="secondary" onClick={cycleAudioOutput} className="h-8 px-2 text-[10px] uppercase font-bold whitespace-nowrap gap-1" title="Which device plays the sounds: the room monitor, this controller, or both">
                             <Lucide icon="monitor" className="w-4 h-4"/> {audioOutput === 'both' ? 'Audio: Both' : (audioOutput === 'controller' ? 'Audio: Ctrl' : 'Audio: Mon')}
                         </Button>
                         <Button ariaLabel={isMuted ? "Unmute alarms" : "Mute alarms"} variant={isMuted ? "danger" : "secondary"} onClick={() => sim.dispatch({type: 'SET_MUTED', payload: !isMuted})} className="h-8 px-2">
@@ -812,13 +960,17 @@
                                 <Lucide icon="flag" className="w-3 h-3 mr-1"/> Safety flags ({deviationEntries.length})
                             </Button>
                         )}
-                        <div className="w-px h-6 bg-slate-600 mx-1"></div>
-                        <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Launch Monitor</Button>
-                        {!quickSim && <Button variant="outline" href="defib/index.html" className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
-                        <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30"><Lucide icon="pill" className="w-4 h-4 mr-1"/> Drug Calc</Button>
-                        <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
+                        <div className="w-px h-6 bg-slate-600 mx-1 max-md:hidden"></div>
+                        <Button variant="outline" href={`?mode=monitor&session=${sessionID}`} className="h-8 px-2 sm:px-3 text-sky-400 border-sky-500/50 hover:bg-sky-900/30 whitespace-nowrap"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> <span className="sm:hidden">Monitor</span><span className="hidden sm:inline">Launch Monitor</span></Button>
+                        {/* Pair a tablet by pointing its camera at the screen instead of typing a code. */}
+                        <Button ariaLabel="Show QR codes to join the monitor or defib" variant="outline" onClick={() => setShowJoin(true)} className="h-8 px-2 text-sky-300 border-sky-500/50 hover:bg-sky-900/30" title="QR codes: scan with a tablet to open the room monitor or the defib for this session">
+                            <Lucide icon="qr-code" className="w-4 h-4 mr-1"/> Join
+                        </Button>
+                        {!quickSim && <Button variant="outline" href={`defib/index.html?session=${sessionID}`} className="h-8 px-3 text-amber-400 border-amber-500/50 hover:bg-amber-900/30"><Lucide icon="zap" className="w-4 h-4 mr-1"/> Defib Sim</Button>}
+                        <Button variant="outline" onClick={() => setShowDrugCalc(true)} className="h-8 px-2 sm:px-3 text-violet-400 border-violet-500/50 hover:bg-violet-900/30 whitespace-nowrap"><Lucide icon="pill" className="w-4 h-4 mr-1"/> <span className="sm:hidden">Drugs</span><span className="hidden sm:inline">Drug Calc</span></Button>
+                        <Button variant="outline" onClick={() => setShowTimerModal(true)} className="h-8 px-2 sm:px-3 text-orange-400 border-orange-500/50 hover:bg-orange-900/30 whitespace-nowrap"><Lucide icon="bell" className="w-4 h-4 mr-1"/> Alerts</Button>
                         <Button ariaLabel="Open keyboard shortcuts" variant="outline" onClick={() => setShowKeyHelp(true)} className="h-8 px-2 text-slate-400 border-slate-600 font-bold">?</Button>
-                        <div className="font-mono text-2xl font-bold text-white ml-2">{formatTime(time)}</div>
+                        <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(time)}</div>
                     </div>
                 </div>
 
@@ -827,8 +979,8 @@
                     can carry a dragged pixel width, with the right pane taking the remainder. Below
                     md it stacks exactly as before (flex-col, full width), so the verified 375 px
                     layout is untouched. */}
-                <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0">
-                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 overflow-y-auto h-full pr-1">
+                <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0 max-md:flex-none max-md:overflow-visible">
+                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 md:overflow-y-auto md:h-full md:pr-1">
                          {/* A2: the scenario brief card is replaced in Quick Sim by a one-line factual
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
@@ -996,27 +1148,10 @@
                                  )}
                              </div>
 
-                             <div className="grid grid-cols-2 gap-1 p-1 bg-black">
-                                 {/* The tiles always show the patient's TRUE value (the facilitator must be
-                                     able to steer a vital before its sensor goes on). The amber note says
-                                     when the team cannot currently see it. */}
-                                 <VitalDisplay label="HR" value={vitals.hr} onClick={()=>openVitalControl('hr')} visible={true} trend={getTrend('hr')} note={sEcg ? null : 'not on monitor'} />
-                                 {/* BP opens the same control as every other vital, so it sets the patient's
-                                     actual BP (with a ramp if wanted). The old NIBP-only dialog changed just
-                                     the displayed cuff reading, which the next cycle and the art line ignored. */}
-                                 <VitalDisplay label="BP" value={vitals.bpSys} value2={vitals.bpDia} onClick={()=>openVitalControl('bp')} visible={true} trend={getTrend('bpSys')}
-                                               note={sensors.art ? null : (state.nibp && state.nibp.sys ? `${sensors.nibp ? 'cuff' : 'cuff off · last'} ${state.nibp.sys}/${state.nibp.dia}` : (sensors.nibp ? 'cuff not cycled' : 'not on monitor'))} />
-                                 <VitalDisplay label="SpO2" value={vitals.spO2} onClick={()=>openVitalControl('spO2')} visible={true} trend={getTrend('spO2')} note={sSpo2 ? null : 'not on monitor'} />
-                                 <VitalDisplay label="RR" value={vitals.rr} onClick={()=>openVitalControl('rr')} visible={true} trend={getTrend('rr')} note={sResp ? null : 'not on monitor'} />
-                                 <VitalDisplay label="Temp" value={vitals.temp} unit="°C" onClick={()=>openVitalControl('temp')} visible={true} trend={getTrend('temp')} note={sensors.temp ? null : 'not on monitor'} />
-                                 <VitalDisplay label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} visible={true} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
-                                 <VitalDisplay label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} visible={true} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
-                                 <VitalDisplay label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
-                                 {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
-                                 <VitalDisplay label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
-                                 {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
-                                     measurable endpoint the facilitator can steer and the team can read. */}
-                                 <VitalDisplay label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
+                             {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
+                                 very top of the page instead (see PHONE OBS below). */}
+                             <div className="hidden md:grid grid-cols-2 gap-1 p-1 bg-black">
+                                 {renderVitalTiles(false)}
                              </div>
                         </div>
 
@@ -1058,7 +1193,11 @@
 
                         {/* ---- GROUP C2: AUTO / MANUAL deterioration toggle. Sits directly under the obs
                              panel so it is impossible to miss during a running sim, and the current mode
-                             is spelled out rather than implied by a colour. ---- */}
+                             is spelled out rather than implied by a colour.
+                             Hidden in Quick Sim: there is no scenario and so no declared deterioration
+                             rate, which means AUTO could never change anything there. Quick Sim always
+                             runs MANUAL; the trend control on each tile drives any decline. ---- */}
+                        {!quickSim && (
                         <div title="Switching either way leaves the obs exactly where they are — there is no jump in either direction." className={`flex-none rounded border-l-4 p-2 ${deteriorationMode === 'auto' ? 'bg-amber-950/30 border-amber-500' : 'bg-slate-800 border-slate-500'}`}>
                             <div className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
@@ -1067,15 +1206,9 @@
                                         {deteriorationMode === 'auto' ? 'AUTO — deteriorating on its own' : 'MANUAL — obs only change when you change them'}
                                     </div>
                                     <div className="text-[10px] text-slate-400 mt-0.5">
-                                        {/* A6: Quick Sim has no scenario and therefore no declared
-                                            deterioration rate, so it starts in MANUAL and the toggle
-                                            says so plainly rather than implying AUTO will do something.
-                                            Use the vitals tiles' trend control to drive a decline. */}
                                         {detInfo.declared
                                             ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
-                                            : quickSim
-                                                ? 'Quick Sim has no declared deterioration rate, so AUTO would change nothing on its own. Ramp the obs with the trend control on any tile instead.'
-                                                : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
+                                            : 'This scenario declares no deterioration rate — AUTO would change nothing.'}
                                     </div>
                                 </div>
                                 <Button
@@ -1090,6 +1223,7 @@
                                 </Button>
                             </div>
                         </div>
+                        )}
 
                         {/* ---- A5: live drug timing. The facilitator needs to know WHY the obs are still
                              moving, which is exactly what the pk envelope makes invisible otherwise. ---- */}
@@ -1185,13 +1319,13 @@
                         <div className="flex-none flex gap-2">
                             <Button variant="outline" onClick={cycleNibp} className={`flex-1 ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-500 border-slate-600'}`}
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
-                                 <Lucide icon="activity" className="w-4 h-4"/> {sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP (no cuff)'}
+                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
                             </Button>
                             {/* A one-off displayed reading that does NOT change the patient (e.g. a
                                 spurious cuff reading). To change the actual BP, tap the BP tile. */}
                             <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
                                     title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
-                                    className="flex-none px-3 text-[10px] uppercase font-bold text-slate-400">
+                                    className="flex-none px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
                                  Manual reading
                             </Button>
                         </div>
@@ -1309,7 +1443,7 @@
                         search, no tabs, no drug groups, no investigations, no voice and no assessment
                         checklist, because none of those mean anything without a scenario. */}
                     {quickSim ? (
-                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
                             <div className="flex-1 min-w-[12rem]">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Rhythm</div>
@@ -1327,7 +1461,51 @@
                             </Button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+                        <div className="md:flex-1 md:overflow-y-auto p-3 space-y-3">
+                            {/* SCRIPTED PRESETS: one press runs a timed sequence of rhythm/obs changes. */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1 gap-2">
+                                    <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Presets</div>
+                                    <button onClick={savePresetSnapshot} className="text-[10px] uppercase font-bold text-sky-400 hover:text-sky-200 border border-sky-800 rounded px-1.5 py-0.5"
+                                            title="Save the current rhythm and obs as a one-press preset on this device">+ Save current</button>
+                                </div>
+                                {presetView && (
+                                    <div className="mb-2 rounded border border-sky-600 bg-sky-950/40 p-2" role="status">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="text-xs font-bold text-sky-200 truncate">{presetView.name}</div>
+                                                <div className="text-[10px] text-slate-300">
+                                                    {presetView.note ? `Now: ${presetView.note}` : 'Starting\u2026'}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">
+                                                    {presetView.waiting
+                                                        ? <span className="text-amber-300 font-bold">Next: {presetView.nextNote} &mdash; waiting for you</span>
+                                                        : presetView.nextNote ? <>Next in <b className="font-mono text-white">{presetView.nextIn}s</b>: {presetView.nextNote}</> : null}
+                                                    {(pausedByFacilitator || state.isFinished) && <span className="ml-1 text-amber-300">(paused)</span>}
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-1 flex-none">
+                                                <Button onClick={firePresetStep} variant={presetView.waiting ? 'primary' : 'secondary'} className="h-8 px-2 text-[10px] uppercase font-bold" title="Apply the next step now">Next &rsaquo;</Button>
+                                                <Button onClick={stopPreset} variant="outline" className="h-8 px-2 text-[10px] uppercase font-bold" title="Stop the preset (the patient stays as they are now)">Stop</Button>
+                                            </div>
+                                        </div>
+                                        <div className="mt-1 h-1 bg-slate-800 rounded overflow-hidden"><div className="h-full bg-sky-500" style={{ width: `${Math.round((presetView.idx / presetView.total) * 100)}%` }}></div></div>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                    {presetList.map(p => (
+                                        <div key={p.id} className="relative">
+                                            <button onClick={() => startPreset(p)} title={p.description}
+                                                className={`w-full p-2 pr-6 rounded border text-left text-[11px] font-bold leading-tight min-h-[2.75rem] ${presetView && presetView.name === p.name ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>
+                                                {p.name}
+                                                <div className="text-[9px] font-normal text-slate-400">{p.steps.length} step{p.steps.length === 1 ? '' : 's'}{p.user ? ' \u00b7 saved' : ''}{p.steps.some(x => x.wait) ? ' \u00b7 waits for you' : ''}</div>
+                                            </button>
+                                            {p.user && <button aria-label={`Delete preset ${p.name}`} onClick={() => deletePreset(p)} className="absolute top-1 right-1 text-slate-400 hover:text-red-400"><Lucide icon="x" className="w-3 h-3"/></button>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
                             {/* FULL RHYTHM REGISTRY. RG.SELECTABLE is the single shared registry from
                                 data/rhythms.js, so this list can never disagree with the monitor, the
                                 defibrillator's shockability logic or the arrest model. Arrest rhythms
@@ -1380,7 +1558,7 @@
                         </div>
                     </div>
                     ) : (
-                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 overflow-hidden relative">
+                    <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         {searchTerm.length > 0 && searchResults.length > 0 && (
                             <div className="absolute top-[100px] left-2 right-2 bg-slate-800 border border-slate-600 rounded shadow-2xl z-40 max-h-64 overflow-y-auto">
                                 {searchResults.map(key => (
@@ -1416,7 +1594,7 @@
                              ))}
                         </div>
                         
-                        <div className="flex-1 p-3 overflow-y-auto bg-slate-800 relative">
+                        <div className="md:flex-1 p-3 md:overflow-y-auto bg-slate-800 relative">
                             {activeTab === 'Assessment' ? (
                                 <div className="space-y-4 p-2">
                                     <div className="bg-sky-900/20 border border-sky-500/30 p-4 rounded-lg">
@@ -1775,6 +1953,46 @@
                         </div>
                     </Modal>
                 )}
+
+                {showJoin && (() => {
+                    // Absolute URLs, so a camera app opens exactly this session on this deployment.
+                    const base = window.location.origin + window.location.pathname;
+                    const links = [
+                        { key: 'monitor', title: 'Room monitor', url: `${base}?mode=monitor&session=${sessionID}`, hint: 'The patient monitor the team watches.' },
+                        { key: 'defib', title: 'Defibrillator', url: new URL(`defib/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'Standalone defib on a second tablet.' }
+                    ];
+                    const svgFor = (url) => {
+                        try { const q = window.qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" '); }
+                        catch (e) { return null; }
+                    };
+                    return (
+                        <Modal label="Join this session" onClose={() => setShowJoin(false)}>
+                            <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h3 className="text-lg font-bold text-white uppercase tracking-wider">Join session</h3>
+                                    <button aria-label="Close join codes" onClick={() => setShowJoin(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                                </div>
+                                <p className="text-xs text-slate-400 mb-4">Point the tablet's camera at a code, or type the session code <b className="font-mono text-white text-base tracking-widest">{sessionID}</b> on the tablet.</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {links.map(l => {
+                                        const svg = svgFor(l.url);
+                                        return (
+                                            <div key={l.key} className="bg-slate-900 border border-slate-700 rounded p-3 flex flex-col items-center gap-2">
+                                                <div className="text-sm font-bold text-sky-300 uppercase tracking-wider">{l.title}</div>
+                                                {svg
+                                                    ? <div className="bg-white p-2 rounded w-48 h-48" dangerouslySetInnerHTML={{ __html: svg }} />
+                                                    : <div className="w-48 h-48 flex items-center justify-center text-xs text-slate-500 text-center">QR code unavailable — use the link below.</div>}
+                                                <div className="text-[10px] text-slate-400 text-center">{l.hint}</div>
+                                                <div className="text-[10px] text-slate-500 font-mono break-all text-center select-all">{l.url}</div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <Button onClick={() => setShowJoin(false)} variant="outline" className="w-full mt-4">Close</Button>
+                            </div>
+                        </Modal>
+                    );
+                })()}
 
                 {showKeyHelp && (
                     <Modal label="Keyboard shortcuts" onClose={()=>setShowKeyHelp(false)}>

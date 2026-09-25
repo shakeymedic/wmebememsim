@@ -480,13 +480,15 @@
 
         return (
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
-                <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex items-center justify-between">
+                {/* Wraps on a phone: the code, Launch Monitor and Join used to be forced onto one
+                    row, which squeezed "Join Another Session" into three overflowing lines. */}
+                <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex flex-wrap items-center justify-between gap-3">
                     <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                         {/* New tab, not same tab: the facilitator keeps the controller on this laptop and
                             drags the monitor window to the second screen. */}
-                        <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
-                        <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs">Join Another Session</Button>
+                        <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1 whitespace-nowrap"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
+                        <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs whitespace-nowrap">Join Another Session</Button>
                     </div>
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
@@ -703,7 +705,7 @@
     const JoinScreen = ({ onJoin }) => {
         const { Button } = window;
         const [code, setCode] = useState("");
-        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://raw.githubusercontent.com/shakeymedic/wmem/main/emevidence_logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase())} placeholder="e.g. A1B2" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={4}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
+        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://raw.githubusercontent.com/shakeymedic/wmem/main/emevidence_logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-500">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && code.length >= 4) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
     const BriefingScreen = ({ scenario: rawScenario, onStart, onBack }) => {

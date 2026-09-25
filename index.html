@@ -94,9 +94,13 @@
          executes BEFORE any text/babel module and is therefore available to components.js and
          engine.js at definition time. The standalone defib page loads the SAME file. -->
     <script src="data/rhythms.js"></script>
+    <script src="data/firebase-config.js"></script>
+    <!-- QR codes for joining the room monitor / defib from a tablet camera. Vendored (MIT). -->
+    <script src="vendor/qrcode-generator.js"></script>
 
     <script type="text/babel" src="data/interventions.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
+    <script src="data/presets.js"></script>
     <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
@@ -115,18 +119,7 @@
 
     <script type="text/babel">
         // --- CONFIGURATION ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II",
-            authDomain: "wmebem-sim.firebaseapp.com",
-            // This project uses Realtime Database, not Firestore. Keep the exact database host
-            // explicit rather than relying on the SDK's projectId-derived fallback.
-            databaseURL: "https://wmebem-sim-default-rtdb.firebaseio.com",
-            projectId: "wmebem-sim",
-            storageBucket: "wmebem-sim.firebasestorage.app",
-            messagingSenderId: "143041936940",
-            appId: "1:143041936940:web:4d15c3fc3ce7e10c081b89",
-            measurementId: "G-8C6WW1EWXJ"
-        };
+        const firebaseConfig = window.FIREBASE_CONFIG;
 
         // --- INIT FIREBASE ---
         window.firebaseSyncBootstrap = { state: 'connecting', message: null };
@@ -147,6 +140,25 @@
         // No service worker at this scope on purpose. There is no root sw.js, and adding a
         // stale-while-revalidate cache here would risk serving last session's code after a fix ships —
         // unacceptable for clinical content. defib/index.html keeps its own SW at its own scope.
+
+        // --- SESSION CODES ---
+        // Six characters from an alphabet with no look-alikes (no 0/O, 1/I/L), drawn from the
+        // crypto RNG: ~887 million codes instead of 4 characters of Math.random() (~1.7 million,
+        // including ambiguous ones that were easy to mistype on a tablet). A code already stored on
+        // this device is kept, so a monitor that is paired right now is never orphaned.
+        window.SESSION_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+        window.newSessionCode = () => {
+            const A = window.SESSION_CODE_ALPHABET, n = 6;
+            const out = [];
+            try {
+                const buf = new Uint32Array(n);
+                window.crypto.getRandomValues(buf);
+                for (let i = 0; i < n; i++) out.push(A[buf[i] % A.length]);
+            } catch (e) {
+                for (let i = 0; i < n; i++) out.push(A[Math.floor(Math.random() * A.length)]);
+            }
+            return out.join('');
+        };
 
         // --- APP COMPONENT ---
         // App owns only session/view routing. The simulation engine lives in ControllerApp, so that in
@@ -171,7 +183,7 @@
                 if (initialMode === 'monitor') return null;
                 let stored = null;
                 try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
-                return stored || Math.random().toString(36).substring(2, 6).toUpperCase();
+                return stored || window.newSessionCode();
             });
 
             useEffect(() => {
@@ -278,7 +290,10 @@
             // --- RENDER ---
             // Controller Views (Header + Footer)
             return (
-                <div className="h-full flex flex-col">
+                // PHONE LAYOUT: during a live sim the WHOLE page scrolls as one on narrow screens
+                // (header included), instead of a fixed top section with small scroll boxes inside
+                // it. Desktop/tablet (md+) keeps the fixed-height, panel-scrolling layout.
+                <div className={`h-full flex flex-col ${view === 'livesim' ? 'max-md:overflow-y-auto' : ''}`}>
                     {/* Header */}
                     <header className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
                         <div className="flex items-center gap-3">
@@ -301,7 +316,7 @@
                     </header>
 
                     {/* Main Content */}
-                    <main className="flex-grow overflow-hidden relative bg-slate-900">
+                    <main className={`flex-grow overflow-hidden relative bg-slate-900 ${view === 'livesim' ? 'max-md:overflow-visible max-md:flex-none' : ''}`}>
                       <ErrorBoundary onReset={() => { try { engine.reset(); } catch (e) {} setView('setup'); }}>
                         {view === 'setup' && (
                             <SetupScreen 

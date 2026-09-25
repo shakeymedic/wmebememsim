@@ -1805,6 +1805,9 @@
                 // audio path in this file is gated on isRunning, which the monitor can only learn
                 // about over the wire because it never calls start() itself.
                 isRunning: !!action.payload.isRunning,
+                // Whether the pulse tone and alarms should sound, decided once on the controller
+                // (see isAudioLive). Older controllers do not send it; isAudioLive falls back.
+                audioLive: action.payload.audioLive === undefined ? undefined : !!action.payload.audioLive,
                 isMuted: !!action.payload.isMuted,
                 activeLoops: action.payload.activeLoops || {},
                 isParalysed: !!action.payload.isParalysed,
@@ -2359,7 +2362,7 @@
                     remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
                     showWetflag: cur.showWetflag, co2Pathology, co2Severity,
                     // Top-level keys only — the write diff is shallow and per-key. Never undefined.
-                    isRunning: !!cur.isRunning, isMuted: !!cur.isMuted,
+                    isRunning: !!cur.isRunning, audioLive: isAudioLive(cur), isMuted: !!cur.isMuted,
                     activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed,
                     // Wave 2. BM / Temp / pH ride inside `vitals` (verified by the sync payload test);
                     // activeDrugs and deteriorationMode are top-level, primitives only, never undefined,
@@ -2375,7 +2378,11 @@
                     // is needed for those. Point-of-care readings DO need their own top-level key:
                     // primitives only, never undefined, so sanitizeForRealtimeDatabase passes it
                     // through untouched. Assessor-only conversion announcements are still absent.
-                    pocReadings: cur.pocReadings || {}
+                    pocReadings: cur.pocReadings || {},
+                    // SESSION HYGIENE: when this session last carried live data, rounded to the minute
+                    // so it adds at most one tiny write a minute. RTDB cannot expire data on its own;
+                    // a scheduled cleanup job (see README) deletes sessions whose updatedAt is old.
+                    updatedAt: Math.floor(Date.now() / 60000) * 60000
                 };
                 const sanitised = sanitizeForRealtimeDatabase(payload);
                 const safePayload = sanitised.value || {};
@@ -2554,7 +2561,8 @@
                 if (!ev || !ev.type) return;
                 if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
                 const cur = stateRef.current;
-                const src = 'student (monitor defib)';
+                const where = ev.device === 'standalone-defib' ? 'standalone defib' : 'monitor defib';
+                const src = `student (${where})`;
                 const p = ev.payload || {};
                 switch (ev.type) {
                     case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
@@ -2567,11 +2575,11 @@
                     case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
                     case 'ANALYSE': analyseRhythm(src); break;
                     case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: p.rate, output: p.output } }); break;
-                    case 'CHECK_PULSE': addLogEntry('Student checked pulse (monitor defib)', 'action'); break;
+                    case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
                     case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
-                    case 'MARKER_EVENT': addLogEntry('Student marked event (monitor defib)', 'manual', true); break;
-                    case 'ALARM_SILENCE': addLogEntry('Alarm silenced by student (monitor defib)', 'info'); break;
-                    case 'REQUEST_12LEAD': addLogEntry('Student requested 12-lead (monitor)', 'action'); break;
+                    case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
+                    case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
+                    case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
                     default: addLogEntry(`Unhandled student device event: ${ev.type}`, 'system'); break;
                 }
                 // Consume the event so the queue cannot grow without bound across a long session.
@@ -2670,6 +2678,17 @@
         };
 
         // Is this device the one that should be making noise right now?
+        // Should the pulse tone and physiological alarms sound at all? Normally only while the clock
+        // runs. Quick Sim is different: it is driven without ever pressing START (the trace already
+        // runs before START), so there the monitor is audible until the facilitator deliberately
+        // PAUSES or finishes — the same rule the waveform strip uses. The team monitor cannot see
+        // `pausedAt`, so the controller publishes the answer as `audioLive`.
+        const isAudioLive = (current) => {
+            if (isMonitorMode && current.audioLive !== undefined) return !!current.audioLive;
+            if (current.isRunning) return true;
+            const paused = current.pausedAt !== null && current.pausedAt !== undefined;
+            return !!(current.scenario && current.scenario.quickSim && !paused && !current.isFinished);
+        };
         const isAudioRouted = (current) => (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both'))
             || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
 
@@ -2688,7 +2707,7 @@
                 const ctx = audioCtxRef.current;
                 const retry = (ms) => { timerId = setTimeout(scheduleBeep, ms); };
 
-                if (!current.isRunning) { retry(1000); return; }
+                if (!isAudioLive(current)) { retry(1000); return; }
                 if (current.vitals.hr <= 0 || SILENT_RHYTHMS.includes(current.rhythm)) { retry(1000); return; }
                 // Follows the INDIVIDUAL sensors, not the 'Obs' shorthand: detaching one standard
                 // sensor expands 'Obs' into its individual keys, so keying on 'Obs' silenced the beep
@@ -2748,7 +2767,7 @@
 
         useEffect(() => {
             const current = state;
-            if (!current.isRunning || current.isMuted) return;
+            if (!isAudioLive(current) || current.isMuted) return;
             if (!isAudioRouted(current)) return;
             // Each alarm is watched only by the sensor that measures it — same rule as the beep.
             // (This used to key on the 'Obs' shorthand, which disappears as soon as any single
@@ -2769,7 +2788,7 @@
             if (alarmSensors.spo2 && v.spO2 < th.spO2) fire('spO2', 'critical');
             // Respiratory rate is chest-wall impedance off the ECG electrodes.
             if (alarmSensors.ecg && (v.rr < th.rr.low || v.rr > th.rr.high)) fire('rr', 'alert');
-        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions]);
+        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions, state.audioLive, state.pausedAt]);
         
         // Auto mode only measures while a cuff is actually on (it resumes when the cuff goes back on).
         useEffect(() => {

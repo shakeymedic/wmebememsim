@@ -132,7 +132,12 @@
             'lock': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
             'unlock': '<rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
             'sliders': '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
-            'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>'
+            'upload': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>',
+            'maximize': '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+            'minimize': '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
+            'qr-code': '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7"/><path d="M14 20h3"/>',
+            'printer': '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+            'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/>'
         };
 
         return (
@@ -237,7 +242,10 @@
             };
         }, []);
         return (
-            <div className="absolute inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm">
+            // max-md:fixed — on a phone the controller is one long scrolling page, so an absolutely
+            // positioned overlay was centred in the middle of that page (jumping the view away from
+            // the obs); fixed keeps every dialog over the screen the facilitator is looking at.
+            <div className="absolute max-md:fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm max-md:overflow-y-auto">
                 <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelIdRef.current} tabIndex="-1" className={className}>
                     <span id={labelIdRef.current} className="sr-only">{label}</span>
                     {children}
@@ -686,7 +694,9 @@
     const VitalDisplay = ({ label, value, value2, unit, alert, prev, visible, onClick, trend, isMonitor, hideTrends, isNIBP, lastNIBP,
                             // Controller-only hint (e.g. "not on monitor"): the facilitator always sees the
                             // true value, and this says whether the team can currently see it too.
-                            note }) => {
+                            note,
+                            // Phone controller: small tiles so all the obs fit on one screen.
+                            compact = false }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
                 <span className="text-slate-600 text-xs uppercase">{label} Off</span>
@@ -731,6 +741,24 @@
                          {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
+                </Tile>
+            );
+        }
+
+        if (compact) {
+            return (
+                <Tile {...tileProps} className={`relative bg-slate-900 border rounded px-1.5 pt-1 ${note ? 'pb-3' : 'pb-1'} flex flex-col text-left min-w-0 ${onClick ? 'cursor-pointer active:bg-slate-800' : ''} overflow-hidden ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
+                    <div className="flex justify-between items-baseline gap-1 min-w-0">
+                        <span className={`text-[10px] font-bold uppercase leading-none ${color}`}>{label}</span>
+                        {unit && <span className="text-[9px] text-slate-500 leading-none truncate">{unit}</span>}
+                    </div>
+                    <div className={`font-mono font-bold leading-tight tracking-tight text-center whitespace-nowrap ${color} ${hasValue2 ? 'text-xl' : 'text-2xl'}`}>
+                        {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}{trendIcon && <span className="text-sm text-sky-400 ml-0.5">{trendIcon}</span>}
+                    </div>
+                    {note && <span className="absolute left-1.5 right-1 bottom-0.5 text-[8px] leading-none uppercase tracking-wide font-bold text-amber-400/90 truncate pointer-events-none">{note}</span>}
+                    {!hideTrends && trend && trend.active && (
+                        <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-800"><div className="bg-sky-500 h-full" style={{ width: `${trend.progress * 100}%` }}></div></div>
+                    )}
                 </Tile>
             );
         }

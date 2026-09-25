@@ -22,6 +22,12 @@
          NOTE: the old `rhythmMap` near the top of the main script was DEAD CODE (never called) —
          the live dictionary was the getECGValue branch list. Both are gone; there is one source. -->
     <script src="../data/rhythms.js"></script>
+    <!-- Firebase: the SAME live session the controller and room monitor use, so this page works on
+         a separate tablet. Without it the page could only reach a controller in another tab of
+         the same browser (BroadcastChannel), which is still supported as a fallback. -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="../data/firebase-config.js"></script>
     <script>
     (function(){'use strict';
     // Grid drawer retained (the canvas uses an "eraser bar" rather than clearRect).
@@ -110,9 +116,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 <div id="linkBanner" class="link-banner"><b>NOT LINKED TO SESSION</b><br><span style="font-weight:normal;font-size:12px;">No session has been supplied to this page, so there is no patient. Looking for a controller in another tab of this browser&hellip;</span></div>
                 <div id="endedBanner" class="ended-banner hidden">SESSION ENDED</div>
                 <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="EM Evidence Logo"></div>
-                <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead analysis" tabindex="-1"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="800" height="500"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
+                <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead analysis" tabindex="-1"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="1000" height="640" style="max-width:100%;height:auto;"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
                 <div class="screen-header">
-                    <div class="screen-info" id="leadInfo">LEAD: II</div><div class="screen-info" id="syncIndicator"></div>
+                    <div class="screen-info" id="leadInfo">LEAD: II</div><div class="screen-info" id="sessionTag"></div><div class="screen-info" id="syncIndicator"></div>
                     <div class="screen-info" id="modeInfo">MODE: MONITOR</div><div class="screen-info" id="timeInfo">00:00:00</div>
                 </div>
                 <div class="ecg-canvas-container"><canvas id="ecgCanvas"></canvas></div>
@@ -188,80 +194,29 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 : 'No session has been supplied to this page, so there is no patient. The numbers and rhythm below are NOT your patient.';
             el.innerHTML = '<b>' + (lost ? LOST_LINK_HEADLINE : NEVER_LINKED_HEADLINE) + '</b><br><span style="font-weight:normal;font-size:12px;">'
                 + (reason || fallback)
-                + '<br>Use the monitor-hosted defibrillator instead: open the room monitor and press <b>Defib</b> on the controller.</span>';
+                + '</span>'
+                + (fb.code ? '' : '<form id="joinForm" style="margin-top:8px;display:flex;gap:6px;justify-content:center;">'
+                    + '<input id="joinCode" aria-label="Session code" placeholder="SESSION CODE" autocomplete="off" autocapitalize="characters" style="font:inherit;font-size:16px;padding:6px 8px;width:10em;text-transform:uppercase;border-radius:4px;border:1px solid #666;background:#111;color:#fff;">'
+                    + '<button type="submit" style="font:inherit;font-weight:bold;padding:6px 12px;border-radius:4px;border:1px solid #0a0;background:#063;color:#fff;cursor:pointer;">Link</button></form>');
+            const form = document.getElementById('joinForm');
+            if (form) form.onsubmit = (ev) => {
+                ev.preventDefault();
+                const code = String(document.getElementById('joinCode').value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                if (!code) return;
+                const u = new URL(window.location.href); u.searchParams.set('session', code);
+                window.location.href = u.toString();
+            };
         }
         function setSessionEnded(ended) {
             const el = document.getElementById('endedBanner');
             if (el) el.classList.toggle('hidden', !ended);
         }
 
-        function render12LeadDefib(canvas, rhythm, scenario) {
-            if (!canvas) return;
-            try {
-                const ctx = canvas.getContext('2d');
-                const w = canvas.width;
-                const h = canvas.height;
-                ctx.fillStyle = 'white';
-                ctx.fillRect(0, 0, w, h);
-                ctx.strokeStyle = '#ffcccc';
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                for(let x=0;x<=w;x+=10){ctx.moveTo(x,0);ctx.lineTo(x,h);}
-                for(let y=0;y<=h;y+=10){ctx.moveTo(0,y);ctx.lineTo(w,y);}
-                ctx.stroke();
-                ctx.strokeStyle = '#ff9999';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                for(let x=0;x<=w;x+=50){ctx.moveTo(x,0);ctx.lineTo(x,h);}
-                for(let y=0;y<=h;y+=50){ctx.moveTo(0,y);ctx.lineTo(w,y);}
-                ctx.stroke();
-                ctx.strokeStyle = 'black';
-                ctx.lineWidth = 1.2;
-                ctx.lineJoin = 'round';
-                const leads = ['I','II','III','aVR','aVL','aVF','V1','V2','V3','V4','V5','V6'];
-                let stElev = 0;
-                const ecgType = scenario && (scenario.ecg?.type || scenario.investigations?.ecg?.type || '');
-                if (rhythm === 'STEMI' || ecgType === 'STEMI') stElev = 1.5;
-                if (rhythm === 'Sinus Rhythm (Post-MI)') stElev = 0.2;
-                const getComplex = (t, leadIndex) => {
-                    let y = 0;
-                    y -= 5 * Math.exp(-Math.pow(t-0.1,2)/0.002);
-                    y += 20 * Math.exp(-Math.pow(t-0.22,2)/0.001);
-                    y -= 8 * Math.exp(-Math.pow(t-0.24,2)/0.001);
-                    y -= 8 * Math.exp(-Math.pow(t-0.45,2)/0.005);
-                    if (stElev > 0 && leadIndex >= 6 && leadIndex <= 9) {
-                        if (t > 0.26 && t < 0.45) y -= stElev * 10;
-                    }
-                    return y;
-                };
-                const colW = w / 4;
-                const rowH = h / 3;
-                leads.forEach((lead, i) => {
-                    const col = Math.floor(i / 3);
-                    const row = i % 3;
-                    const originX = col * colW;
-                    const originY = row * rowH + (rowH / 2);
-                    ctx.fillStyle = 'black';
-                    ctx.font = '12px sans-serif';
-                    ctx.fillText(lead, originX + 10, originY - 30);
-                    ctx.beginPath();
-                    for (let x = 0; x < colW; x++) {
-                        const t = (x % 200) / 200;
-                        const y = getComplex(t, i);
-                        if (x === 0) ctx.moveTo(originX + x, originY + y);
-                        else ctx.lineTo(originX + x, originY + y);
-                    }
-                    ctx.stroke();
-                });
-                ctx.fillStyle = 'black';
-                ctx.font = '14px monospace';
-                ctx.fillText('ID: ' + (scenario ? scenario.patientName : 'UNKNOWN') + '   DATE: ' + new Date().toLocaleDateString() + '   25mm/s', 20, h - 20);
-            } catch(e) { console.error('12-Lead Defib Render Error', e); }
-        }
+        // The 12-lead is drawn by RHYTHMS.render12Lead (data/rhythms.js), shared with the room monitor.
 
-        if (simChannel) simChannel.onmessage = (event) => {
-            const data = event.data;
-            if (data.type === 'SYNC_VITALS') {
+        function applySync(payload) {
+            const data = { payload };
+            {
                 setLinkState(true);
                 lastSyncAt = Date.now();
                 setSessionEnded(!!data.payload.isFinished);
@@ -304,16 +259,31 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 }
 
                 updateDisplays();
+            }
+        }
+        function show12Lead(rhythm, scenario, hr) {
+            const overlay = document.getElementById('paperOverlay');
+            const canvas = document.getElementById('paperCanvas');
+            if (!overlay || !canvas) return;
+            RG.render12Lead(canvas, rhythm, scenario, hr);
+            overlayReturnFocus = document.activeElement;
+            overlay.classList.remove('hidden');
+            overlay.focus();
+        }
+
+        if (simChannel) simChannel.onmessage = (event) => {
+            const data = event.data;
+            if (data.type === 'SYNC_VITALS') {
+                // When linked through Firebase, that is the source of truth; ignore a same-browser
+                // controller tab so two sources can never fight over the display.
+                if (!fb.linked) applySync(data.payload);
             } else if (data.type === 'SHOW_12LEAD') {
                 const overlay = document.getElementById('paperOverlay');
                 const canvas = document.getElementById('paperCanvas');
-                if (overlay && canvas && data.payload) {
+                if (overlay && canvas && data.payload && !fb.linked) {
                     const rhythm = typeof data.payload === 'string' ? data.payload : (data.payload.rhythm || 'Sinus Rhythm');
                     const scenario = typeof data.payload === 'object' ? data.payload.scenario : null;
-                    render12LeadDefib(canvas, rhythm, scenario);
-                    overlayReturnFocus = document.activeElement;
-                    overlay.classList.remove('hidden');
-                    overlay.focus();
+                    show12Lead(rhythm, scenario, typeof data.payload === 'object' ? data.payload.hr : undefined);
                 }
             }
             // WAVE 4b / D6: the 'GHOST_PRESS' branch that used to live here has been REMOVED.
@@ -326,24 +296,99 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             // page on the origin could have driven the defibrillator through the BroadcastChannel.
         };
         function broadcast(type, payload) {
+            // Linked through Firebase: every press goes to sessions/<CODE>/deviceEvents, the same
+            // queue the monitor-hosted defibrillator uses, and NOT to the local channel as well
+            // (a same-browser controller would otherwise receive every shock twice).
+            if (fb.code) { fbSend(type, payload); return; }
             if (!simChannel) return;
             try { simChannel.postMessage({ type, payload }); }
             catch (e) { console.warn('Channel post failed', e); }
         }
+
+        // =========================================================================================
+        // FIREBASE SESSION LINK. ?session=CODE (the controller's Defib Sim button adds it), or the
+        // code typed into the banner. Reads the controller's session payload, pushes presses to
+        // deviceEvents, and announces itself in presence so the controller shows "defib".
+        // =========================================================================================
+        const fb = { code: null, db: null, linked: false, connected: false, presenceId: Math.random().toString(36).slice(2, 10), last: null };
+        const DEVICE_EVENT_TYPE = { ANALYSIS_RESULT: 'ANALYSE' };
+        function fbSend(type, payload) {
+            if (!fb.db || !fb.code || type === 'REQUEST_SYNC') return;
+            if (type === 'REQUEST_12LEAD' && fb.last) show12Lead(fb.last.rhythm, fb.last.scenario, fb.last.hr);
+            try {
+                fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
+                    type: DEVICE_EVENT_TYPE[type] || type,
+                    payload: JSON.parse(JSON.stringify(payload || {})),
+                    ts: Date.now(), from: fb.presenceId, device: 'standalone-defib'
+                }).catch(e => setMessage('LINK ERROR — PRESS NOT SENT', 'warning'));
+            } catch (e) { console.warn('Device event send failed', e); }
+        }
+        function fbFromSession(v) {
+            const weight = Number(v.wetflag && v.wetflag.weight);
+            const w = Number.isFinite(weight) && weight > 0 ? weight : null;
+            const vit = v.vitals || {};
+            return {
+                rhythm: v.rhythm, hr: vit.hr, spO2: vit.spO2, etco2: vit.etco2, bpSys: vit.bpSys, bpDia: vit.bpDia,
+                gain: v.waveformGain, interference: v.noise ? !!v.noise.interference : undefined,
+                cpr: !!v.cprInProgress, captureThreshold: v.pacingThreshold,
+                isFinished: !!v.isFinished, patientAge: v.patientAge, weight: w,
+                recommendedEnergy: RG.recommendedEnergy(w, v.patientAge), energyLevels: RG.energySteps(w, v.patientAge)
+            };
+        }
+        function fbStart(code) {
+            if (!window.firebase || !window.FIREBASE_CONFIG) {
+                setLinkState(false, 'The live-session service did not load (no network?). This page cannot reach session ' + code + '.', 'never');
+                return;
+            }
+            try {
+                if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+                fb.db = firebase.database();
+            } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }
+            fb.code = code;
+            const tag = document.getElementById('sessionTag');
+            if (tag) tag.textContent = 'SESSION ' + code;
+            fb.db.ref('.info/connected').on('value', snap => {
+                fb.connected = !!snap.val();
+                if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. The numbers below are frozen and are NOT live until it returns.', 'lost');
+                if (fb.linked && fb.connected) setLinkState(true);
+            });
+            fb.db.ref('sessions/' + code).on('value', snap => {
+                const v = snap.val();
+                if (!v || !v.vitals) {
+                    setLinkState(false, 'Session ' + code + ' has no patient yet. Start the scenario on the controller, or check the code.', fb.linked ? 'lost' : 'never');
+                    return;
+                }
+                fb.linked = true;
+                lastSyncAt = Date.now();
+                fb.last = { rhythm: v.rhythm, hr: v.vitals.hr, scenario: { patientName: v.patientName, ecg: v.investigations ? v.investigations.ecg : null, investigations: { ecg: v.investigations ? v.investigations.ecg : null } } };
+                applySync(fbFromSession(v));
+            }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
+            const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
+            const write = () => pres.update({ role: 'defib', display: 'defib', ua: (navigator.userAgent || '').slice(0, 120), ts: Date.now() }).catch(() => {});
+            pres.onDisconnect().remove().catch(() => {});
+            write();
+            setInterval(write, 10000);
+        }
+        function sessionFromUrl() {
+            try {
+                const raw = new URLSearchParams(window.location.search).get('session');
+                const code = raw ? raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+                return code || null;
+            } catch (e) { return null; }
+        }
         // A7: REQUEST_SYNC was broadcast once and NOTHING handled it (the engine now answers it).
         // Retry a few times, then declare the device unlinked rather than silently showing fiction.
         let lastSyncAt = 0;
+        const urlSession = sessionFromUrl();
         broadcast('REQUEST_SYNC', {});
         let syncAttempts = 0;
-        const syncProbe = setInterval(() => {
+        const syncProbe = urlSession ? null : setInterval(() => {
             syncAttempts += 1;
             if (lastSyncAt) { clearInterval(syncProbe); return; }
             if (syncAttempts > 6) {
                 clearInterval(syncProbe);
                 // Still a NEVER-linked state, not a lost one — kind is pinned explicitly.
-                setLinkState(false, simChannel
-                    ? 'No session was supplied and no controller answered. A controller is probably running on a DIFFERENT DEVICE — this page can only reach a controller in another tab of the same browser.'
-                    : 'This browser does not support the local device channel, so this page can never link to a controller.', 'never');
+                setLinkState(false, 'No session was supplied and no controller answered in this browser. Enter the session code shown on the controller to link this tablet.', 'never');
                 return;
             }
             broadcast('REQUEST_SYNC', {});
@@ -352,6 +397,9 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         setInterval(() => {
             // Only a page that HAS been linked can lose contact; `lastSyncAt` is null until then, so
             // the elapsed time is real rather than being measured from page load.
+            // Firebase only fires on CHANGE, so a quiet paused session is not a lost link: when
+            // linked that way, the connection state (above) is what decides liveness.
+            if (fb.linked) return;
             if (everLinked && lastSyncAt && Date.now() - lastSyncAt > 15000) {
                 setLinkState(false, 'Contact with the controller was lost ' + Math.round((Date.now() - lastSyncAt) / 1000) + 's ago. The numbers below are frozen and are NOT live.', 'lost');
             }
@@ -745,6 +793,10 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
         }
 
         startAnimation();
+        // Linked LAST, once every function and the device state above exist: Firebase raises
+        // events for this page's own writes (the presence heartbeat) synchronously, so starting the
+        // link earlier ran the sync handler before `state` was initialised.
+        if (urlSession) fbStart(urlSession);
     });
     </script>
 </body>

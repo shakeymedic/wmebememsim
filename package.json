@@ -1,0 +1,15 @@
+{
+  "name": "wmebem-sim",
+  "private": true,
+  "description": "WMEBEM Sim. The source runs as-is in a browser; `npm run build` produces the precompiled, self-hosted site Netlify serves (dist/).",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  },
+  "devDependencies": {
+    "@babel/standalone": "7.29.9",
+    "firebase": "8.10.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "3.4.19"
+  }
+}

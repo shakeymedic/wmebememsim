@@ -5,18 +5,21 @@
 // running the old defibrillator page (with the dead GHOST_PRESS receiver) and, worse, an old
 // ../data/engine.js without the Quick Sim, runId and pupil-guard changes, against a controller that
 // has them. Bump this on EVERY deploy.
-const CACHE_NAME = 'wmebem-sim-v27';
+const CACHE_NAME = 'wmebem-sim-v30';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './images/logo.png',
   '../index.html',
   '../data/rhythms.js',
+  '../data/firebase-config.js',
+  '../vendor/qrcode-generator.js',
   '../data/engine.js',
   '../data/scenarios.js',
   '../data/components.js',
   '../data/interventions.js',
   '../data/generators.js',
+  '../data/presets.js',
   // WAVE 4b: the auth/entitlements module. Cached so the Restricted section degrades identically
   // offline (locked, with a message) instead of throwing on a missing script.
   '../data/auth.js',
@@ -56,6 +59,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   // Cache Storage only accepts GET requests. Let form/API writes use the browser normally.
   if (e.request.method !== 'GET') return;
+  // Never cache the live session: Firebase falls back to long-polling GETs when WebSockets are
+  // blocked, and serving those from cache would freeze the device on a stale patient.
+  const host = new URL(e.request.url).hostname;
+  if (/firebaseio\.com$|firebasedatabase\.app$|googleapis\.com$/.test(host)) return;
   e.respondWith(
     caches.match(e.request).then((cachedResponse) => {
       const fetchPromise = fetch(e.request).then((networkResponse) => {
