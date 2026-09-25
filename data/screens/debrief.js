@@ -1,8 +1,54 @@
 (() => {
     const { useState, useEffect } = React;
 
-    const DebriefGraph = ({ history, log }) => {
-        if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">Not enough data for graph</div>;
+    // =========================================================================================
+    // VITALS TREND FOR THE DOWNLOADABLE / PRINTED REPORT.
+    // The on-screen graph below never reached the report, which had no trend at all. HR, BP, SpO2
+    // and RR have different units, so rather than one shared y-axis they are four small charts on a
+    // shared time axis (small multiples), each titled, with the flagged events (arrests, shocks,
+    // hand-flagged moments) marked as vertical lines on every chart and listed underneath, plus a
+    // table of the sampled values so nothing depends on reading a line by colour. Plain SVG strings:
+    // the report is a standalone HTML file with no scripts.
+    // =========================================================================================
+    const escHtml = (v) => String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtClock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    const buildReportTrend = (history, log) => {
+        const pts = (history || []).filter(h => Number.isFinite(Number(h.time)));
+        if (pts.length < 2) {
+            return `<div class="card"><h3 style="margin-top:0;">Vitals trend</h3><div class="muted">No trend was recorded. The trend is sampled every 5 seconds while the clock runs (in Quick Sim, press START to record it).</div></div>`;
+        }
+        const t0 = Math.min(...pts.map(h => h.time)), t1 = Math.max(...pts.map(h => h.time));
+        const span = Math.max(1, t1 - t0);
+        const events = (log || []).filter(l => l.flagged && Number.isFinite(Number(l.timeSeconds)) && l.timeSeconds >= t0 && l.timeSeconds <= t1);
+        const W = 360, H = 150, L = 38, R = 10, T = 22, B = 24, gw = W - L - R, gh = H - T - B;
+        const x = (t) => L + ((t - t0) / span) * gw;
+        const chart = (key, title, unit, floorMax, fixed) => {
+            const vals = pts.map(h => Number(h[key])).filter(Number.isFinite);
+            if (!vals.length) return '';
+            const lo = fixed ? fixed[0] : 0;
+            const hi = fixed ? fixed[1] : Math.max(floorMax, Math.ceil((Math.max(...vals) * 1.1) / 20) * 20);
+            const y = (v) => T + gh - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * gh;
+            const d = pts.filter(h => Number.isFinite(Number(h[key]))).map((h, i) => `${i ? 'L' : 'M'}${x(h.time).toFixed(1)},${y(Number(h[key])).toFixed(1)}`).join(' ');
+            const ticks = [lo, (lo + hi) / 2, hi].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/><text x="${L - 4}" y="${(y(v) + 3).toFixed(1)}" font-size="9" fill="#64748b" text-anchor="end">${Math.round(v)}</text>`).join('');
+            const marks = events.map(e => `<line x1="${x(e.timeSeconds).toFixed(1)}" x2="${x(e.timeSeconds).toFixed(1)}" y1="${T}" y2="${T + gh}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 3"/>`).join('');
+            const last = vals[vals.length - 1];
+            return `<figure class="mini"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escHtml(title)} over time"><text x="${L}" y="13" font-size="11" font-weight="bold" fill="#0f172a">${escHtml(title)} <tspan font-weight="normal" fill="#64748b">(${escHtml(unit)}) \u2014 last ${escHtml(Math.round(last * 10) / 10)}</tspan></text>${ticks}${marks}<path d="${d}" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><text x="${L}" y="${H - 6}" font-size="9" fill="#64748b">${fmtClock(t0)}</text><text x="${W - R}" y="${H - 6}" font-size="9" fill="#64748b" text-anchor="end">${fmtClock(t1)}</text></svg></figure>`;
+        };
+        const charts = [chart('hr', 'Heart rate', 'bpm', 160), chart('bp', 'Systolic BP', 'mmHg', 180), chart('spo2', 'SpO2', '%', 100, [50, 100]), chart('rr', 'Resp rate', '/min', 40)].join('');
+        const eventList = events.length
+            ? `<ol class="events">${events.map(e => `<li><span class="mono">${escHtml(e.simTime || fmtClock(e.timeSeconds))}</span> ${escHtml(e.msg)}</li>`).join('')}</ol>`
+            : '<div class="muted">No flagged events in this period.</div>';
+        // One table row per 30 s of sim time (every sample would run to pages).
+        const rows = []; let lastT = -Infinity;
+        pts.forEach(h => { if (h.time - lastT >= 30 || h === pts[pts.length - 1]) { rows.push(h); lastT = h.time; } });
+        const num = (v, dp) => Number.isFinite(Number(v)) ? Number(v).toFixed(dp || 0) : '\u2014';
+        const table = `<table class="compact"><thead><tr><th>Time</th><th>HR</th><th>SBP</th><th>SpO2</th><th>RR</th><th>Temp</th><th>GCS</th></tr></thead><tbody>${rows.map(h => `<tr><td class="mono">${fmtClock(h.time)}</td><td>${num(h.hr)}</td><td>${num(h.bp)}</td><td>${num(h.spo2)}</td><td>${num(h.rr)}</td><td>${num(h.temp, 1)}</td><td>${escHtml(h.gcs ?? '\u2014')}</td></tr>`).join('')}</tbody></table>`;
+        return `<div class="card"><h3 style="margin-top:0;">Vitals trend</h3><p class="muted" style="margin-top:0;">Dashed lines mark flagged events (listed below the charts).</p><div class="minis">${charts}</div><h4>Flagged events</h4>${eventList}<h4>Sampled values</h4>${table}</div>`;
+    };
+    window.__debriefReportTrend = buildReportTrend;   // exercised by the verifier
+
+    const DebriefGraph = ({ history, log, quickSim }) => {
+        if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">{quickSim ? 'No vitals trend yet: it is recorded every 5 seconds while the clock runs. In Quick Sim, press START to record it.' : 'Not enough data for graph'}</div>;
 
         const width = 1200;
         const height = 700;
@@ -188,7 +234,7 @@
             return row || { objective: obj, status: completed.has(obj) ? 'met' : 'none', components: [], metComponents: [], missingComponents: [], multiComponent: false };
         };
 
-        const generateReport = () => {
+        const generateReport = (mode) => {
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
             // WAVE 5 / ITEM 2: the report shows the same three-state status and names the components
             // that were and were not done, so a partial objective is never printed as a bare failure.
@@ -215,7 +261,23 @@
                 ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Mode</div><div style="font-size:1.5rem;font-weight:bold;">Quick Sim</div><div style="font-size:.7rem;color:#64748b;">No scenario \u2014 nothing to score</div></div>`
                 : `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score (fully met)</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div>${partialCount ? `<div style="font-size:.7rem;color:#fbbf24;">+ ${esc(partialCount)} partly done</div>` : ''}</div>${partialCount ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">With partial credit</div><div style="font-size:1.5rem;font-weight:bold;color:#fbbf24;">${esc(partialScore)}%</div><div style="font-size:.7rem;color:#64748b;">components done / components expected</div></div>` : ''}`;
             const objCard = objectivesTotal === 0 ? '' : `<div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><p style="color:#94a3b8;font-size:.8rem;margin-top:0;">Objectives made of more than one component are only \u201cmet\u201d when every component was done. Anything started but incomplete is shown as partly done, with the missing component named \u2014 a low score here is a discussion point, not a verdict.</p><table><thead><tr><th>Objective</th><th>Status</th><th>Components</th></tr></thead><tbody>${objRows}</tbody></table></div>`;
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>body{font-family:Arial,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:24px}h1{color:#38bdf8;margin-bottom:4px}h2{color:#94a3b8;font-size:1rem;font-weight:normal;margin-bottom:24px}.card{background:#1e293b;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #334155}.score{font-size:3rem;font-weight:bold;color:#38bdf8}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#64748b;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #334155}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString())}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${objCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            // Light, print-friendly theme (it used to be dark, which printed as solid black pages).
+            // The inline colours inside the cards were written for a dark background, so the CSS
+            // re-maps the light-on-dark ones to readable ink.
+            const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:20px;font-size:.85rem}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
+            const trendCard = buildReportTrend(state.history, state.log);
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            if (mode === 'print') {
+                // Opened from the click itself, so popup blockers allow it. If one still blocks it,
+                // fall back to downloading the same file.
+                const w = window.open('', '_blank');
+                if (w && w.document) {
+                    w.document.open(); w.document.write(html); w.document.close();
+                    const go = () => { try { w.focus(); w.print(); } catch (e) {} };
+                    if (w.document.readyState === 'complete') setTimeout(go, 300); else w.addEventListener('load', () => setTimeout(go, 300));
+                    return;
+                }
+            }
             const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
 
@@ -231,7 +293,8 @@
                         </p>
                     </div>
                     <div className="flex gap-2">
-                        <Button onClick={generateReport} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
+                        <Button onClick={() => generateReport('print')} variant="secondary" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
+                        <Button onClick={() => generateReport('download')} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
                         <Button onClick={onExit} variant="danger">Exit to Menu</Button>
                     </div>
                 </div>
@@ -302,7 +365,7 @@
                                 )}
                             </div>
 
-                            <DebriefGraph history={state.history} log={state.log} />
+                            <DebriefGraph history={state.history} log={state.log} quickSim={isQuickSim} />
 
                             {state.history && state.history.length > 1 && (
                                 <div className="mb-4 bg-slate-900 border border-slate-700 rounded p-3">
