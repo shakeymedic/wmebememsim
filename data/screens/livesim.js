@@ -830,6 +830,10 @@
         const dismissInv = () => setInvModal(null);
         const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
 
+        // A narrow monitor panel (small laptop, or dragged narrow) gets the compact tiles too: the
+        // large tiles size their numbers by SCREEN width, so in a narrow panel "120/75" was clipped.
+        const panelPx = panel.prefs.width !== null ? panel.prefs.width : (window.innerWidth || 1280) * 0.34;
+        const narrowPanel = panelPx < 420;
         // The vital tiles, rendered once for the desktop panel and once, compact, for the phone view.
         const renderVitalTiles = (compact) => (
             <>
@@ -1128,7 +1132,7 @@
                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black z-10 p-2 text-center">
                                          <div className="text-slate-500 text-xs font-mono uppercase tracking-widest">No monitoring attached</div>
                                          <div className="text-[10px] text-slate-600">The team's monitor reads "No sensor detected".</div>
-                                         <Button onClick={attachStandard} variant="primary" className="h-8 px-3 text-[11px] uppercase font-bold"
+                                         <Button onClick={attachStandard} variant="primary" className="min-h-8 h-auto py-1 px-3 max-w-full text-[11px] uppercase font-bold leading-tight text-center"
                                                  title="Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe.">
                                              Attach standard monitoring
                                          </Button>
@@ -1150,8 +1154,8 @@
 
                              {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
                                  very top of the page instead (see PHONE OBS below). */}
-                             <div className="hidden md:grid grid-cols-2 gap-1 p-1 bg-black">
-                                 {renderVitalTiles(false)}
+                             <div className={`hidden md:grid ${narrowPanel ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
+                                 {renderVitalTiles(narrowPanel)}
                              </div>
                         </div>
 
@@ -1316,8 +1320,10 @@
                                  <Lucide icon="zap" className="w-4 h-4"/> {defibPanelOpen ? "Close Defib" : "Defib"}
                             </Button>
                         </div>
-                        <div className="flex-none flex gap-2">
-                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-500 border-slate-600'}`}
+                        {/* Wraps onto two lines in a narrow panel rather than pushing past its edge
+                            (which put a horizontal scrollbar under the monitor panel). */}
+                        <div className="flex-none flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-500 border-slate-600'}`}
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
                                  <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
                             </Button>
@@ -1325,7 +1331,7 @@
                                 spurious cuff reading). To change the actual BP, tap the BP tile. */}
                             <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
                                     title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
-                                    className="flex-none px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
+                                    className="flex-1 min-w-[8rem] px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
                                  Manual reading
                             </Button>
                         </div>

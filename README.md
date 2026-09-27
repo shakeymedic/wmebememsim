@@ -37,8 +37,9 @@ python3 -m http.server 8000
 
 The **Session ID** shown in the controller header is what pairs the screens. It maps to
 `sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
-characters (no 0/O, 1/I/L); a code already stored on a device is kept, and old four-character codes
-still work. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
+characters (no 0/O, 1/I/L). The controller replaces any older four-character code (from this browser
+or the address bar) with a new one when it loads, and **New code** on the setup screen starts a fresh
+one at any time; room monitors can still join an old code. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
 tablet can pair by scanning instead of typing.
 
 The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code

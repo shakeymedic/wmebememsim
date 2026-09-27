@@ -144,8 +144,7 @@
         // --- SESSION CODES ---
         // Six characters from an alphabet with no look-alikes (no 0/O, 1/I/L), drawn from the
         // crypto RNG: ~887 million codes instead of 4 characters of Math.random() (~1.7 million,
-        // including ambiguous ones that were easy to mistype on a tablet). A code already stored on
-        // this device is kept, so a monitor that is paired right now is never orphaned.
+        // including ambiguous ones that were easy to mistype on a tablet).
         window.SESSION_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
         window.newSessionCode = () => {
             const A = window.SESSION_CODE_ALPHABET, n = 6;
@@ -159,6 +158,7 @@
             }
             return out.join('');
         };
+        window.isCurrentSessionCode = (code) => new RegExp('^[' + window.SESSION_CODE_ALPHABET + ']{6}$').test(String(code || ''));
 
         // --- APP COMPONENT ---
         // App owns only session/view routing. The simulation engine lives in ControllerApp, so that in
@@ -178,12 +178,16 @@
             const [view, setView] = useState(initialMode);
             // Controller code must survive reloads and back-navigation, otherwise any monitor already
             // paired with it is orphaned. Resolve URL -> localStorage -> mint new.
+            // The CONTROLLER always runs on a current-format code (six characters, no look-alikes).
+            // An old four-character code — remembered in this browser or carried in the address
+            // bar — is replaced here, which is why a hard refresh alone used to keep it: both
+            // places survive a refresh. Monitors still JOIN any code they are given, old or new.
             const [sessionID, setSessionID] = useState(() => {
-                if (initialSession) return initialSession;
-                if (initialMode === 'monitor') return null;
+                if (initialMode === 'monitor') return initialSession || null;
+                if (initialSession && window.isCurrentSessionCode(initialSession)) return initialSession;
                 let stored = null;
                 try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
-                return stored || window.newSessionCode();
+                return (stored && window.isCurrentSessionCode(stored)) ? stored : window.newSessionCode();
             });
 
             useEffect(() => {
@@ -325,6 +329,7 @@
                                 auth={auth}
                                 onJoinClick={() => setView('join')} 
                                 sessionID={sessionID}
+                                onNewSessionCode={() => setSessionID(window.newSessionCode())}
                                 savedState={resumeData}
                                 onResume={() => handleResume(resumeData)}
                             />
