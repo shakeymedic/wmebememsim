@@ -5,7 +5,7 @@
     // opened directly — used by the Node verification harness to render the locked Restricted section
     // without simulating clicks, and available for deep-linking a mode later. Both default to the
     // normal first-load state, so nothing changes for a real user.
-    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, auth, initialMode, initialPremadeCategory }) => {
+    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
@@ -489,6 +489,12 @@
                             drags the monitor window to the second screen. */}
                         <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1 whitespace-nowrap"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
                         <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs whitespace-nowrap">Join Another Session</Button>
+                        {/* A fresh code for a fresh group: any monitor or defib still on the old code
+                            will need to rejoin with the new one, hence the confirmation. */}
+                        {onNewSessionCode && (
+                            <Button onClick={() => { if (window.confirm('Start a new session code? Any monitor or defib paired to ' + sessionID + ' will need to join the new code.')) onNewSessionCode(); }}
+                                    variant="outline" className="h-10 text-xs whitespace-nowrap" title="Generate a new session code for a new group">New code</Button>
+                        )}
                     </div>
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
