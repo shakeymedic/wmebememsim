@@ -303,9 +303,14 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
   each file). The Firebase sign-in library is not loaded with the page: `data/auth.js` fetches it when
   someone signs in, or at start-up if this browser has signed in before. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
   `data/` file only needs its `<script>` tag in `index.html`, as before; the build finds it.
-- **Browser tests.** `npm run build`, then `cd tests && npm install && npx playwright test`. They run
-  against `dist/` with an in-memory stand-in for Firebase (`tests/fake-firebase.js`), so no network or
-  real database is needed; GitHub Actions runs them on every pull request and on pushes to `main`.
+- **Tests.** GitHub Actions runs three jobs on every pull request and on pushes to `main`:
+  - `playwright`: `npm run build`, then `cd tests && npm install && npx playwright test`. Browser tests
+    against `dist/` with in-memory stand-ins for Firebase and sign-in (`tests/fake-firebase.js`,
+    `tests/fake-auth.js`), so no network is needed. They include every built-in scenario, offline
+    loading, the defib tablet, the Defib controller, and automated WCAG 2.1 AA checks (axe-core).
+  - `rules`: `database.rules.json` in the Firebase Realtime Database emulator (`tests/rules`, needs Java 21).
+  - `e2e`: the built app with the real Firebase SDK against the emulator enforcing the rules
+    (`cd tests/rules && npm run e2e`).
 - **The engine** is five files, loaded in order: `engine-model.js` (initial states, physiology, drug
   kinetics, deterioration, objectives), `engine-reducers.js`, `engine-sync.js` (the live session and
   device presses), `engine-defib.js` (shocks, cardioversion, pacing, Defib Sim sequences) and
