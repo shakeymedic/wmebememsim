@@ -113,9 +113,11 @@
             };
 
             // --- C4: paediatric energy. Never blocked, always flagged (Wave 1 philosophy).
-            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
+            // The shock number within this arrest (the reducer counts it when nextDefib lands).
+            const shockNumber = (cur.arrest && cur.arrest.since !== null && cur.arrest.since !== undefined ? (Number(cur.arrest.shocks) || 0) : 0) + 1;
+            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge, { shockNumber });
             if (dev) {
-                addLogEntry(`Shock energy deviation: ${dev.reason}. Recommended for this patient: ${dev.expected}J (4 J/kg for a child).`, 'warning', true,
+                addLogEntry(`Shock energy deviation: ${dev.reason}. Recommended for this patient: ${dev.expected}J${RG.isAdult(defibWeight(), cur.scenario?.patientAge) ? '' : ' (4 J/kg)'}.`, 'warning', true,
                     { action: 'Defib', label: 'Defibrillation', missing: [`correct energy (${dev.expected}J)`] });
             }
 
@@ -269,8 +271,8 @@
                 lastEnergy: joules, lastShockAt: now, charged: false, chargeEnergy: null, syncMode: true
             };
 
-            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
-            if (dev) addLogEntry(`Cardioversion energy deviation: ${dev.reason}. Recommended: ${dev.expected}J.`, 'warning', true,
+            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge, { kind: 'cardiovert', rhythm: cur.rhythm });
+            if (dev && !RG.isPulseless(cur.rhythm)) addLogEntry(`Cardioversion energy deviation: ${dev.reason}. Recommended first shock: ${dev.expected}J.`, 'warning', true,
                 { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: [`correct energy (${dev.expected}J)`] });
 
             if (RG.isPulseless(cur.rhythm)) {
@@ -322,7 +324,7 @@
             dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
             // Success depends on the rhythm and on adequate energy.
             const baseSuccess = { 'SVT': 0.85, 'VT': 0.80, 'AF': 0.6, 'Atrial Flutter': 0.9 }[RG.canonical(cur.rhythm)] || 0.7;
-            const expected = recommendedShockEnergy();
+            const expected = RG.cardioversionEnergy(defibWeight(), cur.scenario?.patientAge, cur.rhythm);
             const energyFactor = Math.max(0.5, Math.min(1.1, joules / Math.max(1, expected)));
             if (Math.random() < baseSuccess * energyFactor) {
                 convertToSinus();

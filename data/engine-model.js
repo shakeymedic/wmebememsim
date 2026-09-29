@@ -895,6 +895,109 @@
     };
     const paediatricFieldScale = (scenario) => PAEDIATRIC_FIELD_SCALE[ageBandOf(scenario)] || null;
 
+    // PAEDIATRIC DOSES (RCUK Guidelines 2025: paediatric ALS and arrhythmia algorithms, the
+    // Paediatric emergency drug chart and algorithms (Feb 2026)). Returns what the log says was
+    // given (`log`, null = keep the intervention's own line) and coaching `notes` for the
+    // facilitator. Never blocks anything. ctx: { count (this dose's number), inArrest }.
+    const round1 = (n) => Math.round(n * 10) / 10;
+    const isNeonate = (scenario) => {
+        const s = scenario || {};
+        return Number(s.patientAge) === 0 && /neonat|newborn|day-old|days old/i.test(`${s.title || ''} ${s.patientProfileTemplate || ''} ${s.profile || ''}`);
+    };
+    // The dose text for the Nth adenosine bolus in a child, or null for an adult.
+    const paediatricAdenosineDose = (scenario, doseNo) => {
+        const s = scenario || {};
+        if (s.ageRange !== 'Paediatric' && ageBandOf(s) === 'adult') return null;
+        const wt = Number(s.wetflag && s.wetflag.weight) || Number(s.weight) || null;
+        const n = Math.max(1, Number(doseNo) || 1);
+        if (isNeonate(s)) {
+            const perKg = [150, 250, 300][Math.min(n, 3) - 1];
+            return `${perKg} mcg/kg${wt ? ` (${Math.round(perKg * wt)} mcg)` : ''}`;
+        }
+        if (n === 1) return `0.1-0.2 mg/kg${wt ? ` (${round1(0.1 * wt)}-${round1(0.2 * wt)} mg)` : ''}`;
+        return `0.3 mg/kg${wt ? ` (${round1(Math.min(18, 0.3 * wt))} mg)` : ''}`;
+    };
+    const paediatricDoseNotes = (key, scenario, ctx = {}) => {
+        const s = scenario || {};
+        const wt = Number(s.wetflag && s.wetflag.weight) || Number(s.weight) || null;
+        const age = Number.isFinite(Number(s.patientAge)) ? Number(s.patientAge) : null;
+        const count = Number(ctx.count) || 1;
+        const notes = [];
+        let log = null;
+        switch (key) {
+            case 'Atropine': {
+                const cap = age !== null && age >= 12 ? 600 : 500;
+                const dose = wt ? Math.min(cap, Math.round(20 * wt)) : null;
+                if (dose) log = `IV Atropine ${dose} mcg administered (20 mcg/kg).`;
+                notes.push(`Paediatric atropine (RCUK 2025): 20 mcg/kg${wt ? ` = ${dose} mcg` : ''}; maximum 500 mcg up to 11 years, 300-600 mcg at 12-17 years (larger doses may be used in an emergency). In bradycardia, oxygenate first: atropine if vagal stimulation is the likely cause, otherwise consider adrenaline.`);
+                break;
+            }
+            case 'Adenosine': {
+                if (isNeonate(s)) {
+                    const perKg = [150, 250, 300][Math.min(count, 3) - 1];
+                    notes.push(`Neonatal adenosine (RCUK 2025): 150 mcg/kg, increasing in steps of 50-100 mcg/kg every 1-2 min (max 300 mcg/kg). This dose: ${perKg} mcg/kg${wt ? ` = ${Math.round(perKg * wt)} mcg` : ''}. Large saline flush, ECG monitoring.`);
+                } else {
+                    notes.push(count === 1
+                        ? `Paediatric adenosine (RCUK 2025): 0.1-0.2 mg/kg${wt ? ` (${round1(0.1 * wt)}-${round1(0.2 * wt)} mg)` : ''} IV/IO with a large saline flush and ECG monitoring. If SVT persists after at least 1 min: 0.3 mg/kg${wt ? ` (${round1(Math.min(18, 0.3 * wt))} mg)` : ''}, max 12-18 mg.`
+                        : `Paediatric adenosine (RCUK 2025), SVT persisting: 0.3 mg/kg${wt ? ` (${round1(Math.min(18, 0.3 * wt))} mg)` : ''}, max 12-18 mg, at least 1 min after the previous dose.`);
+                }
+                break;
+            }
+            case 'Amiodarone': {
+                if (ctx.inArrest) {
+                    const cap = count >= 2 ? 150 : 300;
+                    const dose = wt ? Math.min(cap, Math.round(5 * wt)) : null;
+                    if (dose) log = `IV/IO Amiodarone ${dose} mg administered (5 mg/kg).`;
+                    notes.push(`Paediatric arrest amiodarone (RCUK 2025): 5 mg/kg IV/IO after the 3rd shock (max 300 mg), repeated once only after the 5th shock (max 150 mg)${dose ? `. This dose: ${dose} mg` : ''}.`);
+                } else {
+                    const dose = wt ? Math.min(300, Math.round(5 * wt)) : null;
+                    if (dose) log = `IV Amiodarone ${dose} mg (5 mg/kg) started by SLOW infusion.`;
+                    notes.push(`Paediatric tachyarrhythmia (RCUK 2025): amiodarone 5 mg/kg${dose ? ` = ${dose} mg` : ''} by SLOW IV infusion over more than 20 min, before the 3rd cardioversion, in discussion with a paediatric cardiologist or expert.`);
+                }
+                break;
+            }
+            case 'AdrenalineIM': {
+                let mcg, ml;
+                if (age === null) { mcg = null; }
+                else if (age < 0.5) { mcg = '100-150'; ml = '0.1-0.15'; }
+                else if (age <= 6) { mcg = '150'; ml = '0.15'; }
+                else if (age <= 12) { mcg = '300'; ml = '0.3'; }
+                else { mcg = '500'; ml = '0.5'; }
+                if (mcg) log = `IM Adrenaline ${mcg} micrograms (1 mg/ml, ${ml} ml) administered into the anterolateral thigh.`;
+                notes.push('Paediatric IM adrenaline for anaphylaxis (RCUK), by age: under 6 months 100-150 micrograms; 6 months to 6 years 150 micrograms; 6-12 years 300 micrograms; over 12 years 500 micrograms (1 mg/ml). Repeat after 5 min if no improvement.');
+                break;
+            }
+            case 'MidazolamBuccal': {
+                const dose = wt ? Math.min(10, round1(0.3 * wt)) : null;
+                if (dose) log = `Buccal Midazolam ${dose} mg administered (0.3 mg/kg).`;
+                notes.push(`Buccal midazolam (RCUK 2025): 0.3 mg/kg${dose ? ` = ${dose} mg` : ''}, max 10 mg (see BNFc for the age-related dose), when there is no IV/IO access. No more than 2 benzodiazepine doses in total, including any given before arrival; then a second-line agent.`);
+                break;
+            }
+            case 'Lorazepam':
+                notes.push(`Lorazepam (RCUK 2025): 0.1 mg/kg IV/IO${wt ? ` = ${Math.min(4, round1(0.1 * wt))} mg` : ''}, max 4 mg. Reassess at 10 min; no more than 2 benzodiazepine doses in total, then a second-line agent.`);
+                break;
+            case 'Levetiracetam': {
+                if (wt) log = `IV Levetiracetam ${Math.min(4500, Math.round(40 * wt))}-${Math.min(4500, Math.round(60 * wt))} mg (40-60 mg/kg) started over 5 min.`;
+                notes.push('Paediatric levetiracetam (RCUK 2025): 40-60 mg/kg IV over 5 min, max 4.5 g. If unavailable: phenytoin 20 mg/kg over 20 min (max 1.5 g, ECG monitoring), phenobarbital 20 mg/kg (max 1 g), or valproic acid 40 mg/kg over 15 min (max 3 g).');
+                break;
+            }
+            case 'Dextrose': {
+                const ml = wt ? Math.min(50, Math.round(2 * wt)) : null;
+                if (ml) log = `IV 10% Glucose ${ml} ml administered (2 ml/kg).`;
+                notes.push(`10% glucose (RCUK 2025): 2 ml/kg${ml ? ` = ${ml} ml` : ''} IV/IO for known hypoglycaemia. Recheck glucose 5-10 min after the dose and repeat as required.`);
+                break;
+            }
+            case 'Calcium': {
+                const ml = wt ? Math.min(30, round1(0.5 * wt)) : null;
+                if (ml) log = `IV 10% Calcium Gluconate ${ml} ml administered (0.5 ml/kg) over 5-10 min.`;
+                notes.push(`10% calcium gluconate (RCUK 2025): 0.5 ml/kg${ml ? ` = ${ml} ml` : ''} IV over 5-10 min (max 30 ml) for an unstable arrhythmia due to hyperkalaemia; repeat after 5-10 min if ECG changes persist.`);
+                break;
+            }
+            default: break;
+        }
+        return { log, notes };
+    };
+
     // 1 = full decline, 0 = halted, negative = actively recovering.
     const deteriorationTreatmentFactor = (type, cs) => {
         const list = DETERIORATION_TREATMENTS[type] || [];
@@ -1095,7 +1198,7 @@
         normalisePupils, isCategoricalVital,
         // Test handles for the metabolic and deterioration models.
         drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
-        ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
+        ageBandOf, safeApnoeaSeconds, paediatricFieldScale, paediatricAdenosineDose, paediatricDoseNotes, hasHighO2Consumption, DETERIORATION_TREATMENTS,
         FLUID_RESPONSE_LEVELS,
         // The bronchospasm severity model behind the shark-fin capnogram.
         getObstruction, inferObstruction, obstructionBand, BRONCHODILATORS, OBSTRUCTION_HINTS };
@@ -1361,7 +1464,7 @@
         getObstruction, getSensors, getUnmetExpectations, hasHighO2Consumption, inferPotassium,
         initialCoreState, initialLogState, initialScenarioState, initialVitalsState, isCategoricalVital,
         isDrugSpent, isVentilated, isVitalValueSafe, newRunId, normaliseDeteriorationType,
-        normalisePupils, paediatricFieldScale, paralysisFromDrugs, paralysisPhase, pkFactor, pkPhase,
+        normalisePupils, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, paralysisFromDrugs, paralysisPhase, pkFactor, pkPhase,
         pkRemaining, safeApnoeaSeconds, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     };
 })();

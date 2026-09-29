@@ -147,36 +147,57 @@ window.getBaseVitals = (age) => {
     return v;
 };
 
+// RCUK Paediatric emergency drug chart (Guidelines 2025, updated Feb 2026): weights are averaged
+// lean body mass from 50th-centile weights. Ages between the chart's rows are interpolated.
+// Under 1 year the rows are in months (< 1 month 3.5 kg, 1 month 4, 3 months 5, 6 months 7).
+const RCUK_WEIGHT_BY_AGE = [[0, 3.5], [1 / 12, 4], [0.25, 5], [0.5, 7], [1, 10], [2, 12], [3, 14], [4, 16], [5, 18],
+    [6, 20], [7, 23], [8, 26], [10, 30], [12, 38], [14, 50]];
 window.estimateWeight = (age) => {
-    if (age < 0) return null;
-    if (age === 0) return "3.5"; 
-    if (age < 1) return "6.0"; 
-    if (age >= 1 && age <= 10) return Math.round((age + 4) * 2); 
-    if (age > 10 && age < 16) return Math.round(age * 3 + 7); 
-    return null; 
+    const a = Number(age);
+    if (!Number.isFinite(a) || a < 0 || a >= 16) return null;
+    const t = RCUK_WEIGHT_BY_AGE;
+    if (a >= t[t.length - 1][0]) return t[t.length - 1][1];     // "Adolescent": 50 kg
+    let i = 0;
+    while (t[i + 1][0] <= a) i++;
+    const [a0, w0] = t[i], [a1, w1] = t[i + 1];
+    const w = w0 + (w1 - w0) * (a - a0) / (a1 - a0);
+    return a < 1 ? Math.round(w * 2) / 2 : Math.round(w);
 };
 
+// Tracheal tube internal diameter (mm) from the same chart. Cuffed tubes are listed from 1 month;
+// under 1 month the chart gives uncuffed only. Ages between rows take the row below.
+const RCUK_TUBE_BY_AGE = [[0, null, '3.0'], [1 / 12, '3.0', '3.0–3.5'], [0.25, '3.0', '3.5'], [0.5, '3.0', '3.5'],
+    [1, '3.5', '4.0'], [2, '4.0', '4.5'], [3, '4.0–4.5', '4.5–5.0'], [4, '4.5', '5.0'], [5, '4.5–5.0', '5.0–5.5'],
+    [6, '5.0', '5.5'], [7, '5.0–5.5', '5.5–6.0'], [8, '6.0–6.5', null], [10, '7.0', null], [12, '7.0–7.5', null], [14, '7.0–8.0', null]];
+window.rcukTubeSize = (age) => {
+    const a = Number(age);
+    if (!Number.isFinite(a) || a < 0) return null;
+    let row = RCUK_TUBE_BY_AGE[0];
+    RCUK_TUBE_BY_AGE.forEach(r => { if (r[0] <= a) row = r; });
+    const [, cuffed, uncuffed] = row;
+    return { cuffed, uncuffed, label: cuffed ? `${cuffed} cuffed` : `${uncuffed} uncuffed` };
+};
+
+// WETFLAG from the RCUK Paediatric emergency drug chart (2025): adrenaline 10 mcg/kg (max 1 mg),
+// fluid bolus 10 ml/kg (max 500 ml), 10% glucose 2 ml/kg (the chart tops out at 50 ml), lorazepam
+// 100 mcg/kg (max 4 mg), defibrillation 4 J/kg.
 window.calculateWetflag = (age, weightStr) => {
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight <= 0) return null;
-    let rawTube = (age / 4) + 4;
-    let tubeSize = Math.round(rawTube * 2) / 2;
-    if (age < 1) tubeSize = "3.5-4.0"; 
-    else if (tubeSize > 9.0) tubeSize = 9.0;
-    else if (tubeSize < 3.0) tubeSize = 3.0;
-    let adrenalineMcg = Math.round(weight * 10);
-    let glucoseVol = Math.round(weight * 2);
-    return { 
-        weight: weight, 
+    const tube = window.rcukTubeSize(age);
+    return {
+        weight: weight,
         // 4 J/kg, but computed by the shared registry so the WETFLAG card, the assessor's
         // energy ladder, the monitor-hosted defib and the standalone defib page can never disagree
         // about what this patient needs (the standalone page used to hardcode 120 J for everyone).
         energy: (window.RHYTHMS ? window.RHYTHMS.recommendedEnergy(weight, age) : Math.round(weight * 4)),
-        tube: tubeSize.toString(), 
-        fluids: Math.round(weight * 10),
+        tube: tube ? tube.label : '',
+        tubeCuffed: tube ? tube.cuffed : null,
+        tubeUncuffed: tube ? tube.uncuffed : null,
+        fluids: Math.min(500, Math.round(weight * 10)),
         lorazepam: Math.min(4, weight * 0.1).toFixed(1),
-        adrenaline: adrenalineMcg, 
-        glucose: glucoseVol
+        adrenaline: Math.min(1000, Math.round(weight * 10)),
+        glucose: Math.min(50, Math.round(weight * 2))
     };
 };
 

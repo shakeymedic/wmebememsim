@@ -79,23 +79,26 @@
     };
 
     const DRUG_CALC_LIST = [
-        { name: 'Adrenaline IM (Anaphylaxis)', perKg: 0.01, unit: 'mg', max: 0.5, info: '1:1000 (1 mg/ml) IM' },
-        { name: 'Adrenaline IV (Arrest)', perKg: 0.01, unit: 'mg', max: 1, info: '1:10 000 (0.1 mg/ml) IV' },
+        // RCUK doses IM adrenaline by AGE, not weight: < 6 months 100-150 mcg, 6 months-6 years 150 mcg,
+        // 6-12 years 300 mcg, > 12 years and adults 500 mcg.
+        { name: 'Adrenaline IM (Anaphylaxis)', byAge: (age) => age === null || age > 12 ? 0.5 : (age > 6 ? 0.3 : 0.15), display: (age) => (age !== null && age < 0.5 ? '0.1-0.15' : null), unit: 'mg', max: 0.5, info: '1 mg/ml IM. RCUK dose by age, not weight' },
+        { name: 'Adrenaline IV (Arrest)', perKg: 0.01, unit: 'mg', max: 1, info: '1:10 000 (0.1 mg/ml) IV/IO, 10 mcg/kg' },
         { name: 'Lorazepam (Seizure)', perKg: 0.1, unit: 'mg', max: 4, info: '4 mg/ml IV/IO' },
-        { name: 'Midazolam Buccal (Seizure)', perKg: 0.2, unit: 'mg', max: 10, info: '10 mg/ml Buccal' },
+        { name: 'Midazolam Buccal (Seizure)', perKg: 0.3, unit: 'mg', max: 10, info: 'Buccal 0.3 mg/kg (RCUK; BNFc gives age-banded doses)' },
         { name: 'Morphine IV', perKg: 0.1, unit: 'mg', max: 10, info: '10 mg/ml IV slow' },
         { name: 'Ketamine (RSI/Anaesthesia)', perKg: 1.5, unit: 'mg', max: 200, info: '50 mg/ml IV' },
         { name: 'Rocuronium (RSI)', perKg: 1.2, unit: 'mg', max: 200, info: '10 mg/ml IV' },
         { name: 'Suxamethonium (RSI)', perKg: 2, unit: 'mg', max: 200, info: '50 mg/ml IV' },
-        { name: 'Amiodarone (Arrest)', perKg: 5, unit: 'mg', max: 300, info: '50 mg/ml IV rapid' },
-        { name: 'Atropine (Bradycardia)', perKg: 0.02, unit: 'mg', min: 0.1, max: 3, info: '0.6 mg/ml IV/IO' },
+        { name: 'Amiodarone (Arrest)', perKg: 5, unit: 'mg', max: 300, info: 'After 3rd shock (max 300 mg); child: repeat once after 5th shock, max 150 mg' },
+        { name: 'Atropine (Bradycardia)', perKg: 0.02, unit: 'mg', maxByAge: (age) => (age !== null && age >= 12 && age < 18 ? 0.6 : 0.5), info: 'IV/IO 20 mcg/kg. Max 0.5 mg up to 11 y; 0.3-0.6 mg at 12-17 y; adult 0.5 mg (3 mg total)' },
         { name: 'Paracetamol IV', perKg: 15, unit: 'mg', max: 1000, info: '10 mg/ml IV' },
-        { name: 'Glucose 10%', perKg: 5, unit: 'ml', max: 500, info: 'IV bolus' },
+        { name: 'Glucose 10% (child)', perKg: 2, unit: 'ml', max: 50, info: 'IV/IO 2 ml/kg for known hypoglycaemia (RCUK chart max 50 ml)' },
         { name: 'Sodium Bicarb 8.4%', perKg: 1, unit: 'mmol', max: 50, info: '1 mmol/ml IV slow' },
         { name: 'TXA (Trauma Haemorrhage)', perKg: 15, unit: 'mg', max: 1000, info: '100 mg/ml IV slow over 10 min' },
         { name: 'Ceftriaxone (Sepsis)', perKg: 50, unit: 'mg', max: 2000, info: '250 mg/ml IV' },
         { name: 'IV Fluid Bolus', perKg: 10, unit: 'ml', max: 500, info: "NS or Hartmann's IV" },
-        { name: 'MgSO4 (Asthma / Seizure)', perKg: 40, unit: 'mg', max: 2000, info: '500 mg/ml IV slow 20 min' },
+        { name: 'MgSO4 (Asthma)', perKg: 40, unit: 'mg', max: 2000, info: 'IV over 20 min. Torsades: 25-50 mg/kg (max 2 g) over 10-15 min' },
+        { name: 'Calcium Gluconate 10%', perKg: 0.5, unit: 'ml', max: 30, info: 'Hyperkalaemic arrhythmia: IV over 5-10 min (RCUK)' },
     ];
 
     // =============================================================================================
@@ -1884,9 +1887,12 @@
                                     </div>
                                 )}
                                 {!drugCalcWeightError && DRUG_CALC_LIST.map((drug, idx) => {
-                                    const rawDose = drug.perKg * drugCalcWeight;
+                                    const calcAge = Number.isFinite(Number(scenario.patientAge)) ? Number(scenario.patientAge) : null;
+                                    const maxDose = drug.maxByAge ? drug.maxByAge(calcAge) : drug.max;
+                                    const rawDose = drug.byAge ? drug.byAge(calcAge) : drug.perKg * drugCalcWeight;
                                     const minDose = drug.min ? Math.max(rawDose, drug.min) : rawDose;
-                                    const finalDose = Math.min(minDose, drug.max);
+                                    const finalDose = Math.min(minDose, maxDose);
+                                    const shown = (drug.display && drug.display(calcAge)) || (finalDose < 1 ? finalDose.toFixed(2).replace(/0$/, '') : finalDose.toFixed(1));
                                     return (
                                         <div key={idx} className="bg-slate-900 border border-slate-700 rounded p-3 flex justify-between items-center">
                                             <div>
@@ -1894,8 +1900,8 @@
                                                 <div className="text-xs text-slate-400">{drug.info}</div>
                                             </div>
                                             <div className="text-right">
-                                                <div className="text-lg font-bold text-sky-400 font-mono">{finalDose.toFixed(1)} {drug.unit}</div>
-                                                <div className="text-[10px] text-slate-400">max {drug.max}{drug.unit}</div>
+                                                <div className="text-lg font-bold text-sky-400 font-mono">{shown} {drug.unit}</div>
+                                                <div className="text-[10px] text-slate-400">{drug.byAge ? `for age ${calcAge === null ? 'adult' : calcAge}` : `max ${maxDose}${drug.unit}`}</div>
                                             </div>
                                         </div>
                                     );

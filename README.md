@@ -118,13 +118,22 @@ Sim scenario (`scenario.defibSim`).
   files import too).
 - **Education vs Assessment.** In Education the defib shows pulse-check results and the RCUK hint
   cards. In Assessment it shows neither (a real defibrillator tells you neither). The facilitator sees
-  the RCUK drug prompts in both modes; the learner never does.
+  the RCUK drug prompts in both modes; the learner never does. For a patient under 18 the hint cards
+  and drug prompts are the paediatric ones (15:2, 4 J/kg, 10 micrograms/kg adrenaline, 5 mg/kg
+  amiodarone, cardioversion at 1 J/kg doubling to 4 J/kg).
 - **Shock response.** Defib Sim defaults to **Auto**: an arrest converts on the scenario's shock number
   (the third adequate shock) and a cardioversion on the first adequate synchronised shock; an
   unsynchronised shock into a rhythm with a pulse causes VF. "Adequate" means at least 150 J for an
   adult (3 J/kg for a child) to defibrillate, and 70 J (1 J/kg) to cardiovert. These thresholds are
   simulator settings, not guideline values. The realistic probabilistic model and fixed shock counts
   are one select away, as they are on the main controller.
+- **Paediatric content** follows RCUK Guidelines 2025: the Paediatric advanced life support algorithm
+  (Nov 2025 V2), the Paediatric cardiac arrhythmias algorithm and the Paediatric emergency drug chart
+  (Feb 2026). The estimated weight and tube size (WETFLAG) come from the chart; the engine logs
+  weight-based doses for a child (atropine, adenosine, IM adrenaline by age, amiodarone, buccal
+  midazolam, levetiracetam, 10% glucose, calcium gluconate); and from the 5th shock a child's
+  refractory VF/pVT may be escalated to 8 J/kg without being flagged. `tests/specs/paediatric.spec.js`
+  checks these values.
 - **Drugs work in every mode** through the normal engine: for example isoprenaline speeds a complete
   heart block escape, atropine barely moves it, and in a non-shockable arrest on Auto, ROSC comes at the
   second rhythm check after adrenaline with CPR running. IV access is assumed in place at the start.

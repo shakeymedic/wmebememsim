@@ -258,6 +258,86 @@
         }
     };
 
+    // Paediatric versions (RCUK Guidelines 2025: Paediatric advanced life support algorithm, Nov 2025
+    // V2; Paediatric cardiac arrhythmias algorithm; Paediatric emergency drug chart, Feb 2026).
+    // Shown instead of the adult cards when the patient is under 18.
+    var PAEDIATRIC_GUIDELINES = {
+        'shockable': {
+            title: 'Paediatric Shockable Arrest (VF / pVT)',
+            content: `
+                <ul>
+                    <li><strong>1.</strong> Recognise arrest: no signs of life, or bradycardia &lt; 60 min<sup>-1</sup> with poor perfusion. Call the resuscitation team. <strong>CPR 15:2</strong> (bag-mask with 100% oxygen, 2-person). Attach the defibrillator and minimise interruptions.</li>
+                    <li><strong>2.</strong> Assess rhythm. VF/pVT: <strong>1 shock of 4 J/kg</strong>.</li>
+                    <li><strong>3.</strong> Immediately resume CPR for <strong>2 minutes</strong>, minimising interruptions.</li>
+                    <li><strong>4.</strong> After <strong>3 shocks</strong>: <strong>adrenaline IV/IO 10 micrograms/kg</strong> (max single dose 1 mg), then every <strong>3-5 minutes</strong>, AND <strong>amiodarone IV/IO 5 mg/kg</strong> (max 300 mg).</li>
+                    <li><strong>5.</strong> Repeat <strong>amiodarone 5 mg/kg once more only, after the 5th shock</strong> (max 150 mg).</li>
+                    <li><strong>6.</strong> Refractory VF/pVT: <strong>from the 5th shock</strong>, escalate the energy stepwise up to <strong>8 J/kg</strong> (max 360 J; this device's maximum is 200 J).</li>
+                    <li><strong>7.</strong> Continuous compressions once a tracheal tube or SGA is in. Waveform capnography; ventilate at 25 min<sup>-1</sup> (infants), 20 (1-8 years), 15 (8-12 years), 10 (&gt; 12 years).</li>
+                    <li><strong>8.</strong> Identify and treat reversible causes early: hypoxia, hypovolaemia, hyper/hypokalaemia, -calcaemia, -magnesaemia, hypoglycaemia, hypo/hyperthermia, thrombosis, tension pneumothorax, tamponade, toxins.</li>
+                </ul>
+            `
+        },
+        'nonshockable': {
+            title: 'Paediatric Non-Shockable Arrest',
+            content: `
+                <ul>
+                    <li><strong>1.</strong> Recognise arrest: no signs of life, or bradycardia &lt; 60 min<sup>-1</sup> with poor perfusion. Call the resuscitation team. <strong>CPR 15:2</strong>. Attach the defibrillator and minimise interruptions.</li>
+                    <li><strong>2.</strong> Non-shockable: <strong>PEA, asystole, or bradycardia &lt; 60 min<sup>-1</sup></strong> with poor perfusion. Do <strong>not</strong> shock.</li>
+                    <li><strong>3.</strong> Give <strong>adrenaline IV/IO 10 micrograms/kg as soon as possible</strong> (max single dose 1 mg), then every <strong>3-5 minutes</strong>.</li>
+                    <li><strong>4.</strong> Immediately resume CPR for <strong>2 minutes</strong>, minimising interruptions.</li>
+                    <li><strong>5.</strong> Continuous compressions once a tracheal tube or SGA is in. Ventilate at 25 min<sup>-1</sup> (infants), 20 (1-8 years), 15 (8-12 years), 10 (&gt; 12 years).</li>
+                    <li><strong>6.</strong> Identify and treat reversible causes early: hypoxia, hypovolaemia, hyper/hypokalaemia, -calcaemia, -magnesaemia, hypoglycaemia, hypo/hyperthermia, thrombosis, tension pneumothorax, tamponade, toxins.</li>
+                </ul>
+            `
+        },
+        'tachy': {
+            title: 'Paediatric Tachyarrhythmia',
+            content: `
+                <ul>
+                    <li><strong>1.</strong> ABCDE. Oxygen if SpO2 &lt; 94%; RR, HR, CRT, ECG monitoring, BP, vascular access, AVPU. No signs of circulation: paediatric ALS.</li>
+                    <li><strong>2. Compensated or decompensated?</strong> Decompensated: reduced conscious level, tachypnoea, BP &lt; 5th centile (1 month 50, 1 year 70, 5 years 75, 10 years 80 mmHg systolic), CRT &gt; 2 s, weak or impalpable pulses. Seek expert help.</li>
+                    <li><strong>3. Sinus tachycardia</strong> (infant typically 180-220, child 160-180 min<sup>-1</sup>, gradual onset): treat the cause.</li>
+                    <li><strong>4. SVT</strong> (narrow complex; infant &gt; 220, child &gt; 180 min<sup>-1</sup>, abrupt onset). Compensated: vagal manoeuvres, reassess, consider <strong>adenosine 0.1-0.2 mg/kg</strong>; if it persists, <strong>0.3 mg/kg</strong> (max 12-18 mg) after at least 1 min. Decompensated: <strong>synchronised cardioversion</strong> with sedation and analgesia; adenosine may be first if suitable IV access is already in place and cardioversion would be delayed.</li>
+                    <li><strong>5. VT</strong> (broad complex; if unsure, treat as VT). Conscious: synchronised cardioversion with sedation and analgesia (do not delay it). Unconscious: <strong>immediate synchronised cardioversion</strong>.</li>
+                    <li><strong>6. Cardioversion:</strong> first shock <strong>1 J/kg</strong>, then <strong>double the energy</strong> with each attempt up to a maximum of <strong>4 J/kg</strong>. Sedation and analgesia (e.g. IM or intranasal ketamine if IV access is delayed); IV access attempts must not delay cardioversion.</li>
+                    <li><strong>7.</strong> Consider <strong>amiodarone 5 mg/kg</strong> by slow IV infusion (&gt; 20 min) before the 3rd shock, with a paediatric cardiologist or expert. Torsades: <strong>magnesium 25-50 mg/kg</strong> (max 2 g) over 10-15 min, may be repeated once.</li>
+                </ul>
+            `
+        },
+        'brady': {
+            title: 'Paediatric Bradycardia',
+            content: `
+                <ul>
+                    <li><strong>1.</strong> Bradycardia: <strong>&lt; 80 min<sup>-1</sup> under 1 year</strong>, <strong>&lt; 60 min<sup>-1</sup> over 1 year</strong>. ABCDE; treat reversible causes.</li>
+                    <li><strong>2.</strong> <strong>Optimal oxygenation</strong>, with positive-pressure ventilation if required.</li>
+                    <li><strong>3.</strong> If unconscious and HR &lt; 60 min<sup>-1</sup> despite oxygenation, <strong>start chest compressions</strong> (paediatric ALS).</li>
+                    <li><strong>4.</strong> No response to oxygenation: if vagal stimulation is a possible cause, <strong>atropine 20 micrograms/kg</strong> (max 0.5 mg up to 11 years; 300-600 micrograms at 12-17 years).</li>
+                    <li><strong>5.</strong> No response to oxygenation or atropine: consider <strong>adrenaline 1-2 micrograms/kg</strong> or a continuous infusion.</li>
+                    <li><strong>6.</strong> <strong>Pacing is very rarely required</strong> in children, and is guided by the cause. Seek expert help.</li>
+                </ul>
+            `
+        },
+        'postrosc': {
+            title: 'Paediatric: Immediately After ROSC',
+            content: `
+                <ul>
+                    <li><strong>1.</strong> ABCDE assessment.</li>
+                    <li><strong>2.</strong> Aim for <strong>SpO2 94-98%</strong> and a <strong>normal PaCO2</strong>.</li>
+                    <li><strong>3.</strong> Maintain systolic and mean BP <strong>&gt; 10th percentile</strong> for age.</li>
+                    <li><strong>4.</strong> Avoid or manage hypothermia.</li>
+                    <li><strong>5.</strong> Glucose control.</li>
+                    <li><strong>6.</strong> Treat the precipitating cause.</li>
+                </ul>
+            `
+        }
+    };
+    // The card for this patient: paediatric under 18 years, otherwise adult.
+    function guidelineFor(key, ageYears) {
+        var a = Number(ageYears);
+        var child = ageYears !== null && ageYears !== undefined && ageYears !== '' && isFinite(a) && a < 18;
+        return (child ? PAEDIATRIC_GUIDELINES[key] : null) || GUIDELINES[key] || null;
+    }
+
     // ---- DEBRIEF: what went well and what to work on, read from the engine's event log (the
     // same checks as the standalone Defib-sim summary, plus sedation before cardioversion and
     // analgesia for pacing). Log entries carry timeSeconds (sim clock).
@@ -325,7 +405,7 @@
                 var range = ds.energyRange;
                 if (!adult) {
                     if (RG.adequateShock(e, weight, age, 'cardiovert')) good.push('First cardioversion energy ' + e + ' J (at least 1 J/kg)');
-                    else improve.push('First cardioversion ' + e + ' J: start at about 1 J/kg in a child, then 2 J/kg');
+                    else improve.push('First cardioversion ' + e + ' J: in a child start at 1 J/kg, then double the energy with each attempt up to 4 J/kg (RCUK)');
                 } else if (range && e >= range[0] && e <= range[1]) good.push('Appropriate first cardioversion energy (' + e + ' J)');
                 else improve.push('First cardioversion ' + e + ' J: RCUK advice here is ' + (ds.energyAdvice || (range ? range[0] + '-' + range[1] + ' J' : 'an escalating energy')));
                 var sedated = analgesia.some(function (l) { return t(l) <= t(shocks[0]); });
@@ -396,6 +476,7 @@
         SCENARIOS: SCENARIOS, byId: byId, TRIGGERS: TRIGGERS, MAX_STEPS: MAX_STEPS,
         normaliseSteps: normaliseSteps, savedNames: savedNames, loadSaved: loadSaved, save: save, remove: remove,
         parseFile: parseFile, exportText: exportText, buildScenario: buildScenario, GUIDELINES: GUIDELINES,
+        PAEDIATRIC_GUIDELINES: PAEDIATRIC_GUIDELINES, guidelineFor: guidelineFor,
         STORE_KEY: STORE_KEY, assess: assess, certificateHtml: certificateHtml
     };
 })();

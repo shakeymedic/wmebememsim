@@ -14,7 +14,7 @@
         VENTILATOR_RATE, VOLUME_KEYS, ageBandOf, applyRhythmHrBand, buildDrugEntry, clampVital,
         fluidResponsiveness, getObstruction, getSensors, getUnmetExpectations, initialCoreState,
         initialLogState, initialScenarioState, initialVitalsState, isDrugSpent, isVentilated,
-        normaliseDeteriorationType, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
+        normaliseDeteriorationType, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
         newRunId, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     } = window.__EngineModel;
     const { coreReducer, logReducer, scenarioReducer, vitalsReducer } = window.__EngineReducers;
@@ -469,16 +469,21 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${scenario.wetflag.glucose}ml) administered.`;
             }
-            // PART 5 — PAEDIATRIC DOSING NOTES the review flagged as mattering clinically. These are
-            // COACHING LINES, never blocks: the facilitator always gets to give the drug.
+            // PART 5 — PAEDIATRIC DOSING NOTES (RCUK 2025). These are COACHING LINES, never blocks:
+            // the facilitator always gets to give the drug. The dose actually logged is the
+            // paediatric one where the weight or age is known.
             if (scenario.ageRange === 'Paediatric' || ageBandOf(scenario) !== 'adult') {
                 const wt = scenario.wetflag && scenario.wetflag.weight;
-                if (key === 'Atropine') addLogEntry(`Paediatric atropine: 20 mcg/kg${wt ? ` = ${Math.round(20 * wt)} mcg` : ''}, MINIMUM 100 mcg (smaller doses cause paradoxical bradycardia), maximum single dose 500 mcg.`, 'info');
-                if (key === 'MidazolamBuccal') addLogEntry(`Buccal midazolam 0.5 mg/kg${wt ? ` ≈ ${Math.round(0.5 * wt * 10) / 10} mg` : ''} — APLS step 1 when there is no IV/IO access. Second dose after 10 min, then escalate to a second-line agent.`, 'info');
+                const paeds = paediatricDoseNotes(key, scenario, { count: ((cur.interventionCounts || {})[key] || 0) + 1, inArrest: RG.inArrest(cur.rhythm) });
+                if (paeds.log) logMsg = paeds.log;
+                paeds.notes.forEach(n => addLogEntry(n, 'info'));
                 if (key === 'KetamineIM') addLogEntry(`Paediatric IM ketamine for procedural sedation: 4 mg/kg${wt ? ` = ${Math.round(4 * wt)} mg` : ''}. Peak dissociation ~5 min, 15-30 min of usable sedation — do NOT stack doses while waiting.`, 'info');
                 if (key === 'Sux') addLogEntry('Suxamethonium in a child: bradycardia is common (and marked with a second dose) — have atropine drawn up.', 'warning');
-                if (key === 'Dextrose' && wt) addLogEntry(`WETFLAG glucose: 2 ml/kg of 10% = ${Math.round(2 * wt)} ml.`, 'info');
-                if (key === 'Adenosine') addLogEntry(`Paediatric adenosine (RCUK/ERC 2025): 0.1-0.2 mg/kg${wt ? ` (${Math.round(0.1 * wt * 10) / 10}-${Math.round(0.2 * wt * 10) / 10} mg)` : ''}, max 6 mg, as a rapid flush into a large vein with a 12-lead running; if SVT persists after at least 1 min, 0.3 mg/kg${wt ? ` (${Math.round(0.3 * wt * 10) / 10} mg)` : ''}, max 12-18 mg. Neonates start at 150 mcg/kg.`, 'info');
+            }
+            // RCUK anaphylaxis (adults and children): no improvement in breathing or circulation
+            // despite TWO doses of IM adrenaline is refractory anaphylaxis.
+            if (key === 'AdrenalineIM' && ((cur.interventionCounts || {})[key] || 0) + 1 === 2) {
+                addLogEntry('Second IM adrenaline dose. If breathing or circulation problems persist, this is REFRACTORY anaphylaxis (RCUK): seek expert help early, give a rapid IV fluid bolus and start a low-dose IV adrenaline infusion; give IM adrenaline every 5 min until the infusion is running.', 'warning');
             }
             // Instant (no-pk) effects are applied to the BASE physiology, exactly as before. Anything
             // carrying a `pk` envelope is instead pushed onto activeDrugs and composed every tick.
@@ -729,8 +734,12 @@
             if (action.avBlock && !isArrest) {
                 const ab = action.avBlock;
                 const doseNo = count;                    // RCUK: 6 mg, then 12 mg, then 18 mg
+                // A child's dose is weight-based (RCUK 2025): 0.1-0.2 mg/kg, then 0.3 mg/kg (max
+                // 12-18 mg); a neonate's 150 mcg/kg rising to 300 mcg/kg.
+                const paedsDose = paediatricAdenosineDose(scenario, doseNo);
                 const doseMg = doseNo === 1 ? 6 : (doseNo === 2 ? 12 : 18);
-                addLogEntry(`Adenosine ${doseMg} mg given as a RAPID push into a large proximal vein with an immediate saline flush. Warn the patient: flushing, chest tightness and a feeling of doom are expected and last seconds.`, 'action');
+                const doseText = paedsDose || `${doseMg} mg`;
+                addLogEntry(`Adenosine ${doseText} given as a RAPID push into a large proximal vein with an immediate saline flush. Warn the patient: flushing, chest tightness and a feeling of doom are expected and last seconds.`, 'action');
                 dispatch({ type: 'TRIGGER_SPEAK', payload: 'Oh — that feels horrible. My chest is tight. I feel like something awful is happening.' });
                 addLogEntry(`Transient AV block / sinus pause for ~${ab.pause || 8}s — run a rhythm strip NOW: this is the diagnostic window.`, 'warning');
                 const chances = Array.isArray(ab.chanceByDose) ? ab.chanceByDose : [0.55, 0.75, 0.8];
@@ -739,7 +748,7 @@
                     const now = stateRef.current;
                     if (!now || !now.isRunning || now.isFinished) return;
                     if (RG.inArrest(now.rhythm)) return;
-                    applyDrugConversion(now, 'Adenosine', `Adenosine ${doseMg} mg`, { chance });
+                    applyDrugConversion(now, 'Adenosine', `Adenosine ${doseText}`, { chance });
                 }, Math.max(1, Number(ab.convertAt) || 12) * 1000);
             }
 

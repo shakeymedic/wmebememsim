@@ -691,12 +691,12 @@
                         <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
                             <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
                             <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Energy (4J)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Tube</div><div className="font-bold text-white">{scenario.wetflag.tube}</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Fluids (10ml)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Energy (4 J/kg)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Tube (ID mm)</div><div className="font-bold text-white">{scenario.wetflag.tube}</div>{scenario.wetflag.tubeCuffed && scenario.wetflag.tubeUncuffed && <div className="text-[10px] text-slate-400">uncuffed {scenario.wetflag.tubeUncuffed}</div>}</div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Fluids (10 ml/kg)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
                                 <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
                                 <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Glucose (2ml)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">10% Glucose (2 ml/kg)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
                             </div>
                         </div>
                     )}

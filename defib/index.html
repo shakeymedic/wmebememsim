@@ -645,7 +645,7 @@
         });
         let hintReturn = null;
         function openHint(key) {
-            const g = window.DefibSim && window.DefibSim.GUIDELINES[key];
+            const g = window.DefibSim && window.DefibSim.guidelineFor(key, patient.age);   // paediatric cards under 18
             if (!g) return;
             hintReturn = document.activeElement;
             $('hintTitle').textContent = g.title;

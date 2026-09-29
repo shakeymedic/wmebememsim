@@ -697,14 +697,43 @@
         return ADULT_ENERGY_STEPS.slice();
     }
 
+    // Synchronised cardioversion energy (RCUK 2025). Child: 1 J/kg, doubling with each attempt up to
+    // 4 J/kg. Adult: AF maximum output; atrial flutter / SVT 70-120 J; VT with a pulse 120-150 J.
+    function cardioversionEnergy(weightKg, ageYears, rhythm) {
+        if (!isAdult(weightKg, ageYears)) return nearestStep(Math.max(1, Number(weightKg)));
+        var r = canonical(rhythm);
+        if (r === 'AF') return ADULT_ENERGY_STEPS[ADULT_ENERGY_STEPS.length - 1];
+        if (r === 'VT') return 120;
+        return 70;
+    }
+
     // Permissive by design (Wave 1 philosophy): a wrong energy is never blocked, it is FLAGGED.
     // Returns null when the energy is acceptable, or a description when it is not.
-    function energyDeviation(joules, weightKg, ageYears) {
+    // opts.kind 'cardiovert' checks a synchronised shock against the cardioversion energies;
+    // opts.shockNumber lets a child's refractory VF/pVT escalate: RCUK 2025, from the 5th shock
+    // increase stepwise up to 8 J/kg (max 360 J; this device stops at 200 J).
+    function energyDeviation(joules, weightKg, ageYears, opts) {
+        opts = opts || {};
         var j = Number(joules);
+        var child = !isAdult(weightKg, ageYears);
+        if (opts.kind === 'cardiovert') {
+            var start = cardioversionEnergy(weightKg, ageYears, opts.rhythm);
+            if (!isFinite(j) || j <= 0) return { expected: start, given: joules, reason: 'no energy selected' };
+            if (child) {
+                var most = nearestStep(4 * Number(weightKg));
+                if (j < start * 0.6) return { expected: start, given: j, reason: 'energy too low (' + j + ' J; start at 1 J/kg = ' + start + ' J)' };
+                if (j > most * 1.25) return { expected: start, given: j, reason: 'energy too high (' + j + ' J; 1 J/kg doubling to a maximum of 4 J/kg = ' + most + ' J)' };
+                return null;
+            }
+            if (j < 70) return { expected: start, given: j, reason: 'energy too low (' + j + ' J; at least 70 J for synchronised cardioversion)' };
+            return null;
+        }
         var expected = recommendedEnergy(weightKg, ageYears);
         if (!isFinite(j) || j <= 0) return { expected: expected, given: joules, reason: 'no energy selected' };
         var ratio = j / expected;
-        if (ratio > 1.5) return { expected: expected, given: j, reason: 'energy too high (' + j + ' J vs recommended ' + expected + ' J)' };
+        var ceiling = expected * 1.5;
+        if (child && Number(opts.shockNumber) >= 5) ceiling = Math.max(ceiling, Math.min(360, 8 * Number(weightKg)) * 1.1);
+        if (j > ceiling) return { expected: expected, given: j, reason: 'energy too high (' + j + ' J vs recommended ' + expected + ' J' + (child ? ', 4 J/kg; up to 8 J/kg only for refractory VF/pVT from the 5th shock' : '') + ')' };
         if (ratio < 0.6) return { expected: expected, given: j, reason: 'energy too low (' + j + ' J vs recommended ' + expected + ' J)' };
         return null;
     }
@@ -972,6 +1001,7 @@
         recommendedEnergy: recommendedEnergy,
         energySteps: energySteps,
         energyDeviation: energyDeviation,
+        cardioversionEnergy: cardioversionEnergy,
         DRUG_CONVERSION: DRUG_CONVERSION,
         SHOCK_OUTCOMES: SHOCK_OUTCOMES,
         weightedPick: weightedPick,

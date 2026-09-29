@@ -20,13 +20,14 @@
     // RCUK ALS drug timing (the same rules as the standalone Defib-sim): adrenaline as soon as
     // possible in a non-shockable rhythm, after the 3rd shock in a shockable one, then every 3-5
     // minutes; amiodarone after the 3rd shock and a further dose after the 5th. Sim seconds.
-    function drugPrompts(state, adult) {
+    function drugPrompts(state, adult, weight) {
         const a = state.arrest || {};
         if (a.since === null || a.since === undefined) return [];
         const RG = window.RHYTHMS;
         const shockable = RG.isShockable(state.rhythm);
         const adr = a.adrenaline || [], amio = a.amiodarone || [];
-        const adrDose = adult ? 'Adrenaline 1 mg IV' : 'Adrenaline 10 micrograms/kg IV';
+        const mg = (perKg, cap, unit) => (weight ? ` = ${Math.min(cap, Math.round(perKg * weight))} ${unit}` : '');
+        const adrDose = adult ? 'Adrenaline 1 mg IV' : `Adrenaline 10 micrograms/kg IV/IO${mg(10, 1000, 'mcg')} (max 1 mg)`;
         const out = [];
         if (!adr.length) {
             if (!shockable) out.push(`${adrDose} due now (non-shockable rhythm)`);
@@ -35,9 +36,10 @@
             out.push(`${adrDose} due (3-5 min since the last dose)`);
         }
         if (shockable) {
-            if (a.shocks >= 3 && amio.length === 0) out.push(adult ? 'Amiodarone 300 mg IV due (after the 3rd shock)' : 'Amiodarone 5 mg/kg IV due (after the 3rd shock)');
-            if (a.shocks >= 5 && amio.length === 1) out.push(adult ? 'Amiodarone 150 mg IV due (after the 5th shock)' : 'Amiodarone 5 mg/kg IV due (after the 5th shock)');
-            if (a.shocks >= 3) out.push('Refractory VF/pVT: consider changing the pad position (antero-posterior)');
+            if (a.shocks >= 3 && amio.length === 0) out.push(adult ? 'Amiodarone 300 mg IV due (after the 3rd shock)' : `Amiodarone 5 mg/kg IV/IO${mg(5, 300, 'mg')} due (after the 3rd shock, max 300 mg)`);
+            if (a.shocks >= 5 && amio.length === 1) out.push(adult ? 'Amiodarone 150 mg IV due (after the 5th shock)' : `Amiodarone 5 mg/kg IV/IO${mg(5, 150, 'mg')} due (after the 5th shock, max 150 mg)`);
+            if (a.shocks >= 3 && adult) out.push('Refractory VF/pVT: consider changing the pad position (antero-posterior)');
+            if (a.shocks >= 4 && !adult) out.push(`Refractory VF/pVT: from the 5th shock, escalate stepwise towards 8 J/kg${weight ? ` (${Math.min(360, Math.round(8 * weight))} J; this device's maximum is 200 J)` : ''}`);
         }
         return out;
     }
@@ -54,7 +56,10 @@
         const steps = Array.isArray(ds.steps) ? ds.steps : [];
         const step = state.defibStep;
         const weight = Number(scenario.wetflag && scenario.wetflag.weight) || null;
+        // Energies follow the device's adult threshold (40 kg or 16 years); drug doses follow the
+        // RCUK paediatric chart for anyone under 18.
         const adult = RG.isAdult(weight, scenario.patientAge);
+        const adultDrugs = adult && !(Number(scenario.patientAge) < 18);
         const education = ds.mode !== 'assessment';
         const [showJoin, setShowJoin] = useState(false);
         const [showAllRhythms, setShowAllRhythms] = useState(false);
@@ -109,7 +114,7 @@
                 </button>
             );
         };
-        const prompts = drugPrompts(state, adult);
+        const prompts = drugPrompts(state, adultDrugs, weight);
 
         // ---- Log (newest first)
         const log = (state.log || []).slice(-80).map((entry, i, arr) => ({ entry, index: (state.log.length - arr.length) + i })).reverse();
@@ -322,9 +327,9 @@
                                 Adrenaline {arrest.adrenaline.length ? `${arrest.adrenaline.length} this arrest, last ${lastGiven(arrest.adrenaline)}` : 'not given this arrest'} · Amiodarone {arrest.amiodarone.length ? `${arrest.amiodarone.length} dose${arrest.amiodarone.length > 1 ? 's' : ''}, last ${lastGiven(arrest.amiodarone)}` : 'not given'}
                             </div>
                             <div className="grid grid-cols-2 gap-1">
-                                {drug('AdrenalineIV', adult ? 'Adrenaline 1 mg IV' : 'Adrenaline 10 mcg/kg IV')}
-                                {drug('Amiodarone', adult ? `Amiodarone ${arrest.amiodarone.length ? '150' : '300'} mg IV` : 'Amiodarone 5 mg/kg IV',
-                                    () => { if (adult && arrest.amiodarone.length) addLogEntry('Amiodarone: this is the second dose (150 mg).', 'info'); })}
+                                {drug('AdrenalineIV', adultDrugs ? 'Adrenaline 1 mg IV' : 'Adrenaline 10 mcg/kg IV')}
+                                {drug('Amiodarone', adultDrugs ? `Amiodarone ${arrest.amiodarone.length ? '150' : '300'} mg IV` : 'Amiodarone 5 mg/kg IV',
+                                    () => { if (adultDrugs && arrest.amiodarone.length) addLogEntry('Amiodarone: this is the second dose (150 mg).', 'info'); })}
                                 {drug('Atropine')}
                                 {drug('Adenosine')}
                                 {drug('Isoprenaline')}
