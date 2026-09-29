@@ -303,7 +303,7 @@
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [60, 75] },
 
         { id: '2nd Deg Heart Block', label: '2nd Degree Heart Block (Mobitz II)', short: '2AVB', waveform: 'mobitz2',
-          aliases: ['2nd Deg Block', 'Mobitz II', 'Mobitz 2', '2nd Degree AV Block'],
+          aliases: ['2nd Deg Block', 'Mobitz II', 'Mobitz 2', '2nd Degree AV Block', 'mobitz2'],
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [45, 60] },
 
         // Drawn as a BROAD ventricular escape (the usual picture at 35-45/min, and the one that

@@ -5,11 +5,12 @@
 // running the old defibrillator page (with the dead GHOST_PRESS receiver) and, worse, an old
 // ../data/engine.js without the Quick Sim, runId and pupil-guard changes, against a controller that
 // has them. Bump this on EVERY deploy.
-const CACHE_NAME = 'wmebem-sim-v31';
+const CACHE_NAME = 'wmebem-sim-v32';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './images/logo.png',
+  './device.css',
   '../index.html',
   '../data/rhythms.js',
   '../data/firebase-config.js',
@@ -20,6 +21,8 @@ const ASSETS_TO_CACHE = [
   '../data/interventions.js',
   '../data/generators.js',
   '../data/presets.js',
+  '../data/defibsim.js',
+  '../data/screens/defibsetup.js',
   // WAVE 4b: the auth/entitlements module. Cached so the Restricted section degrades identically
   // offline (locked, with a message) instead of throwing on a missing script.
   '../data/auth.js',

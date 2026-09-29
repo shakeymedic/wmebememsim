@@ -5,7 +5,7 @@
     // opened directly — used by the Node verification harness to render the locked Restricted section
     // without simulating clicks, and available for deep-linking a mode later. Both default to the
     // normal first-load state, so nothing changes for a real user.
-    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
+    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onDefibSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
@@ -499,7 +499,7 @@
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
                     <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
-                    <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
+                    <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Defib Sim</strong> trains defibrillator skills on a tablet defib. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
                 </div>
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
@@ -519,8 +519,8 @@
                     <div className="flex flex-wrap gap-x-2 gap-y-1 mb-6 border-b border-slate-700">
                         {/* WAVE 4b / A1: QUICK SIM sits first — it is the fastest route to a running
                             monitor and skips scenario generation entirely. */}
-                        {['quick', 'random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m}</button>
+                        {['quick', 'defib', 'random', 'premade', 'custom', 'builder'].map(m => (
+                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m === 'defib' ? 'Defib Sim' : m}</button>
                         ))}
                     </div>
                     {/* ============================ WAVE 4b / PART A: QUICK SIM ============================
@@ -580,6 +580,9 @@
                             {qsInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields to start.</p>}
                         </div>
                     )}
+                    {mode === 'defib' && (window.DefibSimSetup
+                        ? <window.DefibSimSetup onStart={(opts) => onDefibSim ? onDefibSim(opts) : alert('Defib Sim is unavailable in this build.')} />
+                        : <div className="text-sm text-slate-400">Defib Sim is unavailable in this build.</div>)}
                     {mode === 'random' && (
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">

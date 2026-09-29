@@ -101,6 +101,7 @@
     <script type="text/babel" src="data/interventions.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
     <script src="data/presets.js"></script>
+    <script src="data/defibsim.js"></script>
     <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine.js"></script>
@@ -111,6 +112,7 @@
          sign-in is not configured the app behaves exactly as it did before Wave 4b. -->
     <script type="text/babel" src="data/auth.js"></script>
 
+    <script type="text/babel" src="data/screens/defibsetup.js"></script>
     <script type="text/babel" src="data/screens/setup.js"></script>
     <script type="text/babel" src="data/screens/monitor.js"></script>
     <script type="text/babel" src="data/screens/livesim.js"></script>
@@ -255,6 +257,20 @@
                 }
             };
 
+            // ---- DEFIB SIM: the same path again (same engine, session and monitor), with the
+            // patient built by data/defibsim.js. No briefing screen; the facilitator presses START.
+            const handleDefibSim = (opts) => {
+                try {
+                    const scenario = window.DefibSim.buildScenario(opts || {});
+                    setGeneratedScenario(scenario);
+                    engine.dispatch({ type: 'LOAD_SCENARIO', payload: scenario });
+                    setView('livesim');
+                } catch (err) {
+                    console.error('Defib Sim failed to start:', err);
+                    alert('Could not start Defib Sim: ' + err.message);
+                }
+            };
+
             const handleJoin = (code) => {
                 setSessionID(String(code || '').trim().toUpperCase());
                 setView('monitor');
@@ -328,6 +344,7 @@
                             <SetupScreen 
                                 onGenerate={handleGenerate} 
                                 onQuickSim={handleQuickSim}
+                                onDefibSim={handleDefibSim}
                                 auth={auth}
                                 onJoinClick={() => setView('join')} 
                                 sessionID={sessionID}

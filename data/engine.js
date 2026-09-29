@@ -136,6 +136,11 @@
         defibSettings: { shockResponse: 'model', rOnT: 'never', refib: 'model' },
         // Transcutaneous pacing as the device delivers it (see the pacing effect in useSimulation).
         pacing: { electrical: false, mechanical: false, underlying: null, pre: null },
+        // Defib Sim: the CPR metronome plays on the learner's defib tablet.
+        metronomeOn: false,
+        // What each linked defib tablet is showing (sessions/<CODE>/deviceState). Controller-only:
+        // never part of the sync payload.
+        deviceMirror: {},
         // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
         // deliberately absent from the Firebase sync payload (verified by
         // verify_wave3.js :: conversion announcements are not synced) because `notification`
@@ -1817,6 +1822,8 @@
             case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
             case 'SET_DEFIB_SETTINGS': return { ...state, defibSettings: cleanDefibSettings(state.defibSettings, action.payload) };
             case 'SET_PACING': return { ...state, pacing: { ...state.pacing, ...(action.payload || {}) } };
+            case 'SET_METRONOME': return { ...state, metronomeOn: !!action.payload };
+            case 'SET_DEVICE_MIRROR': return { ...state, deviceMirror: action.payload || {} };
             case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
             // Abandons a measurement in progress: no reading is committed (the commit timer is
@@ -2226,7 +2233,8 @@
                 }
 
                 if (data.type === 'PACER_UPDATE') {
-                    dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
+                    const pp = data.payload || {};
+                    dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: Number(pp.rate) || 0, output: Number(pp.output) || 0, demand: pp.demand !== false } });
                 } else if (data.type === 'CHARGE_INIT') {
                     initCharge(data.payload.energy);
                 } else if (data.type === 'SHOCK_DELIVERED') {
@@ -2240,7 +2248,12 @@
                 } else if (data.type === 'CHECK_PULSE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Checked Pulse', type: 'action' } });
                 } else if (data.type === 'ANALYSIS_RESULT') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: `Defib Analysis: ${data.payload?.result || 'Unknown result'}`, type: 'action' } });
+                    // Judged by the controller from its own rhythm, exactly as over Firebase.
+                    analyseRhythm('student (standalone defib)');
+                } else if (data.type === 'LEAD_CHANGE') {
+                    addLogEntry(`Monitoring lead changed to ${String(data.payload?.lead || '?').slice(0, 8)} (standalone defib)`, 'action');
+                } else if (data.type === 'SIZE_CHANGE') {
+                    addLogEntry(`ECG size x${Number(data.payload?.gain) || 1} (standalone defib)`, 'info');
                 } else if (data.type === 'ALARM_SILENCE') {
                     dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
                 } else if (data.type === 'MARKER_EVENT') {
@@ -2268,6 +2281,13 @@
         // else — no weight, no age, no recommended energy, no session-ended flag — which is why it
         // hardcoded 120 J for a 3.5 kg neonate and kept showing a live-looking trace after the end
         // of the session. One builder, used by both the periodic broadcast and REQUEST_SYNC.
+        // What the learner's defib is allowed to show. Pulse-check results and RCUK hints are an
+        // Education-mode aid in Defib Sim only (a real defibrillator tells you neither).
+        const defibViewFor = (cur) => {
+            const ds = cur.scenario && cur.scenario.defibSim;
+            const edu = !!(ds && ds.mode !== 'assessment');
+            return { defibSim: !!ds, pulseFeedback: edu, hints: edu, metronome: !!cur.metronomeOn };
+        };
         const buildDefibSyncPayload = () => {
             const cur = stateRef.current;
             const weight = Number(cur.scenario?.wetflag?.weight);
@@ -2288,7 +2308,10 @@
                 wetflag: cur.scenario?.wetflag || null,
                 recommendedEnergy: RG.recommendedEnergy(Number.isFinite(weight) && weight > 0 ? weight : null, age),
                 energyLevels: RG.energySteps(Number.isFinite(weight) && weight > 0 ? weight : null, age),
-                defib: cur.defib || {}
+                defib: cur.defib || {},
+                noise: cur.noise || {},
+                pacing: { electrical: !!(cur.pacing && cur.pacing.electrical), mechanical: !!(cur.pacing && cur.pacing.mechanical) },
+                defibView: defibViewFor(cur)
             };
         };
         const buildDefibSyncPayloadRef = useRef(buildDefibSyncPayload);
@@ -2299,7 +2322,7 @@
                 postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayload() });
             }
         }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput,
-            state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib]);
+            state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib, state.pacing, state.metronomeOn]);
 
         useEffect(() => {
             const db = window.db;
@@ -2392,6 +2415,9 @@
                     // verify_wave3.js asserts their absence from this object.
                     defibPanelOpen: !!cur.defibPanelOpen,
                     defib: cur.defib || {},
+                    // The defib tablet's pulse-check result (Education) and pacing capture state.
+                    pacing: { electrical: !!(cur.pacing && cur.pacing.electrical), mechanical: !!(cur.pacing && cur.pacing.mechanical) },
+                    defibView: defibViewFor(cur),
                     monitorPopup: cur.monitorPopup, waveformGain: cur.waveformGain,
                     noise: cur.noise, notification: cur.notification,
                     remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
@@ -2470,7 +2496,7 @@
             state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
             state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
             state.activeDrugs, state.deteriorationMode,
-            state.defibPanelOpen, state.defib
+            state.defibPanelOpen, state.defib, state.pacing, state.metronomeOn
         ]);
 
         useEffect(() => {
@@ -2612,12 +2638,14 @@
                     case 'CHARGE_INIT': initCharge(p.energy); break;
                     case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
                     case 'ANALYSE': analyseRhythm(src); break;
-                    case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: p.rate, output: p.output } }); break;
+                    case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: Number(p.rate) || 0, output: Number(p.output) || 0, demand: p.demand !== false } }); break;
                     case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
                     case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
                     case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
                     case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
                     case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
+                    case 'LEAD_CHANGE': addLogEntry(`Monitoring lead changed to ${String(p.lead || '?').slice(0, 8)} (${where})`, 'action'); break;
+                    case 'SIZE_CHANGE': addLogEntry(`ECG size x${Number(p.gain) || 1} (${where})`, 'info'); break;
                     default: addLogEntry(`Unhandled student device event: ${ev.type}`, 'system'); break;
                 }
                 // Consume the event so the queue cannot grow without bound across a long session.
@@ -2629,6 +2657,22 @@
             };
             ref.limitToLast(25).on('child_added', onChild, onErr);
             return () => ref.off('child_added', onChild);
+        }, [isMonitorMode, sessionID]);
+
+        // What each defib tablet is displaying, so a remote facilitator sees the device.
+        useEffect(() => {
+            const db = window.db;
+            if (!db || !sessionID || isMonitorMode) return;
+            const ref = db.ref(`sessions/${sessionID}/deviceState`);
+            const onVal = (snap) => {
+                const v = snap.val() || {};
+                const now = Date.now();
+                const fresh = {};
+                Object.keys(v).forEach(k => { if (v[k] && Number(v[k].ts) > now - 60000) fresh[k] = v[k]; });
+                dispatch({ type: 'SET_DEVICE_MIRROR', payload: fresh });
+            };
+            ref.on('value', onVal, () => {});
+            return () => ref.off('value', onVal);
         }, [isMonitorMode, sessionID]);
 
         // Persist a slim snapshot to localStorage every 5s. This is a single interval keyed only on
