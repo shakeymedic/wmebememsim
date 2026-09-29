@@ -74,6 +74,7 @@ exports.purgeOldSessions = onSchedule('every 24 hours', async () => {
 | Mode | What it does |
 | --- | --- |
 | **Quick Sim** | A blank synthetic patient and nothing else. Editable obs, the full rhythm list, arrest/ROSC, the monitor and the defib toggle. No scenario, no drugs, no interventions. For ad-hoc teaching at the bedside. |
+| **Defib Sim** | Defibrillator skills on a ZOLL-style tablet defib, with its own Defib controller. Built-in defibrillation, cardioversion and pacing scenarios, free play, or a custom sequence of rhythms. Education or Assessment mode. |
 | **Random** | Generates a patient from the scenario templates with randomised demographics and obs. |
 | **Premade** | Pick from the 254 built-in scenarios by category. |
 | **Restricted** | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
@@ -105,6 +106,42 @@ flag. Consequences worth knowing:
   and weight-based dosing all work**; leave them alone and you get a sensible 40-year-old adult.
 - It **does** produce a debrief — event log, vitals trend, instructor notes — but no score and no
   learning objectives, because there is no scenario to have objectives.
+
+### Defib Sim
+
+Defib Sim is the standalone Defib-sim rebuilt inside this app, so it uses the same session codes,
+engine, Firebase link and debrief. The learner works the defibrillator at `defib/index.html` (the
+**Join** button shows its QR code, or type the session code on the tablet); the facilitator runs
+the scenario from the **Defib controller**, which opens instead of the normal controller for a Defib
+Sim scenario (`scenario.defibSim`).
+
+- **Scenarios** (`data/defibsim.js`): VF, pulseless VT, unstable VT, unstable SVT, fast AF, complete
+  heart block and symptomatic bradycardia; free play; or a **custom sequence** of up to five rhythms,
+  each moving on at a trigger (analyse, shock, pacing capture, or a 30 s / 60 s / 2 min timer that runs
+  on the sim clock). While a custom sequence runs, a shock changes the rhythm only when the current step
+  moves on at a shock (and a shock on the last such step converts to sinus rhythm), as in the
+  standalone app. Sequences can be saved on the device, exported and imported (the standalone app's
+  files import too).
+- **Education vs Assessment.** In Education the defib shows pulse-check results and the RCUK hint
+  cards. In Assessment it shows neither (a real defibrillator tells you neither). The facilitator sees
+  the RCUK drug prompts in both modes; the learner never does.
+- **Shock response.** Defib Sim defaults to **Auto**: an arrest converts on the scenario's shock number
+  (the third adequate shock) and a cardioversion on the first adequate synchronised shock; an
+  unsynchronised shock into a rhythm with a pulse causes VF. "Adequate" means at least 150 J for an
+  adult (3 J/kg for a child) to defibrillate, and 70 J (1 J/kg) to cardiovert. These thresholds are
+  simulator settings, not guideline values. The realistic probabilistic model and fixed shock counts
+  are one select away, as they are on the main controller.
+- **Drugs work in every mode** through the normal engine: for example isoprenaline speeds a complete
+  heart block escape, atropine barely moves it, and in a non-shockable arrest on Auto, ROSC comes at the
+  second rhythm check after adrenaline with CPR running. IV access is assumed in place at the start.
+- **Pacing** captures electrically at the scenario's threshold (varied by up to 15 mA each run) and
+  mechanically about 10 mA above it; demand mode is inhibited by a faster intrinsic rate.
+- **The tablet mirrors to the controller**: it publishes what it shows to
+  `sessions/<CODE>/deviceState/<id>` (removed when it disconnects), and every press goes through
+  `sessions/<CODE>/deviceEvents` like the monitor-hosted defib.
+- **Debrief**: good practice and areas for improvement (pulse checks, mode, SYNC, energies, time to
+  first shock, adrenaline and amiodarone after the 3rd shock, sedation before cardioversion,
+  analgesia for pacing, capture) and a printable certificate.
 
 ---
 
@@ -270,6 +307,9 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
   (`dist/assets/app.css`, from `tailwind.config.js`), and points the defib service worker at those
   local files. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
   `data/` file only needs its `<script>` tag in `index.html`, as before; the build finds it.
+- **Browser tests.** `npm run build`, then `cd tests && npm install && npx playwright test`. They run
+  against `dist/` with an in-memory stand-in for Firebase (`tests/fake-firebase.js`), so no network or
+  real database is needed; GitHub Actions runs them on every pull request and on pushes to `main`.
 - **The service worker in `defib/sw.js` is cache-first.** Bump `CACHE_NAME` on every deploy or tablets
   will keep serving a stale build of a clinical device.
 - **Permissive philosophy: never block, only flag.** The simulator does not stop the facilitator doing

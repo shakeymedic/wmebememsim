@@ -258,10 +258,144 @@
         }
     };
 
+    // ---- DEBRIEF: what went well and what to work on, read from the engine's event log (the
+    // same checks as the standalone Defib-sim summary, plus sedation before cardioversion and
+    // analgesia for pacing). Log entries carry timeSeconds (sim clock).
+    var ANALGESIA_RE = /Fentanyl|Morphine|Midazolam|Ketamine|Propofol|Etomidate|Analgesia|sedat/i;
+    function assess(state) {
+        var RG = window.RHYTHMS;
+        var sc = (state && state.scenario) || {};
+        var ds = sc.defibSim || {};
+        var log = (state && state.log) || [];
+        var find = function (re) { return log.filter(function (l) { return re.test(l.msg || ''); }); };
+        var t = function (l) { return Number(l.timeSeconds) || 0; };
+        var clock = function (sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+        var weight = Number(sc.wetflag && sc.wetflag.weight) || null;
+        var age = sc.patientAge;
+        var adult = RG.isAdult(weight, age);
+        var good = [], improve = [];
+
+        var pulseChecks = find(/checked pulse/i);
+        var shocks = find(/^Shock delivered \d+J/);
+        var energyOf = function (l) { var m = /^Shock delivered (\d+)J/.exec(l.msg || ''); return m ? Number(m[1]) : 0; };
+        var synced = function (l) { return /\(SYNC\)/.test(l.msg || ''); };
+        var modeDefib = find(/^Defibrillator mode: DEFIB\b/);
+        var modePacer = find(/^Defibrillator mode: PACER\b/);
+        var electrical = find(/^Pacing: ELECTRICAL capture/);
+        var mechanical = find(/^Pacing: MECHANICAL capture/);
+        var analgesia = log.filter(function (l) { return ANALGESIA_RE.test(l.msg || '') && /administered|given|started/i.test(l.msg || ''); });
+        var cpr = find(/^CPR started/);
+        var cat = ds.category;
+
+        if (pulseChecks.length) {
+            good.push('Pulse checked ' + pulseChecks.length + ' time' + (pulseChecks.length === 1 ? '' : 's'));
+            if (t(pulseChecks[0]) <= 30) good.push('Early pulse check (' + clock(t(pulseChecks[0])) + ')');
+        } else {
+            improve.push('No pulse check recorded: it decides between defibrillation, synchronised cardioversion and pacing');
+        }
+
+        if (cat === 'defibrillation') {
+            if (modeDefib.length) good.push('DEFIB mode selected'); else improve.push('Select DEFIB mode for a shockable cardiac arrest');
+            var syncShocks = shocks.filter(synced);
+            if (syncShocks.length) improve.push('SYNC was on for a shock in cardiac arrest: there are no R waves to synchronise to, so the device will not fire');
+            else if (shocks.length) good.push('Unsynchronised shocks used, correctly, for a pulseless rhythm');
+            if (shocks.length) {
+                good.push(shocks.length + ' shock' + (shocks.length === 1 ? '' : 's') + ' delivered');
+                var rec = RG.recommendedEnergy(weight, age);
+                var e1 = energyOf(shocks[0]);
+                if (e1 >= rec) good.push('Appropriate first-shock energy (' + e1 + ' J)');
+                else improve.push('First shock ' + e1 + ' J: ' + (adult ? 'at least 150 J is recommended for an adult (RCUK)' : 'about 4 J/kg is recommended for a child (' + rec + ' J on this device)'));
+                if (t(shocks[0]) <= 180) good.push('First shock within 3 minutes (' + clock(t(shocks[0])) + ')');
+                else improve.push('First shock at ' + clock(t(shocks[0])) + ': the RCUK in-hospital target is under 3 minutes');
+            } else {
+                improve.push('No shock delivered: a shockable rhythm needs defibrillation');
+            }
+            if (cpr.length) good.push('CPR recorded'); else improve.push('No CPR recorded on the controller (the facilitator records it with Start CPR)');
+            var a = state.arrest || {};
+            if ((a.shocks || 0) >= 3) {
+                var adr = a.adrenaline || [], amio = a.amiodarone || [];
+                if (adr.length) good.push('Adrenaline given after the 3rd shock'); else improve.push('Adrenaline is due after the 3rd shock (RCUK), and every 3-5 minutes after that');
+                if (amio.length) good.push('Amiodarone given after the 3rd shock'); else improve.push('Amiodarone ' + (adult ? '300 mg' : '5 mg/kg') + ' is due after the 3rd shock (RCUK)');
+            }
+        } else if (cat === 'cardioversion') {
+            if (modeDefib.length) good.push('DEFIB mode selected');
+            if (shocks.length) {
+                if (synced(shocks[0])) good.push('SYNC selected before the shock'); else improve.push('The first shock was UNSYNCHRONISED: a patient with a pulse needs synchronised cardioversion');
+                var e = energyOf(shocks[0]);
+                var range = ds.energyRange;
+                if (!adult) {
+                    if (RG.adequateShock(e, weight, age, 'cardiovert')) good.push('First cardioversion energy ' + e + ' J (at least 1 J/kg)');
+                    else improve.push('First cardioversion ' + e + ' J: start at about 1 J/kg in a child, then 2 J/kg');
+                } else if (range && e >= range[0] && e <= range[1]) good.push('Appropriate first cardioversion energy (' + e + ' J)');
+                else improve.push('First cardioversion ' + e + ' J: RCUK advice here is ' + (ds.energyAdvice || (range ? range[0] + '-' + range[1] + ' J' : 'an escalating energy')));
+                var sedated = analgesia.some(function (l) { return t(l) <= t(shocks[0]); });
+                if (sedated) good.push('Sedation or analgesia given before cardioversion');
+                else improve.push('Cardioversion of a conscious patient needs sedation or a general anaesthetic first');
+                good.push('Time to first cardioversion: ' + clock(t(shocks[0])));
+            } else {
+                improve.push('No cardioversion delivered: this patient has life-threatening features');
+            }
+        } else if (cat === 'pacing') {
+            if (modePacer.length) good.push('PACER mode selected'); else improve.push('Select PACER mode');
+            if (mechanical.length) good.push('Electrical and mechanical capture achieved (a pulse at the paced rate)');
+            else if (electrical.length) improve.push('Electrical capture only: increase the output until there is a palpable pulse at the paced rate');
+            else improve.push('No capture: increase the output until every pacing spike is followed by a QRS and a pulse');
+            if (analgesia.length) good.push('Analgesia or sedation given (pacing is painful)'); else improve.push('Pacing is painful: give analgesia and sedation');
+        } else if (shocks.length) {
+            good.push(shocks.length + ' shock' + (shocks.length === 1 ? '' : 's') + ' delivered');
+        }
+
+        // Outcome
+        var outcome = null;
+        var start = RG.canonical((sc.ecg && sc.ecg.type) || 'Sinus Rhythm');
+        var now = RG.canonical(state.rhythm || 'Sinus Rhythm');
+        if (cat === 'defibrillation' || cat === 'cardioversion') {
+            var converted = !RG.isPulseless(now) && now !== start && RG.canonical(now) !== 'Paced';
+            outcome = converted
+                ? { ok: true, title: 'Rhythm converted', text: 'The patient is now in ' + RG.labelFor(now) + '.' }
+                : { ok: false, title: 'Rhythm not converted', text: 'The patient finished in ' + RG.labelFor(now) + '.' };
+        } else if (cat === 'pacing') {
+            var held = !!(state.pacing && state.pacing.mechanical);
+            outcome = held
+                ? { ok: true, title: 'Pacing successful', text: 'Electrical and mechanical capture held at the end.' }
+                : { ok: false, title: 'Pacing not successful', text: (state.pacing && state.pacing.electrical) ? 'Electrical capture only at the end: no pulse at the paced rate.' : 'No capture at the end.' };
+        }
+        return { good: good, improve: improve, outcome: outcome, shocks: shocks.length, pulseChecks: pulseChecks.length,
+                 firstIntervention: shocks.length ? t(shocks[0]) : (electrical.length ? t(electrical[0]) : null) };
+    }
+
+    // A printable certificate (the standalone Defib-sim's, with the learner's name if given).
+    function certificateHtml(state, learner) {
+        var esc = function (v) { return String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+        var sc = (state && state.scenario) || {};
+        var ds = sc.defibSim || {};
+        var r = assess(state);
+        var rows = [];
+        rows.push('<div><b>Mode:</b> ' + (ds.mode === 'assessment' ? 'Assessment' : 'Education') + '</div>');
+        if (r.shocks) rows.push('<div><b>Shocks delivered:</b> ' + r.shocks + '</div>');
+        if (ds.requiresSync) rows.push('<div><b>Synchronised cardioversion:</b> ' + (r.good.some(function (g) { return /^SYNC selected/.test(g); }) ? '&#10003; used correctly' : '&#10007; not used') + '</div>');
+        if (r.pulseChecks) rows.push('<div><b>Pulse checks:</b> ' + r.pulseChecks + '</div>');
+        if (r.outcome) rows.push('<div><b>Outcome:</b> ' + esc(r.outcome.title) + '</div>');
+        if (r.firstIntervention !== null) rows.push('<div><b>Time to first intervention:</b> ' + Math.floor(r.firstIntervention / 60) + ':' + String(Math.round(r.firstIntervention % 60)).padStart(2, '0') + '</div>');
+        var date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        return '<!DOCTYPE html><html lang="en-GB"><head><meta charset="UTF-8"><title>Certificate: ' + esc(ds.name || sc.title) + '</title>' +
+            '<style>body{font-family:Segoe UI,Arial,sans-serif;background:#fff;color:#2c3e50;margin:0;padding:30px}.c{max-width:820px;margin:0 auto;border:8px solid #3498db;border-radius:10px;padding:40px;text-align:center}' +
+            'h1{font-size:38px;margin:0 0 10px}.bar{width:100px;height:3px;background:#3498db;margin:18px auto}.muted{color:#7f8c8d}h2{font-size:28px;margin:18px 0}' +
+            '.perf{background:#ecf0f1;border-radius:8px;padding:20px;margin:28px 0;text-align:left;line-height:2;font-size:14px}.sig{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:36px}' +
+            '.sig div{border-top:2px solid #2c3e50;padding-top:8px;margin:0 20px;font-size:14px}.foot{margin-top:26px;padding-top:16px;border-top:1px solid #bdc3c7;font-size:12px;color:#95a5a6}@media print{body{padding:0}}</style></head><body><div class="c">' +
+            '<h1>Certificate of Completion</h1><div class="bar"></div>' +
+            '<p class="muted" style="font-size:18px">This certifies that</p><h2>' + (learner ? esc(learner) : 'the learner') + '</h2>' +
+            '<p class="muted" style="font-size:18px">has completed</p><h2>' + esc(ds.name || sc.title || 'Defib Sim') + '</h2>' +
+            '<p class="muted">Defibrillator skills simulation (ZOLL-style device)</p>' +
+            '<div class="perf"><div style="text-align:center;font-weight:bold;font-size:18px;margin-bottom:6px">Performance summary</div>' + rows.join('') + '</div>' +
+            '<div class="sig"><div>' + esc(date) + '<div class="muted" style="font-size:12px">Date</div></div><div>EM Evidence Sim<div class="muted" style="font-size:12px">Facilitator</div></div></div>' +
+            '<div class="foot">Resuscitation Council UK guidelines &nbsp;|&nbsp; Simulation training exercise</div></div></body></html>';
+    }
+
     window.DefibSim = {
         SCENARIOS: SCENARIOS, byId: byId, TRIGGERS: TRIGGERS, MAX_STEPS: MAX_STEPS,
         normaliseSteps: normaliseSteps, savedNames: savedNames, loadSaved: loadSaved, save: save, remove: remove,
         parseFile: parseFile, exportText: exportText, buildScenario: buildScenario, GUIDELINES: GUIDELINES,
-        STORE_KEY: STORE_KEY
+        STORE_KEY: STORE_KEY, assess: assess, certificateHtml: certificateHtml
     };
 })();

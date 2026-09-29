@@ -159,6 +159,22 @@
         // guarded, and `state.scenario` being null outright (an edge case that could previously
         // reach this screen via an aborted load) is handled by the `|| {}` above.
         const isQuickSim = !!scenario.quickSim;
+        // Defib Sim: feedback in the standalone Defib-sim's style, and a printable certificate.
+        const defibSim = scenario.defibSim && window.DefibSim && window.DefibSim.assess ? scenario.defibSim : null;
+        const defibReview = defibSim ? window.DefibSim.assess(state) : null;
+        const printCertificate = () => {
+            const name = window.prompt('Learner name for the certificate (leave blank to omit):', '') ;
+            if (name === null) return;
+            const html = window.DefibSim.certificateHtml(state, name.trim());
+            const w = window.open('', '_blank');
+            if (w && w.document) {
+                w.document.open(); w.document.write(html); w.document.close();
+                const go = () => { try { w.focus(); w.print(); } catch (e) {} };
+                if (w.document.readyState === 'complete') setTimeout(go, 300); else w.addEventListener('load', () => setTimeout(go, 300));
+                return;
+            }
+            const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Certificate_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
+        };
         const [filter, setFilter] = useState('all');
         const [replayIdx, setReplayIdx] = useState(null);
         // WAVE 4b / D1: keyed on state.runId — a genuinely unique id minted per RUN by the engine.
@@ -293,6 +309,7 @@
                         </p>
                     </div>
                     <div className="flex gap-2">
+                        {defibSim && <Button onClick={printCertificate} variant="secondary" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
                         <Button onClick={() => generateReport('print')} variant="secondary" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
                         <Button onClick={() => generateReport('download')} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
                         <Button onClick={onExit} variant="danger">Exit to Menu</Button>
@@ -301,6 +318,30 @@
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
                     <div className="overflow-y-auto space-y-4 pr-2">
+                        {defibReview && (
+                            <div className="bg-slate-800 p-4 rounded-lg border border-amber-700/60" data-testid="defib-feedback">
+                                <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Lucide icon="zap" className="w-4 h-4 text-amber-400"/> Defib Sim feedback</h3>
+                                <p className="text-xs text-slate-400 mb-3">{defibSim.name} &middot; {defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>
+                                {defibReview.outcome && (
+                                    <div className={`mb-3 p-2 rounded border ${defibReview.outcome.ok ? 'border-emerald-600 bg-emerald-950/40 text-emerald-300' : 'border-amber-600 bg-amber-950/40 text-amber-300'}`}>
+                                        <div className="font-bold">{defibReview.outcome.ok ? '\u2713' : '\u26a0'} {defibReview.outcome.title}</div>
+                                        <div className="text-xs text-slate-300">{defibReview.outcome.text}</div>
+                                    </div>
+                                )}
+                                {defibReview.good.length > 0 && (
+                                    <div className="mb-2 border-l-4 border-emerald-500 bg-emerald-950/20 p-2 rounded">
+                                        <div className="text-xs font-bold text-emerald-400 uppercase mb-1">Good practice</div>
+                                        <ul className="text-sm text-slate-200 space-y-0.5">{defibReview.good.map(g => <li key={g}>{'\u2713'} {g}</li>)}</ul>
+                                    </div>
+                                )}
+                                {defibReview.improve.length > 0 && (
+                                    <div className="border-l-4 border-red-500 bg-red-950/20 p-2 rounded">
+                                        <div className="text-xs font-bold text-red-400 uppercase mb-1">Areas for improvement</div>
+                                        <ul className="text-sm text-slate-200 space-y-0.5">{defibReview.improve.map(g => <li key={g}>{'\u26a0'} {g}</li>)}</ul>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
                             {/* A5: with no scenario there are no objectives and therefore no score.

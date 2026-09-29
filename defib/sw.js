@@ -30,6 +30,7 @@ const ASSETS_TO_CACHE = [
   '../data/screens/setup.js',
   '../data/screens/monitor.js',
   '../data/screens/livesim.js',
+  '../data/screens/defibsim.js',
   '../data/screens/debrief.js',
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/react@18/umd/react.production.min.js',

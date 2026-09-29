@@ -138,6 +138,12 @@
         pacing: { electrical: false, mechanical: false, underlying: null, pre: null },
         // Defib Sim: the CPR metronome plays on the learner's defib tablet.
         metronomeOn: false,
+        // The current cardiac arrest, for the RCUK drug prompts and the debrief: when it began (sim
+        // seconds, null when there is no arrest), shocks delivered during it and the sim times of
+        // each adrenaline and amiodarone dose. A new arrest starts a new record.
+        arrest: { since: null, shocks: 0, adrenaline: [], amiodarone: [] },
+        // Defib Sim custom scenarios: which step is running and since when (sim seconds).
+        defibStep: null,
         // What each linked defib tablet is showing (sessions/<CODE>/deviceState). Controller-only:
         // never part of the sync payload.
         deviceMirror: {},
@@ -1692,6 +1698,9 @@
                     showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
                     pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
+                    arrest: { since: RG.isPulseless(initialRhythm) ? 0 : null, shocks: 0, adrenaline: [], amiodarone: [] },
+                    defibStep: (action.payload.defibSim && Array.isArray(action.payload.defibSim.steps) && action.payload.defibSim.steps.length)
+                        ? { index: 0, since: 0, done: false } : null,
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
                     // would hand every session the same object.
                     activeInterventions: new Set(),
@@ -1717,6 +1726,11 @@
                     // state rather than in a useRef that reset to zero.
                     defib: { ...initialCoreState.defib, ...(p.defib || {}) },
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, p.defibSettings),
+                    arrest: (p.arrest && typeof p.arrest === 'object')
+                        ? { since: Number.isFinite(p.arrest.since) ? p.arrest.since : null, shocks: Number(p.arrest.shocks) || 0,
+                            adrenaline: Array.isArray(p.arrest.adrenaline) ? p.arrest.adrenaline : [], amiodarone: Array.isArray(p.arrest.amiodarone) ? p.arrest.amiodarone : [] }
+                        : initialCoreState.arrest,
+                    defibStep: (p.defibStep && Number.isFinite(p.defibStep.index)) ? { index: p.defibStep.index, since: Number(p.defibStep.since) || 0, done: !!p.defibStep.done } : null,
                     lastConversion: p.lastConversion || null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
@@ -1813,14 +1827,33 @@
                 };
                 // A new rhythm starts a new episode for the fixed-count shock and rhythm-check rules.
                 const defibAfter = ev.converted ? { ...state.defib, episodeShocks: 0, adrChecks: 0 } : state.defib;
-                return { ...state, rhythm: to, rhythmEvent: ev, lastConversion: ev.converted ? ev : state.lastConversion, defib: defibAfter };
+                // Arrest bookkeeping: entering a pulseless rhythm from one with a pulse starts a new
+                // arrest; leaving it ends the arrest (the record stays for the debrief until the next).
+                const arrest0 = state.arrest || initialCoreState.arrest;
+                let arrestAfter = arrest0;
+                if (RG.isPulseless(to) && arrest0.since === null) arrestAfter = { since: Number(state.time) || 0, shocks: 0, adrenaline: [], amiodarone: [] };
+                else if (!RG.isPulseless(to) && arrest0.since !== null) arrestAfter = { ...arrest0, since: null };
+                return { ...state, rhythm: to, rhythmEvent: ev, lastConversion: ev.converted ? ev : state.lastConversion, defib: defibAfter, arrest: arrestAfter };
             }
             case 'CLEAR_RHYTHM_EVENT': return { ...state, rhythmEvent: null };
             // B5 / A: defibrillator device state + metrics. Merge semantics so a charge does not
             // clobber the running shock tally.
-            case 'SET_DEFIB_STATE': return { ...state, defib: { ...state.defib, ...(action.payload || {}) } };
+            case 'SET_DEFIB_STATE': {
+                const nextDefib = { ...state.defib, ...(action.payload || {}) };
+                const a = state.arrest || initialCoreState.arrest;
+                const shocked = (Number(nextDefib.shockCount) || 0) > (Number(state.defib && state.defib.shockCount) || 0);
+                return { ...state, defib: nextDefib, arrest: shocked && a.since !== null ? { ...a, shocks: a.shocks + 1 } : a };
+            }
+            case 'SET_DEFIB_STEP': return { ...state, defibStep: action.payload ? { ...(state.defibStep || {}), ...action.payload } : null };
+            // Device artefacts shown on the learner's defib: only these keys, only booleans.
+            case 'SET_NOISE': {
+                const n = { ...(state.noise || {}) };
+                ['interference', 'movement', 'leadoff'].forEach(k => { if (action.payload && action.payload[k] !== undefined) n[k] = !!action.payload[k]; });
+                return { ...state, noise: n };
+            }
             case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
             case 'SET_DEFIB_SETTINGS': return { ...state, defibSettings: cleanDefibSettings(state.defibSettings, action.payload) };
+            case 'SET_PACING_THRESHOLD': return { ...state, pacingThreshold: Math.max(10, Math.min(140, Math.round(Number(action.payload) || state.pacingThreshold))) };
             case 'SET_PACING': return { ...state, pacing: { ...state.pacing, ...(action.payload || {}) } };
             case 'SET_METRONOME': return { ...state, metronomeOn: !!action.payload };
             case 'SET_DEVICE_MIRROR': return { ...state, deviceMirror: action.payload || {} };
@@ -1871,7 +1904,10 @@
                     revived[existing] = { ...revived[existing], stopTime: -1 };
                     return { ...state, activeDrugs: revived };
                 }
-                return { ...state, activeDrugs: [...(state.activeDrugs || []), action.payload] };
+                const a = state.arrest || initialCoreState.arrest;
+                const arrestKey = action.payload.key === 'AdrenalineIV' ? 'adrenaline' : (action.payload.key === 'Amiodarone' ? 'amiodarone' : null);
+                const arrestAfter = arrestKey && a.since !== null ? { ...a, [arrestKey]: [...a[arrestKey], Number(state.time) || 0] } : a;
+                return { ...state, activeDrugs: [...(state.activeDrugs || []), action.payload], arrest: arrestAfter };
             }
             // WAVE 4a / E13: TITRATABLE INFUSIONS. A running infusion was locked to the magnitude it
             // was started at, so noradrenaline, GTN, adrenaline, labetalol and insulin could only be
@@ -2268,7 +2304,8 @@
                         scenario: { patientName: s.patientName, ecg: s.ecg || null, investigations: { ecg: s.investigations?.ecg || null } }
                     } });
                 } else if (data.type === 'DEVICE_MODE') {
-                    dispatch({ type: 'SET_DEFIB_STATE', payload: { mode: data.payload.mode } });
+                    // Logged like the Firebase path, so the debrief sees the same record either way.
+                    setDefibMode(data.payload.mode, 'student (standalone defib)');
                     if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
                         dispatch({ type: 'SET_ARREST_PANEL', payload: true });
                     }
@@ -2701,7 +2738,8 @@
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
                         showWetflag: cur.showWetflag, icp: cur.icp,
                         // B5: shock count / cumulative energy must survive a resume.
-                        defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings
+                        defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings,
+                        arrest: cur.arrest, defibStep: cur.defibStep
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
                 } catch (e) {
@@ -3882,6 +3920,7 @@
             addLogEntry(`Shock delivered ${j}J${sync ? ' (SYNC)' : ''} (${source})`, 'danger', true);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${j}J`, type: 'danger', id: Date.now() } });
             setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
+            if (stepsRunning(cur)) { customStepShock(cur, j, sync); return; }
             if (sync) applyCardioversion(cur, { energy: j, source });
             else applyShockOutcome(cur, { energy: j, sync: false, source });
         }
@@ -3909,6 +3948,7 @@
             const result = shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED';
             dispatch({ type: 'SET_DEFIB_STATE', payload: { analysing: false, lastAnalysis: { result, rhythm: RG.canonical(cur.rhythm), at: Date.now() } } });
             addLogEntry(`Defib analysis (${source}): ${result} — ${RG.labelFor(cur.rhythm)}`, 'action');
+            defibStepTrigger('analyse');
             return result;
         };
         const setQueuedRhythm = (r) => {
@@ -3927,6 +3967,76 @@
                 ? `CPR started (${source}) — arrest ETCO2, compression artefact and the ROSC bonus are now active. Aim for 100-120/min, minimise pauses.`
                 : `CPR stopped (${source}).`, next ? 'action' : 'warning', !next && RG.isPulseless(cur.rhythm));
         };
+
+        // =====================================================================================
+        // DEFIB SIM CUSTOM SCENARIOS. The facilitator's sequence of rhythms decides what happens:
+        // each step moves on at its trigger (a rhythm analysis, a shock, pacing capture or a
+        // timer). While a sequence runs, a shock never converts the rhythm by itself — only a
+        // step whose trigger is "shock" moves on (and a shock on the LAST such step converts to
+        // sinus rhythm), exactly as in the standalone Defib-sim.
+        // =====================================================================================
+        const DEFIB_TRIGGER_LABELS = { analyse: 'on analyse', shock: 'on shock', capture: 'on pacing capture', timer_30: 'after 30 s', timer_60: 'after 60 s', timer_120: 'after 2 min' };
+        const defibSteps = (cur) => (cur.scenario && cur.scenario.defibSim && Array.isArray(cur.scenario.defibSim.steps)) ? cur.scenario.defibSim.steps : [];
+        const stepsRunning = (cur) => !!(cur.defibStep && !cur.defibStep.done && defibSteps(cur).length);
+        const goToDefibStep = (index, cause = 'facilitator') => {
+            const cur = stateRef.current;
+            const steps = defibSteps(cur);
+            if (!steps.length) return;
+            const i = Math.max(0, Math.floor(Number(index) || 0));
+            if (i >= steps.length) {
+                dispatch({ type: 'SET_DEFIB_STEP', payload: { index: steps.length, since: Number(cur.time) || 0, done: true } });
+                addLogEntry(`Custom scenario complete (${cause}).`, 'success');
+                return;
+            }
+            const step = steps[i];
+            const to = RG.canonical(step.rhythm);
+            dispatch({ type: 'SET_DEFIB_STEP', payload: { index: i, since: Number(cur.time) || 0, done: false } });
+            addLogEntry(`Custom scenario: step ${i + 1}/${steps.length} — ${RG.labelFor(to)} (moves on ${DEFIB_TRIGGER_LABELS[step.trigger] || step.trigger}; ${cause})`, 'system');
+            if (to === RG.canonical(cur.rhythm)) return;
+            if (RG.isPulseless(to) && !RG.isPulseless(cur.rhythm)) triggerArrest(to, `custom scenario step ${i + 1}`);
+            else if (!RG.isPulseless(to) && RG.isPulseless(cur.rhythm)) triggerROSC(to, `custom scenario step ${i + 1}`);
+            else changeRhythm(to, `custom scenario step ${i + 1}`);
+        };
+        const defibStepTrigger = (kind) => {
+            const cur = stateRef.current;
+            if (!stepsRunning(cur)) return;
+            const step = defibSteps(cur)[cur.defibStep.index];
+            if (step && step.trigger === kind) goToDefibStep(cur.defibStep.index + 1, DEFIB_TRIGGER_LABELS[kind] || kind);
+        };
+        // A shock while a sequence runs: counted, logged, and it moves the sequence on only when the
+        // current step says so.
+        const customStepShock = (cur, joules, sync) => {
+            const d = cur.defib || {};
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { shockCount: (d.shockCount || 0) + 1, totalEnergy: (d.totalEnergy || 0) + joules, lastEnergy: joules, lastShockAt: Date.now(), charged: false, chargeEnergy: null } });
+            const steps = defibSteps(cur);
+            const index = cur.defibStep.index;
+            const step = steps[index];
+            if (!step || step.trigger !== 'shock') {
+                changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync, note: 'no change (custom scenario step)' });
+                return;
+            }
+            setTimeout(() => {
+                const now = stateRef.current;
+                if (!now.defibStep || now.defibStep.done || now.defibStep.index !== index) return;
+                if (index + 1 >= steps.length) {
+                    dispatch({ type: 'SET_DEFIB_STEP', payload: { index: steps.length, since: Number(now.time) || 0, done: true } });
+                    if (RG.isPulseless(now.rhythm)) triggerROSC('Sinus Rhythm', 'defibrillation (custom scenario)', { energy: joules });
+                    else changeRhythm('Sinus Rhythm', 'cardioversion (custom scenario)', { energy: joules, sync });
+                    addLogEntry('Custom scenario complete: the final shock converted the rhythm.', 'success');
+                    return;
+                }
+                goToDefibStep(index + 1, 'on shock');
+            }, 1000);
+        };
+        // Timer steps run on the sim clock, so they pause with the scenario.
+        useEffect(() => {
+            if (isMonitorMode) return;
+            const cur = stateRef.current;
+            if (!stepsRunning(cur) || !cur.isRunning) return;
+            const step = defibSteps(cur)[cur.defibStep.index];
+            const m = /^timer_(\d+)$/.exec((step && step.trigger) || '');
+            if (m && (Number(cur.time) || 0) - (Number(cur.defibStep.since) || 0) >= Number(m[1])) goToDefibStep(cur.defibStep.index + 1, DEFIB_TRIGGER_LABELS[step.trigger]);
+        }, [isMonitorMode, state.time]);
 
         // =====================================================================================
         // TRANSCUTANEOUS PACING, AS THE DEVICE DELIVERS IT.
@@ -3970,6 +4080,8 @@
                 changeRhythm('Paced', 'pacing', { note: `electrical capture at ${output}mA, ${rate}/min` });
                 dispatch({ type: 'UPDATE_VITALS', payload: { hr: rate } });
                 addLogEntry(`Pacing: ELECTRICAL capture at ${output}mA, ${rate}/min. Confirm MECHANICAL capture — a palpable pulse at the paced rate. Pacing hurts: give analgesia and sedation.`, 'success');
+                // After this render, so the step's rhythm follows the capture rather than racing it.
+                setTimeout(() => defibStepTrigger('capture'), 0);
                 return;
             }
             if (!electrical && pacing.electrical) {
@@ -4048,7 +4160,8 @@
                 }
                 return;
             }
-            nonShockableRhythmCheck(cur);
+            // A custom sequence decides the rhythm itself.
+            if (!stepsRunning(cur)) nonShockableRhythmCheck(cur);
         };
 
         // PEA and asystole have no shock to convert them: ROSC comes from good CPR, adrenaline and
@@ -4495,6 +4608,14 @@
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,
+        // Defib Sim controller
+        goToDefibStep,
+        setMetronome: (on) => { dispatch({ type: 'SET_METRONOME', payload: !!on }); addLogEntry(`CPR metronome ${on ? 'ON' : 'OFF'} (on the defib)`, 'system'); },
+        setNoise: (patch) => {
+            dispatch({ type: 'SET_NOISE', payload: patch });
+            const names = { interference: 'mains interference', movement: 'movement artefact', leadoff: 'lead off' };
+            Object.keys(patch || {}).forEach(k => { if (names[k]) addLogEntry(`Artefact: ${names[k]} ${patch[k] ? 'ON' : 'OFF'}`, 'system'); });
+        },
         setDefibSettings: (patch) => { dispatch({ type: 'SET_DEFIB_SETTINGS', payload: patch }); addLogEntry(`Shock response settings: ${Object.keys(patch || {}).map(k => `${k} = ${patch[k]}`).join(', ')}`, 'system'); },
         sendDeviceEvent, recommendedShockEnergy,
         defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,

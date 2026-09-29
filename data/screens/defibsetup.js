@@ -95,11 +95,11 @@
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <button type="button" onClick={() => setMode('education')} className={optionClass(mode === 'education')} aria-pressed={mode === 'education'}>
                             <div className="font-bold">Education</div>
-                            <div className="text-xs text-slate-400">Pulse-check results and RCUK hints on the defib; drug prompts shown.</div>
+                            <div className="text-xs text-slate-400">Pulse-check results and RCUK hint cards on the defib.</div>
                         </button>
                         <button type="button" onClick={() => setMode('assessment')} className={optionClass(mode === 'assessment')} aria-pressed={mode === 'assessment'}>
                             <div className="font-bold">Assessment</div>
-                            <div className="text-xs text-slate-400">No pulse-check results, hints or prompts for the learner. Feedback in the debrief.</div>
+                            <div className="text-xs text-slate-400">No pulse-check results or hint cards on the defib. Feedback in the debrief.</div>
                         </button>
                     </div>
                 </div>
