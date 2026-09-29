@@ -730,7 +730,7 @@
                          if (groups[group].length === 0) return null;
                          return (
                              <div key={group}>
-                                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-1 border-b border-slate-700 pb-1">{group}</h4>
+                                 <h4 className="text-xs font-bold text-slate-400 uppercase mb-1 border-b border-slate-700 pb-1">{group}</h4>
                                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                      {groups[group].map(key => renderActionBtn(key))}
                                  </div>
@@ -880,7 +880,7 @@
                             <div>
                                 <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">{rhythmEvent.converted ? 'Rhythm converted' : 'Rhythm unchanged'}</div>
                                 <div className="font-bold text-white text-sm">
-                                    {RG.labelFor(rhythmEvent.from)} <span className="text-slate-500">&rarr;</span> {RG.labelFor(rhythmEvent.to)}
+                                    {RG.labelFor(rhythmEvent.from)} <span className="text-slate-400">&rarr;</span> {RG.labelFor(rhythmEvent.to)}
                                 </div>
                                 <div className="text-[10px] text-amber-300/80">{rhythmEvent.detail || rhythmEvent.cause}</div>
                             </div>
@@ -896,7 +896,7 @@
                 <div className="md:hidden mb-2">
                     <div className="flex items-center gap-2 mb-1">
                         <div className="min-w-0 flex-1">
-                            <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold leading-none">Obs &middot; tap to change</div>
+                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change</div>
                             <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
                         </div>
                         <div className="font-mono text-xl font-bold text-white">{formatTime(time)}</div>
@@ -1080,7 +1080,7 @@
                                     );
                                 })}
                             </div>
-                            <div className="text-[9px] text-slate-500 mt-1 leading-relaxed">&#9679; attached (click to remove — its trace and number go blank on the team's monitor) &middot; &#9675; not attached (click to attach). POC checks show the value at the moment taken; click again to resample.</div>
+                            <div className="text-[9px] text-slate-400 mt-1 leading-relaxed">&#9679; attached (click to remove — its trace and number go blank on the team's monitor) &middot; &#9675; not attached (click to attach). POC checks show the value at the moment taken; click again to resample.</div>
                         </div>
 
                         <div className="flex-none bg-black border border-slate-800 rounded relative overflow-hidden">
@@ -1130,8 +1130,8 @@
                                              className="h-full"/>
                                  {!sensors.any && (
                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black z-10 p-2 text-center">
-                                         <div className="text-slate-500 text-xs font-mono uppercase tracking-widest">No monitoring attached</div>
-                                         <div className="text-[10px] text-slate-600">The team's monitor reads "No sensor detected".</div>
+                                         <div className="text-slate-400 text-xs font-mono uppercase tracking-widest">No monitoring attached</div>
+                                         <div className="text-[10px] text-slate-400">The team's monitor reads "No sensor detected".</div>
                                          <Button onClick={attachStandard} variant="primary" className="min-h-8 h-auto py-1 px-3 max-w-full text-[11px] uppercase font-bold leading-tight text-center"
                                                  title="Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe.">
                                              Attach standard monitoring
@@ -1177,7 +1177,7 @@
                                         const colour = phase === 'onset' ? 'text-slate-400' : (phase === 'rising' ? 'text-amber-300' : (phase === 'wearing off' ? 'text-orange-300' : 'text-emerald-300'));
                                         return (
                                             <div key={`${d.key}-${d.startTime}-${i}`} className="flex items-center justify-between gap-2 text-[11px] border-b border-slate-800 last:border-0 pb-0.5">
-                                                <span className="text-slate-200 truncate">{d.label || d.key}{d.route ? <span className="text-slate-500"> &middot; {d.route}</span> : null}</span>
+                                                <span className="text-slate-200 truncate">{d.label || d.key}{d.route ? <span className="text-slate-400"> &middot; {d.route}</span> : null}</span>
                                                 <span className={`font-mono font-bold uppercase shrink-0 ${colour}`}>{phase}{(remaining !== null && remaining !== undefined) ? ` ${Math.round(remaining / 60)}m` : ''} {Math.round(Math.min(1, f) * 100)}%</span>
                                                 {/* TITRATION. A running infusion can be turned up or down
                                                     while it runs - the defining skill of vasoactive infusions. */}
@@ -1275,7 +1275,7 @@
                                         );
                                     })}
                                 </div>
-                                <div className="text-[9px] text-slate-500 mt-1">Effects are added on top of the underlying physiology and wear off on their own. A drug in ONSET has not started acting yet — the countdown says when it will.</div>
+                                <div className="text-[9px] text-slate-400 mt-1">Effects are added on top of the underlying physiology and wear off on their own. A drug in ONSET has not started acting yet — the countdown says when it will.</div>
                             </div>
                         )}
                         
@@ -1323,7 +1323,7 @@
                         {/* Wraps onto two lines in a narrow panel rather than pushing past its edge
                             (which put a horizontal scrollbar under the monitor panel). */}
                         <div className="flex-none flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-500 border-slate-600'}`}
+                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
                                  <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
                             </Button>
@@ -1337,7 +1337,7 @@
                         </div>
 
                         {isPaeds && (
-                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} className={`w-full flex-none mt-1 ${!showWetflag ? 'text-slate-500 border-slate-600' : 'text-purple-400 border-purple-500/50 bg-purple-900/20'}`}>
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} className={`w-full flex-none mt-1 ${!showWetflag ? 'text-slate-400 border-slate-600' : 'text-purple-400 border-purple-500/50 bg-purple-900/20'}`}>
                                 <Lucide icon="baby" className="w-4 h-4 mr-1"/> {showWetflag ? 'Hide WETFLAG on Monitor' : 'Show WETFLAG on Monitor'}
                             </Button>
                         )}
@@ -1363,16 +1363,16 @@
                                     <div className="text-xs font-bold text-amber-300 truncate">
                                         {lastConversion
                                             ? `${RG.labelFor(lastConversion.from)} \u2192 ${RG.labelFor(lastConversion.to)}`
-                                            : <span className="text-slate-500">none yet</span>}
+                                            : <span className="text-slate-400">none yet</span>}
                                     </div>
                                     {lastConversion && <div className="text-[10px] text-slate-400 truncate">{lastConversion.detail || lastConversion.cause}</div>}
                                 </div>
                             </div>
                             <div className="mt-1 grid grid-cols-4 gap-1 text-center bg-black/40 rounded p-1">
-                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">Shocks</div><div className="font-mono font-bold text-white">{defib.shockCount || 0}</div></div>
-                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">Total J</div><div className="font-mono font-bold text-white">{defib.totalEnergy || 0}</div></div>
-                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">Last J</div><div className="font-mono font-bold text-white">{defib.lastEnergy ?? '\u2014'}</div></div>
-                                <div><div className="text-[9px] uppercase text-slate-500 font-bold">CPR</div><div className={`font-mono font-bold ${cprInProgress ? 'text-red-400 animate-pulse' : 'text-slate-500'}`}>{cprInProgress ? 'ON' : 'off'}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Shocks</div><div className="font-mono font-bold text-white">{defib.shockCount || 0}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Total J</div><div className="font-mono font-bold text-white">{defib.totalEnergy || 0}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Last J</div><div className="font-mono font-bold text-white">{defib.lastEnergy ?? '\u2014'}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">CPR</div><div className={`font-mono font-bold ${cprInProgress ? 'text-red-400 animate-pulse' : 'text-slate-400'}`}>{cprInProgress ? 'ON' : 'off'}</div></div>
                             </div>
                         </div>
 
@@ -1422,10 +1422,10 @@
                                      </div>
                                      <div className="flex flex-wrap gap-1">
                                         {RG.SELECTABLE.filter(r => RG.isRoscEligible(r) || RG.inArrest(r)).map(r => (
-                                            <button key={r} onClick={() => sim.setQueuedRhythm(r)} className={`px-2 py-1 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>{RG.shortFor(r)}</button>
+                                            <button key={r} onClick={() => sim.setQueuedRhythm(r)} className={`px-2 py-1 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>{RG.shortFor(r)}</button>
                                         ))}
                                      </div>
-                                     <div className="text-[9px] text-slate-500 mt-1">Leave unset to let the outcome model decide (energy, rhythm, CPR and drugs all count).</div>
+                                     <div className="text-[9px] text-slate-400 mt-1">Leave unset to let the outcome model decide (energy, rhythm, CPR and drugs all count).</div>
                                  </div>
 
                                  {/* How shocks and rhythm checks resolve (engine: state.defibSettings). */}
@@ -1470,7 +1470,7 @@
                     <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
                             <div className="flex-1 min-w-[12rem]">
-                                <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Rhythm</div>
+                                <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Rhythm</div>
                                 <div className="text-sm font-bold text-white">{RG.labelFor(state.rhythm)}</div>
                             </div>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
@@ -1522,7 +1522,7 @@
                                             <button onClick={() => startPreset(p)} title={p.description}
                                                 className={`w-full p-2 pr-6 rounded border text-left text-[11px] font-bold leading-tight min-h-[2.75rem] ${presetView && presetView.name === p.name ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>
                                                 {p.name}
-                                                <div className="text-[9px] font-normal text-slate-400">{p.steps.length} step{p.steps.length === 1 ? '' : 's'}{p.user ? ' \u00b7 saved' : ''}{p.steps.some(x => x.wait) ? ' \u00b7 waits for you' : ''}</div>
+                                                <div className="text-[9px] font-normal text-slate-300">{p.steps.length} step{p.steps.length === 1 ? '' : 's'}{p.user ? ' \u00b7 saved' : ''}{p.steps.some(x => x.wait) ? ' \u00b7 waits for you' : ''}</div>
                                             </button>
                                             {p.user && <button aria-label={`Delete preset ${p.name}`} onClick={() => deletePreset(p)} className="absolute top-1 right-1 text-slate-400 hover:text-red-400"><Lucide icon="x" className="w-3 h-3"/></button>}
                                         </div>
@@ -1538,7 +1538,7 @@
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Select rhythm ({RG.SELECTABLE.length})</div>
                                 {/* The precedence rule, documented in the Quick Sim pane where
                                     the HR-then-rhythm sequence is most commonly used. */}
-                                <div className="text-[9px] text-slate-500 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
+                                <div className="text-[9px] text-slate-400 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                     {RG.SELECTABLE.map(r => {
                                         const isCur = state.rhythm === r;
@@ -1546,7 +1546,7 @@
                                         return (
                                             <button key={r} onClick={() => changeRhythm(r, 'manual selection')}
                                                 title={`${RG.labelFor(r)}${RG.isShockable(r) ? ' — shockable' : ''}${RG.isPulseless(r) ? ' — pulseless' : ''}`}
-                                                className={`p-2 rounded border text-left text-[11px] font-bold leading-tight min-h-[3rem] ${isCur ? 'bg-sky-600 border-sky-400 text-white' : arrest ? 'bg-red-950/40 border-red-800/70 text-red-200 hover:bg-red-900/40' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>
+                                                className={`p-2 rounded border text-left text-[11px] font-bold leading-tight min-h-[3rem] ${isCur ? 'bg-sky-700 border-sky-400 text-white' : arrest ? 'bg-red-950/40 border-red-800/70 text-red-200 hover:bg-red-900/40' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>
                                                 {RG.labelFor(r)}
                                                 <div className="mt-0.5 flex gap-1 flex-wrap">
                                                     {RG.isShockable(r) && <span className="text-[8px] uppercase tracking-wider px-1 rounded bg-red-900/70 border border-red-600 text-red-200">shock</span>}
@@ -1564,10 +1564,10 @@
                             <div>
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Event log ({state.log.length})</div>
                                 <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 overflow-y-auto">
-                                    {state.log.length === 0 && <div className="text-slate-500 text-center py-4">Nothing logged yet. Attach monitoring, press START, then change the obs or the rhythm.</div>}
+                                    {state.log.length === 0 && <div className="text-slate-400 text-center py-4">Nothing logged yet. Attach monitoring, press START, then change the obs or the rhythm.</div>}
                                     {state.log.slice().reverse().map((entry, i) => (
                                         <div key={i} className={`flex gap-3 border-b border-slate-800 last:border-0 pb-0.5 ${entry.flagged ? 'bg-amber-900/20 -mx-1 px-1 rounded' : ''}`}>
-                                            <span className="text-slate-500 w-12 flex-shrink-0">{entry.simTime}</span>
+                                            <span className="text-slate-400 w-12 flex-shrink-0">{entry.simTime}</span>
                                             <span className={`flex-grow ${entry.type==='danger' ? 'text-red-400 font-bold' : entry.type==='warning' ? 'text-amber-300 font-bold' : entry.type==='success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>{entry.msg}</span>
                                         </div>
                                     ))}
@@ -1588,7 +1588,7 @@
                                 {searchResults.map(key => (
                                     <button key={key} onClick={() => { applyIntervention(key); setSearchTerm(""); setSearchResults([]); }} className="w-full text-left p-3 hover:bg-slate-700 border-b border-slate-700 last:border-0 flex justify-between items-center group">
                                         <span className="font-bold text-sky-400">{INTERVENTIONS[key].label}{INTERVENTIONS[key].route && INTERVENTIONS[key].route !== 'n/a' ? <span className="ml-2 text-[10px] font-normal text-slate-400 uppercase tracking-wide">{INTERVENTIONS[key].route}</span> : null}</span>
-                                        <span className="text-xs text-slate-500 uppercase">{INTERVENTIONS[key].category}</span>
+                                        <span className="text-xs text-slate-400 uppercase">{INTERVENTIONS[key].category}</span>
                                     </button>
                                 ))}
                             </div>
@@ -1614,7 +1614,7 @@
                             scrollbar is left visible, otherwise there is no cue the later tabs exist. */}
                         <div className="flex flex-wrap md:flex-nowrap md:overflow-x-auto bg-slate-900 border-b border-slate-700">
                              {['Common', 'Drugs', 'Airway', 'Breathing', 'Circulation', 'Procedures', 'Investigations', 'Voice', 'Assessment'].map(cat => (
-                                 <button key={cat} onClick={() => setActiveTab(cat)} className={`px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'} ${cat === 'Assessment' ? 'md:ml-auto border-l border-slate-700 text-amber-400' : ''}`}>{cat}</button>
+                                 <button key={cat} onClick={() => setActiveTab(cat)} className={`px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-400 hover:text-slate-300'} ${cat === 'Assessment' ? 'md:ml-auto border-l border-slate-700 text-amber-400' : ''}`}>{cat}</button>
                              ))}
                         </div>
                         
@@ -1629,8 +1629,8 @@
                                                 <div key={skill} className="flex items-center justify-between bg-slate-900 p-3 rounded border border-slate-700">
                                                     <span className="text-sm font-bold text-slate-200">{skill}</span>
                                                     <div className="flex gap-2">
-                                                        <button aria-label={`Mark ${skill} as needing improvement`} onClick={()=>setAssessments({...assessments, [skill]: false})} className={`p-2 rounded border ${assessments[skill] === false ? 'bg-red-600 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-500'}`}><Lucide icon="x" className="w-4 h-4"/></button>
-                                                        <button aria-label={`Mark ${skill} as achieved`} onClick={()=>setAssessments({...assessments, [skill]: true})} className={`p-2 rounded border ${assessments[skill] === true ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-500'}`}><Lucide icon="check" className="w-4 h-4"/></button>
+                                                        <button aria-label={`Mark ${skill} as needing improvement`} onClick={()=>setAssessments({...assessments, [skill]: false})} className={`p-2 rounded border ${assessments[skill] === false ? 'bg-red-600 border-red-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}><Lucide icon="x" className="w-4 h-4"/></button>
+                                                        <button aria-label={`Mark ${skill} as achieved`} onClick={()=>setAssessments({...assessments, [skill]: true})} className={`p-2 rounded border ${assessments[skill] === true ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-slate-800 border-slate-600 text-slate-400'}`}><Lucide icon="check" className="w-4 h-4"/></button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -1709,8 +1709,8 @@
                             <div className="flex-1 overflow-y-auto bg-slate-900 p-4 rounded border border-slate-700 font-mono text-sm space-y-2">
                                 {state.log.map((entry, i) => (
                                     <div key={i} className={`flex gap-4 border-b border-slate-800 pb-1 items-center ${entry.flagged ? 'bg-amber-900/20 -mx-2 px-2' : ''}`}>
-                                        <button aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({type: 'TOGGLE_FLAG', payload: i})} className={`text-slate-500 hover:text-amber-500 transition-colors ${entry.flagged ? 'text-amber-500' : ''}`}><Lucide icon="flag" className="w-4 h-4"/></button>
-                                        <span className="text-slate-500 w-20 flex-shrink-0">{entry.simTime}</span>
+                                        <button aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({type: 'TOGGLE_FLAG', payload: i})} className={`text-slate-400 hover:text-amber-500 transition-colors ${entry.flagged ? 'text-amber-500' : ''}`}><Lucide icon="flag" className="w-4 h-4"/></button>
+                                        <span className="text-slate-400 w-20 flex-shrink-0">{entry.simTime}</span>
                                         <span className={`flex-grow ${entry.type==='danger' ? 'text-red-400 font-bold' : entry.type==='warning' ? 'text-amber-300 font-bold' : entry.type==='success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>{entry.msg}</span>
                                     </div>
                                 ))}
@@ -1725,8 +1725,8 @@
                              <h3 className="text-lg font-bold text-white mb-1 uppercase tracking-wider">Manual NIBP reading</h3>
                              <p className="text-[10px] text-slate-400 mb-4">Shows this one reading on the team's NIBP without changing the patient's BP — the next cuff cycle measures the real value again. To change the patient's BP, use the BP tile.</p>
                              <div className="space-y-4">
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">Systolic</label><input type="number" value={nibpSys} onChange={e=>setNibpSys(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={nibpDia} onChange={e=>setNibpDia(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">Systolic</label><input aria-label="Systolic" type="number" value={nibpSys} onChange={e=>setNibpSys(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input aria-label="Diastolic" type="number" value={nibpDia} onChange={e=>setNibpDia(e.target.value)} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>
                                 {nibpError && <div className="bg-red-900/30 border border-red-600 rounded p-2 text-red-200 text-xs font-bold text-center">{nibpError}</div>}
                                 <div className="grid grid-cols-2 gap-2">
                                     <Button onClick={() => { if (nibpError) return; sim.dispatch({type: 'SET_NIBP', payload: {sys: parseFloat(nibpSys), dia: parseFloat(nibpDia)}}); setShowNIBPModal(false); addLogEntry(`NIBP Manual: ${nibpSys}/${nibpDia}`, 'manual'); }} variant="primary" disabled={!!nibpError} className={`h-12 text-sm ${nibpError ? 'opacity-40 cursor-not-allowed' : ''}`}>Send Value</Button>
@@ -1793,8 +1793,8 @@
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Set {VITAL_NAMES[modalVital] || modalVital}</h3>
                             {/* Enter confirms from either field, so a value can be typed and sent without the mouse. */}
                             <div className="space-y-4" onKeyDown={e => { if (e.key === 'Enter' && e.target && e.target.type === 'number') { e.preventDefault(); confirmVitalUpdate(); } }}>
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
-                                {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input aria-label="{modalVital === 'bp' ? 'Systolic' : 'Target'}" type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input aria-label="Diastolic" type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
                                 {modalVital === 'etco2' && (
                                     <div>
@@ -1821,7 +1821,7 @@
                                 <div>
                                     <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Get there</label>
                                     <div className="grid grid-cols-4 gap-1">
-                                        {[[0, 'Now'], [30, '30 s'], [120, '2 min'], [300, '5 min']].map(([d, lbl]) => <button key={d} onClick={()=>setTrendDuration(d)} aria-pressed={trendDuration===d} className={`p-2 rounded text-[11px] font-bold border ${trendDuration===d ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>{lbl}</button>)}
+                                        {[[0, 'Now'], [30, '30 s'], [120, '2 min'], [300, '5 min']].map(([d, lbl]) => <button key={d} onClick={()=>setTrendDuration(d)} aria-pressed={trendDuration===d} className={`p-2 rounded text-[11px] font-bold border ${trendDuration===d ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>{lbl}</button>)}
                                     </div>
                                 </div>
                                 {modalVital === 'bp' && (
@@ -1855,7 +1855,7 @@
                             <p className="text-[10px] text-slate-400 mb-3">Each rhythm carries a typical rate, which is applied only if you have not set HR yourself. If you have, your HR stands and the log records why — facilitator values are never silently overwritten.</p>
                             <div className="grid grid-cols-3 gap-2">
                                 {RHYTHMS.map(r => (
-                                    <button key={r} onClick={() => { changeRhythm(r, 'manual selection'); setShowRhythmModal(false); }} className={`p-3 text-sm font-bold rounded border ${state.rhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
+                                    <button key={r} onClick={() => { changeRhythm(r, 'manual selection'); setShowRhythmModal(false); }} className={`p-3 text-sm font-bold rounded border ${state.rhythm === r ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`}>
                                         {RG.labelFor(r)}
                                     </button>
                                 ))}
@@ -1874,7 +1874,7 @@
                             </div>
                             <div className="mb-4">
                                 <label className="text-xs text-slate-400 font-bold uppercase">Patient Weight (kg)</label>
-                                <input type="number" min="0.5" max="300" step="0.1" value={drugCalcWeightStr} onChange={e => setDrugCalcWeightStr(e.target.value)} className={`w-full bg-slate-900 border rounded p-2 text-xl font-mono text-white text-center font-bold mt-1 ${drugCalcWeightError ? 'border-red-500' : 'border-slate-500'}`} />
+                                <input aria-label="Patient Weight (kg)" type="number" min="0.5" max="300" step="0.1" value={drugCalcWeightStr} onChange={e => setDrugCalcWeightStr(e.target.value)} className={`w-full bg-slate-900 border rounded p-2 text-xl font-mono text-white text-center font-bold mt-1 ${drugCalcWeightError ? 'border-red-500' : 'border-slate-500'}`} />
                                 {drugCalcWeightError && <div className="text-red-400 text-xs font-bold mt-1">{drugCalcWeightError}</div>}
                             </div>
                             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -1895,7 +1895,7 @@
                                             </div>
                                             <div className="text-right">
                                                 <div className="text-lg font-bold text-sky-400 font-mono">{finalDose.toFixed(1)} {drug.unit}</div>
-                                                <div className="text-[10px] text-slate-500">max {drug.max}{drug.unit}</div>
+                                                <div className="text-[10px] text-slate-400">max {drug.max}{drug.unit}</div>
                                             </div>
                                         </div>
                                     );
@@ -1919,10 +1919,10 @@
                                     <Button onClick={addTimerAlert} variant="primary" className="h-10 px-3">Add</Button>
                                 </div>
                                 {timerAlertError && <div className="text-red-400 text-xs font-bold">{timerAlertError}</div>}
-                                <div className="text-xs text-slate-500">Alerts fire automatically at the set sim time and play a tone.</div>
+                                <div className="text-xs text-slate-400">Alerts fire automatically at the set sim time and play a tone.</div>
                             </div>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
-                                {timerAlerts.length === 0 && <div className="text-slate-500 text-sm text-center py-4">No alerts set</div>}
+                                {timerAlerts.length === 0 && <div className="text-slate-400 text-sm text-center py-4">No alerts set</div>}
                                 {timerAlerts.map(alert => (
                                     <div key={alert.id} className={`flex items-center justify-between p-3 rounded border ${firedAlerts.has(alert.id) ? 'bg-red-900/30 border-red-600' : 'bg-slate-900 border-slate-700'}`}>
                                         <div>
@@ -1930,7 +1930,7 @@
                                             <span className="text-slate-400 text-xs ml-2">@ {alert.mins}min</span>
                                             {firedAlerts.has(alert.id) && <span className="text-red-400 text-xs ml-2 font-bold">FIRED</span>}
                                         </div>
-                                        <button aria-label={`Remove alert: ${alert.msg}`} onClick={() => setTimerAlerts(prev => prev.filter(a => a.id !== alert.id))} className="text-slate-500 hover:text-red-400"><Lucide icon="x" className="w-4 h-4"/></button>
+                                        <button aria-label={`Remove alert: ${alert.msg}`} onClick={() => setTimerAlerts(prev => prev.filter(a => a.id !== alert.id))} className="text-slate-400 hover:text-red-400"><Lucide icon="x" className="w-4 h-4"/></button>
                                     </div>
                                 ))}
                             </div>
@@ -1965,10 +1965,10 @@
                             )}
                             <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Other significant events ({significanceEntries.length})</h4>
                             <div className="flex-1 overflow-y-auto bg-slate-900 p-3 rounded border border-slate-700 font-mono text-xs space-y-1">
-                                {significanceEntries.length === 0 && <div className="text-slate-500 text-center py-4">No other flagged events.</div>}
+                                {significanceEntries.length === 0 && <div className="text-slate-400 text-center py-4">No other flagged events.</div>}
                                 {significanceEntries.map((entry, i) => (
                                     <div key={i} className="flex gap-3">
-                                        <span className="text-slate-500 w-14 flex-shrink-0">{entry.simTime}</span>
+                                        <span className="text-slate-400 w-14 flex-shrink-0">{entry.simTime}</span>
                                         <span className="text-slate-200">{entry.msg}</span>
                                     </div>
                                 ))}
@@ -2005,9 +2005,9 @@
                                                 <div className="text-sm font-bold text-sky-300 uppercase tracking-wider">{l.title}</div>
                                                 {svg
                                                     ? <div className="bg-white p-2 rounded w-48 h-48" dangerouslySetInnerHTML={{ __html: svg }} />
-                                                    : <div className="w-48 h-48 flex items-center justify-center text-xs text-slate-500 text-center">QR code unavailable — use the link below.</div>}
+                                                    : <div className="w-48 h-48 flex items-center justify-center text-xs text-slate-400 text-center">QR code unavailable — use the link below.</div>}
                                                 <div className="text-[10px] text-slate-400 text-center">{l.hint}</div>
-                                                <div className="text-[10px] text-slate-500 font-mono break-all text-center select-all">{l.url}</div>
+                                                <div className="text-[10px] text-slate-400 font-mono break-all text-center select-all">{l.url}</div>
                                             </div>
                                         );
                                     })}

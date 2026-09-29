@@ -5,7 +5,7 @@
         const { Lucide } = window;
         return (
             <button onClick={onClick} disabled={loading} className="flex flex-col items-center justify-center p-1 md:p-2 bg-slate-900 hover:bg-slate-800 border-r border-slate-800 last:border-0 text-slate-400 hover:text-sky-400 hover:bg-slate-800/50 transition-all flex-1 disabled:opacity-50 disabled:cursor-wait group">
-                {loading ? <Lucide icon="loader-2" className="w-5 h-5 md:w-6 md:h-6 animate-spin mb-1"/> : <Lucide icon={icon} className="w-5 h-5 md:w-6 md:h-6 mb-1 text-slate-500 group-hover:text-sky-400 transition-colors"/>}
+                {loading ? <Lucide icon="loader-2" className="w-5 h-5 md:w-6 md:h-6 animate-spin mb-1"/> : <Lucide icon={icon} className="w-5 h-5 md:w-6 md:h-6 mb-1 text-slate-400 group-hover:text-sky-400 transition-colors"/>}
                 <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">{label}</span>
             </button>
         );
@@ -277,7 +277,7 @@
                         <h1 className="text-3xl font-bold tracking-wide mb-2">Simulation complete</h1>
                         <p className="text-slate-300 text-lg mb-4">This session has ended. The monitor is no longer live.</p>
                         <p className="text-slate-400 text-sm">Please turn to your facilitator — the debrief happens with them, not on this screen.</p>
-                        <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-500 font-mono uppercase tracking-widest">Monitor standby</div>
+                        <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 font-mono uppercase tracking-widest">Monitor standby</div>
                     </div>
                 </div>
             );
@@ -315,7 +315,7 @@
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
-                            <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
+                            <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-400 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
                         </div>
                         <div className="text-white text-sm font-medium leading-relaxed whitespace-pre-line">
                             {invToast?.content}
@@ -345,7 +345,7 @@
                                 <Lucide icon="zap" className="text-red-500" /> Manual Defibrillator
                             </div>
                             <div className="text-red-500 font-mono font-bold animate-pulse text-xl">MANUAL DEFIBRILLATOR MODE</div>
-                            <div className="text-slate-500">{new Date().toLocaleTimeString()}</div>
+                            <div className="text-slate-400">{new Date().toLocaleTimeString()}</div>
                         </div>
 
                         <div className="flex-grow relative bg-black grid grid-rows-2">
@@ -359,11 +359,11 @@
 
                         <div className="bg-slate-900 p-4 border-t border-slate-700 grid grid-cols-4 gap-4">
                              <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
-                                 <div className="text-slate-500 text-xs uppercase mb-1">Energy Select</div>
+                                 <div className="text-slate-400 text-xs uppercase mb-1">Energy Select</div>
                                  <div className="text-3xl font-mono text-yellow-500 font-bold">{(state.defib && state.defib.energy) || window.RHYTHMS.recommendedEnergy(scenario?.wetflag?.weight, scenario?.patientAge)} J</div>
                              </div>
                              <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
-                                 <div className="text-slate-500 text-xs uppercase mb-1">Status</div>
+                                 <div className="text-slate-400 text-xs uppercase mb-1">Status</div>
                                  <div className="text-xl font-mono text-white font-bold">{flash === 'yellow' ? 'CHARGING...' : (flash === 'red' ? 'SHOCK DELIVERED' : 'READY')}</div>
                              </div>
                              
@@ -395,7 +395,7 @@
                             the patient's data. The chip says whether the screen will stay awake. */}
                         <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
                             <span title={wakeState === 'on' ? 'This screen will stay on while the monitor is open.' : wakeState === 'unsupported' ? 'This browser cannot keep the screen awake. Set the tablet\'s auto-lock to Never for the session.' : 'Screen may sleep. Tap the screen (or Full screen) to try again, or set auto-lock to Never.'}
-                                  className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${wakeState === 'on' ? 'border-slate-700 text-slate-500' : 'border-amber-700 text-amber-400'}`}>
+                                  className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${wakeState === 'on' ? 'border-slate-700 text-slate-400' : 'border-amber-700 text-amber-400'}`}>
                                 <Lucide icon="sun" className="w-3 h-3" /> {wakeState === 'on' ? 'Awake' : 'May sleep'}
                             </span>
                             {fsSupported && (
@@ -423,7 +423,7 @@
                             {sNibp && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
                                     <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
@@ -458,8 +458,8 @@
                             const vbg = poc.vbg || null;
                             const cell = (label, value, unit, sub, alert) => (
                                 <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${alert ? 'border-amber-600' : 'border-slate-800'}`}>
-                                    <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[9px] text-slate-500 normal-case tracking-normal">{sub}</span> : null}</span>
-                                    <span className={`font-mono font-bold text-xl md:text-3xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[10px] md:text-xs text-slate-500 ml-1">{unit}</span> : null}</span>
+                                    <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[9px] text-slate-400 normal-case tracking-normal">{sub}</span> : null}</span>
+                                    <span className={`font-mono font-bold text-xl md:text-3xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[10px] md:text-xs text-slate-400 ml-1">{unit}</span> : null}</span>
                                 </div>
                             );
                             return (
@@ -520,7 +520,7 @@
 
     const WetFlagItem = ({label, value}) => (
         <div className="bg-slate-800 p-2 rounded flex flex-col items-center justify-center">
-            <span className="text-[10px] text-slate-500 uppercase font-bold">{label}</span>
+            <span className="text-[10px] text-slate-400 uppercase font-bold">{label}</span>
             <span className="font-mono text-lg font-bold text-white">{value}</span>
         </div>
     );
@@ -536,7 +536,7 @@
         
         if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) {
             return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
+                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn">
                     <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
                     <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>

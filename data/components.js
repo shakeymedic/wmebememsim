@@ -109,11 +109,11 @@
     const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null, ariaLabel = null, type = 'button' }) => {
         const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
         const variants = {
-            primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
+            primary: "bg-sky-700 hover:bg-sky-600 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
             secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600",
-            danger: "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/50 border border-red-500",
-            success: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/50 border border-emerald-500",
-            warning: "bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/50 border border-amber-500",
+            danger: "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-900/50 border border-red-500",
+            success: "bg-emerald-700 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-900/50 border border-emerald-500",
+            warning: "bg-amber-700 hover:bg-amber-600 text-white shadow-lg shadow-amber-900/50 border border-amber-500",
             outline: "bg-transparent border border-slate-600 text-slate-400 hover:border-slate-400 hover:text-slate-200"
         };
         const sizes = {
@@ -629,7 +629,7 @@
         return (
             <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
-                {offLanes.map(k => <div key={`off-${k}`} className={`${labelClass} text-slate-500 uppercase tracking-wider`} style={{ top: topOf(k) }}>{OFF_TEXT[k]}</div>)}
+                {offLanes.map(k => <div key={`off-${k}`} className={`${labelClass} text-slate-400 uppercase tracking-wider`} style={{ top: topOf(k) }}>{OFF_TEXT[k]}</div>)}
                 {showEcg && <div className={`${labelClass} text-green-500`} style={{ top: topOf('ecg') }}>{rhythmLabel || "LEAD II"}</div>}
                 {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH</div>}
                 {artOn && <div className={`${labelClass} text-red-500`} style={{ top: topOf('art') }}>ART</div>}
@@ -650,7 +650,7 @@
                             compact = false }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
-                <span className="text-slate-600 text-xs uppercase">{label} Off</span>
+                <span className="text-slate-400 text-xs uppercase">{label} Off</span>
             </div>
         );
 
@@ -685,10 +685,10 @@
                      </div>
                      <div className="flex items-end justify-center gap-1 my-1">
                          <span className={`text-5xl md:text-6xl lg:text-7xl font-mono font-bold leading-none ${color}`}>{show(value)}</span>
-                         <span className="text-2xl text-slate-500 font-bold mb-1">/</span>
+                         <span className="text-2xl text-slate-400 font-bold mb-1">/</span>
                          <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
                      </div>
-                     <div className="text-right text-[10px] text-slate-500 uppercase font-mono mt-auto">
+                     <div className="text-right text-[10px] text-slate-400 uppercase font-mono mt-auto">
                          {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
@@ -701,7 +701,7 @@
                 <Tile {...tileProps} className={`relative bg-slate-900 border rounded px-1.5 pt-1 ${note ? 'pb-3' : 'pb-1'} flex flex-col text-left min-w-0 ${onClick ? 'cursor-pointer active:bg-slate-800' : ''} overflow-hidden ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
                     <div className="flex justify-between items-baseline gap-1 min-w-0">
                         <span className={`text-[10px] font-bold uppercase leading-none ${color}`}>{label}</span>
-                        {unit && <span className="text-[9px] text-slate-500 leading-none truncate">{unit}</span>}
+                        {unit && <span className="text-[9px] text-slate-400 leading-none truncate">{unit}</span>}
                     </div>
                     <div className={`font-mono font-bold leading-tight tracking-tight text-center whitespace-nowrap ${color} ${hasValue2 ? 'text-xl' : 'text-2xl'}`}>
                         {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}{trendIcon && <span className="text-sm text-sky-400 ml-0.5">{trendIcon}</span>}
@@ -753,7 +753,7 @@
                         <p className="text-sm text-slate-300">
                             This screen failed to render. Your session was not lost — you can return to the main menu and start or reload a scenario.
                         </p>
-                        <pre className="text-[11px] text-slate-500 bg-slate-900 border border-slate-700 rounded p-2 overflow-x-auto whitespace-pre-wrap">
+                        <pre className="text-[11px] text-slate-400 bg-slate-900 border border-slate-700 rounded p-2 overflow-x-auto whitespace-pre-wrap">
                             {String(this.state.error && this.state.error.message || this.state.error)}
                         </pre>
                         <div className="flex gap-2">

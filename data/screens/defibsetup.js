@@ -91,7 +91,7 @@
                 </div>
 
                 <div>
-                    <div className="text-[10px] text-slate-500 uppercase font-bold mb-1">Mode</div>
+                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Mode</div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <button type="button" onClick={() => setMode('education')} className={optionClass(mode === 'education')} aria-pressed={mode === 'education'}>
                             <div className="font-bold">Education</div>
@@ -105,7 +105,7 @@
                 </div>
 
                 <div>
-                    <div className="text-[10px] text-slate-500 uppercase font-bold mb-1">Scenario</div>
+                    <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Scenario</div>
                     <div className="space-y-3">
                         {groups.map(g => (
                             <div key={g.name}>
@@ -147,7 +147,7 @@
                                 <button type="button" aria-label={`Remove step ${i + 1}`} onClick={() => setSteps(steps.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-200 px-2"><Lucide icon="x" className="w-4 h-4"/></button>
                             </div>
                         ))}
-                        {!steps.length && <div className="text-xs text-slate-500">No steps yet.</div>}
+                        {!steps.length && <div className="text-xs text-slate-400">No steps yet.</div>}
                         <div className="flex flex-wrap gap-2 pt-1">
                             <Button variant="outline" disabled={steps.length >= D.MAX_STEPS} onClick={() => setSteps(steps.concat([{ rhythm: 'Sinus Rhythm', trigger: 'analyse' }]))} className="h-8 text-xs">{steps.length >= D.MAX_STEPS ? `Maximum ${D.MAX_STEPS} steps` : '+ Add step'}</Button>
                             <select aria-label="Saved scenarios" value={savedSel} onChange={e => setSavedSel(e.target.value)} className="bg-slate-800 border border-slate-600 rounded px-2 text-xs text-white h-8">
@@ -161,21 +161,21 @@
                             <Button variant="outline" onClick={() => fileRef.current && fileRef.current.click()} className="h-8 text-xs">Import file</Button>
                             <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={importSteps} data-testid="defib-import" />
                         </div>
-                        <p className="text-[10px] text-slate-500">Saved scenarios stay in this browser. Files exported from the standalone Defib-sim import here too.</p>
+                        <p className="text-[10px] text-slate-400">Saved scenarios stay in this browser. Files exported from the standalone Defib-sim import here too.</p>
                     </div>
                 )}
 
                 <div className="grid grid-cols-3 gap-2">
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase" htmlFor="defibAge">Age (years)</label>
+                        <label className="text-[10px] text-slate-400 uppercase" htmlFor="defibAge">Age (years)</label>
                         <input id="defibAge" type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} value={age} onChange={e => setAge(e.target.value)} className={fieldClass(ageError)} />
                     </div>
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase" htmlFor="defibWeight">Weight (kg)</label>
+                        <label className="text-[10px] text-slate-400 uppercase" htmlFor="defibWeight">Weight (kg)</label>
                         <input id="defibWeight" type="number" min={BUILDER_LIMITS.weight.min} max={BUILDER_LIMITS.weight.max} step="0.1" value={weight} onChange={e => setWeight(e.target.value)} placeholder="optional" className={fieldClass(weightError)} />
                     </div>
                     <div>
-                        <label className="text-[10px] text-slate-500 uppercase" htmlFor="defibSex">Sex</label>
+                        <label className="text-[10px] text-slate-400 uppercase" htmlFor="defibSex">Sex</label>
                         <select id="defibSex" value={sex} onChange={e => setSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select>
                     </div>
                 </div>

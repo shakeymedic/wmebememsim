@@ -113,7 +113,7 @@
 
         // ---- Log (newest first)
         const log = (state.log || []).slice(-80).map((entry, i, arr) => ({ entry, index: (state.log.length - arr.length) + i })).reverse();
-        const logClass = (t) => t === 'danger' ? 'text-red-300 font-bold' : t === 'warning' ? 'text-amber-300' : t === 'success' ? 'text-emerald-300 font-bold' : t === 'system' ? 'text-slate-500' : 'text-slate-300';
+        const logClass = (t) => t === 'danger' ? 'text-red-300 font-bold' : t === 'warning' ? 'text-amber-300' : t === 'success' ? 'text-emerald-300 font-bold' : t === 'system' ? 'text-slate-400' : 'text-slate-300';
 
         const card = 'bg-slate-800 border border-slate-700 rounded p-3';
         const h = 'text-[10px] uppercase tracking-widest font-bold text-slate-400 mb-2 flex items-center gap-1';
@@ -169,7 +169,7 @@
                         <div className="bg-black rounded border border-slate-700 overflow-hidden">
                             <div className="flex justify-between items-center px-2 pt-1">
                                 <span className={`text-xs font-bold ${pulseless ? 'text-red-300' : 'text-emerald-300'}`} data-testid="defib-rhythm">{RG.labelFor(state.rhythm)}</span>
-                                <span className="text-[10px] text-slate-500">what the pads show</span>
+                                <span className="text-[10px] text-slate-400">what the pads show</span>
                             </div>
                             <div className="h-40">
                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
@@ -178,7 +178,7 @@
                             </div>
                             <div className="grid grid-cols-4 gap-1 p-2 text-center font-mono">
                                 {[['HR', vitals.hr, 'text-emerald-400'], ['BP', `${Math.round(vitals.bpSys || 0)}/${Math.round(vitals.bpDia || 0)}`, 'text-red-300'], ['SpO₂', vitals.spO2, 'text-sky-300'], ['ETCO₂', Number(vitals.etco2 || 0).toFixed(1), 'text-yellow-300']].map(([l, v, c]) => (
-                                    <div key={l}><div className="text-[9px] text-slate-500">{l}</div><div className={`text-lg font-bold ${c}`}>{typeof v === 'number' ? Math.round(v) : v}</div></div>
+                                    <div key={l}><div className="text-[9px] text-slate-400">{l}</div><div className={`text-lg font-bold ${c}`}>{typeof v === 'number' ? Math.round(v) : v}</div></div>
                                 ))}
                             </div>
                         </div>
@@ -197,7 +197,7 @@
                             ) : (
                                 <div className="text-xs text-slate-400 space-y-1">
                                     <div>From the learner's presses: mode <b className="text-white uppercase">{defib.mode || 'off'}</b>, energy <b className="text-white">{defib.energy || '—'} J</b>{defib.syncMode ? <b className="text-amber-300"> SYNC</b> : null}, pacer <b className="text-white">{Number(pacer.output) || 0} mA / {Number(pacer.rate) || 0} per min</b>.</div>
-                                    <div className="text-slate-500">The full screen mirror appears when a tablet links with the session code.</div>
+                                    <div className="text-slate-400">The full screen mirror appears when a tablet links with the session code.</div>
                                 </div>
                             )}
                             <div className="flex flex-wrap gap-2 mt-2 text-[10px]">
@@ -219,7 +219,7 @@
                                         const current = step && !step.done && step.index === i;
                                         const past = step && (step.done || step.index > i);
                                         return (
-                                            <li key={i} className={`flex items-center justify-between gap-2 px-2 py-1 rounded border text-xs ${current ? 'border-sky-500 bg-sky-950/40 text-white' : past ? 'border-slate-700 text-slate-500' : 'border-slate-700 text-slate-300'}`}>
+                                            <li key={i} className={`flex items-center justify-between gap-2 px-2 py-1 rounded border text-xs ${current ? 'border-sky-500 bg-sky-950/40 text-white' : past ? 'border-slate-700 text-slate-400' : 'border-slate-700 text-slate-300'}`}>
                                                 <span>{i + 1}. {RG.labelFor(s.rhythm)}</span>
                                                 <span className="text-[10px]">{TRIGGER_LABELS[s.trigger] || s.trigger}{current && /^timer_/.test(s.trigger) ? ` (${fmt((Number(state.time) || 0) - (Number(step.since) || 0))})` : ''}</span>
                                             </li>
@@ -267,7 +267,7 @@
                             <div className="mt-2 text-[11px] text-slate-400">
                                 Next shock converts to:{' '}
                                 {['Sinus Rhythm', 'VF', 'PEA', 'Asystole'].map(r => (
-                                    <button key={r} type="button" onClick={() => sim.setQueuedRhythm(r)} className={`ml-1 px-1.5 py-0.5 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-600 border-sky-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300'}`}>{RG.shortFor(r)}</button>
+                                    <button key={r} type="button" onClick={() => sim.setQueuedRhythm(r)} className={`ml-1 px-1.5 py-0.5 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300'}`}>{RG.shortFor(r)}</button>
                                 ))}
                                 {state.queuedRhythm && <button type="button" onClick={() => sim.setQueuedRhythm(null)} className="ml-2 text-sky-400 underline">clear</button>}
                             </div>
@@ -283,7 +283,7 @@
                                     <button type="button" aria-label="Raise the capture threshold" onClick={() => sim.dispatch({ type: 'SET_PACING_THRESHOLD', payload: (Number(state.pacingThreshold) || 70) + 5 })} className="w-6 h-6 rounded bg-slate-700 border border-slate-600">+</button>
                                 </span>
                             </div>
-                            <div className="text-[10px] text-slate-500 mb-2">Mechanical capture (a pulse) needs about 10 mA more.</div>
+                            <div className="text-[10px] text-slate-400 mb-2">Mechanical capture (a pulse) needs about 10 mA more.</div>
                             <div className="flex flex-wrap gap-1">
                                 {[['movement', 'Patient movement'], ['interference', 'Mains interference'], ['leadoff', 'Lead off']].map(([k, label]) => (
                                     <button key={k} type="button" data-artefact={k} aria-pressed={!!noise[k]} onClick={() => sim.setNoise({ [k]: !noise[k] })} className={chip(!!noise[k], 'bg-amber-800 border-amber-400 text-white')}>{label}</button>
@@ -343,8 +343,8 @@
                             <div className="flex-1 overflow-y-auto font-mono text-[11px] space-y-1" data-testid="defib-log">
                                 {log.map(({ entry, index }) => (
                                     <div key={index} className={`flex gap-2 ${entry.flagged ? 'bg-amber-900/20' : ''}`}>
-                                        <button type="button" aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({ type: 'TOGGLE_FLAG', payload: index })} className={entry.flagged ? 'text-amber-500' : 'text-slate-600 hover:text-amber-500'}><Lucide icon="flag" className="w-3 h-3"/></button>
-                                        <span className="text-slate-500 flex-none">{entry.simTime}</span>
+                                        <button type="button" aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({ type: 'TOGGLE_FLAG', payload: index })} className={entry.flagged ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}><Lucide icon="flag" className="w-3 h-3"/></button>
+                                        <span className="text-slate-400 flex-none">{entry.simTime}</span>
                                         <span className={logClass(entry.type)}>{entry.msg}</span>
                                     </div>
                                 ))}
@@ -364,8 +364,8 @@
                                     <button aria-label="Close" onClick={() => setShowJoin(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                                 </div>
                                 <p className="text-xs text-slate-400 mb-3">Point the tablet's camera at the code, or open <span className="font-mono">defib/</span> and type the session code <b className="font-mono text-white text-base tracking-widest">{sessionID}</b>.</p>
-                                {svg ? <div className="bg-white p-2 rounded w-56 h-56 mx-auto" dangerouslySetInnerHTML={{ __html: svg }} /> : <div className="text-xs text-slate-500 text-center">QR code unavailable — use the link below.</div>}
-                                <div className="text-[10px] text-slate-500 font-mono break-all text-center select-all mt-2">{defibUrl}</div>
+                                {svg ? <div className="bg-white p-2 rounded w-56 h-56 mx-auto" dangerouslySetInnerHTML={{ __html: svg }} /> : <div className="text-xs text-slate-400 text-center">QR code unavailable — use the link below.</div>}
+                                <div className="text-[10px] text-slate-400 font-mono break-all text-center select-all mt-2">{defibUrl}</div>
                                 <Button onClick={() => setShowJoin(false)} variant="outline" className="w-full mt-4">Close</Button>
                             </div>
                         </Modal>

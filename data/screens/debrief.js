@@ -48,7 +48,7 @@
     window.__debriefReportTrend = buildReportTrend;   // test handle
 
     const DebriefGraph = ({ history, log, quickSim }) => {
-        if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">{quickSim ? 'No vitals trend yet: it is recorded every 5 seconds while the clock runs. In Quick Sim, press START to record it.' : 'Not enough data for graph'}</div>;
+        if (!history || history.length < 2) return <div className="text-slate-400 text-xs p-4 text-center">{quickSim ? 'No vitals trend yet: it is recorded every 5 seconds while the clock runs. In Quick Sim, press START to record it.' : 'Not enough data for graph'}</div>;
 
         const width = 1200;
         const height = 700;
@@ -282,7 +282,8 @@
             // re-maps the light-on-dark ones to readable ink.
             const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:20px;font-size:.85rem}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
             const trendCard = buildReportTrend(state.history, state.log);
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${defibFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -356,7 +357,7 @@
                                 <div className="flex items-center gap-4 mb-4 flex-wrap">
                                     <div>
                                         <div className="text-4xl font-bold text-sky-400">{score}%</div>
-                                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Fully met</div>
+                                        <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Fully met</div>
                                     </div>
                                     {/* Partial credit is shown next to the strict score, never
                                         folded into it, so a part-treated multi-component objective reads as
@@ -364,7 +365,7 @@
                                     {partialCount > 0 && (
                                         <div>
                                             <div className="text-4xl font-bold text-amber-400">{partialScore}%</div>
-                                            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">With partial credit</div>
+                                            <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">With partial credit</div>
                                         </div>
                                     )}
                                     <div className="text-sm text-slate-400">
@@ -386,11 +387,11 @@
                                       ['Last energy', defibMetrics.lastEnergy ?? '--', 'J']].map(([lbl, val, unit]) => (
                                         <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
                                             <div className="text-[10px] font-bold uppercase text-slate-400">{lbl}</div>
-                                            <div className="text-lg font-mono font-bold text-white">{val}<span className="text-[9px] text-slate-500 ml-0.5">{unit}</span></div>
+                                            <div className="text-lg font-mono font-bold text-white">{val}<span className="text-[9px] text-slate-400 ml-0.5">{unit}</span></div>
                                         </div>
                                     ))}
                                 </div>
-                                <div className="text-[10px] text-slate-500 mt-2">
+                                <div className="text-[10px] text-slate-400 mt-2">
                                     Device left in {String(defibMetrics.mode || 'monitor').toUpperCase()} mode{defibMetrics.syncMode ? ', SYNC armed' : ''}.
                                     {' '}{conversionEvents.length} rhythm transition{conversionEvents.length === 1 ? '' : 's'} recorded.
                                 </div>
@@ -398,7 +399,7 @@
                                     <div className="mt-2 max-h-28 overflow-y-auto space-y-1">
                                         {shockEvents.map((l, i) => (
                                             <div key={i} className="flex gap-2 text-[11px]">
-                                                <span className="font-mono text-slate-500 flex-none">{l.simTime}</span>
+                                                <span className="font-mono text-slate-400 flex-none">{l.simTime}</span>
                                                 <span className="text-red-300">{l.msg}</span>
                                             </div>
                                         ))}
@@ -432,15 +433,15 @@
                                                 <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
                                                     <div className="text-[10px] font-bold uppercase" style={{color: col}}>{lbl}</div>
                                                     <div className="text-lg font-mono font-bold text-white">{val ?? '--'}</div>
-                                                    <div className="text-[9px] text-slate-500">{unit}</div>
+                                                    <div className="text-[9px] text-slate-400">{unit}</div>
                                                 </div>
                                             ))}
                                         </div>
                                     )}
                                     <div className="flex justify-between mt-1">
-                                        <span className="text-[10px] text-slate-500">T+0s</span>
+                                        <span className="text-[10px] text-slate-400">T+0s</span>
                                         <span className="text-[10px] text-sky-400 font-mono">{replayIdx !== null && state.history[replayIdx] ? `T+${state.history[replayIdx].time}s` : 'Drag to replay'}</span>
-                                        <span className="text-[10px] text-slate-500">T+{state.history[state.history.length-1].time}s</span>
+                                        <span className="text-[10px] text-slate-400">T+{state.history[state.history.length-1].time}s</span>
                                     </div>
                                 </div>
                             )}
@@ -453,7 +454,7 @@
                                         {allObjectives.map((obj, i) => {
                                             const r = statusOf(obj);
                                             const icon = r.status === 'met' ? 'check-square' : r.status === 'partial' ? 'minus-square' : 'square';
-                                            const colour = r.status === 'met' ? 'text-emerald-500' : r.status === 'partial' ? 'text-amber-400' : 'text-slate-600';
+                                            const colour = r.status === 'met' ? 'text-emerald-500' : r.status === 'partial' ? 'text-amber-400' : 'text-slate-400';
                                             return (
                                                 <li key={i} className="text-sm text-slate-300">
                                                     <div className="flex items-start gap-2">
@@ -475,7 +476,7 @@
                                             );
                                         })}
                                     </ul>
-                                    <p className="text-[10px] text-slate-500 mt-2">A multi-component objective counts as met only when every component was done. Partly-done objectives show the missing component above and are excluded from the fully-met score.</p>
+                                    <p className="text-[10px] text-slate-400 mt-2">A multi-component objective counts as met only when every component was done. Partly-done objectives show the missing component above and are excluded from the fully-met score.</p>
                                 </>
                             )}
                         </div>
@@ -489,14 +490,14 @@
                             <h3 className="text-lg font-bold text-amber-400 mb-1 flex items-center gap-2"><Lucide icon="flag" className="w-4 h-4"/> Sequence Deviations</h3>
                             <p className="text-xs text-slate-400 mb-3">Actions performed before their usual prerequisites were in place. Nothing was blocked — these are discussion points, not errors by definition. {deviations.length} deviation{deviations.length === 1 ? '' : 's'}; {significanceCount} other flagged event{significanceCount === 1 ? '' : 's'} (arrests, shocks and manual flags) are highlighted in the timeline but are not deviations.</p>
                             {deviations.length === 0 ? (
-                                <div className="text-sm text-slate-500">No sequence deviations recorded.</div>
+                                <div className="text-sm text-slate-400">No sequence deviations recorded.</div>
                             ) : (
                                 <ul className="space-y-2">
                                     {deviations.map((entry, i) => (
                                         <li key={i} className="bg-slate-900 border border-amber-700/40 rounded p-2">
                                             <div className="flex justify-between gap-2 items-baseline">
                                                 <span className="text-sm font-bold text-amber-200">{entry.deviation.label || entry.deviation.action}</span>
-                                                <span className="font-mono text-xs text-slate-500">{entry.simTime}</span>
+                                                <span className="font-mono text-xs text-slate-400">{entry.simTime}</span>
                                             </div>
                                             <div className="text-xs text-slate-300 mt-0.5">Not in place: {entry.deviation.missing.join(', ')}</div>
                                         </li>
@@ -523,7 +524,7 @@
                         <div className="flex-1 overflow-y-auto p-4 space-y-2">
                             {filteredLog.map((entry, i) => (
                                 <div key={i} className={`flex gap-3 text-sm border-b border-slate-700/50 pb-1 ${entry.flagged ? 'bg-amber-900/10 p-1 rounded' : ''}`}>
-                                    <span className="text-slate-500 font-mono w-16 flex-shrink-0">{entry.simTime}</span>
+                                    <span className="text-slate-400 font-mono w-16 flex-shrink-0">{entry.simTime}</span>
                                     <span className={`flex-grow ${entry.type === 'danger' ? 'text-red-400 font-bold' : entry.type === 'success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
                                         {entry.flagged && <Lucide icon="flag" className="inline w-3 h-3 text-amber-500 mr-1"/>}
                                         {entry.msg}

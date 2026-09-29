@@ -439,7 +439,7 @@
     // =============================================================================================
     const Field = ({ label, ...props }) => (
         <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">{label}</span>
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{label}</span>
             <input {...props} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm mt-0.5 focus:border-sky-500 outline-none" />
         </label>
     );
@@ -486,7 +486,7 @@
                             <div className="flex gap-1 border-b border-slate-700 mb-1">
                                 {TABS.map(([id, label]) => (
                                     <button key={id} type="button" onClick={() => { setTab(id); auth.clearFeedback(); }}
-                                        className={`pb-2 px-2 text-[11px] font-bold uppercase tracking-wider ${tab === id ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{label}</button>
+                                        className={`pb-2 px-2 text-[11px] font-bold uppercase tracking-wider ${tab === id ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-400 hover:text-slate-300'}`}>{label}</button>
                                 ))}
                             </div>
 
@@ -593,15 +593,15 @@
                     {error && <div className="bg-red-950/50 border border-red-600 rounded p-2 text-[11px] text-red-200 mb-3">{error}</div>}
 
                     <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                        {users === null && !error && <div className="text-slate-500 text-sm text-center py-8">Loading users…</div>}
-                        {users !== null && shown.length === 0 && <div className="text-slate-500 text-sm text-center py-8">No users in this view.</div>}
+                        {users === null && !error && <div className="text-slate-400 text-sm text-center py-8">Loading users…</div>}
+                        {users !== null && shown.length === 0 && <div className="text-slate-400 text-sm text-center py-8">No users in this view.</div>}
                         {shown.map(u => (
                             <div key={u.uid} className="bg-slate-900 border border-slate-700 rounded p-3">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                     <div className="min-w-0">
                                         <div className="text-sm font-bold text-white truncate">{u.displayName || '(no name)'} {u.role === 'admin' && <span className="ml-1 text-[9px] px-1 rounded bg-sky-950 border border-sky-600 text-sky-300 uppercase font-bold">admin</span>}</div>
                                         <div className="text-[11px] text-slate-400 truncate">{u.email || '(no email)'}</div>
-                                        <div className="text-[10px] text-slate-600 font-mono truncate">{u.uid}</div>
+                                        <div className="text-[10px] text-slate-400 font-mono truncate">{u.uid}</div>
                                         {u.requestedAccess && (
                                             <div className="text-[10px] text-amber-300 mt-1">
                                                 Requested: {Object.keys(u.requestedAccess).filter(k => k !== 'at' && u.requestedAccess[k]).join(', ') || '—'}
@@ -624,7 +624,7 @@
                                 </div>
 
                                 <div className="mt-2 border-t border-slate-800 pt-2">
-                                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mb-1">Entitlements</div>
+                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Entitlements</div>
                                     <div className="flex flex-wrap gap-1">
                                         {ENTITLEMENT_KEYS.map(({ key, label, note }) => {
                                             const on = u.entitlements[key] === true;
@@ -643,7 +643,7 @@
                         ))}
                     </div>
 
-                    <div className="border-t border-slate-700 mt-3 pt-3 text-[10px] text-slate-500">
+                    <div className="border-t border-slate-700 mt-3 pt-3 text-[10px] text-slate-400">
                         Payments are not connected. When they are, entitlements must be written server-side from a
                         signature-verified webhook using the Firebase Admin SDK — never from this panel or any client.
                     </div>
