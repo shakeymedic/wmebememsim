@@ -360,3 +360,54 @@ window.buildQuickSimScenario = (opts = {}) => {
         hf: (window.HUMAN_FACTOR_CHALLENGES || [])[0] || null
     };
 };
+
+// One premade/random scenario template -> a concrete patient (age, sex, name, history, weight,
+// WETFLAG, starting vitals, VBG). Used by the setup screen, and by the tests so they exercise
+// exactly what the app does.
+window.generatePatientFromTemplate = (base, opts = {}) => {
+    const { generateHistory, estimateWeight, calculateWetflag, generateName, formatProfileTemplate, generateVbg } = window;
+    // Honour an AUTHORED patientAge before falling back to 40. Built-in scenarios all carry an
+    // `ageGenerator`; a restricted scenario pasted into Firebase (or a hand-written custom one)
+    // states its age directly as `patientAge` — and that age drives WETFLAG, the
+    // paediatric 4 J/kg defibrillation energy and every weight-based dose, so silently
+    // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
+    // cosmetic one.
+    const authoredAge = Number(base.patientAge);
+    const patientAge = base.ageGenerator ? base.ageGenerator()
+        : (Number.isFinite(authoredAge) && authoredAge > 0 ? authoredAge : 40);
+    let sex = Math.random() > 0.5 ? 'Male' : 'Female';
+    const t = base.title.toLowerCase();
+    const p = String(base.patientProfileTemplate || '').toLowerCase();
+    const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
+    const forceMale = ["testicular", "prostate", "scrotal"];
+
+    if (forceFemale.some(k => t.includes(k) || p.includes(k)) || base.category === 'Obstetrics & Gynae') sex = 'Female';
+    else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
+
+    const history = generateHistory(patientAge, sex);
+    // An authored weight wins over the age estimate, for the same reason.
+    const authoredWeight = Number(base.weight);
+    const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
+        : (patientAge < 16 ? estimateWeight(patientAge) : null);
+    const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
+    const randomName = generateName(sex);
+
+    let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...base.vitalsMod };
+    if (base.vitalsMod && base.vitalsMod.bpSys !== undefined && base.vitalsMod.bpDia === undefined) { 
+        finalVitals.bpDia = Math.floor(base.vitalsMod.bpSys * 0.65); 
+    }
+
+    return { 
+       ...base, 
+       patientName: randomName, patientAge, sex,
+       profile: formatProfileTemplate(base.patientProfileTemplate, patientAge, sex),
+       vitals: finalVitals, 
+       pmh: base.pmh || history.pmh, 
+       dhx: base.dhx || history.dhx, 
+       allergies: base.allergies || history.allergies,
+       vbg: generateVbg(base.vbgClinicalState || "normal"),
+       hf: opts.hf || null,
+       weight, wetflag,
+       showWetflag: opts.showWetflag !== false
+    };
+};

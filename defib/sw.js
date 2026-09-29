@@ -10,6 +10,8 @@ const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
   './images/logo.png',
+  './images/icon-192.png',
+  '../images/emevidence-logo.png',
   './device.css',
   '../index.html',
   '../data/rhythms.js',

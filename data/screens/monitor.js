@@ -390,7 +390,7 @@
                     // neither has a `.findings` string, which is why every student saw the generic
                     // default text. Render the structured reports properly instead.
                     const fmtUrine = (u) => {
-                        const labels = { leuks: 'Leukocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
+                        const labels = { leuks: 'Leucocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
                         const parts = Object.keys(labels).filter(k => u[k] !== undefined).map(k => `${labels[k]}: ${u[k]}`);
                         return parts.length ? parts.join('  \u00b7  ') : null;
                     };

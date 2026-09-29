@@ -58,7 +58,7 @@
         ],
         'Urine': [
             'Normal',
-            'Leukocytes +++, Nitrites +, Blood + (UTI)',
+            'Leucocytes +++, Nitrites +, Blood + (UTI)',
             'Blood +++ (Haematuria)',
             'Ketones +++, Glucose +++ (DKA)',
             'Protein +++ (Pre-eclampsia/Renal)',

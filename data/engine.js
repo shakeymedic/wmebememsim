@@ -946,7 +946,7 @@
         for (let i = 0; i < OBSTRUCTION_BANDS.length; i++) if (s < OBSTRUCTION_BANDS[i].at) return OBSTRUCTION_BANDS[i].label;
         return 'severe';
     };
-    // "No rash, no wheeze" must NOT read as bronchospasm (ACE-inhibitor angioedema says exactly
+    // "No rash, no wheeze" must NOT read as bronchospasm (ACE-inhibitor angio-oedema says exactly
     // that, and is bradykinin-mediated: adrenaline and nebs do little, which is its whole point).
     const scrubNegations = (txt) => String(txt || '')
         .replace(/\b(?:no|without|not?)\s+(?:[a-z]+\s+)?(?:wheez\w*|bronchospasm)/g, ' ')
@@ -1361,6 +1361,16 @@
                 if (action.payload.vitals === undefined || action.payload.vitals === null || action.payload.vitals.k === undefined) {
                     const inferredK = inferPotassium(action.payload);
                     if (inferredK !== null) initialVitals.k = inferredK;
+                }
+                // A scenario that STARTS in cardiac arrest starts with arrest observations. The
+                // built-in arrest scenarios only set hr/bp/SpO2/GCS, so the defaults filled in a
+                // respiratory rate of 16 and normal pupils on a pulseless patient. Anything the
+                // scenario states explicitly (its vitalsMod) still wins.
+                const startRhythm = (action.payload.ecg && action.payload.ecg.type) || 'Sinus Rhythm';
+                if (RG.isPulseless(startRhythm)) {
+                    const stated = action.payload.vitalsMod || {};
+                    const arrestObs = { bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 };
+                    Object.keys(arrestObs).forEach(k => { if (stated[k] === undefined) initialVitals[k] = arrestObs[k]; });
                 }
                 return { ...initialVitalsState, vitals: initialVitals, baseVitals: { ...initialVitals }, prevVitals: { ...initialVitals } };
             case 'RESTORE_SESSION': {
@@ -3048,7 +3058,7 @@
                 if (key === 'KetamineIM') addLogEntry(`Paediatric IM ketamine for procedural sedation: 4 mg/kg${wt ? ` = ${Math.round(4 * wt)} mg` : ''}. Peak dissociation ~5 min, 15-30 min of usable sedation — do NOT stack doses while waiting.`, 'info');
                 if (key === 'Sux') addLogEntry('Suxamethonium in a child: bradycardia is common (and marked with a second dose) — have atropine drawn up.', 'warning');
                 if (key === 'Dextrose' && wt) addLogEntry(`WETFLAG glucose: 2 ml/kg of 10% = ${Math.round(2 * wt)} ml.`, 'info');
-                if (key === 'Adenosine') addLogEntry('Paediatric adenosine: 0.1 mg/kg, then 0.2 mg/kg. Same near-instant transient kinetics as an adult.', 'info');
+                if (key === 'Adenosine') addLogEntry(`Paediatric adenosine (RCUK/ERC 2025): 0.1-0.2 mg/kg${wt ? ` (${Math.round(0.1 * wt * 10) / 10}-${Math.round(0.2 * wt * 10) / 10} mg)` : ''}, max 6 mg, as a rapid flush into a large vein with a 12-lead running; if SVT persists after at least 1 min, 0.3 mg/kg${wt ? ` (${Math.round(0.3 * wt * 10) / 10} mg)` : ''}, max 12-18 mg. Neonates start at 150 mcg/kg.`, 'info');
             }
             // Instant (no-pk) effects are applied to the BASE physiology, exactly as before. Anything
             // carrying a `pk` envelope is instead pushed onto activeDrugs and composed every tick.
@@ -3174,6 +3184,9 @@
             const ANAPHYLAXIS_ADRENALINE = ['AdrenalineIM', 'AdrenalineIV', 'AdrenalinePush', 'AdrenalineInfusion'];
             const looksAnaphylactic = (() => {
                 const txt = scenarioText(scenario);
+                // Bradykinin-mediated angio-oedema (ACE inhibitor, hereditary) is NOT anaphylaxis:
+                // adrenaline does little for it, which is the teaching point of that scenario.
+                if (txt.indexOf('bradykinin') !== -1 || txt.indexOf('ace-inhibitor') !== -1 || txt.indexOf('ace inhibitor') !== -1) return false;
                 return txt.indexOf('anaphyla') !== -1 || txt.indexOf('allergic reaction') !== -1 || txt.indexOf('angio-oedema') !== -1 || txt.indexOf('angiooedema') !== -1;
             })();
             if (looksAnaphylactic && ANAPHYLAXIS_ADRENALINE.indexOf(key) !== -1) {
@@ -3290,13 +3303,13 @@
             // E2 — ADENOSINE: a SCRIPTED, TRANSIENT sequence, not a jump to HR 80.
             // Half-life is under 10 s. What the team must see is: flush → a few seconds of AV block
             // or sinus pause (the frightening bit) → either conversion to sinus at ~15 s or the SVT
-            // simply carrying on, in which case you escalate 6 → 12 → 12 mg. Everything is resolved
+            // simply carrying on, in which case you escalate 6 → 12 → 18 mg (RCUK). Everything is resolved
             // inside ~45 s, and nothing lingers (pk offset 40 s).
             // =====================================================================================
             if (action.avBlock && !isArrest) {
                 const ab = action.avBlock;
-                const doseNo = count;                    // 1st = 6 mg, 2nd/3rd = 12 mg
-                const doseMg = doseNo === 1 ? 6 : 12;
+                const doseNo = count;                    // RCUK: 6 mg, then 12 mg, then 18 mg
+                const doseMg = doseNo === 1 ? 6 : (doseNo === 2 ? 12 : 18);
                 addLogEntry(`Adenosine ${doseMg} mg given as a RAPID push into a large proximal vein with an immediate saline flush. Warn the patient: flushing, chest tightness and a feeling of doom are expected and last seconds.`, 'action');
                 dispatch({ type: 'TRIGGER_SPEAK', payload: 'Oh — that feels horrible. My chest is tight. I feel like something awful is happening.' });
                 addLogEntry(`Transient AV block / sinus pause for ~${ab.pause || 8}s — run a rhythm strip NOW: this is the diagnostic window.`, 'warning');
@@ -3874,7 +3887,7 @@
             const table = RG.DRUG_CONVERSION[key];
             const rid = RG.canonical(cur.rhythm);
             let rule = table && table[rid];
-            // E2: adenosine's success probability escalates with the 6 → 12 → 12 mg sequence, so the
+            // E2: adenosine's success probability escalates with the 6 → 12 → 18 mg sequence, so the
             // caller may supply the chance for THIS dose. The registry still owns the target rhythm.
             if (rule && Number.isFinite(opts.chance)) rule = { ...rule, chance: opts.chance };
             if (!rule) {

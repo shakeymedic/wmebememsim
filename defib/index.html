@@ -39,6 +39,7 @@
                     <div class="screen-info" id="leadInfo">LEAD: II x1</div>
                     <div class="screen-info" id="sessionTag"></div>
                     <div class="screen-info" id="syncIndicator"></div>
+                    <div class="screen-info" id="wakeInfo" title="This browser cannot keep the screen awake: set the tablet's auto-lock to Never for the session."></div>
                     <div class="screen-info" id="modeInfo">MODE: OFF</div>
                     <div class="screen-info" id="timeInfo">00:00:00</div>
                 </div>
@@ -385,7 +386,23 @@
         }
         let soundDismissed = false;
         $('soundBtn').addEventListener('click', () => { audio(); soundDismissed = true; updateSoundOverlay(); });
-        document.addEventListener('pointerdown', () => { audio(); }, { capture: true });
+        document.addEventListener('pointerdown', () => { audio(); requestWakeLock(); }, { capture: true });
+
+        // Keep the tablet's screen on for the whole scenario (the room monitor does the same). The
+        // browser drops the lock whenever the page is hidden, so it is asked for again on return,
+        // and on any tap (some browsers only grant it after a gesture).
+        let wakeLock = null;
+        async function requestWakeLock() {
+            const info = $('wakeInfo');
+            if (!('wakeLock' in navigator)) { info.textContent = 'SCREEN MAY SLEEP'; return; }
+            if (document.visibilityState !== 'visible' || (wakeLock && !wakeLock.released)) return;
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                info.textContent = '';
+            } catch (e) { info.textContent = 'SCREEN MAY SLEEP'; }
+        }
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
+        requestWakeLock();
         document.addEventListener('keydown', () => { audio(); }, { capture: true });
 
         // =====================================================================================

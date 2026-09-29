@@ -274,52 +274,7 @@
                      return;
                  }
 
-                 // WAVE 4b / C5: honour an AUTHORED patientAge before falling back to 40.
-                 // Built-in scenarios all carry an `ageGenerator`, so this branch never mattered
-                 // before. A restricted scenario pasted into Firebase (or a hand-written custom one)
-                 // states its age directly as `patientAge` — and that age drives WETFLAG, the
-                 // paediatric 4 J/kg defibrillation energy and every weight-based dose, so silently
-                 // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
-                 // cosmetic one.
-                 const authoredAge = Number(selectedBase.patientAge);
-                 const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator()
-                     : (Number.isFinite(authoredAge) && authoredAge > 0 ? authoredAge : 40);
-                 let sex = Math.random() > 0.5 ? 'Male' : 'Female';
-                 const t = selectedBase.title.toLowerCase();
-                 const p = String(selectedBase.patientProfileTemplate || '').toLowerCase();
-                 const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
-                 const forceMale = ["testicular", "prostate", "scrotal"];
-                 
-                 if (forceFemale.some(k => t.includes(k) || p.includes(k)) || selectedBase.category === 'Obstetrics & Gynae') sex = 'Female';
-                 else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
-                 
-                 const history = generateHistory(patientAge, sex);
-                 // An authored weight wins over the age estimate, for the same reason.
-                 const authoredWeight = Number(selectedBase.weight);
-                 const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
-                     : (patientAge < 16 ? estimateWeight(patientAge) : null);
-                 const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
-                 const randomName = generateName(sex);
-
-                 let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...selectedBase.vitalsMod };
-                 if (selectedBase.vitalsMod && selectedBase.vitalsMod.bpSys !== undefined && selectedBase.vitalsMod.bpDia === undefined) { 
-                     finalVitals.bpDia = Math.floor(selectedBase.vitalsMod.bpSys * 0.65); 
-                 }
-
-                 const generated = { 
-                    ...selectedBase, 
-                    patientName: randomName, patientAge, sex,
-                    profile: formatProfileTemplate(selectedBase.patientProfileTemplate, patientAge, sex),
-                    vitals: finalVitals, 
-                    pmh: selectedBase.pmh || history.pmh, 
-                    dhx: selectedBase.dhx || history.dhx, 
-                    allergies: selectedBase.allergies || history.allergies,
-                    vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
-                    hf: selectedHf,
-                    weight, wetflag,
-                    showWetflag
-                 };
-
+                 const generated = window.generatePatientFromTemplate(selectedBase, { hf: selectedHf, showWetflag });
                  onGenerate(generated, {});
              } catch (err) { console.error("Generator Error:", err); alert("Error generating scenario: " + err.message); }
         };
@@ -714,7 +669,7 @@
     const JoinScreen = ({ onJoin }) => {
         const { Button } = window;
         const [code, setCode] = useState("");
-        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://raw.githubusercontent.com/shakeymedic/wmem/main/emevidence_logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-500">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && code.length >= 4) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
+        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="images/emevidence-logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-500">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && code.length >= 4) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
     const BriefingScreen = ({ scenario: rawScenario, onStart, onBack }) => {
