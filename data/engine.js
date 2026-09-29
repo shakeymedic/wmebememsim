@@ -175,7 +175,7 @@
             deliverShock: (...a) => deliverShock(...a), dispatch, initCharge: (...a) => initCharge(...a),
             isAudioLive: (...a) => isAudioLive(...a), isMonitorMode,
             lastPayloadRef, postToChannel, sessionID, setDefibEnergy: (...a) => setDefibEnergy(...a),
-            setDefibMode: (...a) => setDefibMode(...a), simChannel, state, stateRef,
+            setDefibMode: (...a) => setDefibMode(...a), simChannel, start: (...a) => start(...a), state, stateRef,
             toggleCPR: (...a) => toggleCPR(...a)
         });
         // The context is created at mount (before any gesture) so it is born 'suspended' under the
