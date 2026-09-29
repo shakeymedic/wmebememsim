@@ -305,7 +305,9 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
   script ahead of time with the same Babel library and options the browser used, serves React,
   ReactDOM and the Firebase SDK from `dist/vendor/`, generates the Tailwind stylesheet
   (`dist/assets/app.css`, from `tailwind.config.js`), and points the defib service worker at those
-  local files. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
+  local files. It then minifies the app's JavaScript with esbuild (writing a `.map` source map next to
+  each file). The Firebase sign-in library is not loaded with the page: `data/auth.js` fetches it when
+  someone signs in, or at start-up if this browser has signed in before. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
   `data/` file only needs its `<script>` tag in `index.html`, as before; the build finds it.
 - **Browser tests.** `npm run build`, then `cd tests && npm install && npx playwright test`. They run
   against `dist/` with an in-memory stand-in for Firebase (`tests/fake-firebase.js`), so no network or

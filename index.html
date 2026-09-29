@@ -35,7 +35,10 @@
          existing initialisation style is unchanged. This script is PURELY ADDITIVE: if it fails to
          load, or if Email/Password has not been enabled in the console, data/auth.js degrades to
          "sign-in not configured" and every existing feature keeps working with no account. -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <!-- The sign-in library is NOT loaded up front: data/auth.js fetches it only when someone signs
+         in, or when this browser has signed in before, so monitors and defib tablets never
+         download it. (The build rewrites this URL to the self-hosted copy.) -->
+    <script>window.FIREBASE_AUTH_SRC = "https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js";</script>
 
     <style>
         /* Base Setup */

@@ -12,6 +12,8 @@
 //   2. React, ReactDOM and the Firebase SDK are served from dist/vendor/ instead of unpkg/gstatic.
 //   3. Tailwind is a generated stylesheet (dist/assets/app.css) instead of the runtime play CDN.
 //   4. The defib service worker caches those local files instead of the CDN URLs.
+//   5. The app's JavaScript is minified (esbuild; top-level names, which the separate scripts
+//      share, are kept), with a source map next to each file for debugging.
 //
 // The build FAILS (and Netlify keeps the previous deploy) if any CDN reference or text/babel
 // script survives, so a half-converted page can never ship.
@@ -125,6 +127,35 @@ let sw = fs.readFileSync(swPath, 'utf8');
 sw = sw.replace(/\s*'https:\/\/cdn\.tailwindcss\.com',[\s\S]*?'https:\/\/unpkg\.com\/lucide@latest'/,
     `\n  '../assets/app.css',\n  '../${V.react}',\n  '../${V.reactDom}',\n  '../${V.fbApp}',\n  '../${V.fbDb}',\n  '../${V.fbAuth}'`);
 fs.writeFileSync(swPath, sw);
+
+// ---- 5b. minify ------------------------------------------------------------------------------
+const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
+const minifyFile = (file) => {
+    const rel = path.relative(OUT, file).split(path.sep).join('/');
+    const r = esbuild.transformSync(fs.readFileSync(file, 'utf8'), { minify: true, sourcemap: 'external', sourcefile: rel, target: 'es2017' });
+    fs.writeFileSync(file, r.code + `//# sourceMappingURL=${path.basename(file)}.map\n`);
+    fs.writeFileSync(file + '.map', r.map);
+};
+let minified = 0;
+const walkJs = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+        const f = path.join(dir, name);
+        if (fs.statSync(f).isDirectory()) walkJs(f);
+        else if (name.endsWith('.js')) { minifyFile(f); minified++; }
+    }
+};
+walkJs(path.join(OUT, 'data'));
+// Inline scripts (the compiled App in index.html, the device logic in defib/index.html).
+const inlineRe = /<script>([\s\S]*?)<\/script>/g;
+for (const rel of ['index.html', 'defib/index.html']) {
+    const f = path.join(OUT, rel);
+    const html = fs.readFileSync(f, 'utf8').replace(inlineRe, (all, code) => {
+        minified++;
+        return '<script>' + esbuild.transformSync(code, { minify: true, target: 'es2017' }).code + '</script>';
+    });
+    fs.writeFileSync(f, html);
+}
+log(`minified ${minified} script(s)`);
 
 // ---- 6. refuse to ship a half-converted site -------------------------------------------------
 const problems = [];

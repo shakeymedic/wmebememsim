@@ -4,13 +4,14 @@ const path = require('path');
 const { expect } = require('@playwright/test');
 
 const FAKE_FIREBASE = fs.readFileSync(path.join(__dirname, '..', 'fake-firebase.js'), 'utf8');
+const FAKE_AUTH = fs.readFileSync(path.join(__dirname, '..', 'fake-auth.js'), 'utf8');
 
 // Swap the Firebase SDK for the in-memory fake in every page of this context (popups included),
 // and keep tests off the network.
 async function useFakeFirebase(context) {
   await context.route('**/vendor/firebase/firebase-app.js', r => r.fulfill({ contentType: 'text/javascript', body: FAKE_FIREBASE }));
   await context.route('**/vendor/firebase/firebase-database.js', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
-  await context.route('**/vendor/firebase/firebase-auth.js', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
+  await context.route('**/vendor/firebase/firebase-auth.js', r => r.fulfill({ contentType: 'text/javascript', body: FAKE_AUTH }));
   await context.route(/^https?:\/\/(?!localhost)/, r => r.abort());
 }
 
