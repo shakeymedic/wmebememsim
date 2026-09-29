@@ -3,7 +3,7 @@
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
-    // WAVE 3 / C1: the single shared rhythm registry. Every shockability, pulseless and
+    // The single shared rhythm registry. Every shockability, pulseless and
     // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
     // arrays (two shockability lists, seven arrest lists) are gone.
     const RG = window.RHYTHMS;
@@ -25,7 +25,7 @@
             case 'LOAD_SCENARIO': 
                 if(!action.payload) return { ...initialVitalsState };
                 const initialVitals = { ...initialVitalsState.vitals, ...action.payload.vitals };
-                // E8: give the scenario a clinically coherent starting K+ if it never declared one,
+                // Give the scenario a clinically coherent starting K+ if it never declared one,
                 // so hyperkalaemia scenarios actually start hyperkalaemic and the treatment has a
                 // measurable endpoint. An explicit scenario/vitalsMod value always wins.
                 if (action.payload.vitals === undefined || action.payload.vitals === null || action.payload.vitals.k === undefined) {
@@ -57,7 +57,7 @@
                 const base = { ...state.baseVitals, ...action.payload };
                 const t = cs ? cs.time : 0;
                 const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
-                // WAVE 5 / ITEM 6: arrest, ROSC and pulseless<->organised transitions define a NEW
+                // Arrest, ROSC and pulseless<->organised transitions define a NEW
                 // baseline, so they explicitly release the manual hold on the vitals they rewrite.
                 let hold = state.manualHold || {};
                 if (Array.isArray(action.releaseManual) && action.releaseManual.length) {
@@ -71,7 +71,7 @@
                 // and the rejected diff is then retried forever — freezing the student monitor.
                 const { key, value } = action.payload;
                 if (!isVitalValueSafe(key, value)) return state;
-                // D5: a manual pupil write is normalised at the boundary, so nothing downstream ever
+                // A manual pupil write is normalised at the boundary, so nothing downstream ever
                 // sees a raw '' / NaN / '4' ambiguity.
                 if (isCategoricalVital(key)) {
                     const pv = normalisePupils(value);
@@ -92,7 +92,7 @@
                     baseValue = clampVital(key, baseForDisplayed(key, value, off, ceils[key]));
                 }
                 const base = { ...state.baseVitals, [key]: baseValue };
-                // WAVE 5 / ITEM 6: record that the facilitator typed this one. See `manualHold`.
+                // Record that the facilitator typed this one. See `manualHold`.
                 return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
             }
             case 'START_TREND': {
@@ -152,7 +152,7 @@
                 const scen = cs ? cs.scenario : null;
                 const rhythm = cs ? cs.rhythm : 'Sinus Rhythm';
                 const cprActive = cs ? cs.cprInProgress : false;
-                const inArrest = RG.inArrest(rhythm);   // C1: registry, not a seventh private list
+                const inArrest = RG.inArrest(rhythm);   // Registry, not a seventh private list
                 const isBagging = isVentilated(activeInt);
                 const time0 = cs ? cs.time : 0;
                 // coreReducer increments `time` in the same dispatch, so the authoritative clock for
@@ -164,7 +164,7 @@
                 // towards base-space targets. Because it no longer touches the displayed vitals, the
                 // Wave 1 defect where a trend erased a drug effect within one second is structurally
                 // impossible: the drug lives in a separate additive layer.
-                // WAVE 6: the interpolation itself now lives in advanceTrendsOneSecond() so the
+                // The interpolation itself now lives in advanceTrendsOneSecond() so the
                 // clock-independent trend tick (TICK_TRENDS) runs the IDENTICAL maths — a ramp must
                 // behave the same whether or not the session clock is running.
                 const trendStep = advanceTrendsOneSecond(base, newTrends);
@@ -179,7 +179,7 @@
                 const det = scen && scen.deterioration ? scen.deterioration : null;
                 const detType = det ? normaliseDeteriorationType(det.type) : null;
                 const detRate = det ? Number(det.rate) : 0;
-                // WAVE 5 / ITEM 9: a RATE-DRIVEN vital (active warming/cooling, fixed-rate insulin)
+                // A RATE-DRIVEN vital (active warming/cooling, fixed-rate insulin)
                 // is owned by its drive for exactly as long as the drive runs, in the same way a
                 // running trend owns its targets. Without this, autonomous deterioration and the drive
                 // both integrate into the same base value in the same tick and the net movement no
@@ -322,7 +322,7 @@
                 const time = cs ? cs.time : 0;
                 const vitals = cs ? cs.vitals : {};
                 if (time % 5 === 0) {
-                    // B2: temp / bm / ph are modelled vitals now, so they belong in the debrief trace
+                    // Temp / bm / ph are modelled vitals now, so they belong in the debrief trace
                     // too (the graph plots HR/BP/SpO2; the replay scrubber reads the rest).
                     return { ...state, history: [...state.history, { time: time, hr: vitals.hr, bp: vitals.bpSys, spo2: vitals.spO2, rr: vitals.rr, temp: vitals.temp, bm: vitals.bm, ph: vitals.ph, gcs: vitals.gcs }] };
                 }
@@ -361,7 +361,7 @@
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
-                // C5: default to AUTO for any scenario that declares deterioration, MANUAL otherwise.
+                // Default to AUTO for any scenario that declares deterioration, MANUAL otherwise.
                 // The mode is logged at scenario start and on every change so a facilitator who never
                 // touches the toggle is never surprised by moving numbers.
                 const det0 = action.payload.deterioration || null;
@@ -391,7 +391,7 @@
                 // owned by the other three reducers for the rest of the session.
                 const p = action.payload || {};
                 return { ...state,
-                    // D1: resuming reopens the SAME run, and therefore the same instructor notes.
+                    // Resuming reopens the SAME run, and therefore the same instructor notes.
                     // Pre-Wave-4b snapshots carry no runId, so mint one rather than leaving it null.
                     runId: p.runId || state.runId || action.runId || newRunId(),
                     time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
@@ -402,7 +402,7 @@
                     icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
                     activeDrugs: Array.isArray(p.activeDrugs) ? p.activeDrugs : [],
                     deteriorationMode: p.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                    // B5: shock count / cumulative energy survive a resume now that they live in
+                    // Shock count / cumulative energy survive a resume now that they live in
                     // state rather than in a useRef that reset to zero.
                     defib: { ...initialCoreState.defib, ...(p.defib || {}) },
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, p.defibSettings),
@@ -414,7 +414,7 @@
                     lastConversion: p.lastConversion || null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
-                    // WAVE 8 / FINDING 2. A resumed session is NOT a paused session. Its clock is
+                    // A resumed session is NOT a paused session. Its clock is
                     // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
                     // therefore froze the controller's waveform strip until START was pressed. The
                     // pause marker is deliberately NOT restored from the snapshot: a page reload can
@@ -491,7 +491,7 @@
             
             case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
             case 'UPDATE_RHYTHM': {
-                // B1/B2: UPDATE_RHYTHM used to log NOTHING; logging was scattered across five
+                // UPDATE_RHYTHM used to log NOTHING; logging was scattered across five
                 // call sites with five different formats and three of them logged nothing at all.
                 // Every transition now arrives here carrying `cause`/`detail` (see changeRhythm()),
                 // and the reducer records the assessor-local announcement state.
@@ -589,7 +589,7 @@
                 const arrestAfter = arrestKey && a.since !== null ? { ...a, [arrestKey]: [...a[arrestKey], Number(state.time) || 0] } : a;
                 return { ...state, activeDrugs: [...(state.activeDrugs || []), action.payload], arrest: arrestAfter };
             }
-            // WAVE 4a / E13: TITRATABLE INFUSIONS. A running infusion was locked to the magnitude it
+            // TITRATABLE INFUSIONS. A running infusion was locked to the magnitude it
             // was started at, so noradrenaline, GTN, adrenaline, labetalol and insulin could only be
             // ON or OFF - titration to effect, the whole teaching point of a vasoactive infusion, was
             // impossible. `dose` is already the multiplier the envelope is scaled by, so the rate
@@ -655,7 +655,7 @@
                 return { ...state, activeInterventions: nextActive, interventionCounts: nextCounts };
             }
             // =================================================================================
-            // WAVE 9 — ATOMIC BATCH ATTACH. One press = ONE reducer action, however many sensors
+            // ATOMIC BATCH ATTACH. One press = ONE reducer action, however many sensors
             // it puts on. The controller's "+ Invasive" and "Attach standard" buttons, the
             // PROCEDURES monitoring cards and the individual chips all come through here, so no
             // attach path can ever again lose a sensor to batching.
@@ -686,7 +686,7 @@
                 const stopped = (state.activeDrugs || []).map(d => (d.key === action.payload && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
                 return { ...state, activeInterventions: removedActive, activeDurations: removedDurations, activeDrugs: stopped };
             }
-            // WAVE 8 / FINDING 3 — DETACHING ONE SENSOR.
+            // DETACHING ONE SENSOR.
             // 'Obs' is a SHORTHAND for the four standard sensors, which is why a second press on an
             // "attached" chip previously appeared to do nothing: the chip read as on (via 'Obs') but
             // its own key was not in the set, so the press ATTACHED the individual key and changed
@@ -694,7 +694,7 @@
             // replaced by the individual keys for the sensors that STAY, and only the requested one
             // comes off. The chips and the PROCEDURES cards both read getSensors(), so they cannot
             // get out of sync, and exactly one channel goes dark on the student monitor.
-            // WAVE 9: ONE implementation, taking a LIST. 'DETACH_SENSOR' (one key) is now literally
+            // ONE implementation, taking a LIST. 'DETACH_SENSOR' (one key) is now literally
             // 'DETACH_SENSORS' with a single-element list, so a batch detach expands the 'Obs'
             // shorthand exactly once for the whole batch and cannot lose a removal to batching
             // either — the previous code path was only safe because it happened to be dispatched
@@ -749,7 +749,7 @@
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
             case 'SET_ETCO2_PATHOLOGY': return { ...state, etco2Pathology: action.payload };
-            // WAVE 7 / ITEM 4: a point-of-care check. Records the value AT THIS MOMENT with both a
+            // A point-of-care check. Records the value AT THIS MOMENT with both a
             // sim-clock offset and a wall-clock stamp, so the monitor can render it as a reading
             // ("GLUCOSE 4.1 @ 09:47") rather than a live channel.
             case 'RECORD_POC': {
@@ -764,7 +764,7 @@
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
             case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
             case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
-            // WAVE 4b / D4: the `processedEvents` / MARK_EVENT_PROCESSED machinery is GONE. It existed
+            // The `processedEvents` / MARK_EVENT_PROCESSED machinery is GONE. It existed
             // to de-duplicate timed scenario events, but no scenario in the library has ever carried
             // an `events` or `timeline` array, nothing ever dispatched MARK_EVENT_PROCESSED, and the
             // Set was being serialised into every localStorage snapshot for nothing. Autonomous

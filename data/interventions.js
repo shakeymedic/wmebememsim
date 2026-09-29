@@ -152,7 +152,7 @@ window.INTERVENTIONS = {
     'Ticagrelor': { label: 'Ticagrelor', route: 'PO', effect: {}, category: 'Drugs', log: 'Ticagrelor PO administered.', type: 'bolus', duration: 10 },
     'Heparin': { label: 'Heparin / LMWH', route: 'SC/IV', effect: {}, category: 'Drugs', log: 'Anticoagulation administered.', type: 'bolus', duration: 10 },
     // --- NEUROMUSCULAR BLOCKERS ---
-    // Wave 2: the blockade is now driven by the SAME pk entry as everything else — onset = pk.onset,
+    // The blockade is now driven by the SAME pk entry as everything else — onset = pk.onset,
     // end of blockade = pk.offset. Roc ~60s / ~45 min, sux ~45s / ~8 min. One timer, not two.
     'Roc': { label: 'Rocuronium', route: 'IV', effect: { paralysed: true }, paralysis: { onset: 60, duration: 2700 }, category: 'Drugs', log: 'IV Rocuronium administered (1.2 mg/kg). Onset ~60s, duration ~45 min.', type: 'bolus', duration: 10, pk: { onset: 60, peak: 120, offset: 2760, maxDoses: 2 }, expects: ['IV Access'] },
     'Sux': { label: 'Suxamethonium', route: 'IV', effect: { paralysed: true }, paralysis: { onset: 45, duration: 480 }, category: 'Drugs', log: 'IV Suxamethonium administered (1.5 mg/kg). Fasciculations, then onset ~45s, duration ~8 min.', type: 'bolus', duration: 10, pk: { onset: 45, peak: 75, offset: 525, maxDoses: 2 }, expects: ['IV Access'] },
@@ -164,7 +164,7 @@ window.INTERVENTIONS = {
     'Phentolamine': { label: 'Phentolamine', route: 'IV', effect: { BP: -20 }, category: 'Drugs', log: 'IV Phentolamine administered.', type: 'bolus', duration: 10, pk: { onset: 60, peak: 180, offset: 1800, maxDoses: 3 }, expects: ['IV Access'] },
     'Digibind': { label: 'Digibind', route: 'IV', effect: { HR: 10 }, category: 'Drugs', log: 'Digoxin-specific antibody fragments administered. Onset 20-30 min.', type: 'bolus', duration: 60, pk: { onset: 600, peak: 2400, offset: 0, maxDoses: 2 }, expects: ['IV Access'] },
     // pH is a modelled vital now: bicarbonate shifts it over minutes.
-    // E12: bicarbonate generates CO2, so the ETCO2 rises after it is given (and it shifts K+ in).
+    // Bicarbonate generates CO2, so the ETCO2 rises after it is given (and it shifts K+ in).
     'SodiumBicarb': { label: 'Sodium Bicarbonate', route: 'IV', effect: { pH: 0.1, BP: 3, K: -0.4, ETCO2: 0.6 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 30, pk: { onset: 60, peak: 300, offset: 2400, maxDoses: 3 }, expects: ['IV Access'] },
     'HypertonicSaline': { label: 'Hypertonic Saline', route: 'IV', effect: { BP: 5, gcs: 2 }, category: 'Drugs', log: 'Hypertonic Saline (3%) administered. ICP falls over 5-20 min.', type: 'bolus', duration: 30, pk: { onset: 120, peak: 600, offset: 7200, maxDoses: 2 }, expects: ['IV Access'] },
     'T3T4': { label: 'Liothyronine (T3)', route: 'IV', effect: { HR: 5, Temp: 0.5 }, category: 'Drugs', log: 'IV Liothyronine administered. Onset is measured in hours.', type: 'bolus', duration: 30, pk: { onset: 1800, peak: 5400, offset: 0, maxDoses: 2 }, expects: ['IV Access'] },
@@ -202,7 +202,7 @@ window.INTERVENTIONS = {
     'TopicalEyeDrops': { label: 'Topical Eye Drops', route: 'topical', effect: {}, category: 'Drugs', log: 'Topical eye drops (Timolol/Pilocarpine) applied.', type: 'bolus', duration: 10 },
 
     // --- PROCEDURES ---
-    // WAVE 8 / FINDING 4: renamed from "Attach Monitoring (all)". The behaviour is UNCHANGED and
+    // Renamed from "Attach Monitoring (all)". The behaviour is UNCHANGED and
     // deliberately so — it attaches the standard four — but the old label promised everything and
     // then sat next to an "ALL ON" state while capnography and the arterial line were still off.
     // The key is untouched, so all 254 scenarios, saved sessions and sync payloads are unaffected.
@@ -233,7 +233,7 @@ window.INTERVENTIONS = {
     // nominal excursion (it is excluded from the additive envelope while the drive is running, so
     // it can never be applied twice). Bair Hugger + warmed fluids ~1.5 degC/h; active cooling
     // (cold fluids, ice packs, surface cooling) ~2 degC/h.
-    // WAVE 5 / ITEM 9: pk.onset 300s -> 60s for both. A drive's `onset` is dead time before the RATE
+    // Pk.onset 300s -> 60s for both. A drive's `onset` is dead time before the RATE
     // starts at all; adding a 300 s dead period to the 300 s rate ramp meant active cooling took ten
     // minutes to reach its declared 2 degC/h, so the observed rate was roughly a third of the declared
     // one and the temperature looked frozen for the first several minutes. A forced-air blanket or
@@ -271,7 +271,7 @@ window.INTERVENTIONS = {
     'PacingPads': { label: 'Pacing Pads', route: 'transcutaneous', effect: {}, category: 'Procedures', log: 'Defib/Pacing pads applied.', type: 'continuous', duration: 10 },
 
     // =========================================================================================
-    // WAVE 4a — ROUTE-SPECIFIC INTERVENTIONS (PART 3).
+    // ROUTE-SPECIFIC INTERVENTIONS (PART 3).
     // Separate KEYS per route (never a behaviour-bearing `route` field), because UI buttons,
     // scenario recommendedActions/stabilisers, DETERIORATION_TREATMENTS and the RTDB command
     // channel are ALL key-addressed. `route` is descriptive only and is rendered on the button
@@ -291,7 +291,7 @@ window.INTERVENTIONS = {
     'Phenytoin': { label: 'Phenytoin (20 mg/kg infusion)', route: 'IV infusion over >=20 min', effect: { BP: -10, HR: -10 }, category: 'Drugs', log: 'IV Phenytoin (20 mg/kg) infusion started over >=20 min. Cardiac monitoring mandatory.', type: 'bolus', duration: 1200, pk: { onset: 300, peak: 1200, offset: 0, maxDoses: 1 }, expects: ['IV Access'] },
     'Flumazenil': { label: 'Flumazenil', route: 'IV', effect: { gcs: 6, RR: 5 }, category: 'Drugs', log: 'IV Flumazenil administered. CAUTION: seizure risk; shorter-acting than the benzodiazepine.', type: 'bolus', duration: 60, pk: { onset: 60, peak: 420, offset: 2700, maxDoses: 2 }, expects: ['IV Access'] },
     // --- SEDATION / ANALGESIA BY ROUTE
-    // WAVE 5 / ITEM 8: peak 240s -> 180s. IM ketamine for acute behavioural disturbance is specified
+    // Peak 240s -> 180s. IM ketamine for acute behavioural disturbance is specified
     // as ~3 minutes to PEAK effect (4-5 mg/kg IM; dissociation typically 3-4 min). The deployed
     // 240 s peaked at ~4 min, a minute late. Onset (90 s, first effect) and the 600 s plateau /
     // 1800 s offset are unchanged and still bracket the peak correctly. IV ketamine is untouched

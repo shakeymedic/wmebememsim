@@ -4,7 +4,7 @@
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
-    // WAVE 3 / C1: the single shared rhythm registry. Every shockability, pulseless and
+    // The single shared rhythm registry. Every shockability, pulseless and
     // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
     // arrays (two shockability lists, seven arrest lists) are gone.
     const RG = window.RHYTHMS;
@@ -107,7 +107,7 @@
 
             if (action.type === 'UPDATE_RHYTHM') {
                 const newRhythm = RG.canonical(action.payload);
-                // C1: ONE definition. `pulseless` and `isArrest` are the SAME registry predicate —
+                // ONE definition. `pulseless` and `isArrest` are the SAME registry predicate —
                 // the pre-Wave-3 code had two different lists here that disagreed about VT, so
                 // VT-with-a-pulse got arrest physiology while also being excluded from zeroing.
                 const isArrest = RG.inArrest(newRhythm);
@@ -115,7 +115,7 @@
                 // Rhythm-driven vitals are a facilitator-level write: they target the BASE.
                 let rhythmVitals = { ...cur.baseVitals };
 
-                // WAVE 5 / ITEM 6: does the facilitator hold HR? A pulseless/organised transition
+                // Does the facilitator hold HR? A pulseless/organised transition
                 // releases the hold (it defines a new baseline); an organised -> organised rhythm
                 // change respects it.
                 let releaseManual = [];
@@ -142,7 +142,7 @@
                 // (including the ones previously missing: Atrial Flutter, VT, 1st/2nd degree block,
                 // Junctional, STEMI) lands on a clinically sensible heart rate.
                 //
-                // WAVE 5 / ITEM 6 — FACILITATOR SUPREMACY. The band is applied only when the
+                // FACILITATOR SUPREMACY. The band is applied only when the
                 // facilitator has NOT typed an HR of their own (or has just had the hold released by
                 // an arrest/ROSC transition above). If they have, their number stands and the rhythm
                 // change says so in the log, rather than silently replacing 130 with 140.
@@ -248,7 +248,7 @@
         useEffect(() => {
             let timerId;
             let cancelled = false;
-            // C1: no pulse means no beep. Registry-derived, so it cannot drift from the
+            // No pulse means no beep. Registry-derived, so it cannot drift from the
             // physiology the way the old private list did.
             const SILENT_RHYTHMS = RG.PULSELESS;
             const scheduleBeep = () => {
@@ -332,7 +332,7 @@
             const fire = (key, tone) => {
                 if (now - (lastAlarmRef.current[key] || 0) > 10000) { playAlertTone(tone); lastAlarmRef.current[key] = now; }
             };
-            const pulseless = RG.isPulseless(current.rhythm);   // C1: registry
+            const pulseless = RG.isPulseless(current.rhythm);   // Registry
             if (pulseless) { fire('arrest', 'critical'); return; }
             if (v.hr > th.hr.high || v.hr < th.hr.low) fire('hr', 'critical');
             if (alarmSensors.spo2 && v.spO2 < th.spO2) fire('spO2', 'critical');
@@ -424,7 +424,7 @@
                 dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — missing ${missingText} (proceeding)`, type: 'warning', id: Date.now() } });
             }
 
-            // WAVE 7 / ITEM 4 — POINT-OF-CARE CHECKS. These are INTERMITTENT: they publish the value
+            // POINT-OF-CARE CHECKS. These are INTERMITTENT: they publish the value
             // as it is right now, timestamped, and then stop tracking. Repeating the check takes a
             // fresh sample. (A continuous sensor, by contrast, keeps updating.) Fully permissive: a
             // VBG with no IV access has already raised its amber flag above and still proceeds.
@@ -447,12 +447,12 @@
             if (action.type === 'continuous' && isActive) {
                  // Deliberate toggle-off. The button shows an explicit ACTIVE state and a tooltip saying
                  // a second press stops it, so removal cannot be mistaken for a repeat dose.
-                 // WAVE 8 / FINDING 3: monitoring keys take the sensor-aware removal, which expands the
+                 // Monitoring keys take the sensor-aware removal, which expands the
                  // 'Obs' shorthand. Without this the PROCEDURES card and the chip could disagree about
                  // what is attached; both now resolve through getSensors() over the same set.
                  if (key === 'Obs' || STANDARD_SENSOR_KEYS.indexOf(key) !== -1) dispatch({ type: 'DETACH_SENSOR', payload: key });
                  else dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
-                 // B3: stopping compressions clears the flag as well as starting the drug's offset tail.
+                 // Stopping compressions clears the flag as well as starting the drug's offset tail.
                  if (action.effect && action.effect.cpr === true && cur.cprInProgress) dispatch({ type: 'TOGGLE_CPR', payload: false });
                  addLogEntry(`${action.label} removed.`, 'action');
                  dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} STOPPED (second press toggles off)`, type: 'info', id: Date.now() } });
@@ -555,7 +555,7 @@
                         addLogEntry(`${action.label} given to a fluid-overloaded patient — oxygenation is WORSENING. Consider stopping fluid, sitting them up, CPAP/NIV, GTN and diuresis.`, 'danger', true, { action: key, label: action.label, missing: ['fluid responsiveness'] });
                     }
                 }
-                // E9: a declared REBOUND phase is pushed as a second, delayed entry (late
+                // A declared REBOUND phase is pushed as a second, delayed entry (late
                 // hypoglycaemia after insulin/dextrose being the archetype). pkFactor already
                 // returns 0 for an entry whose startTime is in the future, so nothing else changes.
                 if (action.rebound) {
@@ -579,7 +579,7 @@
             const isPocCheck = SENSOR_DEFS.some(d => d.kind === 'poc' && d.key === key);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + (isPocCheck ? " checked" : " Administered"), type: 'success', id: Date.now() } });
 
-            // WAVE 5 / ITEM 2: the trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
+            // The trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
             // above) so the debrief can derive the COMPONENTS of a multi-component objective from the
             // same data the engine credits from. Behaviour here is unchanged: any matching key marks
             // the objective as touched; the debrief decides met vs partial.
@@ -616,7 +616,7 @@
                 addLogEntry(`${action.label} in anaphylaxis — patient condition IMPROVING. Reassess at 5 minutes and repeat IM adrenaline if the improvement is incomplete.`, 'success');
             }
             // --- PARALYSIS (roc vs sux genuinely differ) ---
-            // WAVE 2: folded into the pk envelope. The blockade window is derived from the SAME
+            // Folded into the pk envelope. The blockade window is derived from the SAME
             // activeDrugs entry pushed above (onset = pk.onset, end = pk.offset or paralysis.duration),
             // so there is exactly one timer. SET_PARALYSIS is only used here as an immediate mirror for
             // the UI/sync before the next tick recomputes it from activeDrugs.
@@ -628,7 +628,7 @@
                 addLogEntry(`${action.label}: paralysis in ~${pz.onset}s, lasting ~${Math.round(pz.duration / 60)} min.${ventilated ? '' : ' Patient is NOT being ventilated — expect apnoea and desaturation.'}`, ventilated ? 'info' : 'warning', !ventilated);
             }
             if (action.effect.reverseParalysis) {
-                // E3: REVERSAL IS NOT INSTANT. Sugammadex restores a train-of-four ratio > 0.9 in
+                // REVERSAL IS NOT INSTANT. Sugammadex restores a train-of-four ratio > 0.9 in
                 // roughly 1.5-3 min (longer for a deep block), and the whole teaching point is that
                 // you keep ventilating while you wait. Previously the blockade vanished on the
                 // administering tick, which taught the opposite.
@@ -720,7 +720,7 @@
             }
 
             // =====================================================================================
-            // E2 — ADENOSINE: a SCRIPTED, TRANSIENT sequence, not a jump to HR 80.
+            // ADENOSINE: a SCRIPTED, TRANSIENT sequence, not a jump to HR 80.
             // Half-life is under 10 s. What the team must see is: flush → a few seconds of AV block
             // or sinus pause (the frightening bit) → either conversion to sinus at ~15 s or the SVT
             // simply carrying on, in which case you escalate 6 → 12 → 18 mg (RCUK). Everything is resolved
@@ -743,7 +743,7 @@
                 }, Math.max(1, Number(ab.convertAt) || 12) * 1000);
             }
 
-            // C6: all three changeRhythm modes are handled now. 'sync' and 'chance' were silently
+            // All three changeRhythm modes are handled now. 'sync' and 'chance' were silently
             // ignored before Wave 3, which is why the Cardioversion intervention did nothing and
             // Adrenaline IV / Amiodarone changed no rhythm in any scenario.
             if (action.avBlock) {
@@ -763,7 +763,7 @@
             // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
             // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
             // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
-            const isArrest = RG.inArrest(cur.rhythm);   // C1: registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
+            const isArrest = RG.inArrest(cur.rhythm);   // Registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
             if (isArrest) {
                 const e = action.effect || {};
                 const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
@@ -789,7 +789,7 @@
                         if (pacer.output >= cur.pacingThreshold && pacer.rate > 0) {
                             newVitals.hr = pacer.rate;
                             paceCaptured = true;
-                            // E5: electrical capture without mechanical capture is worthless, and a
+                            // Electrical capture without mechanical capture is worthless, and a
                             // rate number alone taught trainees not to feel for a pulse.
                             addLogEntry(`Pacing: ELECTRICAL capture at ${pacer.output}mA, rate ${pacer.rate}. Now CONFIRM MECHANICAL CAPTURE — feel a central pulse / check the SpO2 trace. Give analgesia and sedation: pacing hurts.`, 'success');
                         } else {
@@ -798,7 +798,7 @@
                     }
                     else if (!pkOwned('HR')) newVitals.hr = clampVital('hr', newVitals.hr + action.effect.HR);
                 }
-                // E5: perfusion only improves if the pacer actually captured.
+                // Perfusion only improves if the pacer actually captured.
                 if (key === 'Pacing' && !paceCaptured) { /* no haemodynamic benefit without capture */ }
                 else if (action.effect.BP && !pkOwned('BP')) {
                     newVitals.bpSys = clampVital('bpSys', newVitals.bpSys + action.effect.BP);
@@ -873,7 +873,7 @@
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
         // =====================================================================================
-        // B1: THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
+        // THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
         // Before Wave 3 the rhythm could change from FIVE places (manual grid, ARREST menu, ROSC
         // menu, shock outcome, nextCycle) with three of them logging nothing, and UPDATE_RHYTHM
         // itself logging nothing at all. Nothing may dispatch UPDATE_RHYTHM directly any more.
@@ -909,7 +909,7 @@
             conversionSeqRef.current += 1;
             const eventId = `${Date.now()}-${conversionSeqRef.current}`;
 
-            // B2: one consistent, assessor-readable line for EVERY transition, converted or not.
+            // One consistent, assessor-readable line for EVERY transition, converted or not.
             if (from === to) {
                 addLogEntry(`Rhythm: ${RG.labelFor(from)} unchanged (${detail || cause})`, 'info');
             } else {
@@ -928,7 +928,7 @@
         }, [coreState.rhythmEvent && coreState.rhythmEvent.id]);
 
         const arrestVitals = (base) => ({ ...base, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 });
-        // WAVE 5 / ITEM 6: the vitals an arrest / ROSC write owns outright. Writing them releases the
+        // The vitals an arrest / ROSC write owns outright. Writing them releases the
         // facilitator's manual hold, because the transition itself establishes a new baseline.
         const RESET_HOLD_KEYS = ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'pupils', 'etco2'];
 
@@ -970,7 +970,7 @@
             const age = cur.scenario?.patientAge ?? 40;
             const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
             const newEtco2 = Math.round((5.0 + (Math.random() * 1.5)) * 10) / 10;
-            // C7: ROSC is no longer always exactly Sinus Rhythm. Honour the rhythm we were given,
+            // ROSC is no longer always exactly Sinus Rhythm. Honour the rhythm we were given,
             // and let the registry supply its rate band so a ROSC into AF is not shown at 80/min.
             const target = RG.canonical(rhythm);
             const band = RG.defaultHrRange(target);
@@ -1003,7 +1003,7 @@
                 let finalCustomText = customText;
 
                 // VBG: if no manual override supplied, derive from current state
-                // D1: the AUTHORED VBG is authoritative for the baseline. It used to be bypassed
+                // The AUTHORED VBG is authoritative for the baseline. It used to be bypassed
                 // whenever scenario.vbg was null (113/254 scenarios, because enrichScenario wrote
                 // the resolved default block to scenario.investigations.vbg but left the top-level
                 // scenario.vbg null), so generateVbg('normal') supplied its VENOUS default of
@@ -1225,7 +1225,7 @@
         };
         const toggleDeteriorationMode = () => setDeteriorationMode(stateRef.current.deteriorationMode === 'auto' ? 'manual' : 'auto');
 
-        // A5: what the facilitator needs to see — which drugs are live, the phase they are in and how
+        // What the facilitator needs to see — which drugs are live, the phase they are in and how
         // long is left, so "why are the obs still moving?" always has a visible answer.
         // ---- WAVE 5 / ITEM 10: A LONG-ONSET DRUG MUST LOOK LIKE IT IS WORKING ------------------
         // IV paracetamol is correctly modelled (onset ~900 s, peak ~90 min, Temp -0.5), and correct
@@ -1319,7 +1319,7 @@
 
         const start = () => {
             resumeAudio(true);
-            // C5: state the mode explicitly at scenario start so an untouched toggle is never a surprise.
+            // State the mode explicitly at scenario start so an untouched toggle is never a surprise.
             const d = describeDeterioration();
             const mode = stateRef.current.deteriorationMode;
             addLogEntry(mode === 'auto' && d.declared
@@ -1350,7 +1350,7 @@
             // Physiology is owned by the controller. isRunning is now synced so the monitor can make
             // sound, but the monitor must NOT run its own 1 Hz physiology tick or it would fight the
             // authoritative vitals arriving over Firebase.
-            // WAVE 6: the decision of WHAT to tick is tickActionFor's, not this effect's. A stopped
+            // The decision of WHAT to tick is tickActionFor's, not this effect's. A stopped
             // clock with an active ramp still ticks — trend-only — so a facilitator's "take the HR to
             // 130 over 2 minutes" works the moment it is set, including in Quick Sim where START is
             // never pressed.
@@ -1367,7 +1367,7 @@
         }, [state.isRunning, isMonitorMode, !!(state.trends && state.trends.active)]);
 
         // =====================================================================================
-        // WAVE 8 / FINDING 3 — EVERY MONITORING CHIP IS A TRUE TWO-WAY TOGGLE.
+        // EVERY MONITORING CHIP IS A TRUE TWO-WAY TOGGLE.
         // One press attaches, the next press DETACHES, and the chip's own state is what decides
         // which. The whole class of confusion came from the chip reading its state through
         // getSensors() (so 'Obs' made it look attached) while pressing it applied its INDIVIDUAL
@@ -1379,7 +1379,7 @@
         // a facilitator pressing it again means.
         // =====================================================================================
         // =====================================================================================
-        // WAVE 9 — EVERY BATCH ATTACH/DETACH IS ONE REDUCER ACTION.
+        // EVERY BATCH ATTACH/DETACH IS ONE REDUCER ACTION.
         //
         // ROOT CAUSE of the "+ INVASIVE attaches the art line but not IV" bug: these helpers used
         // to make SEQUENTIAL applyIntervention() calls. React 18 batches everything a click handler
@@ -1480,10 +1480,10 @@
             const on = !!getSensors(cur)[def.id];
             if (on) detachSensors([def.key]); else attachSensors([def.key]);
         };
-        // WAVE 8 / FINDING 4. The fast path attaches the STANDARD four and says so. The invasive
+        // The fast path attaches the STANDARD four and says so. The invasive
         // action is separate and explicitly labelled, because an arterial line, IV access and
         // capnography are deliberate clinical acts, not a default.
-        // WAVE 9: both are single atomic actions.
+        // Both are single atomic actions.
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 

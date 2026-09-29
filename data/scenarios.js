@@ -318,14 +318,14 @@ window.enrichScenario = (s) => {
         'Sinus Brady':   'Sinus Bradycardia',
         '1st Deg Block': '1st Deg Heart Block',
         '3rd Deg Block': 'Complete Heart Block',
-        // WAVE 3: the registry now has a real STEMI morphology (coved ST elevation), so the
+        // The registry now has a real STEMI morphology (coved ST elevation), so the
         // monitoring trace shows the ST changes instead of being downgraded to plain sinus tachy.
         // investigations.ecg keeps the ORIGINAL un-normalised type, so the 12-lead canvas is
         // unaffected.
         'NSR':           'Sinus Rhythm',
         'Normal Sinus':  'Sinus Rhythm',
     };
-    // WAVE 3 / C1: normalisation is delegated to the shared rhythm registry, which knows every
+    // Normalisation is delegated to the shared rhythm registry, which knows every
     // alias. The small local table above only survives for the two SCENARIO-LEVEL decisions the
     // registry cannot make: STEMI is shown via the 12-lead canvas rather than a monitoring-trace
     // morphology, and a scenario titled "Pulseless VT" means pVT (pulseless, shockable), not
@@ -407,7 +407,7 @@ window.enrichScenario = (s) => {
             chestXray: sourceChestXray || { findings: "CXR: Lung fields clear. No cardiomegaly." },
             vbg: baseVbg || { pH: 7.4, Lac: 1.0, K: 4.0, Glu: 5.5, pCO2: 5.0, pO2: 12.0, BE: 0, HCO3: 24 }
         };
-        // D1: resolve ONE authoritative VBG baseline and use it for BOTH the investigations block
+        // Resolve ONE authoritative VBG baseline and use it for BOTH the investigations block
         // and the top-level scenario.vbg. They can no longer disagree, and scenario.vbg is never
         // null, so nothing downstream can substitute generateVbg('normal') for authored values.
         const resolvedVbg = investigations.vbg;

@@ -1,6 +1,6 @@
 (() => {
     const { useState, useEffect, useRef } = React;
-    // WAVE 4a: the pk helpers are the engine's own (window.__pkInternals), never a reimplementation,
+    // The pk helpers are the engine's own (window.__pkInternals), never a reimplementation,
     // so the Active Drugs panel always agrees with the physiology.
     const PKI = window.__pkInternals || {};
 
@@ -99,7 +99,7 @@
     ];
 
     // =============================================================================================
-    // WAVE 7 / FEATURE — USER-RESIZABLE MONITOR / OBS PANEL ON THE CONTROLLER
+    // USER-RESIZABLE MONITOR / OBS PANEL ON THE CONTROLLER
     //
     // Requested verbatim: "I want to be able to expand or shrink the size of the monitor / obs
     // section on the controller screen please. Ideally by clicking and dragging with my mouse."
@@ -136,7 +136,7 @@
         return Math.round(Math.max(PANEL_BOUNDS.minWidth, Math.min(max, px)));
     };
     const clampStripHeight = (px) => Math.round(Math.max(PANEL_BOUNDS.minStrip, Math.min(PANEL_BOUNDS.maxStrip, px)));
-    // Exported so the verifier exercises the SHIPPING bounds arithmetic rather than a copy of it.
+    // Exported as a test handle, so a test can exercise the SHIPPING bounds arithmetic.
     window.__controllerPanel = { PANEL_STORE_KEY, PANEL_DEFAULTS, PANEL_BOUNDS, readPanelPrefs, writePanelPrefs, clampPanelWidth, clampStripHeight };
 
     const useResizablePanel = () => {
@@ -249,7 +249,7 @@
             const def = (window.SENSOR_DEFS || []).filter(d => d.id === id)[0];
             if (def) applyIntervention(def.key);
         });
-        // WAVE 9: the fallbacks are ATOMIC too. The old invasive fallback made three sequential
+        // The fallbacks are ATOMIC too. The old invasive fallback made three sequential
         // applyIntervention calls inside one click handler, which is precisely the pattern that lost
         // IV access to React's batching; it now prefers the engine's single-action batch primitive
         // and only ever falls back to one dispatch.
@@ -263,14 +263,14 @@
         const nextCycle = sim.nextCycle;
 
         const { scenario: rawScenario, time, isRunning, vitals, activeInterventions, interventionCounts, activeDurations, arrestPanelOpen, cprInProgress, flash, notification, trends, audioOutput, isMuted, etco2Enabled, etco2Pathology, showWetflag } = state;
-        // WAVE 3: defibPanelOpen (the monitor-hosted defib), the defib device/metrics block and the
+        // DefibPanelOpen (the monitor-hosted defib), the defib device/metrics block and the
         // ASSESSOR-LOCAL conversion announcements. rhythmEvent/lastConversion never reach Firebase.
         const defibPanelOpen = !!state.defibPanelOpen;
         const defib = state.defib || {};
         const rhythmEvent = state.rhythmEvent;
         const lastConversion = state.lastConversion;
         const remoteClients = (state.remotePresence && state.remotePresence.clients) || [];
-        // WAVE 2: deterioration mode + live drug timing.
+        // Deterioration mode + live drug timing.
         const deteriorationMode = state.deteriorationMode || 'manual';
         const detInfo = sim.describeDeterioration ? sim.describeDeterioration() : { declared: false, type: null, rate: 0 };
         // Recomputed on every render; `time` changes at 1 Hz so the panel counts down live.
@@ -399,7 +399,7 @@
             "Re-evaluation": null
         });
 
-        // C1/C3: every rhythm menu is now derived from the shared registry, so the arrest menu can
+        // Every rhythm menu is now derived from the shared registry, so the arrest menu can
         // no longer offer a rhythm no scenario uses, and the ROSC menu can no longer omit Atrial
         // Flutter or Complete Heart Block.
         const RHYTHMS = RG.SELECTABLE;
@@ -407,7 +407,7 @@
         const ROSC_RHYTHMS = RG.ROSC;
         const VOICE_PHRASES = ["My chest hurts", "I can't breathe", "I feel sick", "Who are you?", "My tummy hurts", "I feel dizzy", "Am I going to die?", "Yes", "No", "I'm thirsty", "Where am I?", "Please help me"];
         
-        // WAVE 4a: the 28 new route-specific keys are grouped here so they are reachable in two taps
+        // The 28 new route-specific keys are grouped here so they are reachable in two taps
         // and sit beside their IV equivalents (the route is printed on every button).
         const DRUG_GROUPS = {
             "Resus / Cardiac": ["AdrenalineIV", "AdrenalinePush", "AdrenalineInfusion", "Amiodarone", "AmiodaroneInfusion", "Atropine", "Adenosine", "Digoxin", "MagSulph", "MagnesiumInfusion", "Calcium", "CalciumChloride", "SodiumBicarb", "AdrenalineIM"],
@@ -437,7 +437,7 @@
             const term = searchTerm.toLowerCase();
             const matches = Object.keys(INTERVENTIONS).filter(key => {
                 const item = INTERVENTIONS[key];
-                // WAVE 4a: route is searchable too, so "IM", "buccal", "PR" or "intranasal" finds the
+                // Route is searchable too, so "IM", "buccal", "PR" or "intranasal" finds the
                 // right key without knowing the label.
                 return item.label.toLowerCase().includes(term) || key.toLowerCase().includes(term)
                     || (item.route || '').toLowerCase().includes(term);
@@ -513,7 +513,7 @@
         const confirmFinish = () => { if (window.confirm('End the simulation and go to debrief?')) onFinish(); };
 
         const formatTime = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${(s%60).toString().padStart(2,'0')}`;
-        // WAVE 7 / ITEM 4: individual sensors, derived from the shared engine helper so the
+        // Individual sensors, derived from the shared engine helper so the
         // controller and the student monitor can never disagree about what is attached.
         // Quick Sim is NOT special-cased here any more: it starts with nothing attached, and the
         // strip below shows exactly what the team sees — a removed sensor's trace goes blank.
@@ -534,7 +534,7 @@
         const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
         // Bronchospasm drives the shark-fin capnogram through the EXISTING etco2Pathology state.
         const capnoPattern = etco2Pathology || 'normal';
-        // WAVE 8 / FINDING 1. HOW obstructed, not just whether: one severity number from the engine's
+        // HOW obstructed, not just whether: one severity number from the engine's
         // existing bronchospasm model (scenario diagnosis + how hard the patient is working −
         // bronchodilator pk relief), which scales the capnogram from a normal trapezoid through a
         // slant to an unmistakable shark fin, and falls again as treatment takes effect. The
@@ -543,7 +543,7 @@
             ? window.getObstruction(state, vitals, scenario)
             : { severity: capnoPattern === 'bronchospastic' ? 0.9 : 0, band: 'none', base: 0, relief: 0, tiring: 0, source: '' };
         const capnoSeverity = Number.isFinite(obstruction.severity) ? obstruction.severity : 0;
-        // WAVE 7 / FEATURE: the facilitator's own panel size (drag handles + localStorage).
+        // The facilitator's own panel size (drag handles + localStorage).
         const panel = useResizablePanel();
 
         // ======================= QUICK SIM PRESETS (scripted sequences) =======================
@@ -653,7 +653,7 @@
         // clock starts, so the trace now freezes ONLY on a deliberate pause of a session that has
         // actually run — i.e. never at 00:00, in any launch mode.
         //
-        // WAVE 8 / FINDING 2. `!isRunning && time > 0` also matched a RESUMED session: "Resume
+        // `!isRunning && time > 0` also matched a RESUMED session: "Resume
         // Previous" restores a non-zero clock and does not start the sim, so the strip was read as
         // deliberately paused and stayed BLANK until START was pressed (a fresh Quick Sim drew
         // correctly, which is what made it look inconsistent). The two cases are now distinguished by
@@ -697,7 +697,7 @@
                  <button key={key} title={btnTitle} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
-                        {/* WAVE 4a / E1: the ROUTE is shown on every button, because IM vs IV vs buccal
+                        {/* The ROUTE is shown on every button, because IM vs IV vs buccal
                             is the whole point of the new route-specific keys and a facilitator must be
                             able to tell them apart at a glance mid-resus. */}
                         <span className={`text-[10px] truncate ${isActive && isContinuous ? 'text-emerald-400 font-bold uppercase not-italic' : 'opacity-70 italic'}`}>{isActive && isContinuous ? 'Active \u00b7 tap to stop' : (action.route && action.route !== 'n/a' ? action.route : action.category)}</span>
@@ -786,7 +786,7 @@
         };
         const VITAL_NAMES = { hr: 'Heart rate', bp: 'Blood pressure', spO2: 'SpO2', rr: 'Respiratory rate', temp: 'Temperature', bm: 'Glucose', etco2: 'ETCO2', gcs: 'GCS', ph: 'pH', k: 'Potassium (K+)', pupils: 'Pupils' };
 
-        // C4: paediatric arrests are weight-based (4 J/kg). The energy ladder and the recommended
+        // Paediatric arrests are weight-based (4 J/kg). The energy ladder and the recommended
         // dose both come from the registry, so the controller, the monitor-hosted defib and the
         // standalone defib page cannot disagree about what 3.5 kg or 10 kg needs.
         const energySteps = sim.defibEnergySteps ? sim.defibEnergySteps() : RG.ADULT_ENERGY_STEPS;
@@ -818,7 +818,7 @@
         const deviationEntries = flaggedEntries.filter(l => l.deviation && Array.isArray(l.deviation.missing));
         const significanceEntries = flaggedEntries.filter(l => !(l.deviation && Array.isArray(l.deviation.missing)));
 
-        // D3: the flow is now CHOOSE / CUSTOMISE, then SEND. Opening the chooser sends nothing, and
+        // The flow is now CHOOSE / CUSTOMISE, then SEND. Opening the chooser sends nothing, and
         // dismissing it sends nothing and does not wipe a result already on the student monitor.
         // "Clear result on monitor" is a separate, explicitly-labelled destructive action.
         const handleInvClick = (type) => { setInvModal(type); setInvCustomText(""); };
@@ -854,7 +854,7 @@
                                      <VitalDisplay compact={compact} label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} visible={true} trend={getTrend('gcs')} />
                                      {/* pH is a modelled vital now (SodiumBicarb finally does something). */}
                                      <VitalDisplay compact={compact} label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} visible={true} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
-                                     {/* WAVE 4a / E8: serum K+. Hyperkalaemia and DKA finally have a
+                                     {/* Serum K+. Hyperkalaemia and DKA finally have a
                                          measurable endpoint the facilitator can steer and the team can read. */}
                                      <VitalDisplay compact={compact} label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} visible={true} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
             </>
@@ -978,14 +978,14 @@
                     </div>
                 </div>
 
-                {/* WAVE 7 / FEATURE: this row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
+                {/* This row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
                     + md:col-span-7 lg:col-span-8). It is now a flex row so the left monitor/obs panel
                     can carry a dragged pixel width, with the right pane taking the remainder. Below
                     md it stacks exactly as before (flex-col, full width), so the verified 375 px
                     layout is untouched. */}
                 <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0 max-md:flex-none max-md:overflow-visible">
                     <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 md:overflow-y-auto md:h-full md:pr-1">
-                         {/* A2: the scenario brief card is replaced in Quick Sim by a one-line factual
+                         {/* The scenario brief card is replaced in Quick Sim by a one-line factual
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
                          {quickSim ? (
@@ -1179,7 +1179,7 @@
                                             <div key={`${d.key}-${d.startTime}-${i}`} className="flex items-center justify-between gap-2 text-[11px] border-b border-slate-800 last:border-0 pb-0.5">
                                                 <span className="text-slate-200 truncate">{d.label || d.key}{d.route ? <span className="text-slate-500"> &middot; {d.route}</span> : null}</span>
                                                 <span className={`font-mono font-bold uppercase shrink-0 ${colour}`}>{phase}{(remaining !== null && remaining !== undefined) ? ` ${Math.round(remaining / 60)}m` : ''} {Math.round(Math.min(1, f) * 100)}%</span>
-                                                {/* E13: TITRATION. A running infusion can be turned up or down
+                                                {/* TITRATION. A running infusion can be turned up or down
                                                     while it runs - the defining skill of vasoactive infusions. */}
                                                 {d.sustained && d.stopTime < 0 && (
                                                     <span className="flex items-center gap-1 shrink-0">
@@ -1383,7 +1383,7 @@
                                      <button aria-label="Close defibrillator panel" onClick={() => { sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
 
-                                 {/* C4: weight-based energy ladder. 4 J/kg is highlighted as recommended;
+                                 {/* Weight-based energy ladder. 4 J/kg is highlighted as recommended;
                                      anything else is permitted and flagged, never blocked. */}
                                  <div className="mb-2">
                                      <div className="flex items-center justify-between mb-1">
@@ -1536,7 +1536,7 @@
                                 are marked so the facilitator can see what will zero the obs. */}
                             <div>
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Select rhythm ({RG.SELECTABLE.length})</div>
-                                {/* WAVE 5 / ITEM 6: the precedence rule, documented in the Quick Sim pane where
+                                {/* The precedence rule, documented in the Quick Sim pane where
                                     the HR-then-rhythm sequence is most commonly used. */}
                                 <div className="text-[9px] text-slate-500 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
@@ -1798,7 +1798,7 @@
                                 
                                 {modalVital === 'etco2' && (
                                     <div>
-                                        {/* WAVE 8 / FINDING 1. The capnogram shape is now scaled by the
+                                        {/* The capnogram shape is now scaled by the
                                             engine's obstruction severity, so the default is AUTO: an
                                             asthmatic with a silent chest shows a shark fin without the
                                             facilitator having to find this menu, and the fin flattens as
@@ -1833,7 +1833,7 @@
                                                 : <span>{sensors.art ? 'The arterial line follows this live. ' : ''}{sensors.nibp ? 'The NIBP shows it the next time the cuff cycles.' : ''}</span>}
                                     </div>
                                 )}
-                                {/* WAVE 5 / ITEM 6 — the rule, stated where the facilitator sets the value. */}
+                                {/* The rule, stated where the facilitator sets the value. */}
                                 {modalVital === 'hr' && (
                                     <div className="bg-slate-900 border border-slate-700 rounded p-2 text-[10px] text-slate-400 leading-relaxed">
                                         <b className="text-slate-200">Your value wins.</b> A later rhythm change will <b>not</b> overwrite an HR you set here — it keeps your number and says so in the log. Only ARREST and ROSC reset it, because those define a new baseline. Set HR here again at any time to change it.
@@ -1851,7 +1851,7 @@
                     <Modal label="Select rhythm" onClose={()=>setShowRhythmModal(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-2xl shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-1 uppercase tracking-wider">Select Rhythm</h3>
-                            {/* WAVE 5 / ITEM 6: state the precedence rule at the point of use. */}
+                            {/* State the precedence rule at the point of use. */}
                             <p className="text-[10px] text-slate-400 mb-3">Each rhythm carries a typical rate, which is applied only if you have not set HR yourself. If you have, your HR stands and the log records why — facilitator values are never silently overwritten.</p>
                             <div className="grid grid-cols-3 gap-2">
                                 {RHYTHMS.map(r => (

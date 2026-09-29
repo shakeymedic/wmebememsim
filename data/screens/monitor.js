@@ -16,7 +16,7 @@
     const render12Lead = (canvas, rhythm, scenario, hr) => window.RHYTHMS.render12Lead(canvas, rhythm, scenario, hr);
 
     // =========================================================================================
-    // A1/A2: THE DEFIBRILLATOR, HOSTED ON THE STUDENT MONITOR.
+    // THE DEFIBRILLATOR, HOSTED ON THE STUDENT MONITOR.
     //
     // WHY THIS EXISTS. defib/index.html has ZERO Firebase: it is BroadcastChannel-only, which only
     // works between tabs of the SAME browser on the SAME device. Opened on a second physical
@@ -25,13 +25,13 @@
     // VF. This component is driven by the SAME Firebase session sync as the rest of the monitor,
     // so it is correct on any device.
     //
-    // A2: THE OBS STAY VISIBLE. This extends the existing arrest-view dual-trace pattern
+    // THE OBS STAY VISIBLE. This extends the existing arrest-view dual-trace pattern
     // (LEAD II + PADS) rather than inventing a new layout, and puts the live vitals column
     // alongside. It is a flex row on landscape tablets and stacks with its own scroll container
     // at narrow widths (no fixed min-widths, no horizontal overflow — the app has had a
     // mobile-overflow bug class before and this must not reintroduce it).
     //
-    // A6: every student press is pushed to sessions/<CODE>/deviceEvents (PUSH semantics, its own
+    // Every student press is pushed to sessions/<CODE>/deviceEvents (PUSH semantics, its own
     // node) NOT to sessions/<CODE>/command, which is a single set() slot already owned by NIBP.
     // The controller converges them all on applyShockOutcome / deliverShock.
     // =========================================================================================
@@ -52,7 +52,7 @@
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
-        // WAVE 7 / ITEM 4: each sensor gates exactly its own value/trace. Derived from the shared
+        // Each sensor gates exactly its own value/trace. Derived from the shared
         // engine helper (window.getSensors) off activeInterventions, which is already on the wire, so
         // the student monitor needs no new sync key and can never disagree with the controller.
         // 'Obs' (Attach Monitoring) still implies every continuous sensor, so all 254 premade
@@ -69,7 +69,7 @@
         // than tracking live (the clinically important distinction, and what NIBP already does).
         const poc = state.pocReadings || {};
         const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
-        // WAVE 8 / FINDING 1: the shark-fin severity arrives as a plain top-level number on the wire
+        // The shark-fin severity arrives as a plain top-level number on the wire
         // (`co2Severity`), computed once from the authoritative controller state, so the student
         // monitor and the facilitator strip draw the identical capnogram shape and can never disagree.
         const co2Severity = Number.isFinite(state.co2Severity) ? state.co2Severity : 0;
@@ -441,7 +441,7 @@
                         )}
                     </div>
 
-                    {/* B2: Temp / capillary glucose / pH are point-of-care measurements rather than
+                    {/* Temp / capillary glucose / pH are point-of-care measurements rather than
                         continuous monitored channels, so they get their own slim strip instead of
                         shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
                         (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
@@ -472,7 +472,7 @@
                                     {cell('pH', (vbg && Number.isFinite(vbg.value)) ? vbg.value.toFixed(2) : null, '',
                                           vbg ? vbg.clock : 'no gas',
                                           !!(vbg && Number.isFinite(vbg.value) && (vbg.value < 7.30 || vbg.value > 7.50)))}
-                                    {/* WAVE 4a / E8: serum potassium — hyperkalaemia and DKA finally have a
+                                    {/* Serum potassium — hyperkalaemia and DKA finally have a
                                         measurable endpoint. Reported from the VBG sample, like the real thing. */}
                                     {cell('K+', (vbg && Number.isFinite(vbg.value2)) ? vbg.value2.toFixed(1) : null, 'mmol/L',
                                           vbg ? vbg.clock : 'no gas',

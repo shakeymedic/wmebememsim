@@ -74,10 +74,10 @@ window.BUILDER_LIMITS = {
     etco2: { min: 0,  max: 15,  label: 'EtCO2',       unit: 'kPa' },
     bm:    { min: 0,  max: 50,  label: 'Glucose',     unit: 'mmol/L' },
     icp:   { min: 0,  max: 80,  label: 'ICP',         unit: 'mmHg' },
-    // WAVE 2: pH is a modelled vital now (bicarbonate/ventilation teaching), so the facilitator's
+    // PH is a modelled vital now (bicarbonate/ventilation teaching), so the facilitator's
     // manual-control modal needs a limit entry or it would silently accept any number.
     ph:    { min: 6.5, max: 7.9, label: 'pH',         unit: '' },
-    // WAVE 4a / E8: serum potassium is a modelled vital (hyperkalaemia + DKA teaching), so the
+    // Serum potassium is a modelled vital (hyperkalaemia + DKA teaching), so the
     // facilitator's manual-control modal needs a limit entry of its own.
     k:     { min: 1.5, max: 9.5, label: 'Potassium',  unit: 'mmol/L' },
     // 0.5 kg is a 23-week neonate; 300 kg covers bariatric. Zero or negative previously divided
@@ -168,7 +168,7 @@ window.calculateWetflag = (age, weightStr) => {
     let glucoseVol = Math.round(weight * 2);
     return { 
         weight: weight, 
-        // C4: 4 J/kg, but computed by the shared registry so the WETFLAG card, the assessor's
+        // 4 J/kg, but computed by the shared registry so the WETFLAG card, the assessor's
         // energy ladder, the monitor-hosted defib and the standalone defib page can never disagree
         // about what this patient needs (the standalone page used to hardcode 120 J for everyone).
         energy: (window.RHYTHMS ? window.RHYTHMS.recommendedEnergy(weight, age) : Math.round(weight * 4)),
@@ -202,7 +202,7 @@ window.generateVbg = (clinicalState = "normal") => {
     return vbg;
 };
 
-// D1 — HOW THE AUTHORED VBG AND THE DYNAMIC MODEL ARE RECONCILED (documented deliberately):
+// HOW THE AUTHORED VBG AND THE DYNAMIC MODEL ARE RECONCILED (documented deliberately):
 //   * The AUTHORED block WINS for the baseline. `startVbg` is the scenario's own authored `vbg`
 //     (or the block materialised from `vbgClinicalState`), resolved once in enrichScenario and
 //     stored on BOTH scenario.vbg and scenario.investigations.vbg so they cannot disagree.
@@ -284,7 +284,7 @@ window.HUMAN_FACTOR_CHALLENGES = [
 ];
 
 // =================================================================================================
-// WAVE 4b / PART A — QUICK SIM SYNTHETIC PATIENT
+// QUICK SIM SYNTHETIC PATIENT
 // -------------------------------------------------------------------------------------------------
 // Quick Sim is a stripped-back "obs + rhythm only" teaching mode. It has NO clinical scenario: no
 // brief, no learning objectives, no intervention library, no expectation machinery. But every other

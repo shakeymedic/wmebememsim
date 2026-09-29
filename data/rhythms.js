@@ -250,7 +250,7 @@
 
         { id: 'Atrial Flutter', label: 'Atrial Flutter', short: 'FLUTTER', waveform: 'flutter',
           aliases: ['aflutter', 'Flutter', 'Atrial flutter'],
-          // C3: Atrial Flutter was missing from ROSC_RHYTHMS and had no defib waveform.
+          // Atrial Flutter was missing from ROSC_RHYTHMS and had no defib waveform.
           shockable: false, pulseless: false, syncCardiovert: true, roscEligible: true, defaultHrRange: [140, 160] },
 
         { id: 'SVT', label: 'SVT', short: 'SVT', waveform: 'svt',
@@ -310,7 +310,7 @@
         // needs pacing) with normal P waves marching through it at their own rate.
         { id: 'Complete Heart Block', label: 'Complete Heart Block', short: 'CHB', waveform: 'chb',
           aliases: ['3rd Deg Block', '3rd Degree AV Block', 'CHB', 'chb', 'Third Degree Heart Block'],
-          // C3: Complete Heart Block was missing from ROSC_RHYTHMS.
+          // Complete Heart Block was missing from ROSC_RHYTHMS.
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [35, 45] },
 
         { id: 'Paced', label: 'Paced Rhythm', short: 'PACED', waveform: 'paced',
@@ -409,7 +409,7 @@
     // facilitator override that forces severity 0) | 'rebreathing' (baseline fails to reach zero)
     // | 'curare' (curare cleft in the plateau).
     //
-    // WAVE 8 / FINDING 1. Wave 7 drew ONE fixed obstructive shape, and live verification measured
+    // Wave 7 drew ONE fixed obstructive shape, and live verification measured
     // an upstroke occupying only 5-9% of the breath cycle in every case: the alveolar plateau
     // stayed visibly separate from the upstroke, so even "asthma" read as mild obstruction rather
     // than the shark fin of a silent chest. There is now a single CONTINUOUS shape family
@@ -955,12 +955,12 @@
         rWavePhase: rWavePhase,
         pulseValue: pulseValue,
         LEADS: ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'PADS'],
-        // WAVE 7 — shared by the React monitor AND the standalone defibrillator.
+        // Shared by the React monitor AND the standalone defibrillator.
         beatIntervalFactor: beatIntervalFactor,
         droppedBeat: droppedBeat,
         beatHash: beatHash,
         capnogram: capnogram,
-        // WAVE 8: the capnogram shape family, exported so the obstruction severity that drives it
+        // The capnogram shape family, exported so the obstruction severity that drives it
         // has exactly one definition and verification measures the shipping parameters.
         capnoShapeParams: capnoShapeParams,
         capnoSeverity: capnoSeverity,

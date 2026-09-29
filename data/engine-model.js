@@ -5,13 +5,13 @@
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
-    // WAVE 3 / C1: the single shared rhythm registry. Every shockability, pulseless and
+    // The single shared rhythm registry. Every shockability, pulseless and
     // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
     // arrays (two shockability lists, seven arrest lists) are gone.
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
 
-    // WAVE 4a / E8: serum potassium is a MODELLED VITAL. Hyperkalaemia and DKA were the two
+    // Serum potassium is a MODELLED VITAL. Hyperkalaemia and DKA were the two
     // flagship metabolic scenarios with no measurable endpoint at all: the app had
     // Insulin/Dextrose, calcium salts, salbutamol and bicarbonate but K+ existed only inside a
     // log string. `k` is a first-class vital now (controller + student monitor + sync payload),
@@ -52,7 +52,7 @@
         scenario: null, investigationsRevealed: {}, loadingInvestigations: {}
     };
 
-    // WAVE 4b / D1: a genuinely unique identifier for THIS RUN of a scenario.
+    // A genuinely unique identifier for THIS RUN of a scenario.
     // The debrief's instructor-notes localStorage key was built from `state.sessionID`, which has
     // never existed on state, so it silently fell back to `scenario.id`. That meant every run of the
     // same scenario shared one notes key and notes bled between sessions — and with Quick Sim, where
@@ -83,11 +83,11 @@
         nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
         speech: { text: null, timestamp: 0, source: null }, soundEffect: { type: null, timestamp: 0 },
         audioOutput: 'monitor', arrestPanelOpen: false, isFinished: false, etco2Pathology: 'normal',
-        // WAVE 8 / FINDING 1: the obstruction severity that shapes the capnogram. On the controller
+        // The obstruction severity that shapes the capnogram. On the controller
         // this is DERIVED every render by getObstruction(); it is stored only on the student monitor,
         // where it arrives over the wire as `co2Severity` so both views draw the identical shape.
         co2Severity: 0,
-        // WAVE 8 / FINDING 2: the sim-clock second at which the FACILITATOR deliberately paused a
+        // The sim-clock second at which the FACILITATOR deliberately paused a
         // running session, or null. A session restored from storage is `null` even though its clock
         // is non-zero, which is exactly what tells "resumed, not yet started" apart from "paused
         // mid-session". Never persisted: reloading the page can only ever produce the former.
@@ -97,7 +97,7 @@
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
         icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
         lastUpdate: 0, isOffline: false, showWetflag: true,
-        // WAVE 4a / E8: mirrored top-level serum K+ (the authoritative copy lives in vitals.k).
+        // Mirrored top-level serum K+ (the authoritative copy lives in vitals.k).
         potassium: 4.2,
         // ---- WAVE 7 / ITEM 4: INTERMITTENT (POINT-OF-CARE) READINGS ------------------
         // Continuous monitoring (ECG, SpO2, capnography, art line, temperature probe) reveals a
@@ -107,10 +107,10 @@
         // object passes sanitizeForRealtimeDatabase untouched.
         pocReadings: {},
         // ---- WAVE 3 -------------------------------------------------------------------
-        // A3: the assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
+        // The assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
         // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
         defibPanelOpen: false,
-        // B5: defibrillator device + metrics state. Previously shockCountRef was a bare useRef
+        // Defibrillator device + metrics state. Previously shockCountRef was a bare useRef
         // that never reached state, Firebase, localStorage OR the debrief, and reset on resume.
         defib: {
             mode: 'monitor',            // monitor | defib | pacer | aed
@@ -152,12 +152,12 @@
         deviceMirror: {},
         // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
         // deliberately absent from the Firebase sync payload (verified by
-        // verify_wave3.js :: conversion announcements are not synced) because `notification`
+        // tests/specs/rules.spec.js: the sync payload has no such key) because `notification`
         // IS synced and IS rendered on the student monitor. Conversion announcements must never
         // appear on the patient-facing screen — that would tell the team the answer.
         rhythmEvent: null,              // { id, from, to, cause, detail, at } — drives the toast
         lastConversion: null,           // last CONVERSION (from !== to) — drives the persistent strip
-        // A5: which remote devices are connected and what each is displaying.
+        // Which remote devices are connected and what each is displaying.
         remotePresence: { clients: [], updatedAt: null },
         // `isOffline` is kept for existing UI behaviour; syncStatus carries the actionable
         // reason that the controller and second-screen monitor display to the user.
@@ -253,7 +253,7 @@
     const isVentilated = (activeInt) => !!activeInt && VENTILATING.some(k => activeInt.has(k));
 
     // =====================================================================================
-    // WAVE 7 / ITEM 4 — INDIVIDUALLY ATTACHABLE MONITORING
+    // INDIVIDUALLY ATTACHABLE MONITORING
     //
     // One helper, derived from the SAME activeInterventions set that is already logged, already
     // flagged and already synced to the student monitor. No parallel state, nothing new on the
@@ -282,7 +282,7 @@
     // Attaching everything = 'Obs' plus the individual continuous keys, so the monitor is fully
     // populated in a single action.
     const ATTACH_ALL_KEYS = ['Obs', 'MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp'];
-    // WAVE 8 / FINDING 4. The four sensors the ONE-PRESS fast path attaches, and the deliberate
+    // The four sensors the ONE-PRESS fast path attaches, and the deliberate
     // clinical acts it does NOT. 'Obs' is a shorthand for exactly the standard four; it has never
     // implied capnography, an arterial line or IV access, and that clinical default is unchanged.
     // What changes is the honesty of the label: the fast path is now called "Attach standard", and
@@ -306,7 +306,7 @@
             iv: has('IV Access') || has('IO Access'),
             any: !!all || has('MonECG') || has('MonSpO2') || has('MonNIBP') || has('MonTemp') ||
                  has('ArtLine') || !!(coreState && coreState.etco2Enabled),
-            // WAVE 8 / FINDING 4: two HONEST summary flags, so no button can claim more than it did.
+            // Two HONEST summary flags, so no button can claim more than it did.
             // `standard` = the four sensors the fast path attaches. `all` = literally everything.
             get standard() { return this.ecg && this.spo2 && this.nibp && this.temp; },
             get all() { return this.ecg && this.spo2 && this.nibp && this.temp && this.etco2 && this.art && this.iv; }
@@ -347,7 +347,7 @@
         return Number.isFinite(Number(val)) && val !== '' && val !== null;
     };
 
-    // WAVE 4b / D5: PUPILS ARE CATEGORICAL, NOT CONTINUOUS.
+    // PUPILS ARE CATEGORICAL, NOT CONTINUOUS.
     // `pupils` legitimately holds either a number (3, 4, 8 — a diameter in mm) or one of a small set
     // of descriptive strings ('Dilated', 'Pinpoint', 'Unequal'), which the arrest and ROSC paths both
     // write. Interpolating between 3 and 'Dilated' yields NaN, and a NaN in `vitals` is rejected by
@@ -412,7 +412,7 @@
     const EFFECT_TARGETS = {
         HR: [['hr', 1]], BP: [['bpSys', 1], ['bpDia', 0.6]], RR: [['rr', 1]], SpO2: [['spO2', 1]],
         gcs: [['gcs', 1]], BM: [['bm', 1]], Temp: [['temp', 1]], pH: [['ph', 1]],
-        // WAVE 4a: K = serum potassium (mmol/L), ETCO2 = end-tidal CO2 (kPa, e.g. the CO2 load
+        // K = serum potassium (mmol/L), ETCO2 = end-tidal CO2 (kPa, e.g. the CO2 load
         // after sodium bicarbonate).
         K: [['k', 1]], ETCO2: [['etco2', 1]]
     };
@@ -432,7 +432,7 @@
     };
     // Vitals a pulseless patient cannot express. Suppressed from the drug envelope during arrest.
     const ARREST_SUPPRESSED = ['hr', 'bpSys', 'bpDia', 'rr', 'spO2'];
-    // C1: derived from the registry, NOT a local copy. The old literal included 'VT', which is
+    // Derived from the registry, NOT a local copy. The old literal included 'VT', which is
     // why VT-with-a-pulse (AM024) was treated as an arrest by the drug envelope.
     const PULSELESS_RHYTHMS = RG.PULSELESS;
 
@@ -504,7 +504,7 @@
             // is visible at a glance; route BEHAVIOUR always comes from a separate key.
             route: action.route || null,
             drives,
-            // E7: an ABSOLUTE ceiling on the composed vital, not just an additive dose cap.
+            // An ABSOLUTE ceiling on the composed vital, not just an additive dose cap.
             // Atropine cannot take the heart rate past full vagal blockade however many doses are
             // given, and a beta-agonist cannot push it past ~155.
             ceilingVital: (action.ceiling && action.ceiling.vital) || null,
@@ -532,7 +532,7 @@
     // corrected at all. Integrates into `base` IN PLACE; returns true if anything moved.
     // How long a rate-driven intervention (warming blanket, cooling, insulin infusion) takes to
     // reach its full rate after its onset.
-    // WAVE 5 / ITEM 9: 300s -> 120s. The declared rate (2 degC/h of cooling) was only ever reached
+    // 300s -> 120s. The declared rate (2 degC/h of cooling) was only ever reached
     // after a 300 s pk onset PLUS a 300 s linear ramp, and the ramp costs half of its own window, so
     // the first ten minutes delivered roughly a third of the declared rate — which is exactly the
     // discrepancy live testing measured (0.1 degC per 8-10 min instead of per ~3 min). 120 s keeps the
@@ -571,7 +571,7 @@
         return moved;
     };
 
-    // WAVE 4a / E11: the Wave 2 documentation promised COSINE-SMOOTHED ramps; the code shipped a bare
+    // The Wave 2 documentation promised COSINE-SMOOTHED ramps; the code shipped a bare
     // linear interpolation. Rather than downgrade the documentation, the smoothing is now implemented:
     // a raised-cosine ease maps 0..1 -> 0..1 with zero slope at both ends, so a drug's effect eases in
     // and eases out instead of starting and stopping with a visible kink on the trend graph. Midpoint
@@ -663,7 +663,7 @@
         return out;
     };
 
-    // E7: absolute, saturating ceilings. Collected from whichever entries are currently live so a
+    // Absolute, saturating ceilings. Collected from whichever entries are currently live so a
     // spent dose stops constraining anything.
     const drugCeilings = (activeDrugs, t) => {
         const out = {};
@@ -702,7 +702,7 @@
             let off = offs[k] || 0;
             if (inArrest && ARREST_SUPPRESSED.indexOf(k) !== -1) off = 0;
             let composed = bv + off;
-            // E7: a saturating ceiling only ever removes DRUG-DRIVEN excess — it can never pull a
+            // A saturating ceiling only ever removes DRUG-DRIVEN excess — it can never pull a
             // vital below where the underlying physiology already is (a tachycardic septic patient
             // given atropine does not have their heart rate "capped" down to 115).
             if (off > 0 && ceil[k] !== undefined && composed > ceil[k]) composed = Math.max(bv, ceil[k]);
@@ -755,7 +755,7 @@
     // Interventions that address each pathology. Any of them slows the decline; enough of them
     // reverses it (C4). Matching is permissive — a bolus given once counts, same as Wave 1's
     // expectation test, so the facilitator is credited for treatment either way.
-    // WAVE 4a: the new route-specific keys are wired in here too. A clinically correct treatment
+    // The new route-specific keys are wired in here too. A clinically correct treatment
     // given by a route the engine did not know about (buccal midazolam for status, IM adrenaline
     // escalated to an infusion, IM benzylpenicillin pre-hospital) previously did NOT slow the
     // autonomous deterioration at all, so the learner was punished for correct non-IV practice.
@@ -907,7 +907,7 @@
     };
 
     // =============================================================================================
-    // WAVE 8 / FINDING 1 — HOW OBSTRUCTED IS THIS PATIENT RIGHT NOW?
+    // HOW OBSTRUCTED IS THIS PATIENT RIGHT NOW?
     // ---------------------------------------------------------------------------------------------
     // ONE number, 0 (not obstructed) to 1 (life-threatening bronchospasm, silent chest), derived
     // entirely from state the engine already holds. It is the single source of truth for the
@@ -1091,13 +1091,13 @@
     };
 
     window.__pkInternals = { pkFactor, pkPhase, pkRemaining, drugOffsets, composeVitals, buildDrugEntry, paralysisFromDrugs, deteriorationDeltas, applyDeteriorationTick, deteriorationTreatmentFactor, normaliseDeteriorationType, formatVital, clampVital, DEFAULT_VITALS, EFFECT_TARGETS, VITAL_LIMITS, isDrugSpent,
-        // WAVE 4b / D5: exported so the verifiers can assert the categorical-vital guard directly.
+        // Exported as a test handle for the categorical-vital guard.
         normalisePupils, isCategoricalVital,
-        // WAVE 4a additions, all exercised directly by the Node verification harness.
+        // Test handles for the metabolic and deterioration models.
         drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
         ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
         FLUID_RESPONSE_LEVELS,
-        // WAVE 8: the bronchospasm severity model behind the shark-fin capnogram.
+        // The bronchospasm severity model behind the shark-fin capnogram.
         getObstruction, inferObstruction, obstructionBand, BRONCHODILATORS, OBSTRUCTION_HINTS };
 
     const OBJECTIVE_TRIGGERS = {
@@ -1105,7 +1105,7 @@
         'Fluids':        ['fluid', 'resus', 'bolus', 'iv fluid', 'saline'],
         'AdrenalineIM':  ['adrenaline', 'anaphyl', 'epinephrine'],
         'AdrenalineIV':  ['adrenaline', 'cardiac arrest', 'epinephrine'],
-        // E10: 'Adrenaline', 'O2', 'NaloxoneIV', 'Tranexamic', 'ChestDrain' and
+        // 'Adrenaline', 'O2', 'NaloxoneIV', 'Tranexamic', 'ChestDrain' and
         // 'NeedleDecomp' were DEAD KEYS — no such intervention exists, so those learning
         // objectives could never auto-complete. Remapped to the real keys.
         'AdrenalinePush':      ['adrenaline', 'epinephrine', 'hypotension'],
@@ -1137,7 +1137,7 @@
         'BenzylpenicillinIM': ['meningo', 'meningitis', 'antibio', 'sepsis'],
         'NebsContinuous':     ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
         'Nebs':               ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
-        // WAVE 5 / ITEM 2: keys that were missing entirely, so an objective they should satisfy
+        // Keys that were missing entirely, so an objective they should satisfy
         // could never be credited and a correctly-treated scenario could read 0%. 'Calcium' is the
         // one that produced the reported bug: giving Calcium Gluconate in Hyperkalaemia (Renal)
         // matched nothing at all, so "Hyperkalaemia treatment" stayed at 0/1.
@@ -1173,7 +1173,7 @@
     };
 
     // =============================================================================================
-    // WAVE 5 / ITEM 2 — MULTI-COMPONENT OBJECTIVE PROGRESS
+    // MULTI-COMPONENT OBJECTIVE PROGRESS
     // ---------------------------------------------------------------------------------------------
     // Objectives are authored as free text ("Hyperkalaemia treatment") and credited by keyword
     // matching an intervention key against that text. That is fine for a single-drug objective and
@@ -1206,7 +1206,7 @@
         });
     };
 
-    // WAVE 5 / ITEM 6: the whole precedence decision in one pure, exported predicate, so "does a
+    // The whole precedence decision in one pure, exported predicate, so "does a
     // rhythm change overwrite a manually typed HR?" is answerable by a test rather than by reading
     // the dispatch wrapper. TRUE = apply the rhythm's registry rate band; FALSE = the facilitator's
     // own HR stands. `releaseManual` is the list of keys the transition itself has just reset
@@ -1309,7 +1309,7 @@
         Object.keys(targets).forEach(key => {
             const startVal = startVitals[key];
             const targetVal = targets[key];
-            // D5: categorical vitals snap on the FIRST tick and are never interpolated, even when
+            // Categorical vitals snap on the FIRST tick and are never interpolated, even when
             // both ends happen to be numbers (there is no such thing as 3.4 mm of pupil on a
             // clinical chart, and a half-way value between 3 and 'Dilated' is NaN).
             if (isCategoricalVital(key)) {
@@ -1333,7 +1333,7 @@
     };
     window.__pkInternals.advanceTrendsOneSecond = advanceTrendsOneSecond;
 
-    // WAVE 6: what should the 1 Hz interval dispatch this second? Pulled out of the effect so the
+    // What should the 1 Hz interval dispatch this second? Pulled out of the effect so the
     // whole gating decision is one pure, exported function that a test can interrogate.
     //   * the student monitor NEVER runs physiology (it would fight the authoritative vitals
     //     arriving over Firebase);

@@ -38,7 +38,7 @@
     
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-    <!-- WAVE 4b / B1: Firebase Authentication, same compat v8 SDK version as the two above so the
+    <!-- Firebase Authentication, same compat v8 SDK version as the two above so the
          existing initialisation style is unchanged. This script is PURELY ADDITIVE: if it fails to
          load, or if Email/Password has not been enabled in the console, data/auth.js degrades to
          "sign-in not configured" and every existing feature keeps working with no account. -->
@@ -66,7 +66,7 @@
         .flash-green { animation: flashGreen 1s ease-out; }
         @keyframes flashGreen { 0% { box-shadow: inset 0 0 50px 20px rgba(34, 197, 94, 0.5); } 100% { box-shadow: inset 0 0 0 0 transparent; } }
 
-        /* WAVE 4b / D6: SET_FLASH:'yellow' has been dispatched by initCharge() since Wave 3 and the
+        /* SET_FLASH:'yellow' has been dispatched by initCharge() since Wave 3 and the
            monitor already reads it to show "CHARGING...", but there was no matching CSS class, so
            the defibrillator charge produced no visual cue anywhere. Amber, single-shot, matching
            the charge tone's ~1s duration. */
@@ -100,7 +100,7 @@
         </div>
     </div>
 
-    <!-- WAVE 3: the shared rhythm registry. Plain JS (no JSX), loaded with a bare script tag so it
+    <!-- The shared rhythm registry. Plain JS (no JSX), loaded with a bare script tag so it
          executes BEFORE any text/babel module and is therefore available to components.js and
          engine.js at definition time. The standalone defib page loads the SAME file. -->
     <script src="data/rhythms.js"></script>
@@ -230,7 +230,7 @@
             const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
             const [generatedScenario, setGeneratedScenario] = useState(null);
 
-            // WAVE 4b / PART B: accounts are OPTIONAL and OFF THE CRITICAL PATH. useAuth() never
+            // Accounts are OPTIONAL and OFF THE CRITICAL PATH. useAuth() never
             // throws, never blocks and never prompts; when Firebase Authentication is not enabled
             // it simply reports available:false. The only things it gates are the Restricted
             // premade section and the Admin panel — requirement B4.

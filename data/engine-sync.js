@@ -65,7 +65,7 @@
             return () => { if (simChannel.current) simChannel.current.onmessage = null; };
         }, [isMonitorMode]);
 
-        // A7 / C4: the standalone defib page previously received rhythm + 5 numbers and NOTHING
+        // The standalone defib page previously received rhythm + 5 numbers and NOTHING
         // else — no weight, no age, no recommended energy, no session-ended flag — which is why it
         // hardcoded 120 J for a 3.5 kg neonate and kept showing a live-looking trace after the end
         // of the session. One builder, used by both the periodic broadcast and REQUEST_SYNC.
@@ -159,7 +159,7 @@
                 const cur = stateRef.current;
                 if (!cur.scenario) return;
                 const co2Pathology = cur.etco2Pathology || 'normal';
-                // WAVE 8 / FINDING 1. The obstruction severity behind the shark fin is computed HERE,
+                // The obstruction severity behind the shark fin is computed HERE,
                 // from the authoritative controller state, and published as a plain number so the
                 // student monitor draws exactly the same capnogram shape the facilitator sees. Never
                 // undefined, never NaN: sanitizeForRealtimeDatabase passes a finite number through.
@@ -196,14 +196,14 @@
                     nibp: cur.nibp, speech: cur.speech, soundEffect: cur.soundEffect,
                     audioOutput: cur.audioOutput, trends: cur.trends,
                     arrestPanelOpen: cur.arrestPanelOpen, isFinished: cur.isFinished,
-                    // A3: the assessor's Defib open/close toggle, and the defib device state the
+                    // The assessor's Defib open/close toggle, and the defib device state the
                     // student's monitor-hosted defibrillator renders (mode, selected energy, charge
                     // state, SYNC, running shock tally).
                     //
                     // B4 LEAK BARRIER — DO NOT ADD `rhythmEvent`, `lastConversion` OR ANY
                     // CONVERSION ANNOUNCEMENT TO THIS PAYLOAD. `notification` below is rendered on
                     // the STUDENT monitor; conversion announcements are assessor-only by design and
-                    // verify_wave3.js asserts their absence from this object.
+                    // The rules test (tests/specs/rules.spec.js) lists every key this object may carry.
                     defibPanelOpen: !!cur.defibPanelOpen,
                     defib: cur.defib || {},
                     // The defib tablet's pulse-check result (Education) and pacing capture state.
@@ -216,16 +216,16 @@
                     // Top-level keys only — the write diff is shallow and per-key. Never undefined.
                     isRunning: !!cur.isRunning, audioLive: isAudioLive(cur), isMuted: !!cur.isMuted,
                     activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed,
-                    // Wave 2. BM / Temp / pH ride inside `vitals` (verified by the sync payload test);
+                    // BM / Temp / pH ride inside `vitals` (verified by the sync payload test);
                     // activeDrugs and deteriorationMode are top-level, primitives only, never undefined,
                     // so sanitizeForRealtimeDatabase passes them through untouched.
                     activeDrugs: Array.isArray(cur.activeDrugs) ? cur.activeDrugs : [],
                     deteriorationMode: cur.deteriorationMode || 'manual',
-                    // WAVE 4a / E8. K+ rides inside `vitals` like temp/bm/ph AND is published as its
+                    // K+ rides inside `vitals` like temp/bm/ph AND is published as its
                     // own TOP-LEVEL key, because the write diff is shallow and per-key: a lab value
                     // the student monitor renders must never be undefined or NaN on the wire.
                     potassium: (cur.vitals && Number.isFinite(cur.vitals.k)) ? cur.vitals.k : DEFAULT_VITALS.k,
-                    // WAVE 7 / ITEM 4. Which sensors are attached already rides on the wire inside
+                    // Which sensors are attached already rides on the wire inside
                     // `activeInterventions` (the monitor derives them with getSensors), so nothing new
                     // is needed for those. Point-of-care readings DO need their own top-level key:
                     // primitives only, never undefined, so sanitizeForRealtimeDatabase passes it
@@ -319,7 +319,7 @@
         }, [isMonitorMode, sessionID]);
 
         // =====================================================================================
-        // A5: PRESENCE / CONNECTION INDICATOR.
+        // PRESENCE / CONNECTION INDICATOR.
         // Modelled on the existing syncStatus state machine: the monitor writes a presence child
         // under sessions/<CODE>/presence/<clientId> with an onDisconnect() removal and a 10s
         // heartbeat; the controller reduces the children into state.remotePresence and shows a
@@ -377,7 +377,7 @@
         }, [isMonitorMode, sessionID]);
 
         // =====================================================================================
-        // A6: STUDENT DEVICE EVENTS.
+        // STUDENT DEVICE EVENTS.
         // sessions/<CODE>/command is a single set() slot already owned by the monitor's NIBP
         // control, so reusing it for defib events would clobber an in-flight NIBP command (and
         // vice versa). Device events therefore get their OWN node with PUSH semantics.
@@ -458,7 +458,7 @@
                         scenario: cur.scenario,
                         vitals: cur.vitals, baseVitals: cur.baseVitals, prevVitals: cur.prevVitals, trends: cur.trends, hypoxiaTimer: cur.hypoxiaTimer,
                         activeDrugs: cur.activeDrugs, deteriorationMode: cur.deteriorationMode,
-                        // D1: the per-run id travels with the snapshot so a resumed session reopens
+                        // The per-run id travels with the snapshot so a resumed session reopens
                         // the same instructor notes instead of a blank set.
                         runId: cur.runId || null,
                         rhythm: cur.rhythm, time: cur.time, cycleTimer: cur.cycleTimer,
@@ -468,7 +468,7 @@
                         log: cur.log.slice(-200), // recent log only
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
                         showWetflag: cur.showWetflag, icp: cur.icp,
-                        // B5: shock count / cumulative energy must survive a resume.
+                        // Shock count / cumulative energy must survive a resume.
                         defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings,
                         arrest: cur.arrest, defibStep: cur.defibStep
                     };

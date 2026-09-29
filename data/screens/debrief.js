@@ -45,7 +45,7 @@
         const table = `<table class="compact"><thead><tr><th>Time</th><th>HR</th><th>SBP</th><th>SpO2</th><th>RR</th><th>Temp</th><th>GCS</th></tr></thead><tbody>${rows.map(h => `<tr><td class="mono">${fmtClock(h.time)}</td><td>${num(h.hr)}</td><td>${num(h.bp)}</td><td>${num(h.spo2)}</td><td>${num(h.rr)}</td><td>${num(h.temp, 1)}</td><td>${escHtml(h.gcs ?? '\u2014')}</td></tr>`).join('')}</tbody></table>`;
         return `<div class="card"><h3 style="margin-top:0;">Vitals trend</h3><p class="muted" style="margin-top:0;">Dashed lines mark flagged events (listed below the charts).</p><div class="minis">${charts}</div><h4>Flagged events</h4>${eventList}<h4>Sampled values</h4>${table}</div>`;
     };
-    window.__debriefReportTrend = buildReportTrend;   // exercised by the verifier
+    window.__debriefReportTrend = buildReportTrend;   // test handle
 
     const DebriefGraph = ({ history, log, quickSim }) => {
         if (!history || history.length < 2) return <div className="text-slate-500 text-xs p-4 text-center">{quickSim ? 'No vitals trend yet: it is recorded every 5 seconds while the clock runs. In Quick Sim, press START to record it.' : 'Not enough data for graph'}</div>;
@@ -87,7 +87,7 @@
         const bpPath = buildPath('bp', bpMax);
         const spo2Path = buildPath('spo2', spo2Max);
 
-        // WAVE 2 / B2: temp, glucose and pH are modelled vitals now, so a warming, dextrose or
+        // Temp, glucose and pH are modelled vitals now, so a warming, dextrose or
         // bicarbonate scenario has a real trace worth debriefing. Each needs its OWN scale (a pH of
         // 7.2 on an HR axis is a flat line at the bottom), and a channel that never moved and sat at
         // its normal value is omitted rather than drawing a meaningless straight line.
@@ -121,7 +121,7 @@
 
                     {(() => {
                         let lastLabelX = -Infinity;
-                        // B5: 'danger' and 'warning' are now plotted too. Shocks are logged as
+                        // 'danger' and 'warning' are now plotted too. Shocks are logged as
                         // 'danger', so every defibrillation in the session was previously INVISIBLE
                         // on the debrief timeline — the single most important event in an arrest
                         // scenario did not appear in the debrief at all.
@@ -153,7 +153,7 @@
         const { state } = sim;
         const { Lucide, Button } = window;
         const scenario = state.scenario || {};
-        // WAVE 4b / A5: QUICK SIM DEBRIEF. Quick Sim produces a real, lightweight debrief — event
+        // QUICK SIM DEBRIEF. Quick Sim produces a real, lightweight debrief — event
         // log, vitals trend graph and instructor notes — but there is no scenario, so there are no
         // learning objectives to score and no score to show. Every scenario-dependent block below is
         // guarded, and `state.scenario` being null outright (an edge case that could previously
@@ -177,7 +177,7 @@
         };
         const [filter, setFilter] = useState('all');
         const [replayIdx, setReplayIdx] = useState(null);
-        // WAVE 4b / D1: keyed on state.runId — a genuinely unique id minted per RUN by the engine.
+        // Keyed on state.runId — a genuinely unique id minted per RUN by the engine.
         // It used to read `state.sessionID`, which has never existed on state, so the key silently
         // collapsed to the SCENARIO id and every run of the same scenario shared one set of notes.
         // The remaining fallbacks only matter for a pre-Wave-4b saved session.
@@ -190,7 +190,7 @@
             if (filter === 'actions') return entry.type === 'action';
             if (filter === 'manual') return entry.type === 'manual' || entry.flagged;
             if (filter === 'system') return entry.type === 'system';
-            // B5: the log filter had no way of showing 'danger'/'warning' entries at all, so shocks
+            // The log filter had no way of showing 'danger'/'warning' entries at all, so shocks
             // and flagged deviations could not be isolated in the debrief.
             if (filter === 'shocks') return entry.type === 'danger' || /shock|defib|cardiovers/i.test(entry.msg || '');
             if (filter === 'rhythm') return /^Rhythm:/i.test(entry.msg || '') || /ROSC|CARDIAC ARREST/i.test(entry.msg || '');
@@ -208,14 +208,14 @@
         // Sequence deviations: structured records written by the engine's permissive gating. Nothing
         // was blocked during the session; these are the teaching points that fell out of it.
         const deviations = state.log.filter(l => l.deviation && Array.isArray(l.deviation.missing));
-        // WAVE 5 / ITEM 3: `flagged` marks BOTH deviations and merely-significant events (arrests,
+        // `flagged` marks BOTH deviations and merely-significant events (arrests,
         // shocks, hand flags). The two counts are now reported separately and labelled, so neither
         // screen shows a deviation count that disagrees with the deviation list.
         const flaggedCount = state.log.filter(l => l.flagged).length;
         const significanceCount = flaggedCount - deviations.length;
 
         const allObjectives = (() => {
-            // A5: no scenario means no objectives. Array.isArray guards a restricted/pasted scenario
+            // No scenario means no objectives. Array.isArray guards a restricted/pasted scenario
             // that carries a malformed learningObjectives field.
             const a = Array.isArray(scenario.learningObjectives) ? scenario.learningObjectives : [];
             const b = Array.isArray(scenario.instructorBrief?.learningObjectives) ? scenario.instructorBrief.learningObjectives : [];
@@ -252,7 +252,7 @@
 
         const generateReport = (mode) => {
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
-            // WAVE 5 / ITEM 2: the report shows the same three-state status and names the components
+            // The report shows the same three-state status and names the components
             // that were and were not done, so a partial objective is never printed as a bare failure.
             const objRows = allObjectives.map(obj => {
                 const r = statusOf(obj);
@@ -267,11 +267,11 @@
             const devRows = deviations.map(d => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(d.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;font-weight:bold;">${esc(d.deviation.label || d.deviation.action)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#cbd5e1;">${esc(d.deviation.missing.join(', '))}</td></tr>`).join('');
             const shockRows = shockEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fca5a5;">${esc(l.msg)}</td></tr>`).join('');
             const convRows = conversionEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;">${esc(l.msg)}</td></tr>`).join('');
-            // B5: defibrillation data reaches the downloadable debrief report too.
+            // Defibrillation data reaches the downloadable debrief report too.
             const defibCard = `<div class="card"><h3 style="color:#ef4444;margin-top:0;">Defibrillation &amp; Rhythm</h3><div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Shocks</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockCount || shockEvents.length || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Into shockable rhythm</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockableShocks || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Cumulative energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.totalEnergy || 0)} J</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Last energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.lastEnergy ?? '--')} J</div></div></div>${shockRows ? `<table><thead><tr><th>Time</th><th>Shock</th></tr></thead><tbody>${shockRows}</tbody></table>` : '<div style="color:#94a3b8;">No shocks delivered.</div>'}${convRows ? `<h4 style="color:#fbbf24;">Rhythm transitions</h4><table><thead><tr><th>Time</th><th>Transition</th></tr></thead><tbody>${convRows}</tbody></table>` : ''}</div>`;
             const devCard = `<div class="card"><h3 style="color:#fbbf24;margin-top:0;">Sequence Deviations</h3>${deviations.length ? `<table><thead><tr><th>Time</th><th>Action</th><th>Not in place</th></tr></thead><tbody>${devRows}</tbody></table>` : '<div style="color:#94a3b8;">No sequence deviations recorded.</div>'}</div>`;
             const safeTitle = esc(scenario.title || 'Simulation');
-            // A5: the objectives card and the score are omitted from the downloadable report when
+            // The objectives card and the score are omitted from the downloadable report when
             // there are no objectives, rather than printing "100% of 0".
             const scoreBlock = score === null
                 ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Mode</div><div style="font-size:1.5rem;font-weight:bold;">Quick Sim</div><div style="font-size:.7rem;color:#64748b;">No scenario \u2014 nothing to score</div></div>`
@@ -344,7 +344,7 @@
                         )}
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
-                            {/* A5: with no scenario there are no objectives and therefore no score.
+                            {/* With no scenario there are no objectives and therefore no score.
                                 Showing "100%" against zero objectives would be actively misleading. */}
                             {score === null ? (
                                 <div className="mb-4 text-sm text-slate-400">
@@ -358,7 +358,7 @@
                                         <div className="text-4xl font-bold text-sky-400">{score}%</div>
                                         <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">Fully met</div>
                                     </div>
-                                    {/* WAVE 5 / ITEM 2: partial credit is shown next to the strict score, never
+                                    {/* Partial credit is shown next to the strict score, never
                                         folded into it, so a part-treated multi-component objective reads as
                                         "1 of 2 components done" rather than as a flat 0%. */}
                                     {partialCount > 0 && (
@@ -374,7 +374,7 @@
                                 </div>
                             )}
                             
-                            {/* B5: shock summary. Shock count, cumulative energy and the last energy
+                            {/* Shock summary. Shock count, cumulative energy and the last energy
                                 used are teaching data (energy escalation, 4 J/kg in children,
                                 shocks-per-ROSC) and were previously unavailable after the session. */}
                             <div className="mb-4 bg-slate-900 border border-red-900/60 rounded p-3">
@@ -425,7 +425,7 @@
                                               ['BP', state.history[replayIdx].bp, 'mmHg', '#ef4444'],
                                               ['SpO2', state.history[replayIdx].spo2, '%', '#3b82f6'],
                                               ['RR', state.history[replayIdx].rr, '/min', '#a78bfa'],
-                                              // Wave 2: the point-of-care channels are recorded too.
+                                              // The point-of-care channels are recorded too.
                                               ['Temp', Number.isFinite(state.history[replayIdx].temp) ? state.history[replayIdx].temp.toFixed(1) : '--', '°C', '#f97316'],
                                               ['BM', Number.isFinite(state.history[replayIdx].bm) ? state.history[replayIdx].bm.toFixed(1) : '--', 'mmol', '#c4b5fd'],
                                               ['pH', Number.isFinite(state.history[replayIdx].ph) ? state.history[replayIdx].ph.toFixed(2) : '--', '', '#facc15']].map(([lbl, val, unit, col]) => (
@@ -445,7 +445,7 @@
                                 </div>
                             )}
 
-                            {/* A5: omitted entirely rather than rendered as an empty list. */}
+                            {/* Omitted entirely rather than rendered as an empty list. */}
                             {objectivesTotal > 0 && (
                                 <>
                                     <h4 className="text-sm font-bold text-white mb-2 uppercase">Learning Objectives</h4>
@@ -461,7 +461,7 @@
                                                         <span className="flex-1">{obj}</span>
                                                         {r.status === 'partial' && <span className="text-[9px] uppercase font-bold text-amber-300 border border-amber-700 bg-amber-950/40 rounded px-1 py-0.5 flex-none">partly done</span>}
                                                     </div>
-                                                    {/* WAVE 5 / ITEM 2: name the components, so "not met" is never opaque. */}
+                                                    {/* Name the components, so "not met" is never opaque. */}
                                                     {r.components && r.components.length > 0 && (
                                                         <div className="ml-6 mt-1 flex flex-wrap gap-1">
                                                             {r.components.map(c => (
@@ -480,7 +480,7 @@
                             )}
                         </div>
 
-                        {/* A5: the sequence-deviation card is expectation machinery. Quick Sim has no
+                        {/* The sequence-deviation card is expectation machinery. Quick Sim has no
                             interventions at all, so there is nothing that could be out of sequence and
                             the card is omitted rather than shown permanently empty. Manual flags still
                             appear in the log pane on the right. */}

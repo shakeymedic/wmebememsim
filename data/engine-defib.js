@@ -23,7 +23,7 @@
         //   * a student pressing SHOCK on the monitor-hosted defib (Firebase deviceEvents)
         //   * a student pressing SHOCK on the standalone defib page (BroadcastChannel)
         // =====================================================================================
-        const SHOCK_REFRACTORY_MS = 5000;   // C7: stops charge/shock button-mashing maximising ROSC
+        const SHOCK_REFRACTORY_MS = 5000;   // Stops charge/shock button-mashing maximising ROSC
         const refibTimerRef = useRef(null);
 
         const defibWeight = () => {
@@ -337,7 +337,7 @@
             const table = RG.DRUG_CONVERSION[key];
             const rid = RG.canonical(cur.rhythm);
             let rule = table && table[rid];
-            // E2: adenosine's success probability escalates with the 6 → 12 → 18 mg sequence, so the
+            // Adenosine's success probability escalates with the 6 → 12 → 18 mg sequence, so the
             // caller may supply the chance for THIS dose. The registry still owns the target rhythm.
             if (rule && Number.isFinite(opts.chance)) rule = { ...rule, chance: opts.chance };
             if (!rule) {
@@ -379,7 +379,7 @@
             const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : recommendedShockEnergy();
             const sync = opts.sync !== undefined ? !!opts.sync : !!(cur.defib && cur.defib.syncMode);
             dispatch({ type: 'SET_FLASH', payload: 'red' });
-            // B5: logged as 'danger' AND flagged, and the debrief now plots danger-type markers.
+            // Logged as 'danger' AND flagged, and the debrief now plots danger-type markers.
             addLogEntry(`Shock delivered ${j}J${sync ? ' (SYNC)' : ''} (${source})`, 'danger', true);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${j}J`, type: 'danger', id: Date.now() } });
             setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);

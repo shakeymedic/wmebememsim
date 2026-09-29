@@ -19,7 +19,7 @@
         const [showWetflag, setShowWetflag] = useState(true);
 
         // ---- WAVE 4b / PART A: QUICK SIM launch options -------------------------------------
-        // A3: the facilitator may OPTIONALLY set age/weight/sex/name so WETFLAG and paediatric
+        // The facilitator may OPTIONALLY set age/weight/sex/name so WETFLAG and paediatric
         // energy/dosing still work; leaving everything alone gives a sensible adult (40y, 70 kg-ish
         // adult physiology, sinus rhythm). Blank strings mean "use the default", which is why these
         // are strings rather than numbers.
@@ -32,7 +32,7 @@
         // ---- WAVE 4b / PART C: restricted (RCUK) scenarios ----------------------------------
         // Loaded FROM FIREBASE at runtime, never bundled. Shipped empty but fully wired.
         const [restricted, setRestricted] = useState({ phase: 'idle', scenarios: [], reason: null });
-        // WAVE 5 / ITEM 5: the locked panel used to tell a signed-out user to "request access below"
+        // The locked panel used to tell a signed-out user to "request access below"
         // when the request-access button only renders once signed in, so it promised a control that was
         // not on screen. The panel now carries its OWN sign-in button, and the instructions for each of
         // the three states name only controls that are actually visible in that state.
@@ -302,7 +302,7 @@
         };
 
         // ---- RESTRICTED SECTION -------------------------------------------------------------
-        // C1/C4: a clear locked state, a sign-in / request-access path, and NO errors or console
+        // A clear locked state, a sign-in / request-access path, and NO errors or console
         // noise when Firebase Auth has never been enabled. The client-side check below controls the
         // UI ONLY — the real enforcement is the database rules (database.rules.json), which is why
         // we still attempt the read and treat PERMISSION_DENIED as a normal locked outcome.
@@ -395,7 +395,7 @@
                         </div>
                     ) : (
                         <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
-                            {/* C5: these run through the EXACT same handleGenerate/loadIntoBuilder
+                            {/* These run through the EXACT same handleGenerate/loadIntoBuilder
                                 path as a built-in scenario — no special-casing downstream. */}
                             {restricted.scenarios.map(s => (
                                 <div key={s.id} className="flex justify-between items-center bg-amber-950/20 hover:bg-amber-900/20 p-3 rounded border border-amber-800/50 group">
@@ -428,7 +428,7 @@
             { id: 'ObsGyn', label: 'Obs & Gynae', icon: 'baby', filter: s => s.category === 'Obstetrics & Gynae' },
             { id: 'Elderly', label: 'Geriatrics', icon: 'user', filter: s => s.ageRange === 'Elderly' },
             { id: 'Psychiatric', label: 'Psychiatric', icon: 'brain', filter: s => s.category === 'Psychiatric' },
-            // WAVE 4b / C1: the restricted category. `restricted: true` means it does NOT filter
+            // The restricted category. `restricted: true` means it does NOT filter
             // ALL_SCENARIOS at all — its contents come from Firebase at runtime, or it shows locked.
             { id: 'Restricted', label: 'Restricted (RCUK)', icon: 'lock', restricted: true, filter: () => false },
         ];
@@ -472,7 +472,7 @@
                     {/* Wraps rather than scrolls: `no-scrollbar` removed the only affordance that more tabs
                         existed, so Builder/Edit was effectively invisible at phone widths. */}
                     <div className="flex flex-wrap gap-x-2 gap-y-1 mb-6 border-b border-slate-700">
-                        {/* WAVE 4b / A1: QUICK SIM sits first — it is the fastest route to a running
+                        {/* QUICK SIM sits first — it is the fastest route to a running
                             monitor and skips scenario generation entirely. */}
                         {['quick', 'defib', 'random', 'premade', 'custom', 'builder'].map(m => (
                             <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m === 'defib' ? 'Defib Sim' : m}</button>
@@ -518,7 +518,7 @@
                                 <p className="text-[10px] text-slate-500 mt-1">Changeable at any time from the controller, including every arrest rhythm.</p>
                             </div>
 
-                            {/* A3: paediatric maths is live in Quick Sim exactly as in a real scenario. */}
+                            {/* Paediatric maths is live in Quick Sim exactly as in a real scenario. */}
                             {qsResolvedAge < 16 && !qsInvalid && (() => {
                                 const w = qsWeight === '' ? (qsAutoWeight === null ? null : parseFloat(qsAutoWeight)) : Number(qsWeight);
                                 const wf = w ? calculateWetflag(qsResolvedAge, w) : null;

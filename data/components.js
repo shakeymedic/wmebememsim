@@ -58,7 +58,7 @@
             'flask-conical': '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><line x1="8.5" y1="2" x2="15.5" y2="2"></line><line x1="8.5" y1="14" x2="15.5" y2="14"></line>',
             'waves': '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>',
             'check-square': '<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
-            // WAVE 5 / ITEM 2: the "partly done" state of a multi-component learning objective. Lucide
+            // The "partly done" state of a multi-component learning objective. Lucide
             // returns an EMPTY glyph for an unknown name, so a missing icon renders as blank space.
             'minus-square': '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="8" y1="12" x2="16" y2="12"></line>',
             'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>',
@@ -68,7 +68,7 @@
             'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle>',
             'check': '<polyline points="20 6 9 17 4 12"></polyline>',
             'heart': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
-            // WAVE 4b / D6: these were referenced by Wave 3 code (the presence badge and sync
+            // These were referenced by Wave 3 code (the presence badge and sync
             // badge) and by the new account UI, but had no glyph, so they rendered as an empty
             // <svg>. Silently-blank icons are exactly the misleading dead code this wave removes.
             'wifi-off': '<line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="M16.85 11.25a10 10 0 0 1 2.22 1.68"/><path d="M5 13a10 10 0 0 1 5.24-2.76"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
@@ -103,7 +103,7 @@
         );
     };
 
-    // WAVE 4b: `type` is threaded through so a Button can be a real form submit control (the
+    // `type` is threaded through so a Button can be a real form submit control (the
     // account sign-in form). Default stays 'button' so no existing Button inside a form can
     // accidentally start submitting.
     const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null, ariaLabel = null, type = 'button' }) => {
@@ -213,7 +213,7 @@
     );
 
     // =========================================================================================
-    // WAVE 7 — ECGMonitor
+    // ECGMonitor
     //
     // ROOT CAUSE OF THE REPORTED "ECG LOOKS IRREGULAR WHILE THE RATE RAMPS":
     // every trace derived its cycle position from ABSOLUTE animation time multiplied by the
@@ -243,13 +243,13 @@
     const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 30 };
 
     const ECGMonitor = ({ rhythmType, hr, rr, spO2, etco2, isPaused, showTraces, showEtco2, showArt,
-                          // WAVE 8 / FINDING 1: how obstructed the patient is, 0-1. Supplied by the
+                          // How obstructed the patient is, 0-1. Supplied by the
                           // engine's bronchospasm model (window.getObstruction); it scales the
                           // capnogram continuously from a normal trapezoid to a full shark fin.
                           co2Pathology = 'normal', co2Severity = 0,
                           ventilating = true, isCPR = false, className = '',
                           rhythmLabel, showSyncMarkers = false,
-                          // WAVE 7 / ITEM 4: individually attachable sensors. Each trace can now be
+                          // Individually attachable sensors. Each trace can now be
                           // gated on its own sensor instead of one all-or-nothing flag. They default
                           // to the legacy behaviour (`showTraces` drives pleth + resp) so every
                           // existing call site keeps working unchanged.
@@ -491,7 +491,7 @@
                 if (showEcg) {
                     ecgBaseY = traceHeight * (laneIdx.ecg + 0.5);
                     const ecgAmp = (rid === 'VF' || rid === 'Fine VF') ? 0.5 : 1;
-                    // WAVE 8: sub-sample the cardiac cycle WITHIN the frame. The R wave occupies about
+                    // Sub-sample the cardiac cycle WITHIN the frame. The R wave occupies about
                     // 1% of the cycle, so one sample per frame could straddle it and clip the peak —
                     // the beat-to-beat amplitude wobble seen live. One sample per <=0.4% of the cycle
                     // (up to 8) captures the peak at any heart rate and any frame rate, and the whole
@@ -508,7 +508,7 @@
                     const ecgY = ecgSamples[ecgSamples.length - 1];
                     drawLane('ecg', '#22c55e', ecgY, ecgSamples);
 
-                    // C6: R-wave synchronisation markers. When the defibrillator is in SYNC mode the
+                    // R-wave synchronisation markers. When the defibrillator is in SYNC mode the
                     // device must visibly mark the R waves it will fire on, otherwise "synchronised"
                     // is an invisible flag (which is exactly what it was before Wave 3).
                     if (live.showSyncMarkers && !live.isCPR) {
@@ -591,7 +591,7 @@
                         // Capnography lags the compression/breath cycle in the airway, hence the
                         // half-cycle offset kept from the previous implementation.
                         const phase = (respCycle + 0.5) % 1;
-                        // WAVE 8 / FINDING 1: the obstruction severity scales the shape continuously
+                        // The obstruction severity scales the shape continuously
                         // from a normal trapezoid (0) to an unmistakable shark fin (1). Treating the
                         // bronchospasm lowers the severity, so the trace visibly normalises.
                         let v = RG.capnogram(phase, kPa, live.co2Pathology, live.co2Severity);
