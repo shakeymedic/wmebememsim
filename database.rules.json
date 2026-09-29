@@ -74,7 +74,7 @@
         ".write": "$code.matches(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/)",
 
         // The patient, published by the controller. Keep in step with the sync payload in
-        // data/engine.js: tests/specs/rules.spec.js fails if a key is missing here.
+        // data/engine-sync.js: tests/specs/rules.spec.js fails if a key is missing here.
         "live": {
           "vitals": { ".validate": true },
           "rhythm": { ".validate": true },

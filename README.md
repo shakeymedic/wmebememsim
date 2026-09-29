@@ -306,6 +306,10 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
 - **Browser tests.** `npm run build`, then `cd tests && npm install && npx playwright test`. They run
   against `dist/` with an in-memory stand-in for Firebase (`tests/fake-firebase.js`), so no network or
   real database is needed; GitHub Actions runs them on every pull request and on pushes to `main`.
+- **The engine** is five files, loaded in order: `engine-model.js` (initial states, physiology, drug
+  kinetics, deterioration, objectives), `engine-reducers.js`, `engine-sync.js` (the live session and
+  device presses), `engine-defib.js` (shocks, cardioversion, pacing, Defib Sim sequences) and
+  `engine.js` (the `useSimulation` hook that ties them together). Each exports only what the others use.
 - **Offline and updates.** `sw.js` (the app) and `defib/sw.js` (the tablet) share `sw-shared.js`: network
   first, so an online device always runs the latest deploy, falling back to stored copies offline. The
   build stamps each worker with the deploy's version and the files to store at install, so there is

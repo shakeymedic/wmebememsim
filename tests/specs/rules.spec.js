@@ -15,7 +15,7 @@ const CODE_RE = new RegExp(SESSION['.write'].match(/matches\(\/(.*)\/\)/)[1]);
 // The sync payload's keys, read from the source with Babel (as the build compiles it).
 function payloadKeys() {
   const Babel = require(path.join(ROOT, 'node_modules', '@babel', 'standalone'));
-  const src = fs.readFileSync(path.join(ROOT, 'data', 'engine.js'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'data', 'engine-sync.js'), 'utf8');
   const at = src.indexOf('const payload = {', src.indexOf('const flush = () => {'));
   let d = 0, k = src.indexOf('{', at); const start = k;
   for (;; k++) { if (src[k] === '{') d++; else if (src[k] === '}' && --d === 0) break; }
