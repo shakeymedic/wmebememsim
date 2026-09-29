@@ -14,7 +14,7 @@
         VENTILATOR_RATE, VOLUME_KEYS, ageBandOf, applyRhythmHrBand, buildDrugEntry, clampVital,
         fluidResponsiveness, getObstruction, getSensors, getUnmetExpectations, initialCoreState,
         initialLogState, initialScenarioState, initialVitalsState, isDrugSpent, isVentilated,
-        normaliseDeteriorationType, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
+        normaliseDeteriorationType, isAnaphylaxisScenario, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
         newRunId, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     } = window.__EngineModel;
     const { coreReducer, logReducer, scenarioReducer, vitalsReducer } = window.__EngineReducers;
@@ -607,18 +607,24 @@
             // It also only matched scenarios whose TITLE contained "Anaphylaxis", so an
             // anaphylaxis presenting as "Peanut reaction" was excluded.
             const ANAPHYLAXIS_ADRENALINE = ['AdrenalineIM', 'AdrenalineIV', 'AdrenalinePush', 'AdrenalineInfusion'];
-            const looksAnaphylactic = (() => {
-                const txt = scenarioText(scenario);
-                // Bradykinin-mediated angio-oedema (ACE inhibitor, hereditary) is NOT anaphylaxis:
-                // adrenaline does little for it, which is the teaching point of that scenario.
-                if (txt.indexOf('bradykinin') !== -1 || txt.indexOf('ace-inhibitor') !== -1 || txt.indexOf('ace inhibitor') !== -1) return false;
-                return txt.indexOf('anaphyla') !== -1 || txt.indexOf('allergic reaction') !== -1 || txt.indexOf('angio-oedema') !== -1 || txt.indexOf('angiooedema') !== -1;
-            })();
+            const looksAnaphylactic = isAnaphylaxisScenario(scenario);
             if (looksAnaphylactic && ANAPHYLAXIS_ADRENALINE.indexOf(key) !== -1) {
                 // RCUK: improvement after the FIRST correct dose of IM adrenaline is the expected
                 // clinical course, and the 5-minute repeat is the next step if it does not come.
                 dispatch({ type: 'TRIGGER_IMPROVE' });
                 addLogEntry(`${action.label} in anaphylaxis — patient condition IMPROVING. Reassess at 5 minutes and repeat IM adrenaline if the improvement is incomplete.`, 'success');
+                if (key === 'AdrenalineIM' && count === 1) addLogEntry('After initial treatment (RCUK 2021): mast cell tryptase, first sample as soon as feasible without delaying treatment, second 1-2 h (no later than 4 h) after onset. Observation: fast-track discharge after 2 h only if one dose worked within 5-10 min, symptoms fully resolved and the patient has auto-injectors and supervision; at least 6 h after resolution if 2 doses were needed; at least 12 h for more than 2 doses, severe asthma or respiratory compromise, or a previous biphasic reaction.', 'info');
+                if (key === 'AdrenalineInfusion') addLogEntry('RCUK peripheral low-dose adrenaline infusion (refractory anaphylaxis): 1 mg in 100 ml 0.9% sodium chloride via a dedicated line, start at 0.5-1 ml/kg/h and titrate to response; continuous ECG and SpO2, BP at least every 5 min. Not on the same side as a BP cuff.', 'info');
+            }
+            // RCUK Emergency treatment of anaphylaxis (2021): steroids are not advised routinely;
+            // antihistamines are third-line and have no role in A, B or C problems.
+            if (looksAnaphylactic && (key === 'Hydrocortisone' || key === 'Dexamethasone' || key === 'Chlorphenamine')) {
+                const adrenalineGiven = ANAPHYLAXIS_ADRENALINE.some(k => ((cur.interventionCounts || {})[k] || 0) > 0 || (cur.activeInterventions && cur.activeInterventions.has(k)));
+                if (!adrenalineGiven) addLogEntry(`${action.label} given before any adrenaline in anaphylaxis. Adrenaline is the first-line treatment; ${key === 'Chlorphenamine' ? 'antihistamines' : 'steroids'} must never be given in preference to it (RCUK 2021).`, 'warning', true,
+                    { action: 'AdrenalineIM', label: 'IM Adrenaline', missing: ['adrenaline before other drugs'] });
+                addLogEntry(key === 'Chlorphenamine'
+                    ? 'Antihistamines are third-line in anaphylaxis (RCUK 2021) and do not treat airway, breathing or circulation problems. After stabilisation, for skin symptoms, a non-sedating oral antihistamine (e.g. cetirizine) is preferred to chlorphenamine; IV chlorphenamine can cause hypotension if given rapidly.'
+                    : 'Corticosteroids are no longer advised for the routine emergency treatment of anaphylaxis (RCUK 2021). Consider them only after initial resuscitation, for refractory reactions or ongoing asthma or shock, and never in preference to adrenaline or fluids.', 'info');
             }
             // --- PARALYSIS (roc vs sux genuinely differ) ---
             // Folded into the pk envelope. The blockade window is derived from the SAME

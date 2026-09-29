@@ -134,6 +134,12 @@ Sim scenario (`scenario.defibSim`).
   midazolam, levetiracetam, 10% glucose, calcium gluconate); and from the 5th shock a child's
   refractory VF/pVT may be escalated to 8 J/kg without being flagged. `tests/specs/paediatric.spec.js`
   checks these values.
+- **Anaphylaxis** follows the RCUK Emergency treatment of anaphylaxis guideline (May 2021): steroids
+  and antihistamines are not recommended actions and do not slow the decline; giving one before
+  adrenaline is flagged; the second IM dose prompts the refractory pathway; tryptase timing,
+  observation periods and the low-dose adrenaline infusion are in the log. **Newborn** scenarios get
+  the Newborn life support algorithm's steps (Guidelines 2025) as coaching lines.
+  `tests/specs/anaphylaxis-newborn.spec.js` checks both.
 - **Drugs work in every mode** through the normal engine: for example isoprenaline speeds a complete
   heart block escape, atropine barely moves it, and in a non-shockable arrest on Auto, ROSC comes at the
   second rhythm check after adrenaline with CPR running. IV access is assumed in place at the start.

@@ -111,6 +111,7 @@ test('a child in the simulator: the log gives weight-based doses and RCUK coachi
   await page.evaluate(() => { const e = window.__simEngine; e.start(); e.applyIntervention('IV Access'); e.applyIntervention('Adenosine'); e.applyIntervention('AdrenalineIM'); e.applyIntervention('AdrenalineIM'); });
   const msgs = () => page.evaluate(() => window.__simEngine.state.log.map(l => l.msg));
   await expect.poll(async () => (await msgs()).some(m => /^Adenosine 0\.1-0\.2 mg\/kg \(1\.8-3\.6 mg\) given/.test(m))).toBe(true);
+  await expect.poll(async () => (await msgs()).some(m => /REFRACTORY anaphylaxis/.test(m))).toBe(true);   // the last line
   const log = await msgs();
   expect(log.some(m => /^Paediatric adenosine \(RCUK 2025\)/.test(m))).toBe(true);
   expect(log.some(m => /max 6 mg|MINIMUM 100 mcg/.test(m))).toBe(false);

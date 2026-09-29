@@ -764,7 +764,7 @@
             'AdrenalineInfusion', 'AdrenalinePush'],
         resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis',
             'NebsContinuous', 'SalbutamolIV', 'MagnesiumInfusion'],
-        airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen', 'Chlorphenamine',
+        airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen',
             'AdrenalineInfusion'],
         cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
             'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
@@ -987,6 +987,15 @@
                 notes.push(`10% glucose (RCUK 2025): 2 ml/kg${ml ? ` = ${ml} ml` : ''} IV/IO for known hypoglycaemia. Recheck glucose 5-10 min after the dose and repeat as required.`);
                 break;
             }
+            case 'Hydrocortisone': {
+                // RCUK gives 4 mg/kg for acute asthma and refractory anaphylaxis; other indications
+                // (e.g. adrenal crisis) have their own doses, so say nothing there.
+                if (!isAnaphylaxisScenario(s) && scenarioText(s).indexOf('asthma') === -1) break;
+                const mg = wt ? Math.min(200, Math.round(4 * wt)) : null;
+                if (mg) log = `IV Hydrocortisone ${mg} mg administered (4 mg/kg).`;
+                notes.push(`Paediatric hydrocortisone (RCUK): 4 mg/kg IV${mg ? ` = ${mg} mg` : ''}, max 200 mg.`);
+                break;
+            }
             case 'Calcium': {
                 const ml = wt ? Math.min(30, round1(0.5 * wt)) : null;
                 if (ml) log = `IV 10% Calcium Gluconate ${ml} ml administered (0.5 ml/kg) over 5-10 min.`;
@@ -995,12 +1004,31 @@
             }
             default: break;
         }
+        // Newborn Life Support (RCUK Guidelines 2025, NLS algorithm, March 2026)
+        if (isNeonate(s)) {
+            if (key === 'Bagging') notes.push('NLS 2025: ensure an open airway, then 5 inflation breaths at 30 cm H2O in air (term), PEEP 6 cm H2O if possible, looking for chest rise; once the chest moves, ventilation breaths at 30 min-1. Preterm < 32 weeks: initial PIP 25 cm H2O, PEEP 6, FiO2 at least 30%. Acceptable pre-ductal SpO2: 70-75% at 3 min, 80-85% at 5 min, 85-95% at 10 min.');
+            if (key === 'CPR') notes.push('NLS 2025: only if the heart rate is < 60 min-1 after 30 s of effective ventilation breaths: 3 chest compressions to 1 ventilation (15 cycles per 30 s), synchronised, with 100% oxygen; consider an SGA or intubation; reassess heart rate and chest rise every 30 s.');
+            if (key === 'AdrenalineIV' || key === 'Fluids') notes.push('NLS 2025: if the heart rate remains < 60 min-1 despite effective ventilation and compressions: vascular access, consider drugs and intravascular volume, check blood glucose, and consider hypovolaemia, pneumothorax and congenital abnormality.');
+            if (key === 'Warming') notes.push('NLS 2025: thermal care from birth. Preterm < 32 weeks: place the undried body in a plastic bag under radiant heat.');
+        }
         return { log, notes };
     };
 
     // 1 = full decline, 0 = halted, negative = actively recovering.
+    // Anaphylaxis, read from the scenario text. Bradykinin-mediated angio-oedema (ACE inhibitor,
+    // hereditary) is NOT anaphylaxis: adrenaline does little for it, which is the teaching point.
+    const isAnaphylaxisScenario = (scenario) => {
+        const txt = scenarioText(scenario);
+        if (txt.indexOf('bradykinin') !== -1 || txt.indexOf('ace-inhibitor') !== -1 || txt.indexOf('ace inhibitor') !== -1) return false;
+        return txt.indexOf('anaphyla') !== -1 || txt.indexOf('allergic reaction') !== -1 || txt.indexOf('angio-oedema') !== -1 || txt.indexOf('angiooedema') !== -1;
+    };
+    // RCUK Emergency treatment of anaphylaxis (2021): corticosteroids are no longer advised for the
+    // routine emergency treatment, and antihistamines have no role in airway, breathing or
+    // circulation problems. In anaphylaxis they do not slow the decline.
+    const NOT_ANAPHYLAXIS_TREATMENT = ['Hydrocortisone', 'Dexamethasone', 'Chlorphenamine'];
     const deteriorationTreatmentFactor = (type, cs) => {
-        const list = DETERIORATION_TREATMENTS[type] || [];
+        const anaphylaxis = !!(cs && cs.scenario && isAnaphylaxisScenario(cs.scenario));
+        const list = (DETERIORATION_TREATMENTS[type] || []).filter(k => !(anaphylaxis && NOT_ANAPHYLAXIS_TREATMENT.indexOf(k) !== -1));
         let n = 0;
         list.forEach(k => { if (isExpectationMet(k, cs)) n++; });
         const stabilisers = (cs && cs.scenario && cs.scenario.stabilisers) || [];
@@ -1198,7 +1226,7 @@
         normalisePupils, isCategoricalVital,
         // Test handles for the metabolic and deterioration models.
         drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
-        ageBandOf, safeApnoeaSeconds, paediatricFieldScale, paediatricAdenosineDose, paediatricDoseNotes, hasHighO2Consumption, DETERIORATION_TREATMENTS,
+        ageBandOf, safeApnoeaSeconds, paediatricFieldScale, paediatricAdenosineDose, paediatricDoseNotes, isAnaphylaxisScenario, isNeonate, hasHighO2Consumption, DETERIORATION_TREATMENTS,
         FLUID_RESPONSE_LEVELS,
         // The bronchospasm severity model behind the shark-fin capnogram.
         getObstruction, inferObstruction, obstructionBand, BRONCHODILATORS, OBSTRUCTION_HINTS };
@@ -1464,7 +1492,7 @@
         getObstruction, getSensors, getUnmetExpectations, hasHighO2Consumption, inferPotassium,
         initialCoreState, initialLogState, initialScenarioState, initialVitalsState, isCategoricalVital,
         isDrugSpent, isVentilated, isVitalValueSafe, newRunId, normaliseDeteriorationType,
-        normalisePupils, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, paralysisFromDrugs, paralysisPhase, pkFactor, pkPhase,
+        normalisePupils, isAnaphylaxisScenario, isNeonate, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, paralysisFromDrugs, paralysisPhase, pkFactor, pkPhase,
         pkRemaining, safeApnoeaSeconds, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     };
 })();
