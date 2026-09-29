@@ -116,6 +116,25 @@ test.describe('Defib Sim', () => {
     expect(errors).toEqual([]);
   });
 
+  test('a defib in another tab of the same browser links without a code, and its presses count', async ({ page, context }) => {
+    const errors = trackErrors(page);
+    const code = await openController(page);
+    await startDefibSim(page, 'vf-arrest');
+    const defib = await context.newPage();
+    const defibErrors = trackErrors(defib);
+    await defib.goto('/defib/index.html');                 // no ?session: the same-browser channel
+    await expect(defib.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+    await defib.click('.mode-label[data-mode="defib"]');
+    await defib.click('#chargeBtn');
+    await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
+    await defib.click('#shockBtn');
+    await expect.poll(() => live(page, code, '/defib/shockCount')).toBe(1);
+    await defib.click('#analyseBtn');
+    await expect.poll(() => page.evaluate(() => window.__simEngine.state.log.some(l => /Defib analysis \(student \(standalone defib\)\)/.test(l.msg)))).toBe(true);
+    expect(errors).toEqual([]);
+    expect(defibErrors).toEqual([]);
+  });
+
   test('the device asks for a code when opened without one', async ({ page }) => {
     const errors = trackErrors(page);
     await page.goto('/defib/index.html');

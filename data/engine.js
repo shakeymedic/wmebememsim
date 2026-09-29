@@ -168,84 +168,49 @@
             dispatchCore(enhancedAction);
         };
 
-        // Register BroadcastChannel handler ONCE — read live state via stateRef to avoid stale closures.
+        // ONE handler for every press on a learner's defibrillator, however it arrived: over the
+        // live session (a tablet anywhere) or the same-browser channel (a defib in another tab).
+        // Presses are acted on whether or not the clock is running, so a forgotten START never
+        // silently drops a learner's shock.
+        const handleDeviceEvent = (type, p, where) => {
+            const cur = stateRef.current;
+            p = p || {};
+            const src = `student (${where})`;
+            switch (type) {
+                case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
+                case 'ENERGY_SELECT': setDefibEnergy(p.energy, src); break;
+                case 'SYNC_TOGGLE': dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!p.sync } });
+                    addLogEntry(`SYNC ${p.sync ? 'ON' : 'OFF'} (${src})${p.sync && RG.isPulseless(cur.rhythm) ? ' — armed in a pulseless rhythm; the device will not discharge. Flagged.' : ''}`,
+                        p.sync && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', !!(p.sync && RG.isPulseless(cur.rhythm)));
+                    break;
+                case 'CHARGE_INIT': initCharge(p.energy); break;
+                case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
+                case 'ANALYSE':
+                case 'ANALYSIS_RESULT': analyseRhythm(src); break;       // judged here, from the controller's rhythm
+                case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: Number(p.rate) || 0, output: Number(p.output) || 0, demand: p.demand !== false } }); break;
+                case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
+                case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
+                case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
+                case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
+                case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
+                case 'LEAD_CHANGE': addLogEntry(`Monitoring lead changed to ${String(p.lead || '?').slice(0, 8)} (${where})`, 'action'); break;
+                case 'SIZE_CHANGE': addLogEntry(`ECG size x${Number(p.gain) || 1} (${where})`, 'info'); break;
+                default: addLogEntry(`Unhandled student device event: ${String(type).slice(0, 40)}`, 'system'); break;
+            }
+        };
+
+        // The same-browser channel: registered once; everything is read live through stateRef.
         useEffect(() => {
             if (isMonitorMode || !simChannel.current) return;
             simChannel.current.onmessage = (event) => {
-                const data = event.data;
-                const cur = stateRef.current;
-
-                // While paused, log the student's action instead of discarding it. The defib shows its
-                // own local banner, so a dropped press leaves the two screens silently disagreeing.
-                // PACER_UPDATE is device state, not a clinical action — it must stay in sync even paused,
-                // otherwise the facilitator's capture threshold view drifts from the student's dial.
-                // A7: REQUEST_SYNC is a handshake. The standalone defib broadcasts it on load and
-                // NOTHING handled it, so a defib opened mid-scenario sat on frozen fake normals
-                // until the next vitals tick. Answer it immediately, running or not.
+                const data = event.data || {};
+                // A defib opened mid-scenario asks for the patient straight away.
                 if (data.type === 'REQUEST_SYNC') {
                     postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayloadRef.current() });
                     return;
                 }
-
-                if (!cur.isRunning && data.type !== 'PACER_UPDATE') {
-                    const pausedLabels = {
-                        SHOCK_DELIVERED: `student pressed SHOCK (${data.payload?.energy ?? '?'}J)`,
-                        CHARGE_INIT: `student pressed CHARGE (${data.payload?.energy ?? '?'}J)`,
-                        MARKER_EVENT: 'student marked event',
-                        CHECK_PULSE: 'student checked pulse',
-                        ANALYSIS_RESULT: `defib analysis: ${data.payload?.result || 'unknown result'}`,
-                        ALARM_SILENCE: 'student silenced alarm',
-                        REQUEST_12LEAD: 'student requested 12-lead',
-                        DEVICE_MODE: `student set device mode to ${data.payload?.mode ?? '?'}`
-                    };
-                    if (pausedLabels[data.type]) {
-                        dispatch({ type: 'ADD_LOG', payload: { msg: `(paused) ${pausedLabels[data.type]}`, type: 'system' } });
-                    }
-                    return;
-                }
-
-                if (data.type === 'PACER_UPDATE') {
-                    const pp = data.payload || {};
-                    dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: Number(pp.rate) || 0, output: Number(pp.output) || 0, demand: pp.demand !== false } });
-                } else if (data.type === 'CHARGE_INIT') {
-                    initCharge(data.payload.energy);
-                } else if (data.type === 'SHOCK_DELIVERED') {
-                    // The sync flag was transmitted and then DISCARDED here before Wave 3.
-                    deliverShock(data.payload.energy, 'student (standalone defib)', { sync: !!data.payload.sync });
-                } else if (data.type === 'SYNC_TOGGLE') {
-                    dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!data.payload?.sync } });
-                    addLogEntry(`SYNC ${data.payload?.sync ? 'ON' : 'OFF'} (student, standalone defib)`, 'action');
-                } else if (data.type === 'ENERGY_SELECT') {
-                    setDefibEnergy(data.payload?.energy, 'student (standalone defib)');
-                } else if (data.type === 'CHECK_PULSE') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Checked Pulse', type: 'action' } });
-                } else if (data.type === 'ANALYSIS_RESULT') {
-                    // Judged by the controller from its own rhythm, exactly as over Firebase.
-                    analyseRhythm('student (standalone defib)');
-                } else if (data.type === 'LEAD_CHANGE') {
-                    addLogEntry(`Monitoring lead changed to ${String(data.payload?.lead || '?').slice(0, 8)} (standalone defib)`, 'action');
-                } else if (data.type === 'SIZE_CHANGE') {
-                    addLogEntry(`ECG size x${Number(data.payload?.gain) || 1} (standalone defib)`, 'info');
-                } else if (data.type === 'ALARM_SILENCE') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
-                } else if (data.type === 'MARKER_EVENT') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual', flagged: true } });
-                } else if (data.type === 'REQUEST_12LEAD') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
-                    // Send only the fields render12LeadDefib reads. The full scenario still carries
-                    // ageGenerator(), and a function makes postMessage throw DataCloneError.
-                    const s = cur.scenario || {};
-                    postToChannel({ type: 'SHOW_12LEAD', payload: {
-                        rhythm: cur.rhythm, hr: cur.vitals.hr,
-                        scenario: { patientName: s.patientName, ecg: s.ecg || null, investigations: { ecg: s.investigations?.ecg || null } }
-                    } });
-                } else if (data.type === 'DEVICE_MODE') {
-                    // Logged like the Firebase path, so the debrief sees the same record either way.
-                    setDefibMode(data.payload.mode, 'student (standalone defib)');
-                    if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
-                        dispatch({ type: 'SET_ARREST_PANEL', payload: true });
-                    }
-                }
+                if (data.type === 'SYNC_VITALS' || typeof data.type !== 'string') return;
+                handleDeviceEvent(data.type, data.payload, 'standalone defib');
             };
             return () => { if (simChannel.current) simChannel.current.onmessage = null; };
         }, [isMonitorMode]);
@@ -600,30 +565,7 @@
                 const ev = snap.val();
                 if (!ev || !ev.type) return;
                 if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
-                const cur = stateRef.current;
-                const where = ev.device === 'standalone-defib' ? 'standalone defib' : 'monitor defib';
-                const src = `student (${where})`;
-                const p = ev.payload || {};
-                switch (ev.type) {
-                    case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
-                    case 'ENERGY_SELECT': setDefibEnergy(p.energy, src); break;
-                    case 'SYNC_TOGGLE': dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!p.sync } });
-                        addLogEntry(`SYNC ${p.sync ? 'ON' : 'OFF'} (${src})${p.sync && RG.isPulseless(cur.rhythm) ? ' — armed in a pulseless rhythm; the device will not discharge. Flagged.' : ''}`,
-                            p.sync && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', !!(p.sync && RG.isPulseless(cur.rhythm)));
-                        break;
-                    case 'CHARGE_INIT': initCharge(p.energy); break;
-                    case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
-                    case 'ANALYSE': analyseRhythm(src); break;
-                    case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: Number(p.rate) || 0, output: Number(p.output) || 0, demand: p.demand !== false } }); break;
-                    case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
-                    case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
-                    case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
-                    case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
-                    case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
-                    case 'LEAD_CHANGE': addLogEntry(`Monitoring lead changed to ${String(p.lead || '?').slice(0, 8)} (${where})`, 'action'); break;
-                    case 'SIZE_CHANGE': addLogEntry(`ECG size x${Number(p.gain) || 1} (${where})`, 'info'); break;
-                    default: addLogEntry(`Unhandled student device event: ${ev.type}`, 'system'); break;
-                }
+                handleDeviceEvent(ev.type, ev.payload, ev.device === 'standalone-defib' ? 'standalone defib' : 'monitor defib');
                 // Consume the event so the queue cannot grow without bound across a long session.
                 snap.ref.remove().catch(() => {});
             };
