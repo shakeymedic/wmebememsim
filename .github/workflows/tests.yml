@@ -1,4 +1,4 @@
-name: Browser tests
+name: Tests
 
 on:
   pull_request:
@@ -23,8 +23,32 @@ jobs:
       - name: Install test dependencies
         working-directory: tests
         run: npm ci && npx playwright install --with-deps chromium
+      - name: Session clean-up logic
+        run: node scripts/cleanup-sessions.mjs --self-test
       - name: Run the tests
         working-directory: tests
         run: npx playwright test
         env:
           CI: true
+
+  rules:
+    # database.rules.json in the real Firebase Realtime Database emulator.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: tests/rules/package-lock.json
+      - name: Install
+        working-directory: tests/rules
+        run: npm ci
+      - name: Test the rules in the emulator
+        working-directory: tests/rules
+        run: npm test

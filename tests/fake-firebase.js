@@ -94,7 +94,9 @@
         listeners.slice().forEach(function (l) { if (listeners.indexOf(l) !== -1 && related(l.path, path)) fire(l); });
     }
 
+    var writes = [];        // every local write, for the rules test
     function write(op, path, value, remote) {
+        if (!remote && op !== 'hello') writes.push({ op: op, path: path, value: clone(value) });
         if (op === 'set') setAt(path, value);
         else if (op === 'update') Object.keys(value || {}).forEach(function (k) { setAt(join(parts(path).concat(parts(k))), value[k]); });
         if (!remote) channel.postMessage({ op: op, path: path, value: clone(value) });
@@ -172,5 +174,5 @@
         database: function () { return db; }
     };
     // Test hook: inspect or seed the shared tree.
-    window.__fakeRtdb = { get: function (p) { return clone(getAt(p || '')); }, set: function (p, v) { return write('set', p, v); } };
+    window.__fakeRtdb = { get: function (p) { return clone(getAt(p || '')); }, set: function (p, v) { return write('set', p, v); }, writes: function () { return clone(writes); } };
 })();

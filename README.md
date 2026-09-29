@@ -32,40 +32,34 @@ python3 -m http.server 8000
 ```
 
 - Controller: `http://localhost:8000/`
-- Monitor: `http://localhost:8000/?mode=monitor&session=ABCD`
-- Defibrillator: `http://localhost:8000/defib/?session=ABCD`
+- Monitor: `http://localhost:8000/?mode=monitor&session=K7PQ3M`
+- Defibrillator: `http://localhost:8000/defib/?session=K7PQ3M`
 
 The **Session ID** shown in the controller header is what pairs the screens. It maps to
 `sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
-characters (no 0/O, 1/I/L). The controller replaces any older four-character code (from this browser
+characters (no 0/O, 1/I/L). The database rules accept only codes in this format. The controller replaces any older four-character code (from this browser
 or the address bar) with a new one when it loads, and **New code** on the setup screen starts a fresh
-one at any time; room monitors can still join an old code. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
+one at any time. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
 tablet can pair by scanning instead of typing.
 
 The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code
 into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
 **Defib** button) remains available too.
 
-### Clearing out old sessions (optional, needs a server job)
+### Clearing out old sessions
 
-`sessions/*` is deliberately open so monitors join with nothing but a code, and the Realtime Database
-cannot expire data by itself, so old sessions accumulate. Each session carries `updatedAt` (epoch ms,
-rounded to the minute) for a cleanup job to key on. **This job is not deployed**; if you want it, a
-scheduled Cloud Function along these lines deletes sessions idle for more than a day:
+The Realtime Database cannot expire data by itself, so without a clean-up old sessions accumulate.
+`.github/workflows/cleanup-sessions.yml` runs `scripts/cleanup-sessions.mjs` every day on GitHub (no
+Firebase paid plan needed) and deletes sessions with no activity of any kind (patient updates,
+screens connected, defib presses) for more than 24 hours. **It does nothing until you give it access:**
 
-```js
-// functions/index.js — requires the Blaze plan. Not part of this repository's deployment.
-const { onSchedule } = require('firebase-functions/v2/scheduler');
-const admin = require('firebase-admin'); admin.initializeApp();
-exports.purgeOldSessions = onSchedule('every 24 hours', async () => {
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const snap = await admin.database().ref('sessions').orderByChild('updatedAt').endAt(cutoff).once('value');
-  const updates = {}; snap.forEach(c => { updates[c.key] = null; });
-  if (Object.keys(updates).length) await admin.database().ref('sessions').update(updates);
-});
-```
-
-(Add `".indexOn": ["updatedAt"]` under `sessions` in the rules if you deploy it.)
+1. Firebase console → Project settings → Service accounts → **Generate new private key**. This downloads
+   a JSON file. Treat it like a password.
+2. GitHub → this repository → Settings → Secrets and variables → Actions → **New repository secret**,
+   name `FIREBASE_SERVICE_ACCOUNT`, value: the whole contents of that JSON file.
+3. Publish `database.rules.json` (it declares the index the job uses).
+4. Optional: Actions → "Clear out old sessions" → Run workflow, with "Only list" ticked, to see what it
+   would delete before the first real run.
 
 ---
 

@@ -36,10 +36,10 @@
    -------------------------------------------------------------------------------------------------
    DESIGN NOTES
    -------------------------------------------------------------------------------------------------
-   * sessions/* stays FULLY OPEN, read and write, unauthenticated. This is deliberate and exactly
-     as it behaves today: a student monitor or defibrillator tablet joins with nothing but a
-     4-character code and no account. The app must remain fully usable with no sign-in, so this
-     node must not be locked down. It carries ephemeral simulation telemetry only.
+   * sessions/* stays OPEN to read and write without an account: a student monitor or defib
+     tablet joins with nothing but a six-character session code. It is limited to current-format
+     codes and to the fields the app writes (see section 1). It carries ephemeral simulation
+     telemetry only.
 
    * users/$uid is self-service for PROFILE fields (email, displayName, createdAt, lastSeenAt) but
      `role`, `status` and `entitlements` are ADMIN-WRITE-ONLY. Without that split any signed-in
@@ -58,12 +58,113 @@
   "rules": {
 
     // ------------------------------------------------------------------------------------------
-    // 1. SESSIONS — open by design. The anonymous monitor/defib path depends on this.
+    // 1. SESSIONS — open to anyone with the code. The anonymous monitor/defib path depends on this.
     // ------------------------------------------------------------------------------------------
     "sessions": {
+      // The clean-up job finds idle sessions by this (see README "Clearing out old sessions").
+      ".indexOn": ["live/updatedAt"],
       "$code": {
+        // Anyone with the code may read and write: a monitor or defib tablet joins with nothing but
+        // the code and no account. Only current-format codes (six characters, no look-alikes such
+        // as 0/O or 1/I/L) can be written, and only the fields the app writes: this limits what a
+        // stranger could put in the database, though not how much data a known field holds.
         ".read": true,
-        ".write": true
+        ".write": "$code.matches(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/)",
+
+        // The patient, published by the controller. Keep in step with the sync payload in
+        // data/engine.js: tests/specs/rules.spec.js fails if a key is missing here.
+        "live": {
+          "vitals": { ".validate": true },
+          "rhythm": { ".validate": true },
+          "cprInProgress": { ".validate": true },
+          "etco2Enabled": { ".validate": true },
+          "flash": { ".validate": true },
+          "cycleTimer": { ".validate": true },
+          "monitorTimer": { ".validate": true },
+          "scenarioTitle": { ".validate": true },
+          "patientName": { ".validate": true },
+          "patientAge": { ".validate": true },
+          "sex": { ".validate": true },
+          "ageRange": { ".validate": true },
+          "wetflag": { ".validate": true },
+          "pathology": { ".validate": true },
+          "investigations": { ".validate": true },
+          "activeInterventions": { ".validate": true },
+          "nibp": { ".validate": true },
+          "speech": { ".validate": true },
+          "soundEffect": { ".validate": true },
+          "audioOutput": { ".validate": true },
+          "trends": { ".validate": true },
+          "arrestPanelOpen": { ".validate": true },
+          "isFinished": { ".validate": true },
+          "defibPanelOpen": { ".validate": true },
+          "defib": { ".validate": true },
+          "pacing": { ".validate": true },
+          "defibView": { ".validate": true },
+          "monitorPopup": { ".validate": true },
+          "waveformGain": { ".validate": true },
+          "noise": { ".validate": true },
+          "notification": { ".validate": true },
+          "remotePacerState": { ".validate": true },
+          "pacingThreshold": { ".validate": true },
+          "showWetflag": { ".validate": true },
+          "co2Pathology": { ".validate": true },
+          "co2Severity": { ".validate": true },
+          "isRunning": { ".validate": true },
+          "audioLive": { ".validate": true },
+          "isMuted": { ".validate": true },
+          "activeLoops": { ".validate": true },
+          "isParalysed": { ".validate": true },
+          "activeDrugs": { ".validate": true },
+          "deteriorationMode": { ".validate": true },
+          "potassium": { ".validate": true },
+          "pocReadings": { ".validate": true },
+          "updatedAt": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+        // Which screens are connected (heartbeat every 10 s, removed on disconnect).
+        "presence": {
+          "$client": {
+            ".validate": "newData.hasChildren(['role', 'ts'])",
+            "role": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "display": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "ua": { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "ts": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        // Presses on a learner's defib, consumed by the controller.
+        "deviceEvents": {
+          "$event": {
+            ".validate": "newData.hasChildren(['type', 'ts'])",
+            "type": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "payload": { ".validate": true },
+            "ts": { ".validate": "newData.isNumber()" },
+            "from": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "device": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "$other": { ".validate": false }
+          }
+        },
+        // What each defib tablet is showing, mirrored on the controller.
+        "deviceState": {
+          "$client": {
+            ".validate": "newData.hasChild('ts')",
+            "mode": { ".validate": "newData.isString() && newData.val().length <= 12" }, "machine": { ".validate": "newData.isString() && newData.val().length <= 16" }, "energy": { ".validate": "newData.isNumber()" }, "sync": { ".validate": "newData.isBoolean()" },
+            "lead": { ".validate": "newData.isString() && newData.val().length <= 8" }, "gain": { ".validate": "newData.isNumber()" }, "pacerOutput": { ".validate": "newData.isNumber()" }, "pacerRate": { ".validate": "newData.isNumber()" },
+            "pacerDemand": { ".validate": "newData.isBoolean()" }, "message": { ".validate": "newData.isString() && newData.val().length <= 120" }, "messageType": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "ts": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        // The room monitor's requests to the controller (NIBP, actions).
+        "command": {
+          ".validate": "newData.hasChildren(['type', 'ts'])",
+          "type": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "payload": { ".validate": true },
+          "ts": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+        "$other": { ".validate": false }
       }
     },
 
