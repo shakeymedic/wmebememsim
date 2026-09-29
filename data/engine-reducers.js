@@ -374,7 +374,7 @@
                 // with nothing attached ("NO SENSOR DETECTED"), and the facilitator attaches the
                 // standard set or individual sensors from the controller's Monitoring & access panel.
                 // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
-                return { ...initialCoreState, runId: newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
+                return { ...initialCoreState, runId: action.runId || newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
                     showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
                     pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
@@ -393,7 +393,7 @@
                 return { ...state,
                     // D1: resuming reopens the SAME run, and therefore the same instructor notes.
                     // Pre-Wave-4b snapshots carry no runId, so mint one rather than leaving it null.
-                    runId: p.runId || state.runId || newRunId(),
+                    runId: p.runId || state.runId || action.runId || newRunId(),
                     time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
                     interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
                     nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,

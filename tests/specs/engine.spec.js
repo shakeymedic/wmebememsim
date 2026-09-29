@@ -179,3 +179,30 @@ test('the controller\'s defib panel changes the shock-response settings', async 
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.defibSettings.rOnT)).toBe('always');
   expect(errors).toEqual([]);
 });
+
+test.describe('Several actions in the same moment', () => {
+  test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
+
+  test('each sees the one before it (three quick adenosine doses are 6, 12 and 18 mg)', async ({ page }) => {
+    const errors = trackErrors(page);
+    await openController(page);
+    await startQuickSim(page);
+    await page.evaluate(() => { for (let i = 0; i < 3; i++) window.__simEngine.applyIntervention('Adenosine'); });
+    await expect.poll(() => page.evaluate(() => window.__simEngine.state.log.map(l => l.msg).filter(m => /^Adenosine \d+ mg given/.test(m)).map(m => Number(m.match(/\d+/)[0]))))
+      .toEqual([6, 12, 18]);
+    expect(errors).toEqual([]);
+  });
+
+  test('an obs change followed at once by a rhythm change is not undone', async ({ page }) => {
+    await openController(page);
+    await startQuickSim(page);
+    await page.evaluate(() => {
+      const e = window.__simEngine;
+      e.dispatch({ type: 'UPDATE_VITALS', payload: { bpSys: 91, bpDia: 57 } });
+      e.changeRhythm('AF', 'test');
+    });
+    await expect.poll(() => page.evaluate(() => window.__simEngine.state.rhythm)).toBe('AF');
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => [window.__simEngine.state.vitals.bpSys, window.__simEngine.state.vitals.bpDia])).toEqual([91, 57]);
+  });
+});

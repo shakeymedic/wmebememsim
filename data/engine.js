@@ -15,17 +15,42 @@
         fluidResponsiveness, getObstruction, getSensors, getUnmetExpectations, initialCoreState,
         initialLogState, initialScenarioState, initialVitalsState, isDrugSpent, isVentilated,
         normaliseDeteriorationType, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
-        sanitizeForRealtimeDatabase, scenarioText, tickActionFor
+        newRunId, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     } = window.__EngineModel;
     const { coreReducer, logReducer, scenarioReducer, vitalsReducer } = window.__EngineReducers;
 
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
-        const [vitalsState, dispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
-        const [logState, dispatchLog] = useReducer(logReducer, initialLogState);
-        const [scenarioState, dispatchScenario] = useReducer(scenarioReducer, initialScenarioState);
-        const [coreState, dispatchCore] = useReducer(coreReducer, initialCoreState);
+        const [vitalsState, rawDispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
+        const [logState, rawDispatchLog] = useReducer(logReducer, initialLogState);
+        const [scenarioState, rawDispatchScenario] = useReducer(scenarioReducer, initialScenarioState);
+        const [coreState, rawDispatchCore] = useReducer(coreReducer, initialCoreState);
 
         const state = { ...vitalsState, ...logState, ...scenarioState, ...coreState };
+
+        // ---- stateRef IS ALWAYS CURRENT ------------------------------------------------------------
+        // Engine functions read the latest state through stateRef, but React only re-renders after an
+        // event handler or timer has finished, so two dispatches in the same moment used to see the
+        // state from BEFORE the first one (three quick doses all counted as dose 1; a rhythm change
+        // followed by an obs write could undo itself). Every dispatch therefore also runs the same
+        // pure reducer on a shadow copy and updates stateRef at once. React's own result replaces
+        // the shadow at the next render, so the two can differ at most by a timestamp.
+        const REDUCERS = { vitals: vitalsReducer, log: logReducer, scenario: scenarioReducer, core: coreReducer };
+        const renderedRef = useRef(null);
+        const shadowRef = useRef(null);
+        renderedRef.current = { vitals: vitalsState, log: logState, scenario: scenarioState, core: coreState };
+        shadowRef.current = null;
+        const applyShadow = (key, action) => {
+            const base = shadowRef.current || renderedRef.current;
+            let next = base[key];
+            try { next = REDUCERS[key](base[key], action); } catch (e) { /* React will surface it */ }
+            const s = { ...base, [key]: next };
+            shadowRef.current = s;
+            stateRef.current = { ...s.vitals, ...s.log, ...s.scenario, ...s.core };
+        };
+        const dispatchVitals = (a) => { applyShadow('vitals', a); rawDispatchVitals(a); };
+        const dispatchLog = (a) => { applyShadow('log', a); rawDispatchLog(a); };
+        const dispatchScenario = (a) => { applyShadow('scenario', a); rawDispatchScenario(a); };
+        const dispatchCore = (a) => { applyShadow('core', a); rawDispatchCore(a); };
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
@@ -49,6 +74,8 @@
         useEffect(() => { stateRef.current = state; }, [state]);
 
         const dispatch = (action) => {
+            // A new run's id is decided here, once, so the shadow copy and React agree on it.
+            if ((action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION') && !action.runId) action = { ...action, runId: newRunId() };
             let enhancedAction = { ...action, currentState: stateRef.current };
             
             if (action.type === 'TRIGGER_IMPROVE') {
