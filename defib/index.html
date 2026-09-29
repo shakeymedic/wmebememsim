@@ -21,8 +21,8 @@
     <!-- Firebase: the SAME live session the controller and room monitor use, so this page works on
          a separate tablet. Without it the page can still reach a controller in another tab of the
          same browser (BroadcastChannel). -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
     <script src="../data/firebase-config.js"></script>
     <link rel="stylesheet" href="device.css">
 </head>
@@ -300,6 +300,7 @@
             try {
                 if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
                 fb.db = firebase.database();
+                if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(fb.db);
             } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }
             fb.code = code;
             $('sessionTag').textContent = 'SESSION ' + code;

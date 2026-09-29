@@ -52,3 +52,33 @@ jobs:
       - name: Test the rules in the emulator
         working-directory: tests/rules
         run: npm test
+
+  e2e:
+    # The real app and the real Firebase SDK against the emulator, enforcing database.rules.json.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+            tests/rules/package-lock.json
+      - name: Build the site
+        run: npm ci && npm run build
+      - name: Install
+        run: |
+          (cd tests && npm ci && npx playwright install --with-deps chromium)
+          (cd tests/rules && npm ci)
+      - name: End-to-end in the emulator
+        working-directory: tests/rules
+        run: npm run e2e
+        env:
+          CI: true

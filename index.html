@@ -36,8 +36,8 @@
     
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
     <!-- Firebase Authentication, same compat v8 SDK version as the two above so the
          existing initialisation style is unchanged. This script is PURELY ADDITIVE: if it fails to
          load, or if Email/Password has not been enabled in the console, data/auth.js degrades to
@@ -45,7 +45,7 @@
     <!-- The sign-in library is NOT loaded up front: data/auth.js fetches it only when someone signs
          in, or when this browser has signed in before, so monitors and defib tablets never
          download it. (The build rewrites this URL to the self-hosted copy.) -->
-    <script>window.FIREBASE_AUTH_SRC = "https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js";</script>
+    <script>window.FIREBASE_AUTH_SRC = "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js";</script>
 
     <style>
         /* Base Setup */
@@ -144,6 +144,7 @@
             if (!window.firebase) throw new Error('Firebase SDK did not load.');
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             window.db = firebase.database();
+            if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(window.db);
             console.info("Firebase Realtime Database initialized");
         } catch (e) {
             window.db = null;

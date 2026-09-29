@@ -4,7 +4,8 @@
   "description": "database.rules.json tested in the Firebase Realtime Database emulator (CI job 'rules').",
   "type": "module",
   "scripts": {
-    "test": "cp ../../database.rules.json database.rules.json && firebase emulators:exec --only database --project demo-emsim --config firebase.json \"node --test rules.test.mjs\""
+    "test": "cp ../../database.rules.json database.rules.json && firebase emulators:exec --only database --project demo-emsim --config firebase.json \"node --test rules.test.mjs\"",
+    "e2e": "cp ../../database.rules.json database.rules.json && firebase emulators:exec --only database --project demo-emsim --config firebase.e2e.json \"cd .. && npx playwright test --config playwright.emulator.config.js\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.2",

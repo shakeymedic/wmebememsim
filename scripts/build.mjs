@@ -92,17 +92,19 @@ const vendor = (from, toRel) => {
 const V = {
     react: vendor('react/umd/react.production.min.js', 'vendor/react.production.min.js'),
     reactDom: vendor('react-dom/umd/react-dom.production.min.js', 'vendor/react-dom.production.min.js'),
-    fbApp: vendor('firebase/firebase-app.js', 'vendor/firebase/firebase-app.js'),
-    fbDb: vendor('firebase/firebase-database.js', 'vendor/firebase/firebase-database.js'),
-    fbAuth: vendor('firebase/firebase-auth.js', 'vendor/firebase/firebase-auth.js')
+    // Firebase's "compat" builds: the same namespaced API (firebase.database().ref(...)) the app
+    // has always used, on the current SDK.
+    fbApp: vendor('firebase/firebase-app-compat.js', 'vendor/firebase/firebase-app.js'),
+    fbDb: vendor('firebase/firebase-database-compat.js', 'vendor/firebase/firebase-database.js'),
+    fbAuth: vendor('firebase/firebase-auth-compat.js', 'vendor/firebase/firebase-auth.js')
 };
-const FB = 'https://www.gstatic.com/firebasejs/8.10.1/';
+const FB = 'https://www.gstatic.com/firebasejs/12.19.0/';
 const localise = (text, prefix) => text
     .split('https://unpkg.com/react@18/umd/react.production.min.js').join(prefix + V.react)
     .split('https://unpkg.com/react-dom@18/umd/react-dom.production.min.js').join(prefix + V.reactDom)
-    .split(FB + 'firebase-app.js').join(prefix + V.fbApp)
-    .split(FB + 'firebase-database.js').join(prefix + V.fbDb)
-    .split(FB + 'firebase-auth.js').join(prefix + V.fbAuth);
+    .split(FB + 'firebase-app-compat.js').join(prefix + V.fbApp)
+    .split(FB + 'firebase-database-compat.js').join(prefix + V.fbDb)
+    .split(FB + 'firebase-auth-compat.js').join(prefix + V.fbAuth);
 
 // In-browser Babel is no longer needed at all.
 html = html.replace(/[ \t]*<script src="https:\/\/unpkg\.com\/@babel\/standalone\/babel\.min\.js"><\/script>\n?/, '');
@@ -140,6 +142,13 @@ const walkJs = (dir) => {
     }
 };
 walkJs(path.join(OUT, 'data'));
+// The Firebase SDK uses newer syntax (?. and ??) than older tablets (iOS 12) understand: lower it
+// to the same level as the app's own code. (Runtime APIs are not polyfilled.)
+for (const rel of [V.fbApp, V.fbDb, V.fbAuth]) {
+    const f = path.join(OUT, rel);
+    fs.writeFileSync(f, esbuild.transformSync(fs.readFileSync(f, 'utf8'), { minify: true, target: 'es2017' }).code);
+    minified++;
+}
 // Inline scripts (the compiled App in index.html, the device logic in defib/index.html).
 const inlineRe = /<script>([\s\S]*?)<\/script>/g;
 for (const rel of ['index.html', 'defib/index.html']) {
