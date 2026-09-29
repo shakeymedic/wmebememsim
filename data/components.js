@@ -2,74 +2,20 @@
     const { useState, useEffect, useRef } = React;
 
     const BUFFER_SIZE = 1000;
-    const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), art: new Float32Array(BUFFER_SIZE) };
+    const precomputed = { resp: new Float32Array(BUFFER_SIZE) };
 
-    // --- WAVE 3: waveforms now come from THE SHARED RHYTHM REGISTRY (data/rhythms.js) ---
-    // Every cycle-normalised morphology lives in window.RHYTHMS.waveforms and is shared verbatim
-    // with the standalone defibrillator page. Previously this file carried its own private list of
-    // 10 rhythm names and its own ECG_NORM alias table, while defib/index.html carried a different
-    // list with different aliases; 115/254 scenarios fell through to a generic sinus complex and
-    // PEA was drawn as a normal sinus rhythm.
+    // Waveforms come from THE SHARED RHYTHM REGISTRY (data/rhythms.js): ECG complexes in real time
+    // (seconds), per-lead morphology, and beat-by-beat pleth and arterial pulses that follow every
+    // QRS. Nothing here keeps a private copy of a waveform.
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/components.js');
 
-    // Precompute one buffer per WAVEFORM (not per rhythm name), so rhythms that legitimately share
-    // a morphology (VT / pulseless VT) share one buffer and can never diverge.
-    Object.keys(RG.waveforms).forEach(wf => {
-        const fn = RG.waveforms[wf];
-        const buf = new Float32Array(BUFFER_SIZE);
-        for (let i = 0; i < BUFFER_SIZE; i++) buf[i] = fn(i / BUFFER_SIZE);
-        precomputed.ecg[wf] = buf;
-    });
-
-    for(let i=0; i<BUFFER_SIZE; i++) {
+    // Chest-wall impedance: inspiration takes about a third of the breath, expiration the rest.
+    for (let i = 0; i < BUFFER_SIZE; i++) {
         const t = i / BUFFER_SIZE;
-        let spo2Val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 20 : Math.sin(t * Math.PI * 2) * 5;
-        spo2Val += Math.sin((t - 0.1) * Math.PI * 2 * 2) * 5;
-        precomputed.spo2[i] = spo2Val;
-        
-        precomputed.resp[i] = Math.sin(t * Math.PI * 2) * 15;
-        
-        // WAVE 7: the old precomputed capnography buffers (a 20-unit trapezoid with no relation to
-        // the numeric ETCO2 and no correct phase III) are GONE. Capnography is now generated from
-        // RHYTHMS.capnogram(phase, kPa, pattern) at draw time so its amplitude equals the displayed
-        // ETCO2 and abnormal patterns (shark fin, rebreathing, curare cleft) are expressible.
-
-        // --- Arterial line (radial) ---
-        // Anchored to ECG cycle: R wave at t≈0.205. Mechanical pulse arrives ~210 ms later
-        // at the radial artery (peak at t≈0.42 of the cardiac cycle at 60 bpm).
-        // Phases: end-diastolic plateau → anacrotic limb → systolic peak → systolic decline
-        //         → dicrotic notch (aortic valve closure) → dicrotic wave (elastic recoil) → diastolic runoff
-        const dia = 6;        // end-diastolic baseline
-        let artVal;
-
-        if (t < 0.30) {
-            // Late-diastolic plateau (wraps continuously from prior beat's runoff)
-            artVal = dia;
-        } else if (t < 0.42) {
-            // Anacrotic (ascending) limb — sharp rise
-            const x = (t - 0.30) / 0.12;
-            const ease = 1 - Math.pow(1 - x, 2.5);
-            artVal = dia + 26 * ease;                                 // peaks at 32
-        } else if (t < 0.62) {
-            // Systolic decline (ease-out from peak toward J-point of art waveform)
-            const x = (t - 0.42) / 0.20;
-            artVal = 32 - 14 * (x * (2 - x));                         // 32 → 18
-        } else if (t < 0.68) {
-            // Dicrotic notch — brief dip at aortic valve closure
-            const x = (t - 0.62) / 0.06;
-            artVal = 18 - 3.5 * Math.sin(x * Math.PI);                // 18 → 14.5 → 18
-        } else if (t < 0.78) {
-            // Dicrotic wave — secondary rise from elastic recoil of the aorta
-            const x = (t - 0.68) / 0.10;
-            artVal = 18 + 4 * Math.sin(x * Math.PI);                  // 18 → 22 → 18
-        } else {
-            // Diastolic runoff — exponential decay back to baseline
-            const x = (t - 0.78) / 0.22;
-            artVal = dia + (18 - dia) * Math.exp(-3 * x);
-        }
-
-        precomputed.art[i] = artVal;
+        precomputed.resp[i] = t < 0.35
+            ? -15 * Math.cos(Math.PI * t / 0.35)
+            : 15 * Math.cos(Math.PI * (t - 0.35) / 0.65);
     }
 
     const Lucide = ({ icon, className, onClick }) => {
@@ -112,7 +58,7 @@
             'flask-conical': '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"></path><line x1="8.5" y1="2" x2="15.5" y2="2"></line><line x1="8.5" y1="14" x2="15.5" y2="14"></line>',
             'waves': '<path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path>',
             'check-square': '<polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path>',
-            // WAVE 5 / ITEM 2: the "partly done" state of a multi-component learning objective. Lucide
+            // The "partly done" state of a multi-component learning objective. Lucide
             // returns an EMPTY glyph for an unknown name, so a missing icon renders as blank space.
             'minus-square': '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="8" y1="12" x2="16" y2="12"></line>',
             'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line>',
@@ -122,7 +68,7 @@
             'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle>',
             'check': '<polyline points="20 6 9 17 4 12"></polyline>',
             'heart': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
-            // WAVE 4b / D6: these were referenced by Wave 3 code (the presence badge and sync
+            // These were referenced by Wave 3 code (the presence badge and sync
             // badge) and by the new account UI, but had no glyph, so they rendered as an empty
             // <svg>. Silently-blank icons are exactly the misleading dead code this wave removes.
             'wifi-off': '<line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="M16.85 11.25a10 10 0 0 1 2.22 1.68"/><path d="M5 13a10 10 0 0 1 5.24-2.76"/><line x1="12" y1="20" x2="12.01" y2="20"/>',
@@ -157,17 +103,17 @@
         );
     };
 
-    // WAVE 4b: `type` is threaded through so a Button can be a real form submit control (the
+    // `type` is threaded through so a Button can be a real form submit control (the
     // account sign-in form). Default stays 'button' so no existing Button inside a form can
     // accidentally start submitting.
     const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null, ariaLabel = null, type = 'button' }) => {
         const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
         const variants = {
-            primary: "bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
+            primary: "bg-sky-700 hover:bg-sky-600 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
             secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600",
-            danger: "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/50 border border-red-500",
-            success: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/50 border border-emerald-500",
-            warning: "bg-amber-600 hover:bg-amber-500 text-white shadow-lg shadow-amber-900/50 border border-amber-500",
+            danger: "bg-red-700 hover:bg-red-600 text-white shadow-lg shadow-red-900/50 border border-red-500",
+            success: "bg-emerald-700 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-900/50 border border-emerald-500",
+            warning: "bg-amber-700 hover:bg-amber-600 text-white shadow-lg shadow-amber-900/50 border border-amber-500",
             outline: "bg-transparent border border-slate-600 text-slate-400 hover:border-slate-400 hover:text-slate-200"
         };
         const sizes = {
@@ -267,7 +213,7 @@
     );
 
     // =========================================================================================
-    // WAVE 7 — ECGMonitor
+    // ECGMonitor
     //
     // ROOT CAUSE OF THE REPORTED "ECG LOOKS IRREGULAR WHILE THE RATE RAMPS":
     // every trace derived its cycle position from ABSOLUTE animation time multiplied by the
@@ -297,13 +243,13 @@
     const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 30 };
 
     const ECGMonitor = ({ rhythmType, hr, rr, spO2, etco2, isPaused, showTraces, showEtco2, showArt,
-                          // WAVE 8 / FINDING 1: how obstructed the patient is, 0-1. Supplied by the
+                          // How obstructed the patient is, 0-1. Supplied by the
                           // engine's bronchospasm model (window.getObstruction); it scales the
                           // capnogram continuously from a normal trapezoid to a full shark fin.
                           co2Pathology = 'normal', co2Severity = 0,
                           ventilating = true, isCPR = false, className = '',
                           rhythmLabel, showSyncMarkers = false,
-                          // WAVE 7 / ITEM 4: individually attachable sensors. Each trace can now be
+                          // Individually attachable sensors. Each trace can now be
                           // gated on its own sensor instead of one all-or-nothing flag. They default
                           // to the legacy behaviour (`showTraces` drives pleth + resp) so every
                           // existing call site keeps working unchanged.
@@ -349,30 +295,15 @@
         // to live here — including a local Mobitz II branch that keyed the dropped beat to
         // `Math.floor(absTime / 1.2)` and produced a DIFFERENT dropped complex from the registry's.
         // `beat` is the beat index from the phase accumulator, so the drop is correct at any rate.
-        const getECGValue = (cyclePhase, type, cpr, absTime = 0, beat = 0) =>
-            RG.ecgValue(cyclePhase, absTime, type, { cpr, beat });
-
-        // R-wave sync markers for synchronised cardioversion (C6). The registry knows where the R
-        // wave sits in the cycle for every organised waveform, so the marker is drawn at the same
-        // phase the complex actually peaks at.
-        const R_PHASE = { sinus: 0.205, svt: 0.205, junctional: 0.205, af: 0.205, flutter: 0.205,
-                          first_degree: 0.305, mobitz2: 0.205, chb: 0.205, vt: 0.20, pea: 0.26,
-                          agonal: 0.30, paced: 0.205, stemi: 0.205, hyperkalaemia: 0.205, bbb: 0.200 };
-
-        const getSPO2Value = (t, sat) => {
-            if (sat < 10) return 0;
-            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.spo2[idx];
-        };
+        // `hr` is the BASE rate being drawn; the registry adds each beat's own irregularity and
+        // turns the phase into seconds so every complex keeps its real width at any rate.
+        const ecgLead = String(rhythmLabel || '').toUpperCase().indexOf('PADS') !== -1 ? 'PADS' : 'II';
+        const getECGValue = (cyclePhase, type, cpr, absTime, beat, hr) =>
+            RG.ecgValue(cyclePhase, absTime, type, { cpr, beat, hr, lead: ecgLead });
 
         const getRespValue = (t) => {
             const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.resp[idx];
-        };
-
-        const getArtValue = (t) => {
-            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.art[idx];
         };
 
         useEffect(() => {
@@ -499,21 +430,26 @@
                     ctx.beginPath();
                     let px = x0, py = st.lastY !== null ? st.lastY : ys[0];
                     ctx.moveTo(px, py);
+                    // Once this frame has wrapped to the left edge, every later sub-sample is also
+                    // past the edge. Without this flag each of them was taken for a NEW wrap and drew
+                    // a line from the left edge straight across to the right edge (the stray
+                    // horizontal lines seen after a rhythm change).
+                    let wrapped = false;
                     for (let i = 0; i < ys.length; i++) {
                         const nx = x0 + speed * ((i + 1) / ys.length);
                         const ny = ys[i];
-                        if (nx >= W && px < W) {
+                        if (!wrapped && nx >= W) {
                             // split this sub-segment at the right edge, interpolating y at the edge
                             const f = (W - px) / Math.max(1e-6, nx - px);
                             const edgeY = py + (ny - py) * f;
                             ctx.lineTo(W, edgeY);
                             ctx.moveTo(0, edgeY);          // same path, new subpath: one stroke, no seam
-                            px = 0; py = edgeY;
+                            wrapped = true;
                             ctx.lineTo(nx - W, ny);
                         } else {
-                            ctx.lineTo(nx >= W ? nx - W : nx, ny);
+                            ctx.lineTo(wrapped ? nx - W : nx, ny);
                         }
-                        px = nx >= W ? nx - W : nx; py = ny;
+                        px = wrapped ? nx - W : nx; py = ny;
                     }
                     ctx.stroke();
                     st.lastY = ys[ys.length - 1];
@@ -555,7 +491,7 @@
                 if (showEcg) {
                     ecgBaseY = traceHeight * (laneIdx.ecg + 0.5);
                     const ecgAmp = (rid === 'VF' || rid === 'Fine VF') ? 0.5 : 1;
-                    // WAVE 8: sub-sample the cardiac cycle WITHIN the frame. The R wave occupies about
+                    // Sub-sample the cardiac cycle WITHIN the frame. The R wave occupies about
                     // 1% of the cycle, so one sample per frame could straddle it and clip the peak —
                     // the beat-to-beat amplitude wobble seen live. One sample per <=0.4% of the cycle
                     // (up to 8) captures the peak at any heart rate and any frame rate, and the whole
@@ -567,21 +503,25 @@
                         const f = i / nSub;
                         const ph = prevEcgPhase + phaseAdvance * f;
                         const bi = Math.floor(ph);
-                        ecgSamples.push(ecgBaseY - getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi) * ecgAmp);
+                        ecgSamples.push(ecgBaseY - getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi, ecgFreq * 60) * ecgAmp);
                     }
                     const ecgY = ecgSamples[ecgSamples.length - 1];
                     drawLane('ecg', '#22c55e', ecgY, ecgSamples);
 
-                    // C6: R-wave synchronisation markers. When the defibrillator is in SYNC mode the
+                    // R-wave synchronisation markers. When the defibrillator is in SYNC mode the
                     // device must visibly mark the R waves it will fire on, otherwise "synchronised"
                     // is an invisible flag (which is exactly what it was before Wave 3).
                     if (live.showSyncMarkers && !live.isCPR) {
-                        const rPhase = R_PHASE[RG.waveformFor(rid)];
-                        if (rPhase !== undefined) {
-                            // Phase is monotonic now, so "did we cross the R wave this frame?" is a
-                            // plain comparison on the accumulator instead of modulo gymnastics.
-                            const crossed = Math.floor(prevEcgPhase - rPhase + 1) !== Math.floor(ecgPhase - rPhase + 1);
-                            if (crossed && !(RG.droppedBeat && RG.droppedBeat(rid, beatIdx))) {
+                        // The registry says where each beat's R peak is (null for VF, asystole and
+                        // dropped beats). Phase is monotonic, so "did we cross an R wave this frame?"
+                        // is a plain comparison on the accumulator.
+                        let crossed = false;
+                        for (let b = Math.floor(prevEcgPhase); b <= Math.floor(ecgPhase) && !crossed; b++) {
+                            const rp = RG.rWavePhase(rid, ecgFreq * 60, b);
+                            if (rp !== null && prevEcgPhase < b + rp && b + rp <= ecgPhase) crossed = true;
+                        }
+                        {
+                            if (crossed) {
                                 const st = laneState('ecg');
                                 ctx.save();
                                 ctx.strokeStyle = '#facc15';
@@ -600,17 +540,28 @@
                 // Driven by the SAME cardiac phase accumulator as the ECG, so there is exactly one
                 // pulse wave per QRS and the pleth tracks the heart rate through a ramp by
                 // construction rather than by coincidence.
+                const pulseless = RG.isPulseless(rid);
                 if (plethOn) {
-                    const spo2BaseY = traceHeight * (laneIdx.pleth + 0.5);
-                    const spo2Y = spo2BaseY - getSPO2Value(cycleT, live.spO2);
-                    drawLane('pleth', '#3b82f6', spo2Y);
+                    const spo2BaseY = traceHeight * (laneIdx.pleth + 0.62);
+                    // No saturation reading, or no output: no pulse wave (a flat pleth is the sign).
+                    const pv = (live.spO2 < 10 || pulseless) ? 0
+                        : RG.pulseValue('pleth', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase) });
+                    drawLane('pleth', '#3b82f6', spo2BaseY - pv);
                 }
 
                 // -------------------------------------------------- ARTERIAL LINE
+                // Beat-by-beat radial pressure pulses above a diastolic baseline. Without output the
+                // line sits flat near zero; chest compressions generate small pressure waves.
                 if (artOn) {
-                    const artBaseY = traceHeight * (laneIdx.art + 0.5);
-                    const artY = artBaseY - getArtValue(cycleT);
-                    drawLane('art', '#ef4444', artY);
+                    const artBaseY = traceHeight * (laneIdx.art + 0.7);
+                    let av;
+                    if (pulseless) {
+                        const c = (time * 1.83) % 1;
+                        av = live.isCPR ? 3 + 15 * Math.exp(-0.5 * Math.pow((c - 0.3) / 0.09, 2)) : 2;
+                    } else {
+                        av = 6 + RG.pulseValue('art', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase) });
+                    }
+                    drawLane('art', '#ef4444', artBaseY - av);
                 }
 
                 // -------------------------------------------------- RESP (chest-wall impedance)
@@ -640,7 +591,7 @@
                         // Capnography lags the compression/breath cycle in the airway, hence the
                         // half-cycle offset kept from the previous implementation.
                         const phase = (respCycle + 0.5) % 1;
-                        // WAVE 8 / FINDING 1: the obstruction severity scales the shape continuously
+                        // The obstruction severity scales the shape continuously
                         // from a normal trapezoid (0) to an unmistakable shark fin (1). Treating the
                         // bronchospasm lowers the severity, so the trace visibly normalises.
                         let v = RG.capnogram(phase, kPa, live.co2Pathology, live.co2Severity);
@@ -678,7 +629,7 @@
         return (
             <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
-                {offLanes.map(k => <div key={`off-${k}`} className={`${labelClass} text-slate-500 uppercase tracking-wider`} style={{ top: topOf(k) }}>{OFF_TEXT[k]}</div>)}
+                {offLanes.map(k => <div key={`off-${k}`} className={`${labelClass} text-slate-400 uppercase tracking-wider`} style={{ top: topOf(k) }}>{OFF_TEXT[k]}</div>)}
                 {showEcg && <div className={`${labelClass} text-green-500`} style={{ top: topOf('ecg') }}>{rhythmLabel || "LEAD II"}</div>}
                 {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH</div>}
                 {artOn && <div className={`${labelClass} text-red-500`} style={{ top: topOf('art') }}>ART</div>}
@@ -699,7 +650,7 @@
                             compact = false }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
-                <span className="text-slate-600 text-xs uppercase">{label} Off</span>
+                <span className="text-slate-400 text-xs uppercase">{label} Off</span>
             </div>
         );
 
@@ -734,10 +685,10 @@
                      </div>
                      <div className="flex items-end justify-center gap-1 my-1">
                          <span className={`text-5xl md:text-6xl lg:text-7xl font-mono font-bold leading-none ${color}`}>{show(value)}</span>
-                         <span className="text-2xl text-slate-500 font-bold mb-1">/</span>
+                         <span className="text-2xl text-slate-400 font-bold mb-1">/</span>
                          <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
                      </div>
-                     <div className="text-right text-[10px] text-slate-500 uppercase font-mono mt-auto">
+                     <div className="text-right text-[10px] text-slate-400 uppercase font-mono mt-auto">
                          {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
@@ -750,7 +701,7 @@
                 <Tile {...tileProps} className={`relative bg-slate-900 border rounded px-1.5 pt-1 ${note ? 'pb-3' : 'pb-1'} flex flex-col text-left min-w-0 ${onClick ? 'cursor-pointer active:bg-slate-800' : ''} overflow-hidden ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-700'}`}>
                     <div className="flex justify-between items-baseline gap-1 min-w-0">
                         <span className={`text-[10px] font-bold uppercase leading-none ${color}`}>{label}</span>
-                        {unit && <span className="text-[9px] text-slate-500 leading-none truncate">{unit}</span>}
+                        {unit && <span className="text-[9px] text-slate-400 leading-none truncate">{unit}</span>}
                     </div>
                     <div className={`font-mono font-bold leading-tight tracking-tight text-center whitespace-nowrap ${color} ${hasValue2 ? 'text-xl' : 'text-2xl'}`}>
                         {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}{trendIcon && <span className="text-sm text-sky-400 ml-0.5">{trendIcon}</span>}
@@ -802,7 +753,7 @@
                         <p className="text-sm text-slate-300">
                             This screen failed to render. Your session was not lost — you can return to the main menu and start or reload a scenario.
                         </p>
-                        <pre className="text-[11px] text-slate-500 bg-slate-900 border border-slate-700 rounded p-2 overflow-x-auto whitespace-pre-wrap">
+                        <pre className="text-[11px] text-slate-400 bg-slate-900 border border-slate-700 rounded p-2 overflow-x-auto whitespace-pre-wrap">
                             {String(this.state.error && this.state.error.message || this.state.error)}
                         </pre>
                         <div className="flex gap-2">

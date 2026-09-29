@@ -74,10 +74,10 @@ window.BUILDER_LIMITS = {
     etco2: { min: 0,  max: 15,  label: 'EtCO2',       unit: 'kPa' },
     bm:    { min: 0,  max: 50,  label: 'Glucose',     unit: 'mmol/L' },
     icp:   { min: 0,  max: 80,  label: 'ICP',         unit: 'mmHg' },
-    // WAVE 2: pH is a modelled vital now (bicarbonate/ventilation teaching), so the facilitator's
+    // PH is a modelled vital now (bicarbonate/ventilation teaching), so the facilitator's
     // manual-control modal needs a limit entry or it would silently accept any number.
     ph:    { min: 6.5, max: 7.9, label: 'pH',         unit: '' },
-    // WAVE 4a / E8: serum potassium is a modelled vital (hyperkalaemia + DKA teaching), so the
+    // Serum potassium is a modelled vital (hyperkalaemia + DKA teaching), so the
     // facilitator's manual-control modal needs a limit entry of its own.
     k:     { min: 1.5, max: 9.5, label: 'Potassium',  unit: 'mmol/L' },
     // 0.5 kg is a 23-week neonate; 300 kg covers bariatric. Zero or negative previously divided
@@ -147,36 +147,57 @@ window.getBaseVitals = (age) => {
     return v;
 };
 
+// RCUK Paediatric emergency drug chart (Guidelines 2025, updated Feb 2026): weights are averaged
+// lean body mass from 50th-centile weights. Ages between the chart's rows are interpolated.
+// Under 1 year the rows are in months (< 1 month 3.5 kg, 1 month 4, 3 months 5, 6 months 7).
+const RCUK_WEIGHT_BY_AGE = [[0, 3.5], [1 / 12, 4], [0.25, 5], [0.5, 7], [1, 10], [2, 12], [3, 14], [4, 16], [5, 18],
+    [6, 20], [7, 23], [8, 26], [10, 30], [12, 38], [14, 50]];
 window.estimateWeight = (age) => {
-    if (age < 0) return null;
-    if (age === 0) return "3.5"; 
-    if (age < 1) return "6.0"; 
-    if (age >= 1 && age <= 10) return Math.round((age + 4) * 2); 
-    if (age > 10 && age < 16) return Math.round(age * 3 + 7); 
-    return null; 
+    const a = Number(age);
+    if (!Number.isFinite(a) || a < 0 || a >= 16) return null;
+    const t = RCUK_WEIGHT_BY_AGE;
+    if (a >= t[t.length - 1][0]) return t[t.length - 1][1];     // "Adolescent": 50 kg
+    let i = 0;
+    while (t[i + 1][0] <= a) i++;
+    const [a0, w0] = t[i], [a1, w1] = t[i + 1];
+    const w = w0 + (w1 - w0) * (a - a0) / (a1 - a0);
+    return a < 1 ? Math.round(w * 2) / 2 : Math.round(w);
 };
 
+// Tracheal tube internal diameter (mm) from the same chart. Cuffed tubes are listed from 1 month;
+// under 1 month the chart gives uncuffed only. Ages between rows take the row below.
+const RCUK_TUBE_BY_AGE = [[0, null, '3.0'], [1 / 12, '3.0', '3.0–3.5'], [0.25, '3.0', '3.5'], [0.5, '3.0', '3.5'],
+    [1, '3.5', '4.0'], [2, '4.0', '4.5'], [3, '4.0–4.5', '4.5–5.0'], [4, '4.5', '5.0'], [5, '4.5–5.0', '5.0–5.5'],
+    [6, '5.0', '5.5'], [7, '5.0–5.5', '5.5–6.0'], [8, '6.0–6.5', null], [10, '7.0', null], [12, '7.0–7.5', null], [14, '7.0–8.0', null]];
+window.rcukTubeSize = (age) => {
+    const a = Number(age);
+    if (!Number.isFinite(a) || a < 0) return null;
+    let row = RCUK_TUBE_BY_AGE[0];
+    RCUK_TUBE_BY_AGE.forEach(r => { if (r[0] <= a) row = r; });
+    const [, cuffed, uncuffed] = row;
+    return { cuffed, uncuffed, label: cuffed ? `${cuffed} cuffed` : `${uncuffed} uncuffed` };
+};
+
+// WETFLAG from the RCUK Paediatric emergency drug chart (2025): adrenaline 10 mcg/kg (max 1 mg),
+// fluid bolus 10 ml/kg (max 500 ml), 10% glucose 2 ml/kg (the chart tops out at 50 ml), lorazepam
+// 100 mcg/kg (max 4 mg), defibrillation 4 J/kg.
 window.calculateWetflag = (age, weightStr) => {
     const weight = parseFloat(weightStr);
     if (isNaN(weight) || weight <= 0) return null;
-    let rawTube = (age / 4) + 4;
-    let tubeSize = Math.round(rawTube * 2) / 2;
-    if (age < 1) tubeSize = "3.5-4.0"; 
-    else if (tubeSize > 9.0) tubeSize = 9.0;
-    else if (tubeSize < 3.0) tubeSize = 3.0;
-    let adrenalineMcg = Math.round(weight * 10);
-    let glucoseVol = Math.round(weight * 2);
-    return { 
-        weight: weight, 
-        // C4: 4 J/kg, but computed by the shared registry so the WETFLAG card, the assessor's
+    const tube = window.rcukTubeSize(age);
+    return {
+        weight: weight,
+        // 4 J/kg, but computed by the shared registry so the WETFLAG card, the assessor's
         // energy ladder, the monitor-hosted defib and the standalone defib page can never disagree
         // about what this patient needs (the standalone page used to hardcode 120 J for everyone).
         energy: (window.RHYTHMS ? window.RHYTHMS.recommendedEnergy(weight, age) : Math.round(weight * 4)),
-        tube: tubeSize.toString(), 
-        fluids: Math.round(weight * 10),
+        tube: tube ? tube.label : '',
+        tubeCuffed: tube ? tube.cuffed : null,
+        tubeUncuffed: tube ? tube.uncuffed : null,
+        fluids: Math.min(500, Math.round(weight * 10)),
         lorazepam: Math.min(4, weight * 0.1).toFixed(1),
-        adrenaline: adrenalineMcg, 
-        glucose: glucoseVol
+        adrenaline: Math.min(1000, Math.round(weight * 10)),
+        glucose: Math.min(50, Math.round(weight * 2))
     };
 };
 
@@ -202,7 +223,7 @@ window.generateVbg = (clinicalState = "normal") => {
     return vbg;
 };
 
-// D1 — HOW THE AUTHORED VBG AND THE DYNAMIC MODEL ARE RECONCILED (documented deliberately):
+// HOW THE AUTHORED VBG AND THE DYNAMIC MODEL ARE RECONCILED (documented deliberately):
 //   * The AUTHORED block WINS for the baseline. `startVbg` is the scenario's own authored `vbg`
 //     (or the block materialised from `vbgClinicalState`), resolved once in enrichScenario and
 //     stored on BOTH scenario.vbg and scenario.investigations.vbg so they cannot disagree.
@@ -284,7 +305,7 @@ window.HUMAN_FACTOR_CHALLENGES = [
 ];
 
 // =================================================================================================
-// WAVE 4b / PART A — QUICK SIM SYNTHETIC PATIENT
+// QUICK SIM SYNTHETIC PATIENT
 // -------------------------------------------------------------------------------------------------
 // Quick Sim is a stripped-back "obs + rhythm only" teaching mode. It has NO clinical scenario: no
 // brief, no learning objectives, no intervention library, no expectation machinery. But every other
@@ -358,5 +379,56 @@ window.buildQuickSimScenario = (opts = {}) => {
         weight, wetflag,
         showWetflag: opts.showWetflag !== false,
         hf: (window.HUMAN_FACTOR_CHALLENGES || [])[0] || null
+    };
+};
+
+// One premade/random scenario template -> a concrete patient (age, sex, name, history, weight,
+// WETFLAG, starting vitals, VBG). Used by the setup screen, and by the tests so they exercise
+// exactly what the app does.
+window.generatePatientFromTemplate = (base, opts = {}) => {
+    const { generateHistory, estimateWeight, calculateWetflag, generateName, formatProfileTemplate, generateVbg } = window;
+    // Honour an AUTHORED patientAge before falling back to 40. Built-in scenarios all carry an
+    // `ageGenerator`; a restricted scenario pasted into Firebase (or a hand-written custom one)
+    // states its age directly as `patientAge` — and that age drives WETFLAG, the
+    // paediatric 4 J/kg defibrillation energy and every weight-based dose, so silently
+    // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
+    // cosmetic one.
+    const authoredAge = Number(base.patientAge);
+    const patientAge = base.ageGenerator ? base.ageGenerator()
+        : (Number.isFinite(authoredAge) && authoredAge > 0 ? authoredAge : 40);
+    let sex = Math.random() > 0.5 ? 'Male' : 'Female';
+    const t = base.title.toLowerCase();
+    const p = String(base.patientProfileTemplate || '').toLowerCase();
+    const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
+    const forceMale = ["testicular", "prostate", "scrotal"];
+
+    if (forceFemale.some(k => t.includes(k) || p.includes(k)) || base.category === 'Obstetrics & Gynae') sex = 'Female';
+    else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
+
+    const history = generateHistory(patientAge, sex);
+    // An authored weight wins over the age estimate, for the same reason.
+    const authoredWeight = Number(base.weight);
+    const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
+        : (patientAge < 16 ? estimateWeight(patientAge) : null);
+    const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
+    const randomName = generateName(sex);
+
+    let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...base.vitalsMod };
+    if (base.vitalsMod && base.vitalsMod.bpSys !== undefined && base.vitalsMod.bpDia === undefined) { 
+        finalVitals.bpDia = Math.floor(base.vitalsMod.bpSys * 0.65); 
+    }
+
+    return { 
+       ...base, 
+       patientName: randomName, patientAge, sex,
+       profile: formatProfileTemplate(base.patientProfileTemplate, patientAge, sex),
+       vitals: finalVitals, 
+       pmh: base.pmh || history.pmh, 
+       dhx: base.dhx || history.dhx, 
+       allergies: base.allergies || history.allergies,
+       vbg: generateVbg(base.vbgClinicalState || "normal"),
+       hf: opts.hf || null,
+       weight, wetflag,
+       showWetflag: opts.showWetflag !== false
     };
 };

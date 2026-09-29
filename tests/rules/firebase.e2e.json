@@ -1,0 +1,11 @@
+{
+  "database": [
+    { "instance": "demo-emsim-default-rtdb", "rules": "database.rules.json" },
+    { "instance": "wmebem-sim-default-rtdb", "rules": "database.rules.json" }
+  ],
+  "emulators": {
+    "database": { "host": "127.0.0.1", "port": 9000 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  }
+}

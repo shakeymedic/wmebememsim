@@ -5,7 +5,7 @@
         const { Lucide } = window;
         return (
             <button onClick={onClick} disabled={loading} className="flex flex-col items-center justify-center p-1 md:p-2 bg-slate-900 hover:bg-slate-800 border-r border-slate-800 last:border-0 text-slate-400 hover:text-sky-400 hover:bg-slate-800/50 transition-all flex-1 disabled:opacity-50 disabled:cursor-wait group">
-                {loading ? <Lucide icon="loader-2" className="w-5 h-5 md:w-6 md:h-6 animate-spin mb-1"/> : <Lucide icon={icon} className="w-5 h-5 md:w-6 md:h-6 mb-1 text-slate-500 group-hover:text-sky-400 transition-colors"/>}
+                {loading ? <Lucide icon="loader-2" className="w-5 h-5 md:w-6 md:h-6 animate-spin mb-1"/> : <Lucide icon={icon} className="w-5 h-5 md:w-6 md:h-6 mb-1 text-slate-400 group-hover:text-sky-400 transition-colors"/>}
                 <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider">{label}</span>
             </button>
         );
@@ -16,7 +16,7 @@
     const render12Lead = (canvas, rhythm, scenario, hr) => window.RHYTHMS.render12Lead(canvas, rhythm, scenario, hr);
 
     // =========================================================================================
-    // A1/A2: THE DEFIBRILLATOR, HOSTED ON THE STUDENT MONITOR.
+    // THE DEFIBRILLATOR, HOSTED ON THE STUDENT MONITOR.
     //
     // WHY THIS EXISTS. defib/index.html has ZERO Firebase: it is BroadcastChannel-only, which only
     // works between tabs of the SAME browser on the SAME device. Opened on a second physical
@@ -25,216 +25,34 @@
     // VF. This component is driven by the SAME Firebase session sync as the rest of the monitor,
     // so it is correct on any device.
     //
-    // A2: THE OBS STAY VISIBLE. This extends the existing arrest-view dual-trace pattern
+    // THE OBS STAY VISIBLE. This extends the existing arrest-view dual-trace pattern
     // (LEAD II + PADS) rather than inventing a new layout, and puts the live vitals column
     // alongside. It is a flex row on landscape tablets and stacks with its own scroll container
     // at narrow widths (no fixed min-widths, no horizontal overflow — the app has had a
     // mobile-overflow bug class before and this must not reintroduce it).
     //
-    // A6: every student press is pushed to sessions/<CODE>/deviceEvents (PUSH semantics, its own
+    // Every student press is pushed to sessions/<CODE>/deviceEvents (PUSH semantics, its own
     // node) NOT to sessions/<CODE>/command, which is a single set() slot already owned by NIBP.
     // The controller converges them all on applyShockOutcome / deliverShock.
     // =========================================================================================
-    const MonitorDefib = ({ sim }) => {
-        const { ECGMonitor, Lucide } = window;
-        const RG = window.RHYTHMS;
-        const { state } = sim;
-        const { rhythm, vitals, cprInProgress, scenario, flash, nibp, etco2Enabled } = state;
-        const defib = state.defib || {};
+    // The facilitator's "Defib" toggle opens the learner's defibrillator on the room monitor. It is
+    // the same device page a tablet uses (defib/index.html), embedded, so there is one
+    // defibrillator to maintain and the monitor gets every feature the tablet has. It links to
+    // this session and shows its own trace and obs.
+    const MonitorDefib = ({ sessionID }) => (
+        <div className="absolute inset-0 z-[110] bg-black flex flex-col animate-fadeIn" data-testid="monitor-defib">
+            <iframe title="Defibrillator" src={`defib/index.html?session=${encodeURIComponent(sessionID || '')}&embedded=1`}
+                    className="w-full h-full border-0 bg-black" allow="screen-wake-lock; autoplay; fullscreen" />
+        </div>
+    );
 
-        // C4: the energy ladder is weight-based and comes from the shared registry, so a 3.5 kg
-        // neonate is offered 14 J (4 J/kg) and not a hardcoded 120 J.
-        const weight = Number(scenario?.wetflag?.weight);
-        const age = scenario?.patientAge;
-        const steps = RG.energySteps(Number.isFinite(weight) && weight > 0 ? weight : null, age);
-        const recommended = RG.recommendedEnergy(Number.isFinite(weight) && weight > 0 ? weight : null, age);
-
-        const mode = defib.mode || 'monitor';
-        const selected = Number.isFinite(Number(defib.energy)) && Number(defib.energy) > 0 ? Math.round(Number(defib.energy)) : recommended;
-        const charged = !!defib.charged;
-        const syncOn = !!defib.syncMode;
-
-        const [analysing, setAnalysing] = useState(false);
-        const [message, setMessage] = useState('DEFIBRILLATOR READY');
-        const [pacer, setPacer] = useState({ rate: 70, output: 0 });
-
-        const send = (type, payload) => {
-            const ok = sim.sendDeviceEvent && sim.sendDeviceEvent(type, payload || {});
-            if (!ok) setMessage('NOT LINKED — CONTROLLER UNREACHABLE');
-            return ok;
-        };
-
-        const stepEnergy = (dir) => {
-            const i = steps.indexOf(selected);
-            const idx = i === -1 ? steps.findIndex(v => v >= selected) : i;
-            const next = steps[Math.max(0, Math.min(steps.length - 1, (idx === -1 ? 0 : idx) + dir))];
-            if (next !== undefined) { send('ENERGY_SELECT', { energy: next }); setMessage(`${next} J SELECTED`); }
-        };
-
-        const doCharge = () => {
-            if (mode !== 'defib') { setMessage('TURN THE DIAL TO DEFIB FIRST'); return; }
-            send('CHARGE_INIT', { energy: selected });
-            setMessage(`CHARGING ${selected} J...`);
-        };
-        const doShock = () => {
-            if (!charged) { setMessage('CHARGE FIRST'); return; }
-            send('SHOCK_DELIVERED', { energy: selected, sync: syncOn });
-            setMessage(`SHOCK DELIVERED ${selected} J${syncOn ? ' (SYNC)' : ''}`);
-        };
-        const doAnalyse = () => {
-            setAnalysing(true);
-            setMessage('ANALYSING — DO NOT TOUCH THE PATIENT');
-            // The ANSWER comes from the engine's shared registry-backed analysis, not from a
-            // second private shockability list on this screen.
-            setTimeout(() => {
-                setAnalysing(false);
-                send('ANALYSE', {});
-                setMessage(RG.isShockable(sim.state.rhythm) ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED');
-            }, 2500);
-        };
-        const adjustPacer = (key, delta) => {
-            const next = { ...pacer, [key]: Math.max(0, Math.min(key === 'rate' ? 180 : 140, pacer[key] + delta)) };
-            setPacer(next);
-            send('PACER_UPDATE', { rate: next.rate, output: next.output });
-        };
-
-        const captured = mode === 'pacer' && pacer.output > 0 && pacer.output >= (state.pacingThreshold || 70);
-        const ecgRhythm = (mode === 'pacer' && captured) ? 'Paced' : rhythm;
-
-        const Soft = ({ children, onClick, tone = 'slate', disabled }) => (
-            <button onClick={onClick} disabled={disabled}
-                className={`min-w-0 rounded border font-bold uppercase tracking-wide text-[11px] sm:text-xs px-2 py-3 transition-colors disabled:opacity-40 ${
-                    tone === 'red' ? 'bg-red-800 border-red-500 text-white hover:bg-red-700'
-                    : tone === 'amber' ? 'bg-amber-700 border-amber-500 text-white hover:bg-amber-600'
-                    : tone === 'active' ? 'bg-sky-700 border-sky-400 text-white'
-                    : 'bg-slate-800 border-slate-600 text-slate-200 hover:bg-slate-700'}`}>
-                {children}
-            </button>
-        );
-
-        return (
-            <div className="absolute inset-0 z-[110] bg-black flex flex-col animate-fadeIn">
-                <div className="flex-none bg-slate-900 border-b border-slate-700 px-2 py-1 flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-slate-200 font-bold uppercase tracking-wider flex items-center gap-2 text-sm">
-                        <Lucide icon="zap" className="text-red-500 w-4 h-4" /> Manual Defibrillator
-                    </div>
-                    <div className="font-mono font-bold text-xs sm:text-sm text-amber-300">{mode.toUpperCase()} MODE{syncOn ? ' \u00b7 SYNC' : ''}</div>
-                    <div className="text-slate-500 font-mono text-xs">{new Date().toLocaleTimeString()}</div>
-                </div>
-
-                {/* A2: defib on the left, OBS ALONGSIDE on the right. Column at narrow widths. */}
-                <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
-                    {/* ---- DEFIB SIDE ---- */}
-                    <div className="flex-1 min-w-0 min-h-0 flex flex-col">
-                        {/* Dual trace, exactly the arrest-view pattern. */}
-                        <div className="flex-none lg:flex-1 min-h-0 grid grid-rows-2 bg-black" style={{ minHeight: '180px' }}>
-                            <div className="relative border-b border-slate-800">
-                                <ECGMonitor rhythmType={ecgRhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" showSyncMarkers={syncOn} />
-                            </div>
-                            <div className="relative">
-                                <ECGMonitor rhythmType={ecgRhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" showSyncMarkers={syncOn} />
-                            </div>
-                        </div>
-
-                        <div className={`flex-none mx-2 my-1 rounded px-3 py-2 text-center font-mono font-bold text-sm border ${charged ? 'bg-red-950 border-red-500 text-red-300 animate-pulse' : 'bg-slate-950 border-slate-700 text-emerald-300'}`}>
-                            {charged ? `${defib.chargeEnergy || selected} J READY \u2014 STAND CLEAR` : (analysing ? 'ANALYSING...' : message)}
-                        </div>
-
-                        <div className="flex-none p-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            {['monitor', 'defib', 'pacer', 'aed'].map(m => (
-                                <Soft key={m} tone={mode === m ? 'active' : 'slate'} onClick={() => { send('DEVICE_MODE', { mode: m }); setMessage(`${m.toUpperCase()} MODE`); }}>{m}</Soft>
-                            ))}
-                        </div>
-
-                        <div className="flex-none px-2 pb-2 grid grid-cols-3 gap-2 items-stretch">
-                            <div className="bg-slate-950 border border-slate-700 rounded p-2 text-center flex flex-col justify-center min-w-0">
-                                <div className="text-slate-500 text-[10px] uppercase font-bold">Energy</div>
-                                <div className="text-2xl sm:text-3xl font-mono font-bold text-yellow-400">{selected} J</div>
-                                <div className={`text-[9px] font-bold ${selected === recommended ? 'text-emerald-500' : 'text-amber-500'}`}>rec. {recommended} J</div>
-                                <div className="mt-1 grid grid-cols-2 gap-1">
-                                    <button aria-label="Lower energy" onClick={() => stepEnergy(-1)} className="bg-slate-800 border border-slate-600 rounded py-1 text-white font-bold">&minus;</button>
-                                    <button aria-label="Raise energy" onClick={() => stepEnergy(1)} className="bg-slate-800 border border-slate-600 rounded py-1 text-white font-bold">+</button>
-                                </div>
-                            </div>
-                            <Soft tone="amber" onClick={doCharge}>Charge</Soft>
-                            <Soft tone="red" onClick={doShock} disabled={!charged}>Shock</Soft>
-                        </div>
-
-                        <div className="flex-none px-2 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <Soft tone={syncOn ? 'active' : 'slate'} onClick={() => { send('SYNC_TOGGLE', { sync: !syncOn }); setMessage(!syncOn ? 'SYNC ON' : 'SYNC OFF'); }}>Sync</Soft>
-                            <Soft onClick={doAnalyse}>Analyse</Soft>
-                            <Soft tone={cprInProgress ? 'active' : 'slate'} onClick={() => send('CPR_TOGGLE', { on: !cprInProgress })}>{cprInProgress ? 'CPR on' : 'CPR'}</Soft>
-                            <Soft onClick={() => { send('CHECK_PULSE', {}); setMessage('CHECK PULSE'); }}>Pulse check</Soft>
-                        </div>
-
-                        {mode === 'pacer' && (
-                            <div className="flex-none px-2 pb-3 grid grid-cols-2 gap-2">
-                                {[['rate', 'ppm', 5], ['output', 'mA', 5]].map(([k, unit, d]) => (
-                                    <div key={k} className="bg-slate-950 border border-slate-700 rounded p-2 text-center min-w-0">
-                                        <div className="text-slate-500 text-[10px] uppercase font-bold">{k}</div>
-                                        <div className="text-2xl font-mono font-bold text-sky-300">{pacer[k]}<span className="text-[10px] text-slate-500 ml-1">{unit}</span></div>
-                                        <div className="mt-1 grid grid-cols-2 gap-1">
-                                            <button onClick={() => adjustPacer(k, -d)} className="bg-slate-800 border border-slate-600 rounded py-1 text-white font-bold">&minus;</button>
-                                            <button onClick={() => adjustPacer(k, d)} className="bg-slate-800 border border-slate-600 rounded py-1 text-white font-bold">+</button>
-                                        </div>
-                                    </div>
-                                ))}
-                                <div className={`col-span-2 rounded border px-2 py-1 text-center font-mono text-xs font-bold ${captured ? 'border-emerald-600 bg-emerald-950/40 text-emerald-300' : 'border-amber-600 bg-amber-950/30 text-amber-300'}`}>
-                                    {pacer.output === 0 ? 'PACING OFF \u2014 INCREASE OUTPUT' : (captured ? `PACING \u2014 CAPTURE @ ${pacer.output} mA` : `PACING \u2014 NO CAPTURE (${pacer.output} mA)`)}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* ---- A2: OBS ALONGSIDE. "Let them see the obs as well." ---- */}
-                    <div className="flex-none lg:w-72 xl:w-80 border-t lg:border-t-0 lg:border-l border-slate-800 bg-slate-950 p-2 flex flex-col gap-2 lg:overflow-y-auto">
-                        <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold">Patient observations</div>
-                        <div className="grid grid-cols-2 lg:grid-cols-1 gap-2">
-                            {[
-                                ['HR', vitals.hr, 'bpm', 'text-emerald-400'],
-                                ['NIBP', (nibp && nibp.sys) ? `${nibp.sys}/${nibp.dia}` : '--/--', 'mmHg', 'text-red-400'],
-                                ['SpO2', vitals.spO2, '%', 'text-cyan-400'],
-                                ['RR', vitals.rr, '/min', 'text-yellow-400'],
-                                ...(etco2Enabled ? [['ETCO2', Number.isFinite(vitals.etco2) ? vitals.etco2.toFixed(1) : '--', 'kPa', 'text-purple-400']] : []),
-                                ['Temp', Number.isFinite(vitals.temp) ? vitals.temp.toFixed(1) : '--', '\u00b0C', 'text-sky-300'],
-                                ['Glucose', Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--', 'mmol/L', 'text-sky-300'],
-                                // WAVE 4a / E8: serum K+ is a modelled vital, so the team can see
-                                // whether the hyperkalaemia treatment actually worked.
-                                ['K+', Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--', 'mmol/L', (Number.isFinite(vitals.k) && (vitals.k < 3.0 || vitals.k > 5.5)) ? 'text-amber-400' : 'text-sky-300']
-                            ].map(([label, value, unit, cls]) => (
-                                <div key={label} className="bg-black border border-slate-800 rounded px-2 py-1 flex items-baseline justify-between min-w-0">
-                                    <span className="text-[10px] uppercase tracking-widest text-slate-500 font-bold truncate">{label}</span>
-                                    <span className={`font-mono font-bold text-xl sm:text-2xl ${cls}`}>{value === null || value === undefined ? '--' : value}<span className="text-[9px] text-slate-600 ml-1">{unit}</span></span>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="bg-black border border-slate-800 rounded p-2">
-                            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1">Shocks this arrest</div>
-                            <div className="flex items-baseline justify-between">
-                                <span className="font-mono text-3xl font-bold text-white">{defib.shockCount || 0}</span>
-                                <span className="font-mono text-xs text-slate-400">{defib.totalEnergy || 0} J total</span>
-                            </div>
-                            {cprInProgress && <div className="mt-1 text-[10px] font-bold uppercase text-red-400 animate-pulse">CPR in progress</div>}
-                        </div>
-                        {scenario?.wetflag && (
-                            <div className="bg-purple-950/40 border border-purple-700 rounded p-2">
-                                <div className="text-[10px] uppercase tracking-widest text-purple-300 font-bold">Paediatric</div>
-                                <div className="font-mono text-sm text-white">{scenario.wetflag.weight} kg &middot; shock {scenario.wetflag.energy} J</div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const MonitorScreen = ({ sim }) => {
+    const MonitorScreen = ({ sim, sessionID }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
-        // WAVE 7 / ITEM 4: each sensor gates exactly its own value/trace. Derived from the shared
+        // Each sensor gates exactly its own value/trace. Derived from the shared
         // engine helper (window.getSensors) off activeInterventions, which is already on the wire, so
         // the student monitor needs no new sync key and can never disagree with the controller.
         // 'Obs' (Attach Monitoring) still implies every continuous sensor, so all 254 premade
@@ -251,7 +69,7 @@
         // than tracking live (the clinically important distinction, and what NIBP already does).
         const poc = state.pocReadings || {};
         const capnoVentilating = window.isCapnoVentilating ? window.isCapnoVentilating(state, vitals) : true;
-        // WAVE 8 / FINDING 1: the shark-fin severity arrives as a plain top-level number on the wire
+        // The shark-fin severity arrives as a plain top-level number on the wire
         // (`co2Severity`), computed once from the authoritative controller state, so the student
         // monitor and the facilitator strip draw the identical capnogram shape and can never disagree.
         const co2Severity = Number.isFinite(state.co2Severity) ? state.co2Severity : 0;
@@ -390,7 +208,7 @@
                     // neither has a `.findings` string, which is why every student saw the generic
                     // default text. Render the structured reports properly instead.
                     const fmtUrine = (u) => {
-                        const labels = { leuks: 'Leukocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
+                        const labels = { leuks: 'Leucocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
                         const parts = Object.keys(labels).filter(k => u[k] !== undefined).map(k => `${labels[k]}: ${u[k]}`);
                         return parts.length ? parts.join('  \u00b7  ') : null;
                     };
@@ -459,7 +277,7 @@
                         <h1 className="text-3xl font-bold tracking-wide mb-2">Simulation complete</h1>
                         <p className="text-slate-300 text-lg mb-4">This session has ended. The monitor is no longer live.</p>
                         <p className="text-slate-400 text-sm">Please turn to your facilitator — the debrief happens with them, not on this screen.</p>
-                        <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-500 font-mono uppercase tracking-widest">Monitor standby</div>
+                        <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 font-mono uppercase tracking-widest">Monitor standby</div>
                     </div>
                 </div>
             );
@@ -497,7 +315,7 @@
                     <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
                         <div className="flex justify-between items-start mb-2">
                             <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
-                            <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-500 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
+                            <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-400 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
                         </div>
                         <div className="text-white text-sm font-medium leading-relaxed whitespace-pre-line">
                             {invToast?.content}
@@ -518,7 +336,7 @@
                 {/* A1-A3: the assessor's Defib toggle (state.defibPanelOpen, synced over Firebase
                     exactly like arrestPanelOpen) opens a WORKING defibrillator here, with the obs
                     still visible alongside it. */}
-                {defibPanelOpen && <MonitorDefib sim={sim} />}
+                {defibPanelOpen && <MonitorDefib sessionID={sessionID} />}
 
                 {arrestPanelOpen && !defibPanelOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
@@ -527,7 +345,7 @@
                                 <Lucide icon="zap" className="text-red-500" /> Manual Defibrillator
                             </div>
                             <div className="text-red-500 font-mono font-bold animate-pulse text-xl">MANUAL DEFIBRILLATOR MODE</div>
-                            <div className="text-slate-500">{new Date().toLocaleTimeString()}</div>
+                            <div className="text-slate-400">{new Date().toLocaleTimeString()}</div>
                         </div>
 
                         <div className="flex-grow relative bg-black grid grid-rows-2">
@@ -541,11 +359,11 @@
 
                         <div className="bg-slate-900 p-4 border-t border-slate-700 grid grid-cols-4 gap-4">
                              <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
-                                 <div className="text-slate-500 text-xs uppercase mb-1">Energy Select</div>
+                                 <div className="text-slate-400 text-xs uppercase mb-1">Energy Select</div>
                                  <div className="text-3xl font-mono text-yellow-500 font-bold">{(state.defib && state.defib.energy) || window.RHYTHMS.recommendedEnergy(scenario?.wetflag?.weight, scenario?.patientAge)} J</div>
                              </div>
                              <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
-                                 <div className="text-slate-500 text-xs uppercase mb-1">Status</div>
+                                 <div className="text-slate-400 text-xs uppercase mb-1">Status</div>
                                  <div className="text-xl font-mono text-white font-bold">{flash === 'yellow' ? 'CHARGING...' : (flash === 'red' ? 'SHOCK DELIVERED' : 'READY')}</div>
                              </div>
                              
@@ -577,7 +395,7 @@
                             the patient's data. The chip says whether the screen will stay awake. */}
                         <div className="absolute bottom-2 right-2 z-20 flex items-center gap-1 opacity-60 hover:opacity-100 transition-opacity">
                             <span title={wakeState === 'on' ? 'This screen will stay on while the monitor is open.' : wakeState === 'unsupported' ? 'This browser cannot keep the screen awake. Set the tablet\'s auto-lock to Never for the session.' : 'Screen may sleep. Tap the screen (or Full screen) to try again, or set auto-lock to Never.'}
-                                  className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${wakeState === 'on' ? 'border-slate-700 text-slate-500' : 'border-amber-700 text-amber-400'}`}>
+                                  className={`hidden sm:flex items-center gap-1 px-1.5 py-1 rounded border text-[9px] font-bold uppercase tracking-wider ${wakeState === 'on' ? 'border-slate-700 text-slate-400' : 'border-amber-700 text-amber-400'}`}>
                                 <Lucide icon="sun" className="w-3 h-3" /> {wakeState === 'on' ? 'Awake' : 'May sleep'}
                             </span>
                             {fsSupported && (
@@ -605,7 +423,7 @@
                             {sNibp && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
                                     <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-500'}`}>Auto</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
@@ -623,7 +441,7 @@
                         )}
                     </div>
 
-                    {/* B2: Temp / capillary glucose / pH are point-of-care measurements rather than
+                    {/* Temp / capillary glucose / pH are point-of-care measurements rather than
                         continuous monitored channels, so they get their own slim strip instead of
                         shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
                         (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
@@ -640,8 +458,8 @@
                             const vbg = poc.vbg || null;
                             const cell = (label, value, unit, sub, alert) => (
                                 <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${alert ? 'border-amber-600' : 'border-slate-800'}`}>
-                                    <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[9px] text-slate-500 normal-case tracking-normal">{sub}</span> : null}</span>
-                                    <span className={`font-mono font-bold text-xl md:text-3xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[10px] md:text-xs text-slate-500 ml-1">{unit}</span> : null}</span>
+                                    <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[9px] text-slate-400 normal-case tracking-normal">{sub}</span> : null}</span>
+                                    <span className={`font-mono font-bold text-xl md:text-3xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[10px] md:text-xs text-slate-400 ml-1">{unit}</span> : null}</span>
                                 </div>
                             );
                             return (
@@ -654,7 +472,7 @@
                                     {cell('pH', (vbg && Number.isFinite(vbg.value)) ? vbg.value.toFixed(2) : null, '',
                                           vbg ? vbg.clock : 'no gas',
                                           !!(vbg && Number.isFinite(vbg.value) && (vbg.value < 7.30 || vbg.value > 7.50)))}
-                                    {/* WAVE 4a / E8: serum potassium — hyperkalaemia and DKA finally have a
+                                    {/* Serum potassium — hyperkalaemia and DKA finally have a
                                         measurable endpoint. Reported from the VBG sample, like the real thing. */}
                                     {cell('K+', (vbg && Number.isFinite(vbg.value2)) ? vbg.value2.toFixed(1) : null, 'mmol/L',
                                           vbg ? vbg.clock : 'no gas',
@@ -702,7 +520,7 @@
 
     const WetFlagItem = ({label, value}) => (
         <div className="bg-slate-800 p-2 rounded flex flex-col items-center justify-center">
-            <span className="text-[10px] text-slate-500 uppercase font-bold">{label}</span>
+            <span className="text-[10px] text-slate-400 uppercase font-bold">{label}</span>
             <span className="font-mono text-lg font-bold text-white">{value}</span>
         </div>
     );
@@ -710,13 +528,15 @@
     const MonitorContainer = ({ sessionID }) => { 
         const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
+        // Console / test handle on the monitor's engine (read it, don't build on it).
+        useEffect(() => { window.__monitorEngine = sim; });
         if (!sessionID) return null; 
         const syncStatus = sim.state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         
         if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) {
             return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-500 gap-4 animate-fadeIn">
+                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn">
                     <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
                     <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
@@ -724,7 +544,7 @@
                 </div>
             ); 
         }
-        return <MonitorScreen sim={sim} />; 
+        return <MonitorScreen sim={sim} sessionID={sessionID} />; 
     };
     
     window.MonitorDefib = MonitorDefib;

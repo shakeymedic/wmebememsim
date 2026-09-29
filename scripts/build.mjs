@@ -11,7 +11,10 @@
 //      unchanged. Visitors no longer download ~3 MB of Babel and compile ~1 MB of JSX on load.
 //   2. React, ReactDOM and the Firebase SDK are served from dist/vendor/ instead of unpkg/gstatic.
 //   3. Tailwind is a generated stylesheet (dist/assets/app.css) instead of the runtime play CDN.
-//   4. The defib service worker caches those local files instead of the CDN URLs.
+//   4. The service workers (sw.js for the app, defib/sw.js for the tablet) are stamped with this
+//      deploy's version and the list of files to store, so both work offline from the first visit.
+//   5. The app's JavaScript is minified (esbuild; top-level names, which the separate scripts
+//      share, are kept), with a source map next to each file for debugging.
 //
 // The build FAILS (and Netlify keeps the previous deploy) if any CDN reference or text/babel
 // script survives, so a half-converted page can never ship.
@@ -28,7 +31,7 @@ const OUT = path.join(ROOT, 'dist');
 const Babel = require(path.join(ROOT, 'node_modules', '@babel', 'standalone'));
 
 const EXCLUDE = new Set(['node_modules', 'dist', '.git', 'scripts', 'package.json', 'package-lock.json',
-    'netlify.toml', 'tailwind.config.js', '.gitignore', 'README.md']);
+    'netlify.toml', 'tailwind.config.js', '.gitignore', 'README.md', 'tests', '.github', 'database.rules.json']);
 
 const log = (...a) => console.log('[build]', ...a);
 const fail = (msg) => { console.error('[build] FAILED: ' + msg); process.exit(1); };
@@ -38,6 +41,7 @@ fs.rmSync(OUT, { recursive: true, force: true });
 const copyTree = (src, dst) => {
     for (const name of fs.readdirSync(src)) {
         if (src === ROOT && EXCLUDE.has(name)) continue;
+        if (name.startsWith('.')) continue;                      // .gitignore and friends are not site files
         const s = path.join(src, name), d = path.join(dst, name);
         if (fs.statSync(s).isDirectory()) { fs.mkdirSync(d, { recursive: true }); copyTree(s, d); }
         else { fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(s, d); }
@@ -88,17 +92,19 @@ const vendor = (from, toRel) => {
 const V = {
     react: vendor('react/umd/react.production.min.js', 'vendor/react.production.min.js'),
     reactDom: vendor('react-dom/umd/react-dom.production.min.js', 'vendor/react-dom.production.min.js'),
-    fbApp: vendor('firebase/firebase-app.js', 'vendor/firebase/firebase-app.js'),
-    fbDb: vendor('firebase/firebase-database.js', 'vendor/firebase/firebase-database.js'),
-    fbAuth: vendor('firebase/firebase-auth.js', 'vendor/firebase/firebase-auth.js')
+    // Firebase's "compat" builds: the same namespaced API (firebase.database().ref(...)) the app
+    // has always used, on the current SDK.
+    fbApp: vendor('firebase/firebase-app-compat.js', 'vendor/firebase/firebase-app.js'),
+    fbDb: vendor('firebase/firebase-database-compat.js', 'vendor/firebase/firebase-database.js'),
+    fbAuth: vendor('firebase/firebase-auth-compat.js', 'vendor/firebase/firebase-auth.js')
 };
-const FB = 'https://www.gstatic.com/firebasejs/8.10.1/';
+const FB = 'https://www.gstatic.com/firebasejs/12.19.0/';
 const localise = (text, prefix) => text
     .split('https://unpkg.com/react@18/umd/react.production.min.js').join(prefix + V.react)
     .split('https://unpkg.com/react-dom@18/umd/react-dom.production.min.js').join(prefix + V.reactDom)
-    .split(FB + 'firebase-app.js').join(prefix + V.fbApp)
-    .split(FB + 'firebase-database.js').join(prefix + V.fbDb)
-    .split(FB + 'firebase-auth.js').join(prefix + V.fbAuth);
+    .split(FB + 'firebase-app-compat.js').join(prefix + V.fbApp)
+    .split(FB + 'firebase-database-compat.js').join(prefix + V.fbDb)
+    .split(FB + 'firebase-auth-compat.js').join(prefix + V.fbAuth);
 
 // In-browser Babel is no longer needed at all.
 html = html.replace(/[ \t]*<script src="https:\/\/unpkg\.com\/@babel\/standalone\/babel\.min\.js"><\/script>\n?/, '');
@@ -119,12 +125,68 @@ fs.mkdirSync(path.join(OUT, 'assets'), { recursive: true });
 execFileSync(process.execPath, [twBin, '-c', path.join(ROOT, 'tailwind.config.js'), '-i', path.join(ROOT, 'scripts', 'tailwind.css'),
     '-o', path.join(OUT, 'assets', 'app.css'), '--minify'], { cwd: ROOT, stdio: 'inherit' });
 
-// ---- 5. the defib service worker caches the local files --------------------------------------
-const swPath = path.join(OUT, 'defib', 'sw.js');
-let sw = fs.readFileSync(swPath, 'utf8');
-sw = sw.replace(/\s*'https:\/\/cdn\.tailwindcss\.com',[\s\S]*?'https:\/\/unpkg\.com\/lucide@latest'/,
-    `\n  '../assets/app.css',\n  '../${V.react}',\n  '../${V.reactDom}',\n  '../${V.fbApp}',\n  '../${V.fbDb}',\n  '../${V.fbAuth}'`);
-fs.writeFileSync(swPath, sw);
+// ---- 5b. minify ------------------------------------------------------------------------------
+const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
+const minifyFile = (file) => {
+    const rel = path.relative(OUT, file).split(path.sep).join('/');
+    const r = esbuild.transformSync(fs.readFileSync(file, 'utf8'), { minify: true, sourcemap: 'external', sourcefile: rel, target: 'es2017' });
+    fs.writeFileSync(file, r.code + `//# sourceMappingURL=${path.basename(file)}.map\n`);
+    fs.writeFileSync(file + '.map', r.map);
+};
+let minified = 0;
+const walkJs = (dir) => {
+    for (const name of fs.readdirSync(dir)) {
+        const f = path.join(dir, name);
+        if (fs.statSync(f).isDirectory()) walkJs(f);
+        else if (name.endsWith('.js')) { minifyFile(f); minified++; }
+    }
+};
+walkJs(path.join(OUT, 'data'));
+// The Firebase SDK uses newer syntax (?. and ??) than older tablets (iOS 12) understand: lower it
+// to the same level as the app's own code. (Runtime APIs are not polyfilled.)
+for (const rel of [V.fbApp, V.fbDb, V.fbAuth]) {
+    const f = path.join(OUT, rel);
+    fs.writeFileSync(f, esbuild.transformSync(fs.readFileSync(f, 'utf8'), { minify: true, target: 'es2017' }).code);
+    minified++;
+}
+// Inline scripts (the compiled App in index.html, the device logic in defib/index.html).
+const inlineRe = /<script>([\s\S]*?)<\/script>/g;
+for (const rel of ['index.html', 'defib/index.html']) {
+    const f = path.join(OUT, rel);
+    const html = fs.readFileSync(f, 'utf8').replace(inlineRe, (all, code) => {
+        minified++;
+        return '<script>' + esbuild.transformSync(code, { minify: true, target: 'es2017' }).code + '</script>';
+    });
+    fs.writeFileSync(f, html);
+}
+log(`minified ${minified} script(s)`);
+
+// ---- 5c. service workers: version + the files each one stores at install ---------------------
+let sha = process.env.COMMIT_REF || '';
+if (!sha) { try { sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT }).toString().trim(); } catch (e) { sha = 'local'; } }
+const VERSION = `${sha.slice(0, 12)}-${Date.now().toString(36)}`;
+const listFiles = (dir, base = dir) => fs.readdirSync(dir).flatMap(name => {
+    const f = path.join(dir, name);
+    return fs.statSync(f).isDirectory() ? listFiles(f, base) : [path.relative(base, f).split(path.sep).join('/')];
+});
+const stamp = (swRel, files) => {
+    const f = path.join(OUT, swRel);
+    let src = fs.readFileSync(f, 'utf8');
+    const before = src;
+    src = src.replace(/const VERSION = '[^']*';/, `const VERSION = '${VERSION}';`)
+             .replace(/const PRECACHE = \[\];/, `const PRECACHE = ${JSON.stringify(files)};`);
+    if (src === before) fail(`${swRel}: VERSION / PRECACHE markers not found`);
+    fs.writeFileSync(f, src);
+};
+// The app: every file except source maps, the defib tablet's own folder and the workers.
+const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.startsWith('defib/') && !['sw.js', '_redirects'].includes(r));
+stamp('sw.js', ['./', ...appFiles]);
+// The defib tablet: its folder plus every file its page loads from the rest of the site.
+const defibHtml = fs.readFileSync(path.join(OUT, 'defib', 'index.html'), 'utf8');
+const defibRefs = [...defibHtml.matchAll(/(?:src|href)="([^"#?]+)"/g)].map(m => m[1]).filter(u => !/^[a-z]+:/i.test(u) && !u.startsWith('//'));
+const defibFiles = [...new Set([...listFiles(path.join(OUT, 'defib')).filter(r => !r.endsWith('.map') && r !== 'sw.js'), ...defibRefs, '../sw-shared.js'])];
+stamp('defib/sw.js', ['./', ...defibFiles]);
+log(`service workers stamped ${VERSION} (app ${appFiles.length + 1} files, defib ${defibFiles.length + 1})`);
 
 // ---- 6. refuse to ship a half-converted site -------------------------------------------------
 const problems = [];

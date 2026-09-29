@@ -45,24 +45,56 @@
     const DEFAULT_ENTITLEMENTS = { rcuk: false, premium: false, expiresAt: null };
 
     // ---- LAZY, SILENT AUTH RESOLUTION ----------------------------------------------------------
-    let _authResolved = false;
+    // The sign-in SDK (~180 KB) is fetched on demand from window.FIREBASE_AUTH_SRC: when someone
+    // signs in, or at start-up when this browser has signed in before (so a returning account is
+    // restored without asking). Monitors and defib tablets never fetch it.
+    const AUTH_FLAG = 'wmebem_auth_used';          // '1' signed in before, '0' signed out
     let _auth = null;
     let _authError = null;
-    const getAuth = () => {
-        if (_authResolved) return _auth;
-        _authResolved = true;
+    let _sdkFailed = false;
+    let _sdkPromise = null;
+    const sdkPresent = () => !!(window.firebase && typeof window.firebase.auth === 'function');
+    const canLoadSdk = () => sdkPresent() || !!(window.firebase && window.FIREBASE_AUTH_SRC);
+    const loadAuthSdk = () => {
+        if (sdkPresent()) return Promise.resolve(true);
+        if (_sdkPromise) return _sdkPromise;
+        if (!canLoadSdk()) { _sdkFailed = true; _authError = 'not-loaded'; return Promise.resolve(false); }
+        _sdkPromise = new Promise(resolve => {
+            const el = document.createElement('script');
+            el.src = window.FIREBASE_AUTH_SRC;
+            el.async = true;
+            el.onload = () => { if (!sdkPresent()) { _sdkFailed = true; _authError = 'not-loaded'; } resolve(sdkPresent()); };
+            el.onerror = () => { _sdkFailed = true; _authError = 'not-loaded'; resolve(false); };
+            document.head.appendChild(el);
+        });
+        return _sdkPromise;
+    };
+    const setAuthFlag = (v) => { try { localStorage.setItem(AUTH_FLAG, v); } catch (e) {} };
+    // Has this browser signed in before? Our own flag first; for accounts from before the flag
+    // existed, Firebase's own persisted-session storage.
+    const signedInBefore = async () => {
         try {
-            if (!window.firebase || typeof window.firebase.auth !== 'function') {
-                _authError = 'not-loaded';
-                return null;
-            }
+            const f = localStorage.getItem(AUTH_FLAG);
+            if (f === '1') return true;
+            if (f === '0') return false;
+            for (let i = 0; i < localStorage.length; i++) if (String(localStorage.key(i)).indexOf('firebase:authUser:') === 0) return true;
+        } catch (e) {}
+        try {
+            if (window.indexedDB && indexedDB.databases) return (await indexedDB.databases()).some(d => d && d.name === 'firebaseLocalStorageDb');
+        } catch (e) {}
+        return false;
+    };
+    const getAuth = () => {
+        if (_auth) return _auth;
+        if (!sdkPresent()) return null;
+        try {
             _auth = window.firebase.auth();
             return _auth;
         } catch (e) {
             // Deliberately NOT console.error: an un-configured project is a supported state
             // (requirement C4 — no console noise), not a bug.
             _authError = 'unavailable';
-            _auth = null;
+            _sdkFailed = true;
             return null;
         }
     };
@@ -151,11 +183,13 @@
     // useAuth() — the hook every screen uses. Safe to call when auth is unavailable.
     // =============================================================================================
     const useAuth = () => {
+        const [sdkReady, setSdkReady] = useState(() => sdkPresent());
         const [state, setState] = useState(() => ({
-            // 'checking' until onAuthStateChanged fires once, or immediately 'off' when there is
-            // no auth SDK at all. Never 'error' — an unavailable auth is a normal, supported state.
-            phase: getAuth() ? 'checking' : 'off',
-            available: !!getAuth(),
+            // 'idle' while the SDK has not been fetched (nobody has signed in on this browser),
+            // 'checking' until onAuthStateChanged fires once, or 'off' when auth cannot load at
+            // all. Never 'error' — an unavailable auth is a normal, supported state.
+            phase: sdkPresent() ? (getAuth() ? 'checking' : 'off') : (canLoadSdk() ? 'idle' : 'off'),
+            available: sdkPresent() ? !!getAuth() : canLoadSdk(),
             reason: _authError,
             user: null,
             profile: null,
@@ -164,7 +198,28 @@
             notice: null
         }));
 
+        // Returning accounts: fetch the SDK at start-up so the session is restored (never on the
+        // room monitor, which has no use for an account).
         useEffect(() => {
+            if (sdkReady) return;
+            let gone = false;
+            let monitor = false;
+            try { monitor = new URLSearchParams(window.location.search).get('mode') === 'monitor'; } catch (e) {}
+            if (monitor) return;
+            signedInBefore().then(before => {
+                if (!before || gone) return;
+                setState(s => ({ ...s, phase: 'checking' }));
+                return loadAuthSdk().then(ok => {
+                    if (gone) return;
+                    if (ok && getAuth()) setSdkReady(true);
+                    else setState(s => ({ ...s, phase: 'off', available: false, reason: _authError }));
+                });
+            });
+            return () => { gone = true; };
+        }, []);
+
+        useEffect(() => {
+            if (!sdkReady) return;
             const auth = getAuth();
             if (!auth) return;
             let profileRef = null;
@@ -180,9 +235,12 @@
                 if (cancelled) return;
                 detachProfile();
                 if (!user) {
-                    setState(s => ({ ...s, phase: 'signedOut', user: null, profile: null, error: null }));
+                    // Leave any error alone: with the SDK fetched on demand, this first "nobody
+                    // signed in" callback can land just after a failed first attempt.
+                    setState(s => ({ ...s, phase: 'signedOut', user: null, profile: null }));
                     return;
                 }
+                setAuthFlag('1');
                 const summary = { uid: user.uid, email: user.email, displayName: user.displayName };
                 setState(s => ({ ...s, phase: 'signedIn', user: summary, error: null }));
 
@@ -223,12 +281,18 @@
             });
 
             return () => { cancelled = true; detachProfile(); try { unsub(); } catch (e) {} };
-        }, []);
+        }, [sdkReady]);
 
         const run = useCallback(async (fn, successNotice) => {
-            const auth = getAuth();
-            if (!auth) { setState(s => ({ ...s, error: AUTH_MESSAGES['auth/configuration-not-found'] })); return false; }
             setState(s => ({ ...s, busy: true, error: null, notice: null }));
+            const loaded = await loadAuthSdk();
+            const auth = loaded ? getAuth() : null;
+            if (!auth) {
+                setState(s => ({ ...s, busy: false, phase: 'off', available: false, reason: _authError,
+                    error: _authError === 'not-loaded' ? AUTH_MESSAGES['auth/network-request-failed'] : AUTH_MESSAGES['auth/configuration-not-found'] }));
+                return false;
+            }
+            setSdkReady(true);
             try {
                 await fn(auth);
                 setState(s => ({ ...s, busy: false, error: null, notice: successNotice || null }));
@@ -274,7 +338,7 @@
                 return auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
             }), [run]);
 
-        const signOut = useCallback(() => run(auth => auth.signOut()), [run]);
+        const signOut = useCallback(() => run(async (auth) => { await auth.signOut(); setAuthFlag('0'); }), [run]);
 
         // Asking is not granting. This writes to users/{uid}/requestedAccess, which carries no
         // privilege at all — the admin panel reads it to build the approval queue.
@@ -375,7 +439,7 @@
     // =============================================================================================
     const Field = ({ label, ...props }) => (
         <label className="block">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">{label}</span>
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">{label}</span>
             <input {...props} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm mt-0.5 focus:border-sky-500 outline-none" />
         </label>
     );
@@ -422,7 +486,7 @@
                             <div className="flex gap-1 border-b border-slate-700 mb-1">
                                 {TABS.map(([id, label]) => (
                                     <button key={id} type="button" onClick={() => { setTab(id); auth.clearFeedback(); }}
-                                        className={`pb-2 px-2 text-[11px] font-bold uppercase tracking-wider ${tab === id ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{label}</button>
+                                        className={`pb-2 px-2 text-[11px] font-bold uppercase tracking-wider ${tab === id ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-400 hover:text-slate-300'}`}>{label}</button>
                                 ))}
                             </div>
 
@@ -529,15 +593,15 @@
                     {error && <div className="bg-red-950/50 border border-red-600 rounded p-2 text-[11px] text-red-200 mb-3">{error}</div>}
 
                     <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                        {users === null && !error && <div className="text-slate-500 text-sm text-center py-8">Loading users…</div>}
-                        {users !== null && shown.length === 0 && <div className="text-slate-500 text-sm text-center py-8">No users in this view.</div>}
+                        {users === null && !error && <div className="text-slate-400 text-sm text-center py-8">Loading users…</div>}
+                        {users !== null && shown.length === 0 && <div className="text-slate-400 text-sm text-center py-8">No users in this view.</div>}
                         {shown.map(u => (
                             <div key={u.uid} className="bg-slate-900 border border-slate-700 rounded p-3">
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                     <div className="min-w-0">
                                         <div className="text-sm font-bold text-white truncate">{u.displayName || '(no name)'} {u.role === 'admin' && <span className="ml-1 text-[9px] px-1 rounded bg-sky-950 border border-sky-600 text-sky-300 uppercase font-bold">admin</span>}</div>
                                         <div className="text-[11px] text-slate-400 truncate">{u.email || '(no email)'}</div>
-                                        <div className="text-[10px] text-slate-600 font-mono truncate">{u.uid}</div>
+                                        <div className="text-[10px] text-slate-400 font-mono truncate">{u.uid}</div>
                                         {u.requestedAccess && (
                                             <div className="text-[10px] text-amber-300 mt-1">
                                                 Requested: {Object.keys(u.requestedAccess).filter(k => k !== 'at' && u.requestedAccess[k]).join(', ') || '—'}
@@ -560,7 +624,7 @@
                                 </div>
 
                                 <div className="mt-2 border-t border-slate-800 pt-2">
-                                    <div className="text-[9px] uppercase tracking-widest text-slate-500 font-bold mb-1">Entitlements</div>
+                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold mb-1">Entitlements</div>
                                     <div className="flex flex-wrap gap-1">
                                         {ENTITLEMENT_KEYS.map(({ key, label, note }) => {
                                             const on = u.entitlements[key] === true;
@@ -579,7 +643,7 @@
                         ))}
                     </div>
 
-                    <div className="border-t border-slate-700 mt-3 pt-3 text-[10px] text-slate-500">
+                    <div className="border-t border-slate-700 mt-3 pt-3 text-[10px] text-slate-400">
                         Payments are not connected. When they are, entitlements must be written server-side from a
                         signature-verified webhook using the Firebase Admin SDK — never from this panel or any client.
                     </div>

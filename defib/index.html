@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,331 +10,288 @@
       // browsing modes, and an uncaught error here aborted the rest of this inline block.
       try {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker Registered')).catch(() => {});
+        navigator.serviceWorker.register('sw.js').catch(() => {});
       }
       } catch (e) { /* service workers unavailable — the page works fine without offline caching */ }
     </script>
-    
-    <!-- WAVE 3 / C1+C2: this page used to carry its OWN waveform dictionary and its OWN
-         shockability list, both of which disagreed with the engine's. It now loads the single
-         shared rhythm registry, exactly as index.html does, so a rhythm is drawn and judged
-         identically on the controller, the student monitor and this device.
-         NOTE: the old `rhythmMap` near the top of the main script was DEAD CODE (never called) —
-         the live dictionary was the getECGValue branch list. Both are gone; there is one source. -->
+    <!-- The single shared rhythm registry: a rhythm is drawn and judged identically on the
+         controller, the room monitor and this device. -->
     <script src="../data/rhythms.js"></script>
+    <script src="../data/defibsim.js"></script>
     <!-- Firebase: the SAME live session the controller and room monitor use, so this page works on
-         a separate tablet. Without it the page could only reach a controller in another tab of
-         the same browser (BroadcastChannel), which is still supported as a fallback. -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+         a separate tablet. Without it the page can still reach a controller in another tab of the
+         same browser (BroadcastChannel). -->
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
     <script src="../data/firebase-config.js"></script>
-    <script>
-    (function(){'use strict';
-    // Grid drawer retained (the canvas uses an "eraser bar" rather than clearRect).
-    window.drawECGGrid = function(ctx, w, h) { ctx.fillStyle = '#050505'; };
-    })();
-    </script>
-    
-    <style> 
-@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
-*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;background:#2a2a2a;padding:20px;min-height:100vh}
-/* --- DEVICE CONTAINER --- */
-.zoll-device {
-    background: linear-gradient(to bottom, #dbe4ea 0%, #c8d0d8 100%);
-    box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 2px 5px rgba(255,255,255,0.5), inset 0 -2px 5px rgba(0,0,0,0.1);
-    border: 20px solid #2b7bbf; border-radius: 25px; padding: 30px; position: relative;
-    display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; max-width: 1400px; margin: 0 auto;
-}
-.zoll-top-logo{position:absolute;top:25px;right:30px;height:40px;background:white;padding:6px;border-radius:8px;z-index:10}
-.device-screen-section{background:#a8b0b8;padding:25px;border-radius:15px;box-shadow:inset 0 4px 10px rgba(0,0,0,0.2)}
-.screen {
-    background-color: #050505;
-    background-image: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-    background-size: 100% 2px, 3px 100%;
-    border-radius: 10px; padding: 15px; margin-bottom: 15px; box-shadow: inset 0 0 40px rgba(0,0,0,0.8);
-    position: relative; border: 1px solid #333; font-family: 'Share Tech Mono', 'Courier New', monospace;
-}
-.screen::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 40%); pointer-events: none; z-index: 10; }
-.screen-header{display:flex;justify-content:space-between;padding:8px;background:rgba(0,0,0,0.6);border-radius:5px;margin-bottom:10px}
-.screen-info { color: #00ffff; font-size: 13px; font-family: 'Share Tech Mono', 'Courier New', monospace; text-shadow: 0 0 5px currentColor; }
-.screen-info.sync-indicator{color:#ffff00;font-weight:bold;animation:blink 1s infinite}
-.ecg-canvas-container{background:#000;height:300px;border-radius:8px;position:relative;overflow:hidden;margin-bottom:15px}canvas{width:100%;height:100%;display:block}
-.vitals-display{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:15px;background:rgba(0,0,0,0.6);border-radius:8px}
-.vital-item{text-align:center}.vital-label{color:#888;font-size:10px;margin-bottom:5px}
-.vital-value { color: #00ff00; font-size: 36px; font-weight: bold; font-family: 'Share Tech Mono', 'Courier New', monospace; text-shadow: 0 0 5px currentColor; }
-#hrDisplay { color: #39ff14; text-shadow: 0 0 10px rgba(57, 255, 20, 0.6); }
-#spo2Display { color: #00ffff; text-shadow: 0 0 10px rgba(0, 255, 255, 0.6); }
-#etco2Display { color: #ffff00; text-shadow: 0 0 10px rgba(255, 255, 0, 0.6); }
-#bpDisplay { color: #ff3333; text-shadow: 0 0 10px rgba(255, 51, 51, 0.6); }
-.vital-value.critical{color:#ff0000;animation:blink 1s infinite}.vital-unit{color:#888;font-size:11px;margin-top:3px}@keyframes blink{0%,50%{opacity:1}51%,100%{opacity:0.3}}
-.message-bar { background: rgba(0,0,0,0.8); color: #ffff00; padding: 12px; text-align: center; border-radius: 6px; font-family: 'Share Tech Mono', 'Courier New', monospace; font-size: 14px; font-weight: bold; margin-top: 10px; text-shadow: 0 0 5px currentColor; }
-.message-bar.ready{color:#00ff00;text-shadow:0 0 5px rgba(0,255,0,0.5)}.message-bar.alert{color:#ff0000;animation:blink 1s infinite;text-shadow:0 0 5px rgba(255,0,0,0.5)}
-.softkeys{display:flex;gap:10px;margin-top:15px}.softkey{flex:1;background:#7a8288;color:#fff;border:2px solid #6a7278;padding:12px;border-radius:6px;font-size:11px;cursor:pointer;text-align:center;font-weight:bold}.softkey:hover{background:#8a9298}.softkey.active{background:#27ae60}
-.device-controls-section{display:flex;flex-direction:column;gap:15px}.top-buttons{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start}.btn-teal{background:#17a2b8;color:white;border:3px solid #138496;padding:15px 20px;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;box-shadow:0 4px 8px rgba(0,0,0,0.3)}.btn-sync{background:#f39c12;color:white;border:3px solid #d68910;padding:15px 20px;border-radius:8px;font-size:13px;font-weight:bold;cursor:pointer;box-shadow:0 4px 8px rgba(0,0,0,0.3);transition:all 0.3s}.btn-sync.active{background:#e67e22;box-shadow:0 0 15px rgba(230,126,34,0.7)}.btn-shock{background:linear-gradient(135deg,#ff6347 0%,#ff4520 100%);color:white;border:5px solid #cc4f39;width:120px;height:120px;border-radius:50%;font-size:20px;font-weight:bold;cursor:pointer;box-shadow:0 6px 12px rgba(0,0,0,0.4);display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;overflow:hidden}.btn-shock::before{content:'⚡';position:absolute;font-size:80px;opacity:0.15;color:#fff;z-index:0}.btn-shock span{position:relative;z-index:1}.btn-shock:disabled{opacity:0.5;cursor:not-allowed}.btn-shock .number{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:18px;color:#fff}
-.side-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px}.side-btn{background:#7a8288;color:#fff;border:3px solid #6a7278;padding:12px;border-radius:8px;font-size:12px;font-weight:bold;cursor:pointer;box-shadow:0 3px 6px rgba(0,0,0,0.3)}.side-btn:hover{background:#8a9298}
-.action-buttons-group{display:flex;flex-direction:column;gap:10px}.btn-analyze,.btn-charge{background:linear-gradient(180deg,#ff9933 0%,#ff7700 100%);color:#000;border:4px solid #cc6600;padding:16px;border-radius:10px;font-size:15px;font-weight:bold;cursor:pointer;box-shadow:0 4px 8px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:space-between}.btn-number{background:#fff;color:#ff7700;width:30px;height:30px;border-radius:50%;display:flex;align:items:center;justify-content:center;font-size:18px;font-weight:bold}
-.energy-selector{background:linear-gradient(180deg,#dc3545 0%,#c82333 100%);color:#fff;border:4px solid #a71d2a;padding:16px;border-radius:10px;cursor:pointer;box-shadow:0 4px 8px rgba(0,0,0,0.3);display:flex;flex-direction:column;align-items:center;gap:8px}.energy-display{font-size:32px;font-weight:bold;text-shadow:0 2px 4px rgba(0,0,0,0.3)}.energy-arrows{display:flex;gap:15px}.energy-arrow{background:#fff;color:#dc3545;width:40px;height:40px;border-radius:50%;border:none;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-.mode-dial-container{text-align:center;padding:15px;background:#a8b0b8;border-radius:12px}.mode-dial{width:150px;height:150px;background:radial-gradient(circle,#2a2a2a 0%,#1a1a1a 100%);border:6px solid #0a0a0a;border-radius:50%;margin:0 auto 15px;position:relative;cursor:pointer;box-shadow:0 6px 12px rgba(0,0,0,0.5)}.mode-dial::before{content:'';position:absolute;width:8px;height:60px;background:#fff;top:20px;left:50%;transform:translateX(-50%) rotate(var(--dial-rotation,0deg));transform-origin:center bottom;border-radius:4px}
-.mode-labels{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;font-weight:bold;color:#2a2a2a}.mode-label{padding:12px 16px;border-radius:8px;cursor:pointer;background:#34495e;color:#ecf0f1;border:3px solid #2c3e50;font-weight:bold;transition:all 0.3s;text-transform:uppercase;font-size:13px}.mode-label:hover{background:#3a4f5e;transform:translateY(-2px)}.mode-label.active{background:linear-gradient(180deg,#3498db 0%,#2874a6 100%);color:white;border-color:#1f5f8b;box-shadow:0 0 15px rgba(52,152,219,0.5)}
-.pacing-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; position: relative; overflow: hidden; padding-bottom: 15px; }
-.pacing-cover { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.96); z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bdc3c7; font-size: 13px; font-weight: bold; text-align: center; transition: all 0.3s ease; opacity: 1; visibility: visible; pointer-events: auto; }
-.pacing-cover.open { opacity: 0; visibility: hidden; pointer-events: none; }
-.pacer-dial{background:#2a2a2a;border:5px solid #0a0a0a;border-radius:50%;width:100px;height:100px;margin:0 auto;position:relative;cursor:pointer;box-shadow:0 4px 8px rgba(0,0,0,0.5)}.pacer-dial::before{content:'';position:absolute;width:4px;height:35px;background:#17a2b8;top:15px;left:50%;transform:translateX(-50%) rotate(var(--dial-rotation,0deg));transform-origin:center 35px;border-radius:2px;transition:transform 0.3s ease}.pacer-label{text-align:center;color:#2a2a2a;font-size:11px;font-weight:bold;margin-top:8px}.pacer-value{text-align:center;color:#17a2b8;font-size:20px;font-weight:bold;margin-top:4px}.pacer-controls-btn{display:flex;gap:5px;justify-content:center;margin-top: 5px; margin-bottom: 5px;}.pacer-btn{background:#7a8288;color:#fff;border:2px solid #6a7278;width:35px;height:35px;border-radius:5px;font-size:18px;cursor:pointer}
-.zoll-branding{background:linear-gradient(180deg,#e8eef3 0%,#d8dee3 100%);padding:20px;border-radius:0 0 15px 15px;margin:-10px -30px 0 -30px;text-align:center;box-shadow:0 -4px 10px rgba(0,0,0,0.1)}.zoll-logo-text{font-size:48px;font-weight:bold;color:#9a9a9a;letter-spacing:8px;text-shadow:2px 2px 4px rgba(0,0,0,0.1)}
-.splash-screen{position:absolute;top:0;left:0;right:0;bottom:0;background:#1a1a1a;display:flex;align-items:center;justify-content:center;z-index:100}
-.splash-screen img{max-width:50%; height:auto; background:white; padding:15px 25px; border-radius:10px}
-.screen.screen-off .screen-header, .screen.screen-off .ecg-canvas-container, .screen.screen-off .vitals-display, .screen.screen-off .message-bar{visibility:hidden}
-.screen.screen-off{background:#1a1a1a}
-.hidden { display: none !important; }
-/* A7: unmissable "this device is not linked" state. A silently-wrong defibrillator is worse than
-   no defibrillator: before Wave 3 an unlinked device showed normal sinus at HR 75 and answered
-   "NO SHOCK ADVISED" while the patient was in VF on the controller. */
-.link-banner { position:absolute; top:0; left:0; right:0; z-index:60; background:#7f1d1d; color:#fff;
-    padding:10px 12px; text-align:center; font-family:Arial,sans-serif; font-size:14px; font-weight:bold;
-    border-bottom:3px solid #ef4444; line-height:1.4; }
-.ended-banner { position:absolute; top:0; left:0; right:0; bottom:0; z-index:70; background:rgba(0,0,0,0.92);
-    color:#94a3b8; display:flex; align-items:center; justify-content:center; font-family:'Share Tech Mono',monospace;
-    font-size:28px; letter-spacing:4px; }
-#paperOverlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 50; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-#paperCanvas { max-width: 100%; max-height: 80%; border: 5px solid white; box-shadow: 0 0 30px rgba(255,255,255,0.2); background: white; }
-/* WAVE 4b / D6: the .active-ghost rule is gone with handleGhostPress, its only writer. */
-button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
-@media (max-height: 800px) { .zoll-device { transform: scale(0.9); transform-origin: top center; margin-bottom: -50px; } .ecg-canvas-container { height: 220px; } .btn-shock { width: 100px; height: 100px; font-size: 16px; } .btn-shock::before { font-size: 40px; } }
-@media (max-width: 1200px) { .zoll-device { max-width: 100%; grid-template-columns: 1.1fr 0.9fr; gap: 15px; padding: 15px; border-width: 10px; } .device-screen-section, .device-controls-section { padding: 10px; } .energy-display { font-size: 24px; } }
-@media (max-width: 900px) { .zoll-device { grid-template-columns: 1fr; gap: 15px; transform: none; margin: 10px auto; max-width: 650px; } .ecg-canvas-container { height: 200px; } .top-buttons { justify-content: center; gap: 20px; } .zoll-top-logo { display: none; } .side-buttons { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 600px) { body { padding: 5px; } .zoll-device { padding: 8px; border-width: 5px; border-radius: 10px; } .ecg-canvas-container { height: 160px; } .screen { padding: 5px; } .softkeys { display: none; } .vitals-display { padding: 5px; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 2px; } .vital-value { font-size: 24px; } .vital-label { font-size: 8px; } .device-controls-section { gap: 8px; } .action-buttons-group { flex-direction: row; flex-wrap: wrap; } .btn-analyze, .btn-charge { flex: 1; min-width: 100px; padding: 8px; } .mode-dial { width: 70px; height: 70px; } .pacing-controls { display: none; } .zoll-branding { display: none; } }
-</style>
+    <link rel="stylesheet" href="device.css">
 </head>
 <body>
     <div class="zoll-device" id="zollDevice">
-        <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
+        <a class="zoll-top-link" href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
         <div class="device-screen-section">
-            <div class="screen">
-                <!-- WAVE 5 / ITEM 4: the never-linked state is the DEFAULT markup, shown on first paint
-                     instead of after a ~25 s timeout, and worded for "no session was ever supplied"
-                     rather than "lost contact". -->
+            <div class="screen screen-off" id="screen">
+                <!-- The never-linked state is the DEFAULT markup, shown on first paint. A defib that
+                     cannot reach the controller must say so, not show a confident normal patient. -->
                 <div id="linkBanner" class="link-banner"><b>NOT LINKED TO SESSION</b><br><span style="font-weight:normal;font-size:12px;">No session has been supplied to this page, so there is no patient. Looking for a controller in another tab of this browser&hellip;</span></div>
                 <div id="endedBanner" class="ended-banner hidden">SESSION ENDED</div>
-                <div class="splash-screen" id="splashScreen" style="display: none;"><img src="images/logo.png" alt="EM Evidence Logo"></div>
-                <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead analysis" tabindex="-1"><div style="color:white; font-family:monospace; margin-bottom:10px; font-size:20px;">12-LEAD ANALYSIS</div><canvas id="paperCanvas" width="1000" height="640" style="max-width:100%;height:auto;"></canvas><div style="color:#aaa; font-size:12px; margin-top:10px;">TAP TO CLOSE</div></div>
                 <div class="screen-header">
-                    <div class="screen-info" id="leadInfo">LEAD: II</div><div class="screen-info" id="sessionTag"></div><div class="screen-info" id="syncIndicator"></div>
-                    <div class="screen-info" id="modeInfo">MODE: MONITOR</div><div class="screen-info" id="timeInfo">00:00:00</div>
+                    <div class="screen-info" id="leadInfo">LEAD: II x1</div>
+                    <div class="screen-info" id="sessionTag"></div>
+                    <div class="screen-info" id="syncIndicator"></div>
+                    <div class="screen-info" id="wakeInfo" title="This browser cannot keep the screen awake: set the tablet's auto-lock to Never for the session."></div>
+                    <div class="screen-info" id="modeInfo">MODE: OFF</div>
+                    <div class="screen-info" id="timeInfo">00:00:00</div>
                 </div>
-                <div class="ecg-canvas-container"><canvas id="ecgCanvas"></canvas></div>
+                <div class="ecg-canvas-container">
+                    <canvas id="ecgCanvas" role="img" aria-label="ECG trace"></canvas>
+                    <div class="trace-warning" id="traceWarning"></div>
+                </div>
                 <div class="vitals-display">
                     <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
                     <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
                     <div class="vital-item"><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
-                    <div class="vital-item"><div class="vital-label">NIBP</div><!-- WAVE 5 / ITEM 4: was a hardcoded 120/80, which stayed frozen on screen while HR / SpO2 /
-                         ETCO2 correctly showed '--' on an unlinked device. --><div class="vital-value" id="bpDisplay" style="font-size: 24px;">--/--</div><div class="vital-unit">mmHg</div></div>
+                    <div class="vital-item"><div class="vital-label">NIBP</div><div class="vital-value" id="bpDisplay">--/--</div><div class="vital-unit">mmHg</div></div>
                 </div>
-                <div class="message-bar ready" id="messageBar">SIMULATOR READY</div>
+                <div class="message-bar" id="messageBar" role="status" aria-live="polite"></div>
             </div>
             <div class="softkeys">
-                <button class="softkey" id="checkPulseBtn">Check Pulse</button><button class="softkey" disabled title="Parameter setup is not simulated">Param</button><button class="softkey" id="markerBtn">Marker</button><button class="softkey" disabled title="Alarm configuration is not simulated">Alarms</button>
+                <button class="softkey" id="checkPulseBtn">Check Pulse</button>
+                <button class="softkey" disabled title="Not simulated">Param</button>
+                <button class="softkey" id="markerBtn">Marker</button>
+                <button class="softkey" id="alarmSuspendBtn">Alarm Suspend</button>
             </div>
         </div>
         <div class="device-controls-section">
-            <div class="top-buttons"><button class="btn-sync" id="syncBtn">SYNC</button><button class="btn-shock" id="shockBtn" disabled>SHOCK<span class="number">3</span></button></div>
-            <div class="side-buttons"><button class="side-btn">LEAD</button><button class="side-btn">SIZE</button><button class="side-btn" id="alarmSuspendBtn">ALARM SUSPEND</button><button class="side-btn" id="recorderBtn">RECORDER</button></div>
+            <div class="top-buttons">
+                <button class="btn-sync" id="syncBtn">SYNC</button>
+                <button class="btn-shock" id="shockBtn" disabled><span>SHOCK</span><span class="number">3</span></button>
+            </div>
+            <div class="side-buttons">
+                <button class="side-btn" id="leadBtn" title="Change monitoring lead">LEAD</button>
+                <button class="side-btn" id="sizeBtn" title="Change ECG size">SIZE</button>
+                <button class="side-btn" id="recorderBtn" title="Print a 12-lead / strip">RECORDER</button>
+                <button class="side-btn" id="hintsBtn" title="RCUK guideline hints" hidden>HINTS</button>
+            </div>
             <div class="action-buttons-group">
                 <button class="btn-analyze" id="analyseBtn"><span>ANALYSE</span><span class="btn-number">2</span></button>
                 <button class="btn-charge" id="chargeBtn"><span>CHARGE</span><span class="btn-number">2</span></button>
-                <div class="energy-selector"><div style="font-size: 11px;">ENERGY SELECT</div><div class="energy-display" id="energyDisplay">120</div><div style="font-size: 12px;">JOULES</div><div id="energyRec" style="font-size:10px;opacity:0.9;"></div><div class="energy-arrows"><button class="energy-arrow" data-energy-dir="-1">▼</button><button class="energy-arrow" data-energy-dir="1">▲</button></div></div>
+                <div class="energy-selector">
+                    <div style="font-size:11px;">ENERGY SELECT</div>
+                    <div class="energy-display" id="energyDisplay">150</div>
+                    <div style="font-size:12px;">JOULES</div>
+                    <div class="energy-rec" id="energyRec"></div>
+                    <div class="energy-arrows">
+                        <button class="energy-arrow" data-energy-dir="-1" aria-label="Decrease energy">▼</button>
+                        <button class="energy-arrow" data-energy-dir="1" aria-label="Increase energy">▲</button>
+                    </div>
+                </div>
             </div>
             <div class="mode-dial-container">
-                <div class="mode-dial" id="modeDial" style="--dial-rotation: 0deg;"></div>
-                <div class="mode-labels"><div class="mode-label active" data-mode="monitor">MONITOR</div><div class="mode-label" data-mode="defib">DEFIB</div><div class="mode-label" data-mode="pacer">PACER</div><div class="mode-label" data-mode="off">OFF</div></div>
+                <div class="mode-dial" id="modeDial" style="--dial-rotation: 270deg;"></div>
+                <div class="mode-labels">
+                    <button type="button" class="mode-label" data-mode="monitor">MONITOR</button>
+                    <button type="button" class="mode-label" data-mode="defib">DEFIB</button>
+                    <button type="button" class="mode-label" data-mode="pacer">PACER</button>
+                    <button type="button" class="mode-label active" data-mode="off">OFF</button>
+                </div>
             </div>
             <div class="pacing-controls">
-                <div class="pacing-cover" id="pacingCover"><div>PACING DISABLED</div><div style="font-size: 9px; font-weight: normal; margin-top: 5px; opacity: 0.8;">Select PACER Mode to Open</div></div>
-                <div><div class="pacer-label">OUTPUT</div><div class="pacer-dial" style="--dial-rotation: 0deg;"></div><div class="pacer-value" id="outputDisplay">0</div><div class="pacer-label">mA</div><div class="pacer-controls-btn"><button class="pacer-btn" data-pacer-param="output" data-pacer-dir="-5">-</button><button class="pacer-btn" data-pacer-param="output" data-pacer-dir="5">+</button></div></div>
-                <div><div class="pacer-label">RATE</div><div class="pacer-dial" style="--dial-rotation: 0deg;"></div><div class="pacer-value" id="rateDisplay">60</div><div class="pacer-label">ppm</div><div class="pacer-controls-btn"><button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="-5">-</button><button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="5">+</button></div></div>
+                <div class="pacing-cover" id="pacingCover"><div>PACING DISABLED</div><div style="font-size:9px;font-weight:normal;margin-top:5px;">Select PACER mode to open</div></div>
+                <div>
+                    <div class="pacer-label">OUTPUT</div>
+                    <div class="pacer-dial" id="outputDial"></div>
+                    <div class="pacer-value" id="outputDisplay">0</div>
+                    <div class="pacer-label">mA</div>
+                    <div class="pacer-controls-btn">
+                        <button class="pacer-btn" data-pacer-param="output" data-pacer-dir="-5" aria-label="Decrease pacing output">-</button>
+                        <button class="pacer-btn" data-pacer-param="output" data-pacer-dir="5" aria-label="Increase pacing output">+</button>
+                    </div>
+                </div>
+                <div>
+                    <div class="pacer-label">RATE</div>
+                    <div class="pacer-dial" id="rateDial"></div>
+                    <div class="pacer-value" id="rateDisplay">60</div>
+                    <div class="pacer-label">ppm</div>
+                    <div class="pacer-controls-btn">
+                        <button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="-5" aria-label="Decrease pacing rate">-</button>
+                        <button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="5" aria-label="Increase pacing rate">+</button>
+                    </div>
+                </div>
+                <button class="pacer-mode-btn" id="pacerModeBtn" title="Demand or asynchronous (fixed-rate) pacing">MODE: DEMAND</button>
             </div>
+            <div class="zoll-branding"><div class="zoll-logo-text">ZOLL</div></div>
         </div>
-        <div class="zoll-branding"><div class="zoll-logo-text">ZOLL</div></div>
     </div>
+
+    <!-- Education mode only: the RCUK hint cards the standalone Defib-sim offered. -->
+    <div class="hints hidden" id="hintsRow"></div>
+    <div id="hintOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="hintTitle">
+        <div class="hint-content"><button class="hint-close" id="hintClose" aria-label="Close">×</button><h2 id="hintTitle"></h2><div id="hintBody"></div></div>
+    </div>
+    <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead recording" tabindex="-1"><div style="color:white;font-family:monospace;margin-bottom:10px;font-size:20px;">12-LEAD RECORDING</div><canvas id="paperCanvas" width="1000" height="640"></canvas><div style="color:#aaa;font-size:12px;margin-top:10px;">TAP TO CLOSE</div></div>
+    <div class="sound-overlay hidden" id="soundOverlay"><button id="soundBtn">Tap to enable sound</button></div>
+    <div class="app-footer">EM Evidence Sim — defibrillator</div>
 
     <script>
     document.addEventListener('DOMContentLoaded', () => {
-        window.isRemoteControlled = false;
-        // Unguarded, this threw before any UI was wired up and left a dead page. Without a channel the
-        // defib still works as a standalone teaching device, just not linked to the controller.
+        const RG = window.RHYTHMS;
+        const $ = (id) => document.getElementById(id);
+        // Embedded in the room monitor (its facilitator "Defib" toggle): no logo, footer or
+        // wake-lock notice (the monitor keeps the screen on), and presses are logged as the
+        // monitor's defib.
+        const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
+        if (EMBEDDED) document.body.classList.add('embedded');
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+        // ---- The patient, as the controller last described it -------------------------------
+        const patient = {
+            linked: false, rhythm: 'Sinus Rhythm', hr: 0, spo2: 0, etco2: 0, bpSys: 0, bpDia: 0,
+            cpr: false, isFinished: false, gain: 1, noise: {}, pacing: { electrical: false, mechanical: false },
+            energyLevels: RG.ADULT_ENERGY_STEPS.slice(), recommendedEnergy: RG.ADULT_DEFAULT_ENERGY, weight: null, age: null,
+            view: { defibSim: false, pulseFeedback: false, hints: false, metronome: false },
+            scenario: null
+        };
+        // ---- The device ---------------------------------------------------------------------
+        const device = {
+            mode: 'off', machine: 'IDLE',          // IDLE | ANALYSING | CHARGING | READY | DISCHARGING
+            energy: RG.ADULT_DEFAULT_ENERGY, energyTouched: false, sync: false,
+            lead: 'II', gain: 1, pacerOutput: 0, pacerRate: 60, pacerDemand: true,
+            message: '', messageType: ''
+        };
+        window.device = device; window.patient = patient;   // console / test handles
+        const LEADS = ['PADS', 'I', 'II', 'III'];
+        const GAINS = [0.5, 1, 2, 4];
+
+        // ---- Timers that belong to the device (cancelled on mode change / reset)
+        const timers = {};
+        const later = (name, fn, ms) => { clearTimeout(timers[name]); timers[name] = setTimeout(() => { delete timers[name]; fn(); }, ms); };
+        const cancel = (name) => { clearTimeout(timers[name]); delete timers[name]; };
+
+        // =====================================================================================
+        // LINKING: Firebase session (?session=CODE or typed), else a controller in another tab
+        // =====================================================================================
         let simChannel = null;
         try { simChannel = ('BroadcastChannel' in window) ? new BroadcastChannel('sim_channel') : null; }
-        catch (e) { console.warn('BroadcastChannel unavailable — running defib standalone', e); }
+        catch (e) { simChannel = null; }
+        const fb = { code: null, db: null, linked: false, connected: false, presenceId: Math.random().toString(36).slice(2, 10) };
+        let everLinked = false, lastSyncAt = 0;
 
-        // The rhythm dictionary lives in data/rhythms.js. Nothing local.
-        const RG = window.RHYTHMS;
-
-        // ---- A7: FAIL LOUDLY WHEN NOT LINKED ------------------------------------------------
-        // window.isRemoteControlled existed but was NEVER READ. On a second physical device this
-        // page has no way to reach the controller (BroadcastChannel is same-browser only and there
-        // is no Firebase here), so it showed a confident HR 75 / SpO2 98 normal sinus patient and
-        // answered "NO SHOCK ADVISED" in VF. It must say so instead of lying.
-        // WAVE 5 / ITEM 4: "never linked" and "lost contact" are DIFFERENT facts and must not share
-        // one message. `everLinked` is the discriminator: until a single SYNC_VITALS has arrived this
-        // page has never had a patient, so saying "Lost contact with the controller 35s ago" (which it
-        // did, counting from page load) was simply untrue.
-        let everLinked = false;
-        const NEVER_LINKED_HEADLINE = 'NOT LINKED TO SESSION';
-        const LOST_LINK_HEADLINE = 'LOST CONTACT WITH THE CONTROLLER';
         function setLinkState(linked, reason, kind) {
-            window.isRemoteControlled = !!linked;
+            patient.linked = !!linked;
             if (linked) everLinked = true;
-            const el = document.getElementById('linkBanner');
-            if (!el) return;
-            if (linked) { el.classList.add('hidden'); return; }
+            const el = $('linkBanner');
+            if (linked) { el.classList.add('hidden'); render(); return; }
             el.classList.remove('hidden');
-            try { updateDisplays(); } catch (e) {}
             const lost = kind === 'lost' || (kind === undefined && everLinked);
             const fallback = lost
                 ? 'The link to the controller has dropped. The numbers below are no longer live.'
-                : 'No session has been supplied to this page, so there is no patient. The numbers and rhythm below are NOT your patient.';
-            el.innerHTML = '<b>' + (lost ? LOST_LINK_HEADLINE : NEVER_LINKED_HEADLINE) + '</b><br><span style="font-weight:normal;font-size:12px;">'
-                + (reason || fallback)
-                + '</span>'
-                + (fb.code ? '' : '<form id="joinForm" style="margin-top:8px;display:flex;gap:6px;justify-content:center;">'
-                    + '<input id="joinCode" aria-label="Session code" placeholder="SESSION CODE" autocomplete="off" autocapitalize="characters" style="font:inherit;font-size:16px;padding:6px 8px;width:10em;text-transform:uppercase;border-radius:4px;border:1px solid #666;background:#111;color:#fff;">'
-                    + '<button type="submit" style="font:inherit;font-weight:bold;padding:6px 12px;border-radius:4px;border:1px solid #0a0;background:#063;color:#fff;cursor:pointer;">Link</button></form>');
-            const form = document.getElementById('joinForm');
-            if (form) form.onsubmit = (ev) => {
-                ev.preventDefault();
-                const code = String(document.getElementById('joinCode').value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-                if (!code) return;
-                const u = new URL(window.location.href); u.searchParams.set('session', code);
-                window.location.href = u.toString();
-            };
-        }
-        function setSessionEnded(ended) {
-            const el = document.getElementById('endedBanner');
-            if (el) el.classList.toggle('hidden', !ended);
-        }
-
-        // The 12-lead is drawn by RHYTHMS.render12Lead (data/rhythms.js), shared with the room monitor.
-
-        function applySync(payload) {
-            const data = { payload };
-            {
-                setLinkState(true);
-                lastSyncAt = Date.now();
-                setSessionEnded(!!data.payload.isFinished);
-                const mappedRhythm = RG.canonical(data.payload.rhythm);
-
-                // Demand Pacing Logic: If in Pacer Mode, and Pacer Rate > Patient HR, override rhythm
-                state.originalRhythm = mappedRhythm;
-                if (state.deviceMode === 'pacer' && state.pacerRate > data.payload.hr) {
-                    state.rhythm = 'Paced';
-                } else {
-                    state.rhythm = mappedRhythm;
-                }
-
-                // C4: the energy ladder and default energy are WEIGHT-BASED and arrive from the
-                // controller. This page previously hardcoded [50,70,85,100,120,150,170,200] and
-                // defaulted to 120 J for every patient, including a 3.5 kg neonate (needs 14 J).
-                if (Array.isArray(data.payload.energyLevels) && data.payload.energyLevels.length) {
-                    state.energyLevels = data.payload.energyLevels.slice();
-                    if (state.energyLevels.indexOf(state.energy) === -1 || !state.energyTouched) {
-                        state.energy = Number(data.payload.recommendedEnergy) || state.energyLevels[0];
-                    }
-                }
-                state.weight = data.payload.weight || null;
-                state.patientAge = data.payload.patientAge;
-                state.recommendedEnergy = Number(data.payload.recommendedEnergy) || null;
-                
-                state.hr = data.payload.hr;
-                state.spo2 = data.payload.spO2;
-                state.etco2 = data.payload.etco2;
-                state.bpSys = data.payload.bpSys;
-                state.bpDia = data.payload.bpDia;
-                state.cprActive = data.payload.cpr; // Sync CPR state
-                if(data.payload.gain !== undefined) window.waveformGain = data.payload.gain;
-                if(data.payload.interference !== undefined) window.interferenceActive = data.payload.interference;
-                
-                // Sync capture threshold from engine
-                if(data.payload.captureThreshold !== undefined) {
-                    state.captureThreshold = data.payload.captureThreshold;
-                    evaluateCapture();
-                }
-
-                updateDisplays();
+                : 'No session has been supplied to this page, so there is no patient.';
+            el.textContent = '';
+            const b = document.createElement('b'); b.textContent = lost ? 'LOST CONTACT WITH THE CONTROLLER' : 'NOT LINKED TO SESSION';
+            const span = document.createElement('span'); span.style.fontWeight = 'normal'; span.style.fontSize = '12px'; span.textContent = reason || fallback;
+            el.append(b, document.createElement('br'), span);
+            if (!fb.code) {
+                const form = document.createElement('form'); form.id = 'joinForm';
+                const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters');
+                const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link';
+                form.append(input, btn); el.appendChild(form);
+                form.onsubmit = (ev) => {
+                    ev.preventDefault();
+                    const code = String(input.value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    if (!code) return;
+                    const u = new URL(window.location.href); u.searchParams.set('session', code);
+                    window.location.href = u.toString();
+                };
             }
-        }
-        function show12Lead(rhythm, scenario, hr) {
-            const overlay = document.getElementById('paperOverlay');
-            const canvas = document.getElementById('paperCanvas');
-            if (!overlay || !canvas) return;
-            RG.render12Lead(canvas, rhythm, scenario, hr);
-            overlayReturnFocus = document.activeElement;
-            overlay.classList.remove('hidden');
-            overlay.focus();
+            render();
         }
 
-        if (simChannel) simChannel.onmessage = (event) => {
-            const data = event.data;
-            if (data.type === 'SYNC_VITALS') {
-                // When linked through Firebase, that is the source of truth; ignore a same-browser
-                // controller tab so two sources can never fight over the display.
-                if (!fb.linked) applySync(data.payload);
-            } else if (data.type === 'SHOW_12LEAD') {
-                const overlay = document.getElementById('paperOverlay');
-                const canvas = document.getElementById('paperCanvas');
-                if (overlay && canvas && data.payload && !fb.linked) {
-                    const rhythm = typeof data.payload === 'string' ? data.payload : (data.payload.rhythm || 'Sinus Rhythm');
-                    const scenario = typeof data.payload === 'object' ? data.payload.scenario : null;
-                    show12Lead(rhythm, scenario, typeof data.payload === 'object' ? data.payload.hr : undefined);
-                }
+        // One mapper per source, both producing the same `patient` fields.
+        function applyPatient(p) {
+            setLinkState(true);
+            lastSyncAt = Date.now();
+            $('endedBanner').classList.toggle('hidden', !p.isFinished);
+            const prevRhythm = patient.rhythm;
+            patient.rhythm = RG.canonical(p.rhythm);
+            patient.hr = Number(p.hr) || 0; patient.spo2 = Number(p.spo2) || 0; patient.etco2 = Number(p.etco2) || 0;
+            patient.bpSys = Number(p.bpSys) || 0; patient.bpDia = Number(p.bpDia) || 0;
+            patient.cpr = !!p.cpr; patient.isFinished = !!p.isFinished;
+            patient.gain = Number(p.gain) || 1;
+            patient.noise = p.noise || {};
+            patient.pacing = p.pacing || { electrical: false, mechanical: false };
+            patient.view = Object.assign({ defibSim: false, pulseFeedback: false, hints: false, metronome: false }, p.view || {});
+            patient.weight = p.weight || null; patient.age = p.age;
+            patient.scenario = p.scenario || null;
+            patient.recommendedEnergy = Number(p.recommendedEnergy) || RG.ADULT_DEFAULT_ENERGY;
+            if (Array.isArray(p.energyLevels) && p.energyLevels.length) {
+                patient.energyLevels = p.energyLevels.slice();
+                if (!device.energyTouched || patient.energyLevels.indexOf(device.energy) === -1) device.energy = patient.recommendedEnergy;
             }
-            // WAVE 4b / D6: the 'GHOST_PRESS' branch that used to live here has been REMOVED.
-            // It clicked a defib button by element id on behalf of a remote sender, but no sender
-            // ever existed anywhere in the codebase — not in the controller, not in the monitor, not
-            // in the engine. Left in place it read as a supported remote-control feature and would
-            // have sent anyone extending the defibrillator looking for the other half of a protocol
-            // that was never written. If remote button-press demonstration is ever wanted, add it
-            // deliberately with a real sender AND a guard on the sender's identity: as written, any
-            // page on the origin could have driven the defibrillator through the BroadcastChannel.
-        };
-        function broadcast(type, payload) {
-            // Linked through Firebase: every press goes to sessions/<CODE>/deviceEvents, the same
-            // queue the monitor-hosted defibrillator uses, and NOT to the local channel as well
-            // (a same-browser controller would otherwise receive every shock twice).
-            if (fb.code) { fbSend(type, payload); return; }
-            if (!simChannel) return;
-            try { simChannel.postMessage({ type, payload }); }
-            catch (e) { console.warn('Channel post failed', e); }
+            // A rhythm change cancels an analysis in progress (the result would be for the old rhythm)
+            if (prevRhythm !== patient.rhythm && device.machine === 'ANALYSING') { cancel('analyse'); device.machine = 'IDLE'; setMessage('ANALYSIS INTERRUPTED - RHYTHM CHANGED', 'alert'); }
+            syncMetronome();
+            updateHints();
+            render();
         }
-
-        // =========================================================================================
-        // FIREBASE SESSION LINK. ?session=CODE (the controller's Defib Sim button adds it), or the
-        // code typed into the banner. Reads the controller's session payload, pushes presses to
-        // deviceEvents, and announces itself in presence so the controller shows "defib".
-        // =========================================================================================
-        const fb = { code: null, db: null, linked: false, connected: false, presenceId: Math.random().toString(36).slice(2, 10), last: null };
-        const DEVICE_EVENT_TYPE = { ANALYSIS_RESULT: 'ANALYSE' };
-        function fbSend(type, payload) {
-            if (!fb.db || !fb.code || type === 'REQUEST_SYNC') return;
-            if (type === 'REQUEST_12LEAD' && fb.last) show12Lead(fb.last.rhythm, fb.last.scenario, fb.last.hr);
-            try {
-                fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
-                    type: DEVICE_EVENT_TYPE[type] || type,
-                    payload: JSON.parse(JSON.stringify(payload || {})),
-                    ts: Date.now(), from: fb.presenceId, device: 'standalone-defib'
-                }).catch(e => setMessage('LINK ERROR — PRESS NOT SENT', 'warning'));
-            } catch (e) { console.warn('Device event send failed', e); }
-        }
-        function fbFromSession(v) {
+        function fromSession(v) {
             const weight = Number(v.wetflag && v.wetflag.weight);
             const w = Number.isFinite(weight) && weight > 0 ? weight : null;
             const vit = v.vitals || {};
             return {
-                rhythm: v.rhythm, hr: vit.hr, spO2: vit.spO2, etco2: vit.etco2, bpSys: vit.bpSys, bpDia: vit.bpDia,
-                gain: v.waveformGain, interference: v.noise ? !!v.noise.interference : undefined,
-                cpr: !!v.cprInProgress, captureThreshold: v.pacingThreshold,
-                isFinished: !!v.isFinished, patientAge: v.patientAge, weight: w,
-                recommendedEnergy: RG.recommendedEnergy(w, v.patientAge), energyLevels: RG.energySteps(w, v.patientAge)
+                rhythm: v.rhythm, hr: vit.hr, spo2: vit.spO2, etco2: vit.etco2, bpSys: vit.bpSys, bpDia: vit.bpDia,
+                gain: v.waveformGain, noise: v.noise, cpr: !!v.cprInProgress, isFinished: !!v.isFinished,
+                pacing: v.pacing, view: v.defibView, age: v.patientAge, weight: w,
+                recommendedEnergy: RG.recommendedEnergy(w, v.patientAge), energyLevels: RG.energySteps(w, v.patientAge),
+                scenario: { patientName: v.patientName, ecg: v.investigations ? v.investigations.ecg : null, investigations: { ecg: v.investigations ? v.investigations.ecg : null } }
             };
         }
+        function fromChannel(d) {
+            return {
+                rhythm: d.rhythm, hr: d.hr, spo2: d.spO2, etco2: d.etco2, bpSys: d.bpSys, bpDia: d.bpDia,
+                gain: d.gain, noise: d.noise || { interference: d.interference }, cpr: !!d.cpr, isFinished: !!d.isFinished,
+                pacing: d.pacing, view: d.defibView, age: d.patientAge, weight: d.weight,
+                recommendedEnergy: d.recommendedEnergy, energyLevels: d.energyLevels,
+                scenario: { patientName: d.patientName }
+            };
+        }
+
+        if (simChannel) simChannel.onmessage = (event) => {
+            const data = event.data || {};
+            // When linked through Firebase that is the source of truth; ignore a same-browser tab.
+            if (data.type === 'SYNC_VITALS' && !fb.linked && data.payload) applyPatient(fromChannel(data.payload));
+        };
+
+        // Every press goes to the controller: sessions/<CODE>/deviceEvents when linked through
+        // Firebase, otherwise the same-browser channel.
+        const DEVICE_EVENT_TYPE = { ANALYSIS_RESULT: 'ANALYSE' };
+        function send(type, payload) {
+            if (fb.code && fb.db) {
+                try {
+                    fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
+                        type: DEVICE_EVENT_TYPE[type] || type, payload: JSON.parse(JSON.stringify(payload || {})),
+                        ts: Date.now(), from: fb.presenceId, device: EMBEDDED ? 'monitor-defib' : 'standalone-defib'
+                    }).catch(() => setMessage('LINK ERROR - PRESS NOT SENT', 'alert'));
+                } catch (e) { console.warn('Device event send failed', e); }
+                return;
+            }
+            if (simChannel) { try { simChannel.postMessage({ type, payload }); } catch (e) {} }
+        }
+
+        // What this device shows, for the facilitator's controller (throttled).
+        let mirrorTimer = null;
+        function publishMirror() {
+            if (!fb.db || !fb.code || mirrorTimer) return;
+            mirrorTimer = setTimeout(() => {
+                mirrorTimer = null;
+                fb.db.ref('sessions/' + fb.code + '/deviceState/' + fb.presenceId).set({
+                    mode: device.mode, machine: device.machine, energy: device.energy, sync: device.sync,
+                    lead: device.lead, gain: device.gain, pacerOutput: device.pacerOutput, pacerRate: device.pacerRate,
+                    pacerDemand: device.pacerDemand, message: device.message || '', messageType: device.messageType || '', ts: Date.now()
+                }).catch(() => {});
+            }, 200);
+        }
+
         function fbStart(code) {
             if (!window.firebase || !window.FIREBASE_CONFIG) {
                 setLinkState(false, 'The live-session service did not load (no network?). This page cannot reach session ' + code + '.', 'never');
@@ -343,31 +300,31 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             try {
                 if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
                 fb.db = firebase.database();
+                if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(fb.db);
             } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }
             fb.code = code;
-            const tag = document.getElementById('sessionTag');
-            if (tag) tag.textContent = 'SESSION ' + code;
+            $('sessionTag').textContent = 'SESSION ' + code;
             fb.db.ref('.info/connected').on('value', snap => {
                 fb.connected = !!snap.val();
                 if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. The numbers below are frozen and are NOT live until it returns.', 'lost');
                 if (fb.linked && fb.connected) setLinkState(true);
             });
-            fb.db.ref('sessions/' + code).on('value', snap => {
+            fb.db.ref('sessions/' + code + '/live').on('value', snap => {
                 const v = snap.val();
                 if (!v || !v.vitals) {
                     setLinkState(false, 'Session ' + code + ' has no patient yet. Start the scenario on the controller, or check the code.', fb.linked ? 'lost' : 'never');
                     return;
                 }
                 fb.linked = true;
-                lastSyncAt = Date.now();
-                fb.last = { rhythm: v.rhythm, hr: v.vitals.hr, scenario: { patientName: v.patientName, ecg: v.investigations ? v.investigations.ecg : null, investigations: { ecg: v.investigations ? v.investigations.ecg : null } } };
-                applySync(fbFromSession(v));
+                applyPatient(fromSession(v));
             }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
             const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
             const write = () => pres.update({ role: 'defib', display: 'defib', ua: (navigator.userAgent || '').slice(0, 120), ts: Date.now() }).catch(() => {});
             pres.onDisconnect().remove().catch(() => {});
+            fb.db.ref('sessions/' + code + '/deviceState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
             write();
             setInterval(write, 10000);
+            publishMirror();
         }
         function sessionFromUrl() {
             try {
@@ -376,427 +333,495 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
                 return code || null;
             } catch (e) { return null; }
         }
-        // A7: REQUEST_SYNC was broadcast once and NOTHING handled it (the engine now answers it).
-        // Retry a few times, then declare the device unlinked rather than silently showing fiction.
-        let lastSyncAt = 0;
-        const urlSession = sessionFromUrl();
-        broadcast('REQUEST_SYNC', {});
-        let syncAttempts = 0;
-        const syncProbe = urlSession ? null : setInterval(() => {
-            syncAttempts += 1;
-            if (lastSyncAt) { clearInterval(syncProbe); return; }
-            if (syncAttempts > 6) {
-                clearInterval(syncProbe);
-                // Still a NEVER-linked state, not a lost one — kind is pinned explicitly.
-                setLinkState(false, 'No session was supplied and no controller answered in this browser. Enter the session code shown on the controller to link this tablet.', 'never');
-                return;
-            }
-            broadcast('REQUEST_SYNC', {});
-        }, 2000);
-        // Detect a link that goes stale mid-session (controller tab closed).
-        setInterval(() => {
-            // Only a page that HAS been linked can lose contact; `lastSyncAt` is null until then, so
-            // the elapsed time is real rather than being measured from page load.
-            // Firebase only fires on CHANGE, so a quiet paused session is not a lost link: when
-            // linked that way, the connection state (above) is what decides liveness.
-            if (fb.linked) return;
-            if (everLinked && lastSyncAt && Date.now() - lastSyncAt > 15000) {
-                setLinkState(false, 'Contact with the controller was lost ' + Math.round((Date.now() - lastSyncAt) / 1000) + 's ago. The numbers below are frozen and are NOT live.', 'lost');
-            }
-        }, 5000);
-        let overlayReturnFocus = null;
-        function closePaperOverlay() {
-            const overlay = document.getElementById('paperOverlay');
-            if (!overlay || overlay.classList.contains('hidden')) return;
-            overlay.classList.add('hidden');
-            overlayReturnFocus?.focus?.();
-        }
-        document.getElementById('paperOverlay')?.addEventListener('click', closePaperOverlay);
-        document.addEventListener('keydown', (event) => {
-            const overlay = document.getElementById('paperOverlay');
-            if (!overlay || overlay.classList.contains('hidden')) return;
-            if (event.key === 'Escape') { event.preventDefault(); closePaperOverlay(); }
-            else if (event.key === 'Tab') { event.preventDefault(); overlay.focus(); }
-        });
 
-        const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
-        const state = {
-            deviceMode: 'off', rhythm: 'Sinus Rhythm', hr: 75, spo2: 98, etco2: 5.1, bpSys: 120, bpDia: 80,
-            // C4: no hardcoded ladder and no hardcoded 120 J default. Both are replaced by the
-            // weight-based values the controller sends; the adult ladder is only the fallback.
-            energy: RG.ADULT_DEFAULT_ENERGY, energyLevels: RG.ADULT_ENERGY_STEPS.slice(), energyTouched: false,
-            weight: null, patientAge: null, recommendedEnergy: null,
-            charged: false, syncMode: false,
-            pacerOutput: 0, pacerRate: 60, pacingActive: false, isCaptured: false, originalRhythm: null,
-            noise: {}, captureThreshold: 70, cprActive: false
-            // WAVE 4b / D6: `shockCount` and `chargeTimer` have been REMOVED from this local state.
-            // Neither was ever read or written after initialisation here. The authoritative shock
-            // count lives in the ENGINE (state.defib.shockCount, added in the defib wave and shown on
-            // the monitor and in the debrief), and the charge timer is a plain `setTimeout` handle
-            // held inside the charge routine. Keeping stale duplicates on this object invited a future
-            // change to increment the local copy and silently diverge from the real count.
-        };
-        window.state = state;
-
-        let audioCtx;
-        function getAudioContext() {
+        // =====================================================================================
+        // SOUND
+        // =====================================================================================
+        let audioCtx = null;
+        function audio() {
             if (!audioCtx) {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (AudioCtx) audioCtx = new AudioCtx();
+                const A = window.AudioContext || window.webkitAudioContext;
+                if (A) { try { audioCtx = new A(); audioCtx.onstatechange = updateSoundOverlay; } catch (e) { audioCtx = null; } }
             }
-            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
             return audioCtx;
         }
+        function tone(freq, dur, gain, type, endFreq) {
+            const ctx = audio(); if (!ctx) return null;
+            const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
+            o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t);
+            if (endFreq) o.frequency.linearRampToValueAtTime(endFreq, t + dur);
+            g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur);
+            return o;
+        }
+        let chargeTone = null;
+        const sounds = {
+            charging: () => { chargeTone = tone(400, 2, 0.25, 'sine', 800); },
+            charged: () => tone(1000, 0.5, 0.35),
+            shock: () => tone(800, 0.3, 0.45),
+            alarm: () => tone(1200, 0.3, 0.1, 'square')
+        };
+        function stopChargeTone() { if (chargeTone) { try { chargeTone.stop(); } catch (e) {} chargeTone = null; } }
 
-        function playSound(type) {
-            const ctx = getAudioContext();
-            if (!ctx) return;
-            const oscillator = ctx.createOscillator();
-            const gainNode = ctx.createGain();
-            oscillator.connect(gainNode);
-            gainNode.connect(ctx.destination);
-            const now = ctx.currentTime;
-            switch(type) {
-                case 'charging':
-                    oscillator.frequency.setValueAtTime(400, now);
-                    oscillator.frequency.linearRampToValueAtTime(800, now + 2);
-                    gainNode.gain.setValueAtTime(0.3, now);
-                    oscillator.start(now); oscillator.stop(now + 2);
-                    break;
-                case 'charged':
-                    oscillator.frequency.setValueAtTime(1000, now);
-                    gainNode.gain.setValueAtTime(0.4, now);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
-                    oscillator.start(now); oscillator.stop(now + 0.5);
-                    break;
-                case 'shock':
-                    oscillator.frequency.setValueAtTime(800, now);
-                    gainNode.gain.setValueAtTime(0.5, now);
-                    gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
-                    oscillator.start(now); oscillator.stop(now + 0.3);
-                    break;
+        // CPR metronome at 110/min, scheduled on the audio clock so it stays steady.
+        let metroTimer = null, nextClick = 0;
+        function syncMetronome() {
+            const want = !!(patient.linked && patient.view.metronome && device.mode !== 'off');
+            if (want && !metroTimer) {
+                const ctx = audio(); if (!ctx) return;
+                nextClick = ctx.currentTime + 0.05;
+                metroTimer = setInterval(() => {
+                    const c = audioCtx; if (!c) return;
+                    if (nextClick < c.currentTime) nextClick = c.currentTime + 0.02;
+                    while (nextClick < c.currentTime + 0.12) {
+                        const o = c.createOscillator(), g = c.createGain();
+                        o.type = 'square'; o.frequency.value = 1000; g.gain.value = 0.05;
+                        o.connect(g); g.connect(c.destination); o.start(nextClick); o.stop(nextClick + 0.05);
+                        nextClick += 60 / 110;
+                    }
+                }, 25);
+            } else if (!want && metroTimer) { clearInterval(metroTimer); metroTimer = null; }
+            updateSoundOverlay();
+        }
+        // Browsers only start sound after a tap, so any press on the device unlocks it. The banner
+        // appears only while the CPR metronome is on and still silent.
+        function updateSoundOverlay() {
+            const needed = !!metroTimer && (!audioCtx || audioCtx.state !== 'running');
+            $('soundOverlay').classList.toggle('hidden', !needed || soundDismissed);
+        }
+        let soundDismissed = false;
+        $('soundBtn').addEventListener('click', () => { audio(); soundDismissed = true; updateSoundOverlay(); });
+        document.addEventListener('pointerdown', () => { audio(); requestWakeLock(); }, { capture: true });
+
+        // Keep the tablet's screen on for the whole scenario (the room monitor does the same). The
+        // browser drops the lock whenever the page is hidden, so it is asked for again on return,
+        // and on any tap (some browsers only grant it after a gesture).
+        let wakeLock = null;
+        async function requestWakeLock() {
+            if (EMBEDDED) return;
+            const info = $('wakeInfo');
+            if (!('wakeLock' in navigator)) { info.textContent = 'SCREEN MAY SLEEP'; return; }
+            if (document.visibilityState !== 'visible' || (wakeLock && !wakeLock.released)) return;
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                info.textContent = '';
+            } catch (e) { info.textContent = 'SCREEN MAY SLEEP'; }
+        }
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
+        requestWakeLock();
+        document.addEventListener('keydown', () => { audio(); }, { capture: true });
+
+        // =====================================================================================
+        // DISPLAY
+        // =====================================================================================
+        function setMessage(text, type) {
+            device.message = text; device.messageType = type || '';
+            if (device.mode === 'off') return;
+            const m = $('messageBar'); m.textContent = text; m.className = 'message-bar ' + (type || '');
+            publishMirror();
+        }
+        // Rate the ECG is drawn at: the patient's rate, or a rhythm-appropriate intrinsic rate for
+        // pulseless organised activity (PEA and pulseless VT still have complexes).
+        const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
+        function drawRate() {
+            if (patient.hr > 0) return patient.hr;
+            return INTRINSIC[patient.rhythm] || 60;
+        }
+        const hasQrs = () => RG.rWavePhase(patient.rhythm, drawRate(), 1) !== null;
+        function fmt(v, dp) { return Number.isFinite(v) ? (dp ? v.toFixed(dp) : String(Math.round(v))) : '--'; }
+
+        function render() {
+            const off = device.mode === 'off';
+            $('screen').classList.toggle('screen-off', off);
+            document.querySelectorAll('.mode-label').forEach(l => l.classList.toggle('active', l.dataset.mode === device.mode));
+            const rot = { monitor: 0, defib: 90, pacer: 180, off: 270 }[device.mode];
+            $('modeDial').style.setProperty('--dial-rotation', rot + 'deg');
+            $('pacingCover').classList.toggle('open', device.mode === 'pacer');
+            $('modeInfo').textContent = 'MODE: ' + device.mode.toUpperCase();
+            $('leadInfo').textContent = 'LEAD: ' + device.lead + '  x' + device.gain;
+            $('syncIndicator').textContent = device.sync ? 'SYNC' : '';
+            $('syncIndicator').className = device.sync ? 'screen-info sync-indicator' : 'screen-info';
+            $('syncBtn').classList.toggle('active', device.sync);
+            $('shockBtn').disabled = device.machine !== 'READY';
+            $('energyDisplay').textContent = device.energy;
+            $('energyRec').textContent = patient.linked && patient.weight ? ('REC ' + patient.recommendedEnergy + ' J (' + patient.weight + ' kg)') : '';
+            $('outputDisplay').textContent = device.pacerOutput;
+            $('rateDisplay').textContent = device.pacerRate;
+            $('outputDial').style.setProperty('--dial-rotation', (device.pacerOutput / 140 * 270) + 'deg');
+            $('rateDial').style.setProperty('--dial-rotation', ((device.pacerRate - 30) / 150 * 270) + 'deg');
+            $('pacerModeBtn').textContent = device.pacerDemand ? 'MODE: DEMAND' : 'MODE: ASYNC';
+
+            const hrEl = $('hrDisplay'), spEl = $('spo2Display'), coEl = $('etco2Display'), bpEl = $('bpDisplay');
+            if (!patient.linked || off) {
+                hrEl.textContent = '--'; spEl.textContent = '--'; coEl.textContent = '--'; bpEl.textContent = '--/--';
+                [hrEl, spEl].forEach(e => e.classList.remove('critical'));
+            } else {
+                // The monitor counts QRS complexes: a rate in PEA or pulseless VT, none in VF or asystole
+                const hr = patient.pacing.electrical ? device.pacerRate : (hasQrs() ? Math.round(drawRate()) : null);
+                hrEl.textContent = hr === null ? '---' : hr;
+                hrEl.classList.toggle('critical', hr === null || hr < 40 || hr > 150);
+                spEl.textContent = patient.spo2 > 0 ? Math.round(patient.spo2) : '---';
+                spEl.classList.toggle('critical', !(patient.spo2 > 0));
+                coEl.textContent = fmt(patient.etco2, 1);
+                bpEl.textContent = patient.bpSys > 0 ? (Math.round(patient.bpSys) + '/' + Math.round(patient.bpDia)) : '---/---';
             }
+            const warn = [];
+            if (patient.noise && patient.noise.leadoff) warn.push('CHECK LEADS');
+            $('traceWarning').textContent = off ? '' : warn.join(' ');
+            if (!off) { const m = $('messageBar'); m.textContent = device.message; m.className = 'message-bar ' + (device.messageType || ''); }
+            publishMirror();
         }
 
-        function setMessage(text, type='ready') { 
-            if(state.deviceMode==='off')return; 
-            const m=document.getElementById('messageBar'); 
-            m.textContent=text; m.className='message-bar '+type; 
+        // =====================================================================================
+        // DEVICE ACTIONS
+        // =====================================================================================
+        function disarm(reason) {
+            if (['CHARGING', 'READY', 'DISCHARGING'].indexOf(device.machine) === -1) return;
+            cancel('charge'); cancel('dump'); pendingSync = null; stopChargeTone();
+            device.machine = 'IDLE';
+            if (reason) setMessage('CHARGE CANCELLED - ' + reason, 'ready');
+            render();
         }
-
         function setMode(mode) {
-            document.querySelectorAll('.mode-label').forEach(l=>l.classList.remove('active'));
-            document.querySelector(`.mode-label[data-mode="${mode}"]`)?.classList.add('active');
-            const rotations = { monitor: 0, defib: 90, pacer: 180, off: 270 };
-            document.getElementById('modeDial').style.setProperty('--dial-rotation', `${rotations[mode]}deg`);
-            const cover = document.getElementById('pacingCover');
-            if(cover) { if(mode === 'pacer') cover.classList.add('open'); else cover.classList.remove('open'); }
-            state.deviceMode = mode;
-            
-            // Broadcast Mode Change to Controller
-            broadcast('DEVICE_MODE', { mode: mode });
-
-            if(mode==='off') {
-                document.querySelector('.screen').classList.add('screen-off');
-                document.getElementById('hrDisplay').textContent = '--';
-                stopAnimation();
-                if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
-            } else {
-                document.querySelector('.screen').classList.remove('screen-off');
-                evaluateCapture();
-                updateDisplays();
-                startAnimation();
-            }
+            if (mode === device.mode) return;
+            disarm(mode === 'off' ? '' : 'MODE CHANGED');
+            if (device.machine === 'ANALYSING') { cancel('analyse'); device.machine = 'IDLE'; }
+            const wasOff = device.mode === 'off';
+            device.mode = mode;
+            if (mode === 'off') { device.sync = false; ctxClear(); }
+            else if (wasOff) { resetTrace(); setMessage(patient.linked ? 'SELF TEST PASSED' : 'NOT LINKED - NO PATIENT DATA', patient.linked ? 'ready' : 'alert'); }
+            send('DEVICE_MODE', { mode });
+            if (mode === 'pacer' || wasOff || mode === 'off') sendPacer();
+            syncMetronome();
+            render();
         }
-
-        const fmt = (value, decimals = null) => Number.isFinite(value)
-            ? (decimals === null ? value : (Math.round(value * (10 ** decimals)) / (10 ** decimals)).toFixed(decimals)) : '--';
-        function updateDisplays() {
-            // A7: an UNLINKED device has no patient, so it must not display numbers. Showing HR 75 /
-            // SpO2 98 / 120/80 on a tablet that cannot reach the controller is what made the old
-            // standalone page dangerous as a teaching tool.
-            // WAVE 5 / ITEM 4: the blanking now runs BEFORE the deviceMode==='off' early return.
-            // With the device off, the old order left whatever was last painted (including the
-            // hardcoded 120/80) sitting on screen.
-            if (!window.isRemoteControlled) {
-                ['hrDisplay','spo2Display','etco2Display'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '--'; });
-                const bp0 = document.getElementById('bpDisplay'); if (bp0) bp0.textContent = '--/--';
-            }
-            if(state.deviceMode==='off') return;
-            if (!window.isRemoteControlled) {
-                // Already blanked above; nothing further to paint for the vitals.
-            } else {
-            document.getElementById('hrDisplay').textContent = fmt(state.hr);
-            document.getElementById('spo2Display').textContent = fmt(state.spo2);
-            document.getElementById('etco2Display').textContent = fmt(state.etco2, 1);
-            document.getElementById('bpDisplay').textContent = `${fmt(state.bpSys)}/${fmt(state.bpDia)}`;
-            }
-            document.getElementById('energyDisplay').textContent = state.energy;
-            const rec = document.getElementById('energyRec');
-            if (rec) rec.textContent = state.recommendedEnergy ? ('REC ' + state.recommendedEnergy + ' J' + (state.weight ? ' (' + state.weight + 'kg)' : '')) : '';
-            document.getElementById('outputDisplay').textContent = state.pacerOutput;
-            document.getElementById('rateDisplay').textContent = state.pacerRate;
-            document.getElementById('syncIndicator').textContent = state.syncMode ? 'SYNC' : '';
-            document.getElementById('modeInfo').textContent = `MODE: ${state.deviceMode.toUpperCase()}`;
+        function adjustEnergy(dir) {
+            if (device.mode === 'off') return;
+            const levels = patient.energyLevels;
+            let i = levels.indexOf(device.energy); if (i === -1) i = levels.indexOf(RG.ADULT_DEFAULT_ENERGY);
+            const n = clamp(i + (dir > 0 ? 1 : -1), 0, levels.length - 1);
+            if (levels[n] === device.energy) return;
+            device.energy = levels[n]; device.energyTouched = true;
+            disarm('ENERGY CHANGED');
+            send('ENERGY_SELECT', { energy: device.energy });
+            render();
         }
-
-        function adjustPacer(param, change) {
-            if(state.deviceMode!=='pacer') return;
-            if(param === 'output') state.pacerOutput = clamp(state.pacerOutput + change, 0, 140);
-            else state.pacerRate = clamp(state.pacerRate + change, 30, 180);
-            broadcast('PACER_UPDATE', { output: state.pacerOutput, rate: state.pacerRate });
-            if(param === 'output') {
-                const rot = (state.pacerOutput/140)*270;
-                const d = document.querySelector('.pacing-controls > div:nth-child(2) .pacer-dial');
-                if(d) d.style.setProperty('--dial-rotation', rot+'deg');
-            } else {
-                const rot = ((state.pacerRate-30)/150)*270;
-                const d = document.querySelector('.pacing-controls > div:nth-child(3) .pacer-dial');
-                if(d) d.style.setProperty('--dial-rotation', rot+'deg');
-            }
-            evaluateCapture();
-            updateDisplays();
+        function toggleSync() {
+            if (device.mode === 'off') return;
+            device.sync = !device.sync;
+            send('SYNC_TOGGLE', { sync: device.sync });
+            setMessage(device.sync ? 'SYNC MODE ON' : 'SYNC MODE OFF', 'ready');
+            render();
         }
-
-        // Transcutaneous pacing only captures once output exceeds the patient's threshold. The device
-        // previously showed the same thing at 0 mA as at 140 mA, so students never learned to titrate up.
-        function evaluateCapture() {
-            const wasCaptured = state.isCaptured;
-            state.pacingActive = state.deviceMode === 'pacer' && state.pacerOutput > 0 && state.pacerRate > 0;
-            state.isCaptured = state.pacingActive && state.pacerOutput >= state.captureThreshold;
-            if (!state.pacingActive) { if (wasCaptured) setMessage('PACING OFF', 'ready'); return; }
-            if (state.isCaptured) setMessage(`PACING - CAPTURE @ ${state.pacerOutput}mA`, 'ready');
-            else setMessage(`PACING - NO CAPTURE (${state.pacerOutput}mA)`, 'alert');
-        }
-
-        function chargeDefib() {
-            if(state.deviceMode!=='defib') return;
-            if(state.charged) return;
-            setMessage('CHARGING...', 'alert');
-            playSound('charging');
-            broadcast('CHARGE_INIT', { energy: state.energy });
-            setTimeout(()=>{
-                state.charged=true;
-                document.getElementById('shockBtn').disabled = false;
-                setMessage(`${state.energy}J READY`, 'alert');
-                playSound('charged');
+        function charge() {
+            if (device.mode !== 'defib') { if (device.mode !== 'off') setMessage('SELECT DEFIB MODE TO CHARGE', 'alert'); return; }
+            if (device.machine !== 'IDLE') return;
+            device.machine = 'CHARGING';
+            setMessage('CHARGING ' + device.energy + ' J...', 'alert');
+            sounds.charging();
+            send('CHARGE_INIT', { energy: device.energy });
+            render();
+            later('charge', () => {
+                chargeTone = null;
+                device.machine = 'READY';
+                sounds.charged();
+                setMessage(device.energy + ' J READY - ' + (device.sync ? 'SYNC' : 'UNSYNC') + ' - STAND CLEAR', 'alert');
+                render();
+                // A real device dumps an unused charge after about a minute
+                later('dump', () => {
+                    if (device.machine !== 'READY') return;
+                    device.machine = 'IDLE';
+                    setMessage('CHARGE DUMPED - SAFETY TIMEOUT', 'ready');
+                    sounds.alarm();
+                    render();
+                }, 60000);
             }, 2000);
         }
-
-        function deliverShock() {
-            if(!state.charged) return;
-            state.charged = false;
-            document.getElementById('shockBtn').disabled = true;
-            setMessage('SHOCK DELIVERED', 'alert');
-            playSound('shock');
-            broadcast('SHOCK_DELIVERED', { energy: state.energy, sync: state.syncMode });
-        }
-
-        function toggleSync() {
-            state.syncMode = !state.syncMode;
-            // The flag used to be purely local on the shock message; the engine now models
-            // synchronised cardioversion, so tell it.
-            broadcast('SYNC_TOGGLE', { sync: state.syncMode });
-            document.getElementById('syncBtn')?.classList.toggle('active', state.syncMode);
-            updateDisplays();
-        }
-        
-        function adjustEnergy(dir) {
-            let idx = state.energyLevels.indexOf(state.energy);
-            if (idx === -1) idx = 0;
-            if (dir > 0 && idx < state.energyLevels.length - 1) state.energy = state.energyLevels[idx + 1];
-            else if (dir < 0 && idx > 0) state.energy = state.energyLevels[idx - 1];
-            state.energyTouched = true;
-            broadcast('ENERGY_SELECT', { energy: state.energy });
-            state.charged = false;
-            document.getElementById('shockBtn').disabled = true;
-            updateDisplays();
-        }
-
-        function checkPulse() {
-            broadcast('CHECK_PULSE', { timestamp: Date.now() });
-            setMessage('CHECK PULSE', 'ready');
-            setTimeout(() => setMessage('SIMULATOR READY', 'ready'), 1000);
-        }
-
-        function analyseRhythm() {
-            if (state.deviceMode === 'off') return;
-            // A7: an unlinked device has no patient. Saying "NO SHOCK ADVISED" here was the single
-            // most dangerous teaching artefact in the app.
-            if (!window.isRemoteControlled) {
-                setMessage('NOT LINKED \u2014 NO PATIENT DATA', 'alert');
+        let pendingSync = null;   // { until } while waiting for an R wave in SYNC mode
+        function shock() {
+            if (device.machine !== 'READY' || device.mode !== 'defib') return;
+            cancel('dump');
+            if (device.sync) {
+                // The device fires on the next R wave it detects, or not at all
+                if (!patient.linked || !hasQrs() || (device.lead !== 'PADS' && patient.noise && patient.noise.leadoff)) {
+                    setMessage('SYNC: NO R-WAVE DETECTED - SHOCK NOT DELIVERED', 'alert');
+                    later('dump', () => { if (device.machine === 'READY') { device.machine = 'IDLE'; setMessage('CHARGE DUMPED', 'ready'); render(); } }, 60000);
+                    return;
+                }
+                device.machine = 'DISCHARGING';
+                pendingSync = { until: performance.now() + 3000 };
+                setMessage('SYNC... WAITING FOR R-WAVE', 'alert');
+                render();
                 return;
             }
-            setMessage('ANALYSING...', 'alert');
-            setTimeout(() => {
-                // C1: the registry decides, not a second private list that disagreed with the engine
-                // (it called plain 'VT' shockable while the engine's own list did not include it).
-                const shockable = RG.isShockable(state.originalRhythm || state.rhythm);
-                const result = shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED';
-                setMessage(result, shockable ? 'alert' : 'ready');
-                broadcast('ANALYSIS_RESULT', { result, rhythm: state.originalRhythm || state.rhythm });
-                setTimeout(() => setMessage('SIMULATOR READY', 'ready'), 2000);
-            }, 3000);
+            fire(false);
+        }
+        function fire(sync) {
+            pendingSync = null;
+            device.machine = 'IDLE';
+            flashUntil = performance.now() + 150;
+            sounds.shock();
+            setMessage('SHOCK DELIVERED', 'alert');
+            send('SHOCK_DELIVERED', { energy: device.energy, sync });
+            render();
+        }
+        function analyse() {
+            if (device.mode === 'off' || device.machine !== 'IDLE') return;
+            if (!patient.linked) { setMessage('NOT LINKED - NO PATIENT DATA', 'alert'); return; }
+            device.machine = 'ANALYSING';
+            setMessage('ANALYSING ECG - STAND CLEAR', 'alert');
+            render();
+            later('analyse', () => {
+                device.machine = 'IDLE';
+                const shockable = RG.isShockable(patient.rhythm);
+                setMessage(shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED', shockable ? 'alert' : 'ready');
+                send('ANALYSIS_RESULT', { result: shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED', rhythm: patient.rhythm });
+                render();
+            }, 2500);
+        }
+        function sendPacer() { send('PACER_UPDATE', { output: device.mode === 'pacer' ? device.pacerOutput : 0, rate: device.pacerRate, demand: device.pacerDemand }); }
+        function adjustPacer(param, change) {
+            if (device.mode !== 'pacer') { if (device.mode !== 'off') setMessage('SELECT PACER MODE TO ADJUST PACING', 'alert'); return; }
+            if (param === 'output') device.pacerOutput = clamp(device.pacerOutput + change, 0, 140);
+            else device.pacerRate = clamp(device.pacerRate + change, 30, 180);
+            sendPacer();
+            setMessage(param === 'output' ? ('PACER OUTPUT ' + device.pacerOutput + ' mA') : ('PACER RATE ' + device.pacerRate + ' ppm'), 'ready');
+            render();
+        }
+        function togglePacerMode() {
+            if (device.mode !== 'pacer') return;
+            device.pacerDemand = !device.pacerDemand;
+            sendPacer();
+            setMessage(device.pacerDemand ? 'DEMAND PACING' : 'ASYNCHRONOUS PACING', 'ready');
+            render();
+        }
+        function checkPulse() {
+            if (device.mode === 'off') return;
+            send('CHECK_PULSE', { timestamp: Date.now() });
+            setMessage('CHECKING FOR PULSE...', '');
+            later('pulse', () => {
+                // Education only: say what the team would feel (a real defib cannot tell you)
+                if (!patient.linked || !patient.view.pulseFeedback) { setMessage('', ''); return; }
+                if (patient.pacing.electrical && !patient.pacing.mechanical) setMessage('PULSE DOES NOT MATCH PACED RATE - NO MECHANICAL CAPTURE', 'alert');
+                else if (patient.pacing.mechanical) setMessage('PULSE PRESENT - MATCHES PACED RATE (' + device.pacerRate + '/MIN)', 'ready');
+                else if (RG.isPulseless(patient.rhythm)) setMessage('NO PULSE DETECTED - CARDIAC ARREST', 'alert');
+                else setMessage('PULSE PRESENT - CAROTID PULSE PALPABLE', 'ready');
+            }, 1500);
+        }
+        function cycleLead() {
+            if (device.mode === 'off') return;
+            device.lead = LEADS[(LEADS.indexOf(device.lead) + 1) % LEADS.length];
+            send('LEAD_CHANGE', { lead: device.lead });
+            setMessage('LEAD ' + device.lead, 'ready');
+            render();
+        }
+        function cycleSize() {
+            if (device.mode === 'off') return;
+            device.gain = GAINS[(GAINS.indexOf(device.gain) + 1) % GAINS.length];
+            send('SIZE_CHANGE', { gain: device.gain });
+            setMessage('ECG SIZE x' + device.gain, 'ready');
+            render();
         }
 
-        function markerPress() {
-            broadcast('MARKER_EVENT', { timestamp: Date.now() });
-            setMessage('EVENT MARKED', 'ready');
-            setTimeout(()=>setMessage('SIMULATOR READY', 'ready'), 1000);
+        // ---- 12-lead / recorder
+        let overlayReturnFocus = null;
+        function show12Lead() {
+            if (!patient.linked) { setMessage('NOT LINKED - NO PATIENT DATA', 'alert'); return; }
+            RG.render12Lead($('paperCanvas'), patient.rhythm, patient.scenario, Math.round(drawRate()));
+            overlayReturnFocus = document.activeElement;
+            $('paperOverlay').classList.remove('hidden');
+            $('paperOverlay').focus();
+        }
+        function closePaper() { if (!$('paperOverlay').classList.contains('hidden')) { $('paperOverlay').classList.add('hidden'); if (overlayReturnFocus && overlayReturnFocus.focus) overlayReturnFocus.focus(); } }
+        $('paperOverlay').addEventListener('click', closePaper);
+
+        // ---- Education hints (RCUK)
+        const HINTS = [['shockable', 'Shockable arrest'], ['nonshockable', 'Non-shockable arrest'], ['tachy', 'Tachycardia'], ['brady', 'Bradycardia'], ['postrosc', 'Post-ROSC']];
+        HINTS.forEach(([key, label]) => {
+            const b = document.createElement('button'); b.className = 'hint-btn'; b.textContent = 'RCUK: ' + label; b.dataset.hint = key;
+            b.addEventListener('click', () => openHint(key));
+            $('hintsRow').appendChild(b);
+        });
+        let hintReturn = null;
+        function openHint(key) {
+            const g = window.DefibSim && window.DefibSim.guidelineFor(key, patient.age);   // paediatric cards under 18
+            if (!g) return;
+            hintReturn = document.activeElement;
+            $('hintTitle').textContent = g.title;
+            $('hintBody').innerHTML = g.content;   // static, trusted content from data/defibsim.js
+            $('hintOverlay').classList.remove('hidden');
+            $('hintClose').focus();
+        }
+        function closeHint() { if ($('hintOverlay').classList.contains('hidden')) return; $('hintOverlay').classList.add('hidden'); if (hintReturn && hintReturn.focus) hintReturn.focus(); }
+        $('hintClose').addEventListener('click', closeHint);
+        $('hintOverlay').addEventListener('click', (e) => { if (e.target === $('hintOverlay')) closeHint(); });
+        function updateHints() {
+            const on = patient.linked && patient.view.hints;
+            $('hintsRow').classList.toggle('hidden', !on);
+            if (!on) closeHint();
         }
 
-        function alarmSuspend() {
-            broadcast('ALARM_SILENCE', { timestamp: Date.now() });
-            const btn = document.getElementById('alarmSuspendBtn');
-            btn.style.background = '#e67e22'; 
-            setTimeout(() => btn.style.background = '', 500);
-        }
+        // ---- Wiring
+        document.querySelectorAll('.mode-label').forEach(l => l.addEventListener('click', () => setMode(l.dataset.mode)));
+        document.querySelectorAll('.energy-arrow').forEach(b => b.addEventListener('click', () => adjustEnergy(parseInt(b.dataset.energyDir, 10))));
+        document.querySelectorAll('.pacer-btn').forEach(b => b.addEventListener('click', () => adjustPacer(b.dataset.pacerParam, parseInt(b.dataset.pacerDir, 10))));
+        $('pacerModeBtn').addEventListener('click', togglePacerMode);
+        $('chargeBtn').addEventListener('click', charge);
+        $('shockBtn').addEventListener('click', shock);
+        $('syncBtn').addEventListener('click', toggleSync);
+        $('analyseBtn').addEventListener('click', analyse);
+        $('checkPulseBtn').addEventListener('click', checkPulse);
+        $('markerBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('MARKER_EVENT', { timestamp: Date.now() }); setMessage('EVENT MARKED', 'ready'); });
+        $('alarmSuspendBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('ALARM_SILENCE', { timestamp: Date.now() }); setMessage('ALARMS SUSPENDED', 'ready'); });
+        $('recorderBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('REQUEST_12LEAD', {}); show12Lead(); });
+        $('leadBtn').addEventListener('click', cycleLead);
+        $('sizeBtn').addEventListener('click', cycleSize);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') { closePaper(); closeHint(); return; }
+            if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || typeof e.key !== 'string') return;
+            if (e.target.closest && e.target.closest('input, select, textarea')) return;
+            if (!$('hintOverlay').classList.contains('hidden') || !$('paperOverlay').classList.contains('hidden')) return;
+            const k = e.key.toLowerCase();
+            if (k === 'c') charge(); else if (k === 's') shock(); else if (k === 'p') checkPulse();
+            else if (k === 'a') analyse();
+            else if (device.mode === 'defib' && e.key === 'ArrowUp') { e.preventDefault(); adjustEnergy(1); }
+            else if (device.mode === 'defib' && e.key === 'ArrowDown') { e.preventDefault(); adjustEnergy(-1); }
+        });
+        setInterval(() => { $('timeInfo').textContent = new Date().toTimeString().split(' ')[0]; }, 1000);
 
-        function recorderPress() {
-            broadcast('REQUEST_12LEAD', {});
-            setMessage('REQUESTING 12-LEAD...', 'ready');
-        }
-
-        document.querySelectorAll('.mode-label').forEach(l=>l.addEventListener('click', ()=>setMode(l.dataset.mode)));
-        document.querySelectorAll('.pacer-btn').forEach(b=>b.addEventListener('click', ()=>adjustPacer(b.dataset.pacerParam, parseInt(b.dataset.pacerDir))));
-        document.getElementById('chargeBtn').addEventListener('click', chargeDefib);
-        document.getElementById('shockBtn').addEventListener('click', deliverShock);
-        document.getElementById('syncBtn').addEventListener('click', toggleSync);
-        document.getElementById('analyseBtn').addEventListener('click', analyseRhythm);
-        document.querySelectorAll('.energy-arrow').forEach(b=>b.addEventListener('click', ()=>adjustEnergy(parseInt(b.dataset.energyDir))));
-        document.getElementById('checkPulseBtn').addEventListener('click', checkPulse);
-        document.getElementById('markerBtn').addEventListener('click', markerPress);
-        document.getElementById('alarmSuspendBtn').addEventListener('click', alarmSuspend);
-        document.getElementById('recorderBtn').addEventListener('click', recorderPress);
-
-        const canvas = document.getElementById('ecgCanvas');
+        // =====================================================================================
+        // ECG: sweep-and-erase, drawn from the shared registry
+        // =====================================================================================
+        const canvas = $('ecgCanvas');
         const ctx = canvas.getContext('2d');
-        let lastTime = 0;
-        function resize() { 
-            const dpr = window.devicePixelRatio || 1;
-            const rect = canvas.parentElement.getBoundingClientRect();
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            // setTransform, not scale: scale multiplies into the existing matrix, so every resize or
-            // orientation change compounded the factor until the trace shrank off-canvas.
+        let W = 0, H = 0, dpr = 1;
+        function resize() {
+            dpr = window.devicePixelRatio || 1;
+            const r = canvas.getBoundingClientRect();
+            if (!r.width || !r.height) return;
+            W = r.width; H = r.height;
+            canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            
-            // Set grid background immediately on resize
-            ctx.fillStyle = '#050505'; 
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+            sweepX = 0; lastY = null;
         }
-        window.addEventListener('resize', resize); resize();
+        function ctxClear() { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
+        window.addEventListener('resize', resize);
+        if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
 
-        // --- NEW ANIMATION LOGIC (MATCHING MONITOR.JS) ---
-        const drawState = { x: 0, lastY: 100, beatPhase: 0, beatProgress: 0, pWaveProgress: 0, lastTime: 0 };
+        const SPEED = 125;          // px per second (a 25 mm/s-looking sweep on a tablet)
+        const ERASE = 20;
+        let sweepX = 0, lastY = null, ecgPhase = 0, pacerPhase = 0, simTime = 0, lastTs = 0, flashUntil = 0;
+        function resetTrace() { sweepX = 0; lastY = null; ctxClear(); }
 
-        // Exactly one rAF loop at a time. setMode() used to call requestAnimationFrame unconditionally,
-        // so every dial turn spawned another loop and the trace drew progressively faster.
-        let rafId = null;
-        function startAnimation() {
-            if (rafId !== null) return;
-            drawState.lastTime = 0;
-            rafId = requestAnimationFrame(animate);
+        // The amplitude of one sample at the current lead and size, with artefacts.
+        function sampleAt(phase, t) {
+            const beat = Math.floor(phase);
+            let y = RG.ecgValue(phase - beat, t, patient.rhythm, { hr: drawRate(), beat, lead: device.lead, cpr: patient.cpr || (patient.noise && patient.noise.cpr) });
+            const n = patient.noise || {};
+            if (n.movement) y += 18 * Math.sin(t * 2.3) + 10 * Math.sin(t * 7.1 + 1) + (Math.sin(t * 0.7) > 0.95 ? 30 : 0);
+            if (n.interference) y += 4 * Math.sin(t * 2 * Math.PI * 50);
+            if (n.leadoff && device.lead !== 'PADS') y = 1.5 * Math.sin(t * 0.8);
+            return y * device.gain * (Number(patient.gain) || 1);
         }
-        function stopAnimation() {
-            if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-        }
 
-        function animate(timestamp) {
-            rafId = null;
-            if(state.deviceMode==='off') return;
-            if(!drawState.lastTime) drawState.lastTime = timestamp;
-            
-            let dt = Math.min((timestamp - drawState.lastTime) / 1000, 0.05);
-            drawState.lastTime = timestamp;
+        function animate(ts) {
+            requestAnimationFrame(animate);
+            if (!W) resize();
+            if (!lastTs) lastTs = ts;
+            const dt = Math.min((ts - lastTs) / 1000, 0.05);
+            lastTs = ts;
+            if (device.mode === 'off' || !W) return;
+            const base = H * 0.55, scale = H / 220;
+            const rate = drawRate();
+            const prevPhase = ecgPhase;
+            const factor = RG.beatIntervalFactor(patient.rhythm, Math.floor(ecgPhase)) || 1;
+            if (patient.linked) ecgPhase += dt * rate / 60 / factor;
+            const dx = SPEED * dt;
+            // erase ahead of the sweep
+            ctx.fillStyle = '#000';
+            ctx.fillRect(sweepX, 0, ERASE + dx, H);
+            if (sweepX + ERASE + dx > W) ctx.fillRect(0, 0, sweepX + ERASE + dx - W, H);
+            // sub-sample the frame so narrow complexes are never clipped
+            const n = Math.max(1, Math.ceil(dx / 1.5));
+            ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.shadowBlur = 6; ctx.shadowColor = 'rgba(57,255,20,0.6)';
+            ctx.beginPath();
+            let x = sweepX, y = lastY === null ? base : lastY;
+            ctx.moveTo(x, y);
+            for (let i = 1; i <= n; i++) {
+                const f = i / n;
+                const ph = prevPhase + (ecgPhase - prevPhase) * f;
+                const t = simTime + dt * f;
+                const ny = patient.linked ? base - sampleAt(ph, t) * scale : base;
+                let nx = sweepX + dx * f;
+                if (nx >= W) {
+                    // wrap: finish at the right edge, continue from the left
+                    ctx.lineTo(W, ny); ctx.moveTo(0, ny); nx -= W;
+                    sweepX -= W;
+                }
+                ctx.lineTo(nx, ny); x = nx; y = ny;
+            }
+            ctx.stroke(); ctx.shadowBlur = 0;
 
-            const ecgSpeed = 150; 
-            drawState.x += ecgSpeed * dt;
-            const prevX = drawState.x - (ecgSpeed * dt);
-            
-            // Draw Eraser Bar
-            const eraserWidth = 35;
-            if (drawState.x + 30 < canvas.width / window.devicePixelRatio) {
-                 ctx.fillStyle = '#050505';
-                 ctx.fillRect(drawState.x, 0, eraserWidth, canvas.height / window.devicePixelRatio);
-            } else {
-                 ctx.fillStyle = '#050505';
-                 ctx.fillRect(drawState.x, 0, (canvas.width / window.devicePixelRatio) - drawState.x, canvas.height / window.devicePixelRatio);
-                 ctx.fillRect(0, 0, eraserWidth, canvas.height / window.devicePixelRatio);
+            // R waves this frame: SYNC markers, and a synchronised shock fires on the first one
+            if (patient.linked) {
+                for (let b = Math.floor(prevPhase); b <= Math.floor(ecgPhase); b++) {
+                    const rp = RG.rWavePhase(patient.rhythm, rate, b);
+                    if (rp === null || !(prevPhase < b + rp && b + rp <= ecgPhase)) continue;
+                    const rx = sweepX + dx * ((b + rp - prevPhase) / Math.max(1e-6, ecgPhase - prevPhase));
+                    const mx = rx >= W ? rx - W : (rx < 0 ? rx + W : rx);
+                    if (device.sync && !patient.cpr) { ctx.fillStyle = '#fff'; ctx.fillRect(mx - 3, 8, 6, 18); }
+                    if (pendingSync && device.machine === 'DISCHARGING') fire(true);
+                }
+            }
+            if (pendingSync && performance.now() > pendingSync.until) {
+                pendingSync = null; device.machine = 'IDLE';
+                setMessage('SYNC: NO R-WAVE DETECTED - SHOCK NOT DELIVERED', 'alert'); render();
             }
 
-            const height = canvas.height / window.devicePixelRatio;
-            const baselineECG = height * 0.5;
-
-            // Handle Heart Rate
-            // WAVE 7: the old AF "jitter" added a random offset to the HR on random FRAMES
-            // (Math.random() every frame while beatProgress < 0.05), so the irregularity depended on
-            // frame rate and could change part-way through a beat. Irregularity is now a property of
-            // the BEAT, shared with the React monitor through RHYTHMS.beatIntervalFactor, so the
-            // standalone defibrillator and the monitor draw the same AF, the same flutter with
-            // variable block and the same Mobitz II dropped beats.
-            let effectiveHR = state.hr;
-            if (state.cprActive) effectiveHR = 110;
-            else if (!(effectiveHR > 0)) {
-                // C2: the old line forced EVERY pulseless rhythm to 150/min, which is why PEA was
-                // drawn as a perfusing-looking rhythm at 150 bpm in 9 scenarios. Rhythm-appropriate
-                // intrinsic rates instead.
-                const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'VF': 240, 'Fine VF': 300, 'Asystole': 6, 'Paced': 70 };
-                effectiveHR = INTRINSIC[RG.canonical(state.rhythm)] || 70;
-            } 
-
-            // PHASE ACCUMULATOR. `beatPhase` increases monotonically; its integer part is the beat
-            // index. Advancing by dt/beatDuration (never recomputing the phase from absolute time)
-            // is what keeps the trace regular while the rate changes, and the per-beat interval
-            // factor is what keeps the rhythms that SHOULD be irregular irregular.
-            const beatDuration = 60 / Math.max(10, effectiveHR);
-            const beatIdx = Math.floor(drawState.beatPhase);
-            const rrFactor = (RG.beatIntervalFactor ? RG.beatIntervalFactor(state.rhythm, beatIdx) : 1) || 1;
-            drawState.beatPhase += (dt / beatDuration) / rrFactor;
-            // Keep the legacy field in step for anything that still reads it.
-            drawState.beatProgress = drawState.beatPhase - Math.floor(drawState.beatPhase);
-
-            drawState.pWaveProgress += dt * (75 / 60);
-            if (drawState.pWaveProgress >= 1) drawState.pWaveProgress -= 1;
-
-            if (drawState.x > canvas.width / window.devicePixelRatio) { 
-                drawState.x = 0; 
-                drawState.lastY = baselineECG; 
+            // Pacer spikes that are NOT capturing (the engine turns captured beats into the paced
+            // rhythm itself). Demand mode is silent while the patient's own rate is faster.
+            if (device.mode === 'pacer' && device.pacerOutput > 0 && !patient.pacing.electrical && patient.linked) {
+                const inhibited = device.pacerDemand && hasQrs() && drawRate() >= device.pacerRate;
+                const prevP = pacerPhase;
+                pacerPhase += dt * device.pacerRate / 60;
+                if (!inhibited && Math.floor(pacerPhase) !== Math.floor(prevP)) {
+                    ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 2; ctx.beginPath();
+                    ctx.moveTo(x, base - 60 * scale); ctx.lineTo(x, base + 50 * scale); ctx.stroke();
+                }
             }
+            if (performance.now() < flashUntil) { ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(0, 0, W, H); }
 
-            // Calculate Y
-            // A7: with no linked patient there is no rhythm to draw — flat, undriven baseline only.
-            let rawECG = window.isRemoteControlled
-                ? RG.ecgValue(drawState.beatProgress, (timestamp / 1000), state.rhythm, { cpr: state.cprActive, beat: Math.floor(drawState.beatPhase) })
-                : 0;
-            const gain = window.waveformGain || 1.0;
-            let yECG = baselineECG - (rawECG * gain);
-            if (window.interferenceActive) yECG += Math.sin(timestamp / 20) * 5;
-
-            // Draw Line
-            if (drawState.x > prevX) {
-                ctx.strokeStyle = '#39ff14'; 
-                ctx.lineWidth = 2.5; 
-                ctx.lineJoin = 'round'; 
-                ctx.lineCap = 'round';
-                ctx.shadowBlur = 6; 
-                ctx.shadowColor = 'rgba(57, 255, 20, 0.6)';
-                
-                ctx.beginPath(); 
-                ctx.moveTo(prevX, drawState.lastY); 
-                ctx.lineTo(drawState.x, yECG);
-                ctx.stroke();
-            }
-            
-            drawState.lastY = yECG;
-            rafId = requestAnimationFrame(animate);
+            lastY = y;
+            sweepX += dx;
+            if (sweepX >= W) sweepX -= W;
+            simTime += dt;
         }
+        requestAnimationFrame(animate);
 
-        startAnimation();
-        // Linked LAST, once every function and the device state above exist: Firebase raises
-        // events for this page's own writes (the presence heartbeat) synchronously, so starting the
-        // link earlier ran the sync handler before `state` was initialised.
+        // =====================================================================================
+        // START-UP
+        // =====================================================================================
+        render();
+        const urlSession = sessionFromUrl();
         if (urlSession) fbStart(urlSession);
+        else {
+            // Same-browser controller: ask for the patient, then declare "not linked" honestly.
+            let tries = 0;
+            const probe = setInterval(() => {
+                if (lastSyncAt) { clearInterval(probe); return; }
+                if (++tries > 6) { clearInterval(probe); setLinkState(false, 'No session was supplied and no controller answered in this browser. Enter the session code shown on the controller to link this tablet.', 'never'); return; }
+                send('REQUEST_SYNC', {});
+            }, 2000);
+            send('REQUEST_SYNC', {});
+        }
+        // A same-browser link that goes quiet is a lost link (Firebase decides liveness itself).
+        setInterval(() => {
+            if (fb.linked || !everLinked || !lastSyncAt) return;
+            if (Date.now() - lastSyncAt > 15000) setLinkState(false, 'Contact with the controller was lost ' + Math.round((Date.now() - lastSyncAt) / 1000) + 's ago. The numbers below are frozen and are NOT live.', 'lost');
+        }, 5000);
     });
     </script>
 </body>

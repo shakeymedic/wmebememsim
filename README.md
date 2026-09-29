@@ -18,7 +18,7 @@ as-is in a browser (CDN React, in-browser Babel, the Tailwind CDN), and on every
 | `data/auth.js` | Firebase Auth, the entitlements model, the admin panel, restricted-scenario loading |
 | `data/components.js` | Shared UI primitives (`Button`, `Modal`, `Lucide`, `ECGMonitor`, …) |
 | `data/screens/` | `setup.js`, `livesim.js` (controller), `monitor.js`, `debrief.js` |
-| `defib/` | The standalone defibrillator page and its cache-first service worker |
+| `defib/` | The defibrillator tablet page and its service worker |
 | `database.rules.json` | The Realtime Database security rules **you must paste into the Firebase console** |
 
 ---
@@ -32,40 +32,34 @@ python3 -m http.server 8000
 ```
 
 - Controller: `http://localhost:8000/`
-- Monitor: `http://localhost:8000/?mode=monitor&session=ABCD`
-- Defibrillator: `http://localhost:8000/defib/?session=ABCD`
+- Monitor: `http://localhost:8000/?mode=monitor&session=K7PQ3M`
+- Defibrillator: `http://localhost:8000/defib/?session=K7PQ3M`
 
 The **Session ID** shown in the controller header is what pairs the screens. It maps to
 `sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
-characters (no 0/O, 1/I/L). The controller replaces any older four-character code (from this browser
+characters (no 0/O, 1/I/L). The database rules accept only codes in this format. The controller replaces any older four-character code (from this browser
 or the address bar) with a new one when it loads, and **New code** on the setup screen starts a fresh
-one at any time; room monitors can still join an old code. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
+one at any time. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
 tablet can pair by scanning instead of typing.
 
 The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code
 into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
 **Defib** button) remains available too.
 
-### Clearing out old sessions (optional, needs a server job)
+### Clearing out old sessions
 
-`sessions/*` is deliberately open so monitors join with nothing but a code, and the Realtime Database
-cannot expire data by itself, so old sessions accumulate. Each session carries `updatedAt` (epoch ms,
-rounded to the minute) for a cleanup job to key on. **This job is not deployed**; if you want it, a
-scheduled Cloud Function along these lines deletes sessions idle for more than a day:
+The Realtime Database cannot expire data by itself, so without a clean-up old sessions accumulate.
+`.github/workflows/cleanup-sessions.yml` runs `scripts/cleanup-sessions.mjs` every day on GitHub (no
+Firebase paid plan needed) and deletes sessions with no activity of any kind (patient updates,
+screens connected, defib presses) for more than 24 hours. **It does nothing until you give it access:**
 
-```js
-// functions/index.js — requires the Blaze plan. Not part of this repository's deployment.
-const { onSchedule } = require('firebase-functions/v2/scheduler');
-const admin = require('firebase-admin'); admin.initializeApp();
-exports.purgeOldSessions = onSchedule('every 24 hours', async () => {
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-  const snap = await admin.database().ref('sessions').orderByChild('updatedAt').endAt(cutoff).once('value');
-  const updates = {}; snap.forEach(c => { updates[c.key] = null; });
-  if (Object.keys(updates).length) await admin.database().ref('sessions').update(updates);
-});
-```
-
-(Add `".indexOn": ["updatedAt"]` under `sessions` in the rules if you deploy it.)
+1. Firebase console → Project settings → Service accounts → **Generate new private key**. This downloads
+   a JSON file. Treat it like a password.
+2. GitHub → this repository → Settings → Secrets and variables → Actions → **New repository secret**,
+   name `FIREBASE_SERVICE_ACCOUNT`, value: the whole contents of that JSON file.
+3. Publish `database.rules.json` (it declares the index the job uses).
+4. Optional: Actions → "Clear out old sessions" → Run workflow, with "Only list" ticked, to see what it
+   would delete before the first real run.
 
 ---
 
@@ -74,6 +68,7 @@ exports.purgeOldSessions = onSchedule('every 24 hours', async () => {
 | Mode | What it does |
 | --- | --- |
 | **Quick Sim** | A blank synthetic patient and nothing else. Editable obs, the full rhythm list, arrest/ROSC, the monitor and the defib toggle. No scenario, no drugs, no interventions. For ad-hoc teaching at the bedside. |
+| **Defib Sim** | Defibrillator skills on a ZOLL-style tablet defib, with its own Defib controller. Built-in defibrillation, cardioversion and pacing scenarios, free play, or a custom sequence of rhythms. Education or Assessment mode. |
 | **Random** | Generates a patient from the scenario templates with randomised demographics and obs. |
 | **Premade** | Pick from the 254 built-in scenarios by category. |
 | **Restricted** | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
@@ -105,6 +100,57 @@ flag. Consequences worth knowing:
   and weight-based dosing all work**; leave them alone and you get a sensible 40-year-old adult.
 - It **does** produce a debrief — event log, vitals trend, instructor notes — but no score and no
   learning objectives, because there is no scenario to have objectives.
+
+### Defib Sim
+
+Defib Sim is the standalone Defib-sim rebuilt inside this app, so it uses the same session codes,
+engine, Firebase link and debrief. The learner works the defibrillator at `defib/index.html` (the
+**Join** button shows its QR code, or type the session code on the tablet); the facilitator runs
+the scenario from the **Defib controller**, which opens instead of the normal controller for a Defib
+Sim scenario (`scenario.defibSim`).
+
+- **Scenarios** (`data/defibsim.js`): VF, pulseless VT, unstable VT, unstable SVT, fast AF, complete
+  heart block and symptomatic bradycardia; free play; or a **custom sequence** of up to five rhythms,
+  each moving on at a trigger (analyse, shock, pacing capture, or a 30 s / 60 s / 2 min timer that runs
+  on the sim clock). While a custom sequence runs, a shock changes the rhythm only when the current step
+  moves on at a shock (and a shock on the last such step converts to sinus rhythm), as in the
+  standalone app. Sequences can be saved on the device, exported and imported (the standalone app's
+  files import too).
+- **Education vs Assessment.** In Education the defib shows pulse-check results and the RCUK hint
+  cards. In Assessment it shows neither (a real defibrillator tells you neither). The facilitator sees
+  the RCUK drug prompts in both modes; the learner never does. For a patient under 18 the hint cards
+  and drug prompts are the paediatric ones (15:2, 4 J/kg, 10 micrograms/kg adrenaline, 5 mg/kg
+  amiodarone, cardioversion at 1 J/kg doubling to 4 J/kg).
+- **Shock response.** Defib Sim defaults to **Auto**: an arrest converts on the scenario's shock number
+  (the third adequate shock) and a cardioversion on the first adequate synchronised shock; an
+  unsynchronised shock into a rhythm with a pulse causes VF. "Adequate" means at least 150 J for an
+  adult (3 J/kg for a child) to defibrillate, and 70 J (1 J/kg) to cardiovert. These thresholds are
+  simulator settings, not guideline values. The realistic probabilistic model and fixed shock counts
+  are one select away, as they are on the main controller.
+- **Paediatric content** follows RCUK Guidelines 2025: the Paediatric advanced life support algorithm
+  (Nov 2025 V2), the Paediatric cardiac arrhythmias algorithm and the Paediatric emergency drug chart
+  (Feb 2026). The estimated weight and tube size (WETFLAG) come from the chart; the engine logs
+  weight-based doses for a child (atropine, adenosine, IM adrenaline by age, amiodarone, buccal
+  midazolam, levetiracetam, 10% glucose, calcium gluconate); and from the 5th shock a child's
+  refractory VF/pVT may be escalated to 8 J/kg without being flagged. `tests/specs/paediatric.spec.js`
+  checks these values.
+- **Anaphylaxis** follows the RCUK Emergency treatment of anaphylaxis guideline (May 2021): steroids
+  and antihistamines are not recommended actions and do not slow the decline; giving one before
+  adrenaline is flagged; the second IM dose prompts the refractory pathway; tryptase timing,
+  observation periods and the low-dose adrenaline infusion are in the log. **Newborn** scenarios get
+  the Newborn life support algorithm's steps (Guidelines 2025) as coaching lines.
+  `tests/specs/anaphylaxis-newborn.spec.js` checks both.
+- **Drugs work in every mode** through the normal engine: for example isoprenaline speeds a complete
+  heart block escape, atropine barely moves it, and in a non-shockable arrest on Auto, ROSC comes at the
+  second rhythm check after adrenaline with CPR running. IV access is assumed in place at the start.
+- **Pacing** captures electrically at the scenario's threshold (varied by up to 15 mA each run) and
+  mechanically about 10 mA above it; demand mode is inhibited by a faster intrinsic rate.
+- **The tablet mirrors to the controller**: it publishes what it shows to
+  `sessions/<CODE>/deviceState/<id>` (removed when it disconnects), and every press goes through
+  `sessions/<CODE>/deviceEvents` like the monitor-hosted defib.
+- **Debrief**: good practice and areas for improvement (pulse checks, mode, SYNC, energies, time to
+  first shock, adrenaline and amiodarone after the 3rd shock, sedation before cardioversion,
+  analgesia for pacing, capture) and a printable certificate.
 
 ---
 
@@ -268,10 +314,29 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
   script ahead of time with the same Babel library and options the browser used, serves React,
   ReactDOM and the Firebase SDK from `dist/vendor/`, generates the Tailwind stylesheet
   (`dist/assets/app.css`, from `tailwind.config.js`), and points the defib service worker at those
-  local files. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
+  local files. It then minifies the app's JavaScript with esbuild (writing a `.map` source map next to
+  each file). The Firebase sign-in library is not loaded with the page: `data/auth.js` fetches it when
+  someone signs in, or at start-up if this browser has signed in before. It refuses to finish if any CDN reference or `text/babel` script survives. Adding a new
   `data/` file only needs its `<script>` tag in `index.html`, as before; the build finds it.
-- **The service worker in `defib/sw.js` is cache-first.** Bump `CACHE_NAME` on every deploy or tablets
-  will keep serving a stale build of a clinical device.
+- **Tests.** GitHub Actions runs three jobs on every pull request and on pushes to `main`:
+  - `playwright`: `npm run build`, then `cd tests && npm install && npx playwright test`. Browser tests
+    against `dist/` with in-memory stand-ins for Firebase and sign-in (`tests/fake-firebase.js`,
+    `tests/fake-auth.js`), so no network is needed. They include every built-in scenario, offline
+    loading, the defib tablet, the Defib controller, and automated WCAG 2.1 AA checks (axe-core).
+  - `rules`: `database.rules.json` in the Firebase Realtime Database emulator (`tests/rules`, needs Java 21).
+  - `e2e`: the built app with the real Firebase SDK against the emulator enforcing the rules
+    (`cd tests/rules && npm run e2e`).
+- **The engine** is five files, loaded in order: `engine-model.js` (initial states, physiology, drug
+  kinetics, deterioration, objectives), `engine-reducers.js`, `engine-sync.js` (the live session and
+  device presses), `engine-defib.js` (shocks, cardioversion, pacing, Defib Sim sequences) and
+  `engine.js` (the `useSimulation` hook that ties them together). Each exports only what the others use.
+- **Offline and updates.** `sw.js` (the app) and `defib/sw.js` (the tablet) share `sw-shared.js`: network
+  first, so an online device always runs the latest deploy, falling back to stored copies offline. The
+  build stamps each worker with the deploy's version and the files to store at install, so there is
+  nothing to bump by hand. Each worker only deletes its own old caches.
+- **Session layout.** The controller publishes the patient to `sessions/<CODE>/live`; monitors and the
+  defib listen there only. Device traffic stays beside it: `presence/`, `deviceEvents/`, `deviceState/`
+  and `command`.
 - **Permissive philosophy: never block, only flag.** The simulator does not stop the facilitator doing
   anything clinically odd. It records it, and the debrief raises it as a discussion point.
 - **Vitals precedence** (each stage overrides the last): manual set → active trends → autonomous

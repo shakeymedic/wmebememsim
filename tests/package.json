@@ -1,0 +1,12 @@
+{
+  "name": "wmebem-sim-tests",
+  "private": true,
+  "description": "Browser tests for WMEBEM Sim. Run `npm run build` in the repository root first; the tests serve dist/.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.56.1"
+  }
+}

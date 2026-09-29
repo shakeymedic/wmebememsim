@@ -1,0 +1,138 @@
+/* The defibrillator tablet (defib/index.html): a ZOLL R Series style device. */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: Arial, sans-serif; background: #2a2a2a; padding: 16px; min-height: 100vh; color: #ecf0f1; }
+/* No double-tap zoom on the device (a quick double press is common); pinch-zoom still works. */
+button, .mode-label { touch-action: manipulation; }
+.hidden { display: none !important; }
+button { font-family: inherit; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid #f1c40f; outline-offset: 2px; }
+
+/* --- Device body --- */
+.zoll-device {
+    background: linear-gradient(to bottom, #dbe4ea 0%, #c8d0d8 100%);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6), inset 0 2px 5px rgba(255,255,255,0.5), inset 0 -2px 5px rgba(0,0,0,0.1);
+    border: 20px solid #2b7bbf; border-radius: 25px; padding: 30px; position: relative;
+    display: grid; grid-template-columns: 1.25fr 0.75fr; gap: 20px; max-width: 1400px; margin: 0 auto;
+}
+/* The logo link sits OUTSIDE the grid (absolute), so it cannot take a grid cell and push the screen out of line. */
+.zoll-top-link { position: absolute; top: 12px; right: 18px; z-index: 10; }
+.zoll-top-logo { display: block; height: 36px; background: white; padding: 5px; border-radius: 8px; }
+.device-screen-section { align-self: start; background: #a8b0b8; padding: 22px; border-radius: 15px; box-shadow: inset 0 4px 10px rgba(0,0,0,0.2); position: relative; }
+
+.screen {
+    background-color: #050505;
+    background-image: linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.25) 50%), linear-gradient(90deg, rgba(255,0,0,0.06), rgba(0,255,0,0.02), rgba(0,0,255,0.06));
+    background-size: 100% 2px, 3px 100%;
+    border-radius: 10px; padding: 14px; position: relative; border: 1px solid #333;
+    box-shadow: inset 0 0 40px rgba(0,0,0,0.8); font-family: 'Share Tech Mono', 'Courier New', monospace; overflow: hidden;
+}
+.screen::before { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 40%); pointer-events: none; z-index: 10; }
+.screen-header { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px; background: rgba(0,0,0,0.6); border-radius: 5px; margin-bottom: 10px; }
+.screen-info { color: #00ffff; font-size: 13px; text-shadow: 0 0 5px currentColor; white-space: nowrap; }
+.screen-info.sync-indicator { color: #ffff00; font-weight: bold; animation: blink 1s infinite; }
+.ecg-canvas-container { background: #000; height: 300px; border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 12px; }
+#ecgCanvas { width: 100%; height: 100%; display: block; }
+.trace-label { position: absolute; left: 8px; top: 6px; color: #39ff14; font-size: 12px; font-weight: bold; z-index: 5; text-shadow: 0 0 4px rgba(57,255,20,0.6); }
+.trace-warning { position: absolute; right: 8px; top: 6px; color: #ffff00; font-size: 12px; font-weight: bold; z-index: 5; }
+.vitals-display { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; background: rgba(0,0,0,0.6); border-radius: 8px; }
+.vital-item { text-align: center; }
+.vital-label { color: #888; font-size: 10px; margin-bottom: 5px; }
+.vital-value { font-size: 36px; font-weight: bold; text-shadow: 0 0 5px currentColor; }
+#hrDisplay { color: #39ff14; } #spo2Display { color: #00ffff; } #etco2Display { color: #ffff00; } #bpDisplay { color: #ff3333; font-size: 26px; }
+.vital-value.critical { color: #ff0000 !important; animation: blink 1s infinite; }
+.vital-unit { color: #888; font-size: 11px; margin-top: 3px; }
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.3; } }
+.message-bar { background: rgba(0,0,0,0.8); color: #ffff00; padding: 12px; text-align: center; border-radius: 6px; font-size: 15px; font-weight: bold; margin-top: 10px; text-shadow: 0 0 5px currentColor; min-height: 44px; }
+.message-bar.ready { color: #00ff00; }
+.message-bar.alert { color: #ff3b3b; animation: blink 1s infinite; }
+.screen.screen-off .screen-header, .screen.screen-off .ecg-canvas-container, .screen.screen-off .vitals-display, .screen.screen-off .message-bar { visibility: hidden; }
+.screen.screen-off { background: #1a1a1a; }
+
+.softkeys { display: flex; gap: 10px; margin-top: 14px; }
+.softkey { flex: 1; background: #4f575d; color: #fff; border: 2px solid #6a7278; padding: 12px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: bold; }
+.softkey:hover { background: #5f676d; }
+.softkey:disabled, .side-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* --- Controls --- */
+.device-controls-section { display: flex; flex-direction: column; gap: 14px; }
+.top-buttons { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: center; justify-items: center; }
+.btn-sync { background: #f39c12; color: #1c1c1c; border: 3px solid #d68910; padding: 15px 20px; border-radius: 8px; font-size: 13px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+.btn-sync.active { background: #e67e22; box-shadow: 0 0 15px rgba(230,126,34,0.9); }
+.btn-shock { background: linear-gradient(135deg, #ff6347 0%, #ff4520 100%); color: white; border: 5px solid #cc4f39; width: 120px; height: 120px; border-radius: 50%; font-size: 20px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 12px rgba(0,0,0,0.4); display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.btn-shock::before { content: '⚡'; position: absolute; font-size: 80px; opacity: 0.15; color: #fff; }
+.btn-shock:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-shock:not(:disabled) { animation: shockGlow 1s ease-in-out infinite; }
+@keyframes shockGlow { 0%, 100% { box-shadow: 0 0 0 rgba(255,69,32,0); } 50% { box-shadow: 0 0 28px rgba(255,69,32,0.95); } }
+.btn-shock .number { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font-size: 18px; }
+.side-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.side-btn { background: #4f575d; color: #fff; border: 3px solid #40474c; padding: 12px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; box-shadow: 0 3px 6px rgba(0,0,0,0.3); }
+.side-btn:hover { background: #5f676d; }
+.action-buttons-group { display: flex; flex-direction: column; gap: 10px; }
+.btn-analyze, .btn-charge { background: linear-gradient(180deg, #ff9933 0%, #ff7700 100%); color: #000; border: 4px solid #cc6600; padding: 14px 16px; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: space-between; }
+.btn-number { background: #fff; color: #ff7700; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; }
+.energy-selector { background: linear-gradient(180deg, #dc3545 0%, #c82333 100%); color: #fff; border: 4px solid #a71d2a; padding: 14px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.3); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.energy-display { font-size: 32px; font-weight: bold; }
+.energy-rec { font-size: 11px; opacity: 0.95; min-height: 14px; }
+.energy-arrows { display: flex; gap: 15px; }
+.energy-arrow { background: #fff; color: #dc3545; width: 42px; height: 42px; border-radius: 50%; border: none; font-size: 20px; cursor: pointer; }
+.mode-dial-container { text-align: center; padding: 14px; background: #a8b0b8; border-radius: 12px; }
+.mode-dial { width: 120px; height: 120px; background: radial-gradient(circle, #2a2a2a 0%, #1a1a1a 100%); border: 6px solid #0a0a0a; border-radius: 50%; margin: 0 auto 12px; position: relative; box-shadow: 0 6px 12px rgba(0,0,0,0.5); }
+.mode-dial::before { content: ''; position: absolute; width: 8px; height: 46px; background: #fff; top: 14px; left: 50%; transform: translateX(-50%) rotate(var(--dial-rotation, 0deg)); transform-origin: center bottom; border-radius: 4px; transition: transform 0.3s ease; }
+.mode-labels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mode-label { padding: 12px 10px; border-radius: 8px; cursor: pointer; background: #34495e; color: #ecf0f1; border: 3px solid #2c3e50; font-weight: bold; text-transform: uppercase; font-size: 13px; }
+.mode-label.active { background: linear-gradient(180deg, #3498db 0%, #2874a6 100%); border-color: #1f5f8b; box-shadow: 0 0 15px rgba(52,152,219,0.5); }
+.pacing-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; position: relative; overflow: hidden; padding: 8px 0 12px; background: #a8b0b8; border-radius: 12px; }
+.pacing-cover { position: absolute; inset: 0; background: rgba(44,62,80,0.96); z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #bdc3c7; font-size: 13px; font-weight: bold; text-align: center; transition: opacity 0.3s ease; }
+.pacing-cover.open { opacity: 0; visibility: hidden; pointer-events: none; }
+.pacer-dial { background: #2a2a2a; border: 5px solid #0a0a0a; border-radius: 50%; width: 80px; height: 80px; margin: 0 auto; position: relative; box-shadow: 0 4px 8px rgba(0,0,0,0.5); }
+.pacer-dial::before { content: ''; position: absolute; width: 4px; height: 28px; background: #17a2b8; top: 12px; left: 50%; transform: translateX(-50%) rotate(var(--dial-rotation, 0deg)); transform-origin: center 28px; border-radius: 2px; transition: transform 0.3s ease; }
+.pacer-label { text-align: center; color: #2a2a2a; font-size: 11px; font-weight: bold; margin-top: 6px; }
+.pacer-value { text-align: center; color: #0e6b7a; font-size: 20px; font-weight: bold; margin-top: 2px; }
+.pacer-controls-btn { display: flex; gap: 6px; justify-content: center; margin-top: 5px; }
+.pacer-btn { background: #7a8288; color: #fff; border: 2px solid #6a7278; width: 38px; height: 36px; border-radius: 5px; font-size: 18px; cursor: pointer; }
+.pacer-mode-btn { grid-column: 1 / -1; margin: 0 12px; background: #34495e; color: #ecf0f1; border: 2px solid #2c3e50; border-radius: 6px; padding: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
+.zoll-branding { text-align: center; padding: 6px 0 0; }
+.zoll-logo-text { font-size: 40px; font-weight: bold; color: #9a9a9a; letter-spacing: 8px; }
+
+/* --- Link state, overlays --- */
+.link-banner { position: absolute; top: 0; left: 0; right: 0; z-index: 60; background: #7f1d1d; color: #fff; padding: 10px 12px; text-align: center; font-size: 14px; font-weight: bold; border-bottom: 3px solid #ef4444; line-height: 1.4; }
+.link-banner form { margin-top: 8px; display: flex; gap: 6px; justify-content: center; }
+.link-banner input { font: inherit; font-size: 16px; padding: 6px 8px; width: 10em; text-transform: uppercase; border-radius: 4px; border: 1px solid #666; background: #111; color: #fff; }
+.link-banner button { font: inherit; font-weight: bold; padding: 6px 12px; border-radius: 4px; border: 1px solid #0a0; background: #063; color: #fff; cursor: pointer; }
+.ended-banner { position: absolute; inset: 0; z-index: 70; background: rgba(0,0,0,0.92); color: #94a3b8; display: flex; align-items: center; justify-content: center; font-family: 'Share Tech Mono', monospace; font-size: 28px; letter-spacing: 4px; }
+#paperOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 150; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+#paperCanvas { max-width: 100%; max-height: 80%; border: 5px solid white; background: white; }
+/* A small banner, never a full-screen block: the device must stay usable without sound. */
+.sound-overlay { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 140; }
+.sound-overlay button { background: #1e293b; color: #fff; border: 2px solid #38bdf8; border-radius: 10px; padding: 12px 22px; font-size: 16px; font-weight: bold; cursor: pointer; }
+.hints { max-width: 1400px; margin: 12px auto 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.hint-btn { background: #117a8b; color: white; border: none; padding: 8px 14px; border-radius: 5px; font-size: 12px; font-weight: bold; cursor: pointer; }
+#hintOverlay { position: fixed; inset: 0; z-index: 160; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.hint-content { background: #2c3e50; color: #ecf0f1; border-radius: 12px; padding: 24px; max-width: 760px; width: 100%; max-height: 90vh; overflow-y: auto; position: relative; }
+.hint-content h2 { font-size: 20px; margin: 0 40px 14px 0; }
+.hint-content ul { list-style: none; }
+.hint-content li { background: #34495e; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; line-height: 1.55; }
+.hint-content strong { color: #7fc8ff; }
+.hint-close { position: absolute; top: 12px; right: 12px; background: #e74c3c; color: white; border: none; border-radius: 50%; width: 34px; height: 34px; font-size: 20px; cursor: pointer; }
+.app-footer { text-align: center; color: #a3adb8; font-size: 12px; padding: 16px; }
+
+/* --- Responsive --- */
+@media (max-width: 1100px) { .zoll-device { grid-template-columns: 1fr; max-width: 760px; } .device-controls-section { display: grid; grid-template-columns: 1fr 1fr; } .top-buttons, .zoll-branding { grid-column: 1 / -1; } }
+@media (max-width: 600px) {
+    body { padding: 6px; }
+    .zoll-device { padding: 10px; border-width: 6px; border-radius: 12px; gap: 10px; }
+    .device-screen-section { padding: 8px; }
+    .device-controls-section { grid-template-columns: 1fr; }
+    .ecg-canvas-container { height: 170px; }
+    .vitals-display { padding: 6px; gap: 2px; }
+    .vital-value { font-size: 24px; } #bpDisplay { font-size: 18px; }
+    .zoll-top-link, .zoll-logo-text { display: none; }
+    .softkeys { flex-wrap: wrap; } .softkey { flex: 1 1 40%; }
+    .btn-shock { width: 100px; height: 100px; font-size: 17px; }
+}
+
+/* Embedded in the room monitor */
+body.embedded { padding: 8px; }
+body.embedded .zoll-top-link, body.embedded .app-footer { display: none; }
+body.embedded .zoll-device { border-width: 10px; padding: 16px; max-width: none; }

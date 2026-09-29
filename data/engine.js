@@ -1,2044 +1,56 @@
 (() => {
+    // THE SIMULATION ENGINE, PART 3 OF 3: useSimulation, the hook every screen runs. The model
+    // (engine-model.js) and reducers (engine-reducers.js) load first.
     const { useState, useEffect, useRef, useReducer } = React;
     const { INTERVENTIONS, calculateDynamicVbg, getRandomInt, clamp } = window;
 
-    // WAVE 3 / C1: the single shared rhythm registry. Every shockability, pulseless and
+    // The single shared rhythm registry. Every shockability, pulseless and
     // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
     // arrays (two shockability lists, seven arrest lists) are gone.
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
-
-    // WAVE 4a / E8: serum potassium is a MODELLED VITAL. Hyperkalaemia and DKA were the two
-    // flagship metabolic scenarios with no measurable endpoint at all: the app had
-    // Insulin/Dextrose, calcium salts, salbutamol and bicarbonate but K+ existed only inside a
-    // log string. `k` is a first-class vital now (controller + student monitor + sync payload),
-    // so "did the K+ actually come down?" is answerable.
-    const DEFAULT_VITALS = { etco2: 4.5, temp: 36.5, bm: 5.5, ph: 7.4, k: 4.2, hr: 80, bpSys: 120, bpDia: 80, spO2: 98, rr: 16, gcs: 15, pupils: 3 };
-
-    const initialVitalsState = {
-        vitals: { ...DEFAULT_VITALS },
-        // baseVitals is the UNDERLYING physiology at full float precision. `vitals` is what is
-        // displayed and synced: baseVitals + the additive drug envelope, rounded. Keeping the base
-        // unrounded is what lets slow processes (0.005 GCS/s of rising ICP, 0.02 degC/s of active
-        // warming) accumulate at all — Wave 1 already hit this with oxygen's +0.2%/s being rounded
-        // straight back to the same integer every tick.
-        baseVitals: { ...DEFAULT_VITALS },
-        prevVitals: {},
-        trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
-        hypoxiaTimer: 0,
-        // ---- WAVE 5 / ITEM 6: FACILITATOR SUPREMACY OVER RHYTHM-DERIVED RATES ------------------
-        // A map of vital keys the facilitator has TYPED a value for (`{ hr: true }`). It exists for
-        // one reason: a rhythm change used to overwrite a manually-set HR with the new rhythm's
-        // registry rate band, so typing HR 130 and then selecting Atrial Fibrillation showed 140 and
-        // the tile no longer agreed with what was typed. Manual writes are precedence step 1 in the
-        // Wave 2 order (manual -> trends -> deterioration -> airway -> drug envelope -> clamp), and
-        // the rhythm band is a step-1 write too, so the tie has to be broken explicitly. It is broken
-        // in the facilitator's favour, consistently with the rest of the app.
-        // The hold is released only by an explicit release (arrest / ROSC / pulseless transitions,
-        // which are themselves deliberate facilitator writes that define a new baseline) or by
-        // loading a new scenario. Booleans only, so it survives JSON persistence untouched; it is
-        // NOT part of the sync payload (the monitor does not run physiology).
-        manualHold: {}
-    };
-
-    const initialLogState = {
-        log: [], history: []
-    };
-
-    const initialScenarioState = {
-        scenario: null, investigationsRevealed: {}, loadingInvestigations: {}
-    };
-
-    // WAVE 4b / D1: a genuinely unique identifier for THIS RUN of a scenario.
-    // The debrief's instructor-notes localStorage key was built from `state.sessionID`, which has
-    // never existed on state, so it silently fell back to `scenario.id`. That meant every run of the
-    // same scenario shared one notes key and notes bled between sessions — and with Quick Sim, where
-    // there is no meaningful scenario id at all, they would bleed across every quick sim ever run.
-    // `runId` is minted once per LOAD_SCENARIO/RESTORE_SESSION, is a primitive (so it survives sync
-    // and JSON persistence untouched), and is restored with a resumed session so resuming a run
-    // reopens the SAME notes rather than starting a blank set.
-    const newRunId = () => `run_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-
-    const initialCoreState = {
-        runId: null,
-        time: 0, cycleTimer: 0, isRunning: false, rhythm: "Sinus Rhythm",
-        monitorTimer: { visible: false, active: false, time: 0 },
-        flash: null, activeInterventions: new Set(), interventionCounts: {},
-        activeDurations: {}, isMuted: false,
-        etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
-        // Every administered drug that carries a `pk` envelope, with the time it was given. This is
-        // the single source of truth for drug timing: numeric effects, wear-off AND neuromuscular
-        // blockade all derive from these entries (Wave 1's bespoke paralysis timer is now folded in).
-        // Primitives only, so it passes sanitizeForRealtimeDatabase and JSON persistence unchanged.
-        activeDrugs: [],
-        // AUTO  = the scenario's declared deterioration type/rate drives the obs autonomously.
-        // MANUAL = complete manual control, nothing changes on its own.
-        // Switching is discontinuity-free by construction: see the deterioration comment above.
-        deteriorationMode: 'manual',
-        // Derived view of the paralytic entry in activeDrugs, kept for the UI, persistence and sync.
-        paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 },
-        nibp: { sys: null, dia: null, lastTaken: null, mode: 'manual', timer: 0, interval: 3 * 60, inflating: false, history: [] },
-        speech: { text: null, timestamp: 0, source: null }, soundEffect: { type: null, timestamp: 0 },
-        audioOutput: 'monitor', arrestPanelOpen: false, isFinished: false, etco2Pathology: 'normal',
-        // WAVE 8 / FINDING 1: the obstruction severity that shapes the capnogram. On the controller
-        // this is DERIVED every render by getObstruction(); it is stored only on the student monitor,
-        // where it arrives over the wire as `co2Severity` so both views draw the identical shape.
-        co2Severity: 0,
-        // WAVE 8 / FINDING 2: the sim-clock second at which the FACILITATOR deliberately paused a
-        // running session, or null. A session restored from storage is `null` even though its clock
-        // is non-zero, which is exactly what tells "resumed, not yet started" apart from "paused
-        // mid-session". Never persisted: reloading the page can only ever produce the former.
-        pausedAt: null,
-        monitorPopup: { type: null, timestamp: 0, customText: null },
-        waveformGain: 1.0, noise: { interference: false },
-        remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
-        icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
-        lastUpdate: 0, isOffline: false, showWetflag: true,
-        // WAVE 4a / E8: mirrored top-level serum K+ (the authoritative copy lives in vitals.k).
-        potassium: 4.2,
-        // ---- WAVE 7 / ITEM 4: INTERMITTENT (POINT-OF-CARE) READINGS ------------------
-        // Continuous monitoring (ECG, SpO2, capnography, art line, temperature probe) reveals a
-        // LIVE value. A point-of-care check reveals the value AT THE MOMENT IT WAS TAKEN and must
-        // then stop tracking, exactly as NIBP already does with its "LAST: 09:47" stamp. Each entry
-        // is { value, at (sim seconds), clock (wall-clock string) } — primitives only, so the whole
-        // object passes sanitizeForRealtimeDatabase untouched.
-        pocReadings: {},
-        // ---- WAVE 3 -------------------------------------------------------------------
-        // A3: the assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
-        // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
-        defibPanelOpen: false,
-        // B5: defibrillator device + metrics state. Previously shockCountRef was a bare useRef
-        // that never reached state, Firebase, localStorage OR the debrief, and reset on resume.
-        defib: {
-            mode: 'monitor',            // monitor | defib | pacer | aed
-            energy: null,               // currently selected energy (null = not yet resolved from weight)
-            charged: false,
-            chargeEnergy: null,
-            syncMode: false,
-            shockCount: 0,              // EVERY shock delivered, including into non-shockable rhythms
-            shockableShocks: 0,         // shocks into a shockable rhythm — the only ones that drive ROSC
-            totalEnergy: 0,
-            lastEnergy: null,
-            lastShockAt: null,          // ms epoch; drives the inter-shock refractory period
-            analysing: false,
-            lastAnalysis: null,
-            shockBonus: 0               // additive ROSC bonus banked by adrenaline/amiodarone
-        },
-        // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
-        // deliberately absent from the Firebase sync payload (verified by
-        // verify_wave3.js :: conversion announcements are not synced) because `notification`
-        // IS synced and IS rendered on the student monitor. Conversion announcements must never
-        // appear on the patient-facing screen — that would tell the team the answer.
-        rhythmEvent: null,              // { id, from, to, cause, detail, at } — drives the toast
-        lastConversion: null,           // last CONVERSION (from !== to) — drives the persistent strip
-        // A5: which remote devices are connected and what each is displaying.
-        remotePresence: { clients: [], updatedAt: null },
-        // `isOffline` is kept for existing UI behaviour; syncStatus carries the actionable
-        // reason that the controller and second-screen monitor display to the user.
-        syncStatus: { state: 'connecting', message: null, lastWriteAt: null }
-    };
-
-    const SYNC_OFFLINE_STATES = new Set(['unavailable', 'disconnected', 'error']);
-
-    // Realtime Database rejects undefined, NaN and Infinity anywhere in a payload, including
-    // nested NIBP/trend/investigation data. Sanitise the whole wire payload, not just vitals.
-    const sanitizeForRealtimeDatabase = (value, path = '', dropped = []) => {
-        if (value === undefined) {
-            dropped.push(path || '(root)');
-            return { value: undefined, dropped };
-        }
-        if (typeof value === 'number' && !Number.isFinite(value)) {
-            dropped.push(path || '(root)');
-            return { value: undefined, dropped };
-        }
-        if (value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-            return { value, dropped };
-        }
-        if (Array.isArray(value)) {
-            const result = [];
-            value.forEach((item, index) => {
-                const safe = sanitizeForRealtimeDatabase(item, `${path}[${index}]`, dropped);
-                if (safe.value !== undefined) result.push(safe.value);
-            });
-            return { value: result, dropped };
-        }
-        if (typeof value === 'object') {
-            const result = {};
-            Object.keys(value).forEach(key => {
-                const safe = sanitizeForRealtimeDatabase(value[key], path ? `${path}.${key}` : key, dropped);
-                if (safe.value !== undefined) result[key] = safe.value;
-            });
-            return { value: result, dropped };
-        }
-        dropped.push(path || '(root)');
-        return { value: undefined, dropped };
-    };
-
-    // --- PERMISSIVE EXPECTATIONS (never blocking) -------------------------------------------------
-    // A facilitator must never be prevented from doing anything; unmet expectations are recorded so
-    // the deviation becomes teaching data. An expectation counts as MET if the key is an active
-    // continuous intervention OR has been given at least once as a bolus — the original code tested
-    // only `activeInterventions`, which bolus drugs never join, so RSI's own prerequisites
-    // (Propofol + Roc, both boluses) could never be satisfied in any of the 254 scenarios.
-    const isExpectationMet = (key, coreState) => {
-        if (!coreState) return false;
-        const active = coreState.activeInterventions;
-        if (active && typeof active.has === 'function' && active.has(key)) return true;
-        const counts = coreState.interventionCounts || {};
-        return (counts[key] || 0) > 0;
-    };
-
-    const labelFor = (key) => (INTERVENTIONS[key] && INTERVENTIONS[key].label) || key;
-
-    // Returns a list of human-readable descriptions of what is NOT in place yet. `requires` is still
-    // accepted as a synonym for `expects` so older/custom scenario data keeps working.
-    const getUnmetExpectations = (action, coreState) => {
-        if (!action) return [];
-        const missing = [];
-        const all = action.expects || action.requires || [];
-        all.forEach(key => { if (!isExpectationMet(key, coreState)) missing.push(labelFor(key)); });
-        (action.expectsAny || []).forEach(group => {
-            const keys = group.keys || [];
-            if (!keys.some(k => isExpectationMet(k, coreState))) missing.push(group.label || keys.map(labelFor).join(' / '));
-        });
-        return missing;
-    };
-    window.getUnmetExpectations = getUnmetExpectations;
-
-    // Airway interventions that deliver breaths for the patient. Shared by the hypoxia model and the
-    // paralysis model so "paralysed but unbagged" desaturates and "paralysed and ventilated" does not.
-    const VENTILATING = ['Bagging', 'RSI', 'i-gel', 'NIV', 'CPAP', 'FONA'];
-    const isVentilated = (activeInt) => !!activeInt && VENTILATING.some(k => activeInt.has(k));
-
-    // =====================================================================================
-    // WAVE 7 / ITEM 4 — INDIVIDUALLY ATTACHABLE MONITORING
-    //
-    // One helper, derived from the SAME activeInterventions set that is already logged, already
-    // flagged and already synced to the student monitor. No parallel state, nothing new on the
-    // wire, and no scenario data changes: a scenario still starts with nothing attached, which is
-    // the existing designed default ("NO SENSOR DETECTED").
-    //
-    // 'Obs' (Attach Monitoring) remains the ONE-CLICK FAST PATH and implies every continuous
-    // sensor, so existing muscle memory and all 254 premade scenarios behave exactly as before.
-    // The individual keys are additive. (Quick Sim now starts with nothing attached too.)
-    //
-    // PERMISSIVE PHILOSOPHY UNCHANGED: sensors gate what the MONITOR DISPLAYS. They are never
-    // prerequisites. Giving a drug with no IV access still proceeds and still raises the existing
-    // amber deviation flag via `expects: ['IV Access']`.
-    // =====================================================================================
-    const SENSOR_DEFS = [
-        { id: 'ecg',   key: 'MonECG',   label: 'ECG electrodes',  reveals: 'ECG trace + HR',        kind: 'continuous' },
-        { id: 'spo2',  key: 'MonSpO2',  label: 'SpO2 probe',      reveals: 'pleth + SpO2',          kind: 'continuous' },
-        { id: 'nibp',  key: 'MonNIBP',  label: 'NIBP cuff',       reveals: 'blood pressure',        kind: 'continuous' },
-        { id: 'etco2', key: 'ToggleETCO2', label: 'Capnography',  reveals: 'capnogram + ETCO2',     kind: 'continuous' },
-        { id: 'temp',  key: 'MonTemp',  label: 'Temp probe',      reveals: 'temperature',           kind: 'continuous' },
-        { id: 'art',   key: 'ArtLine',  label: 'Arterial line',   reveals: 'continuous ABP',        kind: 'continuous' },
-        { id: 'iv',    key: 'IV Access', label: 'IV / IO access', reveals: 'route for drugs',       kind: 'access' },
-        { id: 'bm',    key: 'CheckGlucose', label: 'POC glucose', reveals: 'glucose (one-off)',     kind: 'poc', poc: 'bm' },
-        { id: 'vbg',   key: 'CheckVBG', label: 'POC VBG',         reveals: 'pH + K+ (one-off)',     kind: 'poc', poc: 'vbg' }
-    ];
-    // Attaching everything = 'Obs' plus the individual continuous keys, so the monitor is fully
-    // populated in a single action.
-    const ATTACH_ALL_KEYS = ['Obs', 'MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp'];
-    // WAVE 8 / FINDING 4. The four sensors the ONE-PRESS fast path attaches, and the deliberate
-    // clinical acts it does NOT. 'Obs' is a shorthand for exactly the standard four; it has never
-    // implied capnography, an arterial line or IV access, and that clinical default is unchanged.
-    // What changes is the honesty of the label: the fast path is now called "Attach standard", and
-    // an "all on" state is only ever shown when everything really is on (see getSensors().all).
-    const STANDARD_SENSOR_KEYS = ['MonECG', 'MonSpO2', 'MonNIBP', 'MonTemp'];
-    // Offered as its own clearly-labelled action, never as part of the fast path.
-    const INVASIVE_SENSOR_KEYS = ['IV Access', 'ArtLine', 'ToggleETCO2'];
-
-    const getSensors = (coreState) => {
-        const active = (coreState && coreState.activeInterventions) || new Set();
-        const all = active.has && active.has('Obs');
-        const has = (k) => !!(active.has && active.has(k));
-        return {
-            ecg: !!all || has('MonECG'),
-            spo2: !!all || has('MonSpO2'),
-            nibp: !!all || has('MonNIBP'),
-            temp: !!all || has('MonTemp'),
-            // Capnography keeps its own long-standing toggle rather than gaining a second switch.
-            etco2: !!(coreState && coreState.etco2Enabled),
-            art: has('ArtLine'),
-            iv: has('IV Access') || has('IO Access'),
-            any: !!all || has('MonECG') || has('MonSpO2') || has('MonNIBP') || has('MonTemp') ||
-                 has('ArtLine') || !!(coreState && coreState.etco2Enabled),
-            // WAVE 8 / FINDING 4: two HONEST summary flags, so no button can claim more than it did.
-            // `standard` = the four sensors the fast path attaches. `all` = literally everything.
-            get standard() { return this.ecg && this.spo2 && this.nibp && this.temp; },
-            get all() { return this.ecg && this.spo2 && this.nibp && this.temp && this.etco2 && this.art && this.iv; }
-        };
-    };
-    window.getSensors = getSensors;
-    window.SENSOR_DEFS = SENSOR_DEFS;
-    window.ATTACH_ALL_KEYS = ATTACH_ALL_KEYS;
-    window.STANDARD_SENSOR_KEYS = STANDARD_SENSOR_KEYS;
-    window.INVASIVE_SENSOR_KEYS = INVASIVE_SENSOR_KEYS;
-
-    // Is the patient moving gas? Reads the EXISTING airway/paralysis model rather than inventing a
-    // parallel one: a respiratory rate the monitor can see, or a device that delivers breaths.
-    // Oesophageal intubation / disconnection / apnoea / paralysis-without-ventilation therefore all
-    // resolve to "not ventilating" for free, and capnography correctly shows NO waveform.
-    const isCapnoVentilating = (coreState, vitals) => {
-        const rr = vitals && Number.isFinite(vitals.rr) ? vitals.rr : 0;
-        if (rr > 0) return true;
-        return isVentilated(coreState && coreState.activeInterventions) || !!(coreState && coreState.cprInProgress);
-    };
-    window.isCapnoVentilating = isCapnoVentilating;
-    const VENTILATOR_RATE = 14;
-
-    // Paralysis only bites after the drug's onset time, and stops at the end of its duration.
-    const paralysisPhase = (paralysis, time) => {
-        if (!paralysis || !paralysis.active) return 'none';
-        const start = paralysis.startTime || 0;
-        const onset = paralysis.onset || 0;
-        const duration = paralysis.duration || 0;
-        if (time < start + onset) return 'onset';
-        if (duration > 0 && time >= start + onset + duration) return 'expired';
-        return 'active';
-    };
-
-    // 'pupils' and 'gcs' are the only non-numeric vitals the UI can set (gcs may arrive as a string).
-    const isVitalValueSafe = (key, val) => {
-        if (key === 'pupils') return val !== undefined && val !== null && val !== '';
-        return Number.isFinite(Number(val)) && val !== '' && val !== null;
-    };
-
-    // WAVE 4b / D5: PUPILS ARE CATEGORICAL, NOT CONTINUOUS.
-    // `pupils` legitimately holds either a number (3, 4, 8 — a diameter in mm) or one of a small set
-    // of descriptive strings ('Dilated', 'Pinpoint', 'Unequal'), which the arrest and ROSC paths both
-    // write. Interpolating between 3 and 'Dilated' yields NaN, and a NaN in `vitals` is rejected by
-    // RTDB, which freezes the student monitor. This was latent only because no UI reached it — Quick
-    // Sim adds a facilitator who can reach every vital, so it is guarded explicitly now rather than
-    // relying on the incidental typeof checks further down.
-    // Rule: pupils NEVER interpolate. They SNAP to the target, whatever its type. Numeric values are
-    // coerced and clamped to a plausible 1-9 mm; strings pass through verbatim.
-    const PUPIL_MIN_MM = 1, PUPIL_MAX_MM = 9;
-    const normalisePupils = (val) => {
-        if (typeof val === 'number') return Number.isFinite(val) ? Math.min(PUPIL_MAX_MM, Math.max(PUPIL_MIN_MM, Math.round(val))) : 3;
-        const s = String(val === undefined || val === null ? '' : val).trim();
-        if (s === '') return 3;
-        // A numeric string from a number input ('4') is a diameter, not a description.
-        const n = Number(s);
-        if (Number.isFinite(n)) return Math.min(PUPIL_MAX_MM, Math.max(PUPIL_MIN_MM, Math.round(n)));
-        return s;
-    };
-    // True for any vital that must never be linearly interpolated by the trend engine.
-    const isCategoricalVital = (key) => key === 'pupils';
-
-    const formatVital = (key, val) => {
-        if (key === 'ph') return Math.round(val * 100) / 100;
-        if (['temp', 'bm', 'etco2', 'k'].includes(key)) return Math.round(val * 10) / 10;
-        return Math.round(val);
-    };
-
-    // =============================================================================================
-    // PHARMACOKINETIC ENVELOPE (Wave 2)
-    // ---------------------------------------------------------------------------------------------
-    // Every drug effect used to be an instantaneous clamped jump written straight into `vitals`, so
-    // nothing ever ramped, nothing ever wore off, repeat dosing was uncapped (3x atropine = HR +60),
-    // and any running trend erased the effect on the next 1 Hz tick because the trend interpolator
-    // rewrites ABSOLUTE values from a frozen `startVitals` snapshot.
-    //
-    // The fix is architectural: drug effects are never written into the physiology. They are held in
-    // `activeDrugs[]` and evaluated every tick as an ADDITIVE OFFSET on top of whatever the
-    // physiology produced:
-    //
-    //     displayed = clamp(baseVitals + SUM(drugOffset(t)))
-    //
-    // so trends, deterioration, the airway/apnoea model and manual adjustments all operate on the
-    // BASE and can never overwrite a drug, and wear-off is free: when an entry's envelope returns to
-    // zero the patient drifts back onto the underlying trajectory.
-    //
-    // FINAL COMPOSITION / PRECEDENCE ORDER (see vitalsReducer TICK_TIME, which implements it):
-    //   1. MANUAL facilitator writes (MANUAL_VITAL_UPDATE / UPDATE_VITALS / arrest / ROSC / rhythm)
-    //      set the BASE directly and win immediately — the facilitator is never overruled.
-    //   2. TRENDS interpolate the BASE from a base-space snapshot towards base-space targets.
-    //   3. AUTONOMOUS DETERIORATION integrates per-second deltas into the BASE (AUTO mode only,
-    //      skipped for any vital a trend currently owns, skipped in arrest).
-    //   4. AIRWAY / PARALYSIS / HYPOXIA / ETCO2 model adjusts the BASE (it owns RR while paralysed
-    //      and owns SpO2 while apnoeic, so it deliberately runs after 2 and 3).
-    //   5. DRUG PK ENVELOPE is summed and ADDED to the base — never written into it.
-    //   6. CLAMP to physiological limits, derive diastolic coherence, round -> `vitals`.
-    //   Arrest overrides 5 for hr/bpSys/bpDia/rr/spO2: a pulseless patient has no perfusion to
-    //   measure, matching the Wave 1 arrest guard in applyIntervention.
-    // =============================================================================================
-
-    // effect field -> [vital, scale]. BP moves the diastolic 0.6x with the systolic so the pair can
-    // never become incoherent (dia > sys) after an offset is applied.
-    const EFFECT_TARGETS = {
-        HR: [['hr', 1]], BP: [['bpSys', 1], ['bpDia', 0.6]], RR: [['rr', 1]], SpO2: [['spO2', 1]],
-        gcs: [['gcs', 1]], BM: [['bm', 1]], Temp: [['temp', 1]], pH: [['ph', 1]],
-        // WAVE 4a: K = serum potassium (mmol/L), ETCO2 = end-tidal CO2 (kPa, e.g. the CO2 load
-        // after sodium bicarbonate).
-        K: [['k', 1]], ETCO2: [['etco2', 1]]
-    };
-    const PK_EFFECT_FIELDS = Object.keys(EFFECT_TARGETS);
-
-    const VITAL_LIMITS = {
-        hr: [0, 250], bpSys: [0, 300], bpDia: [0, 200], spO2: [0, 100], rr: [0, 60],
-        gcs: [3, 15], temp: [22, 43], bm: [0.5, 45], ph: [6.6, 7.9], etco2: [0, 15],
-        // Survivable-and-recordable range for serum K+. Below 1.5 / above 9.5 is not a number a
-        // simulator needs to display, and clamping keeps the RTDB payload finite.
-        k: [1.5, 9.5]
-    };
-    const clampVital = (key, v) => {
-        const lim = VITAL_LIMITS[key];
-        if (!lim) return v;
-        return Math.min(lim[1], Math.max(lim[0], v));
-    };
-    // Vitals a pulseless patient cannot express. Suppressed from the drug envelope during arrest.
-    const ARREST_SUPPRESSED = ['hr', 'bpSys', 'bpDia', 'rr', 'spO2'];
-    // C1: derived from the registry, NOT a local copy. The old literal included 'VT', which is
-    // why VT-with-a-pulse (AM024) was treated as an arrest by the drug envelope.
-    const PULSELESS_RHYTHMS = RG.PULSELESS;
-
-    const PK_DEFAULT_MAX_DOSES = 3;
-    const PK_PLATEAU_FRACTION = 0.35;   // share of the peak->offset window spent at full effect
-
-    // Build the stored activeDrugs entry for an intervention. Primitives only, so the entry passes
-    // sanitizeForRealtimeDatabase unchanged and survives JSON persistence.
-    const buildDrugEntry = (key, action, startTime, dose = 1, opts = {}) => {
-        if (!action || !action.pk) return null;
-        const pk = opts.pk || action.pk;
-        const effect = {};
-        const srcEffect = opts.effect || action.effect;
-        // WAVE 4a / E6 + paediatric notes: per-field magnitude scaling. A fixed HR +15 is a large
-        // change in an adult and a small one in an infant whose baseline is 150, and BP responses
-        // are proportionally smaller in children. `fieldScale` carries that (and any dosing
-        // multiplier) into the STORED entry, so it survives sync, persistence and the debrief.
-        const fieldScale = opts.fieldScale || null;
-        PK_EFFECT_FIELDS.forEach(f => {
-            let v = srcEffect ? srcEffect[f] : undefined;
-            if (typeof v === 'number' && Number.isFinite(v) && v !== 0) {
-                if (fieldScale && Number.isFinite(fieldScale[f])) v = v * fieldScale[f];
-                effect[f] = Math.round(v * 1000) / 1000;
-            }
-        });
-        const paralytic = !!(srcEffect && srcEffect.paralysed);
-        // WAVE 4a / PART 2D: a `drive` declares that this intervention moves a vital at a RATE
-        // towards a TARGET (active warming/cooling, a fixed-rate insulin infusion) instead of
-        // parking it at a fixed offset. The driven vitals are integrated into baseVitals by
-        // applyDriveTick and are therefore EXCLUDED from this entry's additive envelope, so the
-        // effect can never be counted twice.
-        const drives = [];
-        if (action.drive) {
-            [action.drive, action.drive.secondary].forEach(dr => {
-                if (dr && dr.vital && Number.isFinite(Number(dr.ratePerHour))) {
-                    drives.push({ vital: dr.vital, ratePerHour: Number(dr.ratePerHour), target: Number.isFinite(Number(dr.target)) ? Number(dr.target) : null });
-                }
-            });
-        }
-        // An entry with no numeric effect, no paralysis role and no rate drive contributes nothing to
-        // the vitals — but it is still a drug that is running, and WAVE 5 / ITEM 10 is precisely about
-        // a facilitator being unable to tell "pending, working as intended" from "nothing happened".
-        // Levetiracetam and the other agents whose modelled effect is anticonvulsant rather than
-        // haemodynamic used to vanish from the Active Drugs panel entirely. They now appear, with
-        // their onset countdown, and contribute exactly zero to the envelope (there is nothing in
-        // `effect` to add), so no vitals behaviour changes anywhere.
-        if (Object.keys(effect).length === 0 && !paralytic && !drives.length && !action.pk) return null;
-        const onset = Math.max(0, Number(pk.onset) || 0);
-        const peak = Math.max(onset, Number(pk.peak) || onset);
-        const offset = Math.max(0, Number(pk.offset) || 0);
-        const plateau = (pk.plateau === undefined || pk.plateau === null) ? null : Math.max(peak, Number(pk.plateau) || peak);
-        return {
-            key, label: action.label || key, startTime, dose,
-            onset, peak, offset,
-            plateau: plateau === null ? -1 : plateau,       // -1 == derive the default plateau
-            // A continuous intervention (infusion, ventilator, warming blanket) holds at peak while it
-            // is running; `offset` then means the decay tail AFTER it is stopped.
-            sustained: action.type === 'continuous',
-            stopTime: -1,                                   // -1 == still running
-            maxDoses: Math.max(1, Number(pk.maxDoses) || PK_DEFAULT_MAX_DOSES),
-            paralytic,
-            // Paralysis window: onset -> paralysisEnd. Folded into this single entry so there is no
-            // parallel timer (Wave 1 left a bespoke one with a note asking for exactly this).
-            paralysisEnd: paralytic ? (action.paralysis && action.paralysis.duration
-                ? onset + Math.max(1, Number(action.paralysis.duration))
-                : (offset || onset + 2700)) : -1,
-            reversed: false, effect,
-            // Descriptive only (E1). Rendered on the button/label and in the debrief so IM vs IV
-            // is visible at a glance; route BEHAVIOUR always comes from a separate key.
-            route: action.route || null,
-            drives,
-            // E7: an ABSOLUTE ceiling on the composed vital, not just an additive dose cap.
-            // Atropine cannot take the heart rate past full vagal blockade however many doses are
-            // given, and a beta-agonist cannot push it past ~155.
-            ceilingVital: (action.ceiling && action.ceiling.vital) || null,
-            ceilingValue: (action.ceiling && Number.isFinite(Number(action.ceiling.value))) ? Number(action.ceiling.value) : null
-        };
-    };
-
-    // Vitals currently being RATE-DRIVEN by a running intervention, so the additive envelope must
-    // not also apply them. Keyed by vital name.
-    const drivenVitals = (activeDrugs, t) => {
-        const out = {};
-        (activeDrugs || []).forEach(d => {
-            if (!d.drives || !d.drives.length) return;
-            if (d.sustained && d.stopTime >= 0) return;          // stopped: no longer driving
-            if (t - d.startTime < d.onset) return;               // not started yet
-            d.drives.forEach(dr => { out[dr.vital] = true; });
-        });
-        return out;
-    };
-
-    // PART 2D — ONE realistic warming rate and ONE realistic cooling rate, with NO artificial
-    // plateau: integrate towards normothermia (or, for insulin, towards a target glucose) and STOP
-    // on arrival. The old model held Temp at +/-1.5 degC of wherever the patient started, so a
-    // patient at 30.0 degC could never be warmed past 31.5 and hyperthermia could never be
-    // corrected at all. Integrates into `base` IN PLACE; returns true if anything moved.
-    // How long a rate-driven intervention (warming blanket, cooling, insulin infusion) takes to
-    // reach its full rate after its onset.
-    // WAVE 5 / ITEM 9: 300s -> 120s. The declared rate (2 degC/h of cooling) was only ever reached
-    // after a 300 s pk onset PLUS a 300 s linear ramp, and the ramp costs half of its own window, so
-    // the first ten minutes delivered roughly a third of the declared rate — which is exactly the
-    // discrepancy live testing measured (0.1 degC per 8-10 min instead of per ~3 min). 120 s keeps the
-    // switch-on smooth without hiding the rate. The rate itself is unchanged and the base integration
-    // is unrounded, so nothing is lost per tick.
-    const DRIVE_RAMP_SECONDS = 120;
-    const applyDriveTick = (base, activeDrugs, t) => {
-        let moved = false;
-        (activeDrugs || []).forEach(d => {
-            if (!d.drives || !d.drives.length) return;
-            if (d.sustained && d.stopTime >= 0) return;
-            const el = t - d.startTime;
-            if (el < d.onset) return;
-            // Ramp in over a FIXED short window after onset (not onset -> peak). A drive is a RATE,
-            // so `peak` here means "time to the full nominal excursion" and is measured in hours for
-            // warming/cooling — ramping the rate itself over that window would make a Bair Hugger
-            // take half a day to reach 1.5 degC/h and the earlier build's temperature looked frozen.
-            // 300 s of spin-up keeps the switch-on smooth without blunting the rate.
-            const ramp = Math.max(0, Math.min(1, (el - d.onset) / DRIVE_RAMP_SECONDS));
-            d.drives.forEach(dr => {
-                const cur = base[dr.vital];
-                if (typeof cur !== 'number' || !Number.isFinite(cur)) return;
-                const perSecond = (dr.ratePerHour / 3600) * ramp * (Number(d.dose) || 1);
-                if (!perSecond) return;
-                let next = cur + perSecond;
-                if (dr.target !== null && dr.target !== undefined) {
-                    // Never overshoot the target, and never push a vital the wrong way if it is
-                    // already past it (warming a pyrexial patient does not cool them).
-                    if (perSecond > 0) next = Math.min(next, Math.max(cur, dr.target));
-                    else next = Math.max(next, Math.min(cur, dr.target));
-                }
-                next = clampVital(dr.vital, next);
-                if (next !== cur) { base[dr.vital] = next; moved = true; }
-            });
-        });
-        return moved;
-    };
-
-    // WAVE 4a / E11: the Wave 2 documentation promised COSINE-SMOOTHED ramps; the code shipped a bare
-    // linear interpolation. Rather than downgrade the documentation, the smoothing is now implemented:
-    // a raised-cosine ease maps 0..1 -> 0..1 with zero slope at both ends, so a drug's effect eases in
-    // and eases out instead of starting and stopping with a visible kink on the trend graph. Midpoint
-    // is still exactly 0.5, so every pk timing (onset/peak/plateau/offset) is unchanged.
-    const easeRamp = (x) => {
-        if (!(x > 0)) return 0;
-        if (x >= 1) return 1;
-        return 0.5 - 0.5 * Math.cos(Math.PI * x);
-    };
-
-    // 0 before onset -> cosine-eased ramp to 1 at peak -> plateau -> eased decay to 0 at offset.
-    const pkFactor = (d, t) => {
-        if (!d) return 0;
-        const el = t - d.startTime;
-        if (!Number.isFinite(el) || el <= d.onset) return 0;
-        if (el < d.peak) return easeRamp((el - d.onset) / Math.max(1, d.peak - d.onset));
-        if (d.sustained) {
-            if (d.stopTime === undefined || d.stopTime === null || d.stopTime < 0) return 1;  // still running
-            const tail = d.offset > 0 ? d.offset : 120;
-            const since = t - d.stopTime;
-            if (since <= 0) return 1;
-            if (since >= tail) return 0;
-            return easeRamp(1 - (since / tail));
-        }
-        if (!d.offset || d.offset <= d.peak) return 1;   // no modelled wear-off
-        const plateauEnd = (d.plateau !== undefined && d.plateau >= 0)
-            ? d.plateau
-            : d.peak + PK_PLATEAU_FRACTION * (d.offset - d.peak);
-        if (el <= plateauEnd) return 1;
-        if (el >= d.offset) return 0;
-        return easeRamp(1 - ((el - plateauEnd) / Math.max(1, d.offset - plateauEnd)));
-    };
-
-    // Human-readable phase for the facilitator's Active Drugs panel (A5).
-    const pkPhase = (d, t) => {
-        const el = t - d.startTime;
-        if (el < d.onset) return 'onset';
-        if (el < d.peak) return 'rising';
-        if (d.sustained) return (d.stopTime !== undefined && d.stopTime !== null && d.stopTime >= 0) ? 'wearing off' : 'running';
-        if (!d.offset || d.offset <= d.peak) return 'peak';
-        const plateauEnd = (d.plateau !== undefined && d.plateau >= 0) ? d.plateau : d.peak + PK_PLATEAU_FRACTION * (d.offset - d.peak);
-        if (el <= plateauEnd) return 'peak';
-        if (el < d.offset) return 'wearing off';
-        return 'gone';
-    };
-    // Seconds until the entry contributes nothing. null == indefinite (running infusion / no offset).
-    const pkRemaining = (d, t) => {
-        if (d.sustained) {
-            if (d.stopTime === undefined || d.stopTime === null || d.stopTime < 0) return null;
-            return Math.max(0, (d.stopTime + (d.offset > 0 ? d.offset : 120)) - t);
-        }
-        if (!d.offset || d.offset <= d.peak) return null;
-        return Math.max(0, (d.startTime + d.offset) - t);
-    };
-    const isDrugSpent = (d, t) => {
-        if (d.sustained) return (d.stopTime !== undefined && d.stopTime !== null && d.stopTime >= 0) && pkFactor(d, t) <= 0;
-        if (!d.offset || d.offset <= d.peak) return false;
-        return t >= d.startTime + d.offset;
-    };
-
-    // Sum every active drug's contribution per vital, with a PER-DRUG CEILING so repeat dosing is
-    // additive but not unbounded: two doses of atropine give +40, ten doses still give +40.
-    const drugOffsets = (activeDrugs, t) => {
-        const perKey = {};
-        const driven = drivenVitals(activeDrugs, t);
-        (activeDrugs || []).forEach(d => {
-            const f = pkFactor(d, t);
-            if (!(f > 0)) return;
-            const bucket = perKey[d.key] || (perKey[d.key] = { f: 0, effect: d.effect || {}, maxDoses: d.maxDoses || PK_DEFAULT_MAX_DOSES });
-            bucket.f += f * (Number(d.dose) || 1);
-        });
-        const out = {};
-        Object.keys(perKey).forEach(k => {
-            const b = perKey[k];
-            const f = Math.min(b.f, b.maxDoses);
-            Object.keys(b.effect).forEach(field => {
-                const targets = EFFECT_TARGETS[field];
-                if (!targets) return;
-                const amt = Number(b.effect[field]);
-                if (!Number.isFinite(amt)) return;
-                targets.forEach(([vital, scale]) => {
-                    // A rate-driven vital (warming/cooling temperature, insulin glucose/K+) is owned
-                    // by applyDriveTick in base space. Adding the envelope too would double-count.
-                    if (driven[vital]) return;
-                    out[vital] = (out[vital] || 0) + amt * f * scale;
-                });
-            });
-        });
-        return out;
-    };
-
-    // E7: absolute, saturating ceilings. Collected from whichever entries are currently live so a
-    // spent dose stops constraining anything.
-    const drugCeilings = (activeDrugs, t) => {
-        const out = {};
-        (activeDrugs || []).forEach(d => {
-            if (!d.ceilingVital || d.ceilingValue === null || d.ceilingValue === undefined) return;
-            if (!(pkFactor(d, t) > 0)) return;
-            const prev = out[d.ceilingVital];
-            out[d.ceilingVital] = prev === undefined ? d.ceilingValue : Math.max(prev, d.ceilingValue);
-        });
-        return out;
-    };
-
-    // Step 5 + 6 of the precedence order: base + envelope -> clamp -> coherence -> round.
-    // FACILITATOR SUPREMACY vs the E7 ceiling. The facilitator types the number they want to SEE,
-    // so a displayed target has to be inverted through the composition. composeVitals maps
-    //     base -> base + min(off, max(0, ceil - base))
-    // which is monotone with a plateau at the ceiling, so the inverse is simply: a target ABOVE the
-    // ceiling is stored as-is (the drug legitimately contributes nothing once the patient's own
-    // rate already exceeds full vagal blockade), and anything at or below it has the current drug
-    // contribution removed. Without this a ceilinged drug would silently swallow part of a manual
-    // write or trend target, which Waves 1-2 guarantee can never happen.
-    const baseForDisplayed = (key, value, off, ceil) => {
-        if (typeof value !== 'number' || !Number.isFinite(value)) return value;
-        if (!off) return value;
-        if (Number.isFinite(ceil) && off > 0 && value > ceil) return value;
-        return value - off;
-    };
-
-    const composeVitals = (base, activeDrugs, t, inArrest) => {
-        const offs = drugOffsets(activeDrugs, t);
-        const ceil = drugCeilings(activeDrugs, t);
-        const out = {};
-        Object.keys(base).forEach(k => {
-            const bv = base[k];
-            if (typeof bv !== 'number' || !Number.isFinite(bv)) { out[k] = bv; return; }
-            let off = offs[k] || 0;
-            if (inArrest && ARREST_SUPPRESSED.indexOf(k) !== -1) off = 0;
-            let composed = bv + off;
-            // E7: a saturating ceiling only ever removes DRUG-DRIVEN excess — it can never pull a
-            // vital below where the underlying physiology already is (a tachycardic septic patient
-            // given atropine does not have their heart rate "capped" down to 115).
-            if (off > 0 && ceil[k] !== undefined && composed > ceil[k]) composed = Math.max(bv, ceil[k]);
-            out[k] = formatVital(k, clampVital(k, composed));
-        });
-        if (Number.isFinite(out.bpSys) && Number.isFinite(out.bpDia)) {
-            if (out.bpSys <= 0) out.bpDia = 0;
-            else if (out.bpDia > out.bpSys - 5) out.bpDia = Math.max(0, Math.round(out.bpSys * 0.62));
-        }
-        return out;
-    };
-
-    // Paralysis, derived from the SAME activeDrugs entries (one timer, not two).
-    const paralysisFromDrugs = (activeDrugs, t) => {
-        let best = null;
-        (activeDrugs || []).forEach(d => {
-            if (!d.paralytic || d.reversed) return;
-            const end = d.paralysisEnd > 0 ? d.startTime + d.paralysisEnd : Infinity;
-            if (t >= d.startTime + d.onset && t < end) {
-                if (!best || end > best.end) best = { agent: d.key, startTime: d.startTime, onset: d.onset, end, duration: end - (d.startTime + d.onset) };
-            }
-        });
-        return best;
-    };
-
-    // =============================================================================================
-    // AUTONOMOUS DETERIORATION (Wave 2, Group C)
-    // ---------------------------------------------------------------------------------------------
-    // 198 of 254 scenarios declare `deterioration.active` + `rate`, but only `type === 'neuro'` was
-    // ever consumed and `rate` was read NOWHERE, so every patient was physiologically static.
-    //
-    // Deltas below are per-second, per unit `rate` (scenario rates run 0.01 - 0.2). They are
-    // INTEGRATED into baseVitals, which is the whole reason the AUTO/MANUAL toggle cannot produce a
-    // discontinuity: toggling only gates the integration, it never recomputes a value from the
-    // scenario's original starting vitals. Stop integrating and the obs simply stay where they are;
-    // start again and they continue from there.
-    // =============================================================================================
-    const normaliseDeteriorationType = (t) => {
-        const s = String(t || '').toLowerCase();
-        if (!s) return null;
-        if (s.indexOf('resp') === 0) return 'resp';
-        if (s.indexOf('shock') === 0 || s.indexOf('sepsis') === 0 || s.indexOf('haemorrh') === 0) return 'shock';
-        if (s.indexOf('neuro') === 0) return 'neuro';
-        if (s.indexOf('airway') === 0) return 'airway';
-        if (s.indexOf('cardiac') === 0 || s.indexOf('cardio') === 0) return 'cardiac';
-        if (s.indexOf('arrest') === 0) return 'arrest';
-        return null;
-    };
-
-    // Interventions that address each pathology. Any of them slows the decline; enough of them
-    // reverses it (C4). Matching is permissive — a bolus given once counts, same as Wave 1's
-    // expectation test, so the facilitator is credited for treatment either way.
-    // WAVE 4a: the new route-specific keys are wired in here too. A clinically correct treatment
-    // given by a route the engine did not know about (buccal midazolam for status, IM adrenaline
-    // escalated to an infusion, IM benzylpenicillin pre-hospital) previously did NOT slow the
-    // autonomous deterioration at all, so the learner was punished for correct non-IV practice.
-    const DETERIORATION_TREATMENTS = {
-        shock: ['Fluids', 'FluidInfusion', 'Blood', 'Noradrenaline', 'Metaraminol', 'AdrenalineIM', 'TXA', 'Antibiotics', 'Ceftriaxone', 'Tazocin', 'Gentamicin', 'PelvicBinder', 'Tourniquet', 'REBOA', 'Thoracotomy', 'Pericardiocentesis', 'Hydrocortisone', 'Terlipressin', 'Octaplex', 'Albumin', 'Surgery', 'CalciumChloride',
-            'AdrenalineInfusion', 'AdrenalinePush'],
-        resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis',
-            'NebsContinuous', 'SalbutamolIV', 'MagnesiumInfusion'],
-        airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen', 'Chlorphenamine',
-            'AdrenalineInfusion'],
-        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
-            'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
-        neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
-            'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM'],
-        arrest: ['CPR', 'Lucas', 'AdrenalineIV', 'Defib', 'Amiodarone']
-    };
-
-    // =============================================================================================
-    // PART 2B — VOLUME RESPONSIVENESS
-    // ---------------------------------------------------------------------------------------------
-    // A 500 mL bolus raised the BP by exactly +8 mmHg in every one of the 254 scenarios, which
-    // taught that fluid is the answer to cardiogenic shock and APO. Responsiveness is now a
-    // PROPERTY OF THE PATIENT: it scales the dose multiplier of every volume intervention
-    // (crystalloid bolus, maintenance infusion, blood, albumin).
-    //
-    // A scenario may declare it explicitly — `fluidResponse: 'high' | 'moderate' | 'low' | 'none'`
-    // or a raw 0-1.2 number, plus `fluidOverload: true` — but it does NOT have to: the default is
-    // INFERRED from the scenario's deterioration `type` and its title/diagnosis text, so all 254
-    // existing scenarios behave sensibly with no hand-authoring.
-    // =============================================================================================
-    const FLUID_RESPONSE_LEVELS = { high: 1.15, moderate: 0.8, low: 0.3, none: 0.08 };
-    const FLUID_UNRESPONSIVE_HINTS = ['cardiogenic', 'pulmonary oedema', 'pulmonary edema', ' apo', 'apo ', 'heart failure', 'lvf', 'fluid overload', 'overload', 'decompensated heart', 'cardiac failure', 'tamponade', 'myocarditis', 'dialysis', 'renal failure', 'esrf', 'end stage renal'];
-    const FLUID_RESPONSIVE_HINTS = ['haemorrh', 'hemorrh', 'bleed', 'trauma', 'ruptured', 'aaa', 'ectopic', 'pph', 'postpartum', 'burn', 'dka', 'hhs', 'dehydr', 'gastroenteritis', 'diarrhoea', 'vomit', 'sepsis', 'septic', 'hypovol', 'anaphyla', 'addisonian', 'adrenal', 'hyperemesis', 'heat stroke', 'rhabdo', 'obstruction', 'pancreatitis', 'stab', 'gunshot', 'fracture', 'splenic', 'liver lac'];
-    const scenarioText = (s) => [s && s.title, s && s.presentingComplaint, s && s.diagnosis,
-        s && s.instructorBrief && s.instructorBrief.progression,
-        s && s.instructorBrief && s.instructorBrief.diagnosis].filter(Boolean).join(' ').toLowerCase();
-
-    const fluidResponsiveness = (scenario) => {
-        const s = scenario || {};
-        // 1. Explicit declaration always wins.
-        if (typeof s.fluidResponse === 'number' && Number.isFinite(s.fluidResponse)) {
-            return { factor: Math.max(0, Math.min(1.2, s.fluidResponse)), overload: !!s.fluidOverload, source: 'scenario' };
-        }
-        if (typeof s.fluidResponse === 'string' && FLUID_RESPONSE_LEVELS[s.fluidResponse.toLowerCase()] !== undefined) {
-            const lvl = s.fluidResponse.toLowerCase();
-            return { factor: FLUID_RESPONSE_LEVELS[lvl], overload: !!s.fluidOverload || lvl === 'none', source: 'scenario' };
-        }
-        // 2. Inferred default.
-        const txt = scenarioText(s);
-        if (FLUID_UNRESPONSIVE_HINTS.some(h => txt.indexOf(h) !== -1)) {
-            return { factor: FLUID_RESPONSE_LEVELS.none, overload: true, source: 'inferred:overload' };
-        }
-        if (FLUID_RESPONSIVE_HINTS.some(h => txt.indexOf(h) !== -1)) {
-            return { factor: FLUID_RESPONSE_LEVELS.high, overload: false, source: 'inferred:hypovolaemic' };
-        }
-        const type = normaliseDeteriorationType(s.deterioration && s.deterioration.type);
-        if (type === 'shock') return { factor: FLUID_RESPONSE_LEVELS.high, overload: false, source: 'inferred:shock' };
-        if (type === 'cardiac') return { factor: FLUID_RESPONSE_LEVELS.low, overload: false, source: 'inferred:cardiac' };
-        if (type === 'resp') return { factor: FLUID_RESPONSE_LEVELS.low, overload: false, source: 'inferred:resp' };
-        return { factor: FLUID_RESPONSE_LEVELS.moderate, overload: false, source: 'inferred:default' };
-    };
-    const VOLUME_KEYS = ['Fluids', 'FluidInfusion', 'Blood', 'Albumin'];
-
-    // E8 support: a sensible STARTING potassium for scenarios that never declared one, so the two
-    // flagship metabolic scenarios have a real endpoint. Explicit scenario vitals always win.
-    const inferPotassium = (scenario) => {
-        const txt = scenarioText(scenario);
-        if (txt.indexOf('hyperkal') !== -1) return 7.1;
-        if (txt.indexOf('hypokal') !== -1) return 2.4;
-        if (txt.indexOf('dka') !== -1 || txt.indexOf('ketoacid') !== -1) return 5.4;
-        if (txt.indexOf('crush') !== -1 || txt.indexOf('rhabdo') !== -1) return 6.2;
-        if (txt.indexOf('renal failure') !== -1 || txt.indexOf('dialysis') !== -1) return 6.0;
-        if (txt.indexOf('addisonian') !== -1) return 5.8;
-        if (txt.indexOf('pyloric') !== -1 || txt.indexOf('vomit') !== -1) return 3.2;
-        return null;
-    };
-
-    // =============================================================================================
-    // PART 5 / E4 + E6 — AGE-AWARE PHYSIOLOGY
-    // ---------------------------------------------------------------------------------------------
-    // WETFLAG weight-based dosing already exists but only ever edited a LOG STRING, so a paediatric
-    // dose and an adult dose were physiologically identical. Two age-dependent things matter most:
-    //   1. SAFE APNOEA TIME. A well pre-oxygenated healthy adult tolerates 6-10 min of apnoea; an
-    //      infant desaturates in 60-90 s. The old model gave 40 s WITH pre-oxygenation and 10 s
-    //      without, for every patient of every age — which actively mis-teaches RSI.
-    //   2. EFFECT MAGNITUDE relative to baseline: HR/RR responses are proportionally larger in a
-    //      small child (baseline HR 150), BP responses smaller.
-    // =============================================================================================
-    const ageBandOf = (scenario) => {
-        const s = scenario || {};
-        let age = Number(s.patientAge);
-        if (!Number.isFinite(age)) {
-            if (s.ageRange === 'Paediatric') age = 5;
-            else if (s.ageRange === 'Neonate' || /neonat/i.test(s.title || '')) age = 0;
-            else age = 40;
-        }
-        if (age < 1) return 'infant';
-        if (age < 5) return 'toddler';
-        if (age < 12) return 'child';
-        return 'adult';
-    };
-    // Seconds of apnoea tolerated BEFORE the saturation starts to fall. Pre-oxygenation is the
-    // dominant term; the floor is the un-preoxygenated value.
-    const SAFE_APNOEA = {
-        adult:   { preox: 360, none: 45 },
-        child:   { preox: 210, none: 35 },
-        toddler: { preox: 150, none: 25 },
-        infant:  { preox: 105, none: 20 }
-    };
-    const safeApnoeaSeconds = (scenario, opts = {}) => {
-        const band = ageBandOf(scenario);
-        const table = SAFE_APNOEA[band] || SAFE_APNOEA.adult;
-        let grace = opts.preoxygenated ? table.preox : table.none;
-        // Pre-oxygenation has to have been RUNNING long enough to denitrogenate. Less than ~120 s
-        // of 15 L/min buys proportionally less.
-        if (opts.preoxygenated && Number.isFinite(opts.preoxSeconds) && opts.preoxSeconds < 120) {
-            grace = table.none + (grace - table.none) * Math.max(0, opts.preoxSeconds) / 120;
-        }
-        // Apnoeic (nasal) oxygenation extends the safe window as well as halving the drop rate.
-        if (opts.apnoeicO2) grace *= 1.5;
-        // Physiology that shortens it: shunt, sepsis, pregnancy, obesity, a low starting SpO2.
-        if (Number.isFinite(opts.startingSpO2) && opts.startingSpO2 < 94) grace *= Math.max(0.25, (opts.startingSpO2 - 80) / 14);
-        if (opts.highConsumption) grace *= 0.6;
-        return Math.max(8, Math.round(grace));
-    };
-    const HIGH_CONSUMPTION_HINTS = ['sepsis', 'septic', 'pregnan', 'eclamp', 'obes', 'bariatric', 'peritonitis', 'dka', 'burn', 'anaphyla', 'status asthmaticus'];
-    const hasHighO2Consumption = (scenario) => {
-        const txt = scenarioText(scenario);
-        return HIGH_CONSUMPTION_HINTS.some(h => txt.indexOf(h) !== -1);
-    };
-    // E6 / paediatric note 2: per-effect-field magnitude scaling by age band.
-    const PAEDIATRIC_FIELD_SCALE = {
-        infant:  { HR: 1.4, RR: 1.35, BP: 0.7 },
-        toddler: { HR: 1.3, RR: 1.25, BP: 0.8 },
-        child:   { HR: 1.15, RR: 1.1, BP: 0.9 },
-        adult:   null
-    };
-    const paediatricFieldScale = (scenario) => PAEDIATRIC_FIELD_SCALE[ageBandOf(scenario)] || null;
-
-    // 1 = full decline, 0 = halted, negative = actively recovering.
-    const deteriorationTreatmentFactor = (type, cs) => {
-        const list = DETERIORATION_TREATMENTS[type] || [];
-        let n = 0;
-        list.forEach(k => { if (isExpectationMet(k, cs)) n++; });
-        const stabilisers = (cs && cs.scenario && cs.scenario.stabilisers) || [];
-        // A declared stabiliser is the definitive treatment: decline reverses.
-        if (stabilisers.length && stabilisers.some(k => isExpectationMet(k, cs))) return -0.6;
-        return Math.max(-0.6, 1 - 0.45 * n);
-    };
-
-    // =============================================================================================
-    // WAVE 8 / FINDING 1 — HOW OBSTRUCTED IS THIS PATIENT RIGHT NOW?
-    // ---------------------------------------------------------------------------------------------
-    // ONE number, 0 (not obstructed) to 1 (life-threatening bronchospasm, silent chest), derived
-    // entirely from state the engine already holds. It is the single source of truth for the
-    // capnogram's shark fin (RHYTHMS.capnogram) — there is no parallel "obstruction" state, nothing
-    // new is persisted and nothing new has to be authored into the 254 scenarios.
-    //
-    //   base     the obstructive diagnosis, INFERRED from the scenario text exactly the way
-    //            fluidResponsiveness() infers volume responsiveness.
-    //   tiring   how hard the patient is working right now (hypoxia + tachypnoea), up to +0.20.
-    //   relief   bronchodilator effect, read from each drug's OWN pk envelope in activeDrugs, so
-    //            salbutamol/ipratropium nebs, IV salbutamol, magnesium, nebulised or IM adrenaline
-    //            and steroids normalise the capnogram OVER MINUTES as they take effect, and the fin
-    //            relapses if they are allowed to wear off. This is the teaching point.
-    //   override the facilitator's explicit etco2Pathology choice always wins (Wave 5 supremacy).
-    // =============================================================================================
-    const OBSTRUCTION_HINTS = [
-        { re: /silent chest|status asthmaticus|life.?threatening asthma|near.?fatal asthma/, v: 0.95, why: 'life-threatening asthma' },
-        { re: /acute severe asthma|severe asthma/, v: 0.85, why: 'acute severe asthma' },
-        { re: /asthma|asthmatic/, v: 0.65, why: 'asthma' },
-        { re: /bronchospasm/, v: 0.60, why: 'bronchospasm' },
-        { re: /bronchiolitis/, v: 0.60, why: 'bronchiolitis' },
-        { re: /copd|chronic obstructive|emphysema/, v: 0.55, why: 'COPD' },
-        { re: /anaphyla/, v: 0.45, why: 'anaphylaxis' },
-        { re: /wheez/, v: 0.45, why: 'wheeze' }
-    ];
-    // Relief weight per bronchodilator/anti-inflammatory. Each is multiplied by that dose's own pk
-    // factor, so relief RAMPS with the drug rather than appearing the instant the button is pressed.
-    const BRONCHODILATORS = {
-        'Nebs': 0.40, 'NebsContinuous': 0.50, 'NebAdrenaline': 0.35, 'SalbutamolIV': 0.45,
-        'MagSulph': 0.35, 'MagnesiumInfusion': 0.35,
-        'AdrenalineIM': 0.35, 'AdrenalineInfusion': 0.35, 'AdrenalineIV': 0.25, 'AdrenalinePush': 0.20,
-        'Hydrocortisone': 0.12, 'Dexamethasone': 0.12
-    };
-    const OBSTRUCTION_BANDS = [
-        { at: 0.06, label: 'none' }, { at: 0.35, label: 'mild' },
-        { at: 0.70, label: 'moderate' }, { at: 1.01, label: 'severe' }
-    ];
-    const obstructionBand = (s) => {
-        for (let i = 0; i < OBSTRUCTION_BANDS.length; i++) if (s < OBSTRUCTION_BANDS[i].at) return OBSTRUCTION_BANDS[i].label;
-        return 'severe';
-    };
-    // "No rash, no wheeze" must NOT read as bronchospasm (ACE-inhibitor angioedema says exactly
-    // that, and is bradykinin-mediated: adrenaline and nebs do little, which is its whole point).
-    const scrubNegations = (txt) => String(txt || '')
-        .replace(/\b(?:no|without|not?)\s+(?:[a-z]+\s+)?(?:wheez\w*|bronchospasm)/g, ' ')
-        .replace(/\bno\s+rash,?\s*no\s+wheez\w*/g, ' ');
-
-    const inferObstruction = (scenario) => {
-        const txt = scrubNegations(scenarioText(scenario));
-        let base = 0, why = null;
-        OBSTRUCTION_HINTS.forEach(h => { if (h.re.test(txt) && h.v > base) { base = h.v; why = h.why; } });
-        if (!base) return { base: 0, why: null };
-        // Acuity is a real severity signal in this data set: the same diagnosis is authored at
-        // Resus or at Majors.
-        const acuity = String((scenario && scenario.acuity) || '').toLowerCase();
-        if (acuity === 'resus') base = Math.min(1, base * 1.1);
-        else if (acuity === 'majors') base = base * 0.85;
-        else if (acuity === 'minors') base = base * 0.6;
-        return { base: Math.max(0, Math.min(1, base)), why };
-    };
-
-    const getObstruction = (coreState, vitals, scenarioArg) => {
-        const cs = coreState || {};
-        const scenario = scenarioArg || cs.scenario || null;
-        const pattern = cs.etco2Pathology || 'normal';
-        const inferred = inferObstruction(scenario);
-        let base = inferred.base;
-        const v = vitals || cs.vitals || {};
-        let tiring = 0;
-        if (base > 0) {
-            if (Number.isFinite(v.spO2)) tiring += Math.min(0.12, Math.max(0, (92 - v.spO2) / 100));
-            if (Number.isFinite(v.rr)) tiring += Math.min(0.08, Math.max(0, (v.rr - 24) / 200));
-        }
-        // Bronchodilator relief, from the pk envelopes that are already running.
-        const t = Number.isFinite(cs.time) ? cs.time : 0;
-        const perKey = {};
-        (Array.isArray(cs.activeDrugs) ? cs.activeDrugs : []).forEach(d => {
-            const w = BRONCHODILATORS[d && d.key];
-            if (!w) return;
-            const f = pkFactor(d, t);
-            if (!(f > 0)) return;
-            // Two doses of the same agent count; a sixth neb does not keep adding.
-            perKey[d.key] = Math.min(w * 2, (perKey[d.key] || 0) + w * f);
-        });
-        let relief = Object.keys(perKey).reduce((a, k) => a + perKey[k], 0);
-        relief = Math.max(0, Math.min(0.95, relief));
-        let severity = (base + tiring) * (1 - relief);
-        severity = Math.max(0, Math.min(1, severity));
-        // Facilitator override (Wave 5): an explicit choice is never overruled by the model.
-        let source = inferred.why ? `scenario: ${inferred.why}` : 'no obstructive diagnosis';
-        if (pattern === 'bronchospastic') { severity = Math.max(severity, 0.85); source = 'facilitator: forced obstructive'; }
-        else if (pattern === 'nonobstructive') { severity = 0; source = 'facilitator: forced non-obstructive'; }
-        return {
-            severity: Math.round(severity * 1000) / 1000,
-            band: obstructionBand(severity),
-            base: Math.round(base * 1000) / 1000,
-            tiring: Math.round(tiring * 1000) / 1000,
-            relief: Math.round(relief * 1000) / 1000,
-            pattern, source
-        };
-    };
-    window.getObstruction = getObstruction;
-    window.OBSTRUCTION_HINTS = OBSTRUCTION_HINTS;
-    window.BRONCHODILATORS = BRONCHODILATORS;
-
-    // Bands the patient is allowed to recover INTO when the treatment factor is negative, so
-    // successful treatment normalises rather than overshooting into hypertension/hyperoxia.
-    const RECOVERY_BAND = { hr: [58, 110], bpSys: [95, 135], spO2: [92, 98], rr: [12, 22], gcs: [3, 15], etco2: [4.0, 6.0], temp: [36.0, 37.5] };
-    // Floors/ceilings autonomous deterioration alone may reach. Going all the way to zero is the
-    // facilitator's call (ARREST), not a slow drift's.
-    const DETERIORATION_BOUND = { hr: [25, 220], bpSys: [35, 240], spO2: [40, 100], rr: [4, 55], gcs: [3, 15], etco2: [1.5, 10], bm: [1.0, 40], temp: [30, 42] };
-
-    const deteriorationDeltas = (type, base) => {
-        const d = {};
-        const add = (k, v) => { d[k] = (d[k] || 0) + v; };
-        switch (type) {
-            case 'shock':
-                add('bpSys', -1.0);
-                if (base.bpSys > 70) { add('hr', 0.9); }                    // compensatory tachycardia
-                else { add('hr', -1.2); add('spO2', -0.35); add('gcs', -0.03); }  // decompensation
-                add('spO2', -0.1);
-                add('etco2', -0.004);
-                break;
-            case 'resp':
-                add('spO2', -0.45);
-                if (base.rr < 38) { add('rr', 0.9); } else { add('rr', -1.2); add('spO2', -1.0); }  // tiring
-                add('etco2', 0.01);
-                if (base.spO2 < 80) { add('hr', 0.6); add('gcs', -0.02); }
-                break;
-            case 'airway':
-                add('spO2', -0.8); add('etco2', 0.015);
-                if (base.spO2 > 85) add('rr', 0.7); else add('rr', -1.0);
-                if (base.spO2 < 80) { add('hr', 0.5); add('gcs', -0.04); }
-                break;
-            case 'cardiac':
-                add('bpSys', -0.6); add('spO2', -0.15);
-                if (base.hr >= 100) add('hr', 0.7); else if (base.hr <= 60) add('hr', -0.5); else add('hr', 0.3);
-                break;
-            case 'neuro':
-                // Cushing response: falling GCS, rising pressure, falling rate, irregular breathing.
-                add('gcs', -0.05); add('bpSys', 0.35); add('hr', -0.2); add('rr', -0.1);
-                break;
-            case 'arrest':
-                add('bpSys', -1.6); add('hr', -1.0); add('spO2', -0.8); add('gcs', -0.08);
-                break;
-            default: return null;
-        }
-        // Diastolic follows the systolic so the pair stays coherent through a long decline.
-        if (d.bpSys) add('bpDia', d.bpSys * 0.6);
-        return d;
-    };
-
-    // Integrate one second of deterioration into `base` IN PLACE. Returns true if anything moved.
-    const applyDeteriorationTick = (base, type, rate, factor, ownedByTrend) => {
-        const deltas = deteriorationDeltas(type, base);
-        if (!deltas) return false;
-        let moved = false;
-        const recovering = factor < 0;
-        Object.keys(deltas).forEach(k => {
-            if (ownedByTrend && ownedByTrend[k]) return;      // a running trend owns this vital
-            if (typeof base[k] !== 'number' || !Number.isFinite(base[k])) return;
-            const step = deltas[k] * rate * factor;
-            if (!Number.isFinite(step) || step === 0) return;
-            let next = base[k] + step;
-            const bound = DETERIORATION_BOUND[k];
-            if (bound) next = Math.min(bound[1], Math.max(bound[0], next));
-            if (recovering) {
-                const band = RECOVERY_BAND[k];
-                if (band) {
-                    // Do not push a vital past normal while recovering, and never move it the wrong
-                    // way if it is already inside the band.
-                    if (base[k] < band[0]) next = Math.min(next, band[0]);
-                    else if (base[k] > band[1]) next = Math.max(next, band[1]);
-                    else next = base[k];
-                }
-            }
-            next = clampVital(k, next);
-            if (next !== base[k]) { base[k] = next; moved = true; }
-        });
-        return moved;
-    };
-
-    window.__pkInternals = { pkFactor, pkPhase, pkRemaining, drugOffsets, composeVitals, buildDrugEntry, paralysisFromDrugs, deteriorationDeltas, applyDeteriorationTick, deteriorationTreatmentFactor, normaliseDeteriorationType, formatVital, clampVital, DEFAULT_VITALS, EFFECT_TARGETS, VITAL_LIMITS, isDrugSpent,
-        // WAVE 4b / D5: exported so the verifiers can assert the categorical-vital guard directly.
-        normalisePupils, isCategoricalVital,
-        // WAVE 4a additions, all exercised directly by the Node verification harness.
-        drivenVitals, applyDriveTick, drugCeilings, baseForDisplayed, easeRamp, fluidResponsiveness, inferPotassium, VOLUME_KEYS,
-        ageBandOf, safeApnoeaSeconds, paediatricFieldScale, hasHighO2Consumption, DETERIORATION_TREATMENTS,
-        FLUID_RESPONSE_LEVELS,
-        // WAVE 8: the bronchospasm severity model behind the shark-fin capnogram.
-        getObstruction, inferObstruction, obstructionBand, BRONCHODILATORS, OBSTRUCTION_HINTS };
-
-    const OBJECTIVE_TRIGGERS = {
-        'Antibiotics':   ['antibio', 'sepsis', 'infection', 'antimicro'],
-        'Fluids':        ['fluid', 'resus', 'bolus', 'iv fluid', 'saline'],
-        'AdrenalineIM':  ['adrenaline', 'anaphyl', 'epinephrine'],
-        'AdrenalineIV':  ['adrenaline', 'cardiac arrest', 'epinephrine'],
-        // E10: 'Adrenaline', 'O2', 'NaloxoneIV', 'Tranexamic', 'ChestDrain' and
-        // 'NeedleDecomp' were DEAD KEYS — no such intervention exists, so those learning
-        // objectives could never auto-complete. Remapped to the real keys.
-        'AdrenalinePush':      ['adrenaline', 'epinephrine', 'hypotension'],
-        'AdrenalineInfusion':  ['adrenaline', 'anaphyl', 'epinephrine', 'refractory'],
-        'Oxygen':        ['oxygen', 'o2', 'airway'],
-        'Aspirin':       ['aspirin', 'acs', 'stemi', 'nstemi'],
-        'GTN':           ['gtn', 'nitrate', 'acs'],
-        'InsulinInfusion': ['insulin', 'dka', 'glucose'],
-        'InsulinDextrose': ['insulin', 'dka', 'glucose', 'hyperkalaemia', 'hyperkalemia'],
-        'Atropine':      ['atropine', 'bradycardia', 'heart block'],
-        'Lorazepam':     ['lorazepam', 'seizure', 'benzodiazep'],
-        'LorazepamIM':   ['lorazepam', 'seizure', 'benzodiazep'],
-        'MidazolamBuccal': ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-        'MidazolamIN':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-        'MidazolamIM':   ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-        'DiazepamPR':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-        'DiazepamIV':    ['seizure', 'status epilepticus', 'benzodiazep', 'convuls'],
-        'Levetiracetam': ['seizure', 'status epilepticus', 'anticonvuls'],
-        'Phenytoin':     ['seizure', 'status epilepticus', 'anticonvuls'],
-        'Naloxone':      ['naloxone', 'opiate', 'opioid'],
-        'NaloxoneIM':    ['naloxone', 'opiate', 'opioid'],
-        'NaloxoneIN':    ['naloxone', 'opiate', 'opioid'],
-        'TXA':           ['tranexam', 'haemorrhage', 'trauma'],
-        'RSI':           ['rsi', 'intubat', 'airway management'],
-        'SeldingerDrain':['chest drain', 'pneumothorax', 'haemothorax'],
-        'SurgicalDrain': ['chest drain', 'pneumothorax', 'haemothorax'],
-        'Needle':        ['needle', 'pneumothorax', 'tension'],
-        'Benzylpenicillin':   ['meningo', 'meningitis', 'antibio', 'sepsis'],
-        'BenzylpenicillinIM': ['meningo', 'meningitis', 'antibio', 'sepsis'],
-        'NebsContinuous':     ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
-        'Nebs':               ['asthma', 'salbutamol', 'nebuli', 'wheeze'],
-        // WAVE 5 / ITEM 2: keys that were missing entirely, so an objective they should satisfy
-        // could never be credited and a correctly-treated scenario could read 0%. 'Calcium' is the
-        // one that produced the reported bug: giving Calcium Gluconate in Hyperkalaemia (Renal)
-        // matched nothing at all, so "Hyperkalaemia treatment" stayed at 0/1.
-        'Calcium':            ['calcium', 'hyperkalaemia', 'hyperkalemia', 'membrane'],
-        'SalbutamolIV':       ['hyperkalaemia', 'hyperkalemia', 'asthma', 'salbutamol', 'nebuli'],
-        'MagSulph':           ['magnesium', 'asthma', 'torsade', 'eclampsia', 'pre-eclampsia'],
-        'Amiodarone':         ['amiodarone', 'tachycardia algorithm', 'antiarrhythmic', 'refractory vf'],
-        'Adenosine':          ['adenosine', 'svt', 'narrow complex'],
-        'Manoeuvres':         ['vagal', 'svt', 'manoeuvre'],
-        'Cardioversion':      ['cardiovers', 'tachycardia algorithm', 'safe cardioversion'],
-        'Pacing':             ['pacing', 'bradycardia algorithm', 'heart block'],
-        'Thrombolysis':       ['thrombolysis', 'thrombolytic'],
-        'Blood':              ['haemorrhage', 'transfus', 'blood protocol', 'major haemorrhage'],
-        'Hydrocortisone':     ['steroid', 'adrenal', 'addison', 'anaphyl', 'thyroid'],
-        'Dexamethasone':      ['steroid', 'asthma', 'copd', 'meningitis', 'croup'],
-        'Furosemide':         ['furosemide', 'diuretic', 'heart failure', 'pulmonary oedema'],
-        'GTNInfusion':        ['gtn', 'nitrate', 'heart failure', 'pulmonary oedema'],
-        'CPAP':               ['cpap', 'heart failure', 'pulmonary oedema', 'non-invasive'],
-        'NIV':                ['niv', 'non-invasive', 'copd', 'oxygen targets'],
-        'Cooling':            ['cooling', 'hyperthermia', 'heat'],
-        'Warming':            ['warming', 'hypothermia', 'myxoedema'],
-        'HypertonicSaline':   ['hyponatr', 'sodium correction', 'cerebral oedema'],
-        'Bisphosphonate':     ['hypercalcaem', 'hypercalcem', 'bisphosphonate'],
-        'Terlipressin':       ['variceal', 'terlipressin'],
-        'Labetalol':          ['bp control', 'bp target', 'hypertensive', 'dissection'],
-        'Surgery':            ['surgical', 'surgery', 'theatre', 'definitive care'],
-        'FingerThoracostomy': ['thoracostomy', 'pneumothorax', 'tension'],
-        'Cyproheptadine':     ['serotonin', 'cyproheptadine'],
-        'T3T4':               ['myxoedema', 'thyroid', 'liothyronine'],
-        'Nimodipine':         ['sah', 'subarachnoid', 'nimodipine', 'vasospasm'],
-        'Chlorphenamine':     ['antihistamine', 'anaphyl'],
-        'Heparin':            ['lmwh', 'anticoagul', 'heparin', 'thrombo'],
-    };
-
-    // =============================================================================================
-    // WAVE 5 / ITEM 2 — MULTI-COMPONENT OBJECTIVE PROGRESS
-    // ---------------------------------------------------------------------------------------------
-    // Objectives are authored as free text ("Hyperkalaemia treatment") and credited by keyword
-    // matching an intervention key against that text. That is fine for a single-drug objective and
-    // badly misleading for a multi-component one: hyperkalaemia needs BOTH calcium (membrane
-    // stabilisation) AND insulin/dextrose (potassium shift), so giving one of the two produced a
-    // flat "0% — Objectives Met: 0/1" that reads like a bug rather than like partial credit.
-    //
-    // `computeObjectiveProgress` derives the COMPONENTS of each objective from data that already
-    // exists — the scenario's own recommendedActions/stabilisers/instructorBrief interventions,
-    // intersected with OBJECTIVE_TRIGGERS — and reports which were done and which were not.
-    // It is deliberately honest rather than generous:
-    //   * an objective with >= 2 known components is 'met' ONLY when every component was given;
-    //   * one of two components is 'partial' with a fraction of 0.5 and the missing item named;
-    //   * an objective with no derivable components falls back to the engine's completedObjectives
-    //     set exactly as before, so nothing regresses.
-    // The score is reported twice and labelled: a strict fully-met percentage, and a
-    // component-weighted partial-credit percentage. Neither is inflated; both are explained.
-    // =============================================================================================
-    const objectiveComponentKeys = (scenario, objective) => {
-        const objLower = String(objective == null ? '' : objective).toLowerCase();
-        if (!objLower) return [];
-        const pool = [];
-        const push = (arr) => { if (Array.isArray(arr)) arr.forEach(k => { if (typeof k === 'string' && pool.indexOf(k) === -1) pool.push(k); }); };
-        push(scenario && scenario.recommendedActions);
-        push(scenario && scenario.stabilisers);
-        push(scenario && scenario.instructorBrief && scenario.instructorBrief.interventions);
-        return pool.filter(key => {
-            const triggers = OBJECTIVE_TRIGGERS[key];
-            return !!triggers && triggers.some(kw => objLower.indexOf(kw) !== -1);
-        });
-    };
-
-    // WAVE 5 / ITEM 6: the whole precedence decision in one pure, exported predicate, so "does a
-    // rhythm change overwrite a manually typed HR?" is answerable by a test rather than by reading
-    // the dispatch wrapper. TRUE = apply the rhythm's registry rate band; FALSE = the facilitator's
-    // own HR stands. `releaseManual` is the list of keys the transition itself has just reset
-    // (arrest / ROSC / pulseless <-> organised), which legitimately clears the hold.
-    const applyRhythmHrBand = (cur, releaseManual) => {
-        const held = !!(cur && cur.manualHold && cur.manualHold.hr);
-        const released = Array.isArray(releaseManual) && releaseManual.indexOf('hr') !== -1;
-        return !held || released;
-    };
-
-    const computeObjectiveProgress = (scenario, opts) => {
-        const o = opts || {};
-        const scen = scenario || {};
-        const a = Array.isArray(scen.learningObjectives) ? scen.learningObjectives : [];
-        const b = Array.isArray(scen.instructorBrief && scen.instructorBrief.learningObjectives) ? scen.instructorBrief.learningObjectives : [];
-        const seen = new Set();
-        const objectives = [...a, ...b].filter(x => typeof x === 'string' && x.length && !seen.has(x) && seen.add(x) !== false);
-        const counts = o.interventionCounts || {};
-        const activeSet = o.activeInterventions instanceof Set ? o.activeInterventions : new Set(Array.isArray(o.activeInterventions) ? o.activeInterventions : []);
-        const completed = o.completedObjectives instanceof Set ? o.completedObjectives : new Set(Array.isArray(o.completedObjectives) ? o.completedObjectives : []);
-        const given = (key) => (Number(counts[key]) || 0) > 0 || activeSet.has(key);
-        const labelOf = (key) => {
-            const defs = window.INTERVENTIONS || {};
-            return (defs[key] && defs[key].label) || key;
-        };
-
-        const rows = objectives.map(objective => {
-            const keys = objectiveComponentKeys(scen, objective);
-            const components = keys.map(key => ({ key, label: labelOf(key), met: given(key) }));
-            const metCount = components.filter(c => c.met).length;
-            const touched = completed.has(objective);
-            let status, fraction;
-            if (components.length === 0) {
-                // No derivable components: fall back to the legacy keyword credit, unchanged.
-                status = touched ? 'met' : 'none';
-                fraction = touched ? 1 : 0;
-            } else if (metCount === components.length) {
-                status = 'met';
-                fraction = 1;
-            } else if (metCount > 0 || touched) {
-                status = 'partial';
-                // `touched` with no component evidence still counts as started, never as complete.
-                fraction = metCount > 0 ? metCount / components.length : 0;
-            } else {
-                status = 'none';
-                fraction = 0;
-            }
-            return {
-                objective,
-                components,
-                metComponents: components.filter(c => c.met).map(c => c.label),
-                missingComponents: components.filter(c => !c.met).map(c => c.label),
-                multiComponent: components.length > 1,
-                touched,
-                status,
-                fraction
-            };
-        });
-
-        const total = rows.length;
-        const fullyMet = rows.filter(r => r.status === 'met').length;
-        const partial = rows.filter(r => r.status === 'partial').length;
-        const creditSum = rows.reduce((sum, r) => sum + r.fraction, 0);
-        return {
-            objectives: rows,
-            total,
-            fullyMet,
-            partial,
-            notStarted: rows.filter(r => r.status === 'none').length,
-            // Strict: only fully-completed objectives count. This is the headline number and it never
-            // goes up because of partial work.
-            score: total > 0 ? Math.round((fullyMet / total) * 100) : null,
-            // Component-weighted partial credit, always shown alongside and always labelled.
-            partialScore: total > 0 ? Math.round((creditSum / total) * 100) : null,
-            hasPartial: partial > 0
-        };
-    };
-
-    window.OBJECTIVE_TRIGGERS = OBJECTIVE_TRIGGERS;
-    window.computeObjectiveProgress = computeObjectiveProgress;
-    window.__pkInternals = window.__pkInternals || {};
-    window.__pkInternals.objectiveComponentKeys = objectiveComponentKeys;
-    window.__pkInternals.applyRhythmHrBand = applyRhythmHrBand;
-
-    // ================= WAVE 6: ONE definition of "advance a ramp by one second" ===================
-    // Mutates `base` (base space) and `trends` (elapsed / active) in place and returns { owned, ran }:
-    // `owned` is the set of keys the ramp owns this second, so autonomous deterioration and
-    // rate-driven drives do not fight it. Used by BOTH the full physiology tick (TICK_TIME) and the
-    // clock-independent trend tick (TICK_TRENDS), so there is exactly ONE interpolation and a ramp
-    // cannot behave differently before and after START.
-    const advanceTrendsOneSecond = (base, trends) => {
-        const owned = {};
-        if (!trends || !trends.active) return { owned, ran: false };
-        const targets = trends.targets || {};
-        const startVitals = trends.startVitals || {};
-        const duration = Number(trends.duration);
-        trends.elapsed = (Number(trends.elapsed) || 0) + 1;
-        // A 0 s / invalid duration means "now": progress 1 on the first tick, never NaN.
-        const progress = (Number.isFinite(duration) && duration > 0) ? Math.min(1, trends.elapsed / duration) : 1;
-        Object.keys(targets).forEach(key => {
-            const startVal = startVitals[key];
-            const targetVal = targets[key];
-            // D5: categorical vitals snap on the FIRST tick and are never interpolated, even when
-            // both ends happen to be numbers (there is no such thing as 3.4 mm of pupil on a
-            // clinical chart, and a half-way value between 3 and 'Dilated' is NaN).
-            if (isCategoricalVital(key)) {
-                if (targetVal !== undefined) { base[key] = normalisePupils(targetVal); owned[key] = true; }
-            } else if (startVal !== undefined && targetVal !== undefined && typeof startVal === 'number' && typeof targetVal === 'number') {
-                base[key] = startVal + ((targetVal - startVal) * progress);
-                owned[key] = true;
-            } else if (startVal !== undefined && targetVal !== undefined) {
-                base[key] = targetVal;   // other non-numeric: snap, never interpolate
-                owned[key] = true;
-            }
-        });
-        if (!Number.isFinite(duration) || trends.elapsed >= duration) {
-            Object.keys(targets).forEach(key => {
-                base[key] = isCategoricalVital(key) ? normalisePupils(targets[key]) : targets[key];
-                owned[key] = true;
-            });
-            trends.active = false;
-        }
-        return { owned, ran: true };
-    };
-    window.__pkInternals.advanceTrendsOneSecond = advanceTrendsOneSecond;
-
-    // WAVE 6: what should the 1 Hz interval dispatch this second? Pulled out of the effect so the
-    // whole gating decision is one pure, exported function that a test can interrogate.
-    //   * the student monitor NEVER runs physiology (it would fight the authoritative vitals
-    //     arriving over Firebase);
-    //   * a running session runs the full pipeline;
-    //   * a session that has not been started (or has been paused) still advances an ACTIVE RAMP,
-    //     because a ramp is an explicit facilitator instruction, not a property of scenario time.
-    //     This is what makes the vitals-modal ramp and Trend Better/Worse work in Quick Sim, where
-    //     the controller is reached without ever passing through the briefing screen's START.
-    const tickActionFor = (state, isMonitorMode) => {
-        if (isMonitorMode) return null;
-        if (!state) return null;
-        if (state.isRunning) return 'TICK_TIME';
-        if (state.trends && state.trends.active) return 'TICK_TRENDS';
-        return null;
-    };
-    window.__pkInternals.tickActionFor = tickActionFor;
-
-    const vitalsReducer = (state, action) => {
-        const cs = action.currentState;
-        switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialVitalsState };
-            case 'LOAD_SCENARIO': 
-                if(!action.payload) return { ...initialVitalsState };
-                const initialVitals = { ...initialVitalsState.vitals, ...action.payload.vitals };
-                // E8: give the scenario a clinically coherent starting K+ if it never declared one,
-                // so hyperkalaemia scenarios actually start hyperkalaemic and the treatment has a
-                // measurable endpoint. An explicit scenario/vitalsMod value always wins.
-                if (action.payload.vitals === undefined || action.payload.vitals === null || action.payload.vitals.k === undefined) {
-                    const inferredK = inferPotassium(action.payload);
-                    if (inferredK !== null) initialVitals.k = inferredK;
-                }
-                return { ...initialVitalsState, vitals: initialVitals, baseVitals: { ...initialVitals }, prevVitals: { ...initialVitals } };
-            case 'RESTORE_SESSION': {
-                const restoredVitals = { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) };
-                return { ...state, vitals: restoredVitals, baseVitals: { ...restoredVitals, ...(action.payload.baseVitals || {}) }, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0, manualHold: action.payload.manualHold || {} };
-            }
-            // The monitor does not run physiology; the authoritative composed vitals arrive over the
-            // wire, so base == displayed there.
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, baseVitals: { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) }, trends: action.payload.trends || state.trends };
-            // UPDATE_VITALS writes the BASE (precedence step 1). Displayed vitals are recomposed with
-            // the drug envelope so a facilitator/arrest/ROSC write can never silently delete an
-            // in-flight drug effect, and a drug effect can never fight an explicit write.
-            case 'UPDATE_VITALS': {
-                const base = { ...state.baseVitals, ...action.payload };
-                const t = cs ? cs.time : 0;
-                const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
-                // WAVE 5 / ITEM 6: arrest, ROSC and pulseless<->organised transitions define a NEW
-                // baseline, so they explicitly release the manual hold on the vitals they rewrite.
-                let hold = state.manualHold || {};
-                if (Array.isArray(action.releaseManual) && action.releaseManual.length) {
-                    hold = { ...hold };
-                    action.releaseManual.forEach(k => { delete hold[k]; });
-                }
-                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? cs.activeDrugs : [], t, inArrest), manualHold: hold };
-            }
-            case 'MANUAL_VITAL_UPDATE': {
-                // Boundary guard: a NaN here propagates into the Firebase payload, which RTDB rejects,
-                // and the rejected diff is then retried forever — freezing the student monitor.
-                const { key, value } = action.payload;
-                if (!isVitalValueSafe(key, value)) return state;
-                // D5: a manual pupil write is normalised at the boundary, so nothing downstream ever
-                // sees a raw '' / NaN / '4' ambiguity.
-                if (isCategoricalVital(key)) {
-                    const pv = normalisePupils(value);
-                    const pbase = { ...state.baseVitals, [key]: pv };
-                    return { ...state, baseVitals: pbase, vitals: { ...state.vitals, [key]: pv }, prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
-                }
-                const t = cs ? cs.time : 0;
-                const drugs = cs ? cs.activeDrugs : [];
-                const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
-                // The facilitator types the number they want to SEE. Store it in base space by
-                // removing whatever the drugs are currently contributing, so the displayed value is
-                // exactly what was asked for and any later wear-off still unwinds correctly.
-                let baseValue = value;
-                if (typeof value === 'number') {
-                    const offs = drugOffsets(drugs, t);
-                    const ceils = drugCeilings(drugs, t);
-                    const off = (inArrest && ARREST_SUPPRESSED.indexOf(key) !== -1) ? 0 : (offs[key] || 0);
-                    baseValue = clampVital(key, baseForDisplayed(key, value, off, ceils[key]));
-                }
-                const base = { ...state.baseVitals, [key]: baseValue };
-                // WAVE 5 / ITEM 6: record that the facilitator typed this one. See `manualHold`.
-                return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
-            }
-            case 'START_TREND': {
-                const safeTargets = {};
-                const t0 = cs ? cs.time : 0;
-                const offs = drugOffsets(cs ? cs.activeDrugs : [], t0);
-                const ceils = drugCeilings(cs ? cs.activeDrugs : [], t0);
-                Object.keys(action.payload.targets || {}).forEach(k => {
-                    if (!isVitalValueSafe(k, action.payload.targets[k])) return;
-                    const raw = action.payload.targets[k];
-                    // Targets are given in DISPLAYED space ("take the BP to 90"); convert to base space
-                    // by removing the drug contribution present at the moment the trend starts, so the
-                    // trend and the envelope add up to the number the facilitator asked for.
-                    safeTargets[k] = (typeof raw === 'number' && offs[k]) ? clampVital(k, baseForDisplayed(k, raw, offs[k], ceils[k])) : raw;
-                });
-                if (Object.keys(safeTargets).length === 0) return state;
-                return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.baseVitals } } };
-            }
-            case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
-            case 'TRIGGER_IMPROVE':
-            case 'TRIGGER_DETERIORATE': return { ...state, trends: action.payload.trends };
-            // ======================= WAVE 6 / QUICK SIM RAMPS ==========================================
-            // A ramp ("take the HR to 130 over 120 s") is the facilitator's own instruction and must
-            // progress as soon as it is given. Before Wave 6 the ONLY thing that advanced a trend was
-            // TICK_TIME, and the 1 Hz interval that dispatches it is gated on isRunning — so a ramp
-            // started before START silently did nothing. Quick Sim skips the briefing screen and
-            // therefore never calls engine.start(), which is why the bug showed up there first: in
-            // Quick Sim the controller normally sits at 00:00 for the whole teaching session.
-            //
-            // TICK_TRENDS advances ONLY the trend layer. It does not touch the session clock, the
-            // drug pk clock, autonomous deterioration, the airway model, the hypoxia timer or the
-            // debrief history — all of those are properties of elapsed scenario time and must stay
-            // gated on the clock. The precedence order is unchanged: this is step 2 running on its
-            // own, with the drug envelope still applied last by composeVitals().
-            case 'TICK_TRENDS': {
-                if (!state.trends || !state.trends.active) return state;
-                const base = { ...state.baseVitals };
-                const newTrends = { ...state.trends };
-                const step = advanceTrendsOneSecond(base, newTrends);
-                if (!step.ran) return state;
-                const t = cs ? cs.time : 0;
-                const inArrest = cs ? RG.inArrest(cs.rhythm || 'Sinus Rhythm') : false;
-                const composed = composeVitals(base, cs ? (cs.activeDrugs || []) : [], t, inArrest);
-                return { ...state, baseVitals: base, vitals: composed, prevVitals: state.prevVitals, trends: newTrends };
-            }
-            case 'TICK_TIME': {
-                // ===== THE COMPOSITION PIPELINE (precedence order documented at the top of this file).
-                // Everything from here to step 5 operates on `base` (unrounded underlying physiology).
-                // The drug envelope is added at the very end and is never written into `base`.
-                let base = { ...state.baseVitals };
-                let vitalsChanged = false;
-                let newTrends = { ...state.trends };
-                let currentHypoxiaTimer = state.hypoxiaTimer;
-                const isRunning = cs ? cs.isRunning : false;
-                const activeInt = cs ? cs.activeInterventions : new Set();
-                const icp = cs ? cs.icp : 10;
-                const scen = cs ? cs.scenario : null;
-                const rhythm = cs ? cs.rhythm : 'Sinus Rhythm';
-                const cprActive = cs ? cs.cprInProgress : false;
-                const inArrest = RG.inArrest(rhythm);   // C1: registry, not a seventh private list
-                const isBagging = isVentilated(activeInt);
-                const time0 = cs ? cs.time : 0;
-                // coreReducer increments `time` in the same dispatch, so the authoritative clock for
-                // this tick is time0 + 1. Every pk/deterioration calculation uses tNow.
-                const tNow = time0 + 1;
-                const activeDrugs = cs ? (cs.activeDrugs || []) : [];
-
-                // ----- STEP 2: TRENDS. A trend interpolates the BASE from a base-space snapshot
-                // towards base-space targets. Because it no longer touches the displayed vitals, the
-                // Wave 1 defect where a trend erased a drug effect within one second is structurally
-                // impossible: the drug lives in a separate additive layer.
-                // WAVE 6: the interpolation itself now lives in advanceTrendsOneSecond() so the
-                // clock-independent trend tick (TICK_TRENDS) runs the IDENTICAL maths — a ramp must
-                // behave the same whether or not the session clock is running.
-                const trendStep = advanceTrendsOneSecond(base, newTrends);
-                const trendOwned = trendStep.owned;
-                if (trendStep.ran) vitalsChanged = true;
-
-                // ----- STEP 3: AUTONOMOUS DETERIORATION (Group C).
-                // Gated on deteriorationMode === 'auto'. Integrating into `base` is what guarantees C3:
-                // switching modes only starts/stops the integration, so there is no discontinuity in
-                // either direction — the current obs ARE the baseline.
-                const detMode = cs ? (cs.deteriorationMode || 'manual') : 'manual';
-                const det = scen && scen.deterioration ? scen.deterioration : null;
-                const detType = det ? normaliseDeteriorationType(det.type) : null;
-                const detRate = det ? Number(det.rate) : 0;
-                // WAVE 5 / ITEM 9: a RATE-DRIVEN vital (active warming/cooling, fixed-rate insulin)
-                // is owned by its drive for exactly as long as the drive runs, in the same way a
-                // running trend owns its targets. Without this, autonomous deterioration and the drive
-                // both integrate into the same base value in the same tick and the net movement no
-                // longer matches either declared rate. No current deterioration type touches `temp`,
-                // so this is defensive today and correct by construction tomorrow.
-                const driveOwned = drivenVitals(activeDrugs, tNow);
-                const ownedBySomething = { ...trendOwned, ...driveOwned };
-                if (isRunning && detMode === 'auto' && det && det.active !== false && detType && Number.isFinite(detRate) && detRate > 0 && !inArrest) {
-                    const factor = deteriorationTreatmentFactor(detType, cs);
-                    if (factor !== 0 && applyDeteriorationTick(base, detType, detRate, factor, ownedBySomething)) vitalsChanged = true;
-                }
-
-                // ----- STEP 3b: RATE-DRIVEN VITALS (Wave 4a, PART 2D).
-                // Active warming/cooling and a fixed-rate insulin infusion move a vital at a RATE
-                // towards a TARGET. They integrate into the BASE (like deterioration) rather than
-                // sitting in the additive envelope, which is what lets a 30.0 degC patient actually
-                // reach 36.8 and a pyrexial one actually come down. drugOffsets() excludes these
-                // vitals from the envelope for exactly as long as the drive is running, so no
-                // effect is ever applied twice.
-                if (isRunning && applyDriveTick(base, activeDrugs, tNow)) vitalsChanged = true;
-
-                // ----- STEP 4: AIRWAY / PARALYSIS / HYPOXIA / ETCO2.
-                // PARALYSIS is now derived from the SAME activeDrugs entry as the drug's numeric
-                // envelope (Wave 1 left a bespoke parallel timer with a note asking for this). Once the
-                // blocker's onset has passed, respiration is the ventilator rate if the patient is
-                // being ventilated and ZERO if not, which feeds the hypoxia model below.
-                const paraFromDrugs = paralysisFromDrugs(activeDrugs, tNow);
-                const paraPhase = paraFromDrugs ? 'active' : paralysisPhase(cs ? cs.paralysis : null, tNow);
-                if (!inArrest && paraPhase === 'active') {
-                    const targetRr = isBagging ? VENTILATOR_RATE : 0;
-                    if (base.rr !== targetRr) { base.rr = targetRr; vitalsChanged = true; }
-                }
-
-                // Hypoxia: SpO2 falls if hypoventilating or apnoeic without ventilatory support.
-                // NOTE this reads the DISPLAYED spO2/rr of the previous tick (state.vitals), because a
-                // drug that is currently supporting respiration or oxygenation genuinely should stop
-                // the patient desaturating — the model must see what the monitor sees.
-                const seenSpO2 = Number.isFinite(state.vitals.spO2) ? state.vitals.spO2 : base.spO2;
-                const seenRr = (!inArrest && paraPhase === 'active') ? base.rr : (Number.isFinite(state.vitals.rr) ? state.vitals.rr : base.rr);
-                if (!inArrest && seenSpO2 > 0 && (seenRr < 8 || seenRr <= 0) && !isBagging) {
-                    currentHypoxiaTimer++;
-                    // E4 / WAVE 4a: SAFE APNOEA TIME, age- and physiology-appropriate.
-                    // Was: 40 s with pre-oxygenation, 10 s without, for every patient of every age.
-                    // Three minutes of good pre-oxygenation buys a healthy adult 6-10 minutes; an
-                    // infant gets 90-120 s; a septic/pregnant/obese patient far less. Teaching that
-                    // pre-oxygenation buys 30 extra seconds is dangerous in RSI and in paediatrics.
-                    const preoxygenated = activeInt.has('Preoxygenation') || activeInt.has('Bagging') || activeInt.has('NIV') || activeInt.has('CPAP');
-                    const apnoeicO2 = activeInt.has('ApnoeicOxygenation');
-                    const preoxDur = (cs && cs.activeDurations && cs.activeDurations['Preoxygenation'])
-                        ? Math.max(0, tNow - cs.activeDurations['Preoxygenation'].startTime) : (preoxygenated ? 180 : 0);
-                    const graceSeconds = safeApnoeaSeconds(scen, {
-                        preoxygenated, apnoeicO2, preoxSeconds: preoxDur,
-                        startingSpO2: seenSpO2, highConsumption: hasHighO2Consumption(scen)
-                    });
-                    if (currentHypoxiaTimer > graceSeconds) {
-                        // Steeper drop below 88 (Severinghaus curve)
-                        let dropRate = seenSpO2 < 88 ? 1.5 : 0.5;
-                        if (apnoeicO2) dropRate = dropRate / 2;
-                        base.spO2 = Math.max(20, base.spO2 - dropRate);
-                        vitalsChanged = true;
-                    }
-                } else {
-                    currentHypoxiaTimer = 0;
-                    // Recovery. Wave 1 had to step a whole point every 3 s because SpO2 was stored as
-                    // an integer and +0.2/s rounded straight back. `base` is now unrounded, so a smooth
-                    // +0.35/s is both correct and visible. Count any positive-pressure or high-flow
-                    // source, not just the 'Oxygen' key.
-                    const oxygenSource = activeInt.has('Oxygen') || activeInt.has('Preoxygenation') || activeInt.has('ApnoeicOxygenation') || isBagging;
-                    if (oxygenSource && base.spO2 < 98) { base.spO2 = Math.min(98, base.spO2 + 0.35); vitalsChanged = true; }
-                }
-
-                if (scen && scen.deterioration && normaliseDeteriorationType(scen.deterioration.type) === 'neuro' && isRunning) {
-                    if (icp > 25) { base.bpSys = Math.min(220, base.bpSys + 0.2); base.bpDia = Math.min(180, base.bpDia + 0.12); base.hr = Math.max(30, base.hr - 0.1); vitalsChanged = true; }
-                }
-
-                // ETCO2 dynamics — non-arrest hyperventilation/hypoventilation
-                if (!inArrest) {
-                    if (base.rr > 30) { base.etco2 = Math.max(2.5, base.etco2 - 0.01); vitalsChanged = true; }
-                    if (base.rr < 10 && base.rr > 0) { base.etco2 = Math.min(8.0, base.etco2 + 0.01); vitalsChanged = true; }
-                } else {
-                    // Arrest ETCO2 — responds to CPR quality and bagging (key clinical marker)
-                    let targetEtco2 = 0.8; // poor/no perfusion baseline
-                    if (cprActive) targetEtco2 += 1.2;
-                    if (isBagging) targetEtco2 += 1.0;
-                    if (cprActive && isBagging) targetEtco2 += 0.5; // synergy
-                    const delta = targetEtco2 - base.etco2;
-                    if (Math.abs(delta) > 0.02) {
-                        base.etco2 = base.etco2 + delta * 0.15;
-                        vitalsChanged = true;
-                    }
-                }
-
-                // ----- STEPS 5 + 6: add the drug envelope, clamp, round. Recomposed EVERY tick from
-                // `base` so offsets can never accumulate rounding error, and so a drug wearing off
-                // unwinds exactly back onto the underlying trajectory.
-                Object.keys(base).forEach(k => {
-                    if (typeof base[k] === 'number') {
-                        if (!Number.isFinite(base[k])) base[k] = state.baseVitals[k];
-                        else base[k] = clampVital(k, base[k]);
-                    }
-                });
-                const composed = composeVitals(base, activeDrugs, tNow, inArrest);
-                // A live drug envelope changes the numbers even on a tick where nothing else moved.
-                if (!vitalsChanged) {
-                    for (const k in composed) { if (composed[k] !== state.vitals[k]) { vitalsChanged = true; break; } }
-                }
-
-                // Snapshot prevVitals every 15 seconds so trend arrows reflect recent direction.
-                const time = cs ? cs.time : 0;
-                let nextPrev = state.prevVitals;
-                if (time > 0 && time % 15 === 0) {
-                    nextPrev = { ...state.vitals };
-                }
-
-                return { ...state, baseVitals: base, vitals: vitalsChanged ? composed : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer };
-            }
-            default: return state;
-        }
-    };
-
-    const logReducer = (state, action) => {
-        const cs = action.currentState;
-        switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialLogState };
-            case 'LOAD_SCENARIO': return { ...initialLogState };
-            case 'RESTORE_SESSION': return { log: action.payload.log || [], history: action.payload.history || [] };
-            case 'START_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
-            case 'PAUSE_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: cs ? `${Math.floor(cs.time/60)}:${(cs.time%60).toString().padStart(2,'0')}` : '', msg: "Simulation Paused", type: 'system' }] };
-            case 'ADD_LOG': 
-                const timestamp = new Date().toLocaleTimeString('en-GB'); 
-                const simTime = cs ? `${Math.floor(cs.time/60).toString().padStart(2,'0')}:${(cs.time%60).toString().padStart(2,'0')}` : '00:00'; 
-                // `deviation` carries the structured "performed WITHOUT" record so the debrief can
-                // render a Sequence deviations card rather than re-parsing log text.
-                return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, flagged: action.payload.flagged || false, deviation: action.payload.deviation || null, timeSeconds: cs ? cs.time : 0 }] };
-            case 'TOGGLE_FLAG':
-                const newLog = [...state.log];
-                if(newLog[action.payload]) { newLog[action.payload] = { ...newLog[action.payload], flagged: !newLog[action.payload].flagged }; }
-                return { ...state, log: newLog };
-            case 'TICK_TIME':
-                const time = cs ? cs.time : 0;
-                const vitals = cs ? cs.vitals : {};
-                if (time % 5 === 0) {
-                    // B2: temp / bm / ph are modelled vitals now, so they belong in the debrief trace
-                    // too (the graph plots HR/BP/SpO2; the replay scrubber reads the rest).
-                    return { ...state, history: [...state.history, { time: time, hr: vitals.hr, bp: vitals.bpSys, spo2: vitals.spO2, rr: vitals.rr, temp: vitals.temp, bm: vitals.bm, ph: vitals.ph, gcs: vitals.gcs }] };
-                }
-                return state;
-            default: return state;
-        }
-    };
-
-    const scenarioReducer = (state, action) => {
-        switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialScenarioState };
-            case 'LOAD_SCENARIO': return { ...initialScenarioState, scenario: action.payload };
-            case 'RESTORE_SESSION': return { scenario: window.rehydrateScenario(action.payload.scenario), investigationsRevealed: action.payload.investigationsRevealed || {}, loadingInvestigations: action.payload.loadingInvestigations || {} };
-            case 'SYNC_FROM_MASTER': 
-                const syncedScenario = { 
-                    ...state.scenario, 
-                    title: action.payload.scenarioTitle, patientName: action.payload.patientName,
-                    patientAge: action.payload.patientAge, sex: action.payload.sex, ageRange: action.payload.ageRange,
-                    wetflag: action.payload.wetflag, deterioration: { type: action.payload.pathology },
-                    ...action.payload.investigations 
-                };
-                return { ...state, scenario: syncedScenario };
-            case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
-            case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
-            case 'SET_LOADING_INVESTIGATION': return { ...state, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: true } };
-            default: return state;
-        }
-    };
-
-    const coreReducer = (state, action) => {
-        const cs = action.currentState;
-        switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
-            case 'LOAD_SCENARIO': 
-                if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
-                const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
-                let startICP = 10;
-                if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
-                // C5: default to AUTO for any scenario that declares deterioration, MANUAL otherwise.
-                // The mode is logged at scenario start and on every change so a facilitator who never
-                // touches the toggle is never surprised by moving numbers.
-                const det0 = action.payload.deterioration || null;
-                const detMode0 = (det0 && det0.active && normaliseDeteriorationType(det0.type) && Number(det0.rate) > 0) ? 'auto' : 'manual';
-                // WAVE 4b / A2 + A6: QUICK SIM. The synthetic blank patient carries no `deterioration`
-                // block, so detMode0 resolves to 'manual' with no special case — requirement A6 — while
-                // the AUTO/MANUAL toggle stays available because it is state-driven, not scenario-driven.
-                //
-                // Monitoring is NOT seeded, in Quick Sim or anywhere else: every launch mode starts
-                // with nothing attached ("NO SENSOR DETECTED"), and the facilitator attaches the
-                // standard set or individual sensors from the controller's Monitoring & access panel.
-                // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
-                return { ...initialCoreState, runId: newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
-                    showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
-                    // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
-                    // would hand every session the same object.
-                    activeInterventions: new Set(),
-                    interventionCounts: {} };
-            case 'RESTORE_SESSION': {
-                // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
-                // `log` or `scenario` key carried in from the snapshot would shadow the live values
-                // owned by the other three reducers for the rest of the session.
-                const p = action.payload || {};
-                return { ...state,
-                    // D1: resuming reopens the SAME run, and therefore the same instructor notes.
-                    // Pre-Wave-4b snapshots carry no runId, so mint one rather than leaving it null.
-                    runId: p.runId || state.runId || newRunId(),
-                    time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
-                    interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
-                    nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,
-                    isParalysed: !!p.isParalysed, paralysis: p.paralysis || { active: !!p.isParalysed, agent: null, startTime: 0, onset: 0, duration: 0 },
-                    showWetflag: p.showWetflag !== false,
-                    icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
-                    activeDrugs: Array.isArray(p.activeDrugs) ? p.activeDrugs : [],
-                    deteriorationMode: p.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                    // B5: shock count / cumulative energy survive a resume now that they live in
-                    // state rather than in a useRef that reset to zero.
-                    defib: { ...initialCoreState.defib, ...(p.defib || {}) },
-                    lastConversion: p.lastConversion || null,
-                    activeInterventions: new Set(p.activeInterventions || []),
-                    completedObjectives: new Set(p.completedObjectives || []),
-                    // WAVE 8 / FINDING 2. A resumed session is NOT a paused session. Its clock is
-                    // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
-                    // therefore froze the controller's waveform strip until START was pressed. The
-                    // pause marker is deliberately NOT restored from the snapshot: a page reload can
-                    // only ever produce "restored, not yet started".
-                    pausedAt: null,
-                    isRunning: false };
-            }
-            case 'START_SIM': return { ...state, isRunning: true, isFinished: false, pausedAt: null };
-            // A deliberate facilitator pause — and the ONLY thing that sets the pause marker. The
-            // marker is the sim-clock second it happened at, so it is a primitive and survives sync.
-            case 'PAUSE_SIM': return { ...state, isRunning: false, pausedAt: Number.isFinite(state.time) ? state.time : 0 };
-            case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
-            case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
-            case 'SET_SYNC_STATUS': {
-                const syncStatus = {
-                    state: action.payload?.state || 'error',
-                    message: action.payload?.message || null,
-                    lastWriteAt: action.payload?.lastWriteAt || state.syncStatus?.lastWriteAt || null
-                };
-                return { ...state, syncStatus, isOffline: SYNC_OFFLINE_STATES.has(syncStatus.state) };
-            }
-            case 'TICK_TIME':
-                const newDurations = { ...state.activeDurations }; 
-                let durChanged = false;
-                Object.keys(newDurations).forEach(key => { 
-                    const elapsed = state.time + 1 - newDurations[key].startTime; 
-                    if (elapsed >= newDurations[key].duration) { delete newDurations[key]; durChanged = true; } 
-                });
-                let newNibp = { ...state.nibp }; 
-                if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
-                let currentICP = state.icp;
-                if (cs && cs.scenario && cs.scenario.deterioration && cs.scenario.deterioration.type === 'neuro' && state.isRunning) {
-                    if (state.time % 10 === 0) currentICP += 0.1; 
-                }
-                
-                let newMonitorTimer = { ...state.monitorTimer };
-                if (newMonitorTimer.active) { newMonitorTimer.time += 1; }
-
-                const tNext = state.time + 1;
-
-                // Retire spent drug entries so activeDrugs cannot grow without bound over a long
-                // session. A spent entry contributes exactly zero, so pruning is observationally free.
-                let nextDrugs = state.activeDrugs || [];
-                const kept = nextDrugs.filter(d => !isDrugSpent(d, tNext) && !(d.reversed && pkFactor(d, tNext) <= 0));
-                if (kept.length !== nextDrugs.length) nextDrugs = kept;
-
-                // Neuromuscular blockade wears off. Sux (~8 min) and roc (~45 min) therefore diverge,
-                // and the patient is no longer permanently paralysed after a single dose. Derived from
-                // the activeDrugs entry — ONE timer, per the Wave 1 note.
-                const para = paralysisFromDrugs(nextDrugs, tNext);
-                let nextParalysis = state.paralysis;
-                let nextIsParalysed = state.isParalysed;
-                if (para) {
-                    if (!state.paralysis.active || state.paralysis.agent !== para.agent || state.paralysis.startTime !== para.startTime) {
-                        nextParalysis = { active: true, agent: para.agent, startTime: para.startTime, onset: para.onset, duration: para.duration };
-                    }
-                    nextIsParalysed = true;
-                } else if (state.paralysis.active || state.isParalysed) {
-                    // Either the blockade expired or there never was an activeDrugs entry (legacy
-                    // restored session). Keep honouring an explicit legacy timer until it expires.
-                    const legacy = !state.activeDrugs.some(d => d.paralytic) && paralysisPhase(state.paralysis, tNext) === 'active';
-                    if (!legacy) {
-                        nextParalysis = { active: false, agent: null, startTime: 0, onset: 0, duration: 0 };
-                        nextIsParalysed = false;
-                    }
-                }
-
-                return { ...state, time: tNext, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer, activeDrugs: nextDrugs, paralysis: nextParalysis, isParalysed: nextIsParalysed };
-            
-            case 'TOGGLE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, visible: !state.monitorTimer.visible } };
-            case 'START_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: true } };
-            case 'PAUSE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: false } };
-            case 'RESET_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, time: 0 } };
-            
-            case 'RESET_CYCLE_TIMER': return { ...state, cycleTimer: 0 };
-            case 'UPDATE_RHYTHM': {
-                // B1/B2: UPDATE_RHYTHM used to log NOTHING; logging was scattered across five
-                // call sites with five different formats and three of them logged nothing at all.
-                // Every transition now arrives here carrying `cause`/`detail` (see changeRhythm()),
-                // and the reducer records the assessor-local announcement state.
-                const to = RG.canonical(action.payload);
-                const from = state.rhythm;
-                const ev = {
-                    id: (action.eventId || Date.now()),
-                    from, to,
-                    cause: action.cause || 'unspecified',
-                    detail: action.detail || null,
-                    converted: from !== to,
-                    at: Date.now()
-                };
-                return { ...state, rhythm: to, rhythmEvent: ev, lastConversion: ev.converted ? ev : state.lastConversion };
-            }
-            case 'CLEAR_RHYTHM_EVENT': return { ...state, rhythmEvent: null };
-            // B5 / A: defibrillator device state + metrics. Merge semantics so a charge does not
-            // clobber the running shock tally.
-            case 'SET_DEFIB_STATE': return { ...state, defib: { ...state.defib, ...(action.payload || {}) } };
-            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
-            case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
-            case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
-            // Abandons a measurement in progress: no reading is committed (the commit timer is
-            // cleared by the effect that owns it as soon as `inflating` goes false).
-            case 'STOP_NIBP': return { ...state, nibp: { ...state.nibp, inflating: false } };
-            case 'COMMIT_NIBP': 
-                const safeSys = cs && cs.vitals.bpSys ? cs.vitals.bpSys : 0;
-                const safeDia = cs && cs.vitals.bpDia ? cs.vitals.bpDia : 0;
-                const now = new Date();
-                const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-                const newEntry = { sys: safeSys, dia: safeDia, time: timeStr };
-                const newHistoryArr = [newEntry, ...(state.nibp.history || [])].slice(0, 3);
-                return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false, history: newHistoryArr } };
-            case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
-            case 'SET_NIBP': return { ...state, nibp: { ...state.nibp, sys: action.payload.sys, dia: action.payload.dia, lastTaken: Date.now(), inflating: false } };
-            case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
-            case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
-            case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state,
-                // isRunning / isMuted / activeLoops are what make the STUDENT MONITOR audible: every
-                // audio path in this file is gated on isRunning, which the monitor can only learn
-                // about over the wire because it never calls start() itself.
-                isRunning: !!action.payload.isRunning,
-                // Whether the pulse tone and alarms should sound, decided once on the controller
-                // (see isAudioLive). Older controllers do not send it; isAudioLive falls back.
-                audioLive: action.payload.audioLive === undefined ? undefined : !!action.payload.audioLive,
-                isMuted: !!action.payload.isMuted,
-                activeLoops: action.payload.activeLoops || {},
-                isParalysed: !!action.payload.isParalysed,
-                potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
-                activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
-                deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
-            case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
-            case 'SET_FLASH': return { ...state, flash: action.payload };
-            case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
-            // --- PK envelope bookkeeping -------------------------------------------------------
-            case 'ADD_ACTIVE_DRUG': {
-                if (!action.payload) return state;
-                // Re-starting a continuous infusion that is still decaying: revive that entry rather
-                // than stacking a second one, so stopping and restarting a pressor is not a dose.
-                const existing = (state.activeDrugs || []).findIndex(d => d.key === action.payload.key && d.sustained && d.stopTime >= 0);
-                if (existing !== -1 && action.payload.sustained) {
-                    const revived = state.activeDrugs.slice();
-                    revived[existing] = { ...revived[existing], stopTime: -1 };
-                    return { ...state, activeDrugs: revived };
-                }
-                return { ...state, activeDrugs: [...(state.activeDrugs || []), action.payload] };
-            }
-            // WAVE 4a / E13: TITRATABLE INFUSIONS. A running infusion was locked to the magnitude it
-            // was started at, so noradrenaline, GTN, adrenaline, labetalol and insulin could only be
-            // ON or OFF - titration to effect, the whole teaching point of a vasoactive infusion, was
-            // impossible. `dose` is already the multiplier the envelope is scaled by, so the rate
-            // change is a single field edit and the next tick composes it (no new entry, no reset of
-            // the pk clock, nothing double-counted). Bounded 0.25x - 3x; permissive, never blocking.
-            case 'SET_DRUG_DOSE': {
-                const { key, dose } = action.payload || {};
-                if (!key || !Number.isFinite(Number(dose))) return state;
-                const next = Math.max(0.25, Math.min(3, Number(dose)));
-                let changed = false;
-                const drugs = (state.activeDrugs || []).map(d => {
-                    if (d.key !== key || !d.sustained || d.stopTime >= 0) return d;
-                    changed = true;
-                    return { ...d, dose: next };
-                });
-                return changed ? { ...state, activeDrugs: drugs } : state;
-            }
-            case 'STOP_ACTIVE_DRUG': {
-                // A continuous intervention was switched off: start its offset tail from now.
-                let changed = false;
-                const next = (state.activeDrugs || []).map(d => {
-                    if (d.key === action.payload && d.sustained && d.stopTime < 0) { changed = true; return { ...d, stopTime: state.time }; }
-                    return d;
-                });
-                return changed ? { ...state, activeDrugs: next } : state;
-            }
-            case 'REVERSE_PARALYSIS_DRUGS': {
-                let changed = false;
-                const next = (state.activeDrugs || []).map(d => {
-                    if (d.paralytic && !d.reversed) { changed = true; return { ...d, reversed: true, paralysisEnd: Math.max(1, state.time - d.startTime) }; }
-                    return d;
-                });
-                if (!changed) return state;
-                return { ...state, activeDrugs: next, isParalysed: false, paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 } };
-            }
-            case 'SET_DETERIORATION_MODE':
-                return { ...state, deteriorationMode: action.payload === 'auto' ? 'auto' : 'manual' };
-            // =================================================================================
-            // WAVE 9 / ROOT FIX — THIS ACTION IS A DELTA, NOT A WHOLE-SET REPLACEMENT.
-            //
-            // It used to carry `{ active: <a whole new Set>, counts: <a whole new object> }`, both
-            // built by applyIntervention from `stateRef.current`. stateRef only catches up in an
-            // effect AFTER a commit, so TWO applyIntervention calls in the SAME tick (React 18
-            // batches them into one commit) each computed their replacement set from the same
-            // pre-batch snapshot, and the second dispatch silently threw away the first one's
-            // addition. That is exactly how "+ INVASIVE" attached the arterial line and lost IV
-            // access while still logging both. It also lost interventionCounts for every drug but
-            // the last when two drugs were given in one tick.
-            //
-            // A delta is immune: every dispatch in the batch is folded through the reducer in
-            // order, each one seeing the accumulated `state`, so nothing can be overwritten.
-            // The legacy whole-set payload is still honoured for any external/older caller.
-            // =================================================================================
-            case 'UPDATE_INTERVENTION_STATE': {
-                const p = action.payload || {};
-                const isDelta = Array.isArray(p.add) || Array.isArray(p.remove) || Array.isArray(p.inc);
-                if (!isDelta) return { ...state, activeInterventions: p.active, interventionCounts: p.counts };
-                const nextActive = new Set(state.activeInterventions);
-                (p.add || []).forEach(k => nextActive.add(k));
-                (p.remove || []).forEach(k => nextActive.delete(k));
-                const nextCounts = { ...state.interventionCounts };
-                (p.inc || []).forEach(k => { nextCounts[k] = (nextCounts[k] || 0) + 1; });
-                return { ...state, activeInterventions: nextActive, interventionCounts: nextCounts };
-            }
-            // =================================================================================
-            // WAVE 9 — ATOMIC BATCH ATTACH. One press = ONE reducer action, however many sensors
-            // it puts on. The controller's "+ Invasive" and "Attach standard" buttons, the
-            // PROCEDURES monitoring cards and the individual chips all come through here, so no
-            // attach path can ever again lose a sensor to batching.
-            //
-            // Capnography is part of the same action rather than a separate TOGGLE_ETCO2 dispatch,
-            // and it is SET rather than toggled — pressing "+ Invasive" twice in one tick can no
-            // longer turn the capnograph back off.
-            // =================================================================================
-            case 'ATTACH_SENSORS': {
-                const p = (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) ? action.payload : { keys: action.payload };
-                const keys = (Array.isArray(p.keys) ? p.keys : (p.keys ? [p.keys] : [])).filter(k => k && k !== 'ToggleETCO2');
-                const next = new Set(state.activeInterventions);
-                keys.forEach(k => next.add(k));
-                // Durations are started in the same action, so the PROCEDURES card countdown cannot
-                // disagree with the chip either.
-                const durs = { ...state.activeDurations };
-                keys.forEach(k => {
-                    const d = INTERVENTIONS[k] && INTERVENTIONS[k].duration;
-                    if (d && !durs[k]) durs[k] = { startTime: state.time, duration: d };
-                });
-                const etco2 = p.etco2 === undefined ? state.etco2Enabled : !!p.etco2;
-                return { ...state, activeInterventions: next, activeDurations: durs, etco2Enabled: etco2 };
-            }
-            case 'REMOVE_INTERVENTION': {
-                const removedActive = new Set(state.activeInterventions); removedActive.delete(action.payload);
-                const removedDurations = { ...state.activeDurations }; delete removedDurations[action.payload];
-                // Stopping an infusion/device starts its offset tail rather than deleting the effect.
-                const stopped = (state.activeDrugs || []).map(d => (d.key === action.payload && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
-                return { ...state, activeInterventions: removedActive, activeDurations: removedDurations, activeDrugs: stopped };
-            }
-            // WAVE 8 / FINDING 3 — DETACHING ONE SENSOR.
-            // 'Obs' is a SHORTHAND for the four standard sensors, which is why a second press on an
-            // "attached" chip previously appeared to do nothing: the chip read as on (via 'Obs') but
-            // its own key was not in the set, so the press ATTACHED the individual key and changed
-            // nothing visible. Detaching therefore has to expand the shorthand first: 'Obs' is
-            // replaced by the individual keys for the sensors that STAY, and only the requested one
-            // comes off. The chips and the PROCEDURES cards both read getSensors(), so they cannot
-            // get out of sync, and exactly one channel goes dark on the student monitor.
-            // WAVE 9: ONE implementation, taking a LIST. 'DETACH_SENSOR' (one key) is now literally
-            // 'DETACH_SENSORS' with a single-element list, so a batch detach expands the 'Obs'
-            // shorthand exactly once for the whole batch and cannot lose a removal to batching
-            // either — the previous code path was only safe because it happened to be dispatched
-            // one key at a time.
-            case 'DETACH_SENSOR':
-            case 'DETACH_SENSORS': {
-                const p = (action.payload && typeof action.payload === 'object' && !Array.isArray(action.payload)) ? action.payload : { keys: action.payload };
-                const raw = Array.isArray(p.keys) ? p.keys : (p.keys ? [p.keys] : []);
-                const dkeys = raw.filter(k => !!k);
-                const next = new Set(state.activeInterventions);
-                const dDurations = { ...state.activeDurations };
-                const wantsEtco2Off = dkeys.indexOf('ToggleETCO2') !== -1;
-                // Expand the 'Obs' shorthand ONCE, for the whole batch: every standard sensor that
-                // is NOT being detached is re-added as its own key, then every requested key goes.
-                const detachingObs = dkeys.indexOf('Obs') !== -1;
-                const touchesStandard = detachingObs || dkeys.some(k => STANDARD_SENSOR_KEYS.indexOf(k) !== -1);
-                if (touchesStandard && next.has('Obs')) {
-                    next.delete('Obs');
-                    delete dDurations['Obs'];
-                    if (!detachingObs) STANDARD_SENSOR_KEYS.forEach(k => { if (dkeys.indexOf(k) === -1) next.add(k); });
-                }
-                dkeys.forEach(dkey => {
-                    if (dkey === 'Obs') {
-                        next.delete('Obs');
-                        STANDARD_SENSOR_KEYS.forEach(k => { next.delete(k); delete dDurations[k]; });
-                    } else {
-                        next.delete(dkey);
-                    }
-                    delete dDurations[dkey];
-                });
-                const dStopped = (state.activeDrugs || []).map(d => (dkeys.indexOf(d.key) !== -1 && d.sustained && d.stopTime < 0) ? { ...d, stopTime: state.time } : d);
-                return { ...state, activeInterventions: next, activeDurations: dDurations, activeDrugs: dStopped,
-                         etco2Enabled: wantsEtco2Off ? false : state.etco2Enabled };
-            }
-            case 'DECREMENT_INTERVENTION': const decKey = action.payload; const decCounts = { ...state.interventionCounts }; if (decCounts[decKey] > 0) decCounts[decKey]--; return { ...state, interventionCounts: decCounts };
-            case 'SET_PARALYSIS': {
-                // Accepts either a bare boolean (legacy) or { active, agent, onset, duration }.
-                const p = action.payload;
-                if (typeof p === 'boolean') {
-                    return { ...state, isParalysed: p, paralysis: p ? { ...state.paralysis, active: true } : { active: false, agent: null, startTime: 0, onset: 0, duration: 0 } };
-                }
-                if (!p || p.active === false) {
-                    return { ...state, isParalysed: false, paralysis: { active: false, agent: null, startTime: 0, onset: 0, duration: 0 } };
-                }
-                return { ...state, isParalysed: true, paralysis: { active: true, agent: p.agent || null, startTime: p.startTime !== undefined ? p.startTime : state.time, onset: p.onset || 0, duration: p.duration || 0 } };
-            }
-            case 'TRIGGER_POPUP': {
-                const p = (action.payload && typeof action.payload === 'object') ? action.payload : { type: action.payload, customText: action.customText || null };
-                return { ...state, monitorPopup: { type: p.type, timestamp: Date.now(), customText: p.customText !== undefined ? p.customText : null } };
-            }
-            case 'CLEAR_POPUP': return { ...state, monitorPopup: { type: null, timestamp: Date.now(), customText: null } };
-            case 'SET_MUTED': return { ...state, isMuted: action.payload };
-            case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
-            case 'SET_ETCO2_PATHOLOGY': return { ...state, etco2Pathology: action.payload };
-            // WAVE 7 / ITEM 4: a point-of-care check. Records the value AT THIS MOMENT with both a
-            // sim-clock offset and a wall-clock stamp, so the monitor can render it as a reading
-            // ("GLUCOSE 4.1 @ 09:47") rather than a live channel.
-            case 'RECORD_POC': {
-                const p = action.payload || {};
-                if (!p.key) return state;
-                const entry = { at: Number.isFinite(p.at) ? p.at : state.time,
-                                clock: p.clock || new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
-                                value: Number.isFinite(p.value) ? p.value : null,
-                                value2: Number.isFinite(p.value2) ? p.value2 : null };
-                return { ...state, pocReadings: { ...(state.pocReadings || {}), [p.key]: entry } };
-            }
-            case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
-            case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
-            case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
-            // WAVE 4b / D4: the `processedEvents` / MARK_EVENT_PROCESSED machinery is GONE. It existed
-            // to de-duplicate timed scenario events, but no scenario in the library has ever carried
-            // an `events` or `timeline` array, nothing ever dispatched MARK_EVENT_PROCESSED, and the
-            // Set was being serialised into every localStorage snapshot for nothing. Autonomous
-            // progression is handled by the Wave 3/4a deterioration model instead. If timed scripted
-            // events are ever wanted, build them on `scenario.deterioration`'s rate model rather than
-            // resurrecting this.
-            case 'SET_ARREST_PANEL': return { ...state, arrestPanelOpen: action.payload };
-            case 'SET_GAIN': return { ...state, waveformGain: action.payload };
-            case 'TOGGLE_INTERFERENCE': return { ...state, noise: { ...state.noise, interference: !state.noise.interference } };
-            case 'UPDATE_PACER_STATE': return { ...state, remotePacerState: action.payload };
-            case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
-            case 'UPDATE_AUDIO_LOOPS': return { ...state, activeLoops: action.payload };
-            case 'COMPLETE_OBJECTIVE': const newObjs = new Set(state.completedObjectives); newObjs.add(action.payload); return { ...state, completedObjectives: newObjs };
-            case 'SET_WETFLAG_VISIBILITY': return { ...state, showWetflag: action.payload };
-            default: return state;
-        }
-    };
-
-    // Test hook. The reducers are the physiology, so the Node verification harness reduces the REAL
-    // ones rather than a reimplementation — that is the only way the composition and no-discontinuity
-    // guarantees are actually proven rather than asserted about a copy.
-    window.__pkInternals.reducers = { vitalsReducer, coreReducer, logReducer, scenarioReducer, initialVitalsState, initialCoreState, initialLogState, initialScenarioState };
-    // The Firebase payload contract is verified too, so the sanitiser has to be reachable.
-    window.__pkInternals.sanitizeForRealtimeDatabase = sanitizeForRealtimeDatabase;
+    const {
+        DEFAULT_VITALS, INVASIVE_SENSOR_KEYS, OBJECTIVE_TRIGGERS, SENSOR_DEFS, STANDARD_SENSOR_KEYS,
+        VENTILATOR_RATE, VOLUME_KEYS, ageBandOf, applyRhythmHrBand, buildDrugEntry, clampVital,
+        fluidResponsiveness, getObstruction, getSensors, getUnmetExpectations, initialCoreState,
+        initialLogState, initialScenarioState, initialVitalsState, isDrugSpent, isVentilated,
+        normaliseDeteriorationType, isAnaphylaxisScenario, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
+        newRunId, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
+    } = window.__EngineModel;
+    const { coreReducer, logReducer, scenarioReducer, vitalsReducer } = window.__EngineReducers;
 
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
-        const [vitalsState, dispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
-        const [logState, dispatchLog] = useReducer(logReducer, initialLogState);
-        const [scenarioState, dispatchScenario] = useReducer(scenarioReducer, initialScenarioState);
-        const [coreState, dispatchCore] = useReducer(coreReducer, initialCoreState);
+        const [vitalsState, rawDispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
+        const [logState, rawDispatchLog] = useReducer(logReducer, initialLogState);
+        const [scenarioState, rawDispatchScenario] = useReducer(scenarioReducer, initialScenarioState);
+        const [coreState, rawDispatchCore] = useReducer(coreReducer, initialCoreState);
 
         const state = { ...vitalsState, ...logState, ...scenarioState, ...coreState };
+
+        // ---- stateRef IS ALWAYS CURRENT ------------------------------------------------------------
+        // Engine functions read the latest state through stateRef, but React only re-renders after an
+        // event handler or timer has finished, so two dispatches in the same moment used to see the
+        // state from BEFORE the first one (three quick doses all counted as dose 1; a rhythm change
+        // followed by an obs write could undo itself). Every dispatch therefore also runs the same
+        // pure reducer on a shadow copy and updates stateRef at once. React's own result replaces
+        // the shadow at the next render, so the two can differ at most by a timestamp.
+        const REDUCERS = { vitals: vitalsReducer, log: logReducer, scenario: scenarioReducer, core: coreReducer };
+        const renderedRef = useRef(null);
+        const shadowRef = useRef(null);
+        renderedRef.current = { vitals: vitalsState, log: logState, scenario: scenarioState, core: coreState };
+        shadowRef.current = null;
+        const applyShadow = (key, action) => {
+            const base = shadowRef.current || renderedRef.current;
+            let next = base[key];
+            try { next = REDUCERS[key](base[key], action); } catch (e) { /* React will surface it */ }
+            const s = { ...base, [key]: next };
+            shadowRef.current = s;
+            stateRef.current = { ...s.vitals, ...s.log, ...s.scenario, ...s.core };
+        };
+        const dispatchVitals = (a) => { applyShadow('vitals', a); rawDispatchVitals(a); };
+        const dispatchLog = (a) => { applyShadow('log', a); rawDispatchLog(a); };
+        const dispatchScenario = (a) => { applyShadow('scenario', a); rawDispatchScenario(a); };
+        const dispatchCore = (a) => { applyShadow('core', a); rawDispatchCore(a); };
         const timerRef = useRef(null);
         const tickRef = useRef(null);
         const audioCtxRef = useRef(null);
@@ -2062,6 +74,8 @@
         useEffect(() => { stateRef.current = state; }, [state]);
 
         const dispatch = (action) => {
+            // A new run's id is decided here, once, so the shadow copy and React agree on it.
+            if ((action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION') && !action.runId) action = { ...action, runId: newRunId() };
             let enhancedAction = { ...action, currentState: stateRef.current };
             
             if (action.type === 'TRIGGER_IMPROVE') {
@@ -2093,7 +107,7 @@
 
             if (action.type === 'UPDATE_RHYTHM') {
                 const newRhythm = RG.canonical(action.payload);
-                // C1: ONE definition. `pulseless` and `isArrest` are the SAME registry predicate —
+                // ONE definition. `pulseless` and `isArrest` are the SAME registry predicate —
                 // the pre-Wave-3 code had two different lists here that disagreed about VT, so
                 // VT-with-a-pulse got arrest physiology while also being excluded from zeroing.
                 const isArrest = RG.inArrest(newRhythm);
@@ -2101,7 +115,7 @@
                 // Rhythm-driven vitals are a facilitator-level write: they target the BASE.
                 let rhythmVitals = { ...cur.baseVitals };
 
-                // WAVE 5 / ITEM 6: does the facilitator hold HR? A pulseless/organised transition
+                // Does the facilitator hold HR? A pulseless/organised transition
                 // releases the hold (it defines a new baseline); an organised -> organised rhythm
                 // change respects it.
                 let releaseManual = [];
@@ -2128,7 +142,7 @@
                 // (including the ones previously missing: Atrial Flutter, VT, 1st/2nd degree block,
                 // Junctional, STEMI) lands on a clinically sensible heart rate.
                 //
-                // WAVE 5 / ITEM 6 — FACILITATOR SUPREMACY. The band is applied only when the
+                // FACILITATOR SUPREMACY. The band is applied only when the
                 // facilitator has NOT typed an HR of their own (or has just had the hold released by
                 // an arrest/ROSC transition above). If they have, their number stands and the rhythm
                 // change says so in the log, rather than silently replacing 130 with 140.
@@ -2153,481 +167,17 @@
             dispatchScenario(enhancedAction);
             dispatchCore(enhancedAction);
         };
-
-        // Register BroadcastChannel handler ONCE — read live state via stateRef to avoid stale closures.
-        useEffect(() => {
-            if (isMonitorMode || !simChannel.current) return;
-            simChannel.current.onmessage = (event) => {
-                const data = event.data;
-                const cur = stateRef.current;
-
-                // While paused, log the student's action instead of discarding it. The defib shows its
-                // own local banner, so a dropped press leaves the two screens silently disagreeing.
-                // PACER_UPDATE is device state, not a clinical action — it must stay in sync even paused,
-                // otherwise the facilitator's capture threshold view drifts from the student's dial.
-                // A7: REQUEST_SYNC is a handshake. The standalone defib broadcasts it on load and
-                // NOTHING handled it, so a defib opened mid-scenario sat on frozen fake normals
-                // until the next vitals tick. Answer it immediately, running or not.
-                if (data.type === 'REQUEST_SYNC') {
-                    postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayloadRef.current() });
-                    return;
-                }
-
-                if (!cur.isRunning && data.type !== 'PACER_UPDATE') {
-                    const pausedLabels = {
-                        SHOCK_DELIVERED: `student pressed SHOCK (${data.payload?.energy ?? '?'}J)`,
-                        CHARGE_INIT: `student pressed CHARGE (${data.payload?.energy ?? '?'}J)`,
-                        MARKER_EVENT: 'student marked event',
-                        CHECK_PULSE: 'student checked pulse',
-                        ANALYSIS_RESULT: `defib analysis: ${data.payload?.result || 'unknown result'}`,
-                        ALARM_SILENCE: 'student silenced alarm',
-                        REQUEST_12LEAD: 'student requested 12-lead',
-                        DEVICE_MODE: `student set device mode to ${data.payload?.mode ?? '?'}`
-                    };
-                    if (pausedLabels[data.type]) {
-                        dispatch({ type: 'ADD_LOG', payload: { msg: `(paused) ${pausedLabels[data.type]}`, type: 'system' } });
-                    }
-                    return;
-                }
-
-                if (data.type === 'PACER_UPDATE') {
-                    dispatch({ type: 'UPDATE_PACER_STATE', payload: data.payload });
-                } else if (data.type === 'CHARGE_INIT') {
-                    initCharge(data.payload.energy);
-                } else if (data.type === 'SHOCK_DELIVERED') {
-                    // The sync flag was transmitted and then DISCARDED here before Wave 3.
-                    deliverShock(data.payload.energy, 'student (standalone defib)', { sync: !!data.payload.sync });
-                } else if (data.type === 'SYNC_TOGGLE') {
-                    dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!data.payload?.sync } });
-                    addLogEntry(`SYNC ${data.payload?.sync ? 'ON' : 'OFF'} (student, standalone defib)`, 'action');
-                } else if (data.type === 'ENERGY_SELECT') {
-                    setDefibEnergy(data.payload?.energy, 'student (standalone defib)');
-                } else if (data.type === 'CHECK_PULSE') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Checked Pulse', type: 'action' } });
-                } else if (data.type === 'ANALYSIS_RESULT') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: `Defib Analysis: ${data.payload?.result || 'Unknown result'}`, type: 'action' } });
-                } else if (data.type === 'ALARM_SILENCE') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Alarm Silenced by Student', type: 'info' } });
-                } else if (data.type === 'MARKER_EVENT') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Marked Event', type: 'manual', flagged: true } });
-                } else if (data.type === 'REQUEST_12LEAD') {
-                    dispatch({ type: 'ADD_LOG', payload: { msg: 'Student Requested 12-Lead', type: 'action' } });
-                    // Send only the fields render12LeadDefib reads. The full scenario still carries
-                    // ageGenerator(), and a function makes postMessage throw DataCloneError.
-                    const s = cur.scenario || {};
-                    postToChannel({ type: 'SHOW_12LEAD', payload: {
-                        rhythm: cur.rhythm, hr: cur.vitals.hr,
-                        scenario: { patientName: s.patientName, ecg: s.ecg || null, investigations: { ecg: s.investigations?.ecg || null } }
-                    } });
-                } else if (data.type === 'DEVICE_MODE') {
-                    dispatch({ type: 'SET_DEFIB_STATE', payload: { mode: data.payload.mode } });
-                    if (data.payload.mode === 'defib' || data.payload.mode === 'pacer') {
-                        dispatch({ type: 'SET_ARREST_PANEL', payload: true });
-                    }
-                }
-            };
-            return () => { if (simChannel.current) simChannel.current.onmessage = null; };
-        }, [isMonitorMode]);
-
-        // A7 / C4: the standalone defib page previously received rhythm + 5 numbers and NOTHING
-        // else — no weight, no age, no recommended energy, no session-ended flag — which is why it
-        // hardcoded 120 J for a 3.5 kg neonate and kept showing a live-looking trace after the end
-        // of the session. One builder, used by both the periodic broadcast and REQUEST_SYNC.
-        const buildDefibSyncPayload = () => {
-            const cur = stateRef.current;
-            const weight = Number(cur.scenario?.wetflag?.weight);
-            const age = cur.scenario?.patientAge;
-            return {
-                linked: true,
-                sessionID: sessionID || null,
-                rhythm: cur.rhythm, hr: cur.vitals.hr, spO2: cur.vitals.spO2,
-                etco2: cur.vitals.etco2, bpSys: cur.vitals.bpSys, bpDia: cur.vitals.bpDia,
-                gain: cur.waveformGain, interference: cur.noise.interference,
-                cpr: cur.cprInProgress, captureThreshold: cur.pacingThreshold,
-                audioOutput: cur.audioOutput,
-                isRunning: !!cur.isRunning, isFinished: !!cur.isFinished,
-                patientName: cur.scenario?.patientName || null,
-                ageRange: cur.scenario?.ageRange || null,
-                patientAge: Number.isFinite(Number(age)) ? Number(age) : null,
-                weight: Number.isFinite(weight) && weight > 0 ? weight : null,
-                wetflag: cur.scenario?.wetflag || null,
-                recommendedEnergy: RG.recommendedEnergy(Number.isFinite(weight) && weight > 0 ? weight : null, age),
-                energyLevels: RG.energySteps(Number.isFinite(weight) && weight > 0 ? weight : null, age),
-                defib: cur.defib || {}
-            };
-        };
-        const buildDefibSyncPayloadRef = useRef(buildDefibSyncPayload);
-        buildDefibSyncPayloadRef.current = buildDefibSyncPayload;
-
-        useEffect(() => {
-            if (!isMonitorMode) {
-                postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayload() });
-            }
-        }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput,
-            state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib]);
-
-        useEffect(() => {
-            const db = window.db;
-            if (!db) {
-                const bootstrap = window.firebaseSyncBootstrap || {};
-                dispatch({
-                    type: 'SET_SYNC_STATUS',
-                    payload: {
-                        state: bootstrap.state === 'unavailable' ? 'unavailable' : 'error',
-                        message: bootstrap.message || 'Firebase Realtime Database is unavailable.'
-                    }
-                });
-                return;
-            }
-
-            dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connecting', message: 'Connecting to live session…' } });
-            const connectionRef = db.ref('.info/connected');
-            const onConnection = (snap) => {
-                if (snap.val() === true) {
-                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
-                } else {
-                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'disconnected', message: 'Realtime Database connection is unavailable.' } });
-                }
-            };
-            const onConnectionError = (error) => {
-                console.error('Firebase connection-state listener failed:', error);
-                dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Firebase connection error: ${error.message || 'unknown error'}` } });
-            };
-            connectionRef.on('value', onConnection, onConnectionError);
-            return () => connectionRef.off('value', onConnection);
-        }, []);
-
-        // Firebase sync — throttled to 500ms; reads live state from stateRef so we don't depend on
-        // the whole `state` object identity (which changes every render).
-        const syncTimerRef = useRef(null);
-        useEffect(() => {
-            const db = window.db;
-            if (!db || !sessionID || isMonitorMode || !state.scenario) return;
-            const sessionRef = db.ref(`sessions/${sessionID}`);
-
-            const flush = () => {
-                syncTimerRef.current = null;
-                const cur = stateRef.current;
-                if (!cur.scenario) return;
-                const co2Pathology = cur.etco2Pathology || 'normal';
-                // WAVE 8 / FINDING 1. The obstruction severity behind the shark fin is computed HERE,
-                // from the authoritative controller state, and published as a plain number so the
-                // student monitor draws exactly the same capnogram shape the facilitator sees. Never
-                // undefined, never NaN: sanitizeForRealtimeDatabase passes a finite number through.
-                const obstruction = getObstruction(cur, cur.vitals, cur.scenario);
-                const co2Severity = Number.isFinite(obstruction.severity) ? obstruction.severity : 0;
-                const payload = {
-                    vitals: cur.vitals, rhythm: cur.rhythm, cprInProgress: cur.cprInProgress,
-                    etco2Enabled: cur.etco2Enabled, flash: cur.flash, cycleTimer: cur.cycleTimer,
-                    monitorTimer: cur.monitorTimer,
-                    scenarioTitle: cur.scenario.title || '', patientName: cur.scenario.patientName || '',
-                    patientAge: cur.scenario.patientAge, sex: cur.scenario.sex,
-                    ageRange: cur.scenario.ageRange, wetflag: cur.scenario.wetflag || null,
-                    pathology: cur.scenario.deterioration?.type || 'normal',
-                    // Investigations: enrichScenario writes generated CXR/CT/urine/POCUS reports to
-                    // scenario.investigations.*, but this payload previously read only the top-level
-                    // fields — so students saw generic default text in essentially every scenario
-                    // (CT and POCUS lost in 254/254). Read the generated block and let any top-level
-                    // override (e.g. the "lung re-expanded" CXR rewrite) win.
-                    // investigations.ecg deliberately carries the ORIGINAL, un-normalised ecg (STEMI
-                    // stays STEMI) so the monitor's 12-lead draws ST elevation, while the monitoring
-                    // trace keeps using the separately-synced normalised `rhythm`.
-                    investigations: (() => {
-                        const gen = cur.scenario.investigations || {};
-                        return {
-                            vbg: cur.scenario.vbg || gen.vbg || null,
-                            ecg: gen.ecg || cur.scenario.ecg || null,
-                            chestXray: cur.scenario.chestXray || gen.chestXray || null,
-                            urine: cur.scenario.urine || gen.urine || null,
-                            ct: cur.scenario.ct || gen.ct || null,
-                            pocus: cur.scenario.pocus || gen.pocus || null
-                        };
-                    })(),
-                    activeInterventions: Array.from(cur.activeInterventions),
-                    nibp: cur.nibp, speech: cur.speech, soundEffect: cur.soundEffect,
-                    audioOutput: cur.audioOutput, trends: cur.trends,
-                    arrestPanelOpen: cur.arrestPanelOpen, isFinished: cur.isFinished,
-                    // A3: the assessor's Defib open/close toggle, and the defib device state the
-                    // student's monitor-hosted defibrillator renders (mode, selected energy, charge
-                    // state, SYNC, running shock tally).
-                    //
-                    // B4 LEAK BARRIER — DO NOT ADD `rhythmEvent`, `lastConversion` OR ANY
-                    // CONVERSION ANNOUNCEMENT TO THIS PAYLOAD. `notification` below is rendered on
-                    // the STUDENT monitor; conversion announcements are assessor-only by design and
-                    // verify_wave3.js asserts their absence from this object.
-                    defibPanelOpen: !!cur.defibPanelOpen,
-                    defib: cur.defib || {},
-                    monitorPopup: cur.monitorPopup, waveformGain: cur.waveformGain,
-                    noise: cur.noise, notification: cur.notification,
-                    remotePacerState: cur.remotePacerState, pacingThreshold: cur.pacingThreshold,
-                    showWetflag: cur.showWetflag, co2Pathology, co2Severity,
-                    // Top-level keys only — the write diff is shallow and per-key. Never undefined.
-                    isRunning: !!cur.isRunning, audioLive: isAudioLive(cur), isMuted: !!cur.isMuted,
-                    activeLoops: cur.activeLoops || {}, isParalysed: !!cur.isParalysed,
-                    // Wave 2. BM / Temp / pH ride inside `vitals` (verified by the sync payload test);
-                    // activeDrugs and deteriorationMode are top-level, primitives only, never undefined,
-                    // so sanitizeForRealtimeDatabase passes them through untouched.
-                    activeDrugs: Array.isArray(cur.activeDrugs) ? cur.activeDrugs : [],
-                    deteriorationMode: cur.deteriorationMode || 'manual',
-                    // WAVE 4a / E8. K+ rides inside `vitals` like temp/bm/ph AND is published as its
-                    // own TOP-LEVEL key, because the write diff is shallow and per-key: a lab value
-                    // the student monitor renders must never be undefined or NaN on the wire.
-                    potassium: (cur.vitals && Number.isFinite(cur.vitals.k)) ? cur.vitals.k : DEFAULT_VITALS.k,
-                    // WAVE 7 / ITEM 4. Which sensors are attached already rides on the wire inside
-                    // `activeInterventions` (the monitor derives them with getSensors), so nothing new
-                    // is needed for those. Point-of-care readings DO need their own top-level key:
-                    // primitives only, never undefined, so sanitizeForRealtimeDatabase passes it
-                    // through untouched. Assessor-only conversion announcements are still absent.
-                    pocReadings: cur.pocReadings || {},
-                    // SESSION HYGIENE: when this session last carried live data, rounded to the minute
-                    // so it adds at most one tiny write a minute. RTDB cannot expire data on its own;
-                    // a scheduled cleanup job (see README) deletes sessions whose updatedAt is old.
-                    updatedAt: Math.floor(Date.now() / 60000) * 60000
-                };
-                const sanitised = sanitizeForRealtimeDatabase(payload);
-                const safePayload = sanitised.value || {};
-                if (sanitised.dropped.length) {
-                    const dropped = sanitised.dropped.join(', ');
-                    console.error(`Firebase sync omitted invalid value(s): ${dropped}`);
-                    dispatch({
-                        type: 'SET_SYNC_STATUS',
-                        payload: { state: 'degraded', message: `Invalid data omitted from sync: ${dropped}` }
-                    });
-                }
-                const diff = {};
-                for (const key in safePayload) {
-                    if (JSON.stringify(safePayload[key]) !== JSON.stringify(lastPayloadRef.current[key])) {
-                        diff[key] = safePayload[key];
-                    }
-                }
-                if (Object.keys(diff).length > 0) {
-                    // Only advance the acknowledged snapshot after RTDB accepts the write. Advancing it
-                    // before the promise resolves made a permission-denied write look successful forever.
-                    sessionRef.update(diff).then(() => {
-                        lastPayloadRef.current = safePayload;
-                        dispatch({
-                            type: 'SET_SYNC_STATUS',
-                            payload: {
-                                state: sanitised.dropped.length ? 'degraded' : 'connected',
-                                message: sanitised.dropped.length ? 'Some invalid data was omitted from sync.' : null,
-                                lastWriteAt: Date.now()
-                            }
-                        });
-                    }).catch(e => {
-                        console.error("Sync Write Error:", e);
-                        dispatch({
-                            type: 'SET_SYNC_STATUS',
-                            payload: { state: 'error', message: `Live session write failed: ${e.message || 'unknown error'}` }
-                        });
-                    });
-                }
-            };
-
-            if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-            syncTimerRef.current = setTimeout(flush, 500);
-            return () => { if (syncTimerRef.current) { clearTimeout(syncTimerRef.current); syncTimerRef.current = null; } };
-        }, [
-            state.vitals, state.rhythm, state.cprInProgress, state.etco2Enabled, state.flash,
-            state.cycleTimer, state.monitorTimer, state.scenario, state.activeInterventions,
-            state.nibp, state.speech, state.soundEffect, state.audioOutput, state.trends,
-            state.arrestPanelOpen, state.isFinished, state.monitorPopup, state.waveformGain,
-            state.noise, state.notification, state.remotePacerState, state.pacingThreshold,
-            state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
-            state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
-            state.activeDrugs, state.deteriorationMode,
-            state.defibPanelOpen, state.defib
-        ]);
-
-        useEffect(() => {
-            const db = window.db; 
-            if (!db || !sessionID || !isMonitorMode) return; 
-            const sessionRef = db.ref(`sessions/${sessionID}`);
-            const handleUpdate = (snapshot) => { 
-                const data = snapshot.val(); 
-                if (data) { 
-                    try {
-                        dispatch({ type: 'SYNC_FROM_MASTER', payload: data });
-                        dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
-                    }
-                    catch (err) { console.error("Sync Error", err); } 
-                } 
-            };
-            const handleReadError = (error) => {
-                console.error('Firebase monitor read failed:', error);
-                dispatch({
-                    type: 'SET_SYNC_STATUS',
-                    payload: { state: 'error', message: `Live session read failed: ${error.message || 'unknown error'}` }
-                });
-            };
-            sessionRef.on('value', handleUpdate, handleReadError);
-            return () => sessionRef.off('value', handleUpdate);
-        }, [isMonitorMode, sessionID]);
-
-        // =====================================================================================
-        // A5: PRESENCE / CONNECTION INDICATOR.
-        // Modelled on the existing syncStatus state machine: the monitor writes a presence child
-        // under sessions/<CODE>/presence/<clientId> with an onDisconnect() removal and a 10s
-        // heartbeat; the controller reduces the children into state.remotePresence and shows a
-        // badge next to the existing sync badge saying WHAT each remote device is displaying.
-        // =====================================================================================
-        const presenceIdRef = useRef(null);
-        if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10);
-
-        // --- monitor side: announce ourselves and what we are showing.
-        const presenceDisplay = isMonitorMode
-            ? (state.defibPanelOpen ? 'defib' : (state.arrestPanelOpen ? 'arrest view' : 'patient monitor'))
-            : null;
-        useEffect(() => {
-            const db = window.db;
-            if (!db || !sessionID || !isMonitorMode) return;
-            const ref = db.ref(`sessions/${sessionID}/presence/${presenceIdRef.current}`);
-            const write = () => {
-                ref.update({
-                    role: 'monitor',
-                    display: presenceDisplay,
-                    ua: (navigator.userAgent || '').slice(0, 120),
-                    ts: Date.now()
-                }).catch(e => console.warn('Presence write failed', e));
-            };
-            // onDisconnect() is what makes a closed tab / dead tablet disappear promptly; the
-            // heartbeat is what makes a WIFI dropout (where onDisconnect never fires) detectable.
-            ref.onDisconnect().remove().catch(() => {});
-            write();
-            const hb = setInterval(write, 10000);
-            return () => { clearInterval(hb); ref.remove().catch(() => {}); };
-        }, [isMonitorMode, sessionID, presenceDisplay]);
-
-        // --- controller side: reduce the presence children, expiring stale heartbeats.
-        useEffect(() => {
-            const db = window.db;
-            if (!db || !sessionID || isMonitorMode) return;
-            const ref = db.ref(`sessions/${sessionID}/presence`);
-            const STALE_MS = 30000;
-            let latest = {};
-            const push = () => {
-                const now = Date.now();
-                const clients = Object.keys(latest)
-                    .map(k => ({ id: k, ...(latest[k] || {}) }))
-                    .filter(c => Number.isFinite(Number(c.ts)) && (now - Number(c.ts)) < STALE_MS);
-                dispatch({ type: 'SET_REMOTE_PRESENCE', payload: clients });
-            };
-            const onVal = (snap) => { latest = snap.val() || {}; push(); };
-            const onErr = (e) => {
-                console.error('Presence read failed:', e);
-                dispatch({ type: 'SET_REMOTE_PRESENCE', payload: [] });
-            };
-            ref.on('value', onVal, onErr);
-            const sweep = setInterval(push, 5000);
-            return () => { ref.off('value', onVal); clearInterval(sweep); };
-        }, [isMonitorMode, sessionID]);
-
-        // =====================================================================================
-        // A6: STUDENT DEVICE EVENTS.
-        // sessions/<CODE>/command is a single set() slot already owned by the monitor's NIBP
-        // control, so reusing it for defib events would clobber an in-flight NIBP command (and
-        // vice versa). Device events therefore get their OWN node with PUSH semantics.
-        // Every event converges on the same shared outcome helpers the facilitator uses
-        // (initCharge / deliverShock / applyShockOutcome / applyCardioversion).
-        // =====================================================================================
-        const deviceEventsSinceRef = useRef(Date.now());
-        const sendDeviceEvent = (type, payload = {}) => {
-            if (!isMonitorMode || !sessionID || !window.db) return false;
-            const safe = sanitizeForRealtimeDatabase({ type, payload, ts: Date.now(), from: presenceIdRef.current });
-            if (!safe.value || safe.dropped.length) {
-                console.error('Invalid device event not sent:', safe.dropped.join(', '));
-                return false;
-            }
-            try {
-                window.db.ref(`sessions/${sessionID}/deviceEvents`).push(safe.value).catch(e => {
-                    console.error('Device event send failed:', e);
-                    dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Defib event write failed: ${e.message || 'unknown error'}` } });
-                });
-                return true;
-            } catch (e) {
-                console.error('Device event send failed:', e);
-                return false;
-            }
-        };
-
-        useEffect(() => {
-            const db = window.db;
-            if (!db || !sessionID || isMonitorMode) return;
-            const ref = db.ref(`sessions/${sessionID}/deviceEvents`);
-            // Only ever act on events newer than this listener, so a re-mount cannot replay a
-            // whole arrest's worth of shocks.
-            const startedAt = deviceEventsSinceRef.current;
-            const onChild = (snap) => {
-                const ev = snap.val();
-                if (!ev || !ev.type) return;
-                if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
-                const cur = stateRef.current;
-                const where = ev.device === 'standalone-defib' ? 'standalone defib' : 'monitor defib';
-                const src = `student (${where})`;
-                const p = ev.payload || {};
-                switch (ev.type) {
-                    case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
-                    case 'ENERGY_SELECT': setDefibEnergy(p.energy, src); break;
-                    case 'SYNC_TOGGLE': dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: !!p.sync } });
-                        addLogEntry(`SYNC ${p.sync ? 'ON' : 'OFF'} (${src})${p.sync && RG.isPulseless(cur.rhythm) ? ' — armed in a pulseless rhythm; the device will not discharge. Flagged.' : ''}`,
-                            p.sync && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', !!(p.sync && RG.isPulseless(cur.rhythm)));
-                        break;
-                    case 'CHARGE_INIT': initCharge(p.energy); break;
-                    case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
-                    case 'ANALYSE': analyseRhythm(src); break;
-                    case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: p.rate, output: p.output } }); break;
-                    case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
-                    case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
-                    case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
-                    case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
-                    case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
-                    default: addLogEntry(`Unhandled student device event: ${ev.type}`, 'system'); break;
-                }
-                // Consume the event so the queue cannot grow without bound across a long session.
-                snap.ref.remove().catch(() => {});
-            };
-            const onErr = (e) => {
-                console.error('Device event listener failed:', e);
-                dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Defib event read failed: ${e.message || 'unknown error'}` } });
-            };
-            ref.limitToLast(25).on('child_added', onChild, onErr);
-            return () => ref.off('child_added', onChild);
-        }, [isMonitorMode, sessionID]);
-
-        // Persist a slim snapshot to localStorage every 5s. This is a single interval keyed only on
-        // isMonitorMode: the previous effect re-ran on every vitals tick, and its cleanup cleared the
-        // pending timeout each time, so at 1Hz the 5s write never actually fired and resume was dead.
-        useEffect(() => {
-            if (isMonitorMode) return;
-            const id = setInterval(() => {
-                try {
-                    const cur = stateRef.current;
-                    if (!cur.scenario || cur.log.length === 0) return;
-                    const slim = {
-                        // The whole scenario, not just an identifier: every screen dereferences fields
-                        // like patientProfileTemplate, and a stub makes them throw on resume.
-                        scenario: cur.scenario,
-                        vitals: cur.vitals, baseVitals: cur.baseVitals, prevVitals: cur.prevVitals, trends: cur.trends, hypoxiaTimer: cur.hypoxiaTimer,
-                        activeDrugs: cur.activeDrugs, deteriorationMode: cur.deteriorationMode,
-                        // D1: the per-run id travels with the snapshot so a resumed session reopens
-                        // the same instructor notes instead of a blank set.
-                        runId: cur.runId || null,
-                        rhythm: cur.rhythm, time: cur.time, cycleTimer: cur.cycleTimer,
-                        activeInterventions: Array.from(cur.activeInterventions),
-                        interventionCounts: cur.interventionCounts, activeDurations: cur.activeDurations,
-                        completedObjectives: Array.from(cur.completedObjectives),
-                        log: cur.log.slice(-200), // recent log only
-                        nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
-                        showWetflag: cur.showWetflag, icp: cur.icp,
-                        // B5: shock count / cumulative energy must survive a resume.
-                        defib: cur.defib, lastConversion: cur.lastConversion
-                    };
-                    localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
-                } catch (e) {
-                    console.warn('localStorage persist failed', e);
-                }
-            }, 5000);
-            return () => clearInterval(id);
-        }, [isMonitorMode]);
+        // THE SIMULATION ENGINE: LIVE SESSION SYNC (data/engine-sync.js).
+        const {
+            sendDeviceEvent
+        } = window.__EngineSync.useSessionSync({
+            addLogEntry: (...a) => addLogEntry(...a), analyseRhythm: (...a) => analyseRhythm(...a),
+            deliverShock: (...a) => deliverShock(...a), dispatch, initCharge: (...a) => initCharge(...a),
+            isAudioLive: (...a) => isAudioLive(...a), isMonitorMode,
+            lastPayloadRef, postToChannel, sessionID, setDefibEnergy: (...a) => setDefibEnergy(...a),
+            setDefibMode: (...a) => setDefibMode(...a), simChannel, state, stateRef,
+            toggleCPR: (...a) => toggleCPR(...a)
+        });
         // The context is created at mount (before any gesture) so it is born 'suspended' under the
         // autoplay policy. The "Tap to Enable Sound" overlay resumes THIS ref, which is correct; what
         // was missing was recovery when iOS/tab-backgrounding re-suspends it, so watch statechange.
@@ -2698,7 +248,7 @@
         useEffect(() => {
             let timerId;
             let cancelled = false;
-            // C1: no pulse means no beep. Registry-derived, so it cannot drift from the
+            // No pulse means no beep. Registry-derived, so it cannot drift from the
             // physiology the way the old private list did.
             const SILENT_RHYTHMS = RG.PULSELESS;
             const scheduleBeep = () => {
@@ -2782,7 +332,7 @@
             const fire = (key, tone) => {
                 if (now - (lastAlarmRef.current[key] || 0) > 10000) { playAlertTone(tone); lastAlarmRef.current[key] = now; }
             };
-            const pulseless = RG.isPulseless(current.rhythm);   // C1: registry
+            const pulseless = RG.isPulseless(current.rhythm);   // Registry
             if (pulseless) { fire('arrest', 'critical'); return; }
             if (v.hr > th.hr.high || v.hr < th.hr.low) fire('hr', 'critical');
             if (alarmSensors.spo2 && v.spO2 < th.spO2) fire('spO2', 'critical');
@@ -2874,7 +424,7 @@
                 dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — missing ${missingText} (proceeding)`, type: 'warning', id: Date.now() } });
             }
 
-            // WAVE 7 / ITEM 4 — POINT-OF-CARE CHECKS. These are INTERMITTENT: they publish the value
+            // POINT-OF-CARE CHECKS. These are INTERMITTENT: they publish the value
             // as it is right now, timestamped, and then stop tracking. Repeating the check takes a
             // fresh sample. (A continuous sensor, by contrast, keeps updating.) Fully permissive: a
             // VBG with no IV access has already raised its amber flag above and still proceeds.
@@ -2897,12 +447,12 @@
             if (action.type === 'continuous' && isActive) {
                  // Deliberate toggle-off. The button shows an explicit ACTIVE state and a tooltip saying
                  // a second press stops it, so removal cannot be mistaken for a repeat dose.
-                 // WAVE 8 / FINDING 3: monitoring keys take the sensor-aware removal, which expands the
+                 // Monitoring keys take the sensor-aware removal, which expands the
                  // 'Obs' shorthand. Without this the PROCEDURES card and the chip could disagree about
                  // what is attached; both now resolve through getSensors() over the same set.
                  if (key === 'Obs' || STANDARD_SENSOR_KEYS.indexOf(key) !== -1) dispatch({ type: 'DETACH_SENSOR', payload: key });
                  else dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
-                 // B3: stopping compressions clears the flag as well as starting the drug's offset tail.
+                 // Stopping compressions clears the flag as well as starting the drug's offset tail.
                  if (action.effect && action.effect.cpr === true && cur.cprInProgress) dispatch({ type: 'TOGGLE_CPR', payload: false });
                  addLogEntry(`${action.label} removed.`, 'action');
                  dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} STOPPED (second press toggles off)`, type: 'info', id: Date.now() } });
@@ -2919,16 +469,21 @@
                 if (key === 'Lorazepam') logMsg = `IV Lorazepam (${scenario.wetflag.lorazepam}mg) administered.`;
                 if (key === 'InsulinDextrose') logMsg = `Glucose (${scenario.wetflag.glucose}ml) administered.`;
             }
-            // PART 5 — PAEDIATRIC DOSING NOTES the review flagged as mattering clinically. These are
-            // COACHING LINES, never blocks: the facilitator always gets to give the drug.
+            // PART 5 — PAEDIATRIC DOSING NOTES (RCUK 2025). These are COACHING LINES, never blocks:
+            // the facilitator always gets to give the drug. The dose actually logged is the
+            // paediatric one where the weight or age is known.
             if (scenario.ageRange === 'Paediatric' || ageBandOf(scenario) !== 'adult') {
                 const wt = scenario.wetflag && scenario.wetflag.weight;
-                if (key === 'Atropine') addLogEntry(`Paediatric atropine: 20 mcg/kg${wt ? ` = ${Math.round(20 * wt)} mcg` : ''}, MINIMUM 100 mcg (smaller doses cause paradoxical bradycardia), maximum single dose 500 mcg.`, 'info');
-                if (key === 'MidazolamBuccal') addLogEntry(`Buccal midazolam 0.5 mg/kg${wt ? ` ≈ ${Math.round(0.5 * wt * 10) / 10} mg` : ''} — APLS step 1 when there is no IV/IO access. Second dose after 10 min, then escalate to a second-line agent.`, 'info');
+                const paeds = paediatricDoseNotes(key, scenario, { count: ((cur.interventionCounts || {})[key] || 0) + 1, inArrest: RG.inArrest(cur.rhythm) });
+                if (paeds.log) logMsg = paeds.log;
+                paeds.notes.forEach(n => addLogEntry(n, 'info'));
                 if (key === 'KetamineIM') addLogEntry(`Paediatric IM ketamine for procedural sedation: 4 mg/kg${wt ? ` = ${Math.round(4 * wt)} mg` : ''}. Peak dissociation ~5 min, 15-30 min of usable sedation — do NOT stack doses while waiting.`, 'info');
                 if (key === 'Sux') addLogEntry('Suxamethonium in a child: bradycardia is common (and marked with a second dose) — have atropine drawn up.', 'warning');
-                if (key === 'Dextrose' && wt) addLogEntry(`WETFLAG glucose: 2 ml/kg of 10% = ${Math.round(2 * wt)} ml.`, 'info');
-                if (key === 'Adenosine') addLogEntry('Paediatric adenosine: 0.1 mg/kg, then 0.2 mg/kg. Same near-instant transient kinetics as an adult.', 'info');
+            }
+            // RCUK anaphylaxis (adults and children): no improvement in breathing or circulation
+            // despite TWO doses of IM adrenaline is refractory anaphylaxis.
+            if (key === 'AdrenalineIM' && ((cur.interventionCounts || {})[key] || 0) + 1 === 2) {
+                addLogEntry('Second IM adrenaline dose. If breathing or circulation problems persist, this is REFRACTORY anaphylaxis (RCUK): seek expert help early, give a rapid IV fluid bolus and start a low-dose IV adrenaline infusion; give IM adrenaline every 5 min until the infusion is running.', 'warning');
             }
             // Instant (no-pk) effects are applied to the BASE physiology, exactly as before. Anything
             // carrying a `pk` envelope is instead pushed onto activeDrugs and composed every tick.
@@ -2955,6 +510,13 @@
             }
             const pScale = paediatricFieldScale(scenario);
             if (pScale) entryOpts.fieldScale = pScale;
+            // A heart-rate drug works differently in different rhythms: atropine barely moves a
+            // broad escape rhythm, isoprenaline does (RHYTHMS.drugHrResponse).
+            const hrResponse = RG.drugHrResponse(key, cur.rhythm);
+            if (hrResponse !== 1) {
+                entryOpts.fieldScale = { ...(entryOpts.fieldScale || {}), HR: ((entryOpts.fieldScale && entryOpts.fieldScale.HR) || 1) * hrResponse };
+                if (hrResponse < 0.5) addLogEntry(`${action.label} in ${RG.labelFor(cur.rhythm)}: little rate response expected — the block/escape is below the level this drug acts on. Consider isoprenaline or adrenaline infusion as a bridge, and pacing.`, 'info');
+            }
             // Paediatric note: suxamethonium bradycardia is common in children, and marked with a
             // second dose. The adult entry has no haemodynamic effect at all.
             if (key === 'Sux' && pScale) {
@@ -2998,7 +560,7 @@
                         addLogEntry(`${action.label} given to a fluid-overloaded patient — oxygenation is WORSENING. Consider stopping fluid, sitting them up, CPAP/NIV, GTN and diuresis.`, 'danger', true, { action: key, label: action.label, missing: ['fluid responsiveness'] });
                     }
                 }
-                // E9: a declared REBOUND phase is pushed as a second, delayed entry (late
+                // A declared REBOUND phase is pushed as a second, delayed entry (late
                 // hypoglycaemia after insulin/dextrose being the archetype). pkFactor already
                 // returns 0 for an entry whose startTime is in the future, so nothing else changes.
                 if (action.rebound) {
@@ -3022,7 +584,7 @@
             const isPocCheck = SENSOR_DEFS.some(d => d.kind === 'poc' && d.key === key);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + (isPocCheck ? " checked" : " Administered"), type: 'success', id: Date.now() } });
 
-            // WAVE 5 / ITEM 2: the trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
+            // The trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
             // above) so the debrief can derive the COMPONENTS of a multi-component objective from the
             // same data the engine credits from. Behaviour here is unchanged: any matching key marks
             // the objective as touched; the debrief decides met vs partial.
@@ -3045,18 +607,27 @@
             // It also only matched scenarios whose TITLE contained "Anaphylaxis", so an
             // anaphylaxis presenting as "Peanut reaction" was excluded.
             const ANAPHYLAXIS_ADRENALINE = ['AdrenalineIM', 'AdrenalineIV', 'AdrenalinePush', 'AdrenalineInfusion'];
-            const looksAnaphylactic = (() => {
-                const txt = scenarioText(scenario);
-                return txt.indexOf('anaphyla') !== -1 || txt.indexOf('allergic reaction') !== -1 || txt.indexOf('angio-oedema') !== -1 || txt.indexOf('angiooedema') !== -1;
-            })();
+            const looksAnaphylactic = isAnaphylaxisScenario(scenario);
             if (looksAnaphylactic && ANAPHYLAXIS_ADRENALINE.indexOf(key) !== -1) {
                 // RCUK: improvement after the FIRST correct dose of IM adrenaline is the expected
                 // clinical course, and the 5-minute repeat is the next step if it does not come.
                 dispatch({ type: 'TRIGGER_IMPROVE' });
                 addLogEntry(`${action.label} in anaphylaxis — patient condition IMPROVING. Reassess at 5 minutes and repeat IM adrenaline if the improvement is incomplete.`, 'success');
+                if (key === 'AdrenalineIM' && count === 1) addLogEntry('After initial treatment (RCUK 2021): mast cell tryptase, first sample as soon as feasible without delaying treatment, second 1-2 h (no later than 4 h) after onset. Observation: fast-track discharge after 2 h only if one dose worked within 5-10 min, symptoms fully resolved and the patient has auto-injectors and supervision; at least 6 h after resolution if 2 doses were needed; at least 12 h for more than 2 doses, severe asthma or respiratory compromise, or a previous biphasic reaction.', 'info');
+                if (key === 'AdrenalineInfusion') addLogEntry('RCUK peripheral low-dose adrenaline infusion (refractory anaphylaxis): 1 mg in 100 ml 0.9% sodium chloride via a dedicated line, start at 0.5-1 ml/kg/h and titrate to response; continuous ECG and SpO2, BP at least every 5 min. Not on the same side as a BP cuff.', 'info');
+            }
+            // RCUK Emergency treatment of anaphylaxis (2021): steroids are not advised routinely;
+            // antihistamines are third-line and have no role in A, B or C problems.
+            if (looksAnaphylactic && (key === 'Hydrocortisone' || key === 'Dexamethasone' || key === 'Chlorphenamine')) {
+                const adrenalineGiven = ANAPHYLAXIS_ADRENALINE.some(k => ((cur.interventionCounts || {})[k] || 0) > 0 || (cur.activeInterventions && cur.activeInterventions.has(k)));
+                if (!adrenalineGiven) addLogEntry(`${action.label} given before any adrenaline in anaphylaxis. Adrenaline is the first-line treatment; ${key === 'Chlorphenamine' ? 'antihistamines' : 'steroids'} must never be given in preference to it (RCUK 2021).`, 'warning', true,
+                    { action: 'AdrenalineIM', label: 'IM Adrenaline', missing: ['adrenaline before other drugs'] });
+                addLogEntry(key === 'Chlorphenamine'
+                    ? 'Antihistamines are third-line in anaphylaxis (RCUK 2021) and do not treat airway, breathing or circulation problems. After stabilisation, for skin symptoms, a non-sedating oral antihistamine (e.g. cetirizine) is preferred to chlorphenamine; IV chlorphenamine can cause hypotension if given rapidly.'
+                    : 'Corticosteroids are no longer advised for the routine emergency treatment of anaphylaxis (RCUK 2021). Consider them only after initial resuscitation, for refractory reactions or ongoing asthma or shock, and never in preference to adrenaline or fluids.', 'info');
             }
             // --- PARALYSIS (roc vs sux genuinely differ) ---
-            // WAVE 2: folded into the pk envelope. The blockade window is derived from the SAME
+            // Folded into the pk envelope. The blockade window is derived from the SAME
             // activeDrugs entry pushed above (onset = pk.onset, end = pk.offset or paralysis.duration),
             // so there is exactly one timer. SET_PARALYSIS is only used here as an immediate mirror for
             // the UI/sync before the next tick recomputes it from activeDrugs.
@@ -3068,7 +639,7 @@
                 addLogEntry(`${action.label}: paralysis in ~${pz.onset}s, lasting ~${Math.round(pz.duration / 60)} min.${ventilated ? '' : ' Patient is NOT being ventilated — expect apnoea and desaturation.'}`, ventilated ? 'info' : 'warning', !ventilated);
             }
             if (action.effect.reverseParalysis) {
-                // E3: REVERSAL IS NOT INSTANT. Sugammadex restores a train-of-four ratio > 0.9 in
+                // REVERSAL IS NOT INSTANT. Sugammadex restores a train-of-four ratio > 0.9 in
                 // roughly 1.5-3 min (longer for a deep block), and the whole teaching point is that
                 // you keep ventilating while you wait. Previously the blockade vanished on the
                 // administering tick, which taught the opposite.
@@ -3160,17 +731,21 @@
             }
 
             // =====================================================================================
-            // E2 — ADENOSINE: a SCRIPTED, TRANSIENT sequence, not a jump to HR 80.
+            // ADENOSINE: a SCRIPTED, TRANSIENT sequence, not a jump to HR 80.
             // Half-life is under 10 s. What the team must see is: flush → a few seconds of AV block
             // or sinus pause (the frightening bit) → either conversion to sinus at ~15 s or the SVT
-            // simply carrying on, in which case you escalate 6 → 12 → 12 mg. Everything is resolved
+            // simply carrying on, in which case you escalate 6 → 12 → 18 mg (RCUK). Everything is resolved
             // inside ~45 s, and nothing lingers (pk offset 40 s).
             // =====================================================================================
             if (action.avBlock && !isArrest) {
                 const ab = action.avBlock;
-                const doseNo = count;                    // 1st = 6 mg, 2nd/3rd = 12 mg
-                const doseMg = doseNo === 1 ? 6 : 12;
-                addLogEntry(`Adenosine ${doseMg} mg given as a RAPID push into a large proximal vein with an immediate saline flush. Warn the patient: flushing, chest tightness and a feeling of doom are expected and last seconds.`, 'action');
+                const doseNo = count;                    // RCUK: 6 mg, then 12 mg, then 18 mg
+                // A child's dose is weight-based (RCUK 2025): 0.1-0.2 mg/kg, then 0.3 mg/kg (max
+                // 12-18 mg); a neonate's 150 mcg/kg rising to 300 mcg/kg.
+                const paedsDose = paediatricAdenosineDose(scenario, doseNo);
+                const doseMg = doseNo === 1 ? 6 : (doseNo === 2 ? 12 : 18);
+                const doseText = paedsDose || `${doseMg} mg`;
+                addLogEntry(`Adenosine ${doseText} given as a RAPID push into a large proximal vein with an immediate saline flush. Warn the patient: flushing, chest tightness and a feeling of doom are expected and last seconds.`, 'action');
                 dispatch({ type: 'TRIGGER_SPEAK', payload: 'Oh — that feels horrible. My chest is tight. I feel like something awful is happening.' });
                 addLogEntry(`Transient AV block / sinus pause for ~${ab.pause || 8}s — run a rhythm strip NOW: this is the diagnostic window.`, 'warning');
                 const chances = Array.isArray(ab.chanceByDose) ? ab.chanceByDose : [0.55, 0.75, 0.8];
@@ -3179,11 +754,11 @@
                     const now = stateRef.current;
                     if (!now || !now.isRunning || now.isFinished) return;
                     if (RG.inArrest(now.rhythm)) return;
-                    applyDrugConversion(now, 'Adenosine', `Adenosine ${doseMg} mg`, { chance });
+                    applyDrugConversion(now, 'Adenosine', `Adenosine ${doseText}`, { chance });
                 }, Math.max(1, Number(ab.convertAt) || 12) * 1000);
             }
 
-            // C6: all three changeRhythm modes are handled now. 'sync' and 'chance' were silently
+            // All three changeRhythm modes are handled now. 'sync' and 'chance' were silently
             // ignored before Wave 3, which is why the Cardioversion intervention did nothing and
             // Adrenaline IV / Amiodarone changed no rhythm in any scenario.
             if (action.avBlock) {
@@ -3203,7 +778,7 @@
             // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
             // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
             // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
-            const isArrest = RG.inArrest(cur.rhythm);   // C1: registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
+            const isArrest = RG.inArrest(cur.rhythm);   // Registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
             if (isArrest) {
                 const e = action.effect || {};
                 const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
@@ -3229,7 +804,7 @@
                         if (pacer.output >= cur.pacingThreshold && pacer.rate > 0) {
                             newVitals.hr = pacer.rate;
                             paceCaptured = true;
-                            // E5: electrical capture without mechanical capture is worthless, and a
+                            // Electrical capture without mechanical capture is worthless, and a
                             // rate number alone taught trainees not to feel for a pulse.
                             addLogEntry(`Pacing: ELECTRICAL capture at ${pacer.output}mA, rate ${pacer.rate}. Now CONFIRM MECHANICAL CAPTURE — feel a central pulse / check the SpO2 trace. Give analgesia and sedation: pacing hurts.`, 'success');
                         } else {
@@ -3238,7 +813,7 @@
                     }
                     else if (!pkOwned('HR')) newVitals.hr = clampVital('hr', newVitals.hr + action.effect.HR);
                 }
-                // E5: perfusion only improves if the pacer actually captured.
+                // Perfusion only improves if the pacer actually captured.
                 if (key === 'Pacing' && !paceCaptured) { /* no haemodynamic benefit without capture */ }
                 else if (action.effect.BP && !pkOwned('BP')) {
                     newVitals.bpSys = clampVital('bpSys', newVitals.bpSys + action.effect.BP);
@@ -3313,7 +888,7 @@
         const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
         
         // =====================================================================================
-        // B1: THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
+        // THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
         // Before Wave 3 the rhythm could change from FIVE places (manual grid, ARREST menu, ROSC
         // menu, shock outcome, nextCycle) with three of them logging nothing, and UPDATE_RHYTHM
         // itself logging nothing at all. Nothing may dispatch UPDATE_RHYTHM directly any more.
@@ -3349,7 +924,7 @@
             conversionSeqRef.current += 1;
             const eventId = `${Date.now()}-${conversionSeqRef.current}`;
 
-            // B2: one consistent, assessor-readable line for EVERY transition, converted or not.
+            // One consistent, assessor-readable line for EVERY transition, converted or not.
             if (from === to) {
                 addLogEntry(`Rhythm: ${RG.labelFor(from)} unchanged (${detail || cause})`, 'info');
             } else {
@@ -3368,7 +943,7 @@
         }, [coreState.rhythmEvent && coreState.rhythmEvent.id]);
 
         const arrestVitals = (base) => ({ ...base, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 });
-        // WAVE 5 / ITEM 6: the vitals an arrest / ROSC write owns outright. Writing them releases the
+        // The vitals an arrest / ROSC write owns outright. Writing them releases the
         // facilitator's manual hold, because the transition itself establishes a new baseline.
         const RESET_HOLD_KEYS = ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'pupils', 'etco2'];
 
@@ -3410,7 +985,7 @@
             const age = cur.scenario?.patientAge ?? 40;
             const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
             const newEtco2 = Math.round((5.0 + (Math.random() * 1.5)) * 10) / 10;
-            // C7: ROSC is no longer always exactly Sinus Rhythm. Honour the rhythm we were given,
+            // ROSC is no longer always exactly Sinus Rhythm. Honour the rhythm we were given,
             // and let the registry supply its rate band so a ROSC into AF is not shown at 80/min.
             const target = RG.canonical(rhythm);
             const band = RG.defaultHrRange(target);
@@ -3425,297 +1000,16 @@
             addLogEntry(`ROSC achieved (${RG.labelFor(target)}). Post-ROSC care: 12-lead, targeted oxygenation, treat the cause.`, 'success', true);
             dispatch({ type: 'SET_FLASH', payload: 'green' });
         };
-
-        // =====================================================================================
-        // DEFIBRILLATION (C4 / C6 / C7) — one shared outcome helper, reached by:
-        //   * the facilitator's arrest/defib panel (initCharge / deliverShock)
-        //   * the 'Defib' intervention (effect.changeRhythm === 'defib')
-        //   * a student pressing SHOCK on the monitor-hosted defib (Firebase deviceEvents)
-        //   * a student pressing SHOCK on the standalone defib page (BroadcastChannel)
-        // =====================================================================================
-        const SHOCK_REFRACTORY_MS = 5000;   // C7: stops charge/shock button-mashing maximising ROSC
-        const refibTimerRef = useRef(null);
-
-        const defibWeight = () => {
-            const cur = stateRef.current;
-            const w = Number(cur.scenario?.wetflag?.weight);
-            return Number.isFinite(w) && w > 0 ? w : null;
-        };
-        const recommendedShockEnergy = () => {
-            const cur = stateRef.current;
-            return RG.recommendedEnergy(defibWeight(), cur.scenario?.patientAge);
-        };
-
-        const scheduleRefibrillation = (fromRhythm) => {
-            const table = RG.SHOCK_OUTCOMES[RG.canonical(fromRhythm)];
-            if (!table || !table.refibChance) return;
-            if (Math.random() >= table.refibChance) return;
-            if (refibTimerRef.current) clearTimeout(refibTimerRef.current);
-            const delay = 20000 + Math.random() * 40000;
-            refibTimerRef.current = setTimeout(() => {
-                refibTimerRef.current = null;
-                const cur = stateRef.current;
-                if (!cur.isRunning || cur.isFinished) return;
-                if (RG.isPulseless(cur.rhythm)) return;     // already re-arrested another way
-                dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
-                changeRhythm(fromRhythm, 'refibrillation', { note: 're-arrest after ROSC' });
-                dispatch({ type: 'SET_FLASH', payload: 'red' });
-            }, delay);
-        };
-
-        // The ONE place a shock outcome is decided.
-        function applyShockOutcome(cur, opts = {}) {
-            const joules = Number.isFinite(Number(opts.energy)) ? Math.round(Number(opts.energy)) : recommendedShockEnergy();
-            const sync = !!opts.sync;
-            const source = opts.source || 'facilitator';
-            const now = Date.now();
-            const d = cur.defib || {};
-
-            // --- Metrics (B5). EVERY delivered shock counts here, shockable or not, and these
-            // numbers live in state so they reach Firebase, localStorage and the debrief.
-            const nextDefib = {
-                shockCount: (d.shockCount || 0) + 1,
-                totalEnergy: (d.totalEnergy || 0) + joules,
-                lastEnergy: joules,
-                lastShockAt: now,
-                charged: false,
-                chargeEnergy: null
-            };
-
-            // --- C4: paediatric energy. Never blocked, always flagged (Wave 1 philosophy).
-            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
-            if (dev) {
-                addLogEntry(`Shock energy deviation: ${dev.reason}. Recommended for this patient: ${dev.expected}J (4 J/kg for a child).`, 'warning', true,
-                    { action: 'Defib', label: 'Defibrillation', missing: [`correct energy (${dev.expected}J)`] });
-            }
-
-            const shockable = RG.isShockable(cur.rhythm);
-
-            // --- C7 FIX: the shock counter used to increment BEFORE this guard, so shocking a
-            // non-shockable rhythm silently inflated the ROSC probability of the next real shock.
-            if (!shockable) {
-                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
-                if (RG.isSyncCardiovertible(cur.rhythm) && !sync) {
-                    addLogEntry(`Unsynchronised shock delivered into ${RG.labelFor(cur.rhythm)} — this rhythm needs SYNCHRONISED cardioversion. Not blocked, but flagged.`, 'warning', true,
-                        { action: 'Defib', label: 'Defibrillation', missing: ['synchronisation'] });
-                } else {
-                    addLogEntry(`Shock delivered into non-shockable rhythm (${RG.labelFor(cur.rhythm)}) — no effect. Check the rhythm before shocking.`, 'warning', true,
-                        { action: 'Defib', label: 'Defibrillation', missing: ['a shockable rhythm'] });
-                }
-                changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync, note: 'non-shockable, no change' });
-                return;
-            }
-
-            if (sync) {
-                addLogEntry(`SYNCHRONISED shock delivered into ${RG.labelFor(cur.rhythm)} — a pulseless rhythm has no R wave to synchronise to, so the device would not fire in sync. Treat as unsynchronised. Flagged.`, 'warning', true,
-                    { action: 'Defib', label: 'Defibrillation', missing: ['unsynchronised mode'] });
-            }
-
-            nextDefib.shockableShocks = (d.shockableShocks || 0) + 1;
-
-            // --- C7: refractory period. A shock stacked on top of the previous one within 5s is
-            // still delivered and still logged, but earns no new physiological roll.
-            const stacked = d.lastShockAt && (now - d.lastShockAt) < SHOCK_REFRACTORY_MS;
-            if (stacked) {
-                nextDefib.shockableShocks = d.shockableShocks || 0;   // does not advance the ROSC ladder
-                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
-                addLogEntry(`Second shock delivered ${Math.round((now - d.lastShockAt) / 1000)}s after the last one — stacked shocks give no additional benefit. Two minutes of good CPR between shocks is the intervention. Flagged.`, 'warning', true,
-                    { action: 'Defib', label: 'Defibrillation', missing: ['2 minutes of CPR between shocks'] });
-                changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync: false, note: 'stacked shock, no change' });
-                return;
-            }
-
-            dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
-
-            // --- FACILITATOR OVERRIDE (C7): "next shock converts to X". Uses the previously
-            // unreachable queuedRhythm / SET_QUEUED_RHYTHM code, which is now driven by a real
-            // control on the assessor's defib panel.
-            if (cur.queuedRhythm) {
-                const q = RG.canonical(cur.queuedRhythm);
-                dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
-                if (RG.isPulseless(q)) {
-                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
-                    changeRhythm(q, 'defibrillation (facilitator override)', { energy: joules });
-                } else {
-                    triggerROSC(q, 'defibrillation (facilitator override)', { energy: joules });
-                    scheduleRefibrillation(cur.rhythm);
-                }
-                return;
-            }
-
-            // --- C7: energy-, rhythm-, CPR- and drug-sensitive ROSC probability.
-            const shocks = nextDefib.shockableShocks;
-            const expected = recommendedShockEnergy();
-            // Under-dosing genuinely reduces defibrillation success; over-dosing does not help.
-            const energyFactor = Math.max(0.4, Math.min(1.1, joules / Math.max(1, expected)));
-            const rhythmFactor = (RG.canonical(cur.rhythm) === 'Fine VF') ? 0.6 : 1.0;   // fine VF defibrillates poorly
-            const cprBonus = cur.cprInProgress ? 0.10 : 0;
-            const drugBonus = Math.min(0.15, Number(d.shockBonus) || 0);
-            const base = 0.08 + 0.07 * Math.min(shocks, 5);
-            const roscChance = Math.max(0.02, Math.min(0.55, (base + cprBonus + drugBonus) * energyFactor * rhythmFactor));
-
-            const fromRhythm = RG.canonical(cur.rhythm);
-            const table = RG.SHOCK_OUTCOMES[fromRhythm] || RG.SHOCK_OUTCOMES['VF'];
-            if (Math.random() < roscChance) {
-                const target = RG.weightedPick(table.rosc);
-                // Banked drug bonus is consumed by a successful shock.
-                dispatch({ type: 'SET_DEFIB_STATE', payload: { shockBonus: 0 } });
-                triggerROSC(target, 'defibrillation', { energy: joules, sync: false });
-                scheduleRefibrillation(fromRhythm);
-            } else {
-                const target = RG.weightedPick(table.noRosc);
-                if (target !== fromRhythm) {
-                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
-                }
-                changeRhythm(target, 'defibrillation', { energy: joules, sync: false, note: target === fromRhythm ? 'no change — resume CPR' : 'post-shock rhythm change' });
-                if (target === fromRhythm) {
-                    addLogEntry('No change after shock. Resume compressions immediately, 2-minute cycle, consider escalating energy.', 'warning');
-                }
-            }
-        }
-
-        // --- C6: SYNCHRONISED CARDIOVERSION. `toggleSync` used to only flip a flag; the flag was
-        // transmitted and then DISCARDED engine-side, and the 'Cardioversion' intervention's
-        // changeRhythm:'sync' was never handled at all.
-        function applyCardioversion(cur, opts = {}) {
-            const joules = Number.isFinite(Number(opts.energy)) ? Math.round(Number(opts.energy)) : recommendedShockEnergy();
-            const d = cur.defib || {};
-            const now = Date.now();
-            dispatch({ type: 'SET_DEFIB_STATE', payload: {
-                shockCount: (d.shockCount || 0) + 1,
-                totalEnergy: (d.totalEnergy || 0) + joules,
-                lastEnergy: joules, lastShockAt: now, charged: false, chargeEnergy: null, syncMode: true
-            } });
-
-            const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
-            if (dev) addLogEntry(`Cardioversion energy deviation: ${dev.reason}. Recommended: ${dev.expected}J.`, 'warning', true,
-                { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: [`correct energy (${dev.expected}J)`] });
-
-            if (RG.isPulseless(cur.rhythm)) {
-                // Never blocked — flagged. A defibrillator in SYNC mode will not discharge into VF,
-                // and that is itself the teaching point.
-                addLogEntry(`SYNC mode armed in ${RG.labelFor(cur.rhythm)} — a real defibrillator will not discharge in SYNC without an R wave. Switch to unsynchronised defibrillation. Flagged.`, 'danger', true,
-                    { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: ['unsynchronised mode for a pulseless rhythm'] });
-                changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'no R wave, device would not fire' });
-                return;
-            }
-            if (!RG.isSyncCardiovertible(cur.rhythm)) {
-                addLogEntry(`Synchronised shock delivered into ${RG.labelFor(cur.rhythm)} — cardioversion is not indicated for this rhythm. Flagged.`, 'warning', true,
-                    { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: ['an indication for cardioversion'] });
-                changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'not indicated, no change' });
-                return;
-            }
-
-            // Success depends on the rhythm and on adequate energy.
-            const baseSuccess = { 'SVT': 0.85, 'VT': 0.80, 'AF': 0.6, 'Atrial Flutter': 0.9 }[RG.canonical(cur.rhythm)] || 0.7;
-            const expected = recommendedShockEnergy();
-            const energyFactor = Math.max(0.5, Math.min(1.1, joules / Math.max(1, expected)));
-            if (Math.random() < baseSuccess * energyFactor) {
-                const band = RG.defaultHrRange('Sinus Rhythm');
-                dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: getRandomInt(70, 95) } });
-                changeRhythm('Sinus Rhythm', 'cardioversion', { energy: joules, sync: true });
-            } else {
-                changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'unsuccessful — escalate energy, check sedation and synchronisation' });
-            }
-        }
-
-        // --- C6: DRUG-MEDIATED CONVERSION. `changeRhythm: 'chance'` was unhandled, so Adrenaline IV
-        // and Amiodarone — the two most important drugs in a shockable arrest — changed NOTHING.
-        function applyDrugConversion(cur, key, label, opts = {}) {
-            const table = RG.DRUG_CONVERSION[key];
-            const rid = RG.canonical(cur.rhythm);
-            let rule = table && table[rid];
-            // E2: adenosine's success probability escalates with the 6 → 12 → 12 mg sequence, so the
-            // caller may supply the chance for THIS dose. The registry still owns the target rhythm.
-            if (rule && Number.isFinite(opts.chance)) rule = { ...rule, chance: opts.chance };
-            if (!rule) {
-                addLogEntry(`${label} given in ${RG.labelFor(rid)} — no direct rhythm effect expected for this combination.`, 'info');
-                return;
-            }
-            if (rule.shockBonus) {
-                const d = cur.defib || {};
-                dispatch({ type: 'SET_DEFIB_STATE', payload: { shockBonus: Math.min(0.15, (Number(d.shockBonus) || 0) + rule.shockBonus) } });
-                addLogEntry(`${label} on board — improves the chance that the NEXT shock is successful (${Math.round(rule.shockBonus * 100)}% added).`, 'info');
-            }
-            if (!rule.chance || !rule.to) return;
-            if (Math.random() < rule.chance) {
-                if (RG.isPulseless(rule.to)) {
-                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
-                    changeRhythm(rule.to, 'drug', { agent: label });
-                } else if (RG.isPulseless(rid)) {
-                    triggerROSC(rule.to, 'drug', { agent: label });
-                } else {
-                    changeRhythm(rule.to, 'drug', { agent: label });
-                }
-            } else {
-                addLogEntry(`${label} given — rhythm unchanged (${RG.labelFor(rid)}).`, 'info');
-            }
-        }
-
-        function initCharge(energy) {
-            const cur = stateRef.current;
-            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : recommendedShockEnergy();
-            dispatch({ type: 'SET_FLASH', payload: 'yellow' });
-            dispatch({ type: 'SET_DEFIB_STATE', payload: { charged: true, chargeEnergy: j, energy: j } });
-            addLogEntry(`Defib charging (${j}J${cur.defib?.syncMode ? ', SYNC' : ''})`, 'warning');
-            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Charging ${j}J...`, type: 'warning', id: Date.now() } });
-            setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 1000);
-        }
-
-        function deliverShock(energy, source = 'facilitator', opts = {}) {
-            const cur = stateRef.current;
-            const j = Number.isFinite(Number(energy)) ? Math.round(Number(energy)) : recommendedShockEnergy();
-            const sync = opts.sync !== undefined ? !!opts.sync : !!(cur.defib && cur.defib.syncMode);
-            dispatch({ type: 'SET_FLASH', payload: 'red' });
-            // B5: logged as 'danger' AND flagged, and the debrief now plots danger-type markers.
-            addLogEntry(`Shock delivered ${j}J${sync ? ' (SYNC)' : ''} (${source})`, 'danger', true);
-            dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${j}J`, type: 'danger', id: Date.now() } });
-            setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
-            if (sync) applyCardioversion(cur, { energy: j, source });
-            else applyShockOutcome(cur, { energy: j, sync: false, source });
-        }
-
-        // Assessor-facing defib device controls, shared by the controller panel and by student
-        // events arriving over Firebase / BroadcastChannel.
-        const setDefibMode = (mode, source = 'facilitator') => {
-            dispatch({ type: 'SET_DEFIB_STATE', payload: { mode, charged: false, chargeEnergy: null } });
-            addLogEntry(`Defibrillator mode: ${String(mode).toUpperCase()} (${source})`, 'action');
-        };
-        const setDefibEnergy = (j, source = 'facilitator') => {
-            const v = Math.max(1, Math.round(Number(j) || 0));
-            dispatch({ type: 'SET_DEFIB_STATE', payload: { energy: v, charged: false, chargeEnergy: null } });
-            addLogEntry(`Energy selected: ${v}J (${source})`, 'action');
-        };
-        const toggleDefibSync = (source = 'facilitator') => {
-            const cur = stateRef.current;
-            const next = !(cur.defib && cur.defib.syncMode);
-            dispatch({ type: 'SET_DEFIB_STATE', payload: { syncMode: next } });
-            addLogEntry(`SYNC ${next ? 'ON' : 'OFF'} (${source})${next && RG.isPulseless(cur.rhythm) ? ' — SYNC armed in a pulseless rhythm; the device will not discharge. Flagged.' : ''}`, next && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', next && RG.isPulseless(cur.rhythm));
-        };
-        const analyseRhythm = (source = 'student') => {
-            const cur = stateRef.current;
-            const shockable = RG.isShockable(cur.rhythm);
-            const result = shockable ? 'SHOCK ADVISED' : 'NO SHOCK ADVISED';
-            dispatch({ type: 'SET_DEFIB_STATE', payload: { analysing: false, lastAnalysis: { result, rhythm: RG.canonical(cur.rhythm), at: Date.now() } } });
-            addLogEntry(`Defib analysis (${source}): ${result} — ${RG.labelFor(cur.rhythm)}`, 'action');
-            return result;
-        };
-        const setQueuedRhythm = (r) => {
-            if (!r) { dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null }); addLogEntry('Facilitator override cleared: next shock follows the model.', 'system'); return; }
-            const q = RG.canonical(r);
-            dispatch({ type: 'SET_QUEUED_RHYTHM', payload: q });
-            addLogEntry(`Facilitator override armed: the NEXT shock will convert to ${RG.labelFor(q)}.`, 'system');
-        };
-        const toggleCPR = (on, source = 'facilitator') => {
-            const cur = stateRef.current;
-            const next = on === undefined ? !cur.cprInProgress : !!on;
-            if (next === cur.cprInProgress) return;
-            dispatch({ type: 'TOGGLE_CPR', payload: next });
-            if (next) dispatch({ type: 'RESET_CYCLE_TIMER' });
-            addLogEntry(next
-                ? `CPR started (${source}) — arrest ETCO2, compression artefact and the ROSC bonus are now active. Aim for 100-120/min, minimise pauses.`
-                : `CPR stopped (${source}).`, next ? 'action' : 'warning', !next && RG.isPulseless(cur.rhythm));
-        };
+        // THE SIMULATION ENGINE: DEFIBRILLATION AND PACING (data/engine-defib.js).
+        const {
+            analyseRhythm, applyCardioversion, applyDrugConversion, applyShockOutcome, defibWeight,
+            deliverShock, drugOnBoard, goToDefibStep, initCharge, recommendedShockEnergy, refibTimerRef,
+            setDefibEnergy, setDefibMode, setQueuedRhythm, shockPolicy, stepsRunning, toggleCPR,
+            toggleDefibSync
+        } = window.__EngineDefib.useDefib({
+            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, dispatch, isMonitorMode, state,
+            stateRef, triggerArrest, triggerROSC
+        });
 
         const revealInvestigation = (type, customText = null) => {
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type });
@@ -3724,7 +1018,7 @@
                 let finalCustomText = customText;
 
                 // VBG: if no manual override supplied, derive from current state
-                // D1: the AUTHORED VBG is authoritative for the baseline. It used to be bypassed
+                // The AUTHORED VBG is authoritative for the baseline. It used to be bypassed
                 // whenever scenario.vbg was null (113/254 scenarios, because enrichScenario wrote
                 // the resolved default block to scenario.investigations.vbg but left the top-level
                 // scenario.vbg null), so generateVbg('normal') supplied its VENOUS default of
@@ -3762,6 +1056,46 @@
                 } else {
                     triggerROSC(q, 'rhythm check (facilitator override)');
                 }
+                return;
+            }
+            // A custom sequence decides the rhythm itself.
+            if (!stepsRunning(cur)) nonShockableRhythmCheck(cur);
+        };
+
+        // PEA and asystole have no shock to convert them: ROSC comes from good CPR, adrenaline and
+        // treating the cause, and it is found at a RHYTHM CHECK.
+        //   'model': a chance at each check — small on its own, better with CPR running, and much
+        //            better with adrenaline on board (given in the last few minutes).
+        //   'auto':  deterministic — ROSC at the SECOND rhythm check after adrenaline, provided
+        //            compressions are running. Without adrenaline it does not happen.
+        //   fixed shock numbers and 'never': the facilitator decides (ROSC button / override).
+        const nonShockableRhythmCheck = (cur) => {
+            const rid = RG.canonical(cur.rhythm);
+            if (!RG.isPulseless(rid) || RG.isShockable(rid)) return;
+            const pol = shockPolicy(cur);
+            const adrenaline = drugOnBoard(cur, 'AdrenalineIV');
+            if (pol === 'auto') {
+                if (!adrenaline) {
+                    addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}. Adrenaline 1 mg is due as soon as possible in a non-shockable rhythm.`, 'warning');
+                    return;
+                }
+                const checks = ((cur.defib && cur.defib.adrChecks) || 0) + 1;
+                dispatch({ type: 'SET_DEFIB_STATE', payload: { adrChecks: checks } });
+                if (checks >= 2 && cur.cprInProgress) {
+                    triggerROSC(rid === 'PEA' ? 'Sinus Tachycardia' : 'Sinus Bradycardia', 'rhythm check', { agent: 'adrenaline and CPR' });
+                } else {
+                    addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}${cur.cprInProgress ? '' : ' — and compressions are not running'}. Continue CPR, repeat adrenaline every 3-5 minutes, treat reversible causes.`, 'info');
+                }
+                return;
+            }
+            if (pol !== 'model') return;
+            let chance = 0.03 + (cur.cprInProgress ? 0.04 : 0) + (adrenaline ? 0.14 : 0);
+            if (rid === 'PEA') chance *= 1.5;
+            if (rid === 'Asystole') chance *= 0.5;
+            if (Math.random() < chance) {
+                triggerROSC(rid === 'PEA' ? 'Sinus Tachycardia' : 'Sinus Bradycardia', 'rhythm check', { agent: adrenaline ? 'adrenaline and CPR' : 'CPR' });
+            } else {
+                addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}.${adrenaline ? '' : ' Adrenaline improves the chance of ROSC at the next check.'}`, 'info');
             }
         };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
@@ -3906,7 +1240,7 @@
         };
         const toggleDeteriorationMode = () => setDeteriorationMode(stateRef.current.deteriorationMode === 'auto' ? 'manual' : 'auto');
 
-        // A5: what the facilitator needs to see — which drugs are live, the phase they are in and how
+        // What the facilitator needs to see — which drugs are live, the phase they are in and how
         // long is left, so "why are the obs still moving?" always has a visible answer.
         // ---- WAVE 5 / ITEM 10: A LONG-ONSET DRUG MUST LOOK LIKE IT IS WORKING ------------------
         // IV paracetamol is correctly modelled (onset ~900 s, peak ~90 min, Temp -0.5), and correct
@@ -4000,7 +1334,7 @@
 
         const start = () => {
             resumeAudio(true);
-            // C5: state the mode explicitly at scenario start so an untouched toggle is never a surprise.
+            // State the mode explicitly at scenario start so an untouched toggle is never a surprise.
             const d = describeDeterioration();
             const mode = stateRef.current.deteriorationMode;
             addLogEntry(mode === 'auto' && d.declared
@@ -4031,7 +1365,7 @@
             // Physiology is owned by the controller. isRunning is now synced so the monitor can make
             // sound, but the monitor must NOT run its own 1 Hz physiology tick or it would fight the
             // authoritative vitals arriving over Firebase.
-            // WAVE 6: the decision of WHAT to tick is tickActionFor's, not this effect's. A stopped
+            // The decision of WHAT to tick is tickActionFor's, not this effect's. A stopped
             // clock with an active ramp still ticks — trend-only — so a facilitator's "take the HR to
             // 130 over 2 minutes" works the moment it is set, including in Quick Sim where START is
             // never pressed.
@@ -4048,7 +1382,7 @@
         }, [state.isRunning, isMonitorMode, !!(state.trends && state.trends.active)]);
 
         // =====================================================================================
-        // WAVE 8 / FINDING 3 — EVERY MONITORING CHIP IS A TRUE TWO-WAY TOGGLE.
+        // EVERY MONITORING CHIP IS A TRUE TWO-WAY TOGGLE.
         // One press attaches, the next press DETACHES, and the chip's own state is what decides
         // which. The whole class of confusion came from the chip reading its state through
         // getSensors() (so 'Obs' made it look attached) while pressing it applied its INDIVIDUAL
@@ -4060,7 +1394,7 @@
         // a facilitator pressing it again means.
         // =====================================================================================
         // =====================================================================================
-        // WAVE 9 — EVERY BATCH ATTACH/DETACH IS ONE REDUCER ACTION.
+        // EVERY BATCH ATTACH/DETACH IS ONE REDUCER ACTION.
         //
         // ROOT CAUSE of the "+ INVASIVE attaches the art line but not IV" bug: these helpers used
         // to make SEQUENTIAL applyIntervention() calls. React 18 batches everything a click handler
@@ -4161,10 +1495,10 @@
             const on = !!getSensors(cur)[def.id];
             if (on) detachSensors([def.key]); else attachSensors([def.key]);
         };
-        // WAVE 8 / FINDING 4. The fast path attaches the STANDARD four and says so. The invasive
+        // The fast path attaches the STANDARD four and says so. The invasive
         // action is separate and explicitly labelled, because an arterial line, IV access and
         // capnography are deliberate clinical acts, not a default.
-        // WAVE 9: both are single atomic actions.
+        // Both are single atomic actions.
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
@@ -4172,6 +1506,15 @@
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,
+        // Defib Sim controller
+        goToDefibStep,
+        setMetronome: (on) => { dispatch({ type: 'SET_METRONOME', payload: !!on }); addLogEntry(`CPR metronome ${on ? 'ON' : 'OFF'} (on the defib)`, 'system'); },
+        setNoise: (patch) => {
+            dispatch({ type: 'SET_NOISE', payload: patch });
+            const names = { interference: 'mains interference', movement: 'movement artefact', leadoff: 'lead off' };
+            Object.keys(patch || {}).forEach(k => { if (names[k]) addLogEntry(`Artefact: ${names[k]} ${patch[k] ? 'ON' : 'OFF'}`, 'system'); });
+        },
+        setDefibSettings: (patch) => { dispatch({ type: 'SET_DEFIB_SETTINGS', payload: patch }); addLogEntry(`Shock response settings: ${Object.keys(patch || {}).map(k => `${k} = ${patch[k]}`).join(', ')}`, 'system'); },
         sendDeviceEvent, recommendedShockEnergy,
         defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,
         // Wave 8 surface: two-way sensor toggles, the honest fast paths and the derived obstruction.

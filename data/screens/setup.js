@@ -5,7 +5,7 @@
     // opened directly — used by the Node verification harness to render the locked Restricted section
     // without simulating clicks, and available for deep-linking a mode later. Both default to the
     // normal first-load state, so nothing changes for a real user.
-    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
+    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onDefibSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
@@ -19,7 +19,7 @@
         const [showWetflag, setShowWetflag] = useState(true);
 
         // ---- WAVE 4b / PART A: QUICK SIM launch options -------------------------------------
-        // A3: the facilitator may OPTIONALLY set age/weight/sex/name so WETFLAG and paediatric
+        // The facilitator may OPTIONALLY set age/weight/sex/name so WETFLAG and paediatric
         // energy/dosing still work; leaving everything alone gives a sensible adult (40y, 70 kg-ish
         // adult physiology, sinus rhythm). Blank strings mean "use the default", which is why these
         // are strings rather than numbers.
@@ -32,7 +32,7 @@
         // ---- WAVE 4b / PART C: restricted (RCUK) scenarios ----------------------------------
         // Loaded FROM FIREBASE at runtime, never bundled. Shipped empty but fully wired.
         const [restricted, setRestricted] = useState({ phase: 'idle', scenarios: [], reason: null });
-        // WAVE 5 / ITEM 5: the locked panel used to tell a signed-out user to "request access below"
+        // The locked panel used to tell a signed-out user to "request access below"
         // when the request-access button only renders once signed in, so it promised a control that was
         // not on screen. The panel now carries its OWN sign-in button, and the instructions for each of
         // the three states name only controls that are actually visible in that state.
@@ -76,7 +76,7 @@
         };
         const builderInvalid = Object.values(builderErrors).some(Boolean);
         const FieldError = ({ msg }) => msg ? <div className="text-[10px] text-red-400 mt-0.5">{msg}</div> : null;
-        const fieldClass = (msg) => `w-full bg-slate-900 border rounded p-2 text-white placeholder-slate-500 ${msg ? 'border-red-500' : 'border-slate-600'}`;
+        const fieldClass = (msg) => `w-full bg-slate-900 border rounded p-2 text-white placeholder-slate-400 ${msg ? 'border-red-500' : 'border-slate-600'}`;
 
         const scenariosAvailable = ALL_SCENARIOS && ALL_SCENARIOS.length > 0;
 
@@ -274,52 +274,7 @@
                      return;
                  }
 
-                 // WAVE 4b / C5: honour an AUTHORED patientAge before falling back to 40.
-                 // Built-in scenarios all carry an `ageGenerator`, so this branch never mattered
-                 // before. A restricted scenario pasted into Firebase (or a hand-written custom one)
-                 // states its age directly as `patientAge` — and that age drives WETFLAG, the
-                 // paediatric 4 J/kg defibrillation energy and every weight-based dose, so silently
-                 // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
-                 // cosmetic one.
-                 const authoredAge = Number(selectedBase.patientAge);
-                 const patientAge = selectedBase.ageGenerator ? selectedBase.ageGenerator()
-                     : (Number.isFinite(authoredAge) && authoredAge > 0 ? authoredAge : 40);
-                 let sex = Math.random() > 0.5 ? 'Male' : 'Female';
-                 const t = selectedBase.title.toLowerCase();
-                 const p = String(selectedBase.patientProfileTemplate || '').toLowerCase();
-                 const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
-                 const forceMale = ["testicular", "prostate", "scrotal"];
-                 
-                 if (forceFemale.some(k => t.includes(k) || p.includes(k)) || selectedBase.category === 'Obstetrics & Gynae') sex = 'Female';
-                 else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
-                 
-                 const history = generateHistory(patientAge, sex);
-                 // An authored weight wins over the age estimate, for the same reason.
-                 const authoredWeight = Number(selectedBase.weight);
-                 const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
-                     : (patientAge < 16 ? estimateWeight(patientAge) : null);
-                 const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
-                 const randomName = generateName(sex);
-
-                 let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...selectedBase.vitalsMod };
-                 if (selectedBase.vitalsMod && selectedBase.vitalsMod.bpSys !== undefined && selectedBase.vitalsMod.bpDia === undefined) { 
-                     finalVitals.bpDia = Math.floor(selectedBase.vitalsMod.bpSys * 0.65); 
-                 }
-
-                 const generated = { 
-                    ...selectedBase, 
-                    patientName: randomName, patientAge, sex,
-                    profile: formatProfileTemplate(selectedBase.patientProfileTemplate, patientAge, sex),
-                    vitals: finalVitals, 
-                    pmh: selectedBase.pmh || history.pmh, 
-                    dhx: selectedBase.dhx || history.dhx, 
-                    allergies: selectedBase.allergies || history.allergies,
-                    vbg: generateVbg(selectedBase.vbgClinicalState || "normal"),
-                    hf: selectedHf,
-                    weight, wetflag,
-                    showWetflag
-                 };
-
+                 const generated = window.generatePatientFromTemplate(selectedBase, { hf: selectedHf, showWetflag });
                  onGenerate(generated, {});
              } catch (err) { console.error("Generator Error:", err); alert("Error generating scenario: " + err.message); }
         };
@@ -347,7 +302,7 @@
         };
 
         // ---- RESTRICTED SECTION -------------------------------------------------------------
-        // C1/C4: a clear locked state, a sign-in / request-access path, and NO errors or console
+        // A clear locked state, a sign-in / request-access path, and NO errors or console
         // noise when Firebase Auth has never been enabled. The client-side check below controls the
         // UI ONLY — the real enforcement is the database rules (database.rules.json), which is why
         // we still attempt the read and treat PERMISSION_DENIED as a normal locked outcome.
@@ -406,7 +361,7 @@
                                         <Button onClick={() => setRestrictedAuthOpen(true)} variant="outline" className="h-8 px-3 text-xs text-sky-300 border-sky-500/60">
                                             <Lucide icon="log-in" className="w-3 h-3 mr-1"/> Sign in or create an account
                                         </Button>
-                                        <p className="text-slate-500">The account button in the header does the same thing.</p>
+                                        <p className="text-slate-400">The account button in the header does the same thing.</p>
                                         {AuthModalComponent && restrictedAuthOpen && (
                                             <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setRestrictedAuthOpen(false); }} context="restricted" />
                                         )}
@@ -432,7 +387,7 @@
                             </div>
                         </div>
                     ) : restricted.phase === 'loading' ? (
-                        <div className="text-center text-slate-500 py-8 text-sm">Loading restricted scenarios…</div>
+                        <div className="text-center text-slate-400 py-8 text-sm">Loading restricted scenarios…</div>
                     ) : restricted.phase === 'empty' ? (
                         <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 space-y-2">
                             <p className="font-bold text-emerald-400">Unlocked — but there is nothing here yet.</p>
@@ -440,7 +395,7 @@
                         </div>
                     ) : (
                         <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
-                            {/* C5: these run through the EXACT same handleGenerate/loadIntoBuilder
+                            {/* These run through the EXACT same handleGenerate/loadIntoBuilder
                                 path as a built-in scenario — no special-casing downstream. */}
                             {restricted.scenarios.map(s => (
                                 <div key={s.id} className="flex justify-between items-center bg-amber-950/20 hover:bg-amber-900/20 p-3 rounded border border-amber-800/50 group">
@@ -473,7 +428,7 @@
             { id: 'ObsGyn', label: 'Obs & Gynae', icon: 'baby', filter: s => s.category === 'Obstetrics & Gynae' },
             { id: 'Elderly', label: 'Geriatrics', icon: 'user', filter: s => s.ageRange === 'Elderly' },
             { id: 'Psychiatric', label: 'Psychiatric', icon: 'brain', filter: s => s.category === 'Psychiatric' },
-            // WAVE 4b / C1: the restricted category. `restricted: true` means it does NOT filter
+            // The restricted category. `restricted: true` means it does NOT filter
             // ALL_SCENARIOS at all — its contents come from Firebase at runtime, or it shows locked.
             { id: 'Restricted', label: 'Restricted (RCUK)', icon: 'lock', restricted: true, filter: () => false },
         ];
@@ -499,7 +454,7 @@
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
                     <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
-                    <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
+                    <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Defib Sim</strong> trains defibrillator skills on a tablet defib. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
                 </div>
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
@@ -509,7 +464,7 @@
                 )}
                 
                 <div className="flex items-center gap-2 p-2 bg-slate-800 rounded border border-slate-600">
-                    <input type="checkbox" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="w-5 h-5 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
+                    <input type="checkbox" aria-label="Show WETFLAG on the monitor" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="w-5 h-5 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
                     <span className="text-sm font-bold text-white">Show WETFLAG on Monitor (Paediatric Scenarios)</span>
                 </div>
 
@@ -517,10 +472,10 @@
                     {/* Wraps rather than scrolls: `no-scrollbar` removed the only affordance that more tabs
                         existed, so Builder/Edit was effectively invisible at phone widths. */}
                     <div className="flex flex-wrap gap-x-2 gap-y-1 mb-6 border-b border-slate-700">
-                        {/* WAVE 4b / A1: QUICK SIM sits first — it is the fastest route to a running
+                        {/* QUICK SIM sits first — it is the fastest route to a running
                             monitor and skips scenario generation entirely. */}
-                        {['quick', 'random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m}</button>
+                        {['quick', 'defib', 'random', 'premade', 'custom', 'builder'].map(m => (
+                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-400 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m === 'defib' ? 'Defib Sim' : m}</button>
                         ))}
                     </div>
                     {/* ============================ WAVE 4b / PART A: QUICK SIM ============================
@@ -536,34 +491,34 @@
 
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 <div>
-                                    <label className="text-[10px] text-slate-500 uppercase">Age (years)</label>
-                                    <input type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} value={qsAge} onChange={e => setQsAge(e.target.value)} placeholder="40" className={fieldClass(qsAgeError)}/>
+                                    <label className="text-[10px] text-slate-400 uppercase">Age (years)</label>
+                                    <input aria-label="Age (years)" type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} value={qsAge} onChange={e => setQsAge(e.target.value)} placeholder="40" className={fieldClass(qsAgeError)}/>
                                     <FieldError msg={qsAgeError}/>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] text-slate-500 uppercase">Weight (kg)</label>
-                                    <input type="number" min={BUILDER_LIMITS.weight.min} max={BUILDER_LIMITS.weight.max} step="0.1" value={qsWeight} onChange={e => setQsWeight(e.target.value)} placeholder={qsAutoWeight ? `auto ${qsAutoWeight}` : 'optional'} className={fieldClass(qsWeightError)}/>
+                                    <label className="text-[10px] text-slate-400 uppercase">Weight (kg)</label>
+                                    <input aria-label="Weight (kg)" type="number" min={BUILDER_LIMITS.weight.min} max={BUILDER_LIMITS.weight.max} step="0.1" value={qsWeight} onChange={e => setQsWeight(e.target.value)} placeholder={qsAutoWeight ? `auto ${qsAutoWeight}` : 'optional'} className={fieldClass(qsWeightError)}/>
                                     <FieldError msg={qsWeightError}/>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] text-slate-500 uppercase">Sex</label>
-                                    <select value={qsSex} onChange={e => setQsSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select>
+                                    <label className="text-[10px] text-slate-400 uppercase">Sex</label>
+                                    <select aria-label="Sex" value={qsSex} onChange={e => setQsSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] text-slate-500 uppercase">Name</label>
-                                    <input type="text" value={qsName} onChange={e => setQsName(e.target.value)} placeholder="Quick Sim Patient" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/>
+                                    <label className="text-[10px] text-slate-400 uppercase">Name</label>
+                                    <input aria-label="Name" type="text" value={qsName} onChange={e => setQsName(e.target.value)} placeholder="Quick Sim Patient" className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-400"/>
                                 </div>
                             </div>
 
                             <div>
-                                <label className="text-[10px] text-slate-500 uppercase">Starting rhythm</label>
-                                <select value={qsRhythm} onChange={e => setQsRhythm(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">
+                                <label className="text-[10px] text-slate-400 uppercase">Starting rhythm</label>
+                                <select aria-label="Starting rhythm" value={qsRhythm} onChange={e => setQsRhythm(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">
                                     {(window.RHYTHMS ? window.RHYTHMS.SELECTABLE : ['Sinus Rhythm']).map(r => <option key={r} value={r}>{window.RHYTHMS ? window.RHYTHMS.labelFor(r) : r}</option>)}
                                 </select>
-                                <p className="text-[10px] text-slate-500 mt-1">Changeable at any time from the controller, including every arrest rhythm.</p>
+                                <p className="text-[10px] text-slate-400 mt-1">Changeable at any time from the controller, including every arrest rhythm.</p>
                             </div>
 
-                            {/* A3: paediatric maths is live in Quick Sim exactly as in a real scenario. */}
+                            {/* Paediatric maths is live in Quick Sim exactly as in a real scenario. */}
                             {qsResolvedAge < 16 && !qsInvalid && (() => {
                                 const w = qsWeight === '' ? (qsAutoWeight === null ? null : parseFloat(qsAutoWeight)) : Number(qsWeight);
                                 const wf = w ? calculateWetflag(qsResolvedAge, w) : null;
@@ -580,13 +535,16 @@
                             {qsInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields to start.</p>}
                         </div>
                     )}
+                    {mode === 'defib' && (window.DefibSimSetup
+                        ? <window.DefibSimSetup onStart={(opts) => onDefibSim ? onDefibSim(opts) : alert('Defib Sim is unavailable in this build.')} />
+                        : <div className="text-sm text-slate-400">Defib Sim is unavailable in this build.</div>)}
                     {mode === 'random' && (
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-slate-500">Category</label><select value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Cardiac Arrest">Cardiac Arrest</option></select></div>
-                                <div><label className="text-xs font-bold text-slate-500">Age</label><select value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div>
-                                <div><label className="text-xs font-bold text-slate-500">Acuity</label><select value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
-                                <div><label className="text-xs font-bold text-slate-500">Human Factors</label><select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
+                                <div><label className="text-xs font-bold text-slate-400">Category</label><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Cardiac Arrest">Cardiac Arrest</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-400">Age</label><select aria-label="Age" value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-400">Acuity</label><select aria-label="Acuity" value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-400">Human Factors</label><select aria-label="Human Factors" value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
                             </div>
                             <Button onClick={() => handleGenerate(null)} className="w-full py-4 text-lg shadow-lg shadow-sky-900/20">Generate Scenario</Button>
                         </div>
@@ -621,7 +579,7 @@
                                                 </div>
                                             </div>
                                         ))}
-                                        {ALL_SCENARIOS.filter(premadeCategory.filter).length === 0 && (<div className="text-center text-slate-500 py-8">No scenarios found in this category.</div>)}
+                                        {ALL_SCENARIOS.filter(premadeCategory.filter).length === 0 && (<div className="text-center text-slate-400 py-8">No scenarios found in this category.</div>)}
                                     </div>
                                 </div>
                             )}
@@ -636,7 +594,7 @@
                                      <input type="file" accept=".json" onChange={importCustomScenariosFile} className="hidden"/>
                                  </label>
                              </div>
-                             {customScenarios.length === 0 && <p className="text-slate-500 text-sm italic text-center py-4">No custom scenarios saved yet. Use Builder to create one.</p>}
+                             {customScenarios.length === 0 && <p className="text-slate-400 text-sm italic text-center py-4">No custom scenarios saved yet. Use Builder to create one.</p>}
                              {customScenarios.map((s, i) => (
                                  <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
                                      <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{getScenarioPreviewText(s)}</div></div>
@@ -650,54 +608,54 @@
                     )}
                     {mode === 'builder' && (
                         <div className="space-y-4 animate-fadeIn">
-                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-500 font-bold"/>
+                            <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-400 font-bold"/>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <div><label className="text-[10px] text-slate-500 uppercase">Patient Name</label><input type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-500"/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Age</label><input type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className={fieldClass(builderErrors.age)}/><FieldError msg={builderErrors.age}/></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Sex</label><select value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Category</label><select value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Cardiac Arrest</option><option>Toxicology</option><option>Obstetrics &amp; Gynae</option><option>Psychiatric</option><option>Paediatric</option></select></div>
+                                <div><label className="text-[10px] text-slate-400 uppercase">Patient Name</label><input aria-label="Patient Name" type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-400"/></div>
+                                <div><label className="text-[10px] text-slate-400 uppercase">Age</label><input aria-label="Age" type="number" min={BUILDER_LIMITS.age.min} max={BUILDER_LIMITS.age.max} placeholder="Age" value={buildAge} onChange={e=>setBuildAge(e.target.value)} className={fieldClass(builderErrors.age)}/><FieldError msg={builderErrors.age}/></div>
+                                <div><label className="text-[10px] text-slate-400 uppercase">Sex</label><select aria-label="Sex" value={buildSex} onChange={e=>setBuildSex(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Male</option><option>Female</option></select></div>
+                                <div><label className="text-[10px] text-slate-400 uppercase">Category</label><select aria-label="Category" value={buildCat} onChange={e=>setBuildCat(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Medical</option><option>Trauma</option><option>Cardiac Arrest</option><option>Toxicology</option><option>Obstetrics &amp; Gynae</option><option>Psychiatric</option><option>Paediatric</option></select></div>
                             </div>
                             <div>
-                                <textarea placeholder="Description" value={buildDesc} onChange={e=>{ setDescDirty(true); setBuildDesc(e.target.value); }} className={`w-full bg-slate-900 border rounded p-2 text-white h-20 placeholder-slate-500 ${descStale ? 'border-amber-500' : 'border-slate-600'}`}/>
+                                <textarea placeholder="Description" value={buildDesc} onChange={e=>{ setDescDirty(true); setBuildDesc(e.target.value); }} className={`w-full bg-slate-900 border rounded p-2 text-white h-20 placeholder-slate-400 ${descStale ? 'border-amber-500' : 'border-slate-600'}`}/>
                                 {descStale ? (
                                     <div className="flex items-center justify-between gap-2 text-[11px] text-amber-400 mt-1">
                                         <span>This brief may be out of date — it does not mention age {buildAge}.</span>
                                         <button type="button" onClick={() => { setDescDirty(false); setBuildDesc(autoDesc(buildAge, buildSex, buildTitle)); }} className="underline font-bold whitespace-nowrap">Regenerate</button>
                                     </div>
                                 ) : (
-                                    !descDirty && <div className="text-[10px] text-slate-500 mt-1">Auto-generated from age, sex and title. Editing it stops auto-updates.</div>
+                                    !descDirty && <div className="text-[10px] text-slate-400 mt-1">Auto-generated from age, sex and title. Editing it stops auto-updates.</div>
                                 )}
                             </div>
-                            <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
-                            <input type="text" placeholder="Drug History (comma separated)" value={buildDhx} onChange={e=>setBuildDhx(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
-                            <input type="text" placeholder="Allergies (comma separated)" value={buildAllergies} onChange={e=>setBuildAllergies(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            <input type="text" placeholder="PMH (comma separated)" value={buildPMH} onChange={e=>setBuildPMH(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
+                            <input type="text" placeholder="Drug History (comma separated)" value={buildDhx} onChange={e=>setBuildDhx(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
+                            <input type="text" placeholder="Allergies (comma separated)" value={buildAllergies} onChange={e=>setBuildAllergies(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
                             <div className="grid grid-cols-2 gap-2">
-                                <div><label className="text-[10px] text-slate-500 uppercase">Difficulty</label><select value={buildDifficulty} onChange={e=>setBuildDifficulty(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
-                                <div><label className="text-[10px] text-slate-500 uppercase">Learning Objectives (comma separated)</label><input type="text" placeholder="e.g. Give adrenaline, Secure airway" value={buildLearningObj} onChange={e=>setBuildLearningObj(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/></div>
+                                <div><label className="text-[10px] text-slate-400 uppercase">Difficulty</label><select aria-label="Difficulty" value={buildDifficulty} onChange={e=>setBuildDifficulty(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white"><option>Beginner</option><option>Intermediate</option><option>Advanced</option></select></div>
+                                <div><label className="text-[10px] text-slate-400 uppercase">Learning Objectives (comma separated)</label><input aria-label="Learning Objectives (comma separated)" type="text" placeholder="e.g. Give adrenaline, Secure airway" value={buildLearningObj} onChange={e=>setBuildLearningObj(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/></div>
                             </div>
-                            <input type="text" placeholder="Custom Scenario Actions (comma separated, e.g. Call Cardiology, Request MRI)" value={buildCustomActions} onChange={e=>setBuildCustomActions(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                            <input type="text" placeholder="Custom Scenario Actions (comma separated, e.g. Call Cardiology, Request MRI)" value={buildCustomActions} onChange={e=>setBuildCustomActions(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
                             <div className="grid grid-cols-2 gap-2">
-                                <input type="url" placeholder="Chest X-ray Image URL (optional)" value={buildCxrUrl} onChange={e=>setBuildCxrUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
-                                <input type="url" placeholder="CT Scan Image URL (optional)" value={buildCtUrl} onChange={e=>setBuildCtUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-500"/>
+                                <input type="url" placeholder="Chest X-ray Image URL (optional)" value={buildCxrUrl} onChange={e=>setBuildCxrUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
+                                <input type="url" placeholder="CT Scan Image URL (optional)" value={buildCtUrl} onChange={e=>setBuildCtUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
                             </div>
                             
-                            <h4 className="text-xs font-bold text-slate-500 uppercase mt-2">Initial Observations</h4>
+                            <h4 className="text-xs font-bold text-slate-400 uppercase mt-2">Initial Observations</h4>
                             <div className="grid grid-cols-3 gap-2">
                                 {[['hr','Heart Rate'],['bpSys','Sys BP'],['rr','Resp Rate'],['spO2','SpO2 %'],['gcs','GCS'],['temp','Temp °C']].map(([key, label]) => (
                                     <div key={key}>
-                                        <label className="text-[10px] text-slate-500 uppercase">{label}</label>
-                                        <input type="number" min={BUILDER_LIMITS[key].min} max={BUILDER_LIMITS[key].max} value={buildVitals[key]} onChange={e=>setBuildVitals({...buildVitals, [key]: e.target.value})} className={fieldClass(builderErrors[key])}/>
+                                        <label className="text-[10px] text-slate-400 uppercase">{label}</label>
+                                        <input aria-label="{label}" type="number" min={BUILDER_LIMITS[key].min} max={BUILDER_LIMITS[key].max} value={buildVitals[key]} onChange={e=>setBuildVitals({...buildVitals, [key]: e.target.value})} className={fieldClass(builderErrors[key])}/>
                                         <FieldError msg={builderErrors[key]}/>
                                     </div>
                                 ))}
                             </div>
                             <div>
-                                <label className="text-[10px] text-slate-500 uppercase">Initial Rhythm</label>
-                                <select onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{(window.RHYTHMS ? window.RHYTHMS.SELECTABLE : ['Sinus Rhythm']).map(r => <option key={r} value={r}>{window.RHYTHMS ? window.RHYTHMS.labelFor(r) : r}</option>)}</select>
+                                <label className="text-[10px] text-slate-400 uppercase">Initial Rhythm</label>
+                                <select aria-label="Initial Rhythm" onChange={(e) => setBuildVitals({...buildVitals, rhythm: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white" value={buildVitals.rhythm || "Sinus Rhythm"}>{(window.RHYTHMS ? window.RHYTHMS.SELECTABLE : ['Sinus Rhythm']).map(r => <option key={r} value={r}>{window.RHYTHMS ? window.RHYTHMS.labelFor(r) : r}</option>)}</select>
                             </div>
                             <div>
-                                <label className="text-[10px] text-slate-500 uppercase">Human Factors</label>
-                                <select value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select>
+                                <label className="text-[10px] text-slate-400 uppercase">Human Factors</label>
+                                <select aria-label="Human Factors" value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select>
                             </div>
                             <Button onClick={saveCustomScenario} variant="primary" disabled={builderInvalid} className="w-full text-lg h-12">Run Scenario</Button>
                             {builderInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields above to run this scenario.</p>}
@@ -711,7 +669,7 @@
     const JoinScreen = ({ onJoin }) => {
         const { Button } = window;
         const [code, setCode] = useState("");
-        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="https://raw.githubusercontent.com/shakeymedic/wmem/main/emevidence_logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-500">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && code.length >= 4) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={code.length < 4} className="w-full py-4 text-xl">Connect</Button></div></div>);
+        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="images/emevidence-logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-400">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && window.isCurrentSessionCode(code)) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={!window.isCurrentSessionCode(code)} className="w-full py-4 text-xl">Connect</Button></div></div>);
     };
 
     const BriefingScreen = ({ scenario: rawScenario, onStart, onBack }) => {
@@ -727,18 +685,18 @@
                             <div className="flex gap-2 mt-2"><span className="bg-slate-700 text-sky-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.category}</span><span className="bg-slate-700 text-emerald-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.ageRange}</span><span className="bg-slate-700 text-amber-300 text-xs px-2 py-1 rounded border border-slate-600">{scenario.acuity}</span><HumanFactorBadge hf={scenario.hf} /></div>
                             {scenario.hf && scenario.hf.id !== 'hf0' && <p className="text-xs text-fuchsia-300/80 mt-2 max-w-md">{scenario.hf.description}</p>}
                         </div>
-                        <div className="text-right"><div className="text-[10px] text-slate-500 uppercase font-bold">Initial GCS</div><div className="text-4xl font-mono font-bold text-white">{scenario.vitals ? scenario.vitals.gcs : '-'}</div></div>
+                        <div className="text-right"><div className="text-[10px] text-slate-400 uppercase font-bold">Initial GCS</div><div className="text-4xl font-mono font-bold text-white">{scenario.vitals ? scenario.vitals.gcs : '-'}</div></div>
                     </div>
                     {scenario.ageRange === 'Paediatric' && scenario.wetflag && (
                         <div className="mx-6 mt-4 p-4 bg-purple-900/20 border border-purple-500/50 rounded-lg">
                             <h3 className="text-sm font-bold text-purple-400 uppercase mb-2">WETFLAG Calculation (Est. Weight: {scenario.wetflag.weight}kg)</h3>
                             <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-center">
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Energy (4J)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Tube</div><div className="font-bold text-white">{scenario.wetflag.tube}</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Fluids (10ml)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
-                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-500 uppercase">Glucose (2ml)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Energy (4 J/kg)</div><div className="font-bold text-white">{scenario.wetflag.energy} J</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Tube (ID mm)</div><div className="font-bold text-white">{scenario.wetflag.tube}</div>{scenario.wetflag.tubeCuffed && scenario.wetflag.tubeUncuffed && <div className="text-[10px] text-slate-400">uncuffed {scenario.wetflag.tubeUncuffed}</div>}</div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Fluids (10 ml/kg)</div><div className="font-bold text-white">{scenario.wetflag.fluids} ml</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Lorazepam</div><div className="font-bold text-white">{scenario.wetflag.lorazepam} mg</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">Adrenaline</div><div className="font-bold text-white">{scenario.wetflag.adrenaline} mcg</div></div>
+                                <div className="bg-slate-900 p-2 rounded"><div className="text-[9px] text-slate-400 uppercase">10% Glucose (2 ml/kg)</div><div className="font-bold text-white">{scenario.wetflag.glucose} ml</div></div>
                             </div>
                         </div>
                     )}
@@ -749,9 +707,9 @@
                                 <p className="text-sm text-slate-400 mb-2"><strong className="text-slate-300 uppercase text-xs">Patient Name:</strong> {scenario.patientName}</p>
                                 <p className="text-lg leading-relaxed text-slate-200 mb-4">{scenario.profile}</p>
                                 <div className="space-y-2 text-sm">
-                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
-                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">Rx:</span><span className="text-slate-300">{scenario.dhx ? scenario.dhx.join(", ") : 'Nil'}</span></div>
-                                    <div className="flex"><span className="w-24 text-slate-500 font-bold">Allergies:</span><span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-400 font-bold">PMH:</span><span className="text-slate-300">{scenario.pmh ? scenario.pmh.join(", ") : 'Nil'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-400 font-bold">Rx:</span><span className="text-slate-300">{scenario.dhx ? scenario.dhx.join(", ") : 'Nil'}</span></div>
+                                    <div className="flex"><span className="w-24 text-slate-400 font-bold">Allergies:</span><span className="text-red-400 font-bold">{scenario.allergies ? scenario.allergies.join(", ") : 'NKDA'}</span></div>
                                 </div>
                             </div>
                             <div className="bg-slate-900/50 p-4 rounded border border-slate-700">

@@ -24,148 +24,200 @@
     'use strict';
 
     // -------------------------------------------------------------------------
-    // 1. WAVEFORM PRIMITIVES
-    // Cycle-normalised generators: f(t) with t in [0,1] across one cardiac cycle.
-    // Amplitudes are in the same arbitrary display units both renderers already used
-    // (R wave of a normal sinus complex ~= +45).
+    // 1. WAVEFORM PRIMITIVES — REAL TIME, NOT CYCLE-NORMALISED
+    // Every complex is described in SECONDS relative to its R peak, the way an ECG is actually
+    // measured: a narrow QRS is ~90 ms whatever the heart rate, the PR interval is fixed, and only
+    // the QT shortens as the rate rises (Bazett). Before this, each beat was a shape stretched
+    // across the whole cardiac cycle, so a QRS drawn at 40/min was 4.5 times wider than the same
+    // QRS at 180/min: narrow-complex bradycardias looked broad and broad-complex tachycardias
+    // looked narrow — exactly the distinction a trainee must learn to make.
+    //
+    // Amplitudes stay in the display units every renderer already used (normal sinus R ~= +45,
+    // ~40 units = 1 mV). A narrow complex is built from named parts (P, Q, R, S, ST, T) so each
+    // lead can weight the parts differently (see LEAD_PARTS): aVR is inverted, V1 is rS with a
+    // flat T, R-wave progression runs across V2-V6.
     // -------------------------------------------------------------------------
-    var g = function (t, centre, amp, width) { return amp * Math.exp(-Math.pow(t - centre, 2) / width); };
+    var gs = function (t, centre, amp, sigma) { var d = (t - centre) / sigma; return amp * Math.exp(-0.5 * d * d); };
+    // Asymmetric bump: different widths either side of the peak (T waves rise slowly, fall faster).
+    var ag = function (t, centre, amp, s1, s2) { var d = (t - centre) / (t < centre ? s1 : s2); return amp * Math.exp(-0.5 * d * d); };
+    var clampNum = function (v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); };
 
-    var pWave = function (t) { return g(t, 0.10, 4.5, 0.0015); };
-    var qrsNarrow = function (t) {
-        return g(t, 0.170, -6, 0.00030) + g(t, 0.205, 45, 0.00020) + g(t, 0.240, -14, 0.00030);
+    // QT from the R-R interval (Fridericia, QTc 0.40 s), measured from QRS onset. Fridericia rather
+    // than Bazett: Bazett over-shortens the QT at fast rates, which squeezed the ST segment away.
+    var qtFor = function (rr) { return clampNum(0.40 * Math.cbrt(clampNum(rr, 0.2, 3)), 0.24, 0.52); };
+    var QRS_ONSET = -0.045;   // narrow QRS onset relative to the R peak (QRS ~90 ms)
+
+    // The parts of a normal narrow complex, t = seconds from the R peak.
+    // opts: { prMs (PR interval), p (P scale), t (T scale), st (ST shift, units), wide (QRS widening factor) }
+    function narrowParts(t, rr, o) {
+        var wide = o.wide || 1;
+        var pr = o.pr || 0.16;                                   // P onset -> QRS onset
+        var qt = qtFor(rr);
+        var tPeak = QRS_ONSET * wide + qt - 0.09;
+        var jPoint = 0.045 * wide;
+        var parts = {
+            P: gs(t, QRS_ONSET - pr + 0.05, 4.5 * (o.p === undefined ? 1 : o.p), 0.022),
+            Q: gs(t, -0.028 * wide, -5, 0.007 * wide),
+            R: gs(t, 0, 45 * (o.r === undefined ? 1 : o.r), 0.0095 * wide),
+            S: gs(t, 0.026 * wide, -12, 0.008 * wide),
+            T: ag(t, tPeak, 9 * (o.t === undefined ? 1 : o.t), (o.tNarrow ? 0.03 : 0.055) * qt / 0.40, (o.tNarrow ? 0.025 : 0.035) * qt / 0.40),
+            ST: 0
+        };
+        if (o.st) {
+            // A coved ST segment from the J point into the T wave (STEMI), or depression if negative.
+            if (t > jPoint && t < tPeak + 0.04) {
+                var x = (t - jPoint) / (tPeak + 0.04 - jPoint);
+                parts.ST = o.st * Math.sin(Math.min(1, x * 1.25) * Math.PI / 2) * (x > 0.8 ? 1 - (x - 0.8) / 0.2 * 0.6 : 1);
+            }
+        }
+        return parts;
+    }
+
+    // Broad ventricular complex (VT, idioventricular rhythm, ventricular escape in complete heart
+    // block): ~160 ms, bizarre, with a discordant T wave.
+    function ventricular(t, rr) {
+        var qt = qtFor(rr) * 1.1;
+        return ag(t, 0, 38, 0.028, 0.035) + gs(t, 0.075, -20, 0.030) + gs(t, 0.02 + qt * 0.62, -11, 0.06);
+    }
+    // Paced: a hairline spike, then a broad LBBB-like complex (negative in II) with discordant T.
+    // The spike keeps a short flat top (~12 ms) so renderers that sample every few milliseconds
+    // cannot miss it.
+    function paced(t, rr) {
+        var spike = Math.abs(t + 0.06) < 0.006 ? 32 : gs(t, -0.06, 32, 0.0025);
+        return spike + gs(t, 0, -30, 0.028) + gs(t, 0.08, 10, 0.03) + gs(t, 0.02 + qtFor(rr) * 0.68, 11, 0.07);
+    }
+    // PEA: organised electrical activity without output — typically slow, broadened, low amplitude.
+    function pea(t, rr) {
+        return gs(t, -0.035, -4, 0.018) + gs(t, 0.015, 16, 0.024) + gs(t, 0.085, -7, 0.03) + gs(t, 0.02 + qtFor(rr) * 0.75, 4, 0.07);
+    }
+    // Agonal: very wide, slow, single bizarre deflection, essentially no T wave.
+    function agonal(t) { return gs(t, 0, 13, 0.06) + gs(t, 0.18, -6, 0.08); }
+    // LBBB: broad (~140 ms), notched, monophasic with discordant ST/T.
+    function lbbb(t, rr) {
+        return gs(t, QRS_ONSET - 0.11, 4.5, 0.022) + gs(t, -0.012, 30, 0.02) + gs(t, 0.045, 34, 0.022)
+            + gs(t, 0.02 + qtFor(rr) * 0.7, -9, 0.05);
+    }
+    // RBBB as seen in a right-sided lead: rSR' with a slurred terminal S.
+    function rbbb(t, rr) {
+        return gs(t, QRS_ONSET - 0.11, 4.5, 0.022) + gs(t, -0.025, 18, 0.01) + gs(t, 0.012, -10, 0.01)
+            + gs(t, 0.055, 26, 0.015) + gs(t, 0.095, -6, 0.02) + ag(t, qtFor(rr) - 0.13, 7, 0.055, 0.035);
+    }
+
+    // Complex templates keyed by waveform id. Each returns either a PARTS object (narrow complexes,
+    // weighted per lead) or a number (broad complexes, scaled by the lead's overall gain).
+    var TEMPLATES = {
+        sinus:         function (t, rr) { return narrowParts(t, rr, {}); },
+        svt:           function (t, rr) { return narrowParts(t, rr, { p: 0, t: 0.85 }); },
+        junctional:    function (t, rr) { return narrowParts(t, rr, { p: 0, t: 0.9 }); },
+        first_degree:  function (t, rr) { return narrowParts(t, rr, { pr: 0.30 }); },
+        mobitz2:       function (t, rr) { return narrowParts(t, rr, {}); },
+        af:            function (t, rr) { return narrowParts(t, rr, { p: 0, t: 0.85 }); },
+        flutter:       function (t, rr) { return narrowParts(t, rr, { p: 0, t: 0.35 }); },
+        stemi:         function (t, rr) { return narrowParts(t, rr, { st: 10, t: 1.5 }); },
+        hyperkalaemia: function (t, rr) { return narrowParts(t, rr, { p: 0.35, wide: 1.8, t: 2.9, tNarrow: true }); },
+        chb:           ventricular,
+        vt:            ventricular,
+        idioventricular: ventricular,
+        pea: pea,
+        agonal: agonal,
+        paced: paced,
+        bbb: lbbb,
+        rbbb: rbbb
     };
-    var tWave = function (t) { return g(t, 0.42, 9, 0.009); };
 
-    // Wide, bizarre ventricular complex (VT / pulseless VT).
-    var qrsVentricular = function (t) { return g(t, 0.20, 38, 0.0050) + g(t, 0.32, -22, 0.0040); };
-
-    // PEA: electrical activity WITHOUT mechanical output. Clinically this is typically a
-    // slow, broad, low-amplitude complex with no discernible P wave — NOT a normal sinus
-    // complex. Rendering PEA as sinus at 150 bpm (the pre-Wave-3 behaviour in 9 scenarios)
-    // taught students that a perfusing trace can accompany a pulseless patient.
-    var qrsPEA = function (t) {
-        return g(t, 0.18, -4, 0.0030) + g(t, 0.26, 16, 0.0045) + g(t, 0.38, -7, 0.0060) + g(t, 0.60, 4, 0.020);
+    // Per-lead weights for the parts of a narrow complex (approximate normal adult 12-lead).
+    // PADS ~ lead II as seen through anterolateral defibrillator pads.
+    var LEAD_PARTS = {
+        I:    { P: 0.6,  Q: 0.5, R: 0.55, S: 0.4,  T: 0.7,  ST: 0.6 },
+        II:   { P: 1,    Q: 1,   R: 1,    S: 1,    T: 1,    ST: 1 },
+        III:  { P: 0.4,  Q: 0.6, R: 0.5,  S: 0.6,  T: 0.3,  ST: 0.5 },
+        aVR:  { P: -0.8, Q: -0.4, R: -0.75, S: -0.5, T: -0.8, ST: -0.7 },
+        aVL:  { P: 0.2,  Q: 0.3, R: 0.3,  S: 0.5,  T: 0.2,  ST: 0.2 },
+        aVF:  { P: 0.7,  Q: 0.8, R: 0.75, S: 0.8,  T: 0.65, ST: 0.75 },
+        V1:   { P: 0.5,  Q: 0,   R: 0.2,  S: 2.5,  T: -0.3, ST: 0.3 },
+        V2:   { P: 0.5,  Q: 0,   R: 0.45, S: 2.2,  T: 1.2,  ST: 0.6 },
+        V3:   { P: 0.5,  Q: 0,   R: 0.8,  S: 1.4,  T: 1.2,  ST: 0.8 },
+        V4:   { P: 0.5,  Q: 0.4, R: 1.25, S: 0.8,  T: 1.1,  ST: 1 },
+        V5:   { P: 0.5,  Q: 0.8, R: 1.2,  S: 0.4,  T: 0.9,  ST: 0.9 },
+        V6:   { P: 0.5,  Q: 0.9, R: 1.0,  S: 0.25, T: 0.7,  ST: 0.7 },
+        PADS: { P: 0.85, Q: 0.85, R: 0.85, S: 0.85, T: 0.85, ST: 0.85 }
     };
+    // Overall gain for broad / chaotic activity, whose shape is not decomposed by part.
+    var LEAD_GAIN = { I: 0.65, II: 1.0, III: 0.45, aVR: -0.8, aVL: 0.35, aVF: 0.75, V1: -0.7, V2: 0.45, V3: 0.8, V4: 1.15, V5: 1.05, V6: 0.85, PADS: 0.85 };
 
-    // Agonal: very wide, very slow, single bizarre deflection, essentially no T wave.
-    var qrsAgonal = function (t) { return g(t, 0.30, 13, 0.0120) + g(t, 0.52, -6, 0.0150); };
+    function sumParts(p, lead, stOverride) {
+        var w = LEAD_PARTS[lead] || LEAD_PARTS.II;
+        var st = stOverride === undefined ? p.ST * w.ST : stOverride;
+        return p.P * w.P + p.Q * w.Q + p.R * w.R + p.S * w.S + p.T * w.T + st;
+    }
 
-    // Paced: sharp pacing spike followed by a wide, LBBB-like paced complex and
-    // discordant T. Previously existed only on the standalone defib — the React monitor
-    // had no paced waveform at all, so transcutaneous pacing showed nothing.
-    // WAVE 7: the spike was a gaussian with sigma ~0.004 of a cycle — about 3.5 ms. Both renderers
-    // SAMPLE the waveform once per animation frame (6-16 ms), so more than half of all pacing spikes
-    // were never drawn at all: measured 17 spikes where 35 beats were paced. A pacing spike that is
-    // invisible half the time is the one feature of a paced rhythm a trainee must see, so the spike
-    // now carries a short flat top (~13 ms of cycle) with gaussian shoulders. On screen it is still
-    // a 1-2 px hairline at the 8 s sweep.
-    var qrsPaced = function (t) {
-        var spike = Math.abs(t - 0.150) < 0.0075 ? 32 : g(t, 0.150, 32, 0.00004);
-        return spike
-            + g(t, 0.205, -30, 0.0018)                         // wide negative paced QRS
-            + g(t, 0.300, 10, 0.0030)
-            + g(t, 0.470, 11, 0.0140);                         // discordant (positive) T
-    };
+    // Smooth, deterministic "value noise": a real monitor's baseline is filtered, so it wanders a
+    // little but never fizzes frame to frame the way per-sample Math.random() did.
+    function hash1(n) { var x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+    function valueNoise(t, rate) {
+        var x = t * rate, i = Math.floor(x), f = x - i;
+        var u = f * f * (3 - 2 * f);
+        return (hash1(i) * (1 - u) + hash1(i + 1) * u) * 2 - 1;
+    }
 
-    // Sawtooth flutter baseline, one flutter wave per `fp` cycle.
-    // WAVE 7: the atrial sawtooth is NOT a function of the ventricular cycle. Atrial flutter
-    // fibrillates the atria at a fixed ~300/min regardless of how many of those waves the AV node
-    // conducts, so with variable block the sawtooth must keep marching at its own rate while the
-    // QRS complexes fall irregularly on top of it. Previously it was locked to 2 waves per
-    // ventricular cycle, which made the flutter rate change whenever the ventricular rate did
-    // (240/min flutter at HR 120, 300/min at HR 150) and made variable block impossible to draw.
+    // Sawtooth flutter baseline, one flutter wave per unit of `fp` (atrial rate is fixed at
+    // ~300/min whatever the ventricular response, so variable block draws correctly).
     var sawtooth = function (fp) {
         fp = fp - Math.floor(fp);
         if (fp < 0.18) return 4 - fp * 45;
         return -4 + ((fp - 0.18) / 0.82) * 8;
     };
 
-    // Hyperkalaemia: broad QRS with tall tented T waves.
-    var qrsHyperK = function (t) {
-        return g(t, 0.170, -6, 0.0012) + g(t, 0.205, 40, 0.0011) + g(t, 0.250, -14, 0.0012) + g(t, 0.44, 26, 0.0060);
-    };
-
-    // Bundle branch block: wide notched QRS.
-    var qrsWide = function (t) {
-        return g(t, 0.165, -6, 0.0010) + g(t, 0.200, 38, 0.0011) + g(t, 0.235, 24, 0.0011) + g(t, 0.270, -12, 0.0012) + g(t, 0.45, -8, 0.0100);
-    };
-
-    // STEMI: sinus complex with a raised, coved ST segment.
-    var stemiComplex = function (t) {
-        var st = (t > 0.25 && t < 0.42) ? 10 : 0;
-        return pWave(t) + qrsNarrow(t) + st + g(t, 0.44, 14, 0.010);
-    };
-
-    // WAVEFORM DICTIONARY — cycle-phase shapes. Keyed by waveform id, NOT rhythm name, so
-    // several rhythms (e.g. VT and pulseless VT) can legitimately share one morphology.
-    var WAVEFORMS = {
-        sinus:        function (t) { return pWave(t) + qrsNarrow(t) + tWave(t); },
-        svt:          function (t) { return qrsNarrow(t) + tWave(t) * 0.85; },
-        junctional:   function (t) { return qrsNarrow(t) + tWave(t) * 0.9; },
-        first_degree: function (t) { return pWave(t) + qrsNarrow(t - 0.10) + tWave(t - 0.10); },
-        // Mobitz II: intermittently dropped QRS after a constant PR. The dropped beat is
-        // produced in real time (see REALTIME.mobitz_drop) so the pattern is not frozen.
-        mobitz2:      function (t) { return pWave(t) + qrsNarrow(t) + tWave(t); },
-        // Complete heart block carries the slow ventricular escape only; the dissociated
-        // atrial P waves are added in real time so AV dissociation visibly drifts.
-        chb:          function (t) { return qrsNarrow(t) + tWave(t); },
-        // WAVE 7: the sawtooth is now added in REAL TIME at a fixed 300/min (REALTIME.flutter_baseline)
-        // so it is independent of the ventricular rate and survives variable AV block.
-        flutter:      function (t) { return qrsNarrow(t) + tWave(t) * 0.35; },
-        // AF has no organised P wave; the fibrillatory baseline is added in real time.
-        af:           function (t) { return qrsNarrow(t) + tWave(t) * 0.85; },
-        vt:           function (t) { return qrsVentricular(t); },
-        pea:          qrsPEA,
-        agonal:       qrsAgonal,
-        paced:        qrsPaced,
-        stemi:        stemiComplex,
-        hyperkalaemia: function (t) { return pWave(t) * 0.4 + qrsHyperK(t); },
-        // LBBB: broad, notched, monophasic wide QRS with discordant T.
-        bbb:          function (t) {
-            var y = pWave(t) + qrsWide(t);
-            if (t > 0.30 && t < 0.42) y -= 6 * Math.sin((t - 0.30) / 0.12 * Math.PI);   // the notch
-            return y;
-        },
-        // RBBB: rSR' in a right-sided lead — a second, later positive deflection with a slurred
-        // terminal S, which is what actually distinguishes it from LBBB at the bedside.
-        rbbb:         function (t) {
-            var y = pWave(t) + qrsWide(t) * 0.75;
-            if (t > 0.33 && t < 0.44) y += 26 * Math.sin((t - 0.33) / 0.11 * Math.PI);   // R'
-            if (t > 0.44 && t < 0.56) y -= 7 * Math.sin((t - 0.44) / 0.12 * Math.PI);    // slurred S
-            return y;
-        }
-    };
-
-    // REALTIME WAVEFORMS — driven by absolute time rather than cardiac cycle phase, because
-    // they are either chaotic (VF), flat (asystole) or dissociated from the ventricular rate.
+    // REAL-TIME WAVEFORMS — driven by absolute time rather than by beats, because they are either
+    // chaotic (VF), flat (asystole) or dissociated from the ventricular rate.
     var REALTIME = {
+        // Coarse VF: dominant frequency ~4.5-5.5 Hz (270-330/min) that drifts, with waxing and
+        // waning amplitude and changing morphology. Deterministic, so it never flickers.
         vf: function (absTime) {
-            var ampMod = 0.65 + 0.45 * Math.sin(absTime * 1.7);
-            return (Math.sin(absTime * 13.2) * 20 + Math.sin(absTime * 25.6 + 1.3) * 13 + Math.sin(absTime * 41.7 + 2.4) * 7) * ampMod
-                + (Math.random() - 0.5) * 6;
+            var t = absTime;
+            var amp = 0.62 + 0.38 * Math.sin(0.9 * t + 0.4 * Math.sin(0.23 * t));
+            var ph = 2 * Math.PI * 4.9 * t + 1.6 * Math.sin(0.7 * t) + 0.9 * Math.sin(0.31 * t + 1);
+            return amp * (21 * Math.sin(ph) + 9 * Math.sin(1.9 * ph + 0.7 + 0.5 * Math.sin(0.5 * t)) + 5 * Math.sin(3.1 * ph + 1.3))
+                + 3 * valueNoise(t, 9);
         },
+        // Fine VF: smaller (<~0.2 mV) and faster, easily mistaken for asystole at low gain.
         vf_fine: function (absTime) {
-            var ampMod = 0.6 + 0.4 * Math.sin(absTime * 2.1);
-            return (Math.sin(absTime * 16.4) * 5 + Math.sin(absTime * 29.3 + 0.8) * 3.5 + Math.sin(absTime * 47.1 + 1.9) * 2) * ampMod
-                + (Math.random() - 0.5) * 2.5;
+            var t = absTime;
+            var amp = 0.6 + 0.4 * Math.sin(1.3 * t + 0.6 * Math.sin(0.4 * t));
+            var ph = 2 * Math.PI * 6.2 * t + 1.2 * Math.sin(0.9 * t);
+            return amp * (5.5 * Math.sin(ph) + 2.5 * Math.sin(2.1 * ph + 0.8)) + 1.2 * valueNoise(t, 12);
         },
-        asystole: function () { return (Math.random() - 0.5) * 1.2; },
-        // CPR compression artefact at ~110/min.
-        cpr: function (absTime) { return Math.sin(absTime * 2 * Math.PI * 1.83) * 28 + (Math.random() - 0.5) * 8; },
+        // Asystole: never a ruler-straight line — slow baseline wander and a little filtered noise.
+        asystole: function (absTime) { return 0.9 * Math.sin(2 * Math.PI * 0.22 * absTime) + 0.5 * valueNoise(absTime, 6); },
+        // Chest compression artefact at ~110/min: a large, fairly sharp deflection per compression
+        // with a recoil, riding on a wandering baseline.
+        cpr: function (absTime) {
+            var c = absTime * 1.83; c = c - Math.floor(c);
+            return gs(c, 0.30, 30, 0.07) - gs(c, 0.55, 11, 0.10) + 3 * Math.sin(2 * Math.PI * 0.3 * absTime) + 1.5 * valueNoise(absTime, 15);
+        },
         // Atrial flutter sawtooth at a fixed 300/min (5 Hz), dissociated from the ventricular rate.
         flutter_baseline: function (absTime) { return sawtooth(absTime * 5); },
+        // AF: coarse-to-fine fibrillatory f waves (~6 Hz, varying size and shape), no P waves.
         af_baseline: function (absTime) {
-            return Math.sin(absTime * 28) * 1.2 + Math.sin(absTime * 47 + 1.1) * 0.7 + (Math.random() - 0.5) * 1.4;
+            var t = absTime;
+            var amp = 0.8 + 0.5 * Math.sin(0.8 * t + 0.5 * Math.sin(0.33 * t));
+            return amp * (1.6 * Math.sin(2 * Math.PI * 6.1 * t + 1.1 * Math.sin(1.3 * t)) + 0.8 * Math.sin(2 * Math.PI * 8.3 * t + 0.4))
+                + 0.5 * valueNoise(t, 20);
         },
-        // Dissociated atrial activity for complete heart block (~75/min, independent rate).
+        // Dissociated atrial activity for complete heart block: normal P waves at ~75/min, marching
+        // through the slower ventricular escape at their own rate.
         chb_p: function (absTime) {
             var period = 60 / 75;
-            var phase = (absTime % period) / period;
-            return 4.2 * Math.exp(-Math.pow(phase - 0.5, 2) / 0.005);
+            var x = absTime - Math.floor(absTime / period) * period;
+            return gs(x, period / 2, 4.5, 0.022);
         },
-        baselineNoise: function () { return (Math.random() - 0.5) * 1.5; }
+        // Filtered baseline: a slow respiratory wander plus a little smooth noise.
+        baselineNoise: function (absTime) { return 0.8 * Math.sin(2 * Math.PI * 0.25 * (absTime || 0)) + 0.45 * valueNoise(absTime || 0, 25); }
     };
+
+    // Waveform ids that describe a CYCLE-PHASE shape in the old sense are gone; this object keeps
+    // the public name for anything that enumerates the available morphologies.
+    var WAVEFORMS = TEMPLATES;
 
     // -------------------------------------------------------------------------
     // 2. THE REGISTRY
@@ -181,7 +233,8 @@
     var R = [
         { id: 'Sinus Rhythm', label: 'Sinus Rhythm', short: 'NSR', waveform: 'sinus',
           aliases: ['NSR', 'Normal Sinus', 'nsr', 'Sinus', 'Sinus Rhythm (Post-MI)', 'normal_sinus'],
-          shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: null },
+          // A rate band, so converting a tachycardia to sinus rhythm does not leave it at 190/min.
+          shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [65, 95] },
 
         { id: 'Sinus Tachycardia', label: 'Sinus Tachycardia', short: 'S.TACH', waveform: 'sinus',
           aliases: ['Sinus Tachy', 'sinus_tach', 'Sinus Tach', 'ST'],
@@ -197,7 +250,7 @@
 
         { id: 'Atrial Flutter', label: 'Atrial Flutter', short: 'FLUTTER', waveform: 'flutter',
           aliases: ['aflutter', 'Flutter', 'Atrial flutter'],
-          // C3: Atrial Flutter was missing from ROSC_RHYTHMS and had no defib waveform.
+          // Atrial Flutter was missing from ROSC_RHYTHMS and had no defib waveform.
           shockable: false, pulseless: false, syncCardiovert: true, roscEligible: true, defaultHrRange: [140, 160] },
 
         { id: 'SVT', label: 'SVT', short: 'SVT', waveform: 'svt',
@@ -205,8 +258,14 @@
           shockable: false, pulseless: false, syncCardiovert: true, roscEligible: true, defaultHrRange: [170, 200] },
 
         { id: 'Junctional', label: 'Junctional Rhythm', short: 'JUNC', waveform: 'junctional',
-          aliases: ['junctional', 'Junctional Rhythm'],
+          aliases: ['junctional', 'Junctional Rhythm', 'Junctional Bradycardia', 'brady'],
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [45, 60] },
+
+        // Ventricular escape: broad, regular, slow, WITH a pulse (a bradycardia, not an arrest).
+        // Common after reperfusion and as the escape rhythm when the conducting system fails.
+        { id: 'Idioventricular', label: 'Idioventricular Rhythm', short: 'IVR', waveform: 'idioventricular',
+          aliases: ['idioventricular', 'IVR', 'Idioventricular Rhythm', 'Ventricular Escape'],
+          shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [30, 40] },
 
         // VT = VT WITH A PULSE. Electrical therapy is SYNCHRONISED cardioversion, the patient
         // has output, and arrest physiology must NOT apply. This distinction is the whole
@@ -244,12 +303,14 @@
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [60, 75] },
 
         { id: '2nd Deg Heart Block', label: '2nd Degree Heart Block (Mobitz II)', short: '2AVB', waveform: 'mobitz2',
-          aliases: ['2nd Deg Block', 'Mobitz II', 'Mobitz 2', '2nd Degree AV Block'],
+          aliases: ['2nd Deg Block', 'Mobitz II', 'Mobitz 2', '2nd Degree AV Block', 'mobitz2'],
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [45, 60] },
 
+        // Drawn as a BROAD ventricular escape (the usual picture at 35-45/min, and the one that
+        // needs pacing) with normal P waves marching through it at their own rate.
         { id: 'Complete Heart Block', label: 'Complete Heart Block', short: 'CHB', waveform: 'chb',
           aliases: ['3rd Deg Block', '3rd Degree AV Block', 'CHB', 'chb', 'Third Degree Heart Block'],
-          // C3: Complete Heart Block was missing from ROSC_RHYTHMS.
+          // Complete Heart Block was missing from ROSC_RHYTHMS.
           shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [35, 45] },
 
         { id: 'Paced', label: 'Paced Rhythm', short: 'PACED', waveform: 'paced',
@@ -348,7 +409,7 @@
     // facilitator override that forces severity 0) | 'rebreathing' (baseline fails to reach zero)
     // | 'curare' (curare cleft in the plateau).
     //
-    // WAVE 8 / FINDING 1. Wave 7 drew ONE fixed obstructive shape, and live verification measured
+    // Wave 7 drew ONE fixed obstructive shape, and live verification measured
     // an upstroke occupying only 5-9% of the breath cycle in every case: the alveolar plateau
     // stayed visibly separate from the upstroke, so even "asthma" read as mild obstruction rather
     // than the shark fin of a silent chest. There is now a single CONTINUOUS shape family
@@ -493,35 +554,120 @@
 
     // -------------------------------------------------------------------------
     // 3. THE SHARED EVALUATOR
-    // Both renderers call this. `cyclePhase` is the ventricular cycle position in [0,1),
-    // `absTime` is seconds of wall/animation time (used by the chaotic + dissociated parts).
+    // Every renderer calls this. `cyclePhase` is the position in the current beat [0,1) from the
+    // caller's phase accumulator, `absTime` is seconds of animation time (used by the chaotic and
+    // dissociated parts). opts:
+    //   beat  - integer beat index from the phase accumulator (per-beat irregularity, dropped beats)
+    //   hr    - the BASE rate the caller is drawing at (bpm); the beat's own R-R also includes
+    //           beatIntervalFactor. Converts the phase into seconds so complexes keep real widths.
+    //   lead  - 'I' | 'II' | 'III' | 'aVR' | 'aVL' | 'aVF' | 'V1'..'V6' | 'PADS' (default II)
+    //   cpr   - chest compressions in progress (compression artefact dominates)
+    //   noise - false for a deterministic, noise-free sample (verification, the 12-lead)
+    //   st    - ST shift in display units for THIS lead (the 12-lead's STEMI territories)
+    // Neighbouring beats are summed as well, so a T wave that runs into the next beat at a fast
+    // rate, or a P wave that starts before its beat, is drawn continuously.
     // -------------------------------------------------------------------------
+    function beatRr(id, hr, beat) {
+        var base = 60 / clampNum(Number(hr) > 0 ? Number(hr) : 60, 10, 350);
+        var f = beatIntervalFactor(id, beat);
+        return base * (f > 0 ? f : 1);
+    }
+    // Where the R peak sits within its beat, in seconds from the start of the beat. P waves need
+    // ~0.25 s in front of the QRS; at fast rates the complex is centred instead.
+    function rAnchor(rr) { return Math.min(0.25, rr * 0.5); }
+
+    function complexValue(id, r, t, rr, beat, lead, st) {
+        var fn = TEMPLATES[r.waveform] || TEMPLATES.sinus;
+        if (droppedBeat(id, beat)) {
+            // Mobitz II: the P wave arrives on time and the QRS never comes.
+            var p = narrowParts(t, rr, {});
+            return p.P * (LEAD_PARTS[lead] || LEAD_PARTS.II).P;
+        }
+        var v = fn(t, rr);
+        if (typeof v === 'number') return v * (LEAD_GAIN[lead] === undefined ? 1 : LEAD_GAIN[lead]);
+        return sumParts(v, lead, st === undefined ? undefined : st);
+    }
+
     function ecgValue(cyclePhase, absTime, rhythmName, opts) {
         opts = opts || {};
-        if (opts.cpr) return REALTIME.cpr(absTime);
-        // `noise:false` yields a deterministic sample. Verification harnesses use it so that the
-        // cosmetic baseline jitter can never be mistaken for a genuine morphology difference.
-        var noise = opts.noise === false ? 0 : null;
-
+        var lead = opts.lead || 'II';
+        var noiseOn = opts.noise !== false;
         var id = canonical(rhythmName);
         var r = BY_ID[id];
-        var rt = r.realtime;
-        if (rt && REALTIME[rt]) return REALTIME[rt](absTime);
+        var y;
 
-        var fn = WAVEFORMS[r.waveform];
-        var y = fn ? fn(cyclePhase % 1) : WAVEFORMS.sinus(cyclePhase % 1);
-
-        if (r.waveform === 'af') y += REALTIME.af_baseline(absTime);
-        if (r.waveform === 'flutter') y += REALTIME.flutter_baseline(absTime);
-        if (r.waveform === 'chb') y += REALTIME.chb_p(absTime);
-        if (r.waveform === 'mobitz2') {
-            // Drop roughly every 4th ventricular beat: remove the QRS+T, keep the P. The beat index
-            // comes from the caller's PHASE ACCUMULATOR (opts.beat) so the drop is rate-correct;
-            // the absTime fallback preserves behaviour for any caller that has not been updated.
-            var beat = (opts.beat !== undefined && opts.beat !== null) ? Math.floor(opts.beat) : Math.floor(absTime / 1.2);
-            if (beat % 4 === 3) y = pWave(cyclePhase % 1);
+        if (r.realtime && REALTIME[r.realtime]) {
+            var g = LEAD_GAIN[lead] === undefined ? 1 : Math.abs(LEAD_GAIN[lead]);
+            y = REALTIME[r.realtime](absTime) * g;
+        } else {
+            var beat = (opts.beat !== undefined && opts.beat !== null) ? Math.floor(opts.beat) : 0;
+            var rrB = beatRr(id, opts.hr, beat);
+            var rrPrev = beatRr(id, opts.hr, beat - 1);
+            var rrNext = beatRr(id, opts.hr, beat + 1);
+            var t = (cyclePhase - Math.floor(cyclePhase)) * rrB;         // seconds into this beat
+            y = complexValue(id, r, t - rAnchor(rrB), rrB, beat, lead, opts.st)
+              + complexValue(id, r, t + rrPrev - rAnchor(rrPrev), rrPrev, beat - 1, lead, opts.st)
+              + complexValue(id, r, t - rrB - rAnchor(rrNext), rrNext, beat + 1, lead, opts.st);
+            var lp = (LEAD_PARTS[lead] || LEAD_PARTS.II).P;
+            if (r.waveform === 'af') y += REALTIME.af_baseline(absTime) * Math.abs(lp || 0.5);
+            if (r.waveform === 'flutter') y += REALTIME.flutter_baseline(absTime) * (lead === 'V1' ? 0.6 : Math.abs(LEAD_GAIN[lead] || 1));
+            if (r.waveform === 'chb') y += REALTIME.chb_p(absTime) * lp;
         }
-        return y + (noise === 0 ? 0 : REALTIME.baselineNoise());
+        // Chest compressions swamp the trace; the underlying rhythm shows through faintly.
+        if (opts.cpr) y = REALTIME.cpr(absTime) + y * 0.25;
+        return y + (noiseOn ? REALTIME.baselineNoise(absTime) : 0);
+    }
+
+    // Phase (0-1) of the R peak within beat `beat`, or null when there is no R wave to find
+    // (VF, asystole) or the beat is dropped. Used for SYNC markers and synchronised shocks.
+    function rWavePhase(rhythmName, hr, beat) {
+        var id = canonical(rhythmName);
+        var r = BY_ID[id];
+        if (r.realtime) return null;
+        var b = Math.floor(beat || 0);
+        if (droppedBeat(id, b)) return null;
+        var rr = beatRr(id, hr, b);
+        return rAnchor(rr) / rr;
+    }
+
+    // ---- PULSE WAVEFORMS (pleth and arterial line), beat by beat.
+    // Each beat's pulse is a time-shifted, real-duration shape that starts a pulse-transit time
+    // after its R wave, so a pulse follows every QRS at any rate (and none follows a dropped beat).
+    // Beat-to-beat filling is modelled: after a short R-R the next pulse is smaller, so AF shows
+    // the variable pulse volume (and pulse deficit) seen at the bedside.
+    function plethShape(x) {                       // x = seconds from the pulse foot
+        if (x < 0) return 0;
+        if (x < 0.13) { var u = x / 0.13; return 20 * Math.pow(Math.sin(u * Math.PI / 2), 1.6); }
+        var y = 20 * Math.exp(-(x - 0.13) / 0.30);
+        return y - gs(x, 0.33, 2.2, 0.02) + gs(x, 0.39, 1.6, 0.035);
+    }
+    function artShape(x) {                         // radial arterial pressure pulse above diastole
+        if (x < 0) return 0;
+        if (x < 0.09) { var u = x / 0.09; return 26 * (1 - Math.pow(1 - u, 2.4)); }
+        var y = 26 * Math.exp(-(x - 0.09) / 0.26);
+        return y - gs(x, 0.30, 3.5, 0.015) + gs(x, 0.34, 3.2, 0.03);
+    }
+    function pulseValue(kind, cyclePhase, rhythmName, opts) {
+        opts = opts || {};
+        var id = canonical(rhythmName);
+        var r = BY_ID[id];
+        if (r.realtime) return 0;
+        var shape = kind === 'art' ? artShape : plethShape;
+        var transit = kind === 'art' ? 0.12 : 0.22;
+        var beat = Math.floor(opts.beat || 0);
+        var baseRr = 60 / clampNum(Number(opts.hr) > 0 ? Number(opts.hr) : 60, 10, 350);
+        var t = (cyclePhase - Math.floor(cyclePhase)) * beatRr(id, opts.hr, beat);
+        var y = 0, offset = 0;
+        // This beat and the three before it (their pulses' tails), relative to this beat's start.
+        for (var k = 0; k >= -3; k--) {
+            var b = beat + k;
+            if (k < 0) offset += beatRr(id, opts.hr, b);
+            if (droppedBeat(id, b)) continue;
+            var rr = beatRr(id, opts.hr, b);
+            var fill = clampNum(Math.pow(beatRr(id, opts.hr, b - 1) / baseRr, 1.5), 0.3, 1.3);
+            y += fill * shape(t + offset - rAnchor(rr) - transit);
+        }
+        return y;
     }
 
     // -------------------------------------------------------------------------
@@ -529,41 +675,102 @@
     // RCUK: 4 J/kg for paediatric defibrillation. The standalone defib hardcoded
     // [50,70,85,100,120,150,170,200] and defaulted to 120 J for a 3.5 kg neonate.
     // -------------------------------------------------------------------------
-    var ADULT_ENERGY_STEPS = [50, 70, 85, 100, 120, 150, 170, 200, 250, 300, 360];
+    // The ZOLL R Series biphasic selections (the device this app simulates): 1-10 J in 1 J steps,
+    // then 15, 20, 30, 50, 75, 100, 120, 150 and a 200 J maximum. 250-360 J do not exist on a
+    // biphasic ZOLL.
+    var ADULT_ENERGY_STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 75, 100, 120, 150, 200];
     var ADULT_DEFAULT_ENERGY = 150;
 
+    // Children: 4 J/kg (RCUK), rounded to the nearest selection the device actually offers.
+    function nearestStep(j) {
+        var best = ADULT_ENERGY_STEPS[0];
+        ADULT_ENERGY_STEPS.forEach(function (s) { if (Math.abs(s - j) < Math.abs(best - j) || (Math.abs(s - j) === Math.abs(best - j) && s > best)) best = s; });
+        return best;
+    }
     function recommendedEnergy(weightKg, ageYears) {
-        var w = Number(weightKg);
-        if (!isFinite(w) || w <= 0) return ADULT_DEFAULT_ENERGY;
-        // Adult dosing takes over once weight-based dosing would exceed the adult dose.
-        if (w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16)) return ADULT_DEFAULT_ENERGY;
-        return Math.max(1, Math.round(w * 4));
+        if (isAdult(weightKg, ageYears)) return ADULT_DEFAULT_ENERGY;
+        return Math.min(ADULT_DEFAULT_ENERGY, nearestStep(Math.max(1, Number(weightKg) * 4)));
     }
 
-    function energySteps(weightKg, ageYears) {
-        var w = Number(weightKg);
-        if (!isFinite(w) || w <= 0 || w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16)) {
-            return ADULT_ENERGY_STEPS.slice();
-        }
-        // Weight-based ladder: 1, 2, 4 (recommended), 6, 8, 10 J/kg — 4 J/kg is the
-        // recommended dose and is guaranteed to be present and selectable.
-        var steps = [1, 2, 4, 6, 8, 10].map(function (m) { return Math.max(1, Math.round(w * m)); });
-        var out = [];
-        steps.forEach(function (s) { if (out.indexOf(s) === -1) out.push(s); });
-        out.sort(function (a, b) { return a - b; });
-        return out;
+    // The device offers the same selections for every patient; the recommended one differs.
+    function energySteps() {
+        return ADULT_ENERGY_STEPS.slice();
+    }
+
+    // Synchronised cardioversion energy (RCUK 2025). Child: 1 J/kg, doubling with each attempt up to
+    // 4 J/kg. Adult: AF maximum output; atrial flutter / SVT 70-120 J; VT with a pulse 120-150 J.
+    function cardioversionEnergy(weightKg, ageYears, rhythm) {
+        if (!isAdult(weightKg, ageYears)) return nearestStep(Math.max(1, Number(weightKg)));
+        var r = canonical(rhythm);
+        if (r === 'AF') return ADULT_ENERGY_STEPS[ADULT_ENERGY_STEPS.length - 1];
+        if (r === 'VT') return 120;
+        return 70;
     }
 
     // Permissive by design (Wave 1 philosophy): a wrong energy is never blocked, it is FLAGGED.
     // Returns null when the energy is acceptable, or a description when it is not.
-    function energyDeviation(joules, weightKg, ageYears) {
+    // opts.kind 'cardiovert' checks a synchronised shock against the cardioversion energies;
+    // opts.shockNumber lets a child's refractory VF/pVT escalate: RCUK 2025, from the 5th shock
+    // increase stepwise up to 8 J/kg (max 360 J; this device stops at 200 J).
+    function energyDeviation(joules, weightKg, ageYears, opts) {
+        opts = opts || {};
         var j = Number(joules);
+        var child = !isAdult(weightKg, ageYears);
+        if (opts.kind === 'cardiovert') {
+            var start = cardioversionEnergy(weightKg, ageYears, opts.rhythm);
+            if (!isFinite(j) || j <= 0) return { expected: start, given: joules, reason: 'no energy selected' };
+            if (child) {
+                var most = nearestStep(4 * Number(weightKg));
+                if (j < start * 0.6) return { expected: start, given: j, reason: 'energy too low (' + j + ' J; start at 1 J/kg = ' + start + ' J)' };
+                if (j > most * 1.25) return { expected: start, given: j, reason: 'energy too high (' + j + ' J; 1 J/kg doubling to a maximum of 4 J/kg = ' + most + ' J)' };
+                return null;
+            }
+            if (j < 70) return { expected: start, given: j, reason: 'energy too low (' + j + ' J; at least 70 J for synchronised cardioversion)' };
+            return null;
+        }
         var expected = recommendedEnergy(weightKg, ageYears);
         if (!isFinite(j) || j <= 0) return { expected: expected, given: joules, reason: 'no energy selected' };
         var ratio = j / expected;
-        if (ratio > 1.5) return { expected: expected, given: j, reason: 'energy too high (' + j + ' J vs recommended ' + expected + ' J)' };
+        var ceiling = expected * 1.5;
+        if (child && Number(opts.shockNumber) >= 5) ceiling = Math.max(ceiling, Math.min(360, 8 * Number(weightKg)) * 1.1);
+        if (j > ceiling) return { expected: expected, given: j, reason: 'energy too high (' + j + ' J vs recommended ' + expected + ' J' + (child ? ', 4 J/kg; up to 8 J/kg only for refractory VF/pVT from the 5th shock' : '') + ')' };
         if (ratio < 0.6) return { expected: expected, given: j, reason: 'energy too low (' + j + ' J vs recommended ' + expected + ' J)' };
         return null;
+    }
+
+    // An ADEQUATE shock for the fixed-count shock-response settings: at least 150 J (adult) or
+    // 3 J/kg (child) to defibrillate; synchronised and at least 70 J (adult) or 1 J/kg (child) to
+    // cardiovert. Anything less still counts as a delivered shock but cannot convert the rhythm.
+    function isAdult(weightKg, ageYears) {
+        var w = Number(weightKg);
+        return !isFinite(w) || w <= 0 || w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16);
+    }
+    function adequateShock(joules, weightKg, ageYears, kind) {
+        var j = Number(joules);
+        if (!isFinite(j) || j <= 0) return false;
+        var adult = isAdult(weightKg, ageYears);
+        if (kind === 'cardiovert') return adult ? j >= 70 : j >= Math.max(1, Number(weightKg) * 1);
+        return adult ? j >= 150 : j >= Math.max(1, Number(weightKg) * 3);
+    }
+
+    // Rhythms transcutaneous pacing can capture (slow rhythms with ventricles that respond).
+    var PACEABLE = ['Sinus Bradycardia', 'Junctional', 'Idioventricular', '1st Deg Heart Block',
+        '2nd Deg Heart Block', 'Complete Heart Block'];
+
+    // How well a heart-rate-raising drug works in each rhythm (1 = full effect, the default).
+    // Atropine acts on the sinus and AV nodes, so it helps sinus bradycardia and nodal block but
+    // does little for block below the AV node (broad-complex complete heart block, Mobitz II) or a
+    // ventricular escape. Isoprenaline and adrenaline raise the escape rate as well, which is why
+    // they are the bridge to pacing when atropine fails.
+    var DRUG_HR_RESPONSE = {
+        Atropine: { 'Complete Heart Block': 0.15, '2nd Deg Heart Block': 0.4, 'Idioventricular': 0.1, 'Junctional': 0.8 },
+        Isoprenaline: { 'Complete Heart Block': 1, '2nd Deg Heart Block': 1, 'Idioventricular': 0.9 },
+        AdrenalineInfusion: { 'Complete Heart Block': 0.9, 'Idioventricular': 0.8 }
+    };
+    function drugHrResponse(key, rhythmName) {
+        var t = DRUG_HR_RESPONSE[key];
+        var v = t ? t[canonical(rhythmName)] : undefined;
+        return typeof v === 'number' ? v : 1;
     }
 
     // -------------------------------------------------------------------------
@@ -578,8 +785,10 @@
             'VF':      { chance: 0.00, shockBonus: 0.10 },
             'Fine VF': { chance: 0.00, shockBonus: 0.10 },
             'pVT':     { chance: 0.00, shockBonus: 0.10 },
-            'PEA':     { chance: 0.12, to: 'Sinus Tachycardia' },
-            'Asystole':{ chance: 0.06, to: 'PEA' }
+            // In a non-shockable arrest adrenaline does not convert the rhythm on injection; it
+            // improves the chance of ROSC at the following rhythm checks (see the engine).
+            'PEA':     { chance: 0.00 },
+            'Asystole':{ chance: 0.00 }
         },
         Amiodarone: {
             'VF':      { chance: 0.05, to: 'Sinus Rhythm', shockBonus: 0.12 },
@@ -594,8 +803,8 @@
         },
         Atropine: {
             'Sinus Bradycardia': { chance: 0.70, to: 'Sinus Rhythm' },
-            '2nd Deg Heart Block': { chance: 0.35, to: 'Sinus Rhythm' },
-            'Complete Heart Block': { chance: 0.10, to: 'Sinus Rhythm' }
+            '2nd Deg Heart Block': { chance: 0.20, to: 'Sinus Rhythm' },
+            'Complete Heart Block': { chance: 0.05, to: 'Sinus Rhythm' }
         },
         MagSulph: {
             'VT':  { chance: 0.45, to: 'Sinus Rhythm' },
@@ -651,7 +860,6 @@
     // it is the team's job.
     // =========================================================================================
     const TWELVE_LEAD_LAYOUT = [['I', 'aVR', 'V1', 'V4'], ['II', 'aVL', 'V2', 'V5'], ['III', 'aVF', 'V3', 'V6']];
-    const LEAD_GAIN = { I: 0.65, II: 1.0, III: 0.45, aVR: -0.8, aVL: 0.35, aVF: 0.75, V1: -0.7, V2: 0.45, V3: 0.8, V4: 1.15, V5: 1.05, V6: 0.85 };
     // STEMI territory -> [leads with ST elevation, leads with reciprocal depression]
     const STEMI_TERRITORY = {
         anterior: [['V1', 'V2', 'V3', 'V4'], ['II', 'III', 'aVF']],
@@ -689,18 +897,18 @@
 
             // ---- one 10 s recording, sampled once and shared by every lead (a real 12-lead is
             // simultaneous; the columns are consecutive 2.5 s windows of the same recording).
+            // Each lead is drawn from the registry's per-lead morphology (LEAD_PARTS / LEAD_GAIN),
+            // so aVR is inverted, V1 is rS, and R waves progress across the chest leads.
             const rid = RG.canonical(rhythm);
             const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
-            let freq;
-            if (rid === 'VF') freq = 4; else if (rid === 'Fine VF') freq = 5; else if (rid === 'Asystole') freq = 0.1;
-            else if (hr > 0) freq = hr / 60; else freq = (INTRINSIC[rid] || 60) / 60;
+            const rateBpm = hr > 0 ? hr : (INTRINSIC[rid] || 60);
             const N = Math.round(w);                 // one sample per pixel across 10 s
             const phase = new Float64Array(N), beat = new Int32Array(N);
             let ph = 0; let beats = 0;
             for (let i = 0; i < N; i++) {
                 phase[i] = ph - Math.floor(ph); beat[i] = Math.floor(ph);
                 const f = RG.beatIntervalFactor ? RG.beatIntervalFactor(rid, Math.floor(ph)) : 1;
-                const next = ph + (10 / N) * freq / (f > 0 ? f : 1);
+                const next = ph + (10 / N) * (rateBpm / 60) / (f > 0 ? f : 1);
                 if (Math.floor(next) !== Math.floor(ph) && !(RG.droppedBeat && RG.droppedBeat(rid, Math.floor(ph)))) beats++;
                 ph = next;
             }
@@ -710,18 +918,10 @@
             const terr = isStemi ? STEMI_TERRITORY[stemiTerritoryFor(scenario)] : null;
             const sample = (i, lead) => {
                 const t = i * 10 / N;
-                const gain = LEAD_GAIN[lead] || 1;
-                if (!isStemi) return RG.ecgValue(phase[i], t, rhythm, { beat: beat[i], noise: false }) * gain;
-                // Sinus complex everywhere; the ST shift is added AFTER the lead gain so that it is
-                // elevation in every territory lead (including V1, whose gain is negative).
-                let y = RG.ecgValue(phase[i], t, 'Sinus Rhythm', { beat: beat[i], noise: false }) * gain;
-                const p = phase[i];
-                if (p > 0.25 && p < 0.42) {
-                    const ramp = Math.sin((p - 0.25) / 0.17 * Math.PI) * 0.35 + 0.65;   // coved segment
-                    if (terr[0].indexOf(lead) !== -1) y += 9 * ramp;
-                    if (terr[1].indexOf(lead) !== -1) y -= 4 * ramp;
-                }
-                return y;
+                if (!isStemi) return RG.ecgValue(phase[i], t, rhythm, { beat: beat[i], hr: rateBpm, lead, noise: false });
+                // ST elevation in the territory's leads, reciprocal depression opposite, none elsewhere.
+                const st = terr[0].indexOf(lead) !== -1 ? 9 : (terr[1].indexOf(lead) !== -1 ? -4 : 0);
+                return RG.ecgValue(phase[i], t, 'STEMI', { beat: beat[i], hr: rateBpm, lead, noise: false, st });
             };
 
             const rows = 4, rowH = h / rows, colW = w / 4;
@@ -781,12 +981,15 @@
         waveforms: WAVEFORMS,
         realtime: REALTIME,
         ecgValue: ecgValue,
-        // WAVE 7 — shared by the React monitor AND the standalone defibrillator.
+        rWavePhase: rWavePhase,
+        pulseValue: pulseValue,
+        LEADS: ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'PADS'],
+        // Shared by the React monitor AND the standalone defibrillator.
         beatIntervalFactor: beatIntervalFactor,
         droppedBeat: droppedBeat,
         beatHash: beatHash,
         capnogram: capnogram,
-        // WAVE 8: the capnogram shape family, exported so the obstruction severity that drives it
+        // The capnogram shape family, exported so the obstruction severity that drives it
         // has exactly one definition and verification measures the shipping parameters.
         capnoShapeParams: capnoShapeParams,
         capnoSeverity: capnoSeverity,
@@ -798,9 +1001,15 @@
         recommendedEnergy: recommendedEnergy,
         energySteps: energySteps,
         energyDeviation: energyDeviation,
+        cardioversionEnergy: cardioversionEnergy,
         DRUG_CONVERSION: DRUG_CONVERSION,
         SHOCK_OUTCOMES: SHOCK_OUTCOMES,
         weightedPick: weightedPick,
+        isAdult: isAdult,
+        adequateShock: adequateShock,
+        PACEABLE: PACEABLE,
+        DRUG_HR_RESPONSE: DRUG_HR_RESPONSE,
+        drugHrResponse: drugHrResponse,
         // The 12-lead recording, shared by the React monitor and the standalone defibrillator.
         render12Lead: render12Lead
     };
