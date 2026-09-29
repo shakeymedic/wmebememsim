@@ -767,7 +767,7 @@ button, .mode-label, .softkey, .side-btn, .energy-arrow, .pacer-btn { -webkit-to
             // Calculate Y
             // A7: with no linked patient there is no rhythm to draw — flat, undriven baseline only.
             let rawECG = window.isRemoteControlled
-                ? RG.ecgValue(drawState.beatProgress, (timestamp / 1000), state.rhythm, { cpr: state.cprActive, beat: Math.floor(drawState.beatPhase) })
+                ? RG.ecgValue(drawState.beatProgress, (timestamp / 1000), state.rhythm, { cpr: state.cprActive, beat: Math.floor(drawState.beatPhase), hr: effectiveHR })
                 : 0;
             const gain = window.waveformGain || 1.0;
             let yECG = baselineECG - (rawECG * gain);

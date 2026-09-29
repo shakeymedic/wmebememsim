@@ -106,7 +106,14 @@
         var m = e.data || {};
         if (m.op === 'hello') channel.postMessage({ op: 'tree', value: root });
         else if (m.op === 'tree') {
-            if (Object.keys(root).length === 0 && m.value && Object.keys(m.value).length) { root = clone(m.value); notify(''); }
+            // A late joiner merges what the other pages hold; anything it already wrote wins.
+            var merge = function (local, remote) {
+                if (!remote || typeof remote !== 'object') return local === undefined ? remote : local;
+                if (!local || typeof local !== 'object') return local === undefined ? clone(remote) : local;
+                Object.keys(remote).forEach(function (k) { local[k] = merge(local[k], remote[k]); });
+                return local;
+            };
+            if (m.value && Object.keys(m.value).length) { root = merge(root, m.value); notify(''); }
         } else if (m.op === 'set' || m.op === 'update') write(m.op, m.path, m.value, true);
     };
     channel.postMessage({ op: 'hello' });

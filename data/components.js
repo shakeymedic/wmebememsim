@@ -2,74 +2,20 @@
     const { useState, useEffect, useRef } = React;
 
     const BUFFER_SIZE = 1000;
-    const precomputed = { ecg: {}, spo2: new Float32Array(BUFFER_SIZE), resp: new Float32Array(BUFFER_SIZE), art: new Float32Array(BUFFER_SIZE) };
+    const precomputed = { resp: new Float32Array(BUFFER_SIZE) };
 
-    // --- WAVE 3: waveforms now come from THE SHARED RHYTHM REGISTRY (data/rhythms.js) ---
-    // Every cycle-normalised morphology lives in window.RHYTHMS.waveforms and is shared verbatim
-    // with the standalone defibrillator page. Previously this file carried its own private list of
-    // 10 rhythm names and its own ECG_NORM alias table, while defib/index.html carried a different
-    // list with different aliases; 115/254 scenarios fell through to a generic sinus complex and
-    // PEA was drawn as a normal sinus rhythm.
+    // Waveforms come from THE SHARED RHYTHM REGISTRY (data/rhythms.js): ECG complexes in real time
+    // (seconds), per-lead morphology, and beat-by-beat pleth and arterial pulses that follow every
+    // QRS. Nothing here keeps a private copy of a waveform.
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/components.js');
 
-    // Precompute one buffer per WAVEFORM (not per rhythm name), so rhythms that legitimately share
-    // a morphology (VT / pulseless VT) share one buffer and can never diverge.
-    Object.keys(RG.waveforms).forEach(wf => {
-        const fn = RG.waveforms[wf];
-        const buf = new Float32Array(BUFFER_SIZE);
-        for (let i = 0; i < BUFFER_SIZE; i++) buf[i] = fn(i / BUFFER_SIZE);
-        precomputed.ecg[wf] = buf;
-    });
-
-    for(let i=0; i<BUFFER_SIZE; i++) {
+    // Chest-wall impedance: inspiration takes about a third of the breath, expiration the rest.
+    for (let i = 0; i < BUFFER_SIZE; i++) {
         const t = i / BUFFER_SIZE;
-        let spo2Val = Math.sin(t * Math.PI * 2) > 0 ? Math.sin(t * Math.PI * 2) * 20 : Math.sin(t * Math.PI * 2) * 5;
-        spo2Val += Math.sin((t - 0.1) * Math.PI * 2 * 2) * 5;
-        precomputed.spo2[i] = spo2Val;
-        
-        precomputed.resp[i] = Math.sin(t * Math.PI * 2) * 15;
-        
-        // WAVE 7: the old precomputed capnography buffers (a 20-unit trapezoid with no relation to
-        // the numeric ETCO2 and no correct phase III) are GONE. Capnography is now generated from
-        // RHYTHMS.capnogram(phase, kPa, pattern) at draw time so its amplitude equals the displayed
-        // ETCO2 and abnormal patterns (shark fin, rebreathing, curare cleft) are expressible.
-
-        // --- Arterial line (radial) ---
-        // Anchored to ECG cycle: R wave at t≈0.205. Mechanical pulse arrives ~210 ms later
-        // at the radial artery (peak at t≈0.42 of the cardiac cycle at 60 bpm).
-        // Phases: end-diastolic plateau → anacrotic limb → systolic peak → systolic decline
-        //         → dicrotic notch (aortic valve closure) → dicrotic wave (elastic recoil) → diastolic runoff
-        const dia = 6;        // end-diastolic baseline
-        let artVal;
-
-        if (t < 0.30) {
-            // Late-diastolic plateau (wraps continuously from prior beat's runoff)
-            artVal = dia;
-        } else if (t < 0.42) {
-            // Anacrotic (ascending) limb — sharp rise
-            const x = (t - 0.30) / 0.12;
-            const ease = 1 - Math.pow(1 - x, 2.5);
-            artVal = dia + 26 * ease;                                 // peaks at 32
-        } else if (t < 0.62) {
-            // Systolic decline (ease-out from peak toward J-point of art waveform)
-            const x = (t - 0.42) / 0.20;
-            artVal = 32 - 14 * (x * (2 - x));                         // 32 → 18
-        } else if (t < 0.68) {
-            // Dicrotic notch — brief dip at aortic valve closure
-            const x = (t - 0.62) / 0.06;
-            artVal = 18 - 3.5 * Math.sin(x * Math.PI);                // 18 → 14.5 → 18
-        } else if (t < 0.78) {
-            // Dicrotic wave — secondary rise from elastic recoil of the aorta
-            const x = (t - 0.68) / 0.10;
-            artVal = 18 + 4 * Math.sin(x * Math.PI);                  // 18 → 22 → 18
-        } else {
-            // Diastolic runoff — exponential decay back to baseline
-            const x = (t - 0.78) / 0.22;
-            artVal = dia + (18 - dia) * Math.exp(-3 * x);
-        }
-
-        precomputed.art[i] = artVal;
+        precomputed.resp[i] = t < 0.35
+            ? -15 * Math.cos(Math.PI * t / 0.35)
+            : 15 * Math.cos(Math.PI * (t - 0.35) / 0.65);
     }
 
     const Lucide = ({ icon, className, onClick }) => {
@@ -349,30 +295,15 @@
         // to live here — including a local Mobitz II branch that keyed the dropped beat to
         // `Math.floor(absTime / 1.2)` and produced a DIFFERENT dropped complex from the registry's.
         // `beat` is the beat index from the phase accumulator, so the drop is correct at any rate.
-        const getECGValue = (cyclePhase, type, cpr, absTime = 0, beat = 0) =>
-            RG.ecgValue(cyclePhase, absTime, type, { cpr, beat });
-
-        // R-wave sync markers for synchronised cardioversion (C6). The registry knows where the R
-        // wave sits in the cycle for every organised waveform, so the marker is drawn at the same
-        // phase the complex actually peaks at.
-        const R_PHASE = { sinus: 0.205, svt: 0.205, junctional: 0.205, af: 0.205, flutter: 0.205,
-                          first_degree: 0.305, mobitz2: 0.205, chb: 0.205, vt: 0.20, pea: 0.26,
-                          agonal: 0.30, paced: 0.205, stemi: 0.205, hyperkalaemia: 0.205, bbb: 0.200 };
-
-        const getSPO2Value = (t, sat) => {
-            if (sat < 10) return 0;
-            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.spo2[idx];
-        };
+        // `hr` is the BASE rate being drawn; the registry adds each beat's own irregularity and
+        // turns the phase into seconds so every complex keeps its real width at any rate.
+        const ecgLead = String(rhythmLabel || '').toUpperCase().indexOf('PADS') !== -1 ? 'PADS' : 'II';
+        const getECGValue = (cyclePhase, type, cpr, absTime, beat, hr) =>
+            RG.ecgValue(cyclePhase, absTime, type, { cpr, beat, hr, lead: ecgLead });
 
         const getRespValue = (t) => {
             const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
             return precomputed.resp[idx];
-        };
-
-        const getArtValue = (t) => {
-            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.art[idx];
         };
 
         useEffect(() => {
@@ -499,21 +430,26 @@
                     ctx.beginPath();
                     let px = x0, py = st.lastY !== null ? st.lastY : ys[0];
                     ctx.moveTo(px, py);
+                    // Once this frame has wrapped to the left edge, every later sub-sample is also
+                    // past the edge. Without this flag each of them was taken for a NEW wrap and drew
+                    // a line from the left edge straight across to the right edge (the stray
+                    // horizontal lines seen after a rhythm change).
+                    let wrapped = false;
                     for (let i = 0; i < ys.length; i++) {
                         const nx = x0 + speed * ((i + 1) / ys.length);
                         const ny = ys[i];
-                        if (nx >= W && px < W) {
+                        if (!wrapped && nx >= W) {
                             // split this sub-segment at the right edge, interpolating y at the edge
                             const f = (W - px) / Math.max(1e-6, nx - px);
                             const edgeY = py + (ny - py) * f;
                             ctx.lineTo(W, edgeY);
                             ctx.moveTo(0, edgeY);          // same path, new subpath: one stroke, no seam
-                            px = 0; py = edgeY;
+                            wrapped = true;
                             ctx.lineTo(nx - W, ny);
                         } else {
-                            ctx.lineTo(nx >= W ? nx - W : nx, ny);
+                            ctx.lineTo(wrapped ? nx - W : nx, ny);
                         }
-                        px = nx >= W ? nx - W : nx; py = ny;
+                        px = wrapped ? nx - W : nx; py = ny;
                     }
                     ctx.stroke();
                     st.lastY = ys[ys.length - 1];
@@ -567,7 +503,7 @@
                         const f = i / nSub;
                         const ph = prevEcgPhase + phaseAdvance * f;
                         const bi = Math.floor(ph);
-                        ecgSamples.push(ecgBaseY - getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi) * ecgAmp);
+                        ecgSamples.push(ecgBaseY - getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi, ecgFreq * 60) * ecgAmp);
                     }
                     const ecgY = ecgSamples[ecgSamples.length - 1];
                     drawLane('ecg', '#22c55e', ecgY, ecgSamples);
@@ -576,12 +512,16 @@
                     // device must visibly mark the R waves it will fire on, otherwise "synchronised"
                     // is an invisible flag (which is exactly what it was before Wave 3).
                     if (live.showSyncMarkers && !live.isCPR) {
-                        const rPhase = R_PHASE[RG.waveformFor(rid)];
-                        if (rPhase !== undefined) {
-                            // Phase is monotonic now, so "did we cross the R wave this frame?" is a
-                            // plain comparison on the accumulator instead of modulo gymnastics.
-                            const crossed = Math.floor(prevEcgPhase - rPhase + 1) !== Math.floor(ecgPhase - rPhase + 1);
-                            if (crossed && !(RG.droppedBeat && RG.droppedBeat(rid, beatIdx))) {
+                        // The registry says where each beat's R peak is (null for VF, asystole and
+                        // dropped beats). Phase is monotonic, so "did we cross an R wave this frame?"
+                        // is a plain comparison on the accumulator.
+                        let crossed = false;
+                        for (let b = Math.floor(prevEcgPhase); b <= Math.floor(ecgPhase) && !crossed; b++) {
+                            const rp = RG.rWavePhase(rid, ecgFreq * 60, b);
+                            if (rp !== null && prevEcgPhase < b + rp && b + rp <= ecgPhase) crossed = true;
+                        }
+                        {
+                            if (crossed) {
                                 const st = laneState('ecg');
                                 ctx.save();
                                 ctx.strokeStyle = '#facc15';
@@ -600,17 +540,28 @@
                 // Driven by the SAME cardiac phase accumulator as the ECG, so there is exactly one
                 // pulse wave per QRS and the pleth tracks the heart rate through a ramp by
                 // construction rather than by coincidence.
+                const pulseless = RG.isPulseless(rid);
                 if (plethOn) {
-                    const spo2BaseY = traceHeight * (laneIdx.pleth + 0.5);
-                    const spo2Y = spo2BaseY - getSPO2Value(cycleT, live.spO2);
-                    drawLane('pleth', '#3b82f6', spo2Y);
+                    const spo2BaseY = traceHeight * (laneIdx.pleth + 0.62);
+                    // No saturation reading, or no output: no pulse wave (a flat pleth is the sign).
+                    const pv = (live.spO2 < 10 || pulseless) ? 0
+                        : RG.pulseValue('pleth', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase) });
+                    drawLane('pleth', '#3b82f6', spo2BaseY - pv);
                 }
 
                 // -------------------------------------------------- ARTERIAL LINE
+                // Beat-by-beat radial pressure pulses above a diastolic baseline. Without output the
+                // line sits flat near zero; chest compressions generate small pressure waves.
                 if (artOn) {
-                    const artBaseY = traceHeight * (laneIdx.art + 0.5);
-                    const artY = artBaseY - getArtValue(cycleT);
-                    drawLane('art', '#ef4444', artY);
+                    const artBaseY = traceHeight * (laneIdx.art + 0.7);
+                    let av;
+                    if (pulseless) {
+                        const c = (time * 1.83) % 1;
+                        av = live.isCPR ? 3 + 15 * Math.exp(-0.5 * Math.pow((c - 0.3) / 0.09, 2)) : 2;
+                    } else {
+                        av = 6 + RG.pulseValue('art', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase) });
+                    }
+                    drawLane('art', '#ef4444', artBaseY - av);
                 }
 
                 // -------------------------------------------------- RESP (chest-wall impedance)

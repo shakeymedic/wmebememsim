@@ -1330,7 +1330,7 @@
             }
             // The monitor does not run physiology; the authoritative composed vitals arrive over the
             // wire, so base == displayed there.
-            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals, baseVitals: { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) }, trends: action.payload.trends || state.trends };
+            case 'SYNC_FROM_MASTER': return { ...state, vitals: action.payload.vitals || state.vitals, baseVitals: { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) }, trends: action.payload.trends || state.trends };
             // UPDATE_VITALS writes the BASE (precedence step 1). Displayed vitals are recomposed with
             // the drug envelope so a facilitator/arrest/ROSC write can never silently delete an
             // in-flight drug effect, and a drug effect can never fight an explicit write.
@@ -2444,7 +2444,10 @@
             const sessionRef = db.ref(`sessions/${sessionID}`);
             const handleUpdate = (snapshot) => { 
                 const data = snapshot.val(); 
-                if (data) { 
+                // A session holding only presence (a monitor or defib that joined before the
+                // controller published anything) has no patient yet: keep waiting rather than
+                // applying an empty patient, which crashed the monitor.
+                if (data && data.vitals) { 
                     try {
                         dispatch({ type: 'SYNC_FROM_MASTER', payload: data });
                         dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
