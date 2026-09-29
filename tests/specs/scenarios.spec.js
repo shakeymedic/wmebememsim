@@ -1,6 +1,6 @@
 // The scenario library: every built-in scenario runs cleanly, and specific clinical content rules
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -67,8 +67,8 @@ test('the Premade flow starts a scenario, and a cardiac arrest starts with arres
   const errors = trackErrors(page);
   const code = await openController(page);
   await startPremade(page, 'Cardiac Arrest', 'Adult - PEA Arrest');
-  await expect.poll(() => session(page, code, '/rhythm')).toBe('PEA');
-  const v = await session(page, code, '/vitals');
+  await expect.poll(() => live(page, code, '/rhythm')).toBe('PEA');
+  const v = await live(page, code, '/vitals');
   expect(v).toMatchObject({ rr: 0, bpSys: 0, bpDia: 0, spO2: 0, gcs: 3, pupils: 'Dilated' });
   expect(errors).toEqual([]);
 });

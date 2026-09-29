@@ -1,6 +1,6 @@
 // Defib Sim: the facilitator's Defib controller, custom sequences, RCUK prompts and the debrief
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -21,13 +21,13 @@ test.describe('Defib controller', () => {
     await expect(page.getByTestId('defib-rhythm')).toHaveText(/Complete Heart Block/i);
 
     await page.locator('[data-rhythm="VF"]').click();
-    await expect.poll(() => session(page, code, '/rhythm')).toBe('VF');
+    await expect.poll(() => live(page, code, '/rhythm')).toBe('VF');
     await expect(page.getByTestId('arrest-status')).toContainText('In arrest');
 
     await page.locator('[data-artefact="movement"]').click();
-    await expect.poll(() => session(page, code, '/noise/movement')).toBe(true);
+    await expect.poll(() => live(page, code, '/noise/movement')).toBe(true);
     await page.getByRole('button', { name: /Metronome/ }).click();
-    await expect.poll(() => session(page, code, '/defibView/metronome')).toBe(true);
+    await expect.poll(() => live(page, code, '/defibView/metronome')).toBe(true);
 
     const before = await engine(page, 'return sim.state.pacingThreshold');
     await page.getByRole('button', { name: 'Raise the capture threshold' }).click();
@@ -67,19 +67,19 @@ test.describe('Defib controller', () => {
     await go(page);
     await expect(page.getByTestId('defib-steps-runner')).toBeVisible();
     await page.getByRole('button', { name: 'START', exact: true }).click();
-    await expect.poll(() => session(page, code, '/rhythm')).toBe('VF');
+    await expect.poll(() => live(page, code, '/rhythm')).toBe('VF');
 
     // An analysis does not move a "shock" step on
     await engine(page, 'sim.analyseRhythm("test")');
     await page.waitForTimeout(300);
-    expect(await session(page, code, '/rhythm')).toBe('VF');
+    expect(await live(page, code, '/rhythm')).toBe('VF');
 
     await engine(page, 'sim.deliverShock(150, "test")');
-    await expect.poll(() => session(page, code, '/rhythm'), { timeout: 5000 }).toBe('Sinus Rhythm');
+    await expect.poll(() => live(page, code, '/rhythm'), { timeout: 5000 }).toBe('Sinus Rhythm');
     expect(await engine(page, 'return sim.state.defibStep.index')).toBe(1);
 
     await engine(page, 'sim.dispatch({ type: "FAST_FORWARD", payload: 31 })');
-    await expect.poll(() => session(page, code, '/rhythm'), { timeout: 5000 }).toBe('Asystole');
+    await expect.poll(() => live(page, code, '/rhythm'), { timeout: 5000 }).toBe('Asystole');
 
     await engine(page, 'sim.analyseRhythm("test")');
     await expect.poll(() => engine(page, 'return sim.state.defibStep.done')).toBe(true);

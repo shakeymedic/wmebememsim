@@ -36,5 +36,7 @@ async function startQuickSim(page) {
 
 // The live session as the fake database holds it
 const session = (page, code, sub = '') => page.evaluate(([c, s]) => window.__fakeRtdb.get(`sessions/${c}${s}`), [code, sub]);
+// The live patient the controller publishes (sessions/<CODE>/live)
+const live = (page, code, sub = '') => session(page, code, '/live' + sub);
 
-module.exports = { useFakeFirebase, trackErrors, openController, startQuickSim, session, expect };
+module.exports = { useFakeFirebase, trackErrors, openController, startQuickSim, session, live, expect };

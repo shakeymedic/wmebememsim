@@ -1,5 +1,5 @@
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, session, live, expect } = require('./helpers');
 
 // Engine rules, driven through the controller's engine and the device-event queue
 
@@ -49,7 +49,7 @@ test.describe('Defibrillation and drug rules', () => {
     await unstack(page);
     await deviceEvent(page, code, 'SHOCK_DELIVERED', { energy: 150, sync: false });
     await expect.poll(() => st(page, 'RHYTHMS.isPulseless(S.rhythm)')).toBe(false);
-    await expect.poll(() => session(page, code, '/defib/shockCount')).toBe(4);
+    await expect.poll(() => live(page, code, '/defib/shockCount')).toBe(4);
   });
 
   test('"never": VF is refractory however many shocks are given', async ({ page }) => {

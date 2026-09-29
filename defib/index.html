@@ -10,7 +10,7 @@
       // browsing modes, and an uncaught error here aborted the rest of this inline block.
       try {
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js').then(() => console.log('Service Worker Registered')).catch(() => {});
+        navigator.serviceWorker.register('sw.js').catch(() => {});
       }
       } catch (e) { /* service workers unavailable — the page works fine without offline caching */ }
     </script>
@@ -303,7 +303,7 @@
                 if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. The numbers below are frozen and are NOT live until it returns.', 'lost');
                 if (fb.linked && fb.connected) setLinkState(true);
             });
-            fb.db.ref('sessions/' + code).on('value', snap => {
+            fb.db.ref('sessions/' + code + '/live').on('value', snap => {
                 const v = snap.val();
                 if (!v || !v.vitals) {
                     setLinkState(false, 'Session ' + code + ' has no patient yet. Start the scenario on the controller, or check the code.', fb.linked ? 'lost' : 'never');

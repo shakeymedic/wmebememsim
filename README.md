@@ -18,7 +18,7 @@ as-is in a browser (CDN React, in-browser Babel, the Tailwind CDN), and on every
 | `data/auth.js` | Firebase Auth, the entitlements model, the admin panel, restricted-scenario loading |
 | `data/components.js` | Shared UI primitives (`Button`, `Modal`, `Lucide`, `ECGMonitor`, …) |
 | `data/screens/` | `setup.js`, `livesim.js` (controller), `monitor.js`, `debrief.js` |
-| `defib/` | The standalone defibrillator page and its cache-first service worker |
+| `defib/` | The defibrillator tablet page and its service worker |
 | `database.rules.json` | The Realtime Database security rules **you must paste into the Firebase console** |
 
 ---
@@ -312,8 +312,13 @@ the seam and throws if called, so nobody can accidentally wire a client-side gra
 - **Browser tests.** `npm run build`, then `cd tests && npm install && npx playwright test`. They run
   against `dist/` with an in-memory stand-in for Firebase (`tests/fake-firebase.js`), so no network or
   real database is needed; GitHub Actions runs them on every pull request and on pushes to `main`.
-- **The service worker in `defib/sw.js` is cache-first.** Bump `CACHE_NAME` on every deploy or tablets
-  will keep serving a stale build of a clinical device.
+- **Offline and updates.** `sw.js` (the app) and `defib/sw.js` (the tablet) share `sw-shared.js`: network
+  first, so an online device always runs the latest deploy, falling back to stored copies offline. The
+  build stamps each worker with the deploy's version and the files to store at install, so there is
+  nothing to bump by hand. Each worker only deletes its own old caches.
+- **Session layout.** The controller publishes the patient to `sessions/<CODE>/live`; monitors and the
+  defib listen there only. Device traffic stays beside it: `presence/`, `deviceEvents/`, `deviceState/`
+  and `command`.
 - **Permissive philosophy: never block, only flag.** The simulator does not stop the facilitator doing
   anything clinically odd. It records it, and the debrief raises it as a discussion point.
 - **Vitals precedence** (each stage overrides the last): manual set → active trends → autonomous

@@ -8,6 +8,13 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="EM Evidence Sim">
     <link rel="manifest" href="manifest.json">
+    <script>
+      // Offline support (sw.js). Wrapped: reading navigator.serviceWorker throws in a sandboxed
+      // iframe and in some private-browsing modes.
+      try {
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(function () {});
+      } catch (e) { /* the app works without it */ }
+    </script>
     <title>EM Evidence Sim</title>
     
     <script src="https://cdn.tailwindcss.com"></script>

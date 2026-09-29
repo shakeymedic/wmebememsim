@@ -710,6 +710,8 @@
     const MonitorContainer = ({ sessionID }) => { 
         const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
+        // Console / test handle on the monitor's engine (read it, don't build on it).
+        useEffect(() => { window.__monitorEngine = sim; });
         if (!sessionID) return null; 
         const syncStatus = sim.state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);

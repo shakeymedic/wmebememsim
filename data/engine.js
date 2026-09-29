@@ -2408,7 +2408,10 @@
         useEffect(() => {
             const db = window.db;
             if (!db || !sessionID || isMonitorMode || !state.scenario) return;
-            const sessionRef = db.ref(`sessions/${sessionID}`);
+            // The patient lives under sessions/<CODE>/live, apart from the device channels
+            // (presence, deviceEvents, deviceState, command), so a device's heartbeat or a defib
+            // screen update does not re-deliver the whole patient to every monitor.
+            const sessionRef = db.ref(`sessions/${sessionID}/live`);
 
             const flush = () => {
                 syncTimerRef.current = null;
@@ -2549,7 +2552,7 @@
         useEffect(() => {
             const db = window.db; 
             if (!db || !sessionID || !isMonitorMode) return; 
-            const sessionRef = db.ref(`sessions/${sessionID}`);
+            const sessionRef = db.ref(`sessions/${sessionID}/live`);
             const handleUpdate = (snapshot) => { 
                 const data = snapshot.val(); 
                 // A session holding only presence (a monitor or defib that joined before the

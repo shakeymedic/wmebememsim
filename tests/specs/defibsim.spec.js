@@ -1,6 +1,6 @@
 // Defib Sim: the start tab, and the learner's defibrillator tablet linked to the session
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -25,8 +25,8 @@ test.describe('Defib Sim', () => {
     const errors = trackErrors(page);
     const code = await openController(page);
     await startDefibSim(page, 'vf-arrest');
-    await expect.poll(() => session(page, code, '/rhythm')).toBe('VF');
-    const view = await session(page, code, '/defibView');
+    await expect.poll(() => live(page, code, '/rhythm')).toBe('VF');
+    const view = await live(page, code, '/defibView');
     expect(view).toMatchObject({ defibSim: true, pulseFeedback: true, hints: true });
     const scenario = await page.evaluate(() => window.__simEngine.state.scenario.defibSim);
     expect(scenario).toMatchObject({ scenario: 'vf-arrest', mode: 'education', category: 'defibrillation' });
@@ -49,7 +49,7 @@ test.describe('Defib Sim', () => {
   test('Assessment: no hints and no pulse-check result on the device', async ({ page, context }) => {
     const code = await openController(page);
     await startDefibSim(page, 'vf-arrest', 'assessment');
-    await expect.poll(() => session(page, code, '/defibView/pulseFeedback')).toBe(false);
+    await expect.poll(() => live(page, code, '/defibView/pulseFeedback')).toBe(false);
     const { defib, errors } = await openDevice(context, code);
     await expect(defib.locator('#hintsRow')).toBeHidden();
     await defib.click('.mode-label[data-mode="defib"]');
@@ -69,14 +69,14 @@ test.describe('Defib Sim', () => {
     await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
     await defib.click('#shockBtn');
     await expect(defib.locator('#messageBar')).toHaveText(/NO R-WAVE DETECTED/);
-    expect(await session(page, code, '/defib/shockCount') || 0).toBe(0);
+    expect(await live(page, code, '/defib/shockCount') || 0).toBe(0);
     expect(errors).toEqual([]);
   });
 
   test('synchronised cardioversion of unstable SVT fires on an R wave and converts', async ({ page, context }) => {
     const code = await openController(page);
     await startDefibSim(page, 'unstable-svt');
-    await expect.poll(() => session(page, code, '/rhythm')).toBe('SVT');
+    await expect.poll(() => live(page, code, '/rhythm')).toBe('SVT');
     const { defib, errors } = await openDevice(context, code);
     await defib.click('.mode-label[data-mode="defib"]');
     await defib.click('#syncBtn');
@@ -85,8 +85,8 @@ test.describe('Defib Sim', () => {
     await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
     await defib.click('#shockBtn');
     await expect(defib.locator('#messageBar')).toHaveText(/SHOCK DELIVERED/, { timeout: 5000 });
-    await expect.poll(() => session(page, code, '/defib/shockCount')).toBe(1);
-    await expect.poll(() => session(page, code, '/rhythm'), { timeout: 15000 }).toBe('Sinus Rhythm');
+    await expect.poll(() => live(page, code, '/defib/shockCount')).toBe(1);
+    await expect.poll(() => live(page, code, '/rhythm'), { timeout: 15000 }).toBe('Sinus Rhythm');
     expect(errors).toEqual([]);
   });
 
@@ -102,8 +102,8 @@ test.describe('Defib Sim', () => {
     // Output to 90 mA: above any threshold plus the mechanical margin
     for (let i = 0; i < 18; i++) await defib.click('[data-pacer-param="output"][data-pacer-dir="5"]');
     await expect(defib.locator('#outputDisplay')).toHaveText('90');
-    await expect.poll(() => session(page, code, '/pacing'), { timeout: 10000 }).toEqual({ electrical: true, mechanical: true });
-    await expect.poll(() => session(page, code, '/rhythm')).toBe('Paced');
+    await expect.poll(() => live(page, code, '/pacing'), { timeout: 10000 }).toEqual({ electrical: true, mechanical: true });
+    await expect.poll(() => live(page, code, '/rhythm')).toBe('Paced');
     await expect(defib.locator('#hrDisplay')).toHaveText('65');
     await defib.click('#checkPulseBtn');
     await expect(defib.locator('#messageBar')).toHaveText(/PULSE PRESENT - MATCHES PACED RATE/, { timeout: 5000 });
@@ -112,7 +112,7 @@ test.describe('Defib Sim', () => {
     await expect.poll(() => page.evaluate(() => Object.values(window.__simEngine.state.deviceMirror || {}).map(d => d.pacerOutput))).toContain(90);
     // Switching the pacer off restores the underlying rhythm
     await defib.click('.mode-label[data-mode="monitor"]');
-    await expect.poll(() => session(page, code, '/rhythm')).toBe('Complete Heart Block');
+    await expect.poll(() => live(page, code, '/rhythm')).toBe('Complete Heart Block');
     expect(errors).toEqual([]);
   });
 
