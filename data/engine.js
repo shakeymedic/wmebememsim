@@ -122,8 +122,20 @@
             lastShockAt: null,          // ms epoch; drives the inter-shock refractory period
             analysing: false,
             lastAnalysis: null,
-            shockBonus: 0               // additive ROSC bonus banked by adrenaline/amiodarone
+            shockBonus: 0,              // additive ROSC bonus banked by adrenaline/amiodarone
+            episodeShocks: 0,           // ADEQUATE shocks since the current rhythm began (fixed-count policy)
+            adrChecks: 0,               // rhythm checks since adrenaline in a non-shockable arrest
+            refibDone: false            // the "VF recurs once" setting has fired
         },
+        // How shocks and rhythm checks are resolved (see DEFIB_SETTING_VALUES below).
+        //   shockResponse: 'model' (probabilistic, energy/CPR/drug-sensitive) | 'auto' (fixed:
+        //                  arrest converts on the scenario's shock number or the 3rd adequate shock,
+        //                  cardioversion on the 1st) | '1'..'5' | 'never'
+        //   rOnT:          unsynchronised shock into a rhythm with a pulse: 'always' | 'sometimes' | 'never'
+        //   refib:         after ROSC from VF/pVT: 'model' | 'once' (VF returns once) | 'off'
+        defibSettings: { shockResponse: 'model', rOnT: 'never', refib: 'model' },
+        // Transcutaneous pacing as the device delivers it (see the pacing effect in useSimulation).
+        pacing: { electrical: false, mechanical: false, underlying: null, pre: null },
         // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
         // deliberately absent from the Firebase sync payload (verified by
         // verify_wave3.js :: conversion announcements are not synced) because `notification`
@@ -139,6 +151,22 @@
     };
 
     const SYNC_OFFLINE_STATES = new Set(['unavailable', 'disconnected', 'error']);
+
+    const DEFIB_SETTING_VALUES = {
+        shockResponse: ['model', 'auto', '1', '2', '3', '4', '5', 'never'],
+        rOnT: ['always', 'sometimes', 'never'],
+        refib: ['model', 'once', 'off']
+    };
+    // Only known keys and values survive, so a scenario file or a remote command cannot put
+    // anything else into the settings.
+    const cleanDefibSettings = (base, patch) => {
+        const out = { ...base };
+        Object.keys(DEFIB_SETTING_VALUES).forEach(k => {
+            const v = patch && patch[k] !== undefined ? String(patch[k]) : undefined;
+            if (v !== undefined && DEFIB_SETTING_VALUES[k].indexOf(v) !== -1) out[k] = v;
+        });
+        return out;
+    };
 
     // Realtime Database rejects undefined, NaN and Infinity anywhere in a payload, including
     // nested NIBP/trend/investigation data. Sanitise the whole wire payload, not just vitals.
@@ -1657,6 +1685,8 @@
                 // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
                 return { ...initialCoreState, runId: newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
                     showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
+                    defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
+                    pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
                     // would hand every session the same object.
                     activeInterventions: new Set(),
@@ -1681,6 +1711,7 @@
                     // B5: shock count / cumulative energy survive a resume now that they live in
                     // state rather than in a useRef that reset to zero.
                     defib: { ...initialCoreState.defib, ...(p.defib || {}) },
+                    defibSettings: cleanDefibSettings(initialCoreState.defibSettings, p.defibSettings),
                     lastConversion: p.lastConversion || null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
@@ -1775,13 +1806,17 @@
                     converted: from !== to,
                     at: Date.now()
                 };
-                return { ...state, rhythm: to, rhythmEvent: ev, lastConversion: ev.converted ? ev : state.lastConversion };
+                // A new rhythm starts a new episode for the fixed-count shock and rhythm-check rules.
+                const defibAfter = ev.converted ? { ...state.defib, episodeShocks: 0, adrChecks: 0 } : state.defib;
+                return { ...state, rhythm: to, rhythmEvent: ev, lastConversion: ev.converted ? ev : state.lastConversion, defib: defibAfter };
             }
             case 'CLEAR_RHYTHM_EVENT': return { ...state, rhythmEvent: null };
             // B5 / A: defibrillator device state + metrics. Merge semantics so a charge does not
             // clobber the running shock tally.
             case 'SET_DEFIB_STATE': return { ...state, defib: { ...state.defib, ...(action.payload || {}) } };
             case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
+            case 'SET_DEFIB_SETTINGS': return { ...state, defibSettings: cleanDefibSettings(state.defibSettings, action.payload) };
+            case 'SET_PACING': return { ...state, pacing: { ...state.pacing, ...(action.payload || {}) } };
             case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
             // Abandons a measurement in progress: no reading is committed (the commit timer is
@@ -2622,7 +2657,7 @@
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
                         showWetflag: cur.showWetflag, icp: cur.icp,
                         // B5: shock count / cumulative energy must survive a resume.
-                        defib: cur.defib, lastConversion: cur.lastConversion
+                        defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
                 } catch (e) {
@@ -2958,6 +2993,13 @@
             }
             const pScale = paediatricFieldScale(scenario);
             if (pScale) entryOpts.fieldScale = pScale;
+            // A heart-rate drug works differently in different rhythms: atropine barely moves a
+            // broad escape rhythm, isoprenaline does (RHYTHMS.drugHrResponse).
+            const hrResponse = RG.drugHrResponse(key, cur.rhythm);
+            if (hrResponse !== 1) {
+                entryOpts.fieldScale = { ...(entryOpts.fieldScale || {}), HR: ((entryOpts.fieldScale && entryOpts.fieldScale.HR) || 1) * hrResponse };
+                if (hrResponse < 0.5) addLogEntry(`${action.label} in ${RG.labelFor(cur.rhythm)}: little rate response expected — the block/escape is below the level this drug acts on. Consider isoprenaline or adrenaline infusion as a bridge, and pacing.`, 'info');
+            }
             // Paediatric note: suxamethonium bradycardia is common in children, and marked with a
             // second dose. The adult entry has no haemodynamic effect at all.
             if (key === 'Sux' && pScale) {
@@ -3466,6 +3508,46 @@
             }, delay);
         };
 
+        // ---- Shock-response settings (state.defibSettings). ----------------------------------
+        const shockPolicy = (cur) => (cur.defibSettings && cur.defibSettings.shockResponse) || 'model';
+        // How many ADEQUATE shocks this rhythm needs before it converts, or null for "never".
+        // 'auto' uses the scenario's own number when it sets one (scenario.shockToConvert).
+        const shocksRequired = (cur, isArrest) => {
+            const pol = shockPolicy(cur);
+            if (pol === 'never') return null;
+            if (/^[1-5]$/.test(pol)) return Number(pol);
+            const sc = Number(cur.scenario && cur.scenario.shockToConvert);
+            return Number.isFinite(sc) && sc > 0 ? sc : (isArrest ? 3 : 1);
+        };
+        // Is `key` pharmacologically on board right now (a dose given and not yet worn off)?
+        const drugOnBoard = (cur, key) => (cur.activeDrugs || []).some(d => d.key === key && !isDrugSpent(d, cur.time));
+        // Where a fixed-count shockable arrest converts to (scenario.successRhythm if it names one).
+        const roscTargetFor = (cur, fromRhythm) => {
+            const named = cur.scenario && cur.scenario.successRhythm;
+            if (named && RG.isKnown(named) && !RG.isPulseless(named)) return RG.canonical(named);
+            const table = RG.SHOCK_OUTCOMES[RG.canonical(fromRhythm)] || RG.SHOCK_OUTCOMES['VF'];
+            return RG.weightedPick(table.rosc);
+        };
+        // "VF recurs once": 30-90 s after ROSC, if the patient is still in the rhythm they converted to.
+        const scheduleFixedRefib = (convertedTo) => {
+            if (refibTimerRef.current) clearTimeout(refibTimerRef.current);
+            dispatch({ type: 'SET_DEFIB_STATE', payload: { refibDone: true } });
+            refibTimerRef.current = setTimeout(() => {
+                refibTimerRef.current = null;
+                const now = stateRef.current;
+                if (!now || now.isFinished || RG.canonical(now.rhythm) !== RG.canonical(convertedTo)) return;
+                dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(now.baseVitals) });
+                changeRhythm('VF', 'refibrillation', { note: 're-arrest after ROSC' });
+                addLogEntry('VF has recurred after ROSC (refibrillation). Restart CPR and the shockable pathway.', 'danger', true);
+                dispatch({ type: 'SET_FLASH', payload: 'red' });
+            }, 30000 + Math.random() * 60000);
+        };
+        const afterShockRosc = (cur, fromRhythm, convertedTo) => {
+            const refib = (cur.defibSettings && cur.defibSettings.refib) || 'model';
+            if (refib === 'model') scheduleRefibrillation(fromRhythm);
+            else if (refib === 'once' && !(cur.defib && cur.defib.refibDone)) scheduleFixedRefib(convertedTo);
+        };
+
         // The ONE place a shock outcome is decided.
         function applyShockOutcome(cur, opts = {}) {
             const joules = Number.isFinite(Number(opts.energy)) ? Math.round(Number(opts.energy)) : recommendedShockEnergy();
@@ -3498,6 +3580,19 @@
             // non-shockable rhythm silently inflated the ROSC probability of the next real shock.
             if (!shockable) {
                 dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                // An UNSYNCHRONISED shock into a rhythm WITH A PULSE can land on the T wave and
+                // cause VF (R-on-T). Whether it does is the facilitator's setting.
+                const perfusing = !RG.isPulseless(cur.rhythm) && RG.rWavePhase(cur.rhythm, cur.vitals && cur.vitals.hr, 0) !== null;
+                const rOnT = (cur.defibSettings && cur.defibSettings.rOnT) || 'never';
+                const causesVf = perfusing && !sync && (rOnT === 'always' || (rOnT === 'sometimes' && Math.random() < 1 / 3));
+                if (causesVf) {
+                    addLogEntry(`UNSYNCHRONISED shock delivered into ${RG.labelFor(cur.rhythm)} landed on the T wave — VF induced (R-on-T). A patient with a pulse needs SYNCHRONISED cardioversion.`, 'danger', true,
+                        { action: 'Defib', label: 'Defibrillation', missing: ['synchronisation'] });
+                    dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals), releaseManual: RESET_HOLD_KEYS });
+                    changeRhythm('VF', 'defibrillation (R-on-T)', { energy: joules, sync: false });
+                    dispatch({ type: 'SET_FLASH', payload: 'red' });
+                    return;
+                }
                 if (RG.isSyncCardiovertible(cur.rhythm) && !sync) {
                     addLogEntry(`Unsynchronised shock delivered into ${RG.labelFor(cur.rhythm)} — this rhythm needs SYNCHRONISED cardioversion. Not blocked, but flagged.`, 'warning', true,
                         { action: 'Defib', label: 'Defibrillation', missing: ['synchronisation'] });
@@ -3525,6 +3620,46 @@
                 addLogEntry(`Second shock delivered ${Math.round((now - d.lastShockAt) / 1000)}s after the last one — stacked shocks give no additional benefit. Two minutes of good CPR between shocks is the intervention. Flagged.`, 'warning', true,
                     { action: 'Defib', label: 'Defibrillation', missing: ['2 minutes of CPR between shocks'] });
                 changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync: false, note: 'stacked shock, no change' });
+                return;
+            }
+
+            const fromRhythm = RG.canonical(cur.rhythm);
+            const policy = shockPolicy(cur);
+
+            // --- FIXED-COUNT POLICIES ('auto', '1'-'5', 'never'): an adequate shock advances the
+            // episode count, and the rhythm converts when the count is reached.
+            if (policy !== 'model') {
+                const adequate = RG.adequateShock(joules, defibWeight(), cur.scenario?.patientAge, 'arrest');
+                if (!adequate) {
+                    dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                    changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync: false, note: 'energy too low to defibrillate — resume CPR' });
+                    addLogEntry(`Shock at ${joules}J is below the energy needed to defibrillate this patient (${RG.isAdult(defibWeight(), cur.scenario?.patientAge) ? 'at least 150 J' : 'at least 3 J/kg'}). Resume CPR and select a higher energy.`, 'warning', true,
+                        { action: 'Defib', label: 'Defibrillation', missing: ['adequate energy'] });
+                    return;
+                }
+                nextDefib.episodeShocks = (d.episodeShocks || 0) + 1;
+                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                if (cur.queuedRhythm) {
+                    const q = RG.canonical(cur.queuedRhythm);
+                    dispatch({ type: 'SET_QUEUED_RHYTHM', payload: null });
+                    if (RG.isPulseless(q)) {
+                        dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
+                        changeRhythm(q, 'defibrillation (facilitator override)', { energy: joules });
+                    } else {
+                        triggerROSC(q, 'defibrillation (facilitator override)', { energy: joules });
+                        afterShockRosc(cur, fromRhythm, q);
+                    }
+                    return;
+                }
+                const required = shocksRequired(cur, true);
+                if (required !== null && nextDefib.episodeShocks >= required) {
+                    const target = roscTargetFor(cur, fromRhythm);
+                    triggerROSC(target, 'defibrillation', { energy: joules, sync: false });
+                    afterShockRosc(cur, fromRhythm, target);
+                } else {
+                    changeRhythm(cur.rhythm, 'defibrillation', { energy: joules, sync: false, note: 'no change — resume CPR' });
+                    addLogEntry('No change after shock. Resume compressions immediately, 2-minute cycle, consider escalating energy.', 'warning');
+                }
                 return;
             }
 
@@ -3557,14 +3692,13 @@
             const base = 0.08 + 0.07 * Math.min(shocks, 5);
             const roscChance = Math.max(0.02, Math.min(0.55, (base + cprBonus + drugBonus) * energyFactor * rhythmFactor));
 
-            const fromRhythm = RG.canonical(cur.rhythm);
             const table = RG.SHOCK_OUTCOMES[fromRhythm] || RG.SHOCK_OUTCOMES['VF'];
             if (Math.random() < roscChance) {
                 const target = RG.weightedPick(table.rosc);
                 // Banked drug bonus is consumed by a successful shock.
                 dispatch({ type: 'SET_DEFIB_STATE', payload: { shockBonus: 0 } });
                 triggerROSC(target, 'defibrillation', { energy: joules, sync: false });
-                scheduleRefibrillation(fromRhythm);
+                afterShockRosc(cur, fromRhythm, target);
             } else {
                 const target = RG.weightedPick(table.noRosc);
                 if (target !== fromRhythm) {
@@ -3584,17 +3718,18 @@
             const joules = Number.isFinite(Number(opts.energy)) ? Math.round(Number(opts.energy)) : recommendedShockEnergy();
             const d = cur.defib || {};
             const now = Date.now();
-            dispatch({ type: 'SET_DEFIB_STATE', payload: {
+            const nextDefib = {
                 shockCount: (d.shockCount || 0) + 1,
                 totalEnergy: (d.totalEnergy || 0) + joules,
                 lastEnergy: joules, lastShockAt: now, charged: false, chargeEnergy: null, syncMode: true
-            } });
+            };
 
             const dev = RG.energyDeviation(joules, defibWeight(), cur.scenario?.patientAge);
             if (dev) addLogEntry(`Cardioversion energy deviation: ${dev.reason}. Recommended: ${dev.expected}J.`, 'warning', true,
                 { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: [`correct energy (${dev.expected}J)`] });
 
             if (RG.isPulseless(cur.rhythm)) {
+                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
                 // Never blocked — flagged. A defibrillator in SYNC mode will not discharge into VF,
                 // and that is itself the teaching point.
                 addLogEntry(`SYNC mode armed in ${RG.labelFor(cur.rhythm)} — a real defibrillator will not discharge in SYNC without an R wave. Switch to unsynchronised defibrillation. Flagged.`, 'danger', true,
@@ -3603,20 +3738,49 @@
                 return;
             }
             if (!RG.isSyncCardiovertible(cur.rhythm)) {
+                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
                 addLogEntry(`Synchronised shock delivered into ${RG.labelFor(cur.rhythm)} — cardioversion is not indicated for this rhythm. Flagged.`, 'warning', true,
                     { action: 'Cardioversion', label: 'Synchronised Cardioversion', missing: ['an indication for cardioversion'] });
                 changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'not indicated, no change' });
                 return;
             }
 
+            // The rhythm FIRST (it brings the new rhythm's rate band), then any obs the scenario names.
+            // In the other order the rhythm change, which reads the pre-shock state, put the
+            // tachycardic rate back: "Sinus Rhythm" at 190/min.
+            const convertToSinus = () => {
+                const sv = cur.scenario && cur.scenario.successVitals;
+                const named = cur.scenario && cur.scenario.successRhythm;
+                const target = named && RG.isKnown(named) && !RG.isPulseless(named) ? RG.canonical(named) : 'Sinus Rhythm';
+                changeRhythm(target, 'cardioversion', { energy: joules, sync: true });
+                if (sv && typeof sv === 'object') {
+                    const vit = {};
+                    ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'etco2'].forEach(k => { if (Number.isFinite(Number(sv[k]))) vit[k] = Number(sv[k]); });
+                    if (Object.keys(vit).length) dispatch({ type: 'UPDATE_VITALS', payload: vit });
+                }
+            };
+
+            if (shockPolicy(cur) !== 'model') {
+                if (!RG.adequateShock(joules, defibWeight(), cur.scenario?.patientAge, 'cardiovert')) {
+                    dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                    changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'energy too low to cardiovert' });
+                    return;
+                }
+                nextDefib.episodeShocks = (d.episodeShocks || 0) + 1;
+                dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
+                const required = shocksRequired(cur, false);
+                if (required !== null && nextDefib.episodeShocks >= required) convertToSinus();
+                else changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'unsuccessful — escalate energy, check sedation and synchronisation' });
+                return;
+            }
+
+            dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
             // Success depends on the rhythm and on adequate energy.
             const baseSuccess = { 'SVT': 0.85, 'VT': 0.80, 'AF': 0.6, 'Atrial Flutter': 0.9 }[RG.canonical(cur.rhythm)] || 0.7;
             const expected = recommendedShockEnergy();
             const energyFactor = Math.max(0.5, Math.min(1.1, joules / Math.max(1, expected)));
             if (Math.random() < baseSuccess * energyFactor) {
-                const band = RG.defaultHrRange('Sinus Rhythm');
-                dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr: getRandomInt(70, 95) } });
-                changeRhythm('Sinus Rhythm', 'cardioversion', { energy: joules, sync: true });
+                convertToSinus();
             } else {
                 changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'unsuccessful — escalate energy, check sedation and synchronisation' });
             }
@@ -3720,6 +3884,79 @@
                 : `CPR stopped (${source}).`, next ? 'action' : 'warning', !next && RG.isPulseless(cur.rhythm));
         };
 
+        // =====================================================================================
+        // TRANSCUTANEOUS PACING, AS THE DEVICE DELIVERS IT.
+        // With the defibrillator in PACER mode, capture is re-evaluated whenever the output, rate,
+        // threshold or underlying rhythm changes:
+        //   * ELECTRICAL capture at the threshold: every spike is followed by a broad complex, the
+        //     monitor rate becomes the paced rate — but the circulation has not improved yet.
+        //   * MECHANICAL capture ~10 mA above it: a palpable pulse at the paced rate, BP and
+        //     saturation improve.
+        // Demand mode is inhibited while the patient's own rate is at or above the set rate.
+        // Losing capture (or leaving PACER mode) restores the underlying rhythm and obs.
+        // =====================================================================================
+        const MECHANICAL_MARGIN_MA = 10;
+        useEffect(() => {
+            if (isMonitorMode) return;
+            const cur = stateRef.current;
+            const pacing = cur.pacing || {};
+            const mode = cur.defib && cur.defib.mode;
+            const pacer = cur.remotePacerState || {};
+            const rate = Number(pacer.rate) || 0, output = Number(pacer.output) || 0;
+            const demand = pacer.demand !== false;
+            // The facilitator changed the rhythm under an established capture: that is the new
+            // underlying rhythm, and the capture has to be earned again.
+            if (pacing.electrical && RG.canonical(cur.rhythm) !== 'Paced') {
+                dispatch({ type: 'SET_PACING', payload: { electrical: false, mechanical: false, underlying: null, pre: null } });
+                return;
+            }
+            const underlying = pacing.electrical ? pacing.underlying : RG.canonical(cur.rhythm);
+            const ownRate = pacing.electrical ? ((pacing.pre && pacing.pre.hr) || 0) : ((cur.vitals && cur.vitals.hr) || 0);
+            const threshold = Number(cur.pacingThreshold) || 70;
+            const on = mode === 'pacer' && rate > 0 && output > 0;
+            const capable = RG.PACEABLE.indexOf(RG.canonical(underlying)) !== -1;
+            const inhibited = demand && ownRate >= rate;
+            const electrical = on && capable && !inhibited && output >= threshold;
+            const mechanical = electrical && output >= threshold + MECHANICAL_MARGIN_MA;
+
+            if (electrical && !pacing.electrical) {
+                const v = cur.baseVitals || {};
+                const pre = { hr: v.hr, bpSys: v.bpSys, bpDia: v.bpDia, spO2: v.spO2 };
+                dispatch({ type: 'SET_PACING', payload: { electrical: true, mechanical: false, underlying: RG.canonical(underlying), pre } });
+                changeRhythm('Paced', 'pacing', { note: `electrical capture at ${output}mA, ${rate}/min` });
+                dispatch({ type: 'UPDATE_VITALS', payload: { hr: rate } });
+                addLogEntry(`Pacing: ELECTRICAL capture at ${output}mA, ${rate}/min. Confirm MECHANICAL capture — a palpable pulse at the paced rate. Pacing hurts: give analgesia and sedation.`, 'success');
+                return;
+            }
+            if (!electrical && pacing.electrical) {
+                const pre = pacing.pre || {};
+                dispatch({ type: 'SET_PACING', payload: { electrical: false, mechanical: false, underlying: null, pre: null } });
+                changeRhythm(pacing.underlying || 'Sinus Rhythm', 'pacing', { note: mode === 'pacer' ? 'capture lost' : 'pacing stopped' });
+                const restore = {};
+                ['hr', 'bpSys', 'bpDia', 'spO2'].forEach(k => { if (Number.isFinite(Number(pre[k]))) restore[k] = Number(pre[k]); });
+                dispatch({ type: 'UPDATE_VITALS', payload: restore });
+                addLogEntry(mode === 'pacer' ? `Pacing: capture LOST (${output}mA < threshold). Increase the output.` : 'Pacing stopped — back to the underlying rhythm.', 'warning', mode === 'pacer');
+                return;
+            }
+            if (!electrical) return;
+            const updates = {};
+            if (Number((cur.baseVitals || {}).hr) !== rate) updates.hr = rate;
+            if (mechanical && !pacing.mechanical) {
+                const pre = pacing.pre || {};
+                updates.bpSys = Math.max((Number(pre.bpSys) || 70) + 25, 95);
+                updates.bpDia = Math.max((Number(pre.bpDia) || 40) + 15, 55);
+                if (Number(pre.spO2) > 0) updates.spO2 = Math.max(Number(pre.spO2), 95);
+                dispatch({ type: 'SET_PACING', payload: { mechanical: true } });
+                addLogEntry(`Pacing: MECHANICAL capture at ${output}mA — pulse palpable at ${rate}/min, blood pressure improving.`, 'success');
+            } else if (!mechanical && pacing.mechanical) {
+                const pre = pacing.pre || {};
+                ['bpSys', 'bpDia', 'spO2'].forEach(k => { if (Number.isFinite(Number(pre[k]))) updates[k] = Number(pre[k]); });
+                dispatch({ type: 'SET_PACING', payload: { mechanical: false } });
+                addLogEntry(`Pacing: mechanical capture lost at ${output}mA — electrical capture only, no pulse at the paced rate.`, 'warning', true);
+            }
+            if (Object.keys(updates).length) dispatch({ type: 'UPDATE_VITALS', payload: updates });
+        }, [isMonitorMode, state.defib && state.defib.mode, state.remotePacerState, state.pacingThreshold, state.rhythm, state.pacing]);
+
         const revealInvestigation = (type, customText = null) => {
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type });
             setTimeout(() => {
@@ -3765,6 +4002,45 @@
                 } else {
                     triggerROSC(q, 'rhythm check (facilitator override)');
                 }
+                return;
+            }
+            nonShockableRhythmCheck(cur);
+        };
+
+        // PEA and asystole have no shock to convert them: ROSC comes from good CPR, adrenaline and
+        // treating the cause, and it is found at a RHYTHM CHECK.
+        //   'model': a chance at each check — small on its own, better with CPR running, and much
+        //            better with adrenaline on board (given in the last few minutes).
+        //   'auto':  deterministic — ROSC at the SECOND rhythm check after adrenaline, provided
+        //            compressions are running. Without adrenaline it does not happen.
+        //   fixed shock numbers and 'never': the facilitator decides (ROSC button / override).
+        const nonShockableRhythmCheck = (cur) => {
+            const rid = RG.canonical(cur.rhythm);
+            if (!RG.isPulseless(rid) || RG.isShockable(rid)) return;
+            const pol = shockPolicy(cur);
+            const adrenaline = drugOnBoard(cur, 'AdrenalineIV');
+            if (pol === 'auto') {
+                if (!adrenaline) {
+                    addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}. Adrenaline 1 mg is due as soon as possible in a non-shockable rhythm.`, 'warning');
+                    return;
+                }
+                const checks = ((cur.defib && cur.defib.adrChecks) || 0) + 1;
+                dispatch({ type: 'SET_DEFIB_STATE', payload: { adrChecks: checks } });
+                if (checks >= 2 && cur.cprInProgress) {
+                    triggerROSC(rid === 'PEA' ? 'Sinus Tachycardia' : 'Sinus Bradycardia', 'rhythm check', { agent: 'adrenaline and CPR' });
+                } else {
+                    addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}${cur.cprInProgress ? '' : ' — and compressions are not running'}. Continue CPR, repeat adrenaline every 3-5 minutes, treat reversible causes.`, 'info');
+                }
+                return;
+            }
+            if (pol !== 'model') return;
+            let chance = 0.03 + (cur.cprInProgress ? 0.04 : 0) + (adrenaline ? 0.14 : 0);
+            if (rid === 'PEA') chance *= 1.5;
+            if (rid === 'Asystole') chance *= 0.5;
+            if (Math.random() < chance) {
+                triggerROSC(rid === 'PEA' ? 'Sinus Tachycardia' : 'Sinus Bradycardia', 'rhythm check', { agent: adrenaline ? 'adrenaline and CPR' : 'CPR' });
+            } else {
+                addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}.${adrenaline ? '' : ' Adrenaline improves the chance of ROSC at the next check.'}`, 'info');
             }
         };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
@@ -4175,6 +4451,7 @@
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,
+        setDefibSettings: (patch) => { dispatch({ type: 'SET_DEFIB_SETTINGS', payload: patch }); addLogEntry(`Shock response settings: ${Object.keys(patch || {}).map(k => `${k} = ${patch[k]}`).join(', ')}`, 'system'); },
         sendDeviceEvent, recommendedShockEnergy,
         defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,
         // Wave 8 surface: two-way sensor toggles, the honest fast paths and the derived obstruction.

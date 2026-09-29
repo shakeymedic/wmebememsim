@@ -222,6 +222,8 @@
             // --- SIM ENGINE ---
             // Initializes the logic core. Pass sessionID to enable sync.
             const engine = useSimulation(generatedScenario, false, sessionID);
+            // Console / test handle on the live controller engine (read it, don't build on it).
+            useEffect(() => { window.__simEngine = engine; });
 
             // --- HANDLERS ---
             const handleGenerate = (scenario, modifiers) => {

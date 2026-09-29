@@ -1428,6 +1428,24 @@
                                      <div className="text-[9px] text-slate-500 mt-1">Leave unset to let the outcome model decide (energy, rhythm, CPR and drugs all count).</div>
                                  </div>
 
+                                 {/* How shocks and rhythm checks resolve (engine: state.defibSettings). */}
+                                 <div className="mt-2 bg-black/50 p-2 rounded space-y-1">
+                                     <div className="text-slate-400 text-[10px] uppercase font-bold">Shock response</div>
+                                     {[
+                                         ['shockResponse', 'Converts', [['model', 'Realistic model (energy, CPR, drugs)'], ['auto', 'Auto (arrest: 3rd adequate shock, cardioversion: 1st)'], ['1', '1st adequate shock'], ['2', '2nd adequate shock'], ['3', '3rd adequate shock'], ['4', '4th adequate shock'], ['5', '5th adequate shock'], ['never', 'Never (refractory)']]],
+                                         ['rOnT', 'Unsync shock with a pulse', [['never', 'No effect (flagged)'], ['sometimes', 'Sometimes causes VF (1 in 3)'], ['always', 'Always causes VF']]],
+                                         ['refib', 'After ROSC', [['model', 'Realistic model'], ['once', 'VF recurs once (30-90 s)'], ['off', 'Stays in ROSC']]]
+                                     ].map(([k, label, opts]) => (
+                                         <label key={k} className="flex items-center justify-between gap-2 text-[10px] text-slate-300">
+                                             <span className="whitespace-nowrap">{label}</span>
+                                             <select value={(state.defibSettings || {})[k] || ''} onChange={e => sim.setDefibSettings({ [k]: e.target.value })}
+                                                     className="min-w-0 max-w-[14rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[10px] text-white">
+                                                 {opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                                             </select>
+                                         </label>
+                                     ))}
+                                 </div>
+
                                  <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
                                      <span className="text-slate-400 text-[10px] uppercase">CPR / cycle timer</span>
                                      <span className={`font-mono text-xl font-bold ${cprInProgress ? 'text-red-300' : 'text-white'}`}>{formatTime(state.cycleTimer)}</span>

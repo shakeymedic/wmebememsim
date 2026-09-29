@@ -233,7 +233,8 @@
     var R = [
         { id: 'Sinus Rhythm', label: 'Sinus Rhythm', short: 'NSR', waveform: 'sinus',
           aliases: ['NSR', 'Normal Sinus', 'nsr', 'Sinus', 'Sinus Rhythm (Post-MI)', 'normal_sinus'],
-          shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: null },
+          // A rate band, so converting a tachycardia to sinus rhythm does not leave it at 190/min.
+          shockable: false, pulseless: false, syncCardiovert: false, roscEligible: true, defaultHrRange: [65, 95] },
 
         { id: 'Sinus Tachycardia', label: 'Sinus Tachycardia', short: 'S.TACH', waveform: 'sinus',
           aliases: ['Sinus Tachy', 'sinus_tach', 'Sinus Tach', 'ST'],
@@ -674,29 +675,26 @@
     // RCUK: 4 J/kg for paediatric defibrillation. The standalone defib hardcoded
     // [50,70,85,100,120,150,170,200] and defaulted to 120 J for a 3.5 kg neonate.
     // -------------------------------------------------------------------------
-    var ADULT_ENERGY_STEPS = [50, 70, 85, 100, 120, 150, 170, 200, 250, 300, 360];
+    // The ZOLL R Series biphasic selections (the device this app simulates): 1-10 J in 1 J steps,
+    // then 15, 20, 30, 50, 75, 100, 120, 150 and a 200 J maximum. 250-360 J do not exist on a
+    // biphasic ZOLL.
+    var ADULT_ENERGY_STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 75, 100, 120, 150, 200];
     var ADULT_DEFAULT_ENERGY = 150;
 
+    // Children: 4 J/kg (RCUK), rounded to the nearest selection the device actually offers.
+    function nearestStep(j) {
+        var best = ADULT_ENERGY_STEPS[0];
+        ADULT_ENERGY_STEPS.forEach(function (s) { if (Math.abs(s - j) < Math.abs(best - j) || (Math.abs(s - j) === Math.abs(best - j) && s > best)) best = s; });
+        return best;
+    }
     function recommendedEnergy(weightKg, ageYears) {
-        var w = Number(weightKg);
-        if (!isFinite(w) || w <= 0) return ADULT_DEFAULT_ENERGY;
-        // Adult dosing takes over once weight-based dosing would exceed the adult dose.
-        if (w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16)) return ADULT_DEFAULT_ENERGY;
-        return Math.max(1, Math.round(w * 4));
+        if (isAdult(weightKg, ageYears)) return ADULT_DEFAULT_ENERGY;
+        return Math.min(ADULT_DEFAULT_ENERGY, nearestStep(Math.max(1, Number(weightKg) * 4)));
     }
 
-    function energySteps(weightKg, ageYears) {
-        var w = Number(weightKg);
-        if (!isFinite(w) || w <= 0 || w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16)) {
-            return ADULT_ENERGY_STEPS.slice();
-        }
-        // Weight-based ladder: 1, 2, 4 (recommended), 6, 8, 10 J/kg — 4 J/kg is the
-        // recommended dose and is guaranteed to be present and selectable.
-        var steps = [1, 2, 4, 6, 8, 10].map(function (m) { return Math.max(1, Math.round(w * m)); });
-        var out = [];
-        steps.forEach(function (s) { if (out.indexOf(s) === -1) out.push(s); });
-        out.sort(function (a, b) { return a - b; });
-        return out;
+    // The device offers the same selections for every patient; the recommended one differs.
+    function energySteps() {
+        return ADULT_ENERGY_STEPS.slice();
     }
 
     // Permissive by design (Wave 1 philosophy): a wrong energy is never blocked, it is FLAGGED.
@@ -711,6 +709,41 @@
         return null;
     }
 
+    // An ADEQUATE shock for the fixed-count shock-response settings: at least 150 J (adult) or
+    // 3 J/kg (child) to defibrillate; synchronised and at least 70 J (adult) or 1 J/kg (child) to
+    // cardiovert. Anything less still counts as a delivered shock but cannot convert the rhythm.
+    function isAdult(weightKg, ageYears) {
+        var w = Number(weightKg);
+        return !isFinite(w) || w <= 0 || w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16);
+    }
+    function adequateShock(joules, weightKg, ageYears, kind) {
+        var j = Number(joules);
+        if (!isFinite(j) || j <= 0) return false;
+        var adult = isAdult(weightKg, ageYears);
+        if (kind === 'cardiovert') return adult ? j >= 70 : j >= Math.max(1, Number(weightKg) * 1);
+        return adult ? j >= 150 : j >= Math.max(1, Number(weightKg) * 3);
+    }
+
+    // Rhythms transcutaneous pacing can capture (slow rhythms with ventricles that respond).
+    var PACEABLE = ['Sinus Bradycardia', 'Junctional', 'Idioventricular', '1st Deg Heart Block',
+        '2nd Deg Heart Block', 'Complete Heart Block'];
+
+    // How well a heart-rate-raising drug works in each rhythm (1 = full effect, the default).
+    // Atropine acts on the sinus and AV nodes, so it helps sinus bradycardia and nodal block but
+    // does little for block below the AV node (broad-complex complete heart block, Mobitz II) or a
+    // ventricular escape. Isoprenaline and adrenaline raise the escape rate as well, which is why
+    // they are the bridge to pacing when atropine fails.
+    var DRUG_HR_RESPONSE = {
+        Atropine: { 'Complete Heart Block': 0.15, '2nd Deg Heart Block': 0.4, 'Idioventricular': 0.1, 'Junctional': 0.8 },
+        Isoprenaline: { 'Complete Heart Block': 1, '2nd Deg Heart Block': 1, 'Idioventricular': 0.9 },
+        AdrenalineInfusion: { 'Complete Heart Block': 0.9, 'Idioventricular': 0.8 }
+    };
+    function drugHrResponse(key, rhythmName) {
+        var t = DRUG_HR_RESPONSE[key];
+        var v = t ? t[canonical(rhythmName)] : undefined;
+        return typeof v === 'number' ? v : 1;
+    }
+
     // -------------------------------------------------------------------------
     // 5. DRUG-MEDIATED CONVERSION (C6 — `changeRhythm: 'chance'` was UNHANDLED, so
     // Adrenaline IV and Amiodarone changed literally nothing).
@@ -723,8 +756,10 @@
             'VF':      { chance: 0.00, shockBonus: 0.10 },
             'Fine VF': { chance: 0.00, shockBonus: 0.10 },
             'pVT':     { chance: 0.00, shockBonus: 0.10 },
-            'PEA':     { chance: 0.12, to: 'Sinus Tachycardia' },
-            'Asystole':{ chance: 0.06, to: 'PEA' }
+            // In a non-shockable arrest adrenaline does not convert the rhythm on injection; it
+            // improves the chance of ROSC at the following rhythm checks (see the engine).
+            'PEA':     { chance: 0.00 },
+            'Asystole':{ chance: 0.00 }
         },
         Amiodarone: {
             'VF':      { chance: 0.05, to: 'Sinus Rhythm', shockBonus: 0.12 },
@@ -739,8 +774,8 @@
         },
         Atropine: {
             'Sinus Bradycardia': { chance: 0.70, to: 'Sinus Rhythm' },
-            '2nd Deg Heart Block': { chance: 0.35, to: 'Sinus Rhythm' },
-            'Complete Heart Block': { chance: 0.10, to: 'Sinus Rhythm' }
+            '2nd Deg Heart Block': { chance: 0.20, to: 'Sinus Rhythm' },
+            'Complete Heart Block': { chance: 0.05, to: 'Sinus Rhythm' }
         },
         MagSulph: {
             'VT':  { chance: 0.45, to: 'Sinus Rhythm' },
@@ -940,6 +975,11 @@
         DRUG_CONVERSION: DRUG_CONVERSION,
         SHOCK_OUTCOMES: SHOCK_OUTCOMES,
         weightedPick: weightedPick,
+        isAdult: isAdult,
+        adequateShock: adequateShock,
+        PACEABLE: PACEABLE,
+        DRUG_HR_RESPONSE: DRUG_HR_RESPONSE,
+        drugHrResponse: drugHrResponse,
         // The 12-lead recording, shared by the React monitor and the standalone defibrillator.
         render12Lead: render12Lead
     };
