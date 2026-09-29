@@ -41,9 +41,11 @@
      codes and to the fields the app writes (see section 1). It carries ephemeral simulation
      telemetry only.
 
-   * users/$uid is self-service for PROFILE fields (email, displayName, createdAt, lastSeenAt) but
-     `role`, `status` and `entitlements` are ADMIN-WRITE-ONLY. Without that split any signed-in
-     user could set entitlements.rcuk = true and help themselves to copyrighted content.
+   * users/$uid: a user may write only their own PROFILE fields (email, displayName, createdAt,
+     lastSeenAt, requestedAccess), each granted separately; `role`, `status` and `entitlements`
+     are ADMIN-WRITE-ONLY. (Write permission cascades down in Firebase rules, so granting a user
+     .write on users/$uid itself would let them set entitlements.rcuk = true and help themselves
+     to copyrighted content. tests/rules checks this in the emulator.)
 
    * Access is an ENTITLEMENTS MAP, not a boolean, so a paid tier is a new key rather than a
      rewrite:  entitlements: { rcuk: true, premium: false, expiresAt: null }
@@ -178,37 +180,40 @@
 
       "$uid": {
         ".read":  "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && (auth.uid === $uid || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        // Only an ADMIN may write the account as a whole. Write permission cascades DOWN and cannot
+        // be taken back by a deeper rule, so a user must never be granted .write here: that would
+        // let them write role/status/entitlements too (the previous version of this file did
+        // exactly that; the emulator test in tests/rules caught it). A user gets .write only on the
+        // profile fields below, one by one.
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
 
-        // ---- PRIVILEGE FIELDS. These three .write rules ARE the security model. ----
-        // A child .write of false/admin-only OVERRIDES the permissive $uid .write above for that
-        // child, so a user writing their own profile cannot smuggle a role change alongside it.
+        // ---- PRIVILEGE FIELDS: admin only (via the .write above). ----
         "role": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
           ".validate": "newData.isString() && (newData.val() === 'user' || newData.val() === 'admin')"
         },
         "status": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
           ".validate": "newData.isString() && (newData.val() === 'pending' || newData.val() === 'approved' || newData.val() === 'rejected')"
         },
         "entitlements": {
-          ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
           "$flag": {
             ".validate": "newData.isBoolean() || newData.isNumber() || newData.isString()"
           }
         },
 
-        // ---- Self-service profile fields ----
-        "email":       { ".validate": "newData.isString() && newData.val().length < 320" },
-        "displayName": { ".validate": "newData.isString() && newData.val().length < 120" },
-        "createdAt":   { ".validate": "newData.isNumber() || newData.isString()" },
-        "lastSeenAt":  { ".validate": "newData.isNumber() || newData.isString()" },
+        // ---- Self-service profile fields: the user themselves, or an admin. ----
+        "email":       { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isString() && newData.val().length < 320" },
+        "displayName": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isString() && newData.val().length < 120" },
+        "createdAt":   { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isNumber() || newData.isString()" },
+        "lastSeenAt":  { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isNumber() || newData.isString()" },
 
         // Asking for access is not being granted access. This node is writable by the user and
         // carries no privilege whatsoever; the admin panel reads it to build the request queue.
         "requestedAccess": {
+          ".write": "auth != null && auth.uid === $uid",
           "$flag": { ".validate": "newData.isBoolean() || newData.isString() || newData.isNumber()" }
-        }
+        },
+
+        "$other": { ".validate": false }
       }
     },
 

@@ -65,7 +65,16 @@ test('defib presses, the defib mirror and monitor commands', async () => {
 
 // ---- accounts and restricted content ------------------------------------------------------------
 test('a user can edit their own profile but never their role, status or entitlements', async () => {
-  await assertSucceeds(user('u1').ref('users/u1').update({ email: 'a@b.org', displayName: 'A', createdAt: Date.now() }));
+  // Exactly what data/auth.js writes: the profile on sign-up / sign-in, lastSeenAt, an access request
+  await assertSucceeds(user('u1').ref('users/u1').update({ email: 'a@b.org', displayName: 'A', createdAt: Date.now(), lastSeenAt: Date.now() }));
+  await assertSucceeds(user('u1').ref('users/u1/lastSeenAt').set(Date.now()));
+  await assertSucceeds(user('u1').ref('users/u1/requestedAccess').update({ rcuk: true, at: Date.now() }));
+  await assertSucceeds(user('u1').ref('users/u1').once('value'));
+  // Privilege, in every form a client could try
+  await assertFails(user('u1').ref('users/u1').update({ displayName: 'A', role: 'admin' }));
+  await assertFails(user('u1').ref('users/u1').set({ email: 'a@b.org', status: 'approved' }));
+  await assertFails(user('u1').ref('users/u1/somethingElse').set(1));
+  await assertFails(user('u2').ref('users/u1/requestedAccess').update({ rcuk: true }));
   await assertFails(user('u1').ref('users/u1/role').set('admin'));
   await assertFails(user('u1').ref('users/u1/status').set('approved'));
   await assertFails(user('u1').ref('users/u1/entitlements/rcuk').set(true));
