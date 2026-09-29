@@ -135,6 +135,36 @@ test.describe('Defib Sim', () => {
     expect(defibErrors).toEqual([]);
   });
 
+  test('the clock starts itself at the learner\'s first action, so log times move on', async ({ page, context }) => {
+    const code = await openController(page);
+    await startDefibSim(page, 'vf-arrest');
+    await expect(page.getByTestId('defib-clock-stopped')).toContainText('The clock has not started');
+    const { defib, errors } = await openDevice(context, code);
+    await defib.click('.mode-label[data-mode="defib"]');
+    await expect.poll(() => page.evaluate(() => window.__simEngine.state.isRunning)).toBe(true);
+    await expect(page.getByTestId('defib-clock-stopped')).toBeHidden();
+    const log = await page.evaluate(() => window.__simEngine.state.log.map(l => l.msg));
+    expect(log.some(m => /^Clock started automatically/.test(m))).toBe(true);
+    // Later presses carry the running clock, not 00:00
+    await expect.poll(() => page.evaluate(() => window.__simEngine.state.time), { timeout: 5000 }).toBeGreaterThan(1);
+    await defib.click('#checkPulseBtn');
+    await expect.poll(() => page.evaluate(() => (window.__simEngine.state.log.filter(l => /Student checked pulse/.test(l.msg)).pop() || {}).simTime)).not.toBe('00:00');
+    expect(errors).toEqual([]);
+  });
+
+  test('a deliberate pause is not undone by a press on the defib', async ({ page, context }) => {
+    const code = await openController(page);
+    await startDefibSim(page, 'vf-arrest');
+    await page.getByRole('button', { name: 'START', exact: true }).click();
+    await page.getByRole('button', { name: 'PAUSE', exact: true }).click();
+    await expect(page.getByTestId('defib-clock-stopped')).toContainText('Paused');
+    const { defib, errors } = await openDevice(context, code);
+    await defib.click('.mode-label[data-mode="defib"]');
+    await expect.poll(() => page.evaluate(() => window.__simEngine.state.log.some(l => /Defibrillator mode: DEFIB/i.test(l.msg)))).toBe(true);
+    expect(await page.evaluate(() => window.__simEngine.state.isRunning)).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
   test('the device asks for a code when opened without one', async ({ page }) => {
     const errors = trackErrors(page);
     await page.goto('/defib/index.html');

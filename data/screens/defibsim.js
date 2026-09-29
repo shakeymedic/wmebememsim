@@ -156,6 +156,15 @@
                     </div>
                 </div>
 
+                {!state.isRunning && !state.isFinished && (
+                    <div role="status" data-testid="defib-clock-stopped" className="flex items-center gap-2 px-3 py-2 rounded border border-amber-600 bg-amber-950/40 text-amber-200 text-xs">
+                        <Lucide icon="clock" className="w-4 h-4 flex-none"/>
+                        {(state.pausedAt === null || state.pausedAt === undefined)
+                            ? <span><b>The clock has not started.</b> Log times stay at {fmt(state.time)} until it does. Press START, or it starts by itself at the learner's first action on the defib.</span>
+                            : <span><b>Paused.</b> Presses are still logged, all at {fmt(state.time)}, until you press START.</span>}
+                    </div>
+                )}
+
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
                     {/* ================= Column 1: patient, monitor, device ================= */}
                     <div className="flex flex-col gap-2 min-w-0">
@@ -349,7 +358,7 @@
                                 {log.map(({ entry, index }) => (
                                     <div key={index} className={`flex gap-2 ${entry.flagged ? 'bg-amber-900/20' : ''}`}>
                                         <button type="button" aria-label={`${entry.flagged ? 'Unflag' : 'Flag'} log entry at ${entry.simTime}`} onClick={() => sim.dispatch({ type: 'TOGGLE_FLAG', payload: index })} className={entry.flagged ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}><Lucide icon="flag" className="w-3 h-3"/></button>
-                                        <span className="text-slate-400 flex-none">{entry.simTime}</span>
+                                        <span className="text-slate-400 flex-none" title={entry.time ? `Clock time ${entry.time}` : undefined}>{entry.simTime}</span>
                                         <span className={logClass(entry.type)}>{entry.msg}</span>
                                     </div>
                                 ))}

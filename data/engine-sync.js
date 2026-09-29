@@ -14,9 +14,24 @@
     const useSessionSync = (ctx) => {
         const {
             addLogEntry, analyseRhythm, deliverShock, dispatch, initCharge, isAudioLive, isMonitorMode,
-            lastPayloadRef, postToChannel, sessionID, setDefibEnergy, setDefibMode, simChannel, state,
+            lastPayloadRef, postToChannel, sessionID, setDefibEnergy, setDefibMode, simChannel, start, state,
             stateRef, toggleCPR
         } = ctx;
+
+        // Defib Sim: the clock starts itself at the learner's first action, so a forgotten START
+        // does not leave every event in the log at 00:00. Not after a deliberate facilitator pause
+        // (pausedAt is set only by PAUSE_SIM), and not for display-only presses.
+        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC'];
+        const autoStartClock = (type, p) => {
+            const cur = stateRef.current;
+            if (!cur || !cur.scenario || !cur.scenario.defibSim) return;
+            if (cur.isRunning || cur.isFinished) return;
+            if (cur.pausedAt !== null && cur.pausedAt !== undefined) return;
+            if (PASSIVE_DEVICE_EVENTS.indexOf(type) !== -1) return;
+            if (type === 'DEVICE_MODE' && p && p.mode === 'off') return;
+            addLogEntry('Clock started automatically at the learner\'s first action on the defibrillator.', 'system');
+            start();
+        };
 
         // ONE handler for every press on a learner's defibrillator, however it arrived: over the
         // live session (a tablet anywhere) or the same-browser channel (a defib in another tab).
@@ -26,6 +41,7 @@
             const cur = stateRef.current;
             p = p || {};
             const src = `student (${where})`;
+            autoStartClock(type, p);
             switch (type) {
                 case 'DEVICE_MODE': setDefibMode(p.mode, src); break;
                 case 'ENERGY_SELECT': setDefibEnergy(p.energy, src); break;

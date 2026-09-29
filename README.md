@@ -116,6 +116,10 @@ Sim scenario (`scenario.defibSim`).
   moves on at a shock (and a shock on the last such step converts to sinus rhythm), as in the
   standalone app. Sequences can be saved on the device, exported and imported (the standalone app's
   files import too).
+- **The clock** starts by itself at the learner's first action on the defib (switching it on,
+  charging, analysing, CPR and so on), so a forgotten START does not leave every log entry at 00:00.
+  A deliberate PAUSE is respected: presses are still logged but the clock stays stopped until START.
+  The controller shows a banner whenever the clock is not running.
 - **Education vs Assessment.** In Education the defib shows pulse-check results and the RCUK hint
   cards. In Assessment it shows neither (a real defibrillator tells you neither). The facilitator sees
   the RCUK drug prompts in both modes; the learner never does. For a patient under 18 the hint cards
