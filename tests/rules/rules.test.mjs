@@ -4,7 +4,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import fs from 'node:fs';
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 
-const RULES = fs.readFileSync(new URL('../../database.rules.json', import.meta.url), 'utf8');
+const RULES = fs.readFileSync(new URL('../../database.rules.json', import.meta.url), 'utf8');   // the repository's own file
 const CODE = 'K7PQ3M';
 let env;
 
