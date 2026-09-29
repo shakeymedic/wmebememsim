@@ -28,7 +28,7 @@ const OUT = path.join(ROOT, 'dist');
 const Babel = require(path.join(ROOT, 'node_modules', '@babel', 'standalone'));
 
 const EXCLUDE = new Set(['node_modules', 'dist', '.git', 'scripts', 'package.json', 'package-lock.json',
-    'netlify.toml', 'tailwind.config.js', '.gitignore', 'README.md']);
+    'netlify.toml', 'tailwind.config.js', '.gitignore', 'README.md', 'tests', '.github']);
 
 const log = (...a) => console.log('[build]', ...a);
 const fail = (msg) => { console.error('[build] FAILED: ' + msg); process.exit(1); };
