@@ -129,3 +129,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
     .softkeys { flex-wrap: wrap; } .softkey { flex: 1 1 40%; }
     .btn-shock { width: 100px; height: 100px; font-size: 17px; }
 }
+
+/* Embedded in the room monitor */
+body.embedded { padding: 8px; }
+body.embedded .zoll-top-link, body.embedded .app-footer { display: none; }
+body.embedded .zoll-device { border-width: 10px; padding: 16px; max-width: none; }

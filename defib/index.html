@@ -137,6 +137,11 @@
     document.addEventListener('DOMContentLoaded', () => {
         const RG = window.RHYTHMS;
         const $ = (id) => document.getElementById(id);
+        // Embedded in the room monitor (its facilitator "Defib" toggle): no logo, footer or
+        // wake-lock notice (the monitor keeps the screen on), and presses are logged as the
+        // monitor's defib.
+        const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
+        if (EMBEDDED) document.body.classList.add('embedded');
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
         // ---- The patient, as the controller last described it -------------------------------
@@ -265,7 +270,7 @@
                 try {
                     fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
                         type: DEVICE_EVENT_TYPE[type] || type, payload: JSON.parse(JSON.stringify(payload || {})),
-                        ts: Date.now(), from: fb.presenceId, device: 'standalone-defib'
+                        ts: Date.now(), from: fb.presenceId, device: EMBEDDED ? 'monitor-defib' : 'standalone-defib'
                     }).catch(() => setMessage('LINK ERROR - PRESS NOT SENT', 'alert'));
                 } catch (e) { console.warn('Device event send failed', e); }
                 return;
@@ -393,6 +398,7 @@
         // and on any tap (some browsers only grant it after a gesture).
         let wakeLock = null;
         async function requestWakeLock() {
+            if (EMBEDDED) return;
             const info = $('wakeInfo');
             if (!('wakeLock' in navigator)) { info.textContent = 'SCREEN MAY SLEEP'; return; }
             if (document.visibilityState !== 'visible' || (wakeLock && !wakeLock.released)) return;

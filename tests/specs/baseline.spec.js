@@ -84,3 +84,25 @@ test('a device heartbeat does not re-deliver the patient to the room monitor', a
   await monitor.waitForTimeout(800);
   expect(await monitor.evaluate(() => window.__monitorEngine.state.lastUpdate)).toBe(before);
 });
+
+test('the facilitator\'s Defib toggle opens the full defibrillator on the room monitor', async ({ page, context }) => {
+  await useFakeFirebase(context);
+  const code = await openController(page);
+  await startQuickSim(page);
+  await page.getByRole('button', { name: /^Coarse VF/ }).click();
+  const monitor = await context.newPage();
+  const monitorErrors = trackErrors(monitor);
+  await monitor.goto(`/index.html?mode=monitor&session=${code}`);
+  await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_DEFIB_PANEL', payload: true }));
+  await expect(monitor.getByTestId('monitor-defib')).toBeVisible();
+  const dev = monitor.frameLocator('iframe[title="Defibrillator"]');
+  await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  await expect(dev.locator('.app-footer')).toBeHidden();               // embedded layout
+  await dev.locator('.mode-label[data-mode="defib"]').click();
+  await dev.locator('#chargeBtn').click();
+  await expect(dev.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
+  await dev.locator('#shockBtn').click();
+  await expect.poll(() => live(page, code, '/defib/shockCount')).toBe(1);
+  expect(await page.evaluate(() => window.__simEngine.state.log.some(l => /\(student \(monitor defib\)\)/.test(l.msg)))).toBe(true);
+  expect(monitorErrors).toEqual([]);
+});
