@@ -401,7 +401,19 @@
                     </main>
 
                     {/* Footer */}
-                    <footer className="bg-slate-950 border-t border-slate-800 p-1 text-center text-[10px] text-slate-400 flex-shrink-0">
+                    {/* The instructor guides (static pages in guides/) sit at the far left; the
+                        controller layout is never shown on the room monitor or the defib. */}
+                    <footer className="bg-slate-950 border-t border-slate-800 px-2 py-1 text-center text-[10px] text-slate-400 flex-shrink-0 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 md:grid md:grid-cols-[1fr_auto_1fr]">
+                        <p className="md:justify-self-start" data-testid="guide-links">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-amber-600/70 bg-amber-950/50 text-amber-300">
+                                <span className="font-bold uppercase tracking-wider">Instructor guides:</span>
+                                <a href="guides/quick-start.html" target="_blank" rel="noopener" className="underline hover:text-white">Quick start</a>
+                                <span aria-hidden="true">&middot;</span>
+                                <a href="guides/instructor-guide.html" target="_blank" rel="noopener" className="underline hover:text-white">Full guide</a>
+                                <span aria-hidden="true">&middot;</span>
+                                <a href="guides/index.html" target="_blank" rel="noopener" className="underline hover:text-white">PDFs</a>
+                            </span>
+                        </p>
                         <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>
                     </footer>
                 </div>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick Start Guide · EM Evidence Sim</title>
+<meta name="description" content="How to set up, run and debrief a simulation with EM Evidence Sim, in five steps.">
+<link rel="stylesheet" href="guides.css">
+</head>
+<body>
+<header class="bar">
+    <div class="bar-inner">
+        <a class="brand" href="../index.html">EM Evidence Sim</a>
+        <nav aria-label="Guides">
+            <a href="index.html">All guides</a>
+            <a href="instructor-guide.html">Full Instructor Guide</a>
+            <a href="EM-Evidence-Sim-Quick-Start-Guide.pdf" download>Download PDF</a>
+        </nav>
+    </div>
+</header>
+<main>
+<h1>Quick Start Guide</h1>
+<p class="byline">EM Evidence Sim · for instructors running scenarios · updated 1 October 2026</p>
+
+<h2 id="what-you-need">What you need</h2>
+<p>You can run a simulation with one laptop and one screen the team can see. Everything runs in a web browser at <a href="https://wmebemsim.netlify.app">wmebemsim.netlify.app</a>; there is nothing to install.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Device</th><th>Who uses it</th><th>Needed?</th></tr></thead>
+<tbody>
+<tr><td>Laptop or tablet: the <strong>instructor screen</strong></td><td>You, out of the team's sight</td><td>Always</td></tr>
+<tr><td>A second screen, TV, projector or device: the <strong>room monitor</strong></td><td>The team</td><td>Always</td></tr>
+<tr><td>A tablet: the <strong>defib</strong></td><td>The team</td><td>Only for Defib Sim, or if you want the team to use a defibrillator</td></tr>
+</tbody>
+</table></div>
+<ul>
+<li>Every device needs an internet connection. The screens link to each other online using a session code.</li>
+<li>Sound (alarms and beeps) plays on the room monitor by default, so turn its volume up.</li>
+<li>You do not need to sign in to run the built-in scenarios.</li>
+</ul>
+
+<h2 id="step-1">Step 1: Open the app</h2>
+<ol>
+<li>On your laptop, open <a href="https://wmebemsim.netlify.app">wmebemsim.netlify.app</a>.</li>
+<li>Note the six-character <strong>Session Code</strong> (for example K7PQ3M). It is shown on the setup screen and in the top right corner as "Session ID".</li>
+<li>The code is what links the room monitor and the defib to your screen. Each group can keep the same code all day.</li>
+</ol>
+<p>Starting with a new group? Press <strong>New code</strong>. Any monitor or defib still on the old code will need to join again.</p>
+
+<h2 id="step-2">Step 2: Choose a scenario</h2>
+<p>Pick a tab on the setup screen. For most teaching, use <strong>Premade</strong>.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Tab</th><th>Use it for</th><th>How to start</th></tr></thead>
+<tbody>
+<tr><td><strong>Premade</strong></td><td>A ready-written scenario (anaphylaxis, sepsis, trauma, paediatrics and more)</td><td>Pick a category, press <strong>Load</strong>, read the brief, press <strong>Start Scenario</strong></td></tr>
+<tr><td><strong>Quick Sim</strong></td><td>A blank patient you control by hand, for ad-hoc bedside teaching</td><td>Set age, weight and starting rhythm, press <strong>Start Quick Sim</strong></td></tr>
+<tr><td><strong>Defib Sim</strong></td><td>Defibrillation, cardioversion and pacing skills on the defib tablet</td><td>Pick Education or Assessment, pick a scenario, press <strong>Start Defib Sim</strong></td></tr>
+<tr><td><strong>Random</strong></td><td>A generated patient from a category and acuity you choose</td><td>Press <strong>Generate Scenario</strong>, then start it</td></tr>
+<tr><td><strong>Custom / Builder</strong></td><td>Scenarios you have written or imported</td><td>Load or build one, then start it</td></tr>
+</tbody>
+</table></div>
+<p>The brief shown before <strong>Start Scenario</strong> has the patient story, equipment, expected progression, key interventions and learning objectives. Read it before the team comes in.</p>
+
+<h2 id="step-3">Step 3: Set up the room monitor (and defib)</h2>
+<p><strong>Room monitor on a second screen plugged into your laptop:</strong> press <strong>Launch Monitor</strong> on the setup screen, or <strong>Screens → Launch room monitor</strong> once the scenario is running. It opens in a new window; drag it onto the second screen and make it full screen.</p>
+<p><strong>Room monitor or defib on a separate device:</strong> press <strong>Screens → Join by QR code</strong> and scan the code with that device's camera. No camera? For the monitor, open the site on the device, press <strong>Join Another Session</strong>, type the code and press <strong>Connect</strong>. For the defib, open wmebemsim.netlify.app/defib/ and type the code.</p>
+<p>Then:</p>
+<ol>
+<li>On the room monitor, tap <strong>Tap to Enable Sound</strong>. Browsers block sound until someone taps the screen.</li>
+<li>Check the badge at the top of your instructor screen. It should read <strong>Live</strong> and name the linked screen (for example "Live · patient monitor").</li>
+</ol>
+
+<h2 id="step-4">Step 4: Run the scenario</h2>
+<p>You play the patient. When the team does something, you press the matching button, and the monitor and patient respond.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>When the team…</th><th>You press…</th></tr></thead>
+<tbody>
+<tr><td>Puts on ECG, sats, cuff and temperature probe</td><td><strong>Attach</strong> on the Monitoring &amp; access bar. Until then the room monitor shows no numbers</td></tr>
+<tr><td>Asks for a blood pressure</td><td><strong>Cycle NIBP</strong>. The room monitor only shows a new BP when the cuff cycles</td></tr>
+<tr><td>Gives a drug or does a procedure</td><td>Find it in the search box or the tabs (Common, Drugs, Airway…) and tap it</td></tr>
+<tr><td>Does something that should change a vital sign</td><td>Tap that vital's tile, type the new value, choose <strong>Now</strong>, 30 s, 2 min or 5 min, then <strong>Confirm</strong></td></tr>
+<tr><td>Lets the patient arrest</td><td><strong>ARREST ▾</strong> and choose the rhythm</td></tr>
+<tr><td>Gets the patient back</td><td><strong>ROSC ▾</strong></td></tr>
+</tbody>
+</table></div>
+<p>Also useful:</p>
+<ul>
+<li><strong>PAUSE / START</strong> (or the space bar) stops and starts the clock.</li>
+<li><strong>Patient condition</strong> shows whether the patient gets worse on their own (AUTO) or only when you change things (MANUAL). <strong>Better</strong> and <strong>Worse</strong> nudge the whole patient.</li>
+<li><strong>Event log</strong> (bottom right) records everything with a time. Type a note and press <strong>Add note</strong>, or tap the flag beside any entry to discuss it later.</li>
+<li><strong>Simple / Full</strong> (top bar): Simple hides the advanced controls. Use Full when you need them.</li>
+</ul>
+
+<h2 id="step-5">Step 5: Finish and debrief</h2>
+<ol>
+<li>Press <strong>Finish</strong> and confirm. The debrief screen opens on your laptop.</li>
+<li>Use it to lead the debrief:
+    <ul>
+    <li><strong>Performance Summary</strong>: which learning objectives were met, partly done or not done.</li>
+    <li><strong>Vitals Trend &amp; Interventions</strong>: a graph of the obs with each treatment marked.</li>
+    <li><strong>Flagged events</strong>: the log entries you flagged.</li>
+    <li><strong>Session Replay</strong>: drag the slider to show the obs at any point in the scenario.</li>
+    <li><strong>Simulation Log</strong>: every action with its time.</li>
+    </ul>
+</li>
+<li>Press <strong>Download Report</strong> to keep a copy, or <strong>Print</strong>. <strong>Certificate</strong> (Defib Sim only) makes a certificate of completion for the learner.</li>
+<li>Press <strong>Exit to Menu</strong> to set up the next scenario. The room monitor and defib stay linked.</li>
+</ol>
+
+<h2 id="quick-fixes">Quick fixes</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Room monitor shows no numbers</td><td>The team has not "attached" monitoring yet. Press <strong>Attach</strong> on the Monitoring &amp; access bar</td></tr>
+<tr><td>No sound</td><td>Tap <strong>Tap to Enable Sound</strong> on the room monitor and check its volume. <strong>Tools → Sound plays on</strong> chooses which screen plays it</td></tr>
+<tr><td>Badge says <strong>Sync error</strong></td><td>Check the internet connection on each device</td></tr>
+<tr><td>Room monitor or defib not following your changes</td><td>Check it has the same session code as your laptop; join again if not</td></tr>
+<tr><td>Instructor tab closed by mistake</td><td>Reopen the site and press <strong>Resume</strong> under "Resume Previous?"</td></tr>
+<tr><td>Defib Sim log times stuck at 00:00</td><td>The clock has not started. Press <strong>START</strong>, or it starts at the learner's first press on the defib</td></tr>
+</tbody>
+</table></div>
+<p><strong>Keyboard shortcuts:</strong> <kbd>Space</kbd> = pause or start; <kbd>F</kbd> = finish; <kbd>D</kbd> = drug calculator; <kbd>T</kbd> = timer alerts; <kbd>?</kbd> = list of shortcuts. If a shortcut does nothing, click an empty part of the screen first.</p>
+<p>For everything else, see the <a href="instructor-guide.html">Full Instructor Guide</a>.</p>
+</main>
+<footer>EM Evidence Sim · <a href="../index.html">Open the simulator</a> · <a href="index.html">All guides</a></footer>
+</body>
+</html>
