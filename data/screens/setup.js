@@ -453,7 +453,16 @@
                     </div>
                 </div>
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
-                    <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-1">
+                        <p className="font-bold text-sky-400">Sim Setup Guide:</p>
+                        {/* The instructor guides are static pages in guides/ (with PDFs), opened in a new tab
+                            so a running setup is never lost. */}
+                        <p className="text-xs" data-testid="guide-links">
+                            <a href="guides/quick-start.html" target="_blank" rel="noopener" className="text-sky-300 underline hover:text-white">Quick start guide</a>
+                            <span className="text-slate-500 mx-2" aria-hidden="true">|</span>
+                            <a href="guides/instructor-guide.html" target="_blank" rel="noopener" className="text-sky-300 underline hover:text-white">Full instructor guide</a>
+                        </p>
+                    </div>
                     <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Defib Sim</strong> trains defibrillator skills on a tablet defib. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
                 </div>
                 {savedState && (

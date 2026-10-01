@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Full Instructor Guide · EM Evidence Sim</title>
+<meta name="description" content="Everything an instructor needs to set up, run and debrief a scenario with EM Evidence Sim.">
+<link rel="stylesheet" href="guides.css">
+</head>
+<body>
+<header class="bar">
+    <div class="bar-inner">
+        <a class="brand" href="../index.html">EM Evidence Sim</a>
+        <nav aria-label="Guides">
+            <a href="index.html">All guides</a>
+            <a href="quick-start.html">Quick Start Guide</a>
+            <a href="EM-Evidence-Sim-Full-Instructor-Guide.pdf" download>Download PDF</a>
+        </nav>
+    </div>
+</header>
+<main>
+<h1>Full Instructor Guide</h1>
+<p class="byline">EM Evidence Sim · updated 1 October 2026</p>
+<p class="lead">This guide explains everything an instructor needs to set up, run and debrief a scenario. New to the app? Start with the <a href="quick-start.html">Quick Start Guide</a>.</p>
+
+<nav class="toc" aria-label="Contents">
+<strong>Contents</strong>
+<ol>
+<li><a href="#at-a-glance">At a glance</a></li>
+<li><a href="#before">Before the session</a></li>
+<li><a href="#codes">Session codes and linking screens</a></li>
+<li><a href="#choosing">Choosing a scenario</a></li>
+<li><a href="#tour">A tour of the instructor screen</a></li>
+<li><a href="#running">Running the patient</a></li>
+<li><a href="#arrests">Arrests, rhythms and the defibrillator</a></li>
+<li><a href="#defib-sim">Running a Defib Sim</a></li>
+<li><a href="#paediatric">Paediatric scenarios</a></li>
+<li><a href="#log">The event log, notes and flags</a></li>
+<li><a href="#debrief">Finishing and the debrief</a></li>
+<li><a href="#tools">Tools, sound and shortcuts</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+</ol>
+</nav>
+
+<h2 id="at-a-glance">At a glance</h2>
+<p>A simulation uses up to three screens, all linked online by one six-character session code.</p>
+<figure>
+<svg viewBox="0 0 760 290" role="img" aria-label="One session code links every screen" font-size="13" font-family="system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+    <defs><marker id="link-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#94a3b8"/></marker></defs>
+    <text x="24" y="34" font-size="15" font-weight="600" fill="#0f172a">One session code links every screen</text>
+    <text x="24" y="54" font-size="11.5" fill="#475569">Changes you make reach the team's screens; every press on the defib comes back to you</text>
+    <g fill="none" stroke="#94a3b8" stroke-width="1.25">
+        <path d="M232 165H290" marker-start="url(#link-arrow)" marker-end="url(#link-arrow)"/>
+        <path d="M470 150H495V105H520" marker-start="url(#link-arrow)" marker-end="url(#link-arrow)"/>
+        <path d="M470 180H495V225H520" marker-start="url(#link-arrow)" marker-end="url(#link-arrow)"/>
+    </g>
+    <rect x="20" y="129" width="212" height="72" rx="8" fill="#e0f2fe" stroke="#0369a1" stroke-width="2"/>
+    <text x="32" y="153" font-weight="600" fill="#0f172a">Instructor screen</text>
+    <text x="32" y="171" font-size="11.5" fill="#475569">Your laptop, out of sight</text>
+    <text x="32" y="187" font-size="11.5" fill="#475569">You drive the patient</text>
+    <rect x="290" y="137" width="180" height="56" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="380" y="161" text-anchor="middle" font-weight="600" fill="#0f172a">Session code</text>
+    <text x="380" y="179" text-anchor="middle" font-size="11.5" fill="#475569">e.g. K7PQ3M, online</text>
+    <rect x="520" y="69" width="212" height="72" rx="8" fill="none" stroke="#94a3b8" stroke-width="1.25"/>
+    <text x="532" y="93" font-weight="600" fill="#0f172a">Room monitor</text>
+    <text x="532" y="111" font-size="11.5" fill="#475569">The team watches it</text>
+    <text x="532" y="127" font-size="11.5" fill="#475569">Obs, waveforms, alarms</text>
+    <rect x="520" y="189" width="212" height="72" rx="8" fill="none" stroke="#94a3b8" stroke-width="1.25" stroke-dasharray="5 4"/>
+    <text x="532" y="213" font-weight="600" fill="#0f172a">Defib tablet (optional)</text>
+    <text x="532" y="231" font-size="11.5" fill="#475569">The team uses it</text>
+    <text x="532" y="247" font-size="11.5" fill="#475569">Every press is logged for you</text>
+</svg>
+<figcaption>How the screens link: three devices, one session code.</figcaption>
+</figure>
+<p>You drive the patient from the instructor screen. The room monitor shows the team only what they have attached. The defib tablet, if used, sends every press back to your event log.</p>
+
+<h2 id="before">Before the session</h2>
+<p>Allow 10 minutes to set up the screens and test them before the team arrives.</p>
+<h3>Equipment</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Device</th><th>Role</th><th>Where it goes</th></tr></thead>
+<tbody>
+<tr><td>Laptop or tablet</td><td>Instructor screen: you drive the patient from here</td><td>Out of the team's sight, ideally where you can see the room</td></tr>
+<tr><td>Second screen, TV, projector or device</td><td>Room monitor: the patient monitor the team watches</td><td>Where a real monitor would be, visible to the whole team</td></tr>
+<tr><td>Tablet (optional)</td><td>Defibrillator</td><td>At the bedside, for Defib Sim or any scenario that needs a defib</td></tr>
+<tr><td>Speakers (optional)</td><td>Alarms and monitor beeps</td><td>Next to the room monitor</td></tr>
+</tbody>
+</table></div>
+<p>All devices need an internet connection, and any up-to-date web browser. You do not need an account to run the built-in scenarios.</p>
+<h3>Pre-flight checklist</h3>
+<ul class="checklist">
+<li>Open <a href="https://wmebemsim.netlify.app">wmebemsim.netlify.app</a> on the instructor laptop and note the session code</li>
+<li>Open the room monitor and tap <strong>Tap to Enable Sound</strong></li>
+<li>Link the defib tablet, if you are using one</li>
+<li>Check the badge on the instructor screen reads <strong>Live</strong> and names the linked screens</li>
+<li>Load your scenario and read its brief</li>
+<li>Turn the room monitor's volume up and check you can hear an alarm</li>
+<li>Change one vital sign and check the room monitor follows</li>
+</ul>
+
+<h2 id="codes">Session codes and linking screens</h2>
+<p>The six-character session code (for example K7PQ3M) links every screen in one simulation. It never uses look-alike characters (no 0/O or 1/I/L), so it is easy to read out. It shows on the setup screen and as "Session ID" in the top right corner.</p>
+<ul>
+<li><strong>Same code all day:</strong> one code can run any number of scenarios with the same group. The linked screens stay linked between scenarios.</li>
+<li><strong>New code:</strong> press <strong>New code</strong> on the setup screen for a new group. Screens on the old code must join again.</li>
+</ul>
+<h3>Ways to link a screen</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Screen</th><th>On the same laptop</th><th>On a separate device</th></tr></thead>
+<tbody>
+<tr><td>Room monitor</td><td><strong>Launch Monitor</strong> (setup screen) or <strong>Screens → Launch room monitor</strong>. Opens a new window to drag onto the second screen</td><td>Scan the QR code from <strong>Screens → Join by QR code</strong>, or open the site, press <strong>Join Another Session</strong>, type the code, press <strong>Connect</strong></td></tr>
+<tr><td>Defib tablet</td><td><strong>Screens → Open defib tablet</strong> (not offered in Quick Sim). A defib opened in another tab of the same browser links without a code</td><td>Scan the defibrillator QR code from <strong>Screens → Join by QR code</strong>, or open wmebemsim.netlify.app/defib/ and type the code</td></tr>
+</tbody>
+</table></div>
+<p><strong>Checking the link:</strong> the badge in the instructor top bar shows the connection.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Badge</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>Live · no screens linked</td><td>Your session is online but nothing has joined yet</td></tr>
+<tr><td>Live · patient monitor (or "2 screens linked")</td><td>Linked and working</td></tr>
+<tr><td>Syncing</td><td>Connecting; wait a few seconds</td></tr>
+<tr><td>Sync error</td><td>The connection has failed; check the internet</td></tr>
+</tbody>
+</table></div>
+<p>Hover over the badge to see each linked screen and when it was last heard from.</p>
+
+<h2 id="choosing">Choosing a scenario</h2>
+<p>The setup screen has a tab for each way to start. Premade covers most teaching; Defib Sim is for defibrillator skills.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Tab</th><th>What you get</th><th>Best for</th></tr></thead>
+<tbody>
+<tr><td><strong>Premade</strong></td><td>254 written scenarios in 8 categories: Adult Medical, Trauma, Paediatric, Cardiac Arrest, Toxicology, Obs &amp; Gynae, Elderly, Psychiatric</td><td>Planned teaching with set objectives</td></tr>
+<tr><td><strong>Quick Sim</strong></td><td>A blank patient: you set age, weight, sex, name and starting rhythm. No scenario, drugs or scoring</td><td>Ad-hoc teaching, rhythm recognition, obs drills</td></tr>
+<tr><td><strong>Defib Sim</strong></td><td>Defibrillation, cardioversion and pacing on the defib tablet, with its own controller</td><td>Defib skills and assessment (see <a href="#defib-sim">Running a Defib Sim</a>)</td></tr>
+<tr><td><strong>Random</strong></td><td>A generated patient from your choice of category, age group and acuity</td><td>Unpredictable cases for experienced teams</td></tr>
+<tr><td><strong>Custom</strong></td><td>Scenarios you have saved or imported as a file</td><td>Your own material</td></tr>
+<tr><td><strong>Builder</strong></td><td>A form to write a scenario field by field</td><td>Writing new scenarios</td></tr>
+<tr><td><strong>Restricted</strong></td><td>Copyright-restricted scenarios (for example RCUK)</td><td>Only if your account has been given access</td></tr>
+</tbody>
+</table></div>
+<p><strong>Human factors.</strong> Random and Builder can add a challenge: Blindfolded Lead, Silent Team, New Junior, Missing Kit or Distracted Senior. It shows as a badge on your screen so you can brief the right person.</p>
+<p><strong>Paediatric scenarios.</strong> Tick <strong>Show WETFLAG on Monitor</strong> on the setup screen to show the weight-based WETFLAG values on the room monitor.</p>
+<p><strong>The brief.</strong> Loading a Premade, Random or Custom scenario opens a brief before anything starts:</p>
+<ul>
+<li><strong>Patient Brief:</strong> name, history, medicines and allergies</li>
+<li><strong>Required Equipment</strong></li>
+<li><strong>Clinical Progression:</strong> how the scenario is expected to unfold</li>
+<li><strong>Key Interventions</strong> the team should perform</li>
+<li><strong>Guidelines &amp; Resources</strong></li>
+<li><strong>Learning Objectives:</strong> what the debrief scores against</li>
+</ul>
+<p>Press <strong>Start Scenario</strong> to begin, or <strong>Back to Setup</strong> to choose another.</p>
+<p><strong>Resume Previous?</strong> If the instructor tab was closed during a scenario, the setup screen offers to resume it. The app saves your progress every few seconds.</p>
+
+<h2 id="tour">A tour of the instructor screen</h2>
+<p>The screen has a top bar, the patient on the left, and treatments and the event log on the right. Drag the divider between the columns to widen either side.</p>
+<h3>Top bar</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Control</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><strong>Back</strong></td><td>Returns to the setup screen</td></tr>
+<tr><td><strong>Finish</strong></td><td>Ends the scenario and opens the debrief (asks you to confirm)</td></tr>
+<tr><td><strong>PAUSE / START</strong></td><td>Stops or restarts the clock</td></tr>
+<tr><td>Connection badge</td><td>Shows the session is live and which screens are linked</td></tr>
+<tr><td><strong>Safety flags</strong></td><td>Appears when the team does something out of the usual order; opens the list</td></tr>
+<tr><td><strong>Muted</strong></td><td>Appears in red while alarms are muted; press to unmute</td></tr>
+<tr><td><strong>Simple / Full</strong></td><td>Hides or shows the advanced controls (below)</td></tr>
+<tr><td><strong>Screens ▾</strong></td><td>Launch room monitor, Join by QR code, Open defib tablet</td></tr>
+<tr><td><strong>Tools ▾</strong></td><td>Drug calculator, Timer alerts, Full simulation log, where sound plays, Mute alarms, Keyboard shortcuts</td></tr>
+</tbody>
+</table></div>
+<h3>Left column: the patient</h3>
+<p>Each grey bar is a section. Click its title to open or close it; a closed section shows a one-line summary. The app remembers which sections you keep open on that device.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Section</th><th>Starts</th><th>Contains</th></tr></thead>
+<tbody>
+<tr><td>Patient details</td><td>Always shown</td><td>Name, age, scenario, diagnosis, story, any human factors challenge</td></tr>
+<tr><td>Monitoring &amp; access</td><td>Closed</td><td>What is attached (ECG, sats, cuff, temperature, capnography, arterial line, IV access); <strong>Attach</strong> stays on the bar</td></tr>
+<tr><td>Monitor strip and vitals</td><td>Always shown</td><td>The waveforms, <strong>Show timer</strong>, <strong>Change rhythm</strong>, and tiles for HR, BP, SpO2, RR, Temp and ETCO2</td></tr>
+<tr><td>More obs</td><td>Open</td><td>GCS and glucose (plus pH and K+ in Full view)</td></tr>
+<tr><td>Drugs on board</td><td>Open, once a drug is given</td><td>Each drug's phase, strength and time left</td></tr>
+<tr><td>Patient condition</td><td>Closed</td><td>AUTO or MANUAL deterioration; <strong>Better</strong> and <strong>Worse</strong> stay on the bar</td></tr>
+<tr><td>Rhythm &amp; resus</td><td>Open</td><td>ARREST, ROSC, Arrest View, Defib, Cycle NIBP, Manual Reading, and the rhythm and shock tally</td></tr>
+</tbody>
+</table></div>
+<h3>Right column: treatments and the log</h3>
+<ul>
+<li><strong>Search</strong> finds any treatment by name or route (for example "IM").</li>
+<li><strong>Tabs:</strong> Common, Drugs, Airway, Breathing, Circulation, Procedures, Investigations, Voice and Assessment. In Common, the scenario's <strong>Recommended actions</strong> sit at the top in an amber box.</li>
+<li><strong>Voice:</strong> type what the patient says and press <strong>Speak</strong>; it is read aloud on whichever screen plays sound.</li>
+<li><strong>Assessment:</strong> tick or cross Safe Approach, Team Leadership, Communication, CPR Quality, Defib Safety and Re-evaluation as you watch.</li>
+<li><strong>Event log</strong> (bottom): always on screen; see <a href="#log">The event log, notes and flags</a>.</li>
+</ul>
+<h3>Simple and Full view</h3>
+<p>Simple is the default and is remembered on each device. It hides:</p>
+<ul>
+<li>the drug-timing detail lines in Drugs on board</li>
+<li>the "+ Invasive" button that attaches IV access, an arterial line and capnography in one go (the separate buttons stay)</li>
+<li>the pH and K+ tiles</li>
+<li>the defib's shock-response settings and "Next shock converts to" (one line shows what is set; click it to switch to Full)</li>
+<li>the Quick Sim preset list (a preset that is running stays on screen)</li>
+</ul>
+<p>Nothing is removed in either view.</p>
+<p><strong>On a phone,</strong> the obs tiles, rhythm, clock and START/PAUSE sit at the top, and the page scrolls.</p>
+
+<h2 id="running">Running the patient</h2>
+<p>You mirror what the team does: they act in the room, you press the matching control, and the patient and room monitor respond.</p>
+<h3>Monitoring and access</h3>
+<p>The room monitor only shows what the team has attached. Open Monitoring &amp; access to see a chip for each item.</p>
+<ul>
+<li>Click a chip to attach it (○) or remove it (●). Removing one blanks its trace and number on the room monitor. Every change is logged.</li>
+<li><strong>Attach</strong> puts on the standard four: ECG, SpO2 probe, NIBP cuff and temperature probe. Capnography, the arterial line and IV access are separate, deliberate steps.</li>
+<li><strong>Remove all</strong> takes every monitor off. IV access stays, because it is a route, not a monitor.</li>
+<li><strong>POC glucose</strong> and <strong>POC VBG</strong> take a one-off reading at that moment. Click again to take a new one.</li>
+</ul>
+<h3>Vital signs</h3>
+<p>Your tiles always show the patient's true values, even when the team cannot see them; "not on monitor" means the team cannot see that number yet.</p>
+<ol>
+<li>Click a vital's tile.</li>
+<li>Type the new value. For ETCO2 you can also pick the capnogram shape: Auto, Obstructive or Force normal.</li>
+<li>Under <strong>Get there</strong>, choose <strong>Now</strong>, <strong>30 s</strong>, <strong>2 min</strong> or <strong>5 min</strong> for a gradual change.</li>
+<li>Press <strong>Confirm</strong>.</li>
+</ol>
+<p>A heart rate you set yourself is kept if you later change the rhythm. ARREST and ROSC reset it.</p>
+<h3>Blood pressure</h3>
+<p>The room monitor shows a new BP only when the cuff cycles, as in real life. Press <strong>Cycle NIBP</strong> when the team asks for one, or tick "Cycle the NIBP cuff so the team sees it" when you set a BP with <strong>Now</strong>. An arterial line, once attached, shows the BP continuously. <strong>Manual Reading</strong> shows a one-off cuff reading on the room monitor without changing the patient (for example a spurious reading).</p>
+<h3>Treatments and drugs</h3>
+<p>Find the treatment by search or tab and click it. The app then:</p>
+<ul>
+<li>logs it with the time</li>
+<li>applies its effect over a realistic time course: onset, peak and wearing off</li>
+<li>shows it in <strong>Drugs on board</strong> with its phase (for example ONSET), strength and time left</li>
+<li>for infusions and oxygen, keeps it running until you click it again; use <strong>+</strong> and <strong>−</strong> in Drugs on board to change an infusion's rate</li>
+</ul>
+<p>If the team gives a drug before its prerequisite (for example an IV drug with no IV access), the app records a <strong>safety flag</strong>. Child doses follow the RCUK paediatric guidance (see <a href="#paediatric">Paediatric scenarios</a>).</p>
+<h3>Investigations</h3>
+<p>The team can tap <strong>12-Lead</strong>, <strong>VBG</strong>, <strong>CXR</strong>, <strong>Urine</strong>, <strong>POCUS</strong> or <strong>CT Head</strong> on the room monitor to see results. From the <strong>Investigations</strong> tab you can also send a result yourself: the scenario's own finding, a quick-select finding or one you type.</p>
+<h3>Deterioration</h3>
+<p><strong>Patient condition</strong> shows the mode:</p>
+<ul>
+<li><strong>AUTO:</strong> the patient gets worse on their own, at the rate the scenario sets, unless the team treats them.</li>
+<li><strong>MANUAL:</strong> the obs only change when you change them.</li>
+</ul>
+<p><strong>Better</strong> and <strong>Worse</strong> move the patient towards the scenario's improved or worsened obs over 30 seconds, in either mode. In many scenarios, giving one of the key treatments starts the improvement by itself, and the log says "Patient condition IMPROVING".</p>
+<p><strong>Quick Sim</strong> has no scenario, so it leaves out treatments, drugs, deterioration and scoring. Its right side holds the full rhythm list, presets (Full view), Better and Worse, and the event log.</p>
+
+<h2 id="arrests">Arrests, rhythms and the defibrillator</h2>
+<p>All rhythm and resuscitation controls are in the <strong>Rhythm &amp; resus</strong> section.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Control</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><strong>ARREST ▾</strong></td><td>Pick the arrest rhythm. The obs drop to arrest values and the arrest timer starts</td></tr>
+<tr><td><strong>ROSC ▾</strong></td><td>Pick the post-ROSC rhythm. Circulation returns</td></tr>
+<tr><td><strong>Change rhythm</strong> (above the vitals)</td><td>Change to any rhythm without an arrest or ROSC, for example sinus to AF</td></tr>
+<tr><td><strong>Arrest View</strong></td><td>Switches the room monitor to the two-trace arrest layout (Lead II and pads). It does not open a defib</td></tr>
+<tr><td><strong>Defib</strong></td><td>Opens a working defibrillator on the room monitor, with the obs still visible, and a defib panel on your screen</td></tr>
+</tbody>
+</table></div>
+<p>The panel under these buttons shows the current rhythm (marked shockable, sync cardiovert or pulseless), the number of shocks, total and last energy, and whether CPR is running.</p>
+<p><strong>Using the defib panel on your screen:</strong> choose the energy (the recommended energy is marked), then <strong>Charge</strong> and <strong>SHOCK</strong>. <strong>SYNC</strong> switches synchronised cardioversion on and off. <strong>CPR start/stop</strong> and <strong>Rhythm check +2m</strong> (jump forward two minutes) are there too, with the CPR cycle timer.</p>
+<p><strong>What a shock does.</strong> By default a realistic model decides: the energy, the rhythm, whether CPR is running and the drugs given all count. In Full view you can override it:</p>
+<ul>
+<li><strong>Next shock converts to:</strong> the next shock gives exactly the rhythm you pick.</li>
+<li><strong>Shock response:</strong> converts on the 1st to 5th adequate shock, never (refractory), Auto or the realistic model.</li>
+<li><strong>Unsync shock with a pulse:</strong> whether an unsynchronised shock into a perfusing rhythm causes VF (never, sometimes or always).</li>
+<li><strong>After ROSC:</strong> whether VF comes back.</li>
+<li><strong>Cardioversion succeeds at:</strong> the lowest energy at which cardioversion works.</li>
+</ul>
+<p>When a shock converts the rhythm, or fails to, a pop-up tells you on your screen only. The team never sees it.</p>
+<p><strong>Learner defib on a tablet.</strong> For defib skills with a real-looking device, use the defib tablet (see <a href="#defib-sim">Running a Defib Sim</a>). It works in a normal scenario too: link it with <strong>Screens → Open defib tablet</strong> or the QR code.</p>
+
+<h2 id="defib-sim">Running a Defib Sim</h2>
+<p>In a Defib Sim the learner works a ZOLL-style defibrillator on a tablet, and you run the patient from the <strong>Defib controller</strong>, which replaces the normal instructor screen.</p>
+<h3>Setting it up</h3>
+<ol>
+<li>On the setup screen, choose the <strong>Defib Sim</strong> tab.</li>
+<li>Choose the mode:
+    <ul>
+    <li><strong>Education:</strong> the defib shows pulse-check results and RCUK hint cards.</li>
+    <li><strong>Assessment:</strong> no pulse-check results or hint cards, as on a real defib. Feedback comes in the debrief.</li>
+    </ul>
+</li>
+<li>Choose a scenario: Ventricular Fibrillation, Pulseless VT, VT with a pulse (unstable), SVT with life-threatening features, Fast AF with life-threatening features, Complete heart block, Symptomatic bradycardia, <strong>Free play</strong> (starts in sinus rhythm; you change it), or <strong>Custom scenario</strong>.</li>
+<li>Check age, weight and sex. A patient under 18 gets the paediatric hint cards, energies and drug prompts.</li>
+<li>Press <strong>Start Defib Sim</strong>, then link the tablet with <strong>Join</strong> (QR code) or <strong>Open defib</strong>.</li>
+</ol>
+<p><strong>Custom scenarios</strong> run a sequence of up to five rhythms. Each step moves on at a trigger you pick: on analyse, on shock, on pacing capture, or after 30 s, 60 s or 2 min. Save, Load, Export file and Import file keep sequences on that device or share them. During the run, <strong>Next step</strong> and <strong>Restart sequence</strong> let you move it on by hand.</p>
+<p><strong>The clock.</strong> It starts when you press <strong>START</strong>, or by itself at the learner's first press on the defib. A banner warns you while it is not running. If you <strong>PAUSE</strong>, presses are still logged but the clock stays stopped until you press START.</p>
+<h3>The Defib controller</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Area</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td>Patient</td><td>Who the patient is, plus tags such as Needs SYNC, Needs pacing and the RCUK energy advice</td></tr>
+<tr><td>What the pads show</td><td>The rhythm and obs the defib is showing</td></tr>
+<tr><td>The learner's defib</td><td>A live mirror of the tablet: mode, energy, SYNC, pacer settings and the screen message, plus shocks given</td></tr>
+<tr><td>Rhythm</td><td>Click a rhythm to change it; <strong>All rhythms</strong> shows the full list</td></tr>
+<tr><td>Shock response (closed)</td><td>How shocks resolve, and <strong>Cardioversion succeeds at</strong> (see <a href="#arrests">Arrests, rhythms and the defibrillator</a>)</td></tr>
+<tr><td>Pacing &amp; artefacts (closed)</td><td>The capture threshold (± 5 mA; a pulse needs about 10 mA more), and movement, mains interference or lead-off artefact</td></tr>
+<tr><td>Arrest</td><td>Time in arrest and shocks, the cycle timer, <strong>Start CPR</strong>, <strong>Metronome</strong>, <strong>Rhythm check (+2:00)</strong> and <strong>ROSC</strong></td></tr>
+<tr><td>RCUK prompts</td><td>When adrenaline or amiodarone is due. You see these in both modes; the learner never does</td></tr>
+<tr><td>Drugs (closed)</td><td>Adrenaline, amiodarone, atropine, adenosine, isoprenaline, adrenaline infusion, fentanyl and midazolam</td></tr>
+<tr><td>Event log</td><td>Every press on the defib with its time; add notes and flags</td></tr>
+</tbody>
+</table></div>
+<p>Closed sections show a one-line summary, for example "Never converts · cardioversion at 200 J".</p>
+<p><strong>How shocks resolve by default.</strong> Defib Sim uses <strong>Auto</strong>: an arrest converts on the third adequate shock, and a cardioversion on the first adequate synchronised shock. "Adequate" means at least 150 J for an adult (3 J/kg for a child) to defibrillate, and 70 J (1 J/kg) to cardiovert. These thresholds are simulator settings, not guideline values. An unsynchronised shock into a rhythm with a pulse causes VF.</p>
+<p><strong>Pacing</strong> captures electrically at the scenario's threshold (it varies by up to 15 mA each run) and gives a pulse about 10 mA above it. Demand pacing is inhibited by a faster native rate.</p>
+<p><strong>Debrief.</strong> The debrief lists good practice and areas for improvement: pulse checks, mode, SYNC, energies, time to first shock, drug timing, sedation before cardioversion, analgesia for pacing and capture. <strong>Certificate</strong> prints a certificate of completion.</p>
+
+<h2 id="paediatric">Paediatric scenarios</h2>
+<p>Child scenarios follow the Resuscitation Council UK (RCUK) Guidelines 2025: the Paediatric advanced life support and Paediatric cardiac arrhythmias algorithms, and the Paediatric emergency drug chart.</p>
+<p><strong>WETFLAG.</strong> The brief for a child scenario shows the WETFLAG values worked out from the child's weight. If you do not give a weight, it is estimated from age using the RCUK chart. Tick <strong>Show WETFLAG on Monitor</strong> on the setup screen to show the values to the team as well.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Letter</th><th>Value used</th></tr></thead>
+<tbody>
+<tr><td>W</td><td>Weight in kg</td></tr>
+<tr><td>E</td><td>Defibrillation energy, 4 J/kg</td></tr>
+<tr><td>T</td><td>Tracheal tube size (cuffed and uncuffed), from the RCUK chart</td></tr>
+<tr><td>F</td><td>Fluid bolus 10 ml/kg, up to 500 ml</td></tr>
+<tr><td>L</td><td>Lorazepam 0.1 mg/kg, up to 4 mg</td></tr>
+<tr><td>A</td><td>Adrenaline 10 micrograms/kg, up to 1 mg</td></tr>
+<tr><td>G</td><td>10% glucose 2 ml/kg, up to 50 ml</td></tr>
+</tbody>
+</table></div>
+<p><strong>Doses during the scenario.</strong> When the team gives a drug to a child, the log shows the weight-based dose (for example atropine, adenosine, amiodarone, buccal midazolam, levetiracetam, 10% glucose and calcium gluconate). IM adrenaline for anaphylaxis follows the age bands. <strong>Tools → Drug calculator</strong> works out doses for any weight.</p>
+<p><strong>Shocks for a child.</strong> Defibrillation is 4 J/kg. From the 5th shock in refractory VF or pulseless VT, up to 8 J/kg is accepted without a flag. Cardioversion starts at 1 J/kg and doubles up to 4 J/kg.</p>
+<p><strong>Newborns.</strong> Newborn scenarios show the Newborn life support steps (Guidelines 2025) as prompts in the log.</p>
+
+<h2 id="log">The event log, notes and flags</h2>
+<p>Everything that happens is logged with its scenario time: treatments, obs changes, rhythm changes, shocks, monitoring on or off, and your notes. The log feeds the debrief.</p>
+<ul>
+<li><strong>Where:</strong> the Event log section at the bottom right of the instructor screen, newest first. It stays on screen throughout. <strong>Full log</strong> (or <strong>Tools → Full simulation log</strong>) opens the whole log.</li>
+<li><strong>Add a note:</strong> type in the box under the log and press <strong>Add note</strong>, for example "Team leader identified".</li>
+<li><strong>Add a flagged note:</strong> type the note and press <strong>Flag</strong> instead.</li>
+<li><strong>Flag an existing entry:</strong> click the small flag beside it. Click again to remove the flag.</li>
+</ul>
+<p>Flagged entries are listed under <strong>Flagged events</strong> in the debrief and marked on its graph, so you can find the moments to discuss.</p>
+<p><strong>Safety flags</strong> count sequence deviations: actions done before their usual prerequisite was in place, such as an IV drug before IV access. Nothing is blocked; the team can still do it. When there is at least one, an amber <strong>Safety flags</strong> button appears in the top bar. It opens the list, with arrests, shocks and your flagged moments shown separately as significant events. Safety flags are not used in Quick Sim.</p>
+
+<h2 id="debrief">Finishing and the debrief</h2>
+<p>Press <strong>Finish</strong> (or <kbd>F</kbd>) and confirm. The debrief opens on your laptop only. The room monitor shows "Simulation complete" and asks the team to turn to you, with no score or diagnosis.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Part of the debrief</th><th>What it shows</th></tr></thead>
+<tbody>
+<tr><td>Performance Summary</td><td>Objectives met, the score (fully met, and with partial credit) and the time taken</td></tr>
+<tr><td>Learning Objectives</td><td>Each objective as fully met, partly done or not in place, with the steps behind it</td></tr>
+<tr><td>Vitals Trend &amp; Interventions</td><td>A graph of the obs with each treatment marked; dashed lines mark flagged events</td></tr>
+<tr><td>Flagged events</td><td>The log entries you flagged</td></tr>
+<tr><td>Sequence Deviations</td><td>The safety flags</td></tr>
+<tr><td>Defibrillation &amp; Rhythm</td><td>Shocks, energies and each rhythm change</td></tr>
+<tr><td>Defib Sim feedback</td><td>Defib Sim only: good practice and areas for improvement</td></tr>
+<tr><td>Session Replay</td><td>Drag the slider to show the obs at any moment</td></tr>
+<tr><td>Simulation Log</td><td>Every entry with its time</td></tr>
+<tr><td>Instructor Notes</td><td>A box for your own feedback notes</td></tr>
+</tbody>
+</table></div>
+<p>Quick Sim has no scenario, so it has no score; the graph, log and replay still work.</p>
+<h3>Keeping a copy</h3>
+<ul>
+<li><strong>Download Report</strong> saves the debrief as a web page you can open on any computer, including the log and your instructor notes. Write your notes before you download.</li>
+<li><strong>Print</strong> opens the report ready to print or save as PDF.</li>
+<li><strong>Certificate</strong> (Defib Sim only) asks for the learner's name and prints a certificate of completion.</li>
+</ul>
+<p><strong>Exit to Menu</strong> returns to the setup screen. The session code and any linked screens stay the same, ready for the next scenario.</p>
+
+<h2 id="tools">Tools, sound and shortcuts</h2>
+<p>The <strong>Tools ▾</strong> menu in the top bar holds the extras.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td>Drug calculator (<kbd>D</kbd>)</td><td>Doses for any weight you enter; child doses follow the RCUK chart</td></tr>
+<tr><td>Timer alerts (<kbd>T</kbd>)</td><td>Set a reminder at a scenario time, for example "5 mins: bloods back". It plays a tone, appears in the log, and is marked FIRED</td></tr>
+<tr><td>Full simulation log</td><td>The whole event log in a window</td></tr>
+<tr><td>Sound plays on</td><td>Choose where alarms and the patient's voice play: room monitor (the default), this controller, or both</td></tr>
+<tr><td>Mute / Unmute alarms</td><td>While muted, a red <strong>Muted</strong> button stays in the top bar so alarms are never silently off</td></tr>
+<tr><td>Keyboard shortcuts (<kbd>?</kbd>)</td><td>The list below</td></tr>
+</tbody>
+</table></div>
+<p><strong>Room monitor timer.</strong> <strong>Show Timer</strong>, above the waveforms, puts a timer on the room monitor that you start and pause from your screen. It is useful for the team's own timings.</p>
+<p><strong>Keyboard shortcuts</strong> (they do nothing while a pop-up is open or a box or button is selected; if one does not work, click an empty part of the screen first)</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Key</th><th>Action</th></tr></thead>
+<tbody>
+<tr><td><kbd>Space</kbd></td><td>Pause or start the clock</td></tr>
+<tr><td><kbd>F</kbd></td><td>Finish the scenario</td></tr>
+<tr><td><kbd>D</kbd></td><td>Drug calculator</td></tr>
+<tr><td><kbd>T</kbd></td><td>Timer alerts</td></tr>
+<tr><td><kbd>?</kbd></td><td>Show the shortcuts</td></tr>
+</tbody>
+</table></div>
+
+<h2 id="troubleshooting">Troubleshooting</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Problem</th><th>Likely cause</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Room monitor shows no numbers or "No sensor detected"</td><td>Monitoring not attached yet</td><td>Press <strong>Attach</strong>, or click the chips in Monitoring &amp; access</td></tr>
+<tr><td>A value you set is not on the room monitor</td><td>That sensor is not attached (your tile says "not on monitor")</td><td>Attach it when the team does</td></tr>
+<tr><td>BP on the room monitor has not changed</td><td>The cuff has not cycled</td><td>Press <strong>Cycle NIBP</strong></td></tr>
+<tr><td>No sound</td><td>Sound not enabled, muted, or playing on the other screen</td><td>Tap <strong>Tap to Enable Sound</strong> on the monitor; check for the red <strong>Muted</strong> button; check <strong>Tools → Sound plays on</strong>; check the device's volume</td></tr>
+<tr><td>Badge says Sync error</td><td>The internet connection has dropped</td><td>Check the connection on each device</td></tr>
+<tr><td>Room monitor or defib not following your changes</td><td>It is on a different session code, for example after <strong>New code</strong></td><td>Join it again with the current code</td></tr>
+<tr><td>Defib tablet asks for a code</td><td>It was opened without one</td><td>Type the session code, or scan the QR code from <strong>Join</strong></td></tr>
+<tr><td>Defib Sim log times all 00:00</td><td>The clock has not started</td><td>Press <strong>START</strong>; it also starts at the learner's first press</td></tr>
+<tr><td>Space bar or other shortcut does nothing</td><td>A button, box or pop-up is selected</td><td>Click an empty part of the screen and try again</td></tr>
+<tr><td>Instructor tab closed or crashed</td><td>—</td><td>Reopen the site and press <strong>Resume</strong> under "Resume Previous?"</td></tr>
+<tr><td>The Restricted tab is locked</td><td>Restricted scenarios need an account with access</td><td>Sign in, then use <strong>Request access</strong></td></tr>
+<tr><td>A screen looks out of date after an update</td><td>The browser is showing the old version</td><td>Reload the page</td></tr>
+</tbody>
+</table></div>
+</main>
+<footer>EM Evidence Sim · <a href="../index.html">Open the simulator</a> · <a href="index.html">All guides</a></footer>
+</body>
+</html>

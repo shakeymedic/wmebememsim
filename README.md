@@ -89,6 +89,23 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   artefacts", "Adrenaline 1 · Amiodarone 0"). The RCUK drug prompts sit above Drugs so they show
   while it is closed. Rhythm, Arrest and the event log are always open.
 
+## Instructor guides
+
+`guides/` holds two static pages for instructors, a **Quick Start Guide** and a **Full Instructor
+Guide**, plus a landing page (`guides/index.html`) and an A4 PDF of each. The setup screen links to
+both guides, and the controller's **Tools** menu links to the landing page. The pages are plain HTML
+with `guides/guides.css`, which also holds the print layout.
+
+After editing a guide page, rebuild its PDF so the download matches, then commit both:
+
+```bash
+cd tests && npm ci && cd .. && node scripts/build-guides.mjs
+```
+
+`tests/specs/guides.spec.js` checks the links from the app, every link on the pages (the PDFs
+included) and accessibility. The service worker stores the guide pages for offline use but not the
+PDFs.
+
 ## Launch modes
 
 | Mode | What it does |

@@ -21,6 +21,7 @@
     const Lucide = ({ icon, className, onClick }) => {
         const icons = {
             'activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
+            'book-open': '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
             'chevron-down': '<polyline points="6 9 12 15 18 9"></polyline>',
             'chevron-right': '<polyline points="9 18 15 12 9 6"></polyline>',
             'heart-pulse': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 11H6"/><path d="M12 5l3 6h3"/>',

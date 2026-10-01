@@ -992,7 +992,8 @@
                                 { label: 'Full simulation log', icon: 'list', onClick: () => setShowLogModal(true) },
                                 { label: `Sound plays on: ${audioOutput === 'both' ? 'both' : (audioOutput === 'controller' ? 'this controller' : 'room monitor')}`, icon: 'volume-2', hint: 'change', onClick: cycleAudioOutput },
                                 { label: isMuted ? 'Unmute alarms' : 'Mute alarms', icon: isMuted ? 'volume-2' : 'volume-x', onClick: () => sim.dispatch({type: 'SET_MUTED', payload: !isMuted}) },
-                                { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) }
+                                { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) },
+                                { label: 'Instructor guides', icon: 'book-open', href: 'guides/index.html' }
                             ]} />
                         <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(time)}</div>
                     </div>
