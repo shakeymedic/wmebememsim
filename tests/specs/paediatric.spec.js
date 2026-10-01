@@ -158,7 +158,8 @@ test('the drug calculator gives RCUK paediatric doses (IM adrenaline by age, atr
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByLabel('Age (years)').fill('4');
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
-  await page.getByRole('button', { name: /Drug Calc|Drugs/ }).first().click();
+  await page.getByRole('button', { name: /^Tools/ }).click();
+  await page.getByRole('menuitem', { name: /Drug calculator/ }).click();
   await expect(page.getByLabel('Patient Weight (kg)')).toHaveValue('16');      // RCUK chart, 4 years
   const row = (name) => page.locator('div.justify-between', { has: page.getByText(name, { exact: true }) });
   await expect(row('Adrenaline IM (Anaphylaxis)')).toContainText('0.15 mg');   // by age, not weight

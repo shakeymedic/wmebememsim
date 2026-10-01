@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, expandSection, expect } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..', '..');
 const RULES = JSON.parse(fs.readFileSync(path.join(ROOT, 'database.rules.json'), 'utf8')
@@ -95,6 +95,7 @@ test('everything a controller, room monitor and defib tablet write passes the ru
   await defib.click('[data-pacer-param="output"][data-pacer-dir="5"]');
   await defib.click('#markerBtn');
   await page.getByRole('button', { name: /Metronome/ }).click();
+  await expandSection(page, 'defibPacing');
   await page.locator('[data-artefact="movement"]').click();
   await page.waitForTimeout(1500);
 

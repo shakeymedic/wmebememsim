@@ -1,6 +1,6 @@
 // Resuming a session after a reload, and the downloadable debrief report
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, expandSection, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -12,6 +12,7 @@ test('a running scenario can be resumed after the page is reloaded', async ({ pa
   await page.getByRole('button', { name: 'Start Defib Sim' }).click();
   await page.getByRole('button', { name: 'START', exact: true }).click();
   await page.locator('[data-rhythm="AF"]').click();
+  await expandSection(page, 'defibDrugs');
   await page.locator('[data-drug="Atropine"]').click();
   // The snapshot is written every 5 s
   await expect.poll(() => page.evaluate(() => { try { return JSON.parse(localStorage.getItem('wmebem_sim_state')).rhythm; } catch (e) { return null; } }), { timeout: 15000 }).toBe('AF');

@@ -125,6 +125,19 @@
         const chip = (on, onCls) => `px-2 py-1.5 rounded border text-xs font-bold ${on ? onCls : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`;
         const pulseless = RG.isPulseless(state.rhythm);
         const noise = state.noise || {};
+        const { Section } = window;
+
+        // One-line summaries for the sections that start closed.
+        const dset = state.defibSettings || {};
+        const sr = dset.shockResponse || 'model';
+        const shockSummary = [
+            steps.length > 0 && step && !step.done ? 'custom sequence decides' : (sr === 'model' ? 'Realistic model' : sr === 'auto' ? 'Auto' : sr === 'never' ? 'Never converts' : `Converts on shock ${sr}`),
+            dset.cvEnergy && dset.cvEnergy !== 'default' ? `cardioversion at ${dset.cvEnergy} J` : null,
+            state.queuedRhythm ? `next shock \u2192 ${RG.shortFor(state.queuedRhythm)}` : null
+        ].filter(Boolean).join(' \u00b7 ');
+        const artefactsOn = [['movement', 'movement'], ['interference', 'mains'], ['leadoff', 'lead off']].filter(([k]) => noise[k]).map(([, l]) => l);
+        const pacingSummary = `Threshold ${state.pacingThreshold} mA \u00b7 ${artefactsOn.length ? artefactsOn.join(', ') : 'no artefacts'}`;
+        const drugsSummary = `Adrenaline ${arrest.adrenaline.length} \u00b7 Amiodarone ${arrest.amiodarone.length}`;
 
         return (
             <div className="flex flex-col gap-2 p-2 max-w-[1600px] mx-auto w-full" data-testid="defib-controller">
@@ -258,8 +271,7 @@
                             <button type="button" onClick={() => setShowAllRhythms(!showAllRhythms)} className="mt-2 text-[10px] text-sky-400 hover:text-sky-200 underline">{showAllRhythms ? 'Fewer rhythms' : 'All rhythms'}</button>
                         </div>
 
-                        <div className={card}>
-                            <div className={h}><Lucide icon="zap" className="w-3 h-3"/> Shock response</div>
+                        <Section id="defibShock" tone="card" title="Shock response" summary={shockSummary} defaultOpen={false}>
                             {steps.length > 0 && step && !step.done
                                 ? <p className="text-[11px] text-sky-300 mb-2">The custom sequence decides what a shock does until it completes.</p>
                                 : null}
@@ -286,10 +298,9 @@
                                 ))}
                                 {state.queuedRhythm && <button type="button" onClick={() => sim.setQueuedRhythm(null)} className="ml-2 text-sky-400 underline">clear</button>}
                             </div>
-                        </div>
+                        </Section>
 
-                        <div className={card}>
-                            <div className={h}><Lucide icon="sliders" className="w-3 h-3"/> Pacing and artefacts</div>
+                        <Section id="defibPacing" tone="card" title="Pacing & artefacts" summary={pacingSummary} defaultOpen={false}>
                             <div className="flex items-center justify-between text-xs text-slate-300">
                                 <span>Capture threshold</span>
                                 <span className="flex items-center gap-1">
@@ -304,7 +315,7 @@
                                     <button key={k} type="button" data-artefact={k} aria-pressed={!!noise[k]} onClick={() => sim.setNoise({ [k]: !noise[k] })} className={chip(!!noise[k], 'bg-amber-800 border-amber-400 text-white')}>{label}</button>
                                 ))}
                             </div>
-                        </div>
+                        </Section>
                     </div>
 
                     {/* ================= Column 3: arrest, drugs, log ================= */}
@@ -325,14 +336,14 @@
                             </div>
                         </div>
 
-                        <div className={card}>
-                            <div className={h}><Lucide icon="pill" className="w-3 h-3"/> Drugs</div>
-                            {prompts.length > 0 && (
-                                <div className="mb-2 p-2 rounded border border-amber-600 bg-amber-950/40 text-[11px] text-amber-200 space-y-0.5" data-testid="drug-prompts">
-                                    <div className="font-bold uppercase text-[9px] tracking-widest text-amber-400">RCUK prompts (facilitator only)</div>
-                                    {prompts.map(p => <div key={p}>• {p}</div>)}
-                                </div>
-                            )}
+                        {/* RCUK prompts are time-critical, so they stay on screen while Drugs is closed. */}
+                        {prompts.length > 0 && (
+                            <div className="p-2 rounded border border-amber-600 bg-amber-950/40 text-[11px] text-amber-200 space-y-0.5" data-testid="drug-prompts">
+                                <div className="font-bold uppercase text-[9px] tracking-widest text-amber-400">RCUK prompts (facilitator only)</div>
+                                {prompts.map(p => <div key={p}>• {p}</div>)}
+                            </div>
+                        )}
+                        <Section id="defibDrugs" tone="card" title="Drugs" summary={drugsSummary} defaultOpen={false}>
                             <div className="text-[10px] text-slate-400 mb-1">
                                 Adrenaline {arrest.adrenaline.length ? `${arrest.adrenaline.length} this arrest, last ${lastGiven(arrest.adrenaline)}` : 'not given this arrest'} · Amiodarone {arrest.amiodarone.length ? `${arrest.amiodarone.length} dose${arrest.amiodarone.length > 1 ? 's' : ''}, last ${lastGiven(arrest.amiodarone)}` : 'not given'}
                             </div>
@@ -347,7 +358,7 @@
                                 {drug('Fentanyl', 'Fentanyl (analgesia)')}
                                 {drug('Midazolam', 'Midazolam (sedation)')}
                             </div>
-                        </div>
+                        </Section>
 
                         <div className={`${card} flex flex-col min-h-[14rem] max-h-[26rem]`}>
                             <div className={h}><Lucide icon="list" className="w-3 h-3"/> Event log</div>
