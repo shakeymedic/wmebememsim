@@ -23,7 +23,7 @@ test('the controller works offline after one visit', async ({ page, context }) =
   await expect(page.getByText('Session Code', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
-  await expect(page.getByText('Monitor live').or(page.getByText('Sync error')).or(page.getByText('Syncing')).first()).toBeVisible();
+  await expect(page.getByTestId('connection-badge')).toHaveText(/Live|Sync error|Syncing/);
   await context.setOffline(false);
 });
 

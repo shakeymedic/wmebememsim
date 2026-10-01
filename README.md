@@ -63,6 +63,21 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
 
 ---
 
+## The instructor screen
+
+- **Top bar:** Back, Finish, START/PAUSE, one connection badge (live sync plus which screens are
+  linked), and the clock. **Screens ▾** holds Launch room monitor, Join by QR code and Open defib
+  tablet; **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
+  and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted.
+- **Left column, in expandable sections** that remember whether they are open on each device: Monitoring
+  & access (closed, with a one-line summary and "Attach standard" on its header), the monitor strip
+  with the core obs (HR, BP, SpO2, RR, Temp, ETCO2) and a smaller **More obs** row (GCS, glucose, pH,
+  K+), **Drugs on board** (one list: phase, effect, time left, titration), **Patient condition**
+  (closed; AUTO/MANUAL deterioration, with Trend Better/Worse on its header) and **Rhythm & resus**
+  (arrest, ROSC, arrest view, defib, NIBP and the shock tally).
+- **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
+  actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
+
 ## Launch modes
 
 | Mode | What it does |

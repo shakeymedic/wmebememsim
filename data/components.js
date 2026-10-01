@@ -21,6 +21,8 @@
     const Lucide = ({ icon, className, onClick }) => {
         const icons = {
             'activity': '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>',
+            'chevron-down': '<polyline points="6 9 12 15 18 9"></polyline>',
+            'chevron-right': '<polyline points="9 18 15 12 9 6"></polyline>',
             'heart-pulse': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 11H6"/><path d="M12 5l3 6h3"/>',
             'zap': '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
             'wind': '<path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/><path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>',
@@ -153,6 +155,79 @@
     };
 
 
+
+    // A collapsible section: a header button with a one-line summary while it is closed. Whether
+    // it is open is remembered on this device (best-effort; a blocked localStorage just means the
+    // default applies). `right` holds controls that stay usable while the section is closed.
+    const SECTION_STORE = 'emsim_sections_v1';
+    const readSections = () => { try { return JSON.parse(localStorage.getItem(SECTION_STORE) || '{}') || {}; } catch (e) { return {}; } };
+    const Section = ({ id, title, summary, defaultOpen = true, right = null, children, className = '', tone = 'default' }) => {
+        const [open, setOpen] = useState(() => { const s = readSections(); return typeof s[id] === 'boolean' ? s[id] : defaultOpen; });
+        const toggle = () => setOpen(o => {
+            const next = !o;
+            try { const s = readSections(); s[id] = next; localStorage.setItem(SECTION_STORE, JSON.stringify(s)); } catch (e) { /* not stored */ }
+            return next;
+        });
+        const bodyId = `section-body-${id}`;
+        const tones = {
+            default: 'border-slate-700 bg-slate-900/70',
+            amber: 'border-amber-600/60 bg-amber-950/30',
+            violet: 'border-violet-600/60 bg-slate-800'
+        };
+        return (
+            <section data-section={id} className={`flex-none rounded border ${tones[tone] || tones.default} ${className}`}>
+                <div className="flex items-center gap-2 px-2 py-1.5 min-h-[2rem]">
+                    <button type="button" onClick={toggle} aria-expanded={open} aria-controls={bodyId}
+                            className="flex-1 min-w-0 flex items-center gap-1.5 text-left group">
+                        <Lucide icon={open ? 'chevron-down' : 'chevron-right'} className="w-3.5 h-3.5 flex-none text-slate-400 group-hover:text-white" />
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-300 group-hover:text-white whitespace-nowrap truncate min-w-0 flex-shrink">{title}</span>
+                        {!open && summary ? <span className="text-[11px] text-slate-400 truncate min-w-0">{summary}</span> : null}
+                    </button>
+                    {right}
+                </div>
+                {open && <div id={bodyId} className="px-2 pb-2">{children}</div>}
+            </section>
+        );
+    };
+
+    // A small drop-down menu for the controller's top bar. Items: { label, icon, onClick } or
+    // { label, icon, href } (opened in a new tab, like the buttons they replace). Closes on a
+    // choice, an outside click or Escape.
+    const MenuButton = ({ label, icon, items, className = '', ariaLabel = null }) => {
+        const [open, setOpen] = useState(false);
+        const ref = useRef(null);
+        useEffect(() => {
+            if (!open) return;
+            const onDown = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+            const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+            document.addEventListener('pointerdown', onDown);
+            document.addEventListener('keydown', onKey);
+            const first = ref.current && ref.current.querySelector('[role="menuitem"]');
+            if (first) first.focus();
+            return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+        }, [open]);
+        const itemClass = 'w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm text-slate-200 hover:bg-slate-700 focus:bg-slate-700 outline-none whitespace-nowrap';
+        return (
+            <div className="relative" ref={ref}>
+                <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={ariaLabel || undefined} onClick={() => setOpen(o => !o)}
+                        className={`h-8 px-2 sm:px-3 rounded font-bold text-sm flex items-center gap-1 border bg-transparent transition-colors ${open ? 'border-slate-400 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400 hover:text-white'} ${className}`}>
+                    {icon && <Lucide icon={icon} className="w-4 h-4" />} {label} <Lucide icon="chevron-down" className="w-3 h-3" />
+                </button>
+                {open && (
+                    <div role="menu" className="absolute right-0 top-9 z-50 min-w-[14rem] bg-slate-800 border border-slate-600 rounded shadow-2xl p-1">
+                        {items.filter(Boolean).map(it => it.href
+                            ? <a key={it.label} role="menuitem" href={it.href} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)} className={itemClass}>
+                                  {it.icon && <Lucide icon={it.icon} className="w-4 h-4 flex-none text-slate-400" />}{it.label}
+                              </a>
+                            : <button key={it.label} type="button" role="menuitem" onClick={() => { setOpen(false); it.onClick(); }} className={itemClass}>
+                                  {it.icon && <Lucide icon={it.icon} className="w-4 h-4 flex-none text-slate-400" />}{it.label}
+                                  {it.hint && <span className="ml-auto pl-3 text-[10px] uppercase text-slate-400">{it.hint}</span>}
+                              </button>)}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     // Shared modal shell: gives every overlay a dialog contract, keeps focus inside it, and restores
     // the invoking control when it closes. The visually-hidden label works even where a modal has a
@@ -647,7 +722,9 @@
                             // true value, and this says whether the team can currently see it too.
                             note,
                             // Phone controller: small tiles so all the obs fit on one screen.
-                            compact = false }) => {
+                            compact = false,
+                            // Controller panel: a little smaller than the room monitor's tiles.
+                            medium = false }) => {
         if (!visible) return (
             <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
                 <span className="text-slate-400 text-xs uppercase">{label} Off</span>
@@ -722,7 +799,9 @@
                 </div>
                 
                 <div className="flex items-baseline justify-center gap-1 h-full mt-2">
-                    <span className={`${hasValue2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl'} font-mono font-bold tracking-tight ${color}`}>
+                    <span className={`${medium
+                            ? (hasValue2 ? 'text-2xl md:text-3xl lg:text-4xl' : 'text-4xl md:text-5xl lg:text-6xl')
+                            : (hasValue2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl')} font-mono font-bold tracking-tight ${color}`}>
                         {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}
                     </span>
                     {trendIcon && <span className="text-xl md:text-3xl text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
@@ -789,6 +868,8 @@
     window.HumanFactorBadge = HumanFactorBadge;
     window.Button = Button;
     window.Modal = Modal;
+    window.Section = Section;
+    window.MenuButton = MenuButton;
     window.Card = Card;
     window.ECGMonitor = ECGMonitor;
     window.VitalDisplay = VitalDisplay;
