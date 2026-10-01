@@ -195,6 +195,9 @@ test('the controller\'s defib panel changes the shock-response settings', async 
   await openController(page);
   await startQuickSim(page);
   await page.getByRole('button', { name: /^Defib$/ }).click();
+  // Simple view (the default) shows one line; it switches to Full to show the settings
+  await expect(page.locator('label', { hasText: 'Converts' })).toHaveCount(0);
+  await page.getByTestId('shock-settings-simple').click();
   const panel = page.locator('label', { hasText: 'Converts' }).locator('select');
   await panel.selectOption('3');
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.defibSettings.shockResponse)).toBe('3');

@@ -66,7 +66,7 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
 ## The instructor screen
 
 - **Top bar:** Back, Finish, START/PAUSE, one connection badge (live sync plus which screens are
-  linked), and the clock. **Screens ▾** holds Launch room monitor, Join by QR code and Open defib
+  linked), the **Simple / Full** switch, and the clock. **Screens ▾** holds Launch room monitor, Join by QR code and Open defib
   tablet; **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
   and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted.
 - **Left column, in expandable sections** that remember whether they are open on each device: Monitoring
@@ -74,9 +74,20 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   with the core obs (HR, BP, SpO2, RR, Temp, ETCO2) and a smaller **More obs** row (GCS, glucose, pH,
   K+), **Drugs on board** (one list: phase, effect, time left, titration), **Patient condition**
   (closed; AUTO/MANUAL deterioration, with Trend Better/Worse on its header) and **Rhythm & resus**
-  (arrest, ROSC, arrest view, defib, NIBP and the shock tally).
+  (arrest, ROSC, arrest view, defib, NIBP and the shock tally). The section titles and summaries are
+  the same Section component everywhere (`data/components.js`).
 - **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
   actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
+- **Simple / Full view** (remembered on each device, Simple by default; every open screen on the
+  device follows a change). Simple hides the advanced extras: the drug-timing detail lines in Drugs on
+  board, the "+ Invasive" bulk button (the individual chips stay), the pH and K+ tiles (GCS and
+  glucose stay), the shock-response settings and "Next shock converts to" in the defib panel (one
+  line says what is set, and opens Full view), and the Quick Sim preset list (a running preset stays
+  on screen so it can be stopped). Nothing is removed in either view.
+- **Defib Sim controller:** Shock response, Pacing & artefacts and Drugs start closed, each with a
+  one-line summary (e.g. "Never converts · cardioversion at 200 J", "Threshold 70 mA · no
+  artefacts", "Adrenaline 1 · Amiodarone 0"). The RCUK drug prompts sit above Drugs so they show
+  while it is closed. Rhythm, Arrest and the event log are always open.
 
 ## Launch modes
 

@@ -172,21 +172,60 @@
         const tones = {
             default: 'border-slate-700 bg-slate-900/70',
             amber: 'border-amber-600/60 bg-amber-950/30',
-            violet: 'border-violet-600/60 bg-slate-800'
+            violet: 'border-violet-600/60 bg-slate-800',
+            card: 'border-slate-700 bg-slate-800'
         };
         return (
             <section data-section={id} className={`flex-none rounded border ${tones[tone] || tones.default} ${className}`}>
                 <div className="flex items-center gap-2 px-2 py-1.5 min-h-[2rem]">
                     <button type="button" onClick={toggle} aria-expanded={open} aria-controls={bodyId}
-                            className="flex-1 min-w-0 flex items-center gap-1.5 text-left group">
+                            className="flex-1 min-w-0 overflow-hidden flex items-center gap-1.5 text-left group">
                         <Lucide icon={open ? 'chevron-down' : 'chevron-right'} className="w-3.5 h-3.5 flex-none text-slate-400 group-hover:text-white" />
-                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-300 group-hover:text-white whitespace-nowrap truncate min-w-0 flex-shrink">{title}</span>
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-slate-300 group-hover:text-white whitespace-nowrap flex-none">{title}</span>
                         {!open && summary ? <span className="text-[11px] text-slate-400 truncate min-w-0">{summary}</span> : null}
                     </button>
                     {right}
                 </div>
                 {open && <div id={bodyId} className="px-2 pb-2">{children}</div>}
             </section>
+        );
+    };
+
+    // SIMPLE / FULL VIEW. One setting for this device, shared by every screen that reads it:
+    // Simple hides the advanced extras (drug-timing detail, the invasive bulk button, pH and K+,
+    // the shock-response settings and the Quick Sim presets); Full shows everything. Simple is the
+    // default. Every useViewMode() on the page updates together, and other tabs follow through the
+    // storage event. A blocked localStorage just means the choice is not remembered.
+    const VIEW_STORE = 'emsim_view_mode_v1';
+    const VIEW_EVENT = 'emsim-view-mode';
+    const readViewMode = () => { try { return localStorage.getItem(VIEW_STORE) === 'full' ? 'full' : 'simple'; } catch (e) { return 'simple'; } };
+    const useViewMode = () => {
+        const [mode, setLocal] = useState(readViewMode);
+        useEffect(() => {
+            const onChange = (e) => setLocal(e.detail === 'full' ? 'full' : 'simple');
+            const onStorage = (e) => { if (e.key === VIEW_STORE) setLocal(readViewMode()); };
+            window.addEventListener(VIEW_EVENT, onChange);
+            window.addEventListener('storage', onStorage);
+            return () => { window.removeEventListener(VIEW_EVENT, onChange); window.removeEventListener('storage', onStorage); };
+        }, []);
+        const setMode = (next) => {
+            const m = next === 'full' ? 'full' : 'simple';
+            try { localStorage.setItem(VIEW_STORE, m); } catch (e) { /* not stored */ }
+            window.dispatchEvent(new CustomEvent(VIEW_EVENT, { detail: m }));
+        };
+        return [mode, setMode];
+    };
+    const ViewModeToggle = ({ className = '' }) => {
+        const [mode, setMode] = useViewMode();
+        const opt = (m, label, tip) => (
+            <button type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={tip}
+                    className={`px-2 h-full text-[10px] uppercase font-bold ${mode === m ? 'bg-slate-200 text-slate-900' : 'text-slate-300 hover:text-white'}`}>{label}</button>
+        );
+        return (
+            <div role="group" aria-label="View" data-testid="view-mode" className={`h-8 flex items-stretch rounded border border-slate-600 overflow-hidden ${className}`}>
+                {opt('simple', 'Simple', 'Simple view: hides the advanced extras (drug-timing detail, pH and K+, shock-response settings, presets)')}
+                {opt('full', 'Full', 'Full view: every control')}
+            </div>
         );
     };
 
@@ -870,6 +909,8 @@
     window.Modal = Modal;
     window.Section = Section;
     window.MenuButton = MenuButton;
+    window.useViewMode = useViewMode;
+    window.ViewModeToggle = ViewModeToggle;
     window.Card = Card;
     window.ECGMonitor = ECGMonitor;
     window.VitalDisplay = VitalDisplay;

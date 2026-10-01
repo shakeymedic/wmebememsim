@@ -1,6 +1,6 @@
 // Defib Sim: the start tab, and the learner's defibrillator tablet linked to the session
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, expandSection, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -93,6 +93,7 @@ test.describe('Defib Sim', () => {
   test('the facilitator picks the cardioversion energy: 150 J fails, 200 J converts', async ({ page, context }) => {
     const code = await openController(page);
     await startDefibSim(page, 'unstable-svt');
+    await expandSection(page, 'defibShock');
     await page.locator('label', { hasText: 'Cardioversion succeeds at' }).locator('select').selectOption('200');
     const { defib, errors } = await openDevice(context, code);
     await defib.click('.mode-label[data-mode="defib"]');

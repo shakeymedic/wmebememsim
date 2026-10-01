@@ -34,9 +34,16 @@ async function startQuickSim(page) {
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
 }
 
+// Open a collapsible section (data/components.js Section) if it is closed
+async function expandSection(page, id) {
+  const head = page.locator(`[data-section="${id}"] > div > button[aria-expanded]`);
+  if (await head.getAttribute('aria-expanded') === 'false') await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+}
+
 // The live session as the fake database holds it
 const session = (page, code, sub = '') => page.evaluate(([c, s]) => window.__fakeRtdb.get(`sessions/${c}${s}`), [code, sub]);
 // The live patient the controller publishes (sessions/<CODE>/live)
 const live = (page, code, sub = '') => session(page, code, '/live' + sub);
 
-module.exports = { useFakeFirebase, trackErrors, openController, startQuickSim, session, live, expect };
+module.exports = { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, session, live, expect };

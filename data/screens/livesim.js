@@ -244,7 +244,7 @@
     );
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
-        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal, Section, MenuButton } = window;
+        const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal, Section, MenuButton, ViewModeToggle } = window;
         const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
         // WAVE 8 / FINDINGS 3 + 4. Two-way sensor toggles and the two honest fast paths. Fall back to
         // the plain intervention path if an older engine is loaded, so the panel is never dead.
@@ -322,6 +322,9 @@
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
         const [activeTab, setActiveTab] = useState("Common");
+        // Simple / Full view (shared with every screen on this device; Simple is the default).
+        const [viewMode, setViewMode] = window.useViewMode();
+        const simple = viewMode !== 'full';
         const [customLog, setCustomLog] = useState("");
         const [searchTerm, setSearchTerm] = useState("");
         const [speechText, setSpeechText] = useState(""); 
@@ -860,7 +863,7 @@
             // pH and K+ are modelled vitals (sodium bicarbonate, hyperkalaemia and DKA steer them).
             <VitalDisplay key="ph" compact visible label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />,
             <VitalDisplay key="k" compact visible label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
-        ];
+        ].filter(t => !simple || (t.key !== 'ph' && t.key !== 'k'));   // Simple view: GCS and glucose only
         const renderVitalTiles = () => <>{coreTiles(true)}{moreTiles()}</>;
 
         // One-line summaries shown on a closed section.
@@ -974,6 +977,7 @@
                                 <Lucide icon="volume-x" className="w-4 h-4 mr-1"/> Muted
                             </Button>
                         )}
+                        <ViewModeToggle />
                         <MenuButton label="Screens" icon="monitor" ariaLabel="Screens: launch the room monitor, join by QR code, open the defib"
                             className="text-sky-300 border-sky-500/50"
                             items={[
@@ -1044,8 +1048,8 @@
                             monitoring is its own clearly-labelled button. */}
                         <Section id="monitoring" title="Monitoring & access" summary={monitoringSummary} defaultOpen={false}
                             right={!sensors.standard && (
-                                <Button onClick={attachStandard} variant="primary" className="h-6 px-2 text-[10px] uppercase font-bold flex-none"
-                                        title="Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe.">Attach standard</Button>
+                                <Button onClick={attachStandard} variant="primary" className="h-6 px-2 text-[10px] uppercase font-bold flex-none" ariaLabel="Attach standard monitoring"
+                                        title="Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe.">Attach</Button>
                             )}>
                             <div className="flex items-center justify-between mb-1 gap-2">
                                 <span className="text-[10px] text-slate-400 cursor-help" title={'\u25cf attached: click to remove (its trace and number go blank on the team\'s monitor). \u25cb not attached: click to attach. POC checks show the value at the moment taken; click again to resample.'}>
@@ -1059,11 +1063,11 @@
                                             className="h-6 px-2 text-[10px] uppercase font-bold">
                                         {sensors.all ? 'All on' : (sensors.standard ? 'Standard on' : 'Attach standard')}
                                     </Button>
-                                    <Button onClick={attachInvasive} variant={sensors.etco2 && sensors.art && sensors.iv ? 'secondary' : 'outline'}
+                                    {!simple && <Button onClick={attachInvasive} variant={sensors.etco2 && sensors.art && sensors.iv ? 'secondary' : 'outline'}
                                             title="Deliberate, invasive additions: IV/IO access, an arterial line and capnography. Kept OUT of the standard fast path on purpose."
                                             className="h-6 px-2 text-[10px] uppercase font-bold">
                                         {sensors.etco2 && sensors.art && sensors.iv ? 'Invasive on' : '+ Invasive'}
-                                    </Button>
+                                    </Button>}
                                     {/* One press takes every monitor off (IV access stays: it is a
                                         route, not a monitor). Every removed trace goes blank on the
                                         team's screen at once, and each removal is logged. */}
@@ -1179,8 +1183,8 @@
                                  {coreTiles(narrowPanel)}
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'} \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`} defaultOpen={true} className="border-slate-800 bg-black">
-                                     <div className={`grid ${narrowPanel ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>{moreTiles()}</div>
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={true} className="border-slate-800 bg-black">
+                                     <div className={`grid ${narrowPanel || simple ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>{moreTiles()}</div>
                                  </Section>
                              </div>
                         </div>
@@ -1216,7 +1220,7 @@
                                                 {/* What it will do, and when: a correctly modelled long-onset drug
                                                     (IV paracetamol) does nothing inside a short segment, so the pending
                                                     effect and its countdown are stated rather than looking inert. */}
-                                                {(d.expected || d.onsetIn > 0) && (
+                                                {!simple && (d.expected || d.onsetIn > 0) && (
                                                     <div className="text-[9px] text-slate-400 flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
                                                         {d.expected && <span className="text-slate-300">{d.expected}</span>}
                                                         {d.onsetIn > 0
@@ -1225,7 +1229,7 @@
                                                     </div>
                                                 )}
                                                 {/* A rate-driven intervention reports its live value, rate and ETA. */}
-                                                {(d.drives || []).map(dr => (
+                                                {!simple && (d.drives || []).map(dr => (
                                                     <div key={dr.vital} className="text-[9px] text-cyan-300 mt-0.5 font-mono">
                                                         {dr.vital === 'temp' ? 'temp' : dr.vital} {dr.current !== null ? dr.current.toFixed(2) : '--'}
                                                         {' \u2192 '}{dr.target}{' at '}{dr.ratePerHour > 0 ? '+' : '\u2212'}{Math.abs(dr.ratePerHour)}{dr.vital === 'temp' ? ' \u00b0C/h' : '/h'}
@@ -1412,9 +1416,26 @@
                                      <Button onClick={() => nextCycle && nextCycle()} variant="outline" className="h-9 text-[10px] uppercase font-bold">Rhythm check +2m</Button>
                                  </div>
 
+                                 {/* Simple view: the shock outcome settings below are hidden; one line says
+                                     what is set and opens them. */}
+                                 {simple && (
+                                     <button type="button" data-testid="shock-settings-simple" onClick={() => setViewMode('full')}
+                                             className="mt-2 w-full text-left bg-black/50 p-2 rounded text-[10px] text-slate-300 hover:text-white">
+                                         <span className="text-slate-400 uppercase font-bold">Shock response</span>{' '}
+                                         {(() => {
+                                             const ds = state.defibSettings || {};
+                                             const r = ds.shockResponse || 'model';
+                                             const conv = r === 'model' ? 'realistic model' : r === 'auto' ? 'auto' : r === 'never' ? 'never converts' : `converts on shock ${r}`;
+                                             return `${conv}${ds.cvEnergy && ds.cvEnergy !== 'default' ? ` \u00b7 cardioversion at ${ds.cvEnergy} J` : ''}${state.queuedRhythm ? ` \u00b7 next shock \u2192 ${RG.shortFor(state.queuedRhythm)}` : ''}`;
+                                         })()}
+                                         <span className="text-sky-400 underline ml-1">change (Full view)</span>
+                                     </button>
+                                 )}
+
                                  {/* C7 FACILITATOR OVERRIDE. This drives the previously unreachable
                                      queuedRhythm / SET_QUEUED_RHYTHM code: the next shock converts to
                                      exactly what the facilitator chose, instead of rolling the model. */}
+                                 {!simple && <>
                                  <div className="mt-2 bg-black/50 p-2 rounded">
                                      <div className="flex items-center justify-between mb-1">
                                         <span className="text-slate-400 text-[10px] uppercase font-bold">Next shock converts to</span>
@@ -1446,6 +1467,7 @@
                                          </label>
                                      ))}
                                  </div>
+                                 </>}
 
                                  <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
                                      <span className="text-slate-400 text-[10px] uppercase">CPR / cycle timer</span>
@@ -1489,12 +1511,16 @@
                         </div>
 
                         <div className="md:flex-1 md:overflow-y-auto p-3 space-y-3">
-                            {/* SCRIPTED PRESETS: one press runs a timed sequence of rhythm/obs changes. */}
-                            <div>
+                            {/* SCRIPTED PRESETS: one press runs a timed sequence of rhythm/obs changes.
+                                Simple view keeps only a running preset (so it can be stopped) and a link
+                                to the list in Full view. */}
+                            <div data-testid="presets">
                                 <div className="flex items-center justify-between mb-1 gap-2">
                                     <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Presets</div>
-                                    <button onClick={savePresetSnapshot} className="text-[10px] uppercase font-bold text-sky-400 hover:text-sky-200 border border-sky-800 rounded px-1.5 py-0.5"
-                                            title="Save the current rhythm and obs as a one-press preset on this device">+ Save current</button>
+                                    {simple
+                                        ? <button type="button" onClick={() => setViewMode('full')} className="text-[10px] text-sky-400 hover:text-sky-200 underline">{presetList.length} presets in Full view</button>
+                                        : <button onClick={savePresetSnapshot} className="text-[10px] uppercase font-bold text-sky-400 hover:text-sky-200 border border-sky-800 rounded px-1.5 py-0.5"
+                                            title="Save the current rhythm and obs as a one-press preset on this device">+ Save current</button>}
                                 </div>
                                 {presetView && (
                                     <div className="mb-2 rounded border border-sky-600 bg-sky-950/40 p-2" role="status">
@@ -1519,7 +1545,7 @@
                                         <div className="mt-1 h-1 bg-slate-800 rounded overflow-hidden"><div className="h-full bg-sky-500" style={{ width: `${Math.round((presetView.idx / presetView.total) * 100)}%` }}></div></div>
                                     </div>
                                 )}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                {!simple && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                                     {presetList.map(p => (
                                         <div key={p.id} className="relative">
                                             <button onClick={() => startPreset(p)} title={p.description}
@@ -1530,7 +1556,7 @@
                                             {p.user && <button aria-label={`Delete preset ${p.name}`} onClick={() => deletePreset(p)} className="absolute top-1 right-1 text-slate-400 hover:text-red-400"><Lucide icon="x" className="w-3 h-3"/></button>}
                                         </div>
                                     ))}
-                                </div>
+                                </div>}
                             </div>
 
                             {/* FULL RHYTHM REGISTRY. RG.SELECTABLE is the single shared registry from

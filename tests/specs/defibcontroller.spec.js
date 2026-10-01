@@ -1,6 +1,6 @@
 // Defib Sim: the facilitator's Defib controller, custom sequences, RCUK prompts and the debrief
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, expandSection, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -24,6 +24,7 @@ test.describe('Defib controller', () => {
     await expect.poll(() => live(page, code, '/rhythm')).toBe('VF');
     await expect(page.getByTestId('arrest-status')).toContainText('In arrest');
 
+    await expandSection(page, 'defibPacing');
     await page.locator('[data-artefact="movement"]').click();
     await expect.poll(() => live(page, code, '/noise/movement')).toBe(true);
     await page.getByRole('button', { name: /Metronome/ }).click();
@@ -41,12 +42,14 @@ test.describe('Defib controller', () => {
     await startDefibSim(page, 'vf-arrest');
     await go(page);
     await page.getByRole('button', { name: 'START', exact: true }).click();
+    await expandSection(page, 'defibShock');
     await page.getByLabel('Converts').selectOption('never');
     for (let i = 0; i < 3; i++) await engine(page, 'sim.deliverShock(150, "test")');
     await expect(page.getByTestId('arrest-status')).toContainText('3 shocks');
     const prompts = page.getByTestId('drug-prompts');
     await expect(prompts).toContainText('Adrenaline 1 mg IV due (after the 3rd shock)');
     await expect(prompts).toContainText('Amiodarone 300 mg IV due (after the 3rd shock)');
+    await expandSection(page, 'defibDrugs');
     await page.locator('[data-drug="AdrenalineIV"]').click();
     await expect.poll(() => engine(page, 'return sim.state.arrest.adrenaline.length')).toBe(1);
     await expect(prompts).not.toContainText('Adrenaline');
@@ -95,6 +98,7 @@ test.describe('Defib controller', () => {
     await page.getByRole('button', { name: 'START', exact: true }).click();
     await engine(page, 'sim.setDefibMode("pacer", "test"); sim.dispatch({ type: "UPDATE_PACER_STATE", payload: { rate: 70, output: 120, demand: true } })');
     await expect.poll(() => engine(page, 'return sim.state.pacing.mechanical')).toBe(true);
+    await expandSection(page, 'defibDrugs');
     await page.locator('[data-drug="Fentanyl"]').click();
     await page.getByRole('button', { name: 'Finish' }).click();   // the confirm is accepted by trackErrors
     const fb = page.getByTestId('defib-feedback');
