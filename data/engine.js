@@ -1514,7 +1514,11 @@
             const names = { interference: 'mains interference', movement: 'movement artefact', leadoff: 'lead off' };
             Object.keys(patch || {}).forEach(k => { if (names[k]) addLogEntry(`Artefact: ${names[k]} ${patch[k] ? 'ON' : 'OFF'}`, 'system'); });
         },
-        setDefibSettings: (patch) => { dispatch({ type: 'SET_DEFIB_SETTINGS', payload: patch }); addLogEntry(`Shock response settings: ${Object.keys(patch || {}).map(k => `${k} = ${patch[k]}`).join(', ')}`, 'system'); },
+        setDefibSettings: (patch) => {
+            dispatch({ type: 'SET_DEFIB_SETTINGS', payload: patch });
+            const say = (k, v) => k === 'cvEnergy' ? `cardioversion succeeds at ${v === 'default' ? 'the default energy' : `${v} J or more`}` : `${k} = ${v}`;
+            addLogEntry(`Shock response settings: ${Object.keys(patch || {}).map(k => say(k, patch[k])).join(', ')}`, 'system');
+        },
         sendDeviceEvent, recommendedShockEnergy,
         defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,
         // Wave 8 surface: two-way sensor toggles, the honest fast paths and the derived obstruction.

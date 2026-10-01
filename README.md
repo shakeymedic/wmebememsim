@@ -131,6 +131,11 @@ Sim scenario (`scenario.defibSim`).
   adult (3 J/kg for a child) to defibrillate, and 70 J (1 J/kg) to cardiovert. These thresholds are
   simulator settings, not guideline values. The realistic probabilistic model and fixed shock counts
   are one select away, as they are on the main controller.
+- **Cardioversion succeeds at** (Shock response panel, Defib controller and main controller) lets the
+  facilitator choose the energy a cardioversion needs, from the device's own steps. Synchronised
+  shocks below it never convert; one at or above it converts (on the shock number set by "Converts";
+  with the realistic model it converts for certain). "Default" keeps the 70 J adult / 1 J/kg child
+  rule above.
 - **Paediatric content** follows RCUK Guidelines 2025: the Paediatric advanced life support algorithm
   (Nov 2025 V2), the Paediatric cardiac arrhythmias algorithm and the Paediatric emergency drug chart
   (Feb 2026). The estimated weight and tube size (WETFLAG) come from the chart; the engine logs

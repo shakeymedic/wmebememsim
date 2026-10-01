@@ -84,6 +84,29 @@ test.describe('Defibrillation and drug rules', () => {
     await expect.poll(() => st(page, 'S.rhythm')).toBe('Sinus Rhythm');
   });
 
+  test('a chosen cardioversion energy: below it nothing converts, at it the rhythm converts', async ({ page }) => {
+    await eng(page, "E.setDefibSettings({ shockResponse: 'auto', cvEnergy: '120' }); E.changeRhythm('SVT', 'test')");
+    for (const j of [75, 100]) {
+      await eng(page, `E.deliverShock(${j}, 'test', { sync: true })`);
+      await page.waitForTimeout(300);
+      expect(await st(page, 'S.rhythm')).toBe('SVT');
+      await unstack(page);
+    }
+    await eng(page, "E.deliverShock(120, 'test', { sync: true })");
+    await expect.poll(() => st(page, 'S.rhythm')).toBe('Sinus Rhythm');
+    expect(await page.evaluate(() => window.__simEngine.state.log.some(l => /cardioversion succeeds at 120 J or more/.test(l.msg)))).toBe(true);
+  });
+
+  test('a chosen cardioversion energy also decides the realistic model: at it, conversion is certain', async ({ page }) => {
+    await eng(page, "E.setDefibSettings({ shockResponse: 'model', cvEnergy: '150' }); E.changeRhythm('AF', 'test')");
+    await eng(page, "E.deliverShock(120, 'test', { sync: true })");
+    await page.waitForTimeout(300);
+    expect(await st(page, 'S.rhythm')).toBe('AF');
+    await unstack(page);
+    await eng(page, "E.deliverShock(150, 'test', { sync: true })");
+    await expect.poll(() => st(page, 'S.rhythm')).toBe('Sinus Rhythm');
+  });
+
   test('pacing: electrical capture at threshold, mechanical capture 10 mA above, and loss restores the patient', async ({ page }) => {
     await eng(page, "E.changeRhythm('Complete Heart Block', 'test')");
     await page.waitForTimeout(200);
@@ -177,6 +200,11 @@ test('the controller\'s defib panel changes the shock-response settings', async 
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.defibSettings.shockResponse)).toBe('3');
   await page.locator('label', { hasText: 'Unsync shock with a pulse' }).locator('select').selectOption('always');
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.defibSettings.rOnT)).toBe('always');
+  await page.locator('label', { hasText: 'Cardioversion succeeds at' }).locator('select').selectOption('100');
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.defibSettings.cvEnergy)).toBe('100');
+  // Only the device's own energies are accepted
+  await page.evaluate(() => window.__simEngine.setDefibSettings({ cvEnergy: '999' }));
+  expect(await page.evaluate(() => window.__simEngine.state.defibSettings.cvEnergy)).toBe('100');
   expect(errors).toEqual([]);
 });
 
