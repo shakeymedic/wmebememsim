@@ -92,8 +92,9 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
 ## Instructor guides
 
 `guides/` holds two static pages for instructors, a **Quick Start Guide** and a **Full Instructor
-Guide**, plus a landing page (`guides/index.html`) and an A4 PDF of each. The setup screen links to
-both guides, and the controller's **Tools** menu links to the landing page. The pages are plain HTML
+Guide**, plus a landing page (`guides/index.html`) and an A4 PDF of each. A small highlighted
+"Instructor guides" link group sits at the left of the footer on every instructor screen (setup,
+live scenario, debrief); it never appears on the room monitor or the defib. The pages are plain HTML
 with `guides/guides.css`, which also holds the print layout.
 
 After editing a guide page, rebuild its PDF so the download matches, then commit both:

@@ -8,14 +8,22 @@ test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
 const PAGES = ['guides/index.html', 'guides/quick-start.html', 'guides/instructor-guide.html'];
 
-test('the setup screen and the Tools menu link to the guides', async ({ page }) => {
-  await openController(page);
-  const links = page.getByTestId('guide-links');
-  await expect(links.getByRole('link', { name: 'Quick start guide' })).toHaveAttribute('href', 'guides/quick-start.html');
-  await expect(links.getByRole('link', { name: 'Full instructor guide' })).toHaveAttribute('href', 'guides/instructor-guide.html');
+test('the footer links to the guides on the instructor screens, never on the room monitor', async ({ page, context }) => {
+  const code = await openController(page);
+  const check = async () => {
+    const links = page.locator('footer').getByTestId('guide-links');
+    await expect(links.getByRole('link', { name: 'Quick start' })).toHaveAttribute('href', 'guides/quick-start.html');
+    await expect(links.getByRole('link', { name: 'Full guide' })).toHaveAttribute('href', 'guides/instructor-guide.html');
+    await expect(links.getByRole('link', { name: 'PDFs' })).toHaveAttribute('href', 'guides/index.html');
+  };
+  await check();                                   // setup screen
   await startQuickSim(page);
-  await page.getByRole('button', { name: /^Tools/ }).click();
-  await expect(page.getByRole('menuitem', { name: 'Instructor guides' })).toHaveAttribute('href', 'guides/index.html');
+  await check();                                   // live scenario
+  const monitor = await context.newPage();
+  await monitor.goto(`/index.html?mode=monitor&session=${code}`);
+  await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
+  await expect(monitor.getByText('Tap to Enable Sound')).toBeVisible();
+  await expect(monitor.getByTestId('guide-links')).toHaveCount(0);
 });
 
 test('every link on the guide pages works, including the PDFs and in-page contents', async ({ page, request }) => {
