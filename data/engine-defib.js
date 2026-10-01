@@ -307,15 +307,19 @@
                 }
             };
 
-            if (shockPolicy(cur) !== 'model') {
-                if (!RG.adequateShock(joules, defibWeight(), cur.scenario?.patientAge, 'cardiovert')) {
+            // The facilitator's chosen conversion energy, if set: below it a synchronised shock never
+            // converts; at or above it the shock counts (and with the realistic model it converts).
+            const cvMin = Number(cur.defibSettings && cur.defibSettings.cvEnergy) || null;
+            if (shockPolicy(cur) !== 'model' || cvMin) {
+                const adequate = cvMin ? joules >= cvMin : RG.adequateShock(joules, defibWeight(), cur.scenario?.patientAge, 'cardiovert');
+                if (!adequate) {
                     dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
-                    changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'energy too low to cardiovert' });
+                    changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: cvMin ? 'unsuccessful — escalate the energy' : 'energy too low to cardiovert' });
                     return;
                 }
                 nextDefib.episodeShocks = (d.episodeShocks || 0) + 1;
                 dispatch({ type: 'SET_DEFIB_STATE', payload: nextDefib });
-                const required = shocksRequired(cur, false);
+                const required = shockPolicy(cur) === 'model' ? 1 : shocksRequired(cur, false);
                 if (required !== null && nextDefib.episodeShocks >= required) convertToSinus();
                 else changeRhythm(cur.rhythm, 'cardioversion', { energy: joules, sync: true, note: 'unsuccessful — escalate energy, check sedation and synchronisation' });
                 return;

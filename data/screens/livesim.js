@@ -1437,11 +1437,12 @@
                                      {[
                                          ['shockResponse', 'Converts', [['model', 'Realistic model (energy, CPR, drugs)'], ['auto', 'Auto (arrest: 3rd adequate shock, cardioversion: 1st)'], ['1', '1st adequate shock'], ['2', '2nd adequate shock'], ['3', '3rd adequate shock'], ['4', '4th adequate shock'], ['5', '5th adequate shock'], ['never', 'Never (refractory)']]],
                                          ['rOnT', 'Unsync shock with a pulse', [['never', 'No effect (flagged)'], ['sometimes', 'Sometimes causes VF (1 in 3)'], ['always', 'Always causes VF']]],
-                                         ['refib', 'After ROSC', [['model', 'Realistic model'], ['once', 'VF recurs once (30-90 s)'], ['off', 'Stays in ROSC']]]
+                                         ['refib', 'After ROSC', [['model', 'Realistic model'], ['once', 'VF recurs once (30-90 s)'], ['off', 'Stays in ROSC']]],
+                                         ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (70 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
                                      ].map(([k, label, opts]) => (
                                          <label key={k} className="flex items-center justify-between gap-2 text-[10px] text-slate-300">
                                              <span className="whitespace-nowrap">{label}</span>
-                                             <select value={(state.defibSettings || {})[k] || ''} onChange={e => sim.setDefibSettings({ [k]: e.target.value })}
+                                             <select value={(state.defibSettings || {})[k] || (k === 'cvEnergy' ? 'default' : '')} onChange={e => sim.setDefibSettings({ [k]: e.target.value })}
                                                      className="min-w-0 max-w-[14rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[10px] text-white">
                                                  {opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
                                              </select>

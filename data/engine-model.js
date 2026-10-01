@@ -136,6 +136,8 @@
         //                  cardioversion on the 1st) | '1'..'5' | 'never'
         //   rOnT:          unsynchronised shock into a rhythm with a pulse: 'always' | 'sometimes' | 'never'
         //   refib:         after ROSC from VF/pVT: 'model' | 'once' (VF returns once) | 'off'
+        //   cvEnergy:      (optional) 'default' | an energy step: synchronised shocks below it never
+        //                  convert; at or above it they do (on the shock number above)
         defibSettings: { shockResponse: 'model', rOnT: 'never', refib: 'model' },
         // Transcutaneous pacing as the device delivers it (see the pacing effect in useSimulation).
         pacing: { electrical: false, mechanical: false, underlying: null, pre: null },
@@ -169,7 +171,10 @@
     const DEFIB_SETTING_VALUES = {
         shockResponse: ['model', 'auto', '1', '2', '3', '4', '5', 'never'],
         rOnT: ['always', 'sometimes', 'never'],
-        refib: ['model', 'once', 'off']
+        refib: ['model', 'once', 'off'],
+        // The lowest synchronised energy that converts a tachycardia: 'default' (at least 70 J
+        // adult / 1 J/kg child, or the realistic model) or one of the device's energy steps.
+        cvEnergy: ['default'].concat((RG && RG.ADULT_ENERGY_STEPS ? RG.ADULT_ENERGY_STEPS : []).map(String))
     };
     // Only known keys and values survive, so a scenario file or a remote command cannot put
     // anything else into the settings.

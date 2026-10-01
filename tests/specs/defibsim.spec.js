@@ -90,6 +90,29 @@ test.describe('Defib Sim', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the facilitator picks the cardioversion energy: 150 J fails, 200 J converts', async ({ page, context }) => {
+    const code = await openController(page);
+    await startDefibSim(page, 'unstable-svt');
+    await page.locator('label', { hasText: 'Cardioversion succeeds at' }).locator('select').selectOption('200');
+    const { defib, errors } = await openDevice(context, code);
+    await defib.click('.mode-label[data-mode="defib"]');
+    await defib.click('#syncBtn');
+    await defib.click('#chargeBtn');                                  // the device starts at 150 J
+    await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
+    await defib.click('#shockBtn');
+    await expect.poll(() => live(page, code, '/defib/shockCount')).toBe(1);
+    await page.waitForTimeout(500);
+    expect(await live(page, code, '/rhythm')).toBe('SVT');
+    await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_DEFIB_STATE', payload: { lastShockAt: null } }));
+    await defib.click('[data-energy-dir="1"]');                       // 150 -> 200 J
+    await expect(defib.locator('#syncIndicator')).toHaveText('SYNC'); // still synchronised
+    await defib.click('#chargeBtn');
+    await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
+    await defib.click('#shockBtn');
+    await expect.poll(() => live(page, code, '/rhythm'), { timeout: 15000 }).toBe('Sinus Rhythm');
+    expect(errors).toEqual([]);
+  });
+
   test('pacing complete heart block: capture, then a palpable pulse at the paced rate', async ({ page, context }) => {
     const code = await openController(page);
     await startDefibSim(page, 'complete-hb');
