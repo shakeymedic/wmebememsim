@@ -398,41 +398,48 @@
     }
 
     // -------------------------------------------------------------------------
-    // 1c. WAVE 7 — CAPNOGRAPHY, WAVE 8 — SEVERITY-SCALED SHARK FIN
+    // 1c. CAPNOGRAPHY — breath timing in real seconds, severity-scaled shark fin
     // A real capnogram is a trapezoid, not a sine wave. Returned in kPa so the plateau can be
-    // asserted against the numeric ETCO2 the monitor displays.
-    //   phase 0.00-0.06  II   steep expiratory upstroke
-    //   phase 0.06-0.62  III  alveolar plateau, slight positive slope, ENDING at ETCO2
-    //   phase 0.62-0.72  0    rapid inspiratory downstroke
-    //   phase 0.72-1.00  I    inspiratory baseline at zero
+    // asserted against the numeric ETCO2 the monitor displays. The breath runs from the START OF
+    // INSPIRATION (phase 0), the same origin as the chest-impedance trace, so the two respiratory
+    // traces always agree:
+    //   inspiration  0 (IV)  near-vertical inspiratory downstroke (beta angle ~90 degrees)
+    //                I       inspiratory baseline at zero (CO2-free gas)
+    //   expiration   I       dead-space gas leaves first, still zero
+    //                II      steep expiratory upstroke (alpha angle ~100-110 degrees)
+    //                III     alveolar plateau, slight upslope, ENDING at the ETCO2 (where it is
+    //                        measured); held through any expiratory pause
+    // The timing is in seconds, not fixed fractions of the breath: inspiration is about a third
+    // of the breath (I:E 1:2) but never longer than ~1.7 s, and the upstroke takes ~0.2-0.3 s at
+    // any rate. A slow rate therefore gives a wide, long-plateau waveform and a fast rate a
+    // narrow one, as the published capnography references describe for hypo/hyperventilation.
     // Patterns: 'normal' | 'bronchospastic' (shark fin) | 'nonobstructive' (an explicit
-    // facilitator override that forces severity 0) | 'rebreathing' (baseline fails to reach zero)
-    // | 'curare' (curare cleft in the plateau).
+    // facilitator override that forces severity 0) | 'rebreathing' (baseline fails to return to
+    // zero) | 'curare' (curare cleft in the plateau).
     //
-    // Wave 7 drew ONE fixed obstructive shape, and live verification measured
-    // an upstroke occupying only 5-9% of the breath cycle in every case: the alveolar plateau
-    // stayed visibly separate from the upstroke, so even "asthma" read as mild obstruction rather
-    // than the shark fin of a silent chest. There is now a single CONTINUOUS shape family
-    // parametrised by an obstruction severity 0-1:
-    //
-    //   * severity 0    -> byte-identical to the Wave 7 normal trapezoid (steep phase II, flat
-    //                      slightly-upsloping phase III). Non-obstructive patients are unchanged.
-    //   * rising severity pushes the phase II "knee" later, LOWERS the fraction of the ETCO2 that
-    //     phase II reaches, slurs the rising limb and curves phase III, so the upstroke and the
-    //     plateau progressively merge into one rising limb. Expiration also lengthens, as it does
-    //     clinically.
-    //   * severity ~1   -> there is no identifiable flat segment anywhere in expiration: one
-    //                      continuous slurred rise to a rounded shoulder that only reaches the
-    //                      ETCO2 at the very end of expiration. That is the shark fin.
-    //
-    // Severity is supplied by the engine's existing bronchospasm model (see
-    // window.getObstruction in data/engine.js) — it is NOT a parallel piece of state, and it falls
-    // as bronchodilators take effect, so treating the patient visibly normalises the trace.
+    // OBSTRUCTION is one CONTINUOUS shape family parametrised by a severity 0-1 supplied by the
+    // engine's bronchospasm model (window.getObstruction): rising severity lengthens and slurs
+    // phase II, lowers the level it reaches and curves phase III, until the upstroke and plateau
+    // merge into one rising limb that only reaches the ETCO2 at the end of expiration: the shark
+    // fin. It falls as bronchodilators work, so treatment visibly normalises the trace.
     // -------------------------------------------------------------------------
-    var CAPNO_EXP_END = 0.62;        // expiration ends here at severity 0
-    var CAPNO_EXP_STRETCH = 0.045;   // severe obstruction prolongs expiration by this much
-    var CAPNO_DOWN = 0.10;           // duration of the inspiratory downstroke
-    var CAPNO_KNEE0 = 0.06 / CAPNO_EXP_END;   // phase II as a fraction of expiration, severity 0
+    var BREATH_MAX_INSP_S = 1.7;    // inspiratory time ceiling (seconds)
+    var CAPNO_DOWN_S = 0.25;        // inspiratory downstroke, at most this long
+    var CAPNO_DEADSPACE_S = 0.15;   // CO2-free dead-space gas at the start of expiration
+    var CAPNO_ACTIVE_S = 2.4;       // phases II+III of a normal breath; obstruction prolongs it
+    var CAPNO_ACTIVE_OBSTRUCTED_S = 2.0;
+    var CAPNO_KNEE0 = 0.06 / 0.62;  // phase II as a fraction of phases II+III at severity 0
+
+    // Breath timing for a rate in breaths/min: the breath length T, the inspiratory time Ti and
+    // the fraction of the breath that is inspiration. Shared by the capnogram and the chest
+    // impedance trace (data/components.js) so both respiratory traces keep the same breath.
+    function breathTiming(ratePerMin) {
+        var r = Number(ratePerMin);
+        if (!isFinite(r) || r <= 0) r = 12;
+        var T = 60 / r;
+        var Ti = Math.min(T / 3, BREATH_MAX_INSP_S);
+        return { T: T, Ti: Ti, inspFrac: Ti / T };
+    }
 
     // The shape of the capnogram as a continuous function of obstruction severity. Exported so
     // verification measures the SHIPPING parameters rather than a copy of them.
@@ -442,12 +449,12 @@
         s = s < 0 ? 0 : (s > 1 ? 1 : s);
         return {
             severity: s,
-            expEnd: CAPNO_EXP_END + CAPNO_EXP_STRETCH * s,
-            downEnd: CAPNO_EXP_END + CAPNO_EXP_STRETCH * s + CAPNO_DOWN,
-            // Phase II as a fraction of expiration: 9.7% normal -> 40% severe.
+            // Seconds of phases II+III before any expiratory pause; obstruction prolongs expiration.
+            activeSeconds: CAPNO_ACTIVE_S + CAPNO_ACTIVE_OBSTRUCTED_S * s,
+            // Phase II as a fraction of phases II+III: 9.7% normal -> 40% severe.
             kneeFrac: CAPNO_KNEE0 + 0.303 * Math.pow(s, 1.5),
             // Fraction of the ETCO2 reached at the end of phase II: 0.90 normal -> 0.60 severe.
-            // This is what destroys the boundary between the two phases — the upstroke stops well
+            // This is what destroys the boundary between the two phases: the upstroke stops well
             // short of the plateau level and simply keeps climbing.
             kneeLevel: 0.90 - 0.30 * s * s,
             upstrokeExp: 0.65 + 0.15 * s,    // slurring of the rising limb
@@ -456,8 +463,7 @@
     }
 
     // Resolve the severity actually used for a (pattern, severity) pair. The facilitator's explicit
-    // pattern override wins (Wave 5 facilitator supremacy); an omitted severity keeps the Wave 7
-    // behaviour for any caller that has not been updated.
+    // pattern override wins; an omitted severity gives a full shark fin for 'bronchospastic'.
     function capnoSeverity(pattern, severity) {
         if (pattern === 'nonobstructive') return 0;
         var s = Number(severity);
@@ -466,29 +472,65 @@
         return s < 0 ? 0 : (s > 1 ? 1 : s);
     }
 
-    function capnogram(phase, etco2Kpa, pattern, severity) {
+    // CO2 (kPa) at `phase` of a breath (0 = start of inspiration, 1 = the next one) for a patient
+    // breathing at `ratePerMin` with an end-tidal value of `etco2Kpa`.
+    function capnogram(phase, etco2Kpa, pattern, severity, ratePerMin) {
         var E = Number(etco2Kpa);
         if (!isFinite(E) || E <= 0) return 0;
         var t = phase - Math.floor(phase);
+        var bt = breathTiming(ratePerMin);
         var floorKpa = pattern === 'rebreathing' ? E * 0.14 : 0;   // failure to return to zero
         var P = capnoShapeParams(capnoSeverity(pattern, severity));
-        var knee = P.expEnd * P.kneeFrac;
+        var ts = t * bt.T;
         var y;
 
-        if (t < knee) {                                    // phase II — expiratory upstroke
-            y = floorKpa + (E * P.kneeLevel - floorKpa) * Math.pow(t / knee, P.upstrokeExp);
-        } else if (t < P.expEnd) {                         // phase III — alveolar plateau / fin
-            var x = (t - knee) / (P.expEnd - knee);
-            y = E * P.kneeLevel + E * (1 - P.kneeLevel) * Math.pow(x, P.plateauExp);  // ends at E
-            if (pattern === 'curare' && t > 0.30 && t < 0.40) {
-                y -= E * 0.28 * Math.sin((t - 0.30) / 0.10 * Math.PI);   // curare cleft
+        if (ts < bt.Ti) {                                  // inspiration
+            var down = Math.min(CAPNO_DOWN_S, 0.35 * bt.Ti);
+            y = ts < down ? E - (E - floorKpa) * (ts / down)   // phase 0: downstroke
+                          : floorKpa;                          // phase I: baseline
+        } else {                                           // expiration
+            var te = ts - bt.Ti, Te = bt.T - bt.Ti;
+            var dead = Math.min(CAPNO_DEADSPACE_S, 0.1 * Te);
+            if (te < dead) {
+                y = floorKpa;                              // phase I: dead-space gas
+            } else {
+                var x = te - dead;
+                var active = Math.min(Te - dead, P.activeSeconds);
+                var knee = active * P.kneeFrac;
+                if (x < knee) {                            // phase II: expiratory upstroke
+                    y = floorKpa + (E * P.kneeLevel - floorKpa) * Math.pow(x / knee, P.upstrokeExp);
+                } else if (x < active) {                   // phase III: plateau / fin, ends at E
+                    var u = (x - knee) / (active - knee);
+                    y = E * P.kneeLevel + E * (1 - P.kneeLevel) * Math.pow(u, P.plateauExp);
+                    if (pattern === 'curare' && u > 0.35 && u < 0.55) {
+                        y -= E * 0.28 * Math.sin((u - 0.35) / 0.20 * Math.PI);   // curare cleft
+                    }
+                } else {
+                    y = E;                                 // expiratory pause: plateau holds
+                }
             }
-        } else if (t < P.downEnd) {                        // phase 0 — inspiratory downstroke
-            y = floorKpa + (E - floorKpa) * (1 - (t - P.expEnd) / CAPNO_DOWN);
-        } else {                                           // phase I — inspiratory baseline
-            y = floorKpa;
         }
         return Math.max(0, y);
+    }
+
+    // The interventions that move gas for the patient. Shared by the engine and the defib tablet
+    // so "is there a capnogram?" has one answer everywhere.
+    var VENTILATING_INTERVENTIONS = ['Bagging', 'RSI', 'i-gel', 'NIV', 'CPAP', 'FONA'];
+    // Is the patient moving gas? A respiratory rate the monitor can see, a device that delivers
+    // breaths, or CPR. Oesophageal intubation / disconnection / apnoea therefore show NO waveform.
+    function capnoVentilating(activeInterventions, rr, cpr) {
+        if (Number(rr) > 0 || cpr) return true;
+        var list = activeInterventions || [];
+        var has = typeof list.has === 'function' ? function (k) { return list.has(k); } : function (k) { return list.indexOf(k) !== -1; };
+        return VENTILATING_INTERVENTIONS.some(has);
+    }
+    // The rate the capnogram is drawn at: the patient's own, or 10 breaths/min during CPR (RCUK
+    // ALS: 10 ventilations a minute once the airway is secured), or 12 for a ventilated patient
+    // whose rate has not been set.
+    function capnoRate(rr, cpr) {
+        var r = Number(rr);
+        if (r > 0) return r;
+        return cpr ? 10 : 12;
     }
 
     var BY_ID = {};
@@ -993,6 +1035,10 @@
         // has exactly one definition and verification measures the shipping parameters.
         capnoShapeParams: capnoShapeParams,
         capnoSeverity: capnoSeverity,
+        breathTiming: breathTiming,
+        capnoVentilating: capnoVentilating,
+        capnoRate: capnoRate,
+        VENTILATING_INTERVENTIONS: VENTILATING_INTERVENTIONS,
         // Rhythms whose R-R is MEANT to vary. Verification reads this list rather than keeping its
         // own copy, so "which rhythms are irregular" has one definition like everything else here.
         IRREGULAR: ['AF', 'Atrial Flutter', '2nd Deg Heart Block', 'Agonal Rhythm'],

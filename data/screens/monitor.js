@@ -348,13 +348,25 @@
                             <div className="text-slate-400">{new Date().toLocaleTimeString()}</div>
                         </div>
 
-                        <div className="flex-grow relative bg-black grid grid-rows-2">
-                             <div className="relative border-b border-slate-800">
-                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" />
+                        {/* Lead II and pads, plus the capnogram when capnography is attached: during
+                            CPR it shows compression quality, and a sudden rise in ETCO2 is often
+                            the first sign of ROSC. */}
+                        <div className={`flex-grow min-h-0 relative bg-black grid ${etco2Enabled ? 'grid-rows-3' : 'grid-rows-2'}`}>
+                             <div className="relative min-h-0 border-b border-slate-800">
+                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showPleth={false} showResp={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" />
                              </div>
-                             <div className="relative">
-                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" />
+                             <div className={`relative min-h-0 ${etco2Enabled ? 'border-b border-slate-800' : ''}`}>
+                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showPleth={false} showResp={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" />
                              </div>
+                             {etco2Enabled && (
+                                <div className="relative min-h-0" data-testid="arrest-capnogram">
+                                    <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} etco2={vitals.etco2} isPaused={false} showTraces={true}
+                                                showEcg={false} showPleth={false} showResp={false} showEtco2={true} showArt={false}
+                                                isCPR={cprInProgress} cprBadge={false} co2Pathology={etco2Pathology || 'normal'} co2Severity={co2Severity}
+                                                ventilating={capnoVentilating} className="h-full" />
+                                    <div className="absolute bottom-1 right-2 z-20 font-mono text-purple-400 font-bold text-2xl">ETCO2 {Number.isFinite(vitals.etco2) ? vitals.etco2.toFixed(1) : '--'} <span className="text-xs text-purple-300/80">kPa</span></div>
+                                </div>
+                             )}
                         </div>
 
                         <div className="bg-slate-900 p-4 border-t border-slate-700 grid grid-cols-4 gap-4">
