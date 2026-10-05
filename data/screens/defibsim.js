@@ -333,6 +333,13 @@
                                 <button type="button" onClick={() => sim.setMetronome(!state.metronomeOn)} aria-pressed={!!state.metronomeOn} className={chip(!!state.metronomeOn, 'bg-sky-800 border-sky-400 text-white')}>Metronome {state.metronomeOn ? 'ON' : 'off'}</button>
                                 <button type="button" onClick={nextCycle} className={chip(false)} title="Fast-forward 2 minutes to the next rhythm check">Rhythm check (+2:00)</button>
                                 <button type="button" onClick={() => triggerROSC('Sinus Rhythm', 'facilitator')} className={chip(false)}>ROSC</button>
+                                {/* Capnography on the learner's defib: a capnogram under the ECG and the
+                                    ETCO2 number appear only while it is attached, as on the R Series. */}
+                                <button type="button" data-testid="defib-capno" onClick={() => applyIntervention('ToggleETCO2')} aria-pressed={!!state.etco2Enabled}
+                                        className={`col-span-2 ${chip(!!state.etco2Enabled, 'bg-yellow-900 border-yellow-400 text-yellow-100')}`}
+                                        title="Attach or remove the CO2 sensor on the learner's defib">
+                                    Capnography {state.etco2Enabled ? `ON (ETCO2 ${Number(vitals.etco2 || 0).toFixed(1)} kPa)` : 'off'}
+                                </button>
                             </div>
                         </div>
 

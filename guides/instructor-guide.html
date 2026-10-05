@@ -217,13 +217,27 @@
 <p>Your tiles always show the patient's true values, even when the team cannot see them; "not on monitor" means the team cannot see that number yet.</p>
 <ol>
 <li>Click a vital's tile.</li>
-<li>Type the new value. For ETCO2 you can also pick the capnogram shape: Auto, Obstructive or Force normal.</li>
+<li>Type the new value. For ETCO2 you can also pick the capnogram shape: Auto, Obstructive, Force normal, Rebreathing or Curare cleft (see <a href="#capnography">Capnography</a>).</li>
 <li>Under <strong>Get there</strong>, choose <strong>Now</strong>, <strong>30 s</strong>, <strong>2 min</strong> or <strong>5 min</strong> for a gradual change.</li>
 <li>Press <strong>Confirm</strong>.</li>
 </ol>
 <p>A heart rate you set yourself is kept if you later change the rhythm. ARREST and ROSC reset it.</p>
 <h3>Blood pressure</h3>
 <p>The room monitor shows a new BP only when the cuff cycles, as in real life. Press <strong>Cycle NIBP</strong> when the team asks for one, or tick "Cycle the NIBP cuff so the team sees it" when you set a BP with <strong>Now</strong>. An arterial line, once attached, shows the BP continuously. <strong>Manual Reading</strong> shows a one-off cuff reading on the room monitor without changing the patient (for example a spurious reading).</p>
+<h3 id="capnography">Capnography</h3>
+<p>Once capnography is attached, the room monitor draws the capnogram at half the speed of the ECG, as the ZOLL R Series does. Several breaths fit on screen, and each one is wide enough to read its shape. The height of the plateau always matches the ETCO2 number.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Shape</th><th>When you see it</th></tr></thead>
+<tbody>
+<tr><td>Normal: a sharp rise, a flat plateau ending at the ETCO2, then a sharp drop to zero as the patient breathes in</td><td>Normal breathing or ventilation. A slow rate gives wide waves with a long plateau; a fast rate gives narrow ones</td></tr>
+<tr><td>Obstructive ("shark fin"): a slow, sloping rise with no flat plateau</td><td>Bronchospasm. On Auto it follows the scenario's bronchospasm and softens as bronchodilators work; Obstructive forces it</td></tr>
+<tr><td>Rebreathing: the trace does not return to zero between breaths</td><td>Choose Rebreathing</td></tr>
+<tr><td>Curare cleft: a notch in the plateau</td><td>Choose Curare cleft</td></tr>
+<tr><td>No waveform: a flat line at zero</td><td>Shows by itself when nothing is moving gas: apnoea, an oesophageal tube or a disconnected circuit</td></tr>
+<tr><td>Low trace with small ripples from chest compressions, a breath every 6 seconds</td><td>During CPR (10 ventilations a minute)</td></tr>
+</tbody>
+</table></div>
+<p>The ETCO2 control (tap the ETCO2 tile) chooses the shape: Auto, Obstructive, Force normal, Rebreathing or Curare cleft.</p>
 <h3>Treatments and drugs</h3>
 <p>Find the treatment by search or tab and click it. The app then:</p>
 <ul>
@@ -252,7 +266,7 @@
 <tr><td><strong>ARREST ▾</strong></td><td>Pick the arrest rhythm. The obs drop to arrest values and the arrest timer starts</td></tr>
 <tr><td><strong>ROSC ▾</strong></td><td>Pick the post-ROSC rhythm. Circulation returns</td></tr>
 <tr><td><strong>Change rhythm</strong> (above the vitals)</td><td>Change to any rhythm without an arrest or ROSC, for example sinus to AF</td></tr>
-<tr><td><strong>Arrest View</strong></td><td>Switches the room monitor to the two-trace arrest layout (Lead II and pads). It does not open a defib</td></tr>
+<tr><td><strong>Arrest View</strong></td><td>Switches the room monitor to the arrest layout: Lead II, pads and, when capnography is attached, the capnogram with the ETCO2. It does not open a defib</td></tr>
 <tr><td><strong>Defib</strong></td><td>Opens a working defibrillator on the room monitor, with the obs still visible, and a defib panel on your screen</td></tr>
 </tbody>
 </table></div>
@@ -296,7 +310,7 @@
 <tr><td>Rhythm</td><td>Click a rhythm to change it; <strong>All rhythms</strong> shows the full list</td></tr>
 <tr><td>Shock response (closed)</td><td>How shocks resolve, and <strong>Cardioversion succeeds at</strong> (see <a href="#arrests">Arrests, rhythms and the defibrillator</a>)</td></tr>
 <tr><td>Pacing &amp; artefacts (closed)</td><td>The capture threshold (± 5 mA; a pulse needs about 10 mA more), and movement, mains interference or lead-off artefact</td></tr>
-<tr><td>Arrest</td><td>Time in arrest and shocks, the cycle timer, <strong>Start CPR</strong>, <strong>Metronome</strong>, <strong>Rhythm check (+2:00)</strong> and <strong>ROSC</strong></td></tr>
+<tr><td>Arrest</td><td>Time in arrest and shocks, the cycle timer, <strong>Start CPR</strong>, <strong>Metronome</strong>, <strong>Rhythm check (+2:00)</strong>, <strong>ROSC</strong> and <strong>Capnography</strong>. Capnography on puts a capnogram under the ECG and the ETCO2 number on the learner's defib; while it is off, the defib shows "--" for ETCO2, as a real one without its CO2 sensor does</td></tr>
 <tr><td>RCUK prompts</td><td>When adrenaline or amiodarone is due. You see these in both modes; the learner never does</td></tr>
 <tr><td>Drugs (closed)</td><td>Adrenaline, amiodarone, atropine, adenosine, isoprenaline, adrenaline infusion, fentanyl and midazolam</td></tr>
 <tr><td>Event log</td><td>Every press on the defib with its time; add notes and flags</td></tr>

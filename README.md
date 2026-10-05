@@ -107,6 +107,18 @@ cd tests && npm ci && cd .. && node scripts/build-guides.mjs
 included) and accessibility. The service worker stores the guide pages for offline use but not the
 PDFs.
 
+## Capnography
+
+One capnogram for every screen: `RHYTHMS.capnogram(phase, etco2, pattern, severity, rate)` in
+`data/rhythms.js`, timed in real seconds from the start of inspiration (the same breath clock as the
+chest-impedance trace). Inspiration is a third of the breath up to 1.7 s, so a slow rate gives a wide,
+long-plateau wave and a fast rate a narrow one; the upstroke and downstroke take about 0.25 s at any
+rate. Shapes: normal, obstructive shark fin (scaled by the bronchospasm model), rebreathing, curare
+cleft, no waveform when nothing ventilates the patient, and low with compression ripples at 10
+breaths/min during CPR. The room monitor and controller draw it at half the ECG speed (16 s against
+8 s, i.e. 12.5 against 25 mm/s), the arrest view adds a CO2 lane when capnography is attached, and
+the defib tablet draws it under its ECG. `tests/specs/capnography.spec.js` checks the shapes and timing.
+
 ## Launch modes
 
 | Mode | What it does |
@@ -201,6 +213,9 @@ Sim scenario (`scenario.defibSim`).
 - **The tablet mirrors to the controller**: it publishes what it shows to
   `sessions/<CODE>/deviceState/<id>` (removed when it disconnects), and every press goes through
   `sessions/<CODE>/deviceEvents` like the monitor-hosted defib.
+- **Capnography** (Arrest card: Capnography on/off) puts the capnogram under the ECG on the learner's
+  defib, at half the ECG speed as on the ZOLL R Series, scaled 0-50 mmHg (6.7 kPa). While it is off
+  the tablet shows "--" for ETCO2, as a real R Series without its CO2 sensor shows no CO2 box.
 - **Debrief**: good practice and areas for improvement (pulse checks, mode, SYNC, energies, time to
   first shock, adrenaline and amiodarone after the 3rd shock, sedation before cardioversion,
   analgesia for pacing, capture) and a printable certificate.

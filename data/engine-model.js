@@ -254,7 +254,8 @@
 
     // Airway interventions that deliver breaths for the patient. Shared by the hypoxia model and the
     // paralysis model so "paralysed but unbagged" desaturates and "paralysed and ventilated" does not.
-    const VENTILATING = ['Bagging', 'RSI', 'i-gel', 'NIV', 'CPAP', 'FONA'];
+    // One list, shared with the defib tablet (data/rhythms.js).
+    const VENTILATING = window.RHYTHMS.VENTILATING_INTERVENTIONS;
     const isVentilated = (activeInt) => !!activeInt && VENTILATING.some(k => activeInt.has(k));
 
     // =====================================================================================
@@ -329,8 +330,7 @@
     // resolve to "not ventilating" for free, and capnography correctly shows NO waveform.
     const isCapnoVentilating = (coreState, vitals) => {
         const rr = vitals && Number.isFinite(vitals.rr) ? vitals.rr : 0;
-        if (rr > 0) return true;
-        return isVentilated(coreState && coreState.activeInterventions) || !!(coreState && coreState.cprInProgress);
+        return window.RHYTHMS.capnoVentilating(coreState && coreState.activeInterventions, rr, !!(coreState && coreState.cprInProgress));
     };
     window.isCapnoVentilating = isCapnoVentilating;
     const VENTILATOR_RATE = 14;

@@ -1,8 +1,6 @@
 (() => {
     const { useState, useEffect, useRef } = React;
 
-    const BUFFER_SIZE = 1000;
-    const precomputed = { resp: new Float32Array(BUFFER_SIZE) };
 
     // Waveforms come from THE SHARED RHYTHM REGISTRY (data/rhythms.js): ECG complexes in real time
     // (seconds), per-lead morphology, and beat-by-beat pleth and arterial pulses that follow every
@@ -10,13 +8,17 @@
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/components.js');
 
-    // Chest-wall impedance: inspiration takes about a third of the breath, expiration the rest.
-    for (let i = 0; i < BUFFER_SIZE; i++) {
-        const t = i / BUFFER_SIZE;
-        precomputed.resp[i] = t < 0.35
-            ? -15 * Math.cos(Math.PI * t / 0.35)
-            : 15 * Math.cos(Math.PI * (t - 0.35) / 0.65);
-    }
+    // Chest-wall impedance over one breath (0 = start of inspiration). It uses the SAME breath
+    // timing as the capnogram (RHYTHMS.breathTiming), so the impedance rises exactly while the
+    // capnogram sits on its inspiratory baseline. Expiration falls back to the resting level and
+    // then waits there through any expiratory pause.
+    const respImpedance = (cycle, rate) => {
+        const bt = RG.breathTiming(rate);
+        const t = cycle * bt.T;
+        if (t < bt.Ti) return -15 * Math.cos(Math.PI * t / bt.Ti);
+        const fall = Math.min(bt.T - bt.Ti, 2 * bt.Ti);
+        return t - bt.Ti < fall ? 15 * Math.cos(Math.PI * (t - bt.Ti) / fall) : -15;
+    };
 
     const Lucide = ({ icon, className, onClick }) => {
         const icons = {
@@ -348,13 +350,17 @@
     // per-beat irregularity (AF, flutter with variable block, Mobitz II dropped beats) expressible
     // and stable: see RHYTHMS.beatIntervalFactor / RHYTHMS.droppedBeat.
     //
-    // ALSO WAVE 7: PER-TRACE TIME BASES. Real monitors run capnography far slower than the ECG
-    // (~6.25-12.5 mm/s vs 25 mm/s) so several breaths are visible at once. Each trace is now a
-    // LANE with its own sweep duration and its own sweep cursor: ECG/pleth/art/resp keep the 8 s
-    // sweep, CO2 sweeps 30 s. Phase accumulation is completely independent of sweep speed, so a
-    // slower time base cannot reintroduce the phase defect.
+    // ALSO: PER-TRACE TIME BASES. Real monitors draw the capnogram slower than the ECG so
+    // several breaths are visible at once: monitors offer 6.25, 12.5 or 25 mm/s for CO2 against
+    // 25 mm/s for the ECG, and the ZOLL R Series draws its capnogram at half the ECG speed
+    // ("8 or 10 seconds of data"). The CO2 lane here runs at half the ECG speed (12.5 mm/s
+    // against 25 mm/s): 16 s per sweep against the ECG's 8 s. That shows three or more breaths
+    // at normal rates while keeping each breath wide enough to read its SHAPE on the narrow
+    // controller panel (at 6.25 mm/s a breath there is barely 50 px wide). Each trace is a LANE
+    // with its own sweep duration and sweep cursor; phase accumulation is independent of sweep
+    // speed, so the slower time base cannot reintroduce the phase defect.
     // =========================================================================================
-    const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 30 };
+    const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 16 };
 
     const ECGMonitor = ({ rhythmType, hr, rr, spO2, etco2, isPaused, showTraces, showEtco2, showArt,
                           // How obstructed the patient is, 0-1. Supplied by the
@@ -362,6 +368,8 @@
                           // capnogram continuously from a normal trapezoid to a full shark fin.
                           co2Pathology = 'normal', co2Severity = 0,
                           ventilating = true, isCPR = false, className = '',
+                          // Show the "CPR IN PROGRESS" badge (off for an extra lane under another monitor).
+                          cprBadge = true,
                           rhythmLabel, showSyncMarkers = false,
                           // Individually attachable sensors. Each trace can now be
                           // gated on its own sensor instead of one all-or-nothing flag. They default
@@ -415,10 +423,6 @@
         const getECGValue = (cyclePhase, type, cpr, absTime, beat, hr) =>
             RG.ecgValue(cyclePhase, absTime, type, { cpr, beat, hr, lead: ecgLead });
 
-        const getRespValue = (t) => {
-            const idx = Math.floor((t % 1) * BUFFER_SIZE) % BUFFER_SIZE;
-            return precomputed.resp[idx];
-        };
 
         useEffect(() => {
             const canvas = canvasRef.current;
@@ -596,8 +600,10 @@
                 ecgPhase += elapsed * ecgFreq / (factor > 0 ? factor : 1);
                 const cycleT = ecgPhase - Math.floor(ecgPhase);
 
-                const respFreq = (live.rr > 0 ? live.rr : 12) / 60;
-                respPhase += elapsed * respFreq;
+                // One breath clock for both respiratory traces: the patient's own rate, or
+                // 10/min during CPR (RCUK ventilation rate), or 12/min when no rate is set.
+                const respRate = RG.capnoRate(live.rr, live.isCPR);
+                respPhase += elapsed * respRate / 60;
                 const respCycle = respPhase - Math.floor(respPhase);
 
                 // -------------------------------------------------- ECG
@@ -684,12 +690,13 @@
                 // capnogram morphology on its own slower time base.
                 if (respOn) {
                     const respBaseY = traceHeight * (laneIdx.resp + 0.5);
-                    const respY = respBaseY - getRespValue(respCycle);
+                    const respY = respBaseY - respImpedance(respCycle, respRate);
                     drawLane('resp', '#eab308', respY);
                 }
 
                 // -------------------------------------------------- CAPNOGRAPHY (ETCO2)
-                // 30 s sweep, real trapezoidal capnogram, amplitude scaled from the DISPLAYED
+                // 16 s sweep (half the ECG speed), real capnogram timed in seconds from the same
+                // breath clock as the impedance trace, amplitude scaled from the DISPLAYED
                 // numeric ETCO2 so the plateau and the number always agree. No ventilation means no
                 // capnogram at all (oesophageal intubation / disconnection / apnoea): a flat line is
                 // the teaching point, and drawing a waveform there would teach the opposite.
@@ -702,13 +709,12 @@
                     if (!live.ventilating || !(kPa > 0)) {
                         co2Y = co2ZeroY;                                // flat zero, no waveform
                     } else {
-                        // Capnography lags the compression/breath cycle in the airway, hence the
-                        // half-cycle offset kept from the previous implementation.
-                        const phase = (respCycle + 0.5) % 1;
-                        // The obstruction severity scales the shape continuously
-                        // from a normal trapezoid (0) to an unmistakable shark fin (1). Treating the
+                        // Phase 0 is the start of inspiration, as for the impedance trace, so the
+                        // capnogram falls to zero exactly while the chest is rising. The
+                        // obstruction severity scales the shape continuously from a normal
+                        // trapezoid (0) to an unmistakable shark fin (1). Treating the
                         // bronchospasm lowers the severity, so the trace visibly normalises.
-                        let v = RG.capnogram(phase, kPa, live.co2Pathology, live.co2Severity);
+                        let v = RG.capnogram(respCycle, kPa, live.co2Pathology, live.co2Severity, respRate);
                         // During CPR the capnogram is small and shows the compression rate; ETCO2
                         // RISING is the classic sign of ROSC, and that falls out of the numeric
                         // value driving the amplitude.
@@ -748,9 +754,9 @@
                 {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH</div>}
                 {artOn && <div className={`${labelClass} text-red-500`} style={{ top: topOf('art') }}>ART</div>}
                 {respOn && <div className={`${labelClass} text-yellow-500`} style={{ top: topOf('resp') }}>RESP</div>}
-                {co2On && <div className={`${labelClass} text-purple-500`} style={{ top: topOf('co2') }}>CO2 <span className="text-purple-300/70 font-normal">30s</span></div>}
+                {co2On && <div className={`${labelClass} text-purple-500`} style={{ top: topOf('co2') }} title="Capnogram: 0 to 8 kPa, drawn at half the ECG speed (12.5 mm/s)">CO2 <span className="text-purple-300/80 font-normal">0&ndash;8 kPa</span></div>}
                 {co2On && !ventilating && <div className="absolute right-2 text-purple-300 font-mono text-[10px] font-bold uppercase tracking-wider" style={{ top: topOf('co2') }}>no capnogram — not ventilating</div>}
-                {isCPR && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR IN PROGRESS</div>}
+                {isCPR && cprBadge && <div className="absolute top-2 right-2 bg-red-600 text-white px-2 py-1 text-xs font-bold animate-pulse">CPR IN PROGRESS</div>}
                 {showSyncMarkers && !isCPR && <div className="absolute bottom-1 right-2 text-yellow-400 font-mono text-[10px] font-bold tracking-widest">SYNC</div>}
             </div>
         );

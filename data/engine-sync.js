@@ -115,7 +115,19 @@
                 defib: cur.defib || {},
                 noise: cur.noise || {},
                 pacing: { electrical: !!(cur.pacing && cur.pacing.electrical), mechanical: !!(cur.pacing && cur.pacing.mechanical) },
-                defibView: defibViewFor(cur)
+                defibView: defibViewFor(cur),
+                // Capnography for the tablet's CO2 trace: attached or not, whether gas is moving,
+                // the breath rate and the same shape (pattern + obstruction severity) the monitor draws.
+                capno: (() => {
+                    const obstruction = cur.scenario ? getObstruction(cur, cur.vitals, cur.scenario) : null;
+                    return {
+                        on: !!cur.etco2Enabled,
+                        ventilating: RG.capnoVentilating(cur.activeInterventions, cur.vitals.rr, !!cur.cprInProgress),
+                        rr: Number(cur.vitals.rr) || 0,
+                        pattern: cur.etco2Pathology || 'normal',
+                        severity: obstruction && Number.isFinite(obstruction.severity) ? obstruction.severity : 0
+                    };
+                })()
             };
         };
         const buildDefibSyncPayloadRef = useRef(buildDefibSyncPayload);
@@ -126,7 +138,8 @@
                 postToChannel({ type: 'SYNC_VITALS', payload: buildDefibSyncPayload() });
             }
         }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput,
-            state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib, state.pacing, state.metronomeOn]);
+            state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib, state.pacing, state.metronomeOn,
+            state.etco2Enabled, state.etco2Pathology, state.activeInterventions]);
 
         useEffect(() => {
             const db = window.db;

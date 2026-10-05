@@ -47,6 +47,11 @@
                     <canvas id="ecgCanvas" role="img" aria-label="ECG trace"></canvas>
                     <div class="trace-warning" id="traceWarning"></div>
                 </div>
+                <!-- Capnogram, shown only while capnography is attached (the R Series shows no CO2
+                     display without its sensor). -->
+                <div class="co2-canvas-container hidden" id="co2Container">
+                    <canvas id="co2Canvas" role="img" aria-label="Capnogram"></canvas>
+                </div>
                 <div class="vitals-display">
                     <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
                     <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
@@ -150,8 +155,16 @@
             cpr: false, isFinished: false, gain: 1, noise: {}, pacing: { electrical: false, mechanical: false },
             energyLevels: RG.ADULT_ENERGY_STEPS.slice(), recommendedEnergy: RG.ADULT_DEFAULT_ENERGY, weight: null, age: null,
             view: { defibSim: false, pulseFeedback: false, hints: false, metronome: false },
-            scenario: null
+            scenario: null,
+            // Capnography: attached?, is gas moving?, breath rate, and the capnogram shape.
+            capno: { on: false, ventilating: false, rr: 0, pattern: 'normal', severity: 0 }
         };
+        // Capnogram canvas state (drawn by co2Frame, near the ECG renderer). Declared here because
+        // render() can run before the renderers are set up.
+        const co2Canvas = $('co2Canvas');
+        const cctx = co2Canvas.getContext('2d');
+        const CO2_FULL_KPA = 50 / 7.50062;
+        let CW = 0, CH = 0, co2X = 0, co2LastY = null, breathPhase = 0, co2Shown = false;
         // ---- The device ---------------------------------------------------------------------
         const device = {
             mode: 'off', machine: 'IDLE',          // IDLE | ANALYSING | CHARGING | READY | DISCHARGING
@@ -223,6 +236,7 @@
             patient.view = Object.assign({ defibSim: false, pulseFeedback: false, hints: false, metronome: false }, p.view || {});
             patient.weight = p.weight || null; patient.age = p.age;
             patient.scenario = p.scenario || null;
+            patient.capno = Object.assign({ on: false, ventilating: false, rr: 0, pattern: 'normal', severity: 0 }, p.capno || {});
             patient.recommendedEnergy = Number(p.recommendedEnergy) || RG.ADULT_DEFAULT_ENERGY;
             if (Array.isArray(p.energyLevels) && p.energyLevels.length) {
                 patient.energyLevels = p.energyLevels.slice();
@@ -243,6 +257,11 @@
                 gain: v.waveformGain, noise: v.noise, cpr: !!v.cprInProgress, isFinished: !!v.isFinished,
                 pacing: v.pacing, view: v.defibView, age: v.patientAge, weight: w,
                 recommendedEnergy: RG.recommendedEnergy(w, v.patientAge), energyLevels: RG.energySteps(w, v.patientAge),
+                capno: {
+                    on: !!v.etco2Enabled,
+                    ventilating: RG.capnoVentilating(v.activeInterventions, vit.rr, !!v.cprInProgress),
+                    rr: Number(vit.rr) || 0, pattern: v.co2Pathology || 'normal', severity: Number(v.co2Severity) || 0
+                },
                 scenario: { patientName: v.patientName, ecg: v.investigations ? v.investigations.ecg : null, investigations: { ecg: v.investigations ? v.investigations.ecg : null } }
             };
         }
@@ -252,6 +271,7 @@
                 gain: d.gain, noise: d.noise || { interference: d.interference }, cpr: !!d.cpr, isFinished: !!d.isFinished,
                 pacing: d.pacing, view: d.defibView, age: d.patientAge, weight: d.weight,
                 recommendedEnergy: d.recommendedEnergy, energyLevels: d.energyLevels,
+                capno: d.capno || null,
                 scenario: { patientName: d.patientName }
             };
         }
@@ -463,8 +483,16 @@
                 hrEl.classList.toggle('critical', hr === null || hr < 40 || hr > 150);
                 spEl.textContent = patient.spo2 > 0 ? Math.round(patient.spo2) : '---';
                 spEl.classList.toggle('critical', !(patient.spo2 > 0));
-                coEl.textContent = fmt(patient.etco2, 1);
+                // No sensor, no number: the R Series shows CO2 only while its sensor is connected.
+                coEl.textContent = patient.capno.on ? fmt(patient.etco2, 1) : '--';
                 bpEl.textContent = patient.bpSys > 0 ? (Math.round(patient.bpSys) + '/' + Math.round(patient.bpDia)) : '---/---';
+            }
+            const showCo2 = patient.linked && !off && !!patient.capno.on;
+            if (showCo2 !== co2Shown) {
+                co2Shown = showCo2;
+                $('co2Container').classList.toggle('hidden', !showCo2);
+                $('ecgCanvas').parentElement.classList.toggle('with-co2', showCo2);
+                co2Reset();
             }
             const warn = [];
             if (patient.noise && patient.noise.leadoff) warn.push('CHECK LEADS');
@@ -797,9 +825,71 @@
             lastY = y;
             sweepX += dx;
             if (sweepX >= W) sweepX -= W;
+            co2Frame(dt);
             simTime += dt;
         }
         requestAnimationFrame(animate);
+
+        // =====================================================================================
+        // CAPNOGRAM: the shared registry's capnogram (RHYTHMS.capnogram), drawn like the R Series:
+        // below the ECG, at HALF the ECG speed, with the scale on the left. The default scale is
+        // 0-50 mmHg (6.7 kPa), one of the R Series zoom ranges; a higher ETCO2 runs off the top.
+        // =====================================================================================
+        const CO2_SPEED = SPEED / 2;
+        function co2Resize() {
+            const r = co2Canvas.getBoundingClientRect();
+            if (!r.width || !r.height) return;
+            const d = window.devicePixelRatio || 1;
+            CW = r.width; CH = r.height;
+            co2Canvas.width = Math.round(CW * d); co2Canvas.height = Math.round(CH * d);
+            cctx.setTransform(d, 0, 0, d, 0, 0);
+            co2Reset();
+        }
+        function co2Reset() { co2X = 0; co2LastY = null; if (CW) { cctx.fillStyle = '#000'; cctx.fillRect(0, 0, CW, CH); } }
+        if ('ResizeObserver' in window) new ResizeObserver(co2Resize).observe(co2Canvas);
+        window.addEventListener('resize', co2Resize);
+        function co2Frame(dt) {
+            if (!co2Shown) return;
+            if (!CW) co2Resize();
+            if (!CW) return;
+            const c = patient.capno;
+            const rate = RG.capnoRate(c.rr, patient.cpr);
+            const prev = breathPhase;
+            breathPhase += dt * rate / 60;
+            const top = 14, zeroY = CH - 10, scale = (zeroY - top) / CO2_FULL_KPA;
+            const dx = CO2_SPEED * dt;
+            cctx.fillStyle = '#000';
+            cctx.fillRect(co2X, 0, ERASE + dx, CH);
+            if (co2X + ERASE + dx > CW) cctx.fillRect(0, 0, co2X + ERASE + dx - CW, CH);
+            const n = Math.max(1, Math.ceil(dx / 1.5));
+            cctx.strokeStyle = '#ffff00'; cctx.lineWidth = 2; cctx.lineJoin = 'round'; cctx.lineCap = 'round';
+            cctx.beginPath();
+            let y = co2LastY === null ? zeroY : co2LastY;
+            cctx.moveTo(co2X, y);
+            for (let i = 1; i <= n; i++) {
+                const f = i / n;
+                let v = 0;
+                if (c.ventilating) {
+                    v = RG.capnogram(prev + (breathPhase - prev) * f, patient.etco2, c.pattern, c.severity, rate);
+                    // Chest compressions ripple the CO2 trace (about 110 a minute).
+                    if (patient.cpr) v += Math.max(0, patient.etco2 * 0.10) * Math.sin((simTime + dt * f) * 2 * Math.PI * 1.83);
+                }
+                y = zeroY - Math.max(0, Math.min(v, CO2_FULL_KPA * 1.04)) * scale;
+                let nx = co2X + dx * f;
+                if (nx >= CW) { cctx.lineTo(CW, y); cctx.moveTo(0, y); nx -= CW; co2X -= CW; }
+                cctx.lineTo(nx, y);
+            }
+            cctx.stroke();
+            co2LastY = y;
+            co2X += dx;
+            if (co2X >= CW) co2X -= CW;
+            // Label and scale, redrawn over the trace as the device does.
+            cctx.fillStyle = '#000'; cctx.fillRect(0, 0, 64, 13); cctx.fillRect(0, CH - 12, 24, 12);
+            cctx.fillStyle = '#ffff00'; cctx.font = 'bold 11px monospace'; cctx.textBaseline = 'top';
+            cctx.fillText('CO2 ' + CO2_FULL_KPA.toFixed(1), 4, 1);
+            cctx.textBaseline = 'bottom'; cctx.fillText('0', 4, CH - 1);
+            if (!c.ventilating) { cctx.fillStyle = '#000'; cctx.fillRect(CW - 104, 0, 104, 13); cctx.fillStyle = '#ffff00'; cctx.textBaseline = 'top'; cctx.fillText('NO BREATHS', CW - 84, 1); }
+        }
 
         // =====================================================================================
         // START-UP
