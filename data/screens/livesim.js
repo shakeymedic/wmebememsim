@@ -318,6 +318,9 @@
         // button, NIBP, the drug-dose calculator and the timer alerts — all facilitator tools that
         // are useful without a scenario.
         const quickSim = !!scenario.quickSim;
+        // Quick Sim's clock is the session timeline, which runs from launch (record only, no
+        // physiology) so the event log and the debrief have real times without pressing START.
+        const clockSeconds = quickSim ? (Number(state.sessionTime) || 0) : time;
         const etco2Shape = etco2Pathology || 'normal';
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
@@ -785,7 +788,7 @@
             if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
             else if (modalVital === 'pupils') { targets.pupils = modalTarget; }
             else { targets[modalVital] = parseFloat(modalTarget); }
-            if (trendDuration === 0) Object.keys(targets).forEach(k => manualUpdateVital(k, targets[k]));
+            if (trendDuration === 0) sim.manualUpdateVitals(targets);
             else startTrend(targets, trendDuration);
             // The cuff reads the patient when it finishes inflating (~5 s), by which time an
             // immediate change has landed.
@@ -921,7 +924,7 @@
                             <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change</div>
                             <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
                         </div>
-                        <div className="font-mono text-xl font-bold text-white">{formatTime(time)}</div>
+                        <div className="font-mono text-xl font-bold text-white">{formatTime(clockSeconds)}</div>
                         {!isRunning
                             ? <Button variant="success" onClick={start} className="h-9 px-3 font-bold text-sm"><Lucide icon="play" className="w-4 h-4"/> START</Button>
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
@@ -999,7 +1002,7 @@
                                 { label: isMuted ? 'Unmute alarms' : 'Mute alarms', icon: isMuted ? 'volume-2' : 'volume-x', onClick: () => sim.dispatch({type: 'SET_MUTED', payload: !isMuted}) },
                                 { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) }
                             ]} />
-                        <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(time)}</div>
+                        <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(clockSeconds)}</div>
                     </div>
                 </div>
 

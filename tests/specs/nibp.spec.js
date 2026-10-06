@@ -95,7 +95,7 @@ test('auto NIBP cycles in Quick Sim without START, and can be switched from the 
   expect(t0).toBe(180);
   await expect.poll(() => engine(page, () => window.__simEngine.state.nibp.timer), { timeout: 5000 }).toBeLessThanOrEqual(178);
   // Run the rest of the 3 minutes down: the cuff then measures by itself
-  await page.evaluate(() => { for (let i = 0; i < 180; i++) window.__simEngine.dispatch({ type: 'NIBP_TICK' }); });
+  await page.evaluate(() => { for (let i = 0; i < 180; i++) window.__simEngine.dispatch({ type: 'TICK_RECORD' }); });
   await expect.poll(() => engine(page, () => window.__simEngine.state.nibp.sys), { timeout: 10000 }).toBeGreaterThan(0);
   expect(await engine(page, () => window.__simEngine.state.nibp.timer)).toBeGreaterThan(170);   // and the timer restarted
 });

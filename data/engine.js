@@ -359,11 +359,13 @@
         useEffect(() => {
             if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && (state.isRunning || quickSimLive) && !state.nibp.inflating && getSensors(state).nibp) { dispatch({ type: 'START_NIBP' }); }
         }, [state.nibp.timer, state.nibp.mode, state.isRunning, quickSimLive, state.nibp.inflating, state.activeInterventions]);
+        // The same live Quick Sim also runs the record-only clock (TICK_RECORD): the debrief
+        // timeline, the obs graph samples and the auto-NIBP countdown, with no physiology.
         useEffect(() => {
-            if (!quickSimLive || state.nibp.mode !== 'auto') return;
-            const id = setInterval(() => dispatch({ type: 'NIBP_TICK' }), 1000);
+            if (!quickSimLive) return;
+            const id = setInterval(() => dispatch({ type: 'TICK_RECORD' }), 1000);
             return () => clearInterval(id);
-        }, [quickSimLive, state.nibp.mode]);
+        }, [quickSimLive]);
         // The measurement itself: ~5 s of inflation, then the reading is committed. This is its OWN
         // effect, keyed only on `inflating`. It used to share the auto-trigger effect above, whose
         // dependencies include the auto-mode countdown — which changes every second while the sim
@@ -914,7 +916,31 @@
             return () => cmdRef.off('value', handleCmd);
         }, [isMonitorMode, sessionID]);
 
-        const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        // Facilitator obs changes are logged in words, with the value before and after, because
+        // the debrief's obs graph lists them as "what changed". BP is one entry (120/75 → 90/52).
+        const OBS_LABELS = { hr: 'HR', spO2: 'SpO2', rr: 'RR', temp: 'Temp', bm: 'Glucose', etco2: 'ETCO2', gcs: 'GCS', ph: 'pH', k: 'K+', pupils: 'Pupils', bpSys: 'BP systolic', bpDia: 'BP diastolic' };
+        const obsText = (key, v) => {
+            const n = Number(v);
+            if (!Number.isFinite(n)) return String(v);
+            return (key === 'ph') ? n.toFixed(2) : (key === 'temp' || key === 'bm' || key === 'etco2' || key === 'k') ? n.toFixed(1) : String(Math.round(n));
+        };
+        const describeObs = (targets, from) => {
+            const parts = [];
+            const t = { ...targets };
+            if (t.bpSys !== undefined && t.bpDia !== undefined) {
+                parts.push(`BP ${obsText('bpSys', from.bpSys)}/${obsText('bpDia', from.bpDia)} \u2192 ${obsText('bpSys', t.bpSys)}/${obsText('bpDia', t.bpDia)}`);
+                delete t.bpSys; delete t.bpDia;
+            }
+            Object.keys(t).forEach(k => parts.push(`${OBS_LABELS[k] || k} ${obsText(k, from[k])} \u2192 ${obsText(k, t[k])}`));
+            return parts.join(', ');
+        };
+        const fmtDuration = (s) => s >= 60 && s % 60 === 0 ? `${s / 60} min` : `${s} s`;
+        const manualUpdateVitals = (targets) => {
+            const from = { ...stateRef.current.vitals };
+            Object.keys(targets).forEach(key => dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value: targets[key] } }));
+            addLogEntry(`Obs changed: ${describeObs(targets, from)}`, 'manual');
+        };
+        const manualUpdateVital = (key, value) => manualUpdateVitals({ [key]: value });
         
         // =====================================================================================
         // THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
@@ -1129,7 +1155,11 @@
         };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const playSound = (type) => { dispatch({ type: 'TRIGGER_SOUND', payload: type }); addLogEntry(`Sound: ${type}`, 'manual'); };
-        const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
+        const startTrend = (targets, durationSecs) => {
+            const from = { ...stateRef.current.vitals };
+            dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } });
+            addLogEntry(`Obs trend started: ${describeObs(targets, from)} over ${fmtDuration(durationSecs)}`, 'manual');
+        };
         // Firebase may never have loaded (offline tablet, blocked CDN). Without this guard the student
         // monitor throws on every NIBP/action press instead of falling back to acting locally.
         const sendCommand = (payload) => {
@@ -1534,7 +1564,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,

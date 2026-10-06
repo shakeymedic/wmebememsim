@@ -64,7 +64,10 @@
 
     const initialCoreState = {
         runId: null,
-        time: 0, cycleTimer: 0, isRunning: false, rhythm: "Sinus Rhythm",
+        // `time` is the physiology clock (runs only after START). `sessionTime` is the debrief
+        // timeline: it runs with `time`, and in Quick Sim it also runs before START (record only,
+        // no physiology), so the event log and the obs graph have real times in every mode.
+        time: 0, sessionTime: 0, cycleTimer: 0, isRunning: false, rhythm: "Sinus Rhythm",
         monitorTimer: { visible: false, active: false, time: 0 },
         flash: null, activeInterventions: new Set(), interventionCounts: {},
         activeDurations: {}, isMuted: false,

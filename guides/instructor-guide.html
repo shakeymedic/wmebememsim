@@ -355,7 +355,7 @@
 <li><strong>Add a flagged note:</strong> type the note and press <strong>Flag</strong> instead.</li>
 <li><strong>Flag an existing entry:</strong> click the small flag beside it. Click again to remove the flag.</li>
 </ul>
-<p>Flagged entries are listed under <strong>Flagged events</strong> in the debrief and marked on its graph, so you can find the moments to discuss.</p>
+<p>Flagged entries appear in the <strong>Flags and warnings</strong> row of the debrief graph, so you can find the moments to discuss.</p>
 <p><strong>Safety flags</strong> count sequence deviations: actions done before their usual prerequisite was in place, such as an IV drug before IV access. Nothing is blocked; the team can still do it. When there is at least one, an amber <strong>Safety flags</strong> button appears in the top bar. It opens the list, with arrests, shocks and your flagged moments shown separately as significant events. Safety flags are not used in Quick Sim.</p>
 
 <h2 id="debrief">Finishing and the debrief</h2>
@@ -365,17 +365,26 @@
 <tbody>
 <tr><td>Performance Summary</td><td>Objectives met, the score (fully met, and with partial credit) and the time taken</td></tr>
 <tr><td>Learning Objectives</td><td>Each objective as fully met, partly done or not in place, with the steps behind it</td></tr>
-<tr><td>Vitals Trend &amp; Interventions</td><td>A graph of the obs with each treatment marked; dashed lines mark flagged events</td></tr>
-<tr><td>Flagged events</td><td>The log entries you flagged</td></tr>
+<tr><td>Obs, interventions and changes</td><td>The graph described below, at the top of the debrief</td></tr>
 <tr><td>Sequence Deviations</td><td>The safety flags</td></tr>
 <tr><td>Defibrillation &amp; Rhythm</td><td>Shocks, energies and each rhythm change</td></tr>
 <tr><td>Defib Sim feedback</td><td>Defib Sim only: good practice and areas for improvement</td></tr>
-<tr><td>Session Replay</td><td>Drag the slider to show the obs at any moment</td></tr>
 <tr><td>Simulation Log</td><td>Every entry with its time</td></tr>
 <tr><td>Instructor Notes</td><td>A box for your own feedback notes</td></tr>
 </tbody>
 </table></div>
-<p>Quick Sim has no scenario, so it has no score; the graph, log and replay still work.</p>
+<p>Quick Sim has no scenario, so it has no score; the graph and the log still work.</p>
+<h3 id="obs-graph">The obs graph</h3>
+<p>Every version (a full scenario, Quick Sim and Defib Sim) finishes with the same graph, <strong>Obs, interventions and changes</strong>. It shows the patient's true obs every 5 seconds over the whole session. What the team could see depended on what was attached.</p>
+<ul>
+<li><strong>Rhythm</strong> along the top. Time without a pulse is red, and the same red shading runs down every chart below.</li>
+<li>One small chart each for heart rate, blood pressure (systolic and diastolic), SpO2 and respiratory rate. ETCO2 is added while capnography was attached. Temperature, glucose, pH and GCS are added only if they changed.</li>
+<li>Numbered markers underneath, in four rows: <strong>Rhythm, arrest and shocks</strong>; <strong>Team actions and treatment</strong>; <strong>Facilitator changes</strong> (the obs you changed or trended, with the values before and after, the patient's voice and presets); and <strong>Flags and warnings</strong>. Markers that would overlap share one label, such as "5 +2".</li>
+<li><strong>What happened</strong>, under the graph, lists every numbered marker with its time. Click one to mark it on the graph.</li>
+<li>Move the pointer over the graph, or click it and use the arrow keys, to read every value at that moment.</li>
+<li><strong>Show the obs as a table</strong> lists the values every 30 seconds.</li>
+</ul>
+<p>The graph records while the scenario clock runs. In Quick Sim it records from the moment the Quick Sim starts, without pressing START. Pressing START in Quick Sim still switches on the physiology clock, such as SpO2 falling when the patient is not breathing. In Defib Sim the clock starts at the learner's first action on the defib. In a full scenario, press START at the beginning or there will be no graph. The graph is kept if you reload the page and resume, and it is in the printed and downloaded report.</p>
 <h3>Keeping a copy</h3>
 <ul>
 <li><strong>Download Report</strong> saves the debrief as a web page you can open on any computer, including the log and your instructor notes. Write your notes before you download.</li>

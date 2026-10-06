@@ -82,6 +82,12 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   reading) change it. The BP modal defaults to *Now* and offers **Change, don't send** or **Change and
   cycle cuff now**. WETFLAG on the room monitor starts hidden (`showWetflag` defaults to false) and is
   toggled from Rhythm & resus.
+- **Debrief obs graph (every mode):** `state.sessionTime` is the debrief timeline. It advances with
+  `time` (TICK_TIME), and in a live Quick Sim before START also via the record-only `TICK_RECORD`
+  (no physiology). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
+  rhythm) and log `timeSeconds` use it, and it is saved in the resume snapshot with the history. The
+  chart (`data/screens/debrief.js`, `buildTimeline`) is small multiples with a rhythm lane and four
+  numbered event lanes, drawn dark on screen and light in the report from the same code.
 - **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
   actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
 - **Simple / Full view** (remembered on each device, Simple by default; every open screen on the

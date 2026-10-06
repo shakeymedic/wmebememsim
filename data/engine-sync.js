@@ -500,11 +500,13 @@
                         // The per-run id travels with the snapshot so a resumed session reopens
                         // the same instructor notes instead of a blank set.
                         runId: cur.runId || null,
-                        rhythm: cur.rhythm, time: cur.time, cycleTimer: cur.cycleTimer,
+                        rhythm: cur.rhythm, time: cur.time, sessionTime: cur.sessionTime, cycleTimer: cur.cycleTimer,
                         activeInterventions: Array.from(cur.activeInterventions),
                         interventionCounts: cur.interventionCounts, activeDurations: cur.activeDurations,
                         completedObjectives: Array.from(cur.completedObjectives),
                         log: cur.log.slice(-200), // recent log only
+                        // The debrief's obs graph (one sample per 5 s; about 2.8 h kept).
+                        history: (cur.history || []).slice(-2000),
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
                         showWetflag: cur.showWetflag, icp: cur.icp,
                         // Shock count / cumulative energy must survive a resume.
