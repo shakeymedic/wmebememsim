@@ -245,7 +245,7 @@
 
     const LiveSimScreen = ({ sim, onFinish, onBack, sessionID }) => {
         const { INTERVENTIONS, Button, Lucide, Card, VitalDisplay, ECGMonitor, HumanFactorBadge, formatProfileTemplate, Modal, Section, MenuButton, ViewModeToggle } = window;
-        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, initCharge, deliverShock } = sim;
+        const { state, start, pause, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, startTrend, speak, revealInvestigation, clearInvestigation, triggerNIBP, toggleNIBPMode, initCharge, deliverShock } = sim;
         // WAVE 8 / FINDINGS 3 + 4. Two-way sensor toggles and the two honest fast paths. Fall back to
         // the plain intervention path if an older engine is loaded, so the panel is never dead.
         const toggleSensor = sim.toggleSensor || ((id) => {
@@ -332,9 +332,6 @@
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState(""); 
         const [trendDuration, setTrendDuration] = useState(30);
-        // BP only: after an immediate change, cycle the cuff so the team's NIBP shows the new value
-        // (a real NIBP only updates when it measures).
-        const [cycleCuffAfter, setCycleCuffAfter] = useState(true);
         const [showLogModal, setShowLogModal] = useState(false);
         const [showRhythmModal, setShowRhythmModal] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
@@ -747,7 +744,9 @@
              );
         };
 
-        const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(30); };
+        // BP defaults to an immediate change: the team only sees it when the cuff next measures,
+        // so there is nothing to gain from ramping it. Everything else ramps over 30 s by default.
+        const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(key === 'bp' ? 0 : 30); };
         // A blank or non-numeric field used to reach the reducer as NaN, which then poisoned the Firebase
         // diff (RTDB rejects NaN) and froze the student monitor for the rest of the session.
         const validateVitalModal = () => {
@@ -777,7 +776,10 @@
             return null;
         })();
 
-        const confirmVitalUpdate = () => {
+        // `cycleCuff` (BP only): also measure now, so the team's NIBP shows the new value once the
+        // cuff has inflated (~5 s). Without it the patient's BP changes but the monitor keeps its
+        // last reading until the cuff next cycles — the team's press, yours, or the auto timer.
+        const confirmVitalUpdate = (cycleCuff = false) => {
             if (vitalModalError) return;
             const targets = {};
             if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
@@ -787,7 +789,10 @@
             else startTrend(targets, trendDuration);
             // The cuff reads the patient when it finishes inflating (~5 s), by which time an
             // immediate change has landed.
-            if (modalVital === 'bp' && trendDuration === 0 && cycleCuffAfter && sensors.nibp) triggerNIBP();
+            if (modalVital === 'bp' && trendDuration === 0 && cycleCuff && sensors.nibp) {
+                triggerNIBP();
+                addLogEntry('NIBP cycled by facilitator to show the new BP', 'manual');
+            }
             setModalVital(null);
         };
         const VITAL_NAMES = { hr: 'Heart rate', bp: 'Blood pressure', spO2: 'SpO2', rr: 'Respiratory rate', temp: 'Temperature', bm: 'Glucose', etco2: 'ETCO2', gcs: 'GCS', ph: 'pH', k: 'Potassium (K+)', pupils: 'Pupils' };
@@ -1331,6 +1336,13 @@
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
                                  <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
                             </Button>
+                            {/* The same AUTO switch the team has on the monitor's NIBP tile: the cuff
+                                measures every 3 minutes while it is on. */}
+                            <Button variant="outline" onClick={() => toggleNIBPMode && toggleNIBPMode()}
+                                    title="Auto NIBP: the cuff measures every 3 minutes (the same switch as AUTO on the room monitor)."
+                                    className={`flex-none px-3 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
+                                 {state.nibp && state.nibp.mode === 'auto' ? 'Auto NIBP: on' : 'Auto NIBP: off'}
+                            </Button>
                             {/* A one-off displayed reading that does NOT change the patient (e.g. a
                                 spurious cuff reading). To change the actual BP, tap the BP tile. */}
                             <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
@@ -1838,8 +1850,8 @@
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Set {VITAL_NAMES[modalVital] || modalVital}</h3>
                             {/* Enter confirms from either field, so a value can be typed and sent without the mouse. */}
-                            <div className="space-y-4" onKeyDown={e => { if (e.key === 'Enter' && e.target && e.target.type === 'number') { e.preventDefault(); confirmVitalUpdate(); } }}>
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input aria-label="{modalVital === 'bp' ? 'Systolic' : 'Target'}" type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                            <div className="space-y-4" onKeyDown={e => { if (e.key === 'Enter' && e.target && e.target.type === 'number') { e.preventDefault(); confirmVitalUpdate(false); } }}>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input aria-label={modalVital === 'bp' ? 'Systolic' : (VITAL_NAMES[modalVital] || 'Target')} type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input aria-label="Diastolic" type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
                                 {modalVital === 'etco2' && (
@@ -1876,10 +1888,8 @@
                                 {modalVital === 'bp' && (
                                     <div className="bg-slate-900 border border-slate-700 rounded p-2 text-[10px] text-slate-400 leading-relaxed">
                                         {!sensors.nibp && !sensors.art
-                                            ? <span><b className="text-amber-300">No NIBP cuff or arterial line attached</b> — the team will not see this until one is.</span>
-                                            : trendDuration === 0 && sensors.nibp
-                                                ? <label className="flex items-center gap-2 cursor-pointer text-slate-300"><input type="checkbox" checked={cycleCuffAfter} onChange={e => setCycleCuffAfter(e.target.checked)} /> Cycle the NIBP cuff so the team sees it</label>
-                                                : <span>{sensors.art ? 'The arterial line follows this live. ' : ''}{sensors.nibp ? 'The NIBP shows it the next time the cuff cycles.' : ''}</span>}
+                                            ? <span><b className="text-amber-300">No NIBP cuff or arterial line attached</b> — the team will not see this until one is attached and measures.</span>
+                                            : <span>{sensors.art ? 'The arterial line follows this live. ' : ''}{sensors.nibp ? <>The room monitor keeps showing the last cuff reading{state.nibp && state.nibp.sys ? <> (<b className="text-slate-200">{Math.round(state.nibp.sys)}/{Math.round(state.nibp.dia)}</b>)</> : null} until the cuff next cycles: the team's press, yours, or the auto timer{state.nibp && state.nibp.mode === 'auto' ? <> (<b className="text-emerald-300">auto is on</b>)</> : null}.</> : ''}</span>}
                                     </div>
                                 )}
                                 {/* The rule, stated where the facilitator sets the value. */}
@@ -1889,7 +1899,15 @@
                                     </div>
                                 )}
                                 {vitalModalError && <div className="bg-red-900/30 border border-red-600 rounded p-2 text-red-200 text-xs font-bold text-center">{vitalModalError}</div>}
-                                <Button onClick={confirmVitalUpdate} variant="success" disabled={!!vitalModalError} className={`w-full mt-4 h-12 text-lg font-bold ${vitalModalError ? 'opacity-40 cursor-not-allowed' : ''}`}>CONFIRM</Button>
+                                {modalVital === 'bp' && trendDuration === 0 && sensors.nibp ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4">
+                                        <Button onClick={() => confirmVitalUpdate(false)} variant="success" disabled={!!vitalModalError} className={`h-14 text-sm font-bold leading-tight ${vitalModalError ? 'opacity-40 cursor-not-allowed' : ''}`}>Change, don't send</Button>
+                                        <Button onClick={() => confirmVitalUpdate(true)} variant="primary" disabled={!!vitalModalError} className={`h-14 text-sm font-bold leading-tight ${vitalModalError ? 'opacity-40 cursor-not-allowed' : ''}`}>Change and cycle cuff now</Button>
+                                        <p className="sm:col-span-2 text-[10px] text-slate-400 leading-relaxed">“Change, don't send” changes the patient now; the monitor shows it at the next cuff cycle. “Cycle cuff now” changes it and starts a measurement: the cuff inflates for about 5 s, then the new reading appears.</p>
+                                    </div>
+                                ) : (
+                                    <Button onClick={() => confirmVitalUpdate(false)} variant="success" disabled={!!vitalModalError} className={`w-full mt-4 h-12 text-lg font-bold ${vitalModalError ? 'opacity-40 cursor-not-allowed' : ''}`}>{modalVital === 'bp' ? (trendDuration === 0 ? 'Change BP' : 'Start the change') : 'CONFIRM'}</Button>
+                                )}
                                 <Button onClick={()=>setModalVital(null)} variant="outline" className="w-full">Cancel</Button>
                             </div>
                         </div>

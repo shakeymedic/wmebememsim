@@ -375,7 +375,7 @@
                 // standard set or individual sensors from the controller's Monitoring & access panel.
                 // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
                 return { ...initialCoreState, runId: action.runId || newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
-                    showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
+                    showWetflag: action.payload.showWetflag === true, deteriorationMode: detMode0,
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
                     pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
                     arrest: { since: RG.isPulseless(initialRhythm) ? 0 : null, shocks: 0, adrenaline: [], amiodarone: [] },
@@ -398,7 +398,7 @@
                     interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
                     nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,
                     isParalysed: !!p.isParalysed, paralysis: p.paralysis || { active: !!p.isParalysed, agent: null, startTime: 0, onset: 0, duration: 0 },
-                    showWetflag: p.showWetflag !== false,
+                    showWetflag: p.showWetflag === true,
                     icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
                     activeDrugs: Array.isArray(p.activeDrugs) ? p.activeDrugs : [],
                     deteriorationMode: p.deteriorationMode === 'auto' ? 'auto' : 'manual',
@@ -539,6 +539,8 @@
             case 'SET_DEVICE_MIRROR': return { ...state, deviceMirror: action.payload || {} };
             case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
+            // Quick Sim's own auto-cycle countdown (TICK_TIME does this while the clock runs).
+            case 'NIBP_TICK': return state.nibp.mode === 'auto' ? { ...state, nibp: { ...state.nibp, timer: state.nibp.timer - 1 } } : state;
             // Abandons a measurement in progress: no reading is committed (the commit timer is
             // cleared by the effect that owns it as soon as `inflating` goes false).
             case 'STOP_NIBP': return { ...state, nibp: { ...state.nibp, inflating: false } };
@@ -569,7 +571,7 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };

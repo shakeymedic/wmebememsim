@@ -96,7 +96,7 @@
         waveformGain: 1.0, noise: { interference: false },
         remotePacerState: { rate: 0, output: 0 }, notification: null, pacingThreshold: 70,
         icp: 10, activeLoops: {}, completedObjectives: new Set(), assessments: {},
-        lastUpdate: 0, isOffline: false, showWetflag: true,
+        lastUpdate: 0, isOffline: false, showWetflag: false,
         // Mirrored top-level serum K+ (the authoritative copy lives in vitals.k).
         potassium: 4.2,
         // ---- WAVE 7 / ITEM 4: INTERMITTENT (POINT-OF-CARE) READINGS ------------------

@@ -8,7 +8,7 @@
     const { useState, useEffect, useRef } = React;
     const RG = window.RHYTHMS;
     const {
-        DEFAULT_VITALS, getObstruction, sanitizeForRealtimeDatabase
+        DEFAULT_VITALS, getObstruction, getSensors, sanitizeForRealtimeDatabase
     } = window.__EngineModel;
 
     const useSessionSync = (ctx) => {
@@ -55,6 +55,13 @@
                 case 'ANALYSIS_RESULT': analyseRhythm(src); break;       // judged here, from the controller's rhythm
                 case 'PACER_UPDATE': dispatch({ type: 'UPDATE_PACER_STATE', payload: { rate: Number(p.rate) || 0, output: Number(p.output) || 0, demand: p.demand !== false } }); break;
                 case 'CHECK_PULSE': addLogEntry(`Student checked pulse (${where})`, 'action'); break;
+                // The defib's NIBP key. It measures with the session's one cuff, so in a full scenario
+                // the cuff must be attached (Monitoring & access); Defib Sim has no sensor panel, so
+                // there the defib's own cuff is always on.
+                case 'NIBP_START':
+                    if (!nibpCuffOn(cur)) { addLogEntry(`Student pressed NIBP on the defib (${where}) — no cuff attached`, 'info'); break; }
+                    if (!cur.nibp.inflating) { dispatch({ type: 'START_NIBP' }); addLogEntry(`NIBP started by student (${where})`, 'action'); }
+                    break;
                 case 'CPR_TOGGLE': toggleCPR(!!p.on, src); break;
                 case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
                 case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
@@ -92,6 +99,7 @@
             const edu = !!(ds && ds.mode !== 'assessment');
             return { defibSim: !!ds, pulseFeedback: edu, hints: edu, metronome: !!cur.metronomeOn };
         };
+        const nibpCuffOn = (cur) => !!((cur.scenario && cur.scenario.defibSim) || getSensors(cur).nibp);
         const buildDefibSyncPayload = () => {
             const cur = stateRef.current;
             const weight = Number(cur.scenario?.wetflag?.weight);
@@ -116,6 +124,8 @@
                 noise: cur.noise || {},
                 pacing: { electrical: !!(cur.pacing && cur.pacing.electrical), mechanical: !!(cur.pacing && cur.pacing.mechanical) },
                 defibView: defibViewFor(cur),
+                // The last CUFF reading (not the live BP): the defib's NIBP only changes when it measures.
+                nibp: { sys: cur.nibp.sys, dia: cur.nibp.dia, lastTaken: cur.nibp.lastTaken, inflating: !!cur.nibp.inflating, cuff: nibpCuffOn(cur) },
                 // Capnography for the tablet's CO2 trace: attached or not, whether gas is moving,
                 // the breath rate and the same shape (pattern + obstruction severity) the monitor draws.
                 capno: (() => {
@@ -139,7 +149,7 @@
             }
         }, [state.vitals, state.rhythm, state.waveformGain, state.noise, state.pacingThreshold, state.audioOutput,
             state.cprInProgress, state.isRunning, state.isFinished, state.scenario, state.defib, state.pacing, state.metronomeOn,
-            state.etco2Enabled, state.etco2Pathology, state.activeInterventions]);
+            state.etco2Enabled, state.etco2Pathology, state.activeInterventions, state.nibp.sys, state.nibp.dia, state.nibp.inflating]);
 
         useEffect(() => {
             const db = window.db;

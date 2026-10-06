@@ -48,6 +48,7 @@
         const { Button, Lucide, Modal, ECGMonitor, INTERVENTIONS } = window;
         const RG = window.RHYTHMS;
         const { state, start, pause, applyIntervention, addLogEntry, triggerArrest, triggerROSC, nextCycle, changeRhythm } = sim;
+        const nibp = state.nibp || {};
         const scenario = state.scenario || {};
         const ds = scenario.defibSim || {};
         const vitals = state.vitals || {};
@@ -339,6 +340,14 @@
                                         className={`col-span-2 ${chip(!!state.etco2Enabled, 'bg-yellow-900 border-yellow-400 text-yellow-100')}`}
                                         title="Attach or remove the CO2 sensor on the learner's defib">
                                     Capnography {state.etco2Enabled ? `ON (ETCO2 ${Number(vitals.etco2 || 0).toFixed(1)} kPa)` : 'off'}
+                                </button>
+                                {/* The learner's defib shows the last CUFF reading, not the live BP: it
+                                    changes only when the cuff measures (their NIBP key, or this). */}
+                                <button type="button" data-testid="defib-nibp" disabled={!!nibp.inflating}
+                                        onClick={() => { sim.triggerNIBP(); addLogEntry('NIBP cycled by facilitator', 'manual'); }}
+                                        className={`col-span-2 ${chip(!!nibp.inflating, 'bg-sky-900 border-sky-400 text-sky-100')}`}
+                                        title="Measure a blood pressure on the learner's defib now (the cuff takes about 5 seconds)">
+                                    {nibp.inflating ? 'NIBP measuring…' : `Cycle NIBP (defib shows ${nibp.sys > 0 ? `${Math.round(nibp.sys)}/${Math.round(nibp.dia)}` : '--/--'})`}
                                 </button>
                             </div>
                         </div>

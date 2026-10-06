@@ -56,13 +56,13 @@
                     <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
                     <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
                     <div class="vital-item"><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
-                    <div class="vital-item"><div class="vital-label">NIBP</div><div class="vital-value" id="bpDisplay">--/--</div><div class="vital-unit">mmHg</div></div>
+                    <div class="vital-item"><div class="vital-label" id="bpLabel">NIBP</div><div class="vital-value" id="bpDisplay">--/--</div><div class="vital-unit">mmHg</div></div>
                 </div>
                 <div class="message-bar" id="messageBar" role="status" aria-live="polite"></div>
             </div>
             <div class="softkeys">
                 <button class="softkey" id="checkPulseBtn">Check Pulse</button>
-                <button class="softkey" disabled title="Not simulated">Param</button>
+                <button class="softkey" id="nibpBtn" title="Take a blood pressure with the cuff (about 5 seconds)">NIBP</button>
                 <button class="softkey" id="markerBtn">Marker</button>
                 <button class="softkey" id="alarmSuspendBtn">Alarm Suspend</button>
             </div>
@@ -157,7 +157,9 @@
             view: { defibSim: false, pulseFeedback: false, hints: false, metronome: false },
             scenario: null,
             // Capnography: attached?, is gas moving?, breath rate, and the capnogram shape.
-            capno: { on: false, ventilating: false, rr: 0, pattern: 'normal', severity: 0 }
+            capno: { on: false, ventilating: false, rr: 0, pattern: 'normal', severity: 0 },
+            // The last cuff reading: NIBP shows only what the cuff has measured, never the live BP.
+            nibp: { sys: null, dia: null, lastTaken: null, inflating: false, cuff: false }
         };
         // Capnogram canvas state (drawn by co2Frame, near the ECG renderer). Declared here because
         // render() can run before the renderers are set up.
@@ -237,6 +239,11 @@
             patient.weight = p.weight || null; patient.age = p.age;
             patient.scenario = p.scenario || null;
             patient.capno = Object.assign({ on: false, ventilating: false, rr: 0, pattern: 'normal', severity: 0 }, p.capno || {});
+            const wasInflating = patient.nibp.inflating;
+            patient.nibp = Object.assign({ sys: null, dia: null, lastTaken: null, inflating: false, cuff: false }, p.nibp || {});
+            // In Defib Sim this is the only device in the room, so it makes the pump noise; alongside
+            // a room monitor the monitor makes it (one cuff, one noise).
+            if (patient.nibp.inflating && !wasInflating && device.mode !== 'off' && patient.view.defibSim) sounds.cuff();
             patient.recommendedEnergy = Number(p.recommendedEnergy) || RG.ADULT_DEFAULT_ENERGY;
             if (Array.isArray(p.energyLevels) && p.energyLevels.length) {
                 patient.energyLevels = p.energyLevels.slice();
@@ -262,6 +269,12 @@
                     ventilating: RG.capnoVentilating(v.activeInterventions, vit.rr, !!v.cprInProgress),
                     rr: Number(vit.rr) || 0, pattern: v.co2Pathology || 'normal', severity: Number(v.co2Severity) || 0
                 },
+                nibp: (() => {
+                    const n = v.nibp || {};
+                    const ai = Array.isArray(v.activeInterventions) ? v.activeInterventions : [];
+                    return { sys: n.sys, dia: n.dia, lastTaken: n.lastTaken, inflating: !!n.inflating,
+                        cuff: !!(v.defibView && v.defibView.defibSim) || ai.indexOf('Obs') !== -1 || ai.indexOf('MonNIBP') !== -1 };
+                })(),
                 scenario: { patientName: v.patientName, ecg: v.investigations ? v.investigations.ecg : null, investigations: { ecg: v.investigations ? v.investigations.ecg : null } }
             };
         }
@@ -272,6 +285,7 @@
                 pacing: d.pacing, view: d.defibView, age: d.patientAge, weight: d.weight,
                 recommendedEnergy: d.recommendedEnergy, energyLevels: d.energyLevels,
                 capno: d.capno || null,
+                nibp: d.nibp || null,
                 scenario: { patientName: d.patientName }
             };
         }
@@ -380,7 +394,9 @@
             charging: () => { chargeTone = tone(400, 2, 0.25, 'sine', 800); },
             charged: () => tone(1000, 0.5, 0.35),
             shock: () => tone(800, 0.3, 0.45),
-            alarm: () => tone(1200, 0.3, 0.1, 'square')
+            alarm: () => tone(1200, 0.3, 0.1, 'square'),
+            // The cuff pump: a low hum for the ~5 s the cuff inflates and measures.
+            cuff: () => tone(60, 5, 0.12, 'sawtooth', 50)
         };
         function stopChargeTone() { if (chargeTone) { try { chargeTone.stop(); } catch (e) {} chargeTone = null; } }
 
@@ -485,8 +501,10 @@
                 spEl.classList.toggle('critical', !(patient.spo2 > 0));
                 // No sensor, no number: the R Series shows CO2 only while its sensor is connected.
                 coEl.textContent = patient.capno.on ? fmt(patient.etco2, 1) : '--';
-                bpEl.textContent = patient.bpSys > 0 ? (Math.round(patient.bpSys) + '/' + Math.round(patient.bpDia)) : '---/---';
+                const n = patient.nibp;
+                bpEl.textContent = n.sys > 0 ? (Math.round(n.sys) + '/' + Math.round(n.dia)) : '--/--';
             }
+            $('bpLabel').textContent = (patient.linked && !off && patient.nibp.inflating) ? 'NIBP · MEASURING' : 'NIBP';
             const showCo2 = patient.linked && !off && !!patient.capno.on;
             if (showCo2 !== co2Shown) {
                 co2Shown = showCo2;
@@ -700,6 +718,12 @@
         $('syncBtn').addEventListener('click', toggleSync);
         $('analyseBtn').addEventListener('click', analyse);
         $('checkPulseBtn').addEventListener('click', checkPulse);
+        $('nibpBtn').addEventListener('click', () => {
+            if (device.mode === 'off') return;
+            if (!patient.nibp.cuff) { setMessage('NIBP CUFF NOT CONNECTED', 'alert'); return; }
+            if (!patient.nibp.inflating) send('NIBP_START', {});
+            setMessage('NIBP MEASURING', 'ready');
+        });
         $('markerBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('MARKER_EVENT', { timestamp: Date.now() }); setMessage('EVENT MARKED', 'ready'); });
         $('alarmSuspendBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('ALARM_SILENCE', { timestamp: Date.now() }); setMessage('ALARMS SUSPENDED', 'ready'); });
         $('recorderBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('REQUEST_12LEAD', {}); show12Lead(); });
