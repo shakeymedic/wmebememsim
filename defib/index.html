@@ -606,7 +606,6 @@
         function fire(sync) {
             pendingSync = null;
             device.machine = 'IDLE';
-            flashUntil = performance.now() + 150;
             sounds.shock();
             setMessage('SHOCK DELIVERED', 'alert');
             send('SHOCK_DELIVERED', { energy: device.energy, sync });
@@ -764,7 +763,7 @@
 
         const SPEED = 125;          // px per second (a 25 mm/s-looking sweep on a tablet)
         const ERASE = 20;
-        let sweepX = 0, lastY = null, ecgPhase = 0, pacerPhase = 0, simTime = 0, lastTs = 0, flashUntil = 0;
+        let sweepX = 0, lastY = null, ecgPhase = 0, pacerPhase = 0, simTime = 0, lastTs = 0;
         function resetTrace() { sweepX = 0; lastY = null; ctxClear(); }
 
         // The amplitude of one sample at the current lead and size, with artefacts.
@@ -844,7 +843,9 @@
                     ctx.moveTo(x, base - 60 * scale); ctx.lineTo(x, base + 50 * scale); ctx.stroke();
                 }
             }
-            if (performance.now() < flashUntil) { ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(0, 0, W, H); }
+            // No screen flash on a shock: the sweep only erases just ahead of itself, so anything
+            // painted across the whole canvas (the old white flash) stayed there as a white
+            // background until the sweep had crossed the screen. The trace stays on black.
 
             lastY = y;
             sweepX += dx;
