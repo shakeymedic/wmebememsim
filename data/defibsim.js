@@ -131,7 +131,7 @@
         var steps = opts.scenario === 'custom' ? normaliseSteps(opts.steps) : null;
         if (opts.scenario === 'custom' && !steps) throw new Error('A custom scenario needs at least one valid step.');
         var rhythm = sc ? sc.rhythm : (steps ? steps[0].rhythm : 'Sinus Rhythm');
-        var base = window.buildQuickSimScenario({ age: opts.age, weight: opts.weight, sex: opts.sex, name: opts.name || 'Defib Sim Patient', rhythm: rhythm, showWetflag: true });
+        var base = window.buildQuickSimScenario({ age: opts.age, weight: opts.weight, sex: opts.sex, name: opts.name || 'Defib Sim Patient', rhythm: rhythm });
         var vitals = Object.assign({}, base.vitals, sc ? sc.vitals : {});
         if (steps && RG.isPulseless(rhythm)) vitals = Object.assign({}, vitals, ARREST);
         var mode = opts.mode === 'assessment' ? 'assessment' : 'education';

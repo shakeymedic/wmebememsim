@@ -377,7 +377,7 @@ window.buildQuickSimScenario = (opts = {}) => {
         vbg: window.generateVbg('normal'),
         vbgClinicalState: 'normal',
         weight, wetflag,
-        showWetflag: opts.showWetflag !== false,
+        showWetflag: opts.showWetflag === true,
         hf: (window.HUMAN_FACTOR_CHALLENGES || [])[0] || null
     };
 };
@@ -429,6 +429,6 @@ window.generatePatientFromTemplate = (base, opts = {}) => {
        vbg: generateVbg(base.vbgClinicalState || "normal"),
        hf: opts.hf || null,
        weight, wetflag,
-       showWetflag: opts.showWetflag !== false
+       showWetflag: opts.showWetflag === true
     };
 };

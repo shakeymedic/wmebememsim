@@ -16,7 +16,7 @@
         const [hf, setHf] = useState('hf0');
         const [premadeCategory, setPremadeCategory] = useState(initialPremadeCategory || null);
         const [customScenarios, setCustomScenarios] = useState([]);
-        const [showWetflag, setShowWetflag] = useState(true);
+        const [showWetflag, setShowWetflag] = useState(false);
 
         // ---- WAVE 4b / PART A: QUICK SIM launch options -------------------------------------
         // The facilitator may OPTIONALLY set age/weight/sex/name so WETFLAG and paediatric
@@ -465,7 +465,7 @@
                 
                 <div className="flex items-center gap-2 p-2 bg-slate-800 rounded border border-slate-600">
                     <input type="checkbox" aria-label="Show WETFLAG on the monitor" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="w-5 h-5 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
-                    <span className="text-sm font-bold text-white">Show WETFLAG on Monitor (Paediatric Scenarios)</span>
+                    <span className="text-sm font-bold text-white">Show WETFLAG on Monitor from the start (Paediatric Scenarios) <span className="font-normal text-slate-400">— off by default; you can show or hide it at any time from Rhythm &amp; resus</span></span>
                 </div>
 
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
@@ -644,7 +644,7 @@
                                 {[['hr','Heart Rate'],['bpSys','Sys BP'],['rr','Resp Rate'],['spO2','SpO2 %'],['gcs','GCS'],['temp','Temp °C']].map(([key, label]) => (
                                     <div key={key}>
                                         <label className="text-[10px] text-slate-400 uppercase">{label}</label>
-                                        <input aria-label="{label}" type="number" min={BUILDER_LIMITS[key].min} max={BUILDER_LIMITS[key].max} value={buildVitals[key]} onChange={e=>setBuildVitals({...buildVitals, [key]: e.target.value})} className={fieldClass(builderErrors[key])}/>
+                                        <input aria-label={label} type="number" min={BUILDER_LIMITS[key].min} max={BUILDER_LIMITS[key].max} value={buildVitals[key]} onChange={e=>setBuildVitals({...buildVitals, [key]: e.target.value})} className={fieldClass(builderErrors[key])}/>
                                         <FieldError msg={builderErrors[key]}/>
                                     </div>
                                 ))}

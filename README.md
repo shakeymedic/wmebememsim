@@ -76,6 +76,18 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   (closed; AUTO/MANUAL deterioration, with Trend Better/Worse on its header) and **Rhythm & resus**
   (arrest, ROSC, arrest view, defib, NIBP and the shock tally). The section titles and summaries are
   the same Section component everywhere (`data/components.js`).
+- **NIBP rule (every mode, including the defib tablet):** the team's screens show `state.nibp`, the last
+  cuff reading, never the live BP. Only `COMMIT_NIBP` (a cuff cycle: the team's press, the facilitator's,
+  the defib's NIBP key via the `NIBP_START` device event, or the auto timer) and `SET_NIBP` (Manual
+  reading) change it. The BP modal defaults to *Now* and offers **Change, don't send** or **Change and
+  cycle cuff now**. WETFLAG on the room monitor starts hidden (`showWetflag` defaults to false) and is
+  toggled from Rhythm & resus.
+- **Debrief obs graph (every mode):** `state.sessionTime` is the debrief timeline. It advances with
+  `time` (TICK_TIME), and in a live Quick Sim before START also via the record-only `TICK_RECORD`
+  (no physiology). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
+  rhythm) and log `timeSeconds` use it, and it is saved in the resume snapshot with the history. The
+  chart (`data/screens/debrief.js`, `buildTimeline`) is small multiples with a rhythm lane and four
+  numbered event lanes, drawn dark on screen and light in the report from the same code.
 - **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
   actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
 - **Simple / Full view** (remembered on each device, Simple by default; every open screen on the
@@ -145,7 +157,8 @@ flag. Consequences worth knowing:
   "no probe"). The exception is NIBP: removing the cuff keeps the last measured reading on screen (marked "cuff
   off") and no new reading can be taken until it is back on. The pulse beep and each alarm follow the
   sensor that measures them, and in Quick Sim they sound before START too (like the trace), falling
-  silent only when you deliberately pause or finish.
+  silent only when you deliberately pause or finish. So do the facilitator's sound effects (charge,
+  shock, etc.), the patient's voice and the NIBP auto-cycle countdown.
 - Deterioration is always **MANUAL** (the synthetic patient declares no rate, so AUTO could never do
   anything) and the AUTO/MANUAL toggle is hidden. Ramp obs with the trend control on any vitals tile.
 - **Presets** run a scripted sequence of rhythm and obs changes with one press (for example

@@ -197,7 +197,17 @@
                 if (ctx.state === 'suspended') { try { ctx.resume().catch(() => {}); } catch (e) {} }
             };
             ctx.addEventListener('statechange', onStateChange);
-            return () => ctx.removeEventListener('statechange', onStateChange);
+            // iOS only lets a context resume inside a user gesture, so any tap or key press on the
+            // page is used to wake a context that has been (re-)suspended; otherwise the cuff,
+            // charge and alarm sounds stay silent until someone finds the "enable sound" button.
+            const onGesture = () => { if (ctx.state === 'suspended') resumeAudio(true); };
+            document.addEventListener('pointerdown', onGesture, true);
+            document.addEventListener('keydown', onGesture, true);
+            return () => {
+                ctx.removeEventListener('statechange', onStateChange);
+                document.removeEventListener('pointerdown', onGesture, true);
+                document.removeEventListener('keydown', onGesture, true);
+            };
         }, []);
 
         // Resume + prime. Some iOS builds only truly unlock output once a buffer has been *played*
@@ -341,9 +351,21 @@
         }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions, state.audioLive, state.pausedAt]);
         
         // Auto mode only measures while a cuff is actually on (it resumes when the cuff goes back on).
+        // The countdown normally rides the sim clock (TICK_TIME). Quick Sim is driven without ever
+        // pressing START, so there the controller counts the cuff interval down itself until the
+        // facilitator pauses or finishes — the same rule the monitor's sound follows.
+        const quickSimLive = !isMonitorMode && !state.isRunning && !!(state.scenario && state.scenario.quickSim)
+            && (state.pausedAt === null || state.pausedAt === undefined) && !state.isFinished;
         useEffect(() => {
-            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating && getSensors(state).nibp) { dispatch({ type: 'START_NIBP' }); }
-        }, [state.nibp.timer, state.nibp.mode, state.isRunning, state.nibp.inflating, state.activeInterventions]);
+            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && (state.isRunning || quickSimLive) && !state.nibp.inflating && getSensors(state).nibp) { dispatch({ type: 'START_NIBP' }); }
+        }, [state.nibp.timer, state.nibp.mode, state.isRunning, quickSimLive, state.nibp.inflating, state.activeInterventions]);
+        // The same live Quick Sim also runs the record-only clock (TICK_RECORD): the debrief
+        // timeline, the obs graph samples and the auto-NIBP countdown, with no physiology.
+        useEffect(() => {
+            if (!quickSimLive) return;
+            const id = setInterval(() => dispatch({ type: 'TICK_RECORD' }), 1000);
+            return () => clearInterval(id);
+        }, [quickSimLive]);
         // The measurement itself: ~5 s of inflation, then the reading is committed. This is its OWN
         // effect, keyed only on `inflating`. It used to share the auto-trigger effect above, whose
         // dependencies include the auto-mode countdown — which changes every second while the sim
@@ -351,27 +373,36 @@
         // auto-mode reading never completed.
         useEffect(() => {
             if (!state.nibp.inflating) return;
-            playInflationSound();
+            // The cuff noise comes from whichever device is set to make the sound ("Sound plays on").
+            if (isAudioRouted(stateRef.current)) playInflationSound();
             const timeout = setTimeout(() => { dispatch({ type: 'COMMIT_NIBP' }); }, 5000);
             return () => clearTimeout(timeout);
         }, [state.nibp.inflating]);
         
+        // Facilitator sounds and the patient's voice play whether or not the clock is running:
+        // Quick Sim never presses START, and gating them on isRunning silenced charge, shock and
+        // speech there. The only thing to avoid is replaying a stale one when a screen first loads
+        // the session (the first value it sees may be minutes old); after that, every new one
+        // plays, whatever the two devices' clocks say.
+        const seenSoundRef = useRef(false);
+        const seenSpeechRef = useRef(false);
         const lastSoundRef = useRef(0);
         useEffect(() => { 
             if (state.soundEffect && state.soundEffect.timestamp > lastSoundRef.current) { 
                 lastSoundRef.current = state.soundEffect.timestamp; 
-                if (!state.isRunning) return;
+                const first = !seenSoundRef.current; seenSoundRef.current = true;
+                if (first && Date.now() - state.soundEffect.timestamp > 8000) return;
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
                 if (shouldPlay && audioCtxRef.current) { playMedicalSound(state.soundEffect.type); } 
             } 
-        }, [state.soundEffect, isMonitorMode, state.audioOutput, state.isRunning]);
+        }, [state.soundEffect, isMonitorMode, state.audioOutput]);
         
         const lastSpeechRef = useRef(0);
         useEffect(() => { 
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) { 
-                if (Date.now() - state.speech.timestamp > 8000) { lastSpeechRef.current = state.speech.timestamp; return; } 
                 lastSpeechRef.current = state.speech.timestamp; 
-                if (!state.isRunning) return;
+                const first = !seenSpeechRef.current; seenSpeechRef.current = true;
+                if (first && Date.now() - state.speech.timestamp > 8000) return;
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
                 if (shouldPlay && 'speechSynthesis' in window) { 
                     window.speechSynthesis.cancel(); 
@@ -385,7 +416,7 @@
                     window.speechSynthesis.speak(utterance); 
                 } 
             } 
-        }, [state.speech, isMonitorMode, state.audioOutput, state.isRunning]);
+        }, [state.speech, isMonitorMode, state.audioOutput]);
 
         const addLogEntry = (msg, type = 'info', flagged = false, deviation = null) => dispatch({ type: 'ADD_LOG', payload: { msg, type, flagged, deviation } });
         
@@ -885,7 +916,31 @@
             return () => cmdRef.off('value', handleCmd);
         }, [isMonitorMode, sessionID]);
 
-        const manualUpdateVital = (key, value) => { dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value } }); addLogEntry(`Manual: ${key} -> ${value}`, 'manual'); };
+        // Facilitator obs changes are logged in words, with the value before and after, because
+        // the debrief's obs graph lists them as "what changed". BP is one entry (120/75 → 90/52).
+        const OBS_LABELS = { hr: 'HR', spO2: 'SpO2', rr: 'RR', temp: 'Temp', bm: 'Glucose', etco2: 'ETCO2', gcs: 'GCS', ph: 'pH', k: 'K+', pupils: 'Pupils', bpSys: 'BP systolic', bpDia: 'BP diastolic' };
+        const obsText = (key, v) => {
+            const n = Number(v);
+            if (!Number.isFinite(n)) return String(v);
+            return (key === 'ph') ? n.toFixed(2) : (key === 'temp' || key === 'bm' || key === 'etco2' || key === 'k') ? n.toFixed(1) : String(Math.round(n));
+        };
+        const describeObs = (targets, from) => {
+            const parts = [];
+            const t = { ...targets };
+            if (t.bpSys !== undefined && t.bpDia !== undefined) {
+                parts.push(`BP ${obsText('bpSys', from.bpSys)}/${obsText('bpDia', from.bpDia)} \u2192 ${obsText('bpSys', t.bpSys)}/${obsText('bpDia', t.bpDia)}`);
+                delete t.bpSys; delete t.bpDia;
+            }
+            Object.keys(t).forEach(k => parts.push(`${OBS_LABELS[k] || k} ${obsText(k, from[k])} \u2192 ${obsText(k, t[k])}`));
+            return parts.join(', ');
+        };
+        const fmtDuration = (s) => s >= 60 && s % 60 === 0 ? `${s / 60} min` : `${s} s`;
+        const manualUpdateVitals = (targets) => {
+            const from = { ...stateRef.current.vitals };
+            Object.keys(targets).forEach(key => dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value: targets[key] } }));
+            addLogEntry(`Obs changed: ${describeObs(targets, from)}`, 'manual');
+        };
+        const manualUpdateVital = (key, value) => manualUpdateVitals({ [key]: value });
         
         // =====================================================================================
         // THE SINGLE CHOKE POINT FOR EVERY RHYTHM TRANSITION.
@@ -1100,7 +1155,11 @@
         };
         const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const playSound = (type) => { dispatch({ type: 'TRIGGER_SOUND', payload: type }); addLogEntry(`Sound: ${type}`, 'manual'); };
-        const startTrend = (targets, durationSecs) => { dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } }); addLogEntry(`Trending vitals over ${durationSecs}s`, 'system'); };
+        const startTrend = (targets, durationSecs) => {
+            const from = { ...stateRef.current.vitals };
+            dispatch({ type: 'START_TREND', payload: { targets, duration: durationSecs } });
+            addLogEntry(`Obs trend started: ${describeObs(targets, from)} over ${fmtDuration(durationSecs)}`, 'manual');
+        };
         // Firebase may never have loaded (offline tablet, blocked CDN). Without this guard the student
         // monitor throws on every NIBP/action press instead of falling back to acting locally.
         const sendCommand = (payload) => {
@@ -1134,7 +1193,10 @@
         const toggleNIBPMode = () => { if (!sendCommand({ type: 'TOGGLE_NIBP_MODE' })) dispatch({ type: 'TOGGLE_NIBP_MODE' }); };
         const triggerAction = (action) => { if (!sendCommand({ type: 'TRIGGER_ACTION', payload: action })) applyIntervention(action); };
         
-        const playInflationSound = () => { if (audioCtxRef.current && audioCtxRef.current.state !== 'running') { resumeAudio(); } if (audioCtxRef.current && audioCtxRef.current.state === 'running') { const ctx = audioCtxRef.current; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
+        // If the context is (re-)suspended when the cuff starts, play once it has resumed rather
+        // than dropping the sound (resume() is asynchronous).
+        const playInflationSound = () => { const ctx0 = audioCtxRef.current; if (!ctx0) return; if (ctx0.state !== 'running') { resumeAudio().then(() => { if (ctx0.state === 'running' && stateRef.current.nibp.inflating) playInflationTone(ctx0); }); return; } playInflationTone(ctx0); };
+        const playInflationTone = (ctx) => { { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         
         const playMedicalSound = (type) => {
             if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const t = ctx.currentTime;
@@ -1502,7 +1564,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,

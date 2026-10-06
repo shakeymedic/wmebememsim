@@ -300,33 +300,39 @@
         }
     };
 
+    // The debrief timeline (see sessionTime in engine-model.js). Older states carry only `time`.
+    const sessionSeconds = (cs) => cs ? (Number.isFinite(cs.sessionTime) ? cs.sessionTime : (Number(cs.time) || 0)) : 0;
+    const clockText = (t) => `${Math.floor(t / 60).toString().padStart(2, '0')}:${(t % 60).toString().padStart(2, '0')}`;
+
     const logReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
             case 'CLEAR_SESSION': return { ...initialLogState };
             case 'LOAD_SCENARIO': return { ...initialLogState };
             case 'RESTORE_SESSION': return { log: action.payload.log || [], history: action.payload.history || [] };
-            case 'START_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: '00:00', msg: "Simulation Started", type: 'system' }] };
-            case 'PAUSE_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: cs ? `${Math.floor(cs.time/60)}:${(cs.time%60).toString().padStart(2,'0')}` : '', msg: "Simulation Paused", type: 'system' }] };
+            case 'START_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: clockText(sessionSeconds(cs)), msg: "Simulation Started", type: 'system', timeSeconds: sessionSeconds(cs) }] };
+            case 'PAUSE_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: clockText(sessionSeconds(cs)), msg: "Simulation Paused", type: 'system', timeSeconds: sessionSeconds(cs) }] };
             case 'ADD_LOG': 
                 const timestamp = new Date().toLocaleTimeString('en-GB'); 
-                const simTime = cs ? `${Math.floor(cs.time/60).toString().padStart(2,'0')}:${(cs.time%60).toString().padStart(2,'0')}` : '00:00'; 
+                const tLog = sessionSeconds(cs);
                 // `deviation` carries the structured "performed WITHOUT" record so the debrief can
                 // render a Sequence deviations card rather than re-parsing log text.
-                return { ...state, log: [...state.log, { time: timestamp, simTime, msg: action.payload.msg, type: action.payload.type, flagged: action.payload.flagged || false, deviation: action.payload.deviation || null, timeSeconds: cs ? cs.time : 0 }] };
+                return { ...state, log: [...state.log, { time: timestamp, simTime: clockText(tLog), msg: action.payload.msg, type: action.payload.type, flagged: action.payload.flagged || false, deviation: action.payload.deviation || null, timeSeconds: tLog }] };
             case 'TOGGLE_FLAG':
                 const newLog = [...state.log];
                 if(newLog[action.payload]) { newLog[action.payload] = { ...newLog[action.payload], flagged: !newLog[action.payload].flagged }; }
                 return { ...state, log: newLog };
+            // The debrief's obs record: one sample every 5 s of session time, whichever clock is
+            // running it (TICK_TIME, or Quick Sim's record-only TICK_RECORD).
             case 'TICK_TIME':
-                const time = cs ? cs.time : 0;
-                const vitals = cs ? cs.vitals : {};
-                if (time % 5 === 0) {
-                    // Temp / bm / ph are modelled vitals now, so they belong in the debrief trace
-                    // too (the graph plots HR/BP/SpO2; the replay scrubber reads the rest).
-                    return { ...state, history: [...state.history, { time: time, hr: vitals.hr, bp: vitals.bpSys, spo2: vitals.spO2, rr: vitals.rr, temp: vitals.temp, bm: vitals.bm, ph: vitals.ph, gcs: vitals.gcs }] };
-                }
-                return state;
+            case 'TICK_RECORD': {
+                const t = sessionSeconds(cs);
+                if (!cs || t % 5 !== 0) return state;
+                const v = cs.vitals || {};
+                const sample = { time: t, hr: v.hr, bp: v.bpSys, bpDia: v.bpDia, spo2: v.spO2, rr: v.rr, etco2: v.etco2,
+                    co2: cs.etco2Enabled ? 1 : 0, temp: v.temp, bm: v.bm, ph: v.ph, gcs: v.gcs, rhythm: cs.rhythm };
+                return { ...state, history: [...state.history, sample] };
+            }
             default: return state;
         }
     };
@@ -375,7 +381,7 @@
                 // standard set or individual sensors from the controller's Monitoring & access panel.
                 // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
                 return { ...initialCoreState, runId: action.runId || newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
-                    showWetflag: action.payload.showWetflag !== false, deteriorationMode: detMode0,
+                    showWetflag: action.payload.showWetflag === true, deteriorationMode: detMode0,
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
                     pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
                     arrest: { since: RG.isPulseless(initialRhythm) ? 0 : null, shocks: 0, adrenaline: [], amiodarone: [] },
@@ -394,11 +400,12 @@
                     // Resuming reopens the SAME run, and therefore the same instructor notes.
                     // Pre-Wave-4b snapshots carry no runId, so mint one rather than leaving it null.
                     runId: p.runId || state.runId || action.runId || newRunId(),
-                    time: p.time || 0, cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
+                    time: p.time || 0, sessionTime: Number.isFinite(p.sessionTime) ? p.sessionTime : (p.time || 0),
+                    cycleTimer: p.cycleTimer || 0, rhythm: p.rhythm || state.rhythm,
                     interventionCounts: p.interventionCounts || {}, activeDurations: p.activeDurations || {},
                     nibp: p.nibp || state.nibp, etco2Enabled: !!p.etco2Enabled,
                     isParalysed: !!p.isParalysed, paralysis: p.paralysis || { active: !!p.isParalysed, agent: null, startTime: 0, onset: 0, duration: 0 },
-                    showWetflag: p.showWetflag !== false,
+                    showWetflag: p.showWetflag === true,
                     icp: p.icp === undefined || p.icp === null ? 10 : p.icp,
                     activeDrugs: Array.isArray(p.activeDrugs) ? p.activeDrugs : [],
                     deteriorationMode: p.deteriorationMode === 'auto' ? 'auto' : 'manual',
@@ -482,7 +489,7 @@
                     }
                 }
 
-                return { ...state, time: tNext, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer, activeDrugs: nextDrugs, paralysis: nextParalysis, isParalysed: nextIsParalysed };
+                return { ...state, time: tNext, sessionTime: (Number(state.sessionTime) || 0) + 1, cycleTimer: state.cycleTimer + 1, activeDurations: durChanged ? newDurations : state.activeDurations, nibp: newNibp, icp: currentICP, monitorTimer: newMonitorTimer, activeDrugs: nextDrugs, paralysis: nextParalysis, isParalysed: nextIsParalysed };
             
             case 'TOGGLE_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, visible: !state.monitorTimer.visible } };
             case 'START_MONITOR_TIMER': return { ...state, monitorTimer: { ...state.monitorTimer, active: true } };
@@ -539,6 +546,11 @@
             case 'SET_DEVICE_MIRROR': return { ...state, deviceMirror: action.payload || {} };
             case 'SET_REMOTE_PRESENCE': return { ...state, remotePresence: { clients: action.payload || [], updatedAt: Date.now() } };
             case 'START_NIBP': return { ...state, nibp: { ...state.nibp, inflating: true } };
+            // Quick Sim's own auto-cycle countdown (TICK_TIME does this while the clock runs).
+            // Quick Sim before START: the record-only clock. It advances the debrief timeline and
+            // the auto-NIBP countdown, and nothing else (no physiology, drugs or deterioration).
+            case 'TICK_RECORD': return { ...state, sessionTime: (Number(state.sessionTime) || 0) + 1,
+                nibp: state.nibp.mode === 'auto' ? { ...state.nibp, timer: state.nibp.timer - 1 } : state.nibp };
             // Abandons a measurement in progress: no reading is committed (the commit timer is
             // cleared by the effect that owns it as soon as `inflating` goes false).
             case 'STOP_NIBP': return { ...state, nibp: { ...state.nibp, inflating: false } };
@@ -569,7 +581,7 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag !== undefined ? action.payload.showWetflag : true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };
@@ -763,7 +775,7 @@
             }
             case 'TOGGLE_CPR': return { ...state, cprInProgress: action.payload };
             case 'SET_QUEUED_RHYTHM': return { ...state, queuedRhythm: action.payload };
-            case 'FAST_FORWARD': return { ...state, time: state.time + action.payload };
+            case 'FAST_FORWARD': return { ...state, time: state.time + action.payload, sessionTime: (Number(state.sessionTime) || 0) + action.payload };
             // The `processedEvents` / MARK_EVENT_PROCESSED machinery is GONE. It existed
             // to de-duplicate timed scenario events, but no scenario in the library has ever carried
             // an `events` or `timeline` array, nothing ever dispatched MARK_EVENT_PROCESSED, and the

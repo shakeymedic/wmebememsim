@@ -90,6 +90,32 @@ test.describe('Defib Sim', () => {
     expect(errors).toEqual([]);
   });
 
+  test('the rhythm strip stays black after a shock (no white background left behind)', async ({ page, context }) => {
+    const code = await openController(page);
+    await startDefibSim(page, 'unstable-svt');
+    const { defib, errors } = await openDevice(context, code);
+    await defib.click('.mode-label[data-mode="defib"]');
+    await defib.click('#syncBtn');
+    await defib.click('#chargeBtn');
+    await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });
+    await defib.click('#shockBtn');
+    await expect(defib.locator('#messageBar')).toHaveText(/SHOCK DELIVERED/, { timeout: 5000 });
+    // Share of the ECG canvas that is light grey or white (the green trace and the small SYNC
+    // markers are a tiny fraction; a white background is most of it).
+    const lightShare = () => defib.evaluate(() => {
+      const c = document.getElementById('ecgCanvas');
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 0; i < d.length; i += 4) if (d[i] > 150 && d[i + 1] > 150 && d[i + 2] > 150) n++;
+      return n / (d.length / 4);
+    });
+    for (const wait of [300, 1500]) {
+      await defib.waitForTimeout(wait);
+      expect(await lightShare()).toBeLessThan(0.02);
+    }
+    expect(errors).toEqual([]);
+  });
+
   test('the facilitator picks the cardioversion energy: 150 J fails, 200 J converts', async ({ page, context }) => {
     const code = await openController(page);
     await startDefibSim(page, 'unstable-svt');

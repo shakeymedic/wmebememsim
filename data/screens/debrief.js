@@ -1,150 +1,377 @@
 (() => {
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef, useMemo } = React;
 
     // =========================================================================================
-    // VITALS TREND FOR THE DOWNLOADABLE / PRINTED REPORT.
-    // The on-screen graph below never reached the report, which had no trend at all. HR, BP, SpO2
-    // and RR have different units, so rather than one shared y-axis they are four small charts on a
-    // shared time axis (small multiples), each titled, with the flagged events (arrests, shocks,
-    // hand-flagged moments) marked as vertical lines on every chart and listed underneath, plus a
-    // table of the sampled values so nothing depends on reading a line by colour. Plain SVG strings:
-    // the report is a standalone HTML file with no scripts.
+    // THE OBS TIMELINE: the patient's obs over the whole session, with what was done and what
+    // changed, on one time axis. Shared by the debrief screen (dark, interactive) and the printed
+    // report (light, static), so both always show the same chart.
+    //
+    // Form: small multiples. HR, BP, SpO2 and RR have different units, so each gets its own panel
+    // and scale rather than sharing one y-axis. Above them, a rhythm lane (pulseless periods in
+    // red, also washed across every panel); below them, numbered event markers in four labelled
+    // lanes. Every marker number is in the event list under the chart, and every value is in the
+    // obs table, so nothing depends on hovering or on colour alone.
     // =========================================================================================
     const escHtml = (v) => String(v === null || v === undefined ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const fmtClock = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
-    const buildReportTrend = (history, log) => {
-        const pts = (history || []).filter(h => Number.isFinite(Number(h.time)));
-        if (pts.length < 2) {
-            return `<div class="card"><h3 style="margin-top:0;">Vitals trend</h3><div class="muted">No trend was recorded. The trend is sampled every 5 seconds while the clock runs (in Quick Sim, press START to record it).</div></div>`;
+    const fmtClock = (s) => { const t = Math.max(0, Math.round(Number(s) || 0)); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; };
+
+    // Colours: series slot 1 (blue) and slot 2 (orange) from the validated categorical palette,
+    // checked against these two surfaces; red and amber are the reserved status colours and
+    // always come with a lane label and an icon. Text uses the ink tokens, never a series colour.
+    const THEMES = {
+        dark: { surface: '#020617', grid: '#1e293b', axis: '#334155', muted: '#94a3b8', secondary: '#cbd5e1', primary: '#f8fafc',
+            line: '#3987e5', band: 'rgba(57,135,229,0.14)', action: '#3987e5', change: '#d95926', rhythm: '#d03b3b', flag: '#fab219',
+            arrestWash: 'rgba(208,59,59,0.14)', perfusing: '#1e293b' },
+        light: { surface: '#ffffff', grid: '#e2e8f0', axis: '#cbd5e1', muted: '#64748b', secondary: '#475569', primary: '#0f172a',
+            line: '#2a78d6', band: 'rgba(42,120,214,0.10)', action: '#2a78d6', change: '#eb6834', rhythm: '#d03b3b', flag: '#fab219',
+            arrestWash: 'rgba(208,59,59,0.09)', perfusing: '#eef2f7' }
+    };
+    // White or ink on a coloured marker, by the fill's luminance.
+    const inkOn = (hex) => { const n = parseInt(hex.slice(1), 16); const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255; return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? '#0f172a' : '#ffffff'; };
+
+    const EVENT_CATS = [
+        { id: 'rhythm', label: 'Rhythm, arrest and shocks', icon: '⚡' },
+        { id: 'action', label: 'Team actions and treatment', icon: '●' },
+        { id: 'change', label: 'Facilitator changes', icon: '✎' },
+        { id: 'flag', label: 'Flags and warnings', icon: '⚑' }
+    ];
+    // Which lane a log entry belongs in. Housekeeping (sync, settings, teaching notes typed 'info',
+    // unflagged warnings such as "Defib charging") stays in the full log, off the graph.
+    const classifyEvent = (l) => {
+        const m = String(l.msg || '');
+        if (/^Rhythm: .*→/.test(m) || /^CARDIAC ARREST/.test(m) || /^ROSC achieved/.test(m) || /^Shock delivered/.test(m) || /recurred after ROSC/i.test(m)) return 'rhythm';
+        if (/^(Obs changed|Obs trend started|Patient Improving|Patient Deteriorating|Patient condition|Preset|Patient: |Sound: |NIBP cycled|NIBP Manual|Audio Loop|Facilitator override)/.test(m)) return 'change';
+        if (l.flagged || (l.deviation && Array.isArray(l.deviation.missing))) return 'flag';
+        if (l.type === 'action' || l.type === 'success') return 'action';
+        if (l.type === 'manual') return 'change';        // the facilitator's own log entries
+        if (l.type === 'danger') return 'flag';          // timer alerts, failed airway
+        return null;
+    };
+
+    const PANELS = [
+        { key: 'hr', title: 'Heart rate', unit: 'bpm', dp: 0 },
+        { key: 'bp', title: 'Blood pressure', unit: 'mmHg', dp: 0, low: 'bpDia' },
+        { key: 'spo2', title: 'SpO2', unit: '%', dp: 0 },
+        { key: 'rr', title: 'Resp rate', unit: '/min', dp: 0 },
+        { key: 'etco2', title: 'ETCO2', unit: 'kPa', dp: 1, onlyWhen: (h) => h.co2 === 1 },
+        { key: 'temp', title: 'Temperature', unit: '°C', dp: 1, ifChanged: 0.25 },
+        { key: 'bm', title: 'Glucose', unit: 'mmol/L', dp: 1, ifChanged: 0.6 },
+        { key: 'ph', title: 'pH', unit: '', dp: 2, ifChanged: 0.02 },
+        { key: 'gcs', title: 'GCS', unit: '', dp: 0, ifChanged: 0.5 }
+    ];
+    const numOf = (h, k) => { const v = Number(h[k]); return (h[k] === null || h[k] === undefined || !Number.isFinite(v)) ? null : v; };
+    const ceilTo = (v, step) => Math.ceil(v / step) * step;
+    const domainFor = (key, vals) => {
+        const hi0 = Math.max(...vals), lo0 = Math.min(...vals);
+        switch (key) {
+            case 'hr': return [0, Math.max(160, ceilTo(hi0 * 1.1, 20))];
+            case 'bp': return [0, Math.max(180, ceilTo(hi0 * 1.1, 20))];
+            case 'spo2': return [Math.max(0, Math.min(80, Math.floor((lo0 - 5) / 10) * 10)), 100];
+            case 'rr': return [0, Math.max(40, ceilTo(hi0 * 1.1, 10))];
+            case 'etco2': return [0, Math.max(8, Math.ceil(hi0 + 1))];
+            case 'temp': return [Math.min(34, Math.floor(lo0 - 0.5)), Math.max(40, Math.ceil(hi0 + 0.5))];
+            case 'bm': return [0, Math.max(20, ceilTo(hi0 * 1.1, 5))];
+            case 'ph': return [Math.min(6.9, Math.floor((lo0 - 0.05) * 10) / 10), Math.max(7.6, Math.ceil((hi0 + 0.05) * 10) / 10)];
+            case 'gcs': return [3, 15];
+            default: return [Math.min(0, lo0), hi0 || 1];
         }
-        const t0 = Math.min(...pts.map(h => h.time)), t1 = Math.max(...pts.map(h => h.time));
+    };
+    const tickStep = (span) => [30, 60, 120, 300, 600, 900, 1800, 3600, 7200].find(s => span / s <= 7) || 7200;
+
+    // Lay out the whole chart for a given width. Returns the SVG markup plus the geometry the
+    // interactive layer needs (null when fewer than two samples were recorded).
+    const buildTimeline = (history, log, opts) => {
+        const o = opts || {};
+        const th = THEMES[o.theme === 'light' ? 'light' : 'dark'];
+        const RG = window.RHYTHMS;
+        const pts = (history || []).filter(h => h && Number.isFinite(Number(h.time))).slice().sort((a, b) => a.time - b.time);
+        if (pts.length < 2) return null;
+        const events = (log || [])
+            .filter(l => l && Number.isFinite(Number(l.timeSeconds)))
+            .map((l, i) => ({ msg: String(l.msg || ''), simTime: l.simTime, t: Number(l.timeSeconds), cat: classifyEvent(l), order: i }))
+            .filter(e => e.cat)
+            .sort((a, b) => a.t - b.t || a.order - b.order)
+            .map((e, i) => ({ ...e, n: i + 1 }));
+        const t0 = Math.min(pts[0].time, ...events.map(e => e.t));
+        const t1 = Math.max(pts[pts.length - 1].time, ...events.map(e => e.t));
         const span = Math.max(1, t1 - t0);
-        const events = (log || []).filter(l => l.flagged && Number.isFinite(Number(l.timeSeconds)) && l.timeSeconds >= t0 && l.timeSeconds <= t1);
-        const W = 360, H = 150, L = 38, R = 10, T = 22, B = 24, gw = W - L - R, gh = H - T - B;
-        const x = (t) => L + ((t - t0) / span) * gw;
-        const chart = (key, title, unit, floorMax, fixed) => {
-            const vals = pts.map(h => Number(h[key])).filter(Number.isFinite);
-            if (!vals.length) return '';
-            const lo = fixed ? fixed[0] : 0;
-            const hi = fixed ? fixed[1] : Math.max(floorMax, Math.ceil((Math.max(...vals) * 1.1) / 20) * 20);
-            const y = (v) => T + gh - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * gh;
-            const d = pts.filter(h => Number.isFinite(Number(h[key]))).map((h, i) => `${i ? 'L' : 'M'}${x(h.time).toFixed(1)},${y(Number(h[key])).toFixed(1)}`).join(' ');
-            const ticks = [lo, (lo + hi) / 2, hi].map(v => `<line x1="${L}" x2="${W - R}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/><text x="${L - 4}" y="${(y(v) + 3).toFixed(1)}" font-size="9" fill="#64748b" text-anchor="end">${Math.round(v)}</text>`).join('');
-            const marks = events.map(e => `<line x1="${x(e.timeSeconds).toFixed(1)}" x2="${x(e.timeSeconds).toFixed(1)}" y1="${T}" y2="${T + gh}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 3"/>`).join('');
-            const last = vals[vals.length - 1];
-            return `<figure class="mini"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escHtml(title)} over time"><text x="${L}" y="13" font-size="11" font-weight="bold" fill="#0f172a">${escHtml(title)} <tspan font-weight="normal" fill="#64748b">(${escHtml(unit)}) \u2014 last ${escHtml(Math.round(last * 10) / 10)}</tspan></text>${ticks}${marks}<path d="${d}" fill="none" stroke="#2563eb" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><text x="${L}" y="${H - 6}" font-size="9" fill="#64748b">${fmtClock(t0)}</text><text x="${W - R}" y="${H - 6}" font-size="9" fill="#64748b" text-anchor="end">${fmtClock(t1)}</text></svg></figure>`;
-        };
-        const charts = [chart('hr', 'Heart rate', 'bpm', 160), chart('bp', 'Systolic BP', 'mmHg', 180), chart('spo2', 'SpO2', '%', 100, [50, 100]), chart('rr', 'Resp rate', '/min', 40)].join('');
-        const eventList = events.length
-            ? `<ol class="events">${events.map(e => `<li><span class="mono">${escHtml(e.simTime || fmtClock(e.timeSeconds))}</span> ${escHtml(e.msg)}</li>`).join('')}</ol>`
-            : '<div class="muted">No flagged events in this period.</div>';
-        // One table row per 30 s of sim time (every sample would run to pages).
+
+        const W = Math.max(320, Math.round(o.width || 720));
+        const FS = o.theme === 'light' ? 12 : 11;            // label size
+        const L = 44, R = 64, plotW = W - L - R;
+        const x = (t) => L + ((t - t0) / span) * plotW;
+        const out = [];
+        const text = (tx, ty, s, attrs) => `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" font-size="${(attrs && attrs.size) || FS}" fill="${(attrs && attrs.fill) || th.muted}"${attrs && attrs.anchor ? ` text-anchor="${attrs.anchor}"` : ''}${attrs && attrs.weight ? ` font-weight="${attrs.weight}"` : ''}>${escHtml(s)}</text>`;
+        let y = 4;
+
+        // Pulseless stretches, from the rhythm recorded in each sample.
+        const segs = [];
+        if (RG && pts.some(h => h.rhythm)) {
+            pts.forEach((h, i) => {
+                const end = i < pts.length - 1 ? pts[i + 1].time : t1;
+                const r = h.rhythm || (segs.length ? segs[segs.length - 1].rhythm : null);
+                if (!r) return;
+                const last = segs[segs.length - 1];
+                if (last && last.rhythm === r) last.end = end; else segs.push({ rhythm: r, start: h.time, end, pulseless: RG.isPulseless(r) });
+            });
+        }
+        const washes = segs.filter(s => s.pulseless && s.end > s.start);
+
+        // ---- Rhythm lane
+        let rhythmLane = null;
+        if (segs.length) {
+            out.push(text(L, y + FS, 'Rhythm', { fill: th.primary, weight: 'bold', size: FS + 1 }));
+            y += FS + 6;
+            const h = 20;
+            segs.forEach(s => {
+                const xa = x(s.start), xb = Math.max(xa + 1, x(s.end));
+                const fill = s.pulseless ? th.rhythm : th.perfusing;
+                const label = RG.labelFor(s.rhythm);
+                const short = (RG.shortFor && RG.shortFor(s.rhythm)) || label;
+                out.push(`<g><title>${escHtml(`${label}: ${fmtClock(s.start)}–${fmtClock(s.end)}`)}</title><rect x="${xa.toFixed(1)}" y="${y}" width="${Math.max(1, xb - xa - 2).toFixed(1)}" height="${h}" rx="3" fill="${fill}"/></g>`);
+                const fit = [label, short].find(l => l.length * FS * 0.58 + 10 < xb - xa - 2);
+                if (fit) out.push(text(xa + 5, y + h / 2 + FS * 0.36, fit, { fill: s.pulseless ? '#ffffff' : th.primary, size: FS }));
+            });
+            rhythmLane = { top: y, bottom: y + h };
+            y += h + 10;
+        }
+
+        // ---- Obs panels
+        const plotTop = y;
+        const panels = [];
+        const PH = o.panelHeight || 58;
+        PANELS.forEach(p => {
+            const usable = pts.filter(h => (!p.onlyWhen || p.onlyWhen(h)) && numOf(h, p.key) !== null);
+            if (usable.length < 2) return;
+            const vals = usable.map(h => numOf(h, p.key)).concat(p.low ? usable.map(h => numOf(h, p.low)).filter(v => v !== null) : []);
+            if (p.ifChanged && (Math.max(...vals) - Math.min(...vals)) < p.ifChanged) return;
+            const [lo, hi] = domainFor(p.key, vals);
+            const top = y + FS + 6, bottom = top + PH;
+            const yOf = (v) => bottom - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * PH;
+            out.push(`<text x="${L}" y="${y + FS}" font-size="${FS + 1}" font-weight="bold" fill="${th.primary}">${escHtml(p.title)}${p.unit ? `<tspan font-weight="normal" font-size="${FS}" fill="${th.muted}" dx="6">${escHtml(p.unit)}</tspan>` : ''}</text>`);
+            washes.forEach(s => out.push(`<rect x="${x(s.start).toFixed(1)}" y="${top}" width="${Math.max(1, x(s.end) - x(s.start)).toFixed(1)}" height="${PH}" fill="${th.arrestWash}"/>`));
+            [lo, (lo + hi) / 2, hi].forEach(v => {
+                out.push(`<line x1="${L}" x2="${L + plotW}" y1="${yOf(v).toFixed(1)}" y2="${yOf(v).toFixed(1)}" stroke="${v === lo ? th.axis : th.grid}" stroke-width="1"/>`);
+                out.push(text(L - 6, yOf(v) + FS * 0.35, Number(v).toFixed(p.dp === 2 ? 1 : (p.dp && hi - lo < 20 ? 1 : 0)), { anchor: 'end' }));
+            });
+            // A line broken wherever the value was not recorded (or capnography was off).
+            const pathFor = (key) => {
+                let d = '', pen = false;
+                pts.forEach(h => {
+                    const v = (!p.onlyWhen || p.onlyWhen(h)) ? numOf(h, key) : null;
+                    if (v === null) { pen = false; return; }
+                    d += `${pen ? 'L' : 'M'}${x(h.time).toFixed(1)},${yOf(v).toFixed(1)}`; pen = true;
+                });
+                return d;
+            };
+            if (p.low) {
+                // BP: systolic and diastolic, with the pulse pressure as a light band between them.
+                const both = pts.filter(h => numOf(h, p.key) !== null && numOf(h, p.low) !== null);
+                if (both.length > 1) {
+                    const band = both.map((h, i) => `${i ? 'L' : 'M'}${x(h.time).toFixed(1)},${yOf(numOf(h, p.key)).toFixed(1)}`).join('') +
+                        both.slice().reverse().map(h => `L${x(h.time).toFixed(1)},${yOf(numOf(h, p.low)).toFixed(1)}`).join('') + 'Z';
+                    out.push(`<path d="${band}" fill="${th.band}" stroke="none"/>`);
+                }
+                out.push(`<path d="${pathFor(p.low)}" fill="none" stroke="${th.line}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+            }
+            out.push(`<path d="${pathFor(p.key)}" fill="none" stroke="${th.line}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+            // The last value, at the end of the line.
+            const lastH = usable[usable.length - 1];
+            const lastV = numOf(lastH, p.key);
+            const lastLow = p.low ? numOf(lastH, p.low) : null;
+            const fmt = (v) => Number(v).toFixed(p.dp);
+            out.push(`<circle cx="${x(lastH.time).toFixed(1)}" cy="${yOf(lastV).toFixed(1)}" r="4" fill="${th.line}" stroke="${th.surface}" stroke-width="2"/>`);
+            out.push(text(L + plotW + 8, Math.min(bottom, Math.max(top + FS, yOf(lastV) + FS * 0.35)), lastLow !== null ? `${fmt(lastV)}/${fmt(lastLow)}` : fmt(lastV), { fill: th.secondary, weight: 'bold' }));
+            panels.push({ ...p, top, bottom, yOf, lo, hi });
+            y = bottom + 10;
+        });
+        if (!panels.length) return null;
+        const plotBottom = y - 10;
+
+        // Rhythm events: a hairline through every panel, so the obs can be read against them.
+        events.filter(e => e.cat === 'rhythm').forEach(e => {
+            out.push(`<line x1="${x(e.t).toFixed(1)}" x2="${x(e.t).toFixed(1)}" y1="${(rhythmLane ? rhythmLane.top : plotTop).toFixed(1)}" y2="${plotBottom.toFixed(1)}" stroke="${th.rhythm}" stroke-width="1" stroke-opacity="0.55"/>`);
+        });
+
+        // ---- Time axis
+        const step = tickStep(span);
+        for (let t = Math.ceil(t0 / step) * step; t <= t1 + 0.001; t += step) {
+            out.push(`<line x1="${x(t).toFixed(1)}" x2="${x(t).toFixed(1)}" y1="${plotBottom}" y2="${plotBottom + 4}" stroke="${th.axis}" stroke-width="1"/>`);
+            out.push(text(x(t), plotBottom + 6 + FS, fmtClock(t), { anchor: 'middle' }));
+        }
+        y = plotBottom + FS + 16;
+
+        // ---- Event lanes. Markers that would overlap in a lane share one marker ("12 +2").
+        const lanes = [];
+        EVENT_CATS.forEach(c => {
+            const evs = events.filter(e => e.cat === c.id);
+            if (!evs.length) return;
+            out.push(text(L, y + FS, `${c.icon} ${c.label}`, { fill: th.secondary, weight: 'bold' }));
+            const top = y + FS + 5, hgt = 18;
+            const clusters = [];
+            evs.forEach(e => {
+                const ex = x(e.t);
+                const c0 = clusters[clusters.length - 1];
+                if (c0 && ex - 9 < c0.left + c0.width + 2) { c0.items.push(e); }
+                else clusters.push({ x: ex, items: [e] });
+                const cl = clusters[clusters.length - 1];
+                const label = cl.items.length === 1 ? String(cl.items[0].n) : `${cl.items[0].n} +${cl.items.length - 1}`;
+                cl.label = label; cl.width = Math.max(hgt, label.length * FS * 0.62 + 10);
+                cl.left = Math.min(Math.max(0, cl.x - hgt / 2), W - cl.width);
+            });
+            const fill = th[c.id];
+            clusters.forEach(cl => {
+                const tip = cl.items.map(e => `${e.n}. ${fmtClock(e.t)} ${e.msg}`).join('\n');
+                out.push(`<g><title>${escHtml(tip)}</title><rect x="${cl.left.toFixed(1)}" y="${top}" width="${cl.width.toFixed(1)}" height="${hgt}" rx="${hgt / 2}" fill="${fill}" stroke="${th.surface}" stroke-width="2"/>${text(cl.left + cl.width / 2, top + hgt / 2 + FS * 0.36, cl.label, { anchor: 'middle', fill: inkOn(fill), weight: 'bold' })}</g>`);
+            });
+            lanes.push({ id: c.id, top, bottom: top + hgt });
+            y = top + hgt + 8;
+        });
+        const H = Math.ceil(y + 4);
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${escHtml(o.ariaLabel || 'The patient’s obs over the session, with the rhythm, what was done and what changed')}" style="display:block;max-width:100%;height:auto;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:${th.surface}"><rect width="${W}" height="${H}" fill="${th.surface}"/>${out.join('')}</svg>`;
+        return { svg, W, H, L, R, plotW, x, t0, t1, top: rhythmLane ? rhythmLane.top : plotTop, plotBottom, panels, pts, events, lanes, theme: th };
+    };
+
+    // Rows for the obs table: one per 30 s of session time, plus the last.
+    const tableRows = (pts) => {
         const rows = []; let lastT = -Infinity;
-        pts.forEach(h => { if (h.time - lastT >= 30 || h === pts[pts.length - 1]) { rows.push(h); lastT = h.time; } });
-        const num = (v, dp) => Number.isFinite(Number(v)) ? Number(v).toFixed(dp || 0) : '\u2014';
-        const table = `<table class="compact"><thead><tr><th>Time</th><th>HR</th><th>SBP</th><th>SpO2</th><th>RR</th><th>Temp</th><th>GCS</th></tr></thead><tbody>${rows.map(h => `<tr><td class="mono">${fmtClock(h.time)}</td><td>${num(h.hr)}</td><td>${num(h.bp)}</td><td>${num(h.spo2)}</td><td>${num(h.rr)}</td><td>${num(h.temp, 1)}</td><td>${escHtml(h.gcs ?? '\u2014')}</td></tr>`).join('')}</tbody></table>`;
-        return `<div class="card"><h3 style="margin-top:0;">Vitals trend</h3><p class="muted" style="margin-top:0;">Dashed lines mark flagged events (listed below the charts).</p><div class="minis">${charts}</div><h4>Flagged events</h4>${eventList}<h4>Sampled values</h4>${table}</div>`;
+        pts.forEach((h, i) => { if (h.time - lastT >= 30 || i === pts.length - 1) { rows.push(h); lastT = h.time; } });
+        return rows;
+    };
+    const cell = (h, k, dp) => { const v = numOf(h, k); return v === null ? '—' : v.toFixed(dp || 0); };
+    const bpCell = (h) => numOf(h, 'bp') === null ? '—' : `${cell(h, 'bp')}${numOf(h, 'bpDia') !== null ? '/' + cell(h, 'bpDia') : ''}`;
+    const rhythmName = (r) => (r && window.RHYTHMS) ? window.RHYTHMS.labelFor(r) : (r || '—');
+
+    // ---- The printed / downloaded report: the same chart, light, with the event list and table.
+    const buildReportTrend = (history, log) => {
+        const tl = buildTimeline(history, log, { theme: 'light', width: 940 });
+        if (!tl) {
+            return `<div class="card"><h3 style="margin-top:0;">Obs, interventions and changes</h3><div class="muted">Not enough obs were recorded for a graph (they are sampled every 5 seconds of session time).</div></div>`;
+        }
+        const catOf = (id) => EVENT_CATS.find(c => c.id === id);
+        const eventList = tl.events.length
+            ? `<ol class="events">${tl.events.map(e => `<li value="${e.n}"><span class="mono">${escHtml(fmtClock(e.t))}</span> <span class="chip" style="background:${tl.theme[e.cat]};color:${inkOn(tl.theme[e.cat])}">${escHtml(catOf(e.cat).icon)} ${escHtml(catOf(e.cat).label)}</span> ${escHtml(e.msg)}</li>`).join('')}</ol>`
+            : '<div class="muted">No interventions or changes were logged.</div>';
+        const rows = tableRows(tl.pts);
+        const table = `<table class="compact"><thead><tr><th>Time</th><th>Rhythm</th><th>HR</th><th>BP</th><th>SpO2</th><th>RR</th><th>ETCO2</th><th>Temp</th><th>GCS</th></tr></thead><tbody>${rows.map(h => `<tr><td class="mono">${fmtClock(h.time)}</td><td>${escHtml(rhythmName(h.rhythm))}</td><td>${cell(h, 'hr')}</td><td>${bpCell(h)}</td><td>${cell(h, 'spo2')}</td><td>${cell(h, 'rr')}</td><td>${h.co2 === 1 ? cell(h, 'etco2', 1) : '—'}</td><td>${cell(h, 'temp', 1)}</td><td>${escHtml(h.gcs ?? '—')}</td></tr>`).join('')}</tbody></table>`;
+        return `<div class="card"><h3 style="margin-top:0;">Obs, interventions and changes</h3><p class="muted" style="margin-top:0;">The patient’s true obs every 5 seconds (what the team could see depended on what was attached). Red shading marks time without a pulse. The numbered markers match the list below.</p><div class="timeline">${tl.svg}</div><h4>What happened</h4>${eventList}<h4>Obs every 30 seconds</h4>${table}</div>`;
     };
     window.__debriefReportTrend = buildReportTrend;   // test handle
+    window.__buildObsTimeline = buildTimeline;        // test handle
 
-    const DebriefGraph = ({ history, log, quickSim }) => {
-        if (!history || history.length < 2) return <div className="text-slate-400 text-xs p-4 text-center">{quickSim ? 'No vitals trend yet: it is recorded every 5 seconds while the clock runs. In Quick Sim, press START to record it.' : 'Not enough data for graph'}</div>;
+    // ---- The debrief screen: the same chart, dark, with a crosshair read-out and the event list.
+    const ObsTimeline = ({ history, log, emptyText }) => {
+        const wrapRef = useRef(null);
+        const [width, setWidth] = useState(720);
+        const [hover, setHover] = useState(null);       // index into tl.pts
+        const [ptrY, setPtrY] = useState(null);         // pointer height, for placing the read-out
+        const [picked, setPicked] = useState(null);     // event number
+        const [showTable, setShowTable] = useState(false);
+        useEffect(() => {
+            const el = wrapRef.current;
+            if (!el) return;
+            const measure = () => { const w = Math.floor(el.clientWidth); if (w > 0) setWidth(w); };
+            measure();
+            if (typeof ResizeObserver === 'undefined') { window.addEventListener('resize', measure); return () => window.removeEventListener('resize', measure); }
+            const ro = new ResizeObserver(measure); ro.observe(el);
+            return () => ro.disconnect();
+        }, []);
+        const tl = useMemo(() => buildTimeline(history, log, { theme: 'dark', width }), [history, log, width]);
+        if (!tl) return <div ref={wrapRef} className="text-slate-400 text-xs p-4 text-center bg-slate-900 border border-slate-700 rounded mb-4" data-testid="obs-timeline-empty">{emptyText}</div>;
 
-        const width = 1200;
-        const height = 700;
-        const paddingLeft = 50;
-        const paddingRight = 100;
-        const paddingTop = 50;
-        const paddingBottom = 250; 
-        const graphW = width - paddingLeft - paddingRight;
-        const graphH = height - paddingTop - paddingBottom;
-
-        const maxTime = Math.max(...history.map(h => h.time));
-        const minTime = Math.min(...history.map(h => h.time));
-        const duration = maxTime - minTime || 1;
-
-        const getX = (t) => paddingLeft + ((t - minTime) / duration) * graphW;
-        // Axis maxima used to be hardcoded, so one extreme value (e.g. HR 999) was drawn above the
-        // plot area and clipped away. Grow the axis to fit the data, and clamp as a last resort.
-        const axisMax = (key, floor) => {
-            const peak = Math.max(0, ...history.map(h => Number(h[key])).filter(Number.isFinite));
-            return Math.max(floor, Math.ceil((peak * 1.1) / 20) * 20);
+        const nearest = (t) => {
+            let best = 0;
+            tl.pts.forEach((h, i) => { if (Math.abs(h.time - t) < Math.abs(tl.pts[best].time - t)) best = i; });
+            return best;
         };
-        const hrMax = axisMax('hr', 200);
-        const bpMax = axisMax('bp', 250);
-        const spo2Max = 100;
-        const getY = (val, maxVal) => {
-            const v = Math.min(Math.max(Number(val) || 0, 0), maxVal);
-            return (height - paddingBottom) - (v / maxVal) * graphH;
+        const onMove = (e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const px = (e.clientX - rect.left) * (tl.W / rect.width);
+            if (px < tl.L - 4 || px > tl.L + tl.plotW + 4) return;
+            setPtrY((e.clientY - rect.top) * (tl.W / rect.width));
+            setHover(nearest(tl.t0 + ((px - tl.L) / tl.plotW) * (tl.t1 - tl.t0)));
         };
-        const buildPath = (key, maxVal) => {
-            const pts = history.filter(h => Number.isFinite(Number(h[key])));
-            if (pts.length < 2) return "";
-            return "M " + pts.map(h => `${getX(h.time)},${getY(h[key], maxVal)}`).join(" L ");
+        const onKey = (e) => {
+            const last = tl.pts.length - 1;
+            const cur = hover === null ? last : hover;
+            const go = { ArrowLeft: Math.max(0, cur - 1), ArrowRight: Math.min(last, cur + 1), Home: 0, End: last }[e.key];
+            if (go === undefined) return;
+            e.preventDefault(); setPtrY(null); setHover(go);
         };
-
-        const hrPath = buildPath('hr', hrMax);
-        const bpPath = buildPath('bp', bpMax);
-        const spo2Path = buildPath('spo2', spo2Max);
-
-        // Temp, glucose and pH are modelled vitals now, so a warming, dextrose or
-        // bicarbonate scenario has a real trace worth debriefing. Each needs its OWN scale (a pH of
-        // 7.2 on an HR axis is a flat line at the bottom), and a channel that never moved and sat at
-        // its normal value is omitted rather than drawing a meaningless straight line.
-        const bandedPath = (key, lo, hi) => {
-            const pts = history.filter(h => Number.isFinite(Number(h[key])));
-            if (pts.length < 2) return null;
-            const vals = pts.map(h => Number(h[key]));
-            const span = Math.max(...vals) - Math.min(...vals);
-            if (span < (hi - lo) * 0.02) return null;
-            const y = (v) => (height - paddingBottom) - ((Math.min(Math.max(v, lo), hi) - lo) / (hi - lo)) * graphH;
-            return { d: 'M ' + pts.map(h => `${getX(h.time)},${y(Number(h[key]))}`).join(' L '), lo, hi };
-        };
-        const tempTrace = bandedPath('temp', 30, 42);
-        const bmTrace = bandedPath('bm', 0, 30);
-        const phTrace = bandedPath('ph', 6.8, 7.7);
-        let extraLegendRow = 3;
+        const h = hover !== null ? tl.pts[hover] : null;
+        const pickedEv = picked !== null ? tl.events.find(ev => ev.n === picked) : null;
+        const near = h ? tl.events.filter(ev => Math.abs(ev.t - h.time) <= 2.5) : [];
+        const catOf = (id) => EVENT_CATS.find(c => c.id === id);
+        const readout = h ? [
+            ['HR', cell(h, 'hr'), 'bpm'], ['BP', bpCell(h), 'mmHg'], ['SpO2', cell(h, 'spo2'), '%'], ['RR', cell(h, 'rr'), '/min'],
+            ...(h.co2 === 1 ? [['ETCO2', cell(h, 'etco2', 1), 'kPa']] : []),
+            ...(numOf(h, 'temp') !== null ? [['Temp', cell(h, 'temp', 1), '°C']] : []),
+            ...(numOf(h, 'gcs') !== null ? [['GCS', cell(h, 'gcs'), '']] : [])
+        ] : [];
+        // Beside the crosshair, on whichever side has room, and clear of the pointer.
+        const tipLeft = h ? (tl.x(h.time) + 232 > tl.W ? Math.max(0, tl.x(h.time) - 222) : tl.x(h.time) + 12) : 0;
+        const tipTop = ptrY === null ? 4 : Math.max(4, Math.min(tl.H - 190, ptrY + 18));
 
         return (
-            <div className="w-full bg-slate-900 border border-slate-700 rounded p-4 mb-4 overflow-hidden">
-                <h4 className="text-xs font-bold text-slate-400 mb-2 uppercase">Vitals Trend & Interventions</h4>
-                <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto bg-slate-950 rounded border border-slate-800">
-                    <line x1={paddingLeft} y1={height-paddingBottom} x2={width-paddingRight} y2={height-paddingBottom} stroke="#334155" strokeWidth="2"/>
-                    <line x1={paddingLeft} y1={paddingTop} x2={paddingLeft} y2={height-paddingBottom} stroke="#334155" strokeWidth="2"/>
-                    
-                    <path d={hrPath} fill="none" stroke="#22c55e" strokeWidth="4" />
-                    <path d={bpPath} fill="none" stroke="#ef4444" strokeWidth="4" />
-                    <path d={spo2Path} fill="none" stroke="#3b82f6" strokeWidth="3" strokeDasharray="8" />
-                    {tempTrace && <path d={tempTrace.d} fill="none" stroke="#f97316" strokeWidth="2" strokeDasharray="2 6" />}
-                    {bmTrace && <path d={bmTrace.d} fill="none" stroke="#a78bfa" strokeWidth="2" strokeDasharray="2 6" />}
-                    {phTrace && <path d={phTrace.d} fill="none" stroke="#facc15" strokeWidth="2" strokeDasharray="2 6" />}
-
-                    {(() => {
-                        let lastLabelX = -Infinity;
-                        // 'danger' and 'warning' are now plotted too. Shocks are logged as
-                        // 'danger', so every defibrillation in the session was previously INVISIBLE
-                        // on the debrief timeline — the single most important event in an arrest
-                        // scenario did not appear in the debrief at all.
-                        const PLOTTED = ['action', 'manual', 'danger', 'warning'];
-                        const MARKER_FILL = { danger: '#ef4444', warning: '#f59e0b', manual: '#a78bfa', action: '#0ea5e9' };
-                        return log.filter(l => PLOTTED.includes(l.type) && l.timeSeconds !== undefined && l.timeSeconds !== null).map((l, i) => {
-                            const x = getX(l.timeSeconds);
-                            const showLabel = x - lastLabelX >= 80;
-                            if (showLabel) lastLabelX = x;
-                            const yPos = height - paddingBottom + 15;
-                            const fill = MARKER_FILL[l.type] || '#0ea5e9';
-                            const isShock = l.type === 'danger' && /shock/i.test(l.msg || '');
-                            return <g key={i}><line x1={x} y1={paddingTop} x2={x} y2={yPos} stroke={l.type === 'danger' ? '#ef4444' : '#94a3b8'} strokeWidth={isShock ? 2 : 1} strokeOpacity={isShock ? 0.7 : 0.4} strokeDasharray="4"/><circle cx={x} cy={yPos} r={isShock ? 7 : 5} fill={fill}/>{isShock && <text x={x} y={paddingTop + 14} fill="#fca5a5" fontSize="13" fontWeight="bold" textAnchor="middle">\u26a1</text>}{showLabel && <text x={x} y={yPos + 15} fill="#f8fafc" fontSize="12" fontWeight="bold" textAnchor="start" transform={`rotate(45, ${x}, ${yPos + 15})`}>{l.msg}</text>}</g>;
-                        });
-                    })()}
-                    
-                    <text x={width-90} y={paddingTop + 20} fill="#22c55e" fontSize="18" fontWeight="bold">HR /{hrMax}</text>
-                    <text x={width-90} y={paddingTop + 45} fill="#ef4444" fontSize="18" fontWeight="bold">BP /{bpMax}</text>
-                    <text x={width-90} y={paddingTop + 70} fill="#3b82f6" fontSize="18" fontWeight="bold">SpO2 /100</text>
-                    {tempTrace && <text x={width-90} y={paddingTop + 70 + 25 * (extraLegendRow++ - 2)} fill="#f97316" fontSize="14" fontWeight="bold">Temp {tempTrace.lo}-{tempTrace.hi}</text>}
-                    {bmTrace && <text x={width-90} y={paddingTop + 70 + 25 * (extraLegendRow++ - 2)} fill="#a78bfa" fontSize="14" fontWeight="bold">BM {bmTrace.lo}-{bmTrace.hi}</text>}
-                    {phTrace && <text x={width-90} y={paddingTop + 70 + 25 * (extraLegendRow++ - 2)} fill="#facc15" fontSize="14" fontWeight="bold">pH {phTrace.lo}-{phTrace.hi}</text>}
-                </svg>
+            <div className="w-full bg-slate-900 border border-slate-700 rounded p-3 mb-4" data-testid="obs-timeline">
+                <h4 className="text-xs font-bold text-slate-300 mb-1 uppercase tracking-wide">Obs, interventions and changes</h4>
+                <p className="text-[11px] text-slate-400 mb-2">The patient's true obs every 5 seconds. Red shading marks time without a pulse. Hover, or focus the chart and use the arrow keys, to read the values at any moment; the numbered markers match the list below.</p>
+                <div ref={wrapRef} className="w-full">
+                    <div className="relative outline-none focus-visible:ring-2 focus-visible:ring-sky-500 rounded" tabIndex={0}
+                         role="group" aria-label="Obs timeline. Use the left and right arrow keys to step through the recorded obs."
+                         onPointerMove={onMove} onPointerLeave={() => setHover(null)} onKeyDown={onKey} onBlur={() => setHover(null)}>
+                        <div dangerouslySetInnerHTML={{ __html: tl.svg }} />
+                        <svg className="absolute inset-0 pointer-events-none" viewBox={`0 0 ${tl.W} ${tl.H}`} width="100%" height="100%" aria-hidden="true">
+                            {pickedEv && <line x1={tl.x(pickedEv.t)} x2={tl.x(pickedEv.t)} y1={tl.top} y2={tl.H - 4} stroke={tl.theme[pickedEv.cat]} strokeWidth="2" />}
+                            {h && <line x1={tl.x(h.time)} x2={tl.x(h.time)} y1={tl.top} y2={tl.plotBottom} stroke="#e2e8f0" strokeWidth="1" />}
+                            {h && tl.panels.map(p => {
+                                const v = numOf(h, p.key);
+                                if (v === null || (p.onlyWhen && !p.onlyWhen(h))) return null;
+                                return <circle key={p.key} cx={tl.x(h.time)} cy={p.yOf(v)} r="4" fill={tl.theme.line} stroke={tl.theme.surface} strokeWidth="2" />;
+                            })}
+                        </svg>
+                        {h && (
+                            <div className="absolute z-10 pointer-events-none bg-slate-800/95 border border-slate-600 rounded shadow-xl p-2 text-xs w-[210px]" style={{ left: tipLeft, top: tipTop }} data-testid="obs-readout">
+                                <div className="font-mono text-slate-300 mb-0.5">{fmtClock(h.time)}</div>
+                                {h.rhythm && <div className="text-slate-300 mb-1">{rhythmName(h.rhythm)}</div>}
+                                <div className="grid grid-cols-2 gap-x-2">
+                                    {readout.map(([k, v, u]) => <div key={k}><span className="font-bold text-white font-mono">{v}</span> <span className="text-slate-400">{k}{u ? ` ${u}` : ''}</span></div>)}
+                                </div>
+                                {near.length > 0 && <ul className="mt-1 border-t border-slate-600 pt-1 space-y-0.5">{near.map(ev => <li key={ev.n} className="text-slate-200"><b>{ev.n}.</b> {ev.msg}</li>)}</ul>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <h5 className="text-[11px] font-bold text-slate-300 uppercase tracking-wide mt-3 mb-1">What happened ({tl.events.length})</h5>
+                {tl.events.length === 0 ? <div className="text-xs text-slate-400">No interventions or changes were logged.</div> : (
+                    <ol className="max-h-56 overflow-y-auto space-y-0.5 pr-1" data-testid="obs-events">
+                        {tl.events.map(ev => (
+                            <li key={ev.n}>
+                                <button type="button" onClick={() => { setPicked(picked === ev.n ? null : ev.n); }}
+                                        aria-pressed={picked === ev.n}
+                                        className={`w-full text-left flex gap-2 items-start text-xs rounded px-1 py-0.5 ${picked === ev.n ? 'bg-slate-700' : 'hover:bg-slate-800'}`}>
+                                    <span className="flex-none min-w-[1.6rem] text-center rounded-full font-bold text-[11px] leading-5" style={{ background: tl.theme[ev.cat], color: inkOn(tl.theme[ev.cat]) }}>{ev.n}</span>
+                                    <span className="flex-none font-mono text-slate-400 leading-5">{fmtClock(ev.t)}</span>
+                                    <span className="text-slate-200 leading-5"><span className="sr-only">{catOf(ev.cat).label}: </span>{ev.msg}</span>
+                                </button>
+                            </li>
+                        ))}
+                    </ol>
+                )}
+                <button type="button" onClick={() => setShowTable(!showTable)} aria-expanded={showTable} className="mt-2 text-[11px] text-sky-400 underline">{showTable ? 'Hide' : 'Show'} the obs as a table</button>
+                {showTable && (
+                    <div className="mt-1 max-h-56 overflow-auto">
+                        <table className="w-full text-[11px] text-slate-300 font-mono" data-testid="obs-table">
+                            <thead><tr className="text-slate-400 text-left">{['Time', 'Rhythm', 'HR', 'BP', 'SpO2', 'RR', 'ETCO2', 'Temp', 'GCS'].map(c => <th key={c} className="pr-2 font-bold">{c}</th>)}</tr></thead>
+                            <tbody>{tableRows(tl.pts).map(r => (
+                                <tr key={r.time} className="border-t border-slate-800">
+                                    <td className="pr-2">{fmtClock(r.time)}</td><td className="pr-2 font-sans">{rhythmName(r.rhythm)}</td><td className="pr-2">{cell(r, 'hr')}</td><td className="pr-2">{bpCell(r)}</td>
+                                    <td className="pr-2">{cell(r, 'spo2')}</td><td className="pr-2">{cell(r, 'rr')}</td><td className="pr-2">{r.co2 === 1 ? cell(r, 'etco2', 1) : '—'}</td><td className="pr-2">{cell(r, 'temp', 1)}</td><td className="pr-2">{r.gcs ?? '—'}</td>
+                                </tr>
+                            ))}</tbody>
+                        </table>
+                    </div>
+                )}
             </div>
         );
     };
@@ -176,7 +403,14 @@
             const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Certificate_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
         const [filter, setFilter] = useState('all');
-        const [replayIdx, setReplayIdx] = useState(null);
+        // The session's length on the debrief timeline (Quick Sim records it before START too).
+        const duration = Number.isFinite(Number(state.sessionTime)) ? Math.max(Number(state.sessionTime), Number(state.time) || 0) : (Number(state.time) || 0);
+        const durationText = `${Math.floor(duration / 60)}m ${duration % 60}s`;
+        const timelineEmpty = isQuickSim
+            ? 'Not enough obs were recorded for a graph yet: they are sampled every 5 seconds from the moment the Quick Sim starts.'
+            : defibSim
+                ? 'No obs were recorded: the graph records while the clock runs, which starts at the learner\u2019s first action on the defib (or when you press START).'
+                : 'No obs were recorded: the graph records while the scenario clock runs, so press START at the beginning of the scenario.';
         // Keyed on state.runId — a genuinely unique id minted per RUN by the engine.
         // It used to read `state.sessionID`, which has never existed on state, so the key silently
         // collapsed to the SCENARIO id and every run of the same scenario shared one set of notes.
@@ -280,10 +514,10 @@
             // Light, print-friendly theme (it used to be dark, which printed as solid black pages).
             // The inline colours inside the cards were written for a dark background, so the CSS
             // re-maps the light-on-dark ones to readable ink.
-            const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:20px;font-size:.85rem}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
+            const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:28px;font-size:.85rem}.events li{margin:2px 0}.chip{display:inline-block;border-radius:9px;padding:0 6px;font-size:.7rem;font-weight:bold;margin-right:4px}.timeline{overflow:hidden;margin:8px 0}.timeline svg{width:100%;height:auto;display:block}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
             const trendCard = buildReportTrend(state.history, state.log);
             const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(Math.floor(state.time/60))}m ${esc(state.time%60)}s</div></div></div></div>${defibFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -306,7 +540,7 @@
                         <p className="text-slate-400">
                             {scenario.title || 'Simulation'}
                             {isQuickSim && <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 border border-sky-700 bg-sky-950/40 rounded px-1.5 py-0.5">Quick Sim &middot; no scenario</span>}
-                            {' '}• Duration: {Math.floor(state.time/60)}m {state.time%60}s
+                            {' '}• Duration: {durationText}
                         </p>
                     </div>
                     <div className="flex gap-2">
@@ -319,6 +553,7 @@
 
                 <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
                     <div className="overflow-y-auto space-y-4 pr-2">
+                        <ObsTimeline history={state.history} log={state.log} emptyText={timelineEmpty} />
                         {defibReview && (
                             <div className="bg-slate-800 p-4 rounded-lg border border-amber-700/60" data-testid="defib-feedback">
                                 <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Lucide icon="zap" className="w-4 h-4 text-amber-400"/> Defib Sim feedback</h3>
@@ -350,7 +585,7 @@
                             {score === null ? (
                                 <div className="mb-4 text-sm text-slate-400">
                                     {isQuickSim
-                                        ? 'Quick Sim has no scenario, so there are no learning objectives to score. The event log, the vitals trend and your notes below are the debrief.'
+                                        ? 'Quick Sim has no scenario, so there are no learning objectives to score. The obs graph, the event log and your notes are the debrief.'
                                         : 'This session declared no learning objectives, so there is nothing to score.'}
                                 </div>
                             ) : (
@@ -406,45 +641,6 @@
                                     </div>
                                 )}
                             </div>
-
-                            <DebriefGraph history={state.history} log={state.log} quickSim={isQuickSim} />
-
-                            {state.history && state.history.length > 1 && (
-                                <div className="mb-4 bg-slate-900 border border-slate-700 rounded p-3">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Session Replay</h4>
-                                    <input
-                                        type="range"
-                                        min={0}
-                                        max={state.history.length - 1}
-                                        value={replayIdx !== null ? replayIdx : state.history.length - 1}
-                                        onChange={e => setReplayIdx(parseInt(e.target.value))}
-                                        className="w-full accent-sky-500"
-                                    />
-                                    {replayIdx !== null && state.history[replayIdx] && (
-                                        <div className="grid grid-cols-4 gap-2 mt-2">
-                                            {[['HR', state.history[replayIdx].hr, 'bpm', '#22c55e'],
-                                              ['BP', state.history[replayIdx].bp, 'mmHg', '#ef4444'],
-                                              ['SpO2', state.history[replayIdx].spo2, '%', '#3b82f6'],
-                                              ['RR', state.history[replayIdx].rr, '/min', '#a78bfa'],
-                                              // The point-of-care channels are recorded too.
-                                              ['Temp', Number.isFinite(state.history[replayIdx].temp) ? state.history[replayIdx].temp.toFixed(1) : '--', '°C', '#f97316'],
-                                              ['BM', Number.isFinite(state.history[replayIdx].bm) ? state.history[replayIdx].bm.toFixed(1) : '--', 'mmol', '#c4b5fd'],
-                                              ['pH', Number.isFinite(state.history[replayIdx].ph) ? state.history[replayIdx].ph.toFixed(2) : '--', '', '#facc15']].map(([lbl, val, unit, col]) => (
-                                                <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
-                                                    <div className="text-[10px] font-bold uppercase" style={{color: col}}>{lbl}</div>
-                                                    <div className="text-lg font-mono font-bold text-white">{val ?? '--'}</div>
-                                                    <div className="text-[9px] text-slate-400">{unit}</div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    <div className="flex justify-between mt-1">
-                                        <span className="text-[10px] text-slate-400">T+0s</span>
-                                        <span className="text-[10px] text-sky-400 font-mono">{replayIdx !== null && state.history[replayIdx] ? `T+${state.history[replayIdx].time}s` : 'Drag to replay'}</span>
-                                        <span className="text-[10px] text-slate-400">T+{state.history[state.history.length-1].time}s</span>
-                                    </div>
-                                </div>
-                            )}
 
                             {/* Omitted entirely rather than rendered as an empty list. */}
                             {objectivesTotal > 0 && (

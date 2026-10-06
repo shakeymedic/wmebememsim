@@ -139,7 +139,7 @@
 </tbody>
 </table></div>
 <p><strong>Human factors.</strong> Random and Builder can add a challenge: Blindfolded Lead, Silent Team, New Junior, Missing Kit or Distracted Senior. It shows as a badge on your screen so you can brief the right person.</p>
-<p><strong>Paediatric scenarios.</strong> Tick <strong>Show WETFLAG on Monitor</strong> on the setup screen to show the weight-based WETFLAG values on the room monitor.</p>
+<p><strong>Paediatric scenarios.</strong> WETFLAG starts hidden on the room monitor. Tick <strong>Show WETFLAG on Monitor from the start</strong> on the setup screen if you want the team to see it straight away. You can show or hide it at any time during the scenario (see <a href="#paediatric">Paediatric scenarios</a>).</p>
 <p><strong>The brief.</strong> Loading a Premade, Random or Custom scenario opens a brief before anything starts:</p>
 <ul>
 <li><strong>Patient Brief:</strong> name, history, medicines and allergies</li>
@@ -180,7 +180,7 @@
 <tr><td>More obs</td><td>Open</td><td>GCS and glucose (plus pH and K+ in Full view)</td></tr>
 <tr><td>Drugs on board</td><td>Open, once a drug is given</td><td>Each drug's phase, strength and time left</td></tr>
 <tr><td>Patient condition</td><td>Closed</td><td>AUTO or MANUAL deterioration; <strong>Better</strong> and <strong>Worse</strong> stay on the bar</td></tr>
-<tr><td>Rhythm &amp; resus</td><td>Open</td><td>ARREST, ROSC, Arrest View, Defib, Cycle NIBP, Manual Reading, and the rhythm and shock tally</td></tr>
+<tr><td>Rhythm &amp; resus</td><td>Open</td><td>ARREST, ROSC, Arrest View, Defib, Cycle NIBP Now, Auto NIBP, Manual Reading, Show/Hide WETFLAG on Monitor (child scenarios), and the rhythm and shock tally</td></tr>
 </tbody>
 </table></div>
 <h3>Right column: treatments and the log</h3>
@@ -218,12 +218,19 @@
 <ol>
 <li>Click a vital's tile.</li>
 <li>Type the new value. For ETCO2 you can also pick the capnogram shape: Auto, Obstructive, Force normal, Rebreathing or Curare cleft (see <a href="#capnography">Capnography</a>).</li>
-<li>Under <strong>Get there</strong>, choose <strong>Now</strong>, <strong>30 s</strong>, <strong>2 min</strong> or <strong>5 min</strong> for a gradual change.</li>
-<li>Press <strong>Confirm</strong>.</li>
+<li>Under <strong>Get there</strong>, choose <strong>Now</strong>, <strong>30 s</strong>, <strong>2 min</strong> or <strong>5 min</strong> for a gradual change. BP starts on <strong>Now</strong>; everything else starts on 30 s.</li>
+<li>Press <strong>Confirm</strong>. For BP there are two buttons instead (see below).</li>
 </ol>
 <p>A heart rate you set yourself is kept if you later change the rhythm. ARREST and ROSC reset it.</p>
 <h3>Blood pressure</h3>
-<p>The room monitor shows a new BP only when the cuff cycles, as in real life. Press <strong>Cycle NIBP</strong> when the team asks for one, or tick "Cycle the NIBP cuff so the team sees it" when you set a BP with <strong>Now</strong>. An arterial line, once attached, shows the BP continuously. <strong>Manual Reading</strong> shows a one-off cuff reading on the room monitor without changing the patient (for example a spurious reading).</p>
+<p>Changing the BP never sends it to the team by itself. The room monitor and the defib tablet keep showing the last cuff reading until the cuff cycles, as in real life. The cuff cycles when the team presses <strong>Cycle</strong> on the monitor or <strong>NIBP</strong> on the defib, when you press <strong>Cycle NIBP Now</strong>, or every 3 minutes while auto is on.</p>
+<p>When you set a BP with <strong>Now</strong> and the cuff is on, you choose:</p>
+<ul>
+<li><strong>Change, don't send</strong>: the patient's BP changes now. The team sees it the next time the cuff cycles.</li>
+<li><strong>Change and cycle cuff now</strong>: the BP changes and the cuff starts measuring straight away. The cuff noise plays and the new reading appears after about 5 seconds.</li>
+</ul>
+<p>If you pick 30 s, 2 min or 5 min instead, the BP drifts to the new value and the team sees wherever it has got to at the next cuff cycle.</p>
+<p><strong>Auto NIBP: on/off</strong>, next to Cycle NIBP Now, is the same switch as <strong>Auto</strong> on the room monitor: the cuff measures every 3 minutes. It also counts down in Quick Sim, where you never press START. An arterial line, once attached, shows the BP continuously. <strong>Manual Reading</strong> shows a one-off cuff reading on the room monitor without changing the patient (for example a spurious reading).</p>
 <h3 id="capnography">Capnography</h3>
 <p>Once capnography is attached, the room monitor draws the capnogram at half the speed of the ECG, as the ZOLL R Series does. Several breaths fit on screen, and each one is wide enough to read its shape. The height of the plateau always matches the ETCO2 number.</p>
 <div class="table-wrap"><table>
@@ -305,12 +312,12 @@
 <thead><tr><th>Area</th><th>What it does</th></tr></thead>
 <tbody>
 <tr><td>Patient</td><td>Who the patient is, plus tags such as Needs SYNC, Needs pacing and the RCUK energy advice</td></tr>
-<tr><td>What the pads show</td><td>The rhythm and obs the defib is showing</td></tr>
+<tr><td>What the pads show</td><td>The rhythm and the patient's true obs (the BP here is the live BP, not the last cuff reading)</td></tr>
 <tr><td>The learner's defib</td><td>A live mirror of the tablet: mode, energy, SYNC, pacer settings and the screen message, plus shocks given</td></tr>
 <tr><td>Rhythm</td><td>Click a rhythm to change it; <strong>All rhythms</strong> shows the full list</td></tr>
 <tr><td>Shock response (closed)</td><td>How shocks resolve, and <strong>Cardioversion succeeds at</strong> (see <a href="#arrests">Arrests, rhythms and the defibrillator</a>)</td></tr>
 <tr><td>Pacing &amp; artefacts (closed)</td><td>The capture threshold (± 5 mA; a pulse needs about 10 mA more), and movement, mains interference or lead-off artefact</td></tr>
-<tr><td>Arrest</td><td>Time in arrest and shocks, the cycle timer, <strong>Start CPR</strong>, <strong>Metronome</strong>, <strong>Rhythm check (+2:00)</strong>, <strong>ROSC</strong> and <strong>Capnography</strong>. Capnography on puts a capnogram under the ECG and the ETCO2 number on the learner's defib; while it is off, the defib shows "--" for ETCO2, as a real one without its CO2 sensor does</td></tr>
+<tr><td>Arrest</td><td>Time in arrest and shocks, the cycle timer, <strong>Start CPR</strong>, <strong>Metronome</strong>, <strong>Rhythm check (+2:00)</strong>, <strong>ROSC</strong>, <strong>Capnography</strong> and <strong>Cycle NIBP</strong>. Capnography on puts a capnogram under the ECG and the ETCO2 number on the learner's defib; while it is off, the defib shows "--" for ETCO2, as a real one without its CO2 sensor does. The defib's NIBP shows only the last cuff reading: it changes when the learner presses <strong>NIBP</strong> on the defib or you press <strong>Cycle NIBP</strong></td></tr>
 <tr><td>RCUK prompts</td><td>When adrenaline or amiodarone is due. You see these in both modes; the learner never does</td></tr>
 <tr><td>Drugs (closed)</td><td>Adrenaline, amiodarone, atropine, adenosine, isoprenaline, adrenaline infusion, fentanyl and midazolam</td></tr>
 <tr><td>Event log</td><td>Every press on the defib with its time; add notes and flags</td></tr>
@@ -323,7 +330,7 @@
 
 <h2 id="paediatric">Paediatric scenarios</h2>
 <p>Child scenarios follow the Resuscitation Council UK (RCUK) Guidelines 2025: the Paediatric advanced life support and Paediatric cardiac arrhythmias algorithms, and the Paediatric emergency drug chart.</p>
-<p><strong>WETFLAG.</strong> The brief for a child scenario shows the WETFLAG values worked out from the child's weight. If you do not give a weight, it is estimated from age using the RCUK chart. Tick <strong>Show WETFLAG on Monitor</strong> on the setup screen to show the values to the team as well.</p>
+<p><strong>WETFLAG.</strong> The brief for a child scenario shows the WETFLAG values worked out from the child's weight. If you do not give a weight, it is estimated from age using the RCUK chart. WETFLAG starts hidden on the room monitor. To show it to the team, press <strong>Show WETFLAG on Monitor</strong> in the Rhythm &amp; resus section; press <strong>Hide WETFLAG on Monitor</strong> to take it away again. To have it showing from the start, tick <strong>Show WETFLAG on Monitor from the start</strong> on the setup screen.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Letter</th><th>Value used</th></tr></thead>
 <tbody>
@@ -348,7 +355,7 @@
 <li><strong>Add a flagged note:</strong> type the note and press <strong>Flag</strong> instead.</li>
 <li><strong>Flag an existing entry:</strong> click the small flag beside it. Click again to remove the flag.</li>
 </ul>
-<p>Flagged entries are listed under <strong>Flagged events</strong> in the debrief and marked on its graph, so you can find the moments to discuss.</p>
+<p>Flagged entries appear in the <strong>Flags and warnings</strong> row of the debrief graph, so you can find the moments to discuss.</p>
 <p><strong>Safety flags</strong> count sequence deviations: actions done before their usual prerequisite was in place, such as an IV drug before IV access. Nothing is blocked; the team can still do it. When there is at least one, an amber <strong>Safety flags</strong> button appears in the top bar. It opens the list, with arrests, shocks and your flagged moments shown separately as significant events. Safety flags are not used in Quick Sim.</p>
 
 <h2 id="debrief">Finishing and the debrief</h2>
@@ -358,17 +365,26 @@
 <tbody>
 <tr><td>Performance Summary</td><td>Objectives met, the score (fully met, and with partial credit) and the time taken</td></tr>
 <tr><td>Learning Objectives</td><td>Each objective as fully met, partly done or not in place, with the steps behind it</td></tr>
-<tr><td>Vitals Trend &amp; Interventions</td><td>A graph of the obs with each treatment marked; dashed lines mark flagged events</td></tr>
-<tr><td>Flagged events</td><td>The log entries you flagged</td></tr>
+<tr><td>Obs, interventions and changes</td><td>The graph described below, at the top of the debrief</td></tr>
 <tr><td>Sequence Deviations</td><td>The safety flags</td></tr>
 <tr><td>Defibrillation &amp; Rhythm</td><td>Shocks, energies and each rhythm change</td></tr>
 <tr><td>Defib Sim feedback</td><td>Defib Sim only: good practice and areas for improvement</td></tr>
-<tr><td>Session Replay</td><td>Drag the slider to show the obs at any moment</td></tr>
 <tr><td>Simulation Log</td><td>Every entry with its time</td></tr>
 <tr><td>Instructor Notes</td><td>A box for your own feedback notes</td></tr>
 </tbody>
 </table></div>
-<p>Quick Sim has no scenario, so it has no score; the graph, log and replay still work.</p>
+<p>Quick Sim has no scenario, so it has no score; the graph and the log still work.</p>
+<h3 id="obs-graph">The obs graph</h3>
+<p>Every version (a full scenario, Quick Sim and Defib Sim) finishes with the same graph, <strong>Obs, interventions and changes</strong>. It shows the patient's true obs every 5 seconds over the whole session. What the team could see depended on what was attached.</p>
+<ul>
+<li><strong>Rhythm</strong> along the top. Time without a pulse is red, and the same red shading runs down every chart below.</li>
+<li>One small chart each for heart rate, blood pressure (systolic and diastolic), SpO2 and respiratory rate. ETCO2 is added while capnography was attached. Temperature, glucose, pH and GCS are added only if they changed.</li>
+<li>Numbered markers underneath, in four rows: <strong>Rhythm, arrest and shocks</strong>; <strong>Team actions and treatment</strong>; <strong>Facilitator changes</strong> (the obs you changed or trended, with the values before and after, the patient's voice and presets); and <strong>Flags and warnings</strong>. Markers that would overlap share one label, such as "5 +2".</li>
+<li><strong>What happened</strong>, under the graph, lists every numbered marker with its time. Click one to mark it on the graph.</li>
+<li>Move the pointer over the graph, or click it and use the arrow keys, to read every value at that moment.</li>
+<li><strong>Show the obs as a table</strong> lists the values every 30 seconds.</li>
+</ul>
+<p>The graph records while the scenario clock runs. In Quick Sim it records from the moment the Quick Sim starts, without pressing START. Pressing START in Quick Sim still switches on the physiology clock, such as SpO2 falling when the patient is not breathing. In Defib Sim the clock starts at the learner's first action on the defib. In a full scenario, press START at the beginning or there will be no graph. The graph is kept if you reload the page and resume, and it is in the printed and downloaded report.</p>
 <h3>Keeping a copy</h3>
 <ul>
 <li><strong>Download Report</strong> saves the debrief as a web page you can open on any computer, including the log and your instructor notes. Write your notes before you download.</li>
@@ -385,7 +401,7 @@
 <tr><td>Drug calculator (<kbd>D</kbd>)</td><td>Doses for any weight you enter; child doses follow the RCUK chart</td></tr>
 <tr><td>Timer alerts (<kbd>T</kbd>)</td><td>Set a reminder at a scenario time, for example "5 mins: bloods back". It plays a tone, appears in the log, and is marked FIRED</td></tr>
 <tr><td>Full simulation log</td><td>The whole event log in a window</td></tr>
-<tr><td>Sound plays on</td><td>Choose where alarms and the patient's voice play: room monitor (the default), this controller, or both</td></tr>
+<tr><td>Sound plays on</td><td>Choose where the pulse tone, alarms, the cuff noise, sound effects and the patient's voice play: room monitor (the default), this controller, or both. <strong>Mute alarms</strong> silences the pulse tone and alarms only. The defib tablet always makes its own sounds (charging, shock, metronome and, in Defib Sim, the cuff)</td></tr>
 <tr><td>Mute / Unmute alarms</td><td>While muted, a red <strong>Muted</strong> button stays in the top bar so alarms are never silently off</td></tr>
 <tr><td>Keyboard shortcuts (<kbd>?</kbd>)</td><td>The list below</td></tr>
 </tbody>
@@ -409,7 +425,7 @@
 <tbody>
 <tr><td>Room monitor shows no numbers or "No sensor detected"</td><td>Monitoring not attached yet</td><td>Press <strong>Attach</strong>, or click the chips in Monitoring &amp; access</td></tr>
 <tr><td>A value you set is not on the room monitor</td><td>That sensor is not attached (your tile says "not on monitor")</td><td>Attach it when the team does</td></tr>
-<tr><td>BP on the room monitor has not changed</td><td>The cuff has not cycled</td><td>Press <strong>Cycle NIBP</strong></td></tr>
+<tr><td>BP on the room monitor has not changed</td><td>The cuff has not cycled (this is deliberate)</td><td>Press <strong>Cycle NIBP Now</strong>, or use <strong>Change and cycle cuff now</strong> when you set the BP</td></tr>
 <tr><td>No sound</td><td>Sound not enabled, muted, or playing on the other screen</td><td>Tap <strong>Tap to Enable Sound</strong> on the monitor; check for the red <strong>Muted</strong> button; check <strong>Tools → Sound plays on</strong>; check the device's volume</td></tr>
 <tr><td>Badge says Sync error</td><td>The internet connection has dropped</td><td>Check the connection on each device</td></tr>
 <tr><td>Room monitor or defib not following your changes</td><td>It is on a different session code, for example after <strong>New code</strong></td><td>Join it again with the current code</td></tr>
