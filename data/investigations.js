@@ -152,9 +152,9 @@
         ],
         'ECG': [
             F('ecg-stemi-anterior', 'Anterior STEMI', '12-lead ECG: sinus tachycardia. ST elevation V2–V5: acute anterior STEMI. Left anterior fascicular block.', 'ecg-stemi-anterior'),
-            F('ecg-stemi-anterior-2', 'Anterior STEMI (2)', '12-lead ECG: sinus rhythm. ST elevation in V2–V5, I and aVL: acute anterior STEMI.', 'ecg-stemi-anterior-2'),
+            F('ecg-stemi-anterior-2', 'Anterior STEMI (2)', '12-lead ECG: sinus rhythm about 90/min. ST elevation in V2–V5, greatest in V3: acute anterior STEMI.', 'ecg-stemi-anterior-2'),
             F('ecg-stemi-inferior', 'Inferior STEMI', '12-lead ECG: sinus rhythm about 100/min. ST elevation in II, III and aVF with reciprocal ST depression: acute inferior STEMI.', 'ecg-stemi-inferior'),
-            F('ecg-hyperkalaemia', 'Severe hyperkalaemia', '12-lead ECG: broad, bizarre QRS complexes with no clear P waves and peaked T waves. Severe hyperkalaemia (pre-arrest pattern).', 'ecg-hyperkalaemia'),
+            F('ecg-hyperkalaemia', 'Severe hyperkalaemia', '12-lead ECG: broad complex rhythm about 120/min, with no clear P waves and peaked T waves. Severe hyperkalaemia (pre-arrest pattern).', 'ecg-hyperkalaemia'),
             F('ecg-pe', 'PE: S1Q3T3', '12-lead ECG: sinus tachycardia about 100/min. Deep S wave in I, Q wave and inverted T wave in III (S1Q3T3).', 'ecg-pe'),
             F('ecg-chb', 'Complete heart block', '12-lead ECG: complete (third-degree) heart block. P waves march through independently of a slow, regular escape rhythm.', 'ecg-chb'),
             F('ecg-brugada', 'Brugada type 1', '12-lead ECG: coved ST elevation with T-wave inversion in V1–V2. Brugada type 1 pattern.', 'ecg-brugada'),
@@ -191,7 +191,8 @@
         AM001: { ECG: 'ecg-stemi-anterior' },
         AM002: { 'X-ray': 'cxr-pneumonia' },
         AM003: { 'X-ray': 'cxr-asthma' },
-        AM004: { ECG: 'ecg-hyperkalaemia' },
+        // AM004 (hyperkalaemia) keeps its drawn 12-lead: it is a broad complex BRADYCARDIA, and the real
+        // hyperkalaemia ECG runs at about 120/min. That ECG stays in the library for the facilitator.
         AM011: { 'X-ray': 'cxr-oedema', POCUS: 'us-b-lines' },
         AM012: { 'X-ray': 'cxr-copd' },
         AM015: { ECG: 'ecg-pe', CT: 'ct-pe', POCUS: 'us-rv-dilated' },
