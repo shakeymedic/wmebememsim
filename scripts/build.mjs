@@ -130,6 +130,10 @@ const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
 const minifyFile = (file) => {
     const rel = path.relative(OUT, file).split(path.sep).join('/');
     const r = esbuild.transformSync(fs.readFileSync(file, 'utf8'), { minify: true, sourcemap: 'external', sourcefile: rel, target: 'es2017' });
+    // Lowering newer syntax (object spread, mainly) in a plain script makes esbuild add helper
+    // functions as top-level vars with one- or two-letter names. Those are globals shared with every
+    // other script, and they overwrote the Firebase SDK's own (the database then failed to start).
+    if (/^var [\w$]+=Object\.define/.test(r.code)) fail(`${rel}: the minifier added global helper functions. Use Object.assign instead of object spread ({ ...x }) in this plain script, or load it as text/babel.`);
     fs.writeFileSync(file, r.code + `//# sourceMappingURL=${path.basename(file)}.map\n`);
     fs.writeFileSync(file + '.map', r.map);
 };

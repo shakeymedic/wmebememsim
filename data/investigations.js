@@ -15,6 +15,9 @@
 // room monitor only shows the real ECG while the patient is in one of them; otherwise it draws the
 // 12-lead from the live rhythm as before (so a STEMI tracing never appears once the patient is in VF).
 // =====================================================================================================
+// This file is a plain script (not compiled by Babel). Do not use object spread ({ ...x }) here: the
+// build lowers it to helper functions with short GLOBAL names, which overwrote the Firebase SDK's own
+// globals and stopped the database starting. scripts/build.mjs refuses to build if that happens.
 (() => {
     const SINUS = ['Sinus Rhythm', 'Sinus Tachycardia', 'Sinus Bradycardia', 'STEMI', 'Hyperkalaemia', '1st Deg Heart Block'];
     const C = (author, licence, file, modified) => ({
@@ -36,48 +39,48 @@
 
     // ---- The image library (key -> file and credit) ---------------------------------------------
     const IMAGES = {
-        'cxr-normal': { modality: 'X-ray', ...C('Mikael Häggström', 'CC0', 'Normal posteroanterior (PA) chest radiograph (X-ray).jpg') },
-        'cxr-ptx-tension': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Spontanpneumothorax rechts 2012.jpg') },
-        'cxr-ptx-simple': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Pneumothorax rechts nach Sturz 30W - CR pa - 001.jpg') },
-        'cxr-ptx-spontaneous': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Maessiger Spannungspneumothorax links 21M - CR pa - 001.jpg') },
-        'cxr-pneumonia': { modality: 'X-ray', ...C('Mikael Häggström', 'CC0', 'X-ray of lobar pneumonia.jpg') },
-        'cxr-pneumonia-2': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Mittellappenpneumonie.jpg') },
-        'cxr-oedema': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Schmetterlingsoedem bei kardialer Dekompensation 64W - CR ap - 001.jpg') },
-        'cxr-oedema-shock': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Lungenoedem bei kardiogenem Schock 73M - CR ap - 001.jpg') },
-        'cxr-drowning': { modality: 'X-ray', ...C('Dr Terence McManus', 'CC BY-SA 4.0', 'Salt water aspiration syndrome chest x-ray, before treatment.png') },
-        'cxr-ards': { modality: 'X-ray', ...C('James Heilman, MD', 'CC BY-SA 4.0', 'ARDSSevere.png') },
-        'cxr-effusion': { modality: 'X-ray', ...C('Clinical Cases (clinicalcases.org)', 'CC BY-SA 2.5', 'Left-sided Pleural Effusion.jpg') },
-        'cxr-haemothorax': { modality: 'X-ray', ...C('Hamid Reza Mahoozi, Jan Volmerig and Erich Hecker', 'CC BY 4.0', 'Chest-X-ray-Left-sided-hemothorax.png') },
-        'cxr-free-air': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Freie Luft bei Sigmaperforation 71W - CR ap - 001.jpg') },
-        'cxr-pneumomediastinum': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Mediastinalemphysem Perforation Oesophaguskarzinom.jpg') },
-        'cxr-copd': { modality: 'X-ray', ...C('James Heilman, MD', 'CC BY-SA 3.0', 'COPD.JPG') },
-        'cxr-pericardial-effusion': { modality: 'X-ray', ...C('James Heilman, MD', 'CC BY-SA 3.0', 'PericardialeffusionCXR.PNG') },
-        'cxr-bronchiolitis': { modality: 'X-ray', ...C('Matteo Di Nardo, Daniela Perrotta, Francesca Stoppa, Corrado Cecchetti, Marco Marano and Nicola Pirozzi', 'CC BY 2.0', 'Bronchiolitis chest X-ray.jpg') },
-        'xr-nof': { modality: 'X-ray', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Laterale Schenkelhalsfraktur links 44W - CR ap - 001.jpg') },
-        'xr-supracondylar': { modality: 'X-ray', ...C('James Heilman, MD', 'CC BY-SA 4.0', 'Supracondylarfrac.png') },
-        'ct-normal-head': { modality: 'CT', ...C('Mikael Häggström', 'CC0', 'CT of a normal brain, axial 18.png', 'Cropped to the axial slice (scout image removed); resized') },
-        'ct-sah': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Basale Subarachnoidalblutung bei Anterioraneurysma 43M - CT axial - 001.jpg', 'Cropped to one axial slice; resized') },
-        'ct-dense-mca': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Dens media sign mit Mediainfarkt - CCT 001.jpg', 'Cropped to the first (early) scan; resized') },
-        'ct-ich': { modality: 'CT', ...C('James Heilman, MD', 'CC BY-SA 4.0', 'Intra Parenchymal Bleed with Edema.jpg') },
-        'ct-subdural': { modality: 'CT', ...C('Glitzy queen00 (English Wikipedia)', 'Public domain', 'Trauma subdural.jpg', 'A mouse pointer photographed on the screen was removed (filled from the surrounding brain); resized') },
-        'ct-edh': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Grosses epidurales Haematom nach Sturz 87W - CT - 001.jpg', 'Cropped to the axial slice; resized') },
-        'ct-hydrocephalus': { modality: 'CT', ...C('Lucien Monfils', 'CC BY-SA 3.0', 'Hydrocephalus.jpg') },
-        'ct-pe': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Reitender Thrombus bei Lungenembolie - CT - axial - 008.jpg') },
-        'ct-pancreatitis': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Akute exsudative Pankreatitis - CT axial.jpg') },
-        'ct-spleen': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Traumatische Milzruptur mit subkapsulaerem Haematom 81M - CT KM pv - 001.jpg', 'Cropped to the axial image; resized') },
-        'ecg-stemi-anterior': { modality: 'ECG', rhythms: SINUS, ...C('Displaced (Wikimedia Commons)', 'Public domain', '12 Lead EKG ST Elevation tracing only.jpg') },
-        'ecg-stemi-anterior-2': { modality: 'ECG', rhythms: SINUS, ...C('Joshua Coutinho, Justin B Field and Anupam A Sule (Cureus 2018;10:e2523)', 'CC BY 4.0', 'ST elevation myocardial infarction ECG (cropped).jpg') },
-        'ecg-stemi-inferior': { modality: 'ECG', rhythms: SINUS, ...C('Glenlarson', 'Public domain', '12 lead generated inferior MI.JPG', 'Cropped to remove the machine interpretation; resized') },
-        'ecg-hyperkalaemia': { modality: 'ECG', rhythms: SINUS, ...C('Michael Rosengarten, McGill University / CardioNetworks ECGpedia', 'CC BY-SA 3.0', '118 (CardioNetworks ECGpedia).jpg') },
-        'ecg-pe': { modality: 'ECG', rhythms: SINUS, ...C('R.W. Koster / ECGpedia', 'CC BY 3.0', 'Pulm embolism.jpg') },
-        'ecg-chb': { modality: 'ECG', rhythms: ['Complete Heart Block'], ...C('Michael Rosengarten, McGill University / CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'E312 (CardioNetworks ECGpedia).jpg') },
-        'ecg-brugada': { modality: 'ECG', rhythms: SINUS, ...C('P.G. Postema, AMC / CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Brugada syndrome type1 example4 (CardioNetworks ECGpedia).png') },
-        'ecg-alternans': { modality: 'ECG', rhythms: SINUS, ...C('James Heilman, MD', 'CC BY-SA 3.0', 'Electrical Alternans.JPG') },
-        'ecg-wellens': { modality: 'ECG', rhythms: SINUS, ...C('James Heilman, MD', 'CC BY-SA 3.0', 'WellensPainfree.JPG') },
-        'ecg-lvh': { modality: 'ECG', rhythms: SINUS, ...C('CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Extreme lvh2 (CardioNetworks ECGpedia).jpg') },
-        'ecg-long-qt': { modality: 'ECG', rhythms: SINUS, ...C('CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Lqts1 (CardioNetworks ECGpedia).png') },
-        'us-b-lines': { modality: 'POCUS', ...C('Tinss', 'CC BY-SA 4.0', 'B lines on a lung ultrasound of a patient with fibrosis.jpg') },
-        'us-pyloric': { modality: 'POCUS', ...C('Dr Laughlin Dawes', 'CC BY-SA 4.0', 'PyloricStenosisUS.jpg') }
+        'cxr-normal': Object.assign({ modality: 'X-ray' }, C('Mikael Häggström', 'CC0', 'Normal posteroanterior (PA) chest radiograph (X-ray).jpg')),
+        'cxr-ptx-tension': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 3.0', 'Spontanpneumothorax rechts 2012.jpg')),
+        'cxr-ptx-simple': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Pneumothorax rechts nach Sturz 30W - CR pa - 001.jpg')),
+        'cxr-ptx-spontaneous': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Maessiger Spannungspneumothorax links 21M - CR pa - 001.jpg')),
+        'cxr-pneumonia': Object.assign({ modality: 'X-ray' }, C('Mikael Häggström', 'CC0', 'X-ray of lobar pneumonia.jpg')),
+        'cxr-pneumonia-2': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 3.0', 'Mittellappenpneumonie.jpg')),
+        'cxr-oedema': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Schmetterlingsoedem bei kardialer Dekompensation 64W - CR ap - 001.jpg')),
+        'cxr-oedema-shock': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Lungenoedem bei kardiogenem Schock 73M - CR ap - 001.jpg')),
+        'cxr-drowning': Object.assign({ modality: 'X-ray' }, C('Dr Terence McManus', 'CC BY-SA 4.0', 'Salt water aspiration syndrome chest x-ray, before treatment.png')),
+        'cxr-ards': Object.assign({ modality: 'X-ray' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'ARDSSevere.png')),
+        'cxr-effusion': Object.assign({ modality: 'X-ray' }, C('Clinical Cases (clinicalcases.org)', 'CC BY-SA 2.5', 'Left-sided Pleural Effusion.jpg')),
+        'cxr-haemothorax': Object.assign({ modality: 'X-ray' }, C('Hamid Reza Mahoozi, Jan Volmerig and Erich Hecker', 'CC BY 4.0', 'Chest-X-ray-Left-sided-hemothorax.png')),
+        'cxr-free-air': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Freie Luft bei Sigmaperforation 71W - CR ap - 001.jpg')),
+        'cxr-pneumomediastinum': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Mediastinalemphysem Perforation Oesophaguskarzinom.jpg')),
+        'cxr-copd': Object.assign({ modality: 'X-ray' }, C('James Heilman, MD', 'CC BY-SA 3.0', 'COPD.JPG')),
+        'cxr-pericardial-effusion': Object.assign({ modality: 'X-ray' }, C('James Heilman, MD', 'CC BY-SA 3.0', 'PericardialeffusionCXR.PNG')),
+        'cxr-bronchiolitis': Object.assign({ modality: 'X-ray' }, C('Matteo Di Nardo, Daniela Perrotta, Francesca Stoppa, Corrado Cecchetti, Marco Marano and Nicola Pirozzi', 'CC BY 2.0', 'Bronchiolitis chest X-ray.jpg')),
+        'xr-nof': Object.assign({ modality: 'X-ray' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Laterale Schenkelhalsfraktur links 44W - CR ap - 001.jpg')),
+        'xr-supracondylar': Object.assign({ modality: 'X-ray' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'Supracondylarfrac.png')),
+        'ct-normal-head': Object.assign({ modality: 'CT' }, C('Mikael Häggström', 'CC0', 'CT of a normal brain, axial 18.png', 'Cropped to the axial slice (scout image removed); resized')),
+        'ct-sah': Object.assign({ modality: 'CT' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Basale Subarachnoidalblutung bei Anterioraneurysma 43M - CT axial - 001.jpg', 'Cropped to one axial slice; resized')),
+        'ct-dense-mca': Object.assign({ modality: 'CT' }, C('Hellerhoff', 'CC BY-SA 3.0', 'Dens media sign mit Mediainfarkt - CCT 001.jpg', 'Cropped to the first (early) scan; resized')),
+        'ct-ich': Object.assign({ modality: 'CT' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'Intra Parenchymal Bleed with Edema.jpg')),
+        'ct-subdural': Object.assign({ modality: 'CT' }, C('Glitzy queen00 (English Wikipedia)', 'Public domain', 'Trauma subdural.jpg', 'A mouse pointer photographed on the screen was removed (filled from the surrounding brain); resized')),
+        'ct-edh': Object.assign({ modality: 'CT' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Grosses epidurales Haematom nach Sturz 87W - CT - 001.jpg', 'Cropped to the axial slice; resized')),
+        'ct-hydrocephalus': Object.assign({ modality: 'CT' }, C('Lucien Monfils', 'CC BY-SA 3.0', 'Hydrocephalus.jpg')),
+        'ct-pe': Object.assign({ modality: 'CT' }, C('Hellerhoff', 'CC BY-SA 3.0', 'Reitender Thrombus bei Lungenembolie - CT - axial - 008.jpg')),
+        'ct-pancreatitis': Object.assign({ modality: 'CT' }, C('Hellerhoff', 'CC BY-SA 3.0', 'Akute exsudative Pankreatitis - CT axial.jpg')),
+        'ct-spleen': Object.assign({ modality: 'CT' }, C('Hellerhoff', 'CC BY-SA 4.0', 'Traumatische Milzruptur mit subkapsulaerem Haematom 81M - CT KM pv - 001.jpg', 'Cropped to the axial image; resized')),
+        'ecg-stemi-anterior': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('Displaced (Wikimedia Commons)', 'Public domain', '12 Lead EKG ST Elevation tracing only.jpg')),
+        'ecg-stemi-anterior-2': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('Joshua Coutinho, Justin B Field and Anupam A Sule (Cureus 2018;10:e2523)', 'CC BY 4.0', 'ST elevation myocardial infarction ECG (cropped).jpg')),
+        'ecg-stemi-inferior': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('Glenlarson', 'Public domain', '12 lead generated inferior MI.JPG', 'Cropped to remove the machine interpretation; resized')),
+        'ecg-hyperkalaemia': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('Michael Rosengarten, McGill University / CardioNetworks ECGpedia', 'CC BY-SA 3.0', '118 (CardioNetworks ECGpedia).jpg')),
+        'ecg-pe': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('R.W. Koster / ECGpedia', 'CC BY 3.0', 'Pulm embolism.jpg')),
+        'ecg-chb': Object.assign({ modality: 'ECG', rhythms: ['Complete Heart Block'] }, C('Michael Rosengarten, McGill University / CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'E312 (CardioNetworks ECGpedia).jpg')),
+        'ecg-brugada': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('P.G. Postema, AMC / CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Brugada syndrome type1 example4 (CardioNetworks ECGpedia).png')),
+        'ecg-alternans': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('James Heilman, MD', 'CC BY-SA 3.0', 'Electrical Alternans.JPG')),
+        'ecg-wellens': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('James Heilman, MD', 'CC BY-SA 3.0', 'WellensPainfree.JPG')),
+        'ecg-lvh': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Extreme lvh2 (CardioNetworks ECGpedia).jpg')),
+        'ecg-long-qt': Object.assign({ modality: 'ECG', rhythms: SINUS }, C('CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Lqts1 (CardioNetworks ECGpedia).png')),
+        'us-b-lines': Object.assign({ modality: 'POCUS' }, C('Tinss', 'CC BY-SA 4.0', 'B lines on a lung ultrasound of a patient with fibrosis.jpg')),
+        'us-pyloric': Object.assign({ modality: 'POCUS' }, C('Dr Laughlin Dawes', 'CC BY-SA 4.0', 'PyloricStenosisUS.jpg'))
     };
     Object.keys(IMAGES).forEach(k => { IMAGES[k].src = `images/investigations/${k}.jpg`; });
 
@@ -183,7 +186,7 @@
         ]
     };
     const byId = {};
-    Object.keys(FINDINGS).forEach(type => FINDINGS[type].forEach(f => { byId[f.id] = { ...f, type }; }));
+    Object.keys(FINDINGS).forEach(type => FINDINGS[type].forEach(f => { byId[f.id] = Object.assign({}, f, { type }); }));
 
     // ---- Each scenario's own results (scenario id -> finding id per investigation) ----------------
     // Only where the scenario has an abnormal (or specifically illustrated) result; everything else
@@ -286,14 +289,14 @@
     const applyScenarioResults = (scenarioId, investigations) => {
         const map = SCENARIO_RESULTS[scenarioId];
         if (!map || !investigations) return investigations;
-        const out = { ...investigations };
+        const out = Object.assign({}, investigations);
         Object.keys(map).forEach(type => {
             const r = asResult(map[type]);
             if (!r) return;
             const key = KEY[type];
             if (type === 'ECG') {
                 // Keep the scenario's own ECG type and wording; add the real 12-lead image.
-                out.ecg = { ...(out.ecg || {}), image: r.image, imageReport: r.findings, findingId: r.findingId };
+                out.ecg = Object.assign({}, out.ecg, { image: r.image, imageReport: r.findings, findingId: r.findingId });
             } else {
                 out[key] = r;
             }
