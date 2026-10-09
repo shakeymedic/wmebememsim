@@ -57,7 +57,7 @@ test('scenario results: specific findings replace the generic normal, and known 
   expect(r.tensionInv.image).toBe('cxr-ptx-tension');
   expect(r.pneumonia).toBe('cxr-pneumonia');
   expect(r.sah).toBe('ct-sah');
-  expect(r.stemi).toBe('ecg-stemi-anterior');
+  expect(r.stemi).toBe('ecg-stemi-anterior-2');
   expect(r.stemiType).toBe('STEMI');
   expect(r.chb).toBe('Complete Heart Block');
   expect(r.hyperk).toBe('Hyperkalaemia');
@@ -76,7 +76,9 @@ async function openMonitor(context, code) {
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
-  await monitor.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => /Tap to Enable Sound/i.test(x.textContent)); if (b) b.click(); });
+  // The sound overlay covers the monitor until tapped
+  await monitor.getByText('Tap to Enable Sound').click({ force: true });   // it bounces, so never "stable"
+  await expect(monitor.getByText('Tap to Enable Sound')).toHaveCount(0);
   return monitor;
 }
 
@@ -117,8 +119,14 @@ test('a real 12-lead shows only while the rhythm still fits it', async ({ page, 
   await loadScenario(page, 'AM001');
   const monitor = await openMonitor(context, code);
   await monitor.getByRole('button', { name: /12-Lead/ }).click();
-  await expect(monitor.getByTestId('ecg-12lead-image')).toHaveAttribute('src', 'images/investigations/ecg-stemi-anterior.jpg');
+  await expect(monitor.getByTestId('ecg-12lead-image')).toHaveAttribute('src', 'images/investigations/ecg-stemi-anterior-2.jpg');
   await monitor.getByTestId('ecg-12lead-image').click();
+  // Sent as a result, the ECG card shows the same tracing with the report written for it
+  await page.evaluate(() => window.__simEngine.revealInvestigation('ECG', null));
+  const card = monitor.getByTestId('inv-result');
+  await expect(card.getByTestId('inv-image')).toHaveAttribute('src', 'images/investigations/ecg-stemi-anterior-2.jpg');
+  await expect(card).toContainText('greatest in V3');
+  await monitor.getByRole('button', { name: 'Dismiss investigation result' }).click();
   await page.evaluate(() => window.__simEngine.triggerArrest('VF'));
   await expect.poll(() => monitor.evaluate(() => window.__monitorEngine.state.rhythm)).toMatch(/VF/);
   await monitor.getByRole('button', { name: /12-Lead/ }).click();

@@ -59,17 +59,17 @@
         'ct-sah': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Basale Subarachnoidalblutung bei Anterioraneurysma 43M - CT axial - 001.jpg', 'Cropped to one axial slice; resized') },
         'ct-dense-mca': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Dens media sign mit Mediainfarkt - CCT 001.jpg', 'Cropped to the first (early) scan; resized') },
         'ct-ich': { modality: 'CT', ...C('James Heilman, MD', 'CC BY-SA 4.0', 'Intra Parenchymal Bleed with Edema.jpg') },
-        'ct-subdural': { modality: 'CT', ...C('Glitzy queen00 (English Wikipedia)', 'Public domain', 'Trauma subdural.jpg') },
+        'ct-subdural': { modality: 'CT', ...C('Glitzy queen00 (English Wikipedia)', 'Public domain', 'Trauma subdural.jpg', 'A mouse pointer photographed on the screen was removed (filled from the surrounding brain); resized') },
         'ct-edh': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Grosses epidurales Haematom nach Sturz 87W - CT - 001.jpg', 'Cropped to the axial slice; resized') },
         'ct-hydrocephalus': { modality: 'CT', ...C('Lucien Monfils', 'CC BY-SA 3.0', 'Hydrocephalus.jpg') },
         'ct-pe': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Reitender Thrombus bei Lungenembolie - CT - axial - 008.jpg') },
         'ct-pancreatitis': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 3.0', 'Akute exsudative Pankreatitis - CT axial.jpg') },
         'ct-spleen': { modality: 'CT', ...C('Hellerhoff', 'CC BY-SA 4.0', 'Traumatische Milzruptur mit subkapsulaerem Haematom 81M - CT KM pv - 001.jpg', 'Cropped to the axial image; resized') },
         'ecg-stemi-anterior': { modality: 'ECG', rhythms: SINUS, ...C('Displaced (Wikimedia Commons)', 'Public domain', '12 Lead EKG ST Elevation tracing only.jpg') },
-        'ecg-stemi-anterior-2': { modality: 'ECG', rhythms: SINUS, ...C('Various (journal case report)', 'CC BY 4.0', 'ST elevation myocardial infarction ECG (cropped).jpg') },
+        'ecg-stemi-anterior-2': { modality: 'ECG', rhythms: SINUS, ...C('Joshua Coutinho, Justin B Field and Anupam A Sule (Cureus 2018;10:e2523)', 'CC BY 4.0', 'ST elevation myocardial infarction ECG (cropped).jpg') },
         'ecg-stemi-inferior': { modality: 'ECG', rhythms: SINUS, ...C('Glenlarson', 'Public domain', '12 lead generated inferior MI.JPG', 'Cropped to remove the machine interpretation; resized') },
-        'ecg-hyperkalaemia': { modality: 'ECG', rhythms: SINUS, ...C('CardioNetworks ECGpedia', 'CC BY-SA 3.0', '118 (CardioNetworks ECGpedia).jpg') },
-        'ecg-pe': { modality: 'ECG', rhythms: SINUS, ...C('Jmh649 / James Heilman, MD (Wikimedia Commons)', 'CC BY 3.0', 'Pulm embolism.jpg') },
+        'ecg-hyperkalaemia': { modality: 'ECG', rhythms: SINUS, ...C('Michael Rosengarten, McGill University / CardioNetworks ECGpedia', 'CC BY-SA 3.0', '118 (CardioNetworks ECGpedia).jpg') },
+        'ecg-pe': { modality: 'ECG', rhythms: SINUS, ...C('R.W. Koster / ECGpedia', 'CC BY 3.0', 'Pulm embolism.jpg') },
         'ecg-chb': { modality: 'ECG', rhythms: ['Complete Heart Block'], ...C('Michael Rosengarten, McGill University / CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'E312 (CardioNetworks ECGpedia).jpg') },
         'ecg-brugada': { modality: 'ECG', rhythms: SINUS, ...C('P.G. Postema, AMC / CardioNetworks ECGpedia', 'CC BY-SA 3.0', 'Brugada syndrome type1 example4 (CardioNetworks ECGpedia).png') },
         'ecg-alternans': { modality: 'ECG', rhythms: SINUS, ...C('James Heilman, MD', 'CC BY-SA 3.0', 'Electrical Alternans.JPG') },
@@ -125,7 +125,8 @@
             F('ct-sah', 'Subarachnoid haemorrhage', 'CT head (non-contrast): hyperdense blood in the basal cisterns, extending into both Sylvian fissures. Acute subarachnoid haemorrhage.', 'ct-sah'),
             F('ct-dense-mca', 'Acute stroke: dense left MCA', 'CT head (non-contrast): hyperdense left middle cerebral artery (dense MCA sign), from acute thrombus. No haemorrhage.', 'ct-dense-mca'),
             F('ct-ich', 'Intracerebral haemorrhage (right)', 'CT head (non-contrast): large right basal ganglia intraparenchymal haemorrhage with surrounding oedema and mass effect, compressing the right lateral ventricle.', 'ct-ich'),
-            F('ct-subdural', 'Acute subdural haematoma (left)', 'CT head (non-contrast): acute left subdural haematoma with midline shift.', 'ct-subdural'),
+            F('ct-subdural', 'Acute subdural haematoma (left)', 'CT head (non-contrast): acute left subdural haematoma (crescent-shaped hyperdense collection over the left hemisphere) with mass effect, compression of the left lateral ventricle and midline shift to the right.', 'ct-subdural'),
+            F('ct-subdural-chronic', 'Chronic subdural haematoma (left)', 'CT head (non-contrast): left chronic subdural haematoma: crescent-shaped collection over the left hemisphere, mostly darker than brain with some brighter areas of more recent bleeding. Mass effect with slight midline shift to the right.'),
             F('ct-edh', 'Extradural haematoma (right)', 'CT head (non-contrast): large right frontoparietal extradural haematoma (convex hyperdense collection) with mass effect and early subfalcine herniation.', 'ct-edh'),
             F('ct-hydrocephalus', 'Hydrocephalus', 'CT head (non-contrast): dilated lateral ventricles. Hydrocephalus.', 'ct-hydrocephalus'),
             F('ct-pe', 'Pulmonary embolism (CTPA)', 'CT pulmonary angiogram: large central filling defects straddling the main pulmonary arteries (saddle embolus). The left main pulmonary artery is almost completely occluded.', 'ct-pe'),
@@ -151,7 +152,7 @@
             F('ct-paeds-edh', 'Extradural haematoma (child)', 'CT head: biconvex extradural haematoma under a temporal skull fracture, with mass effect.')
         ],
         'ECG': [
-            F('ecg-stemi-anterior', 'Anterior STEMI', '12-lead ECG: sinus tachycardia. ST elevation V2–V5: acute anterior STEMI. Left anterior fascicular block.', 'ecg-stemi-anterior'),
+            F('ecg-stemi-anterior', 'Anterior STEMI', '12-lead ECG: sinus tachycardia about 115/min. ST elevation V2–V5, I and aVL, with reciprocal ST depression in III and aVF: acute anterolateral STEMI. Left anterior fascicular block.', 'ecg-stemi-anterior'),
             F('ecg-stemi-anterior-2', 'Anterior STEMI (2)', '12-lead ECG: sinus rhythm about 90/min. ST elevation in V2–V5, greatest in V3: acute anterior STEMI.', 'ecg-stemi-anterior-2'),
             F('ecg-stemi-inferior', 'Inferior STEMI', '12-lead ECG: sinus rhythm about 100/min. ST elevation in II, III and aVF with reciprocal ST depression: acute inferior STEMI.', 'ecg-stemi-inferior'),
             F('ecg-hyperkalaemia', 'Severe hyperkalaemia', '12-lead ECG: broad complex rhythm about 120/min, with no clear P waves and peaked T waves. Severe hyperkalaemia (pre-arrest pattern).', 'ecg-hyperkalaemia'),
@@ -159,12 +160,12 @@
             F('ecg-chb', 'Complete heart block', '12-lead ECG: complete (third-degree) heart block. P waves march through independently of a slow, regular escape rhythm.', 'ecg-chb'),
             F('ecg-brugada', 'Brugada type 1', '12-lead ECG: coved ST elevation with T-wave inversion in V1–V2. Brugada type 1 pattern.', 'ecg-brugada'),
             F('ecg-alternans', 'Low voltage with electrical alternans', '12-lead ECG: sinus tachycardia with low-voltage QRS complexes and electrical alternans (QRS amplitude changing beat to beat).', 'ecg-alternans'),
-            F('ecg-wellens', 'Wellens pattern', '12-lead ECG (pain-free): sinus rhythm. Deep, symmetrical T-wave inversion V3–V6 with a biphasic T wave in V2. R waves preserved, no Q waves. Wellens pattern (critical proximal LAD stenosis).', 'ecg-wellens'),
+            F('ecg-wellens', 'Wellens pattern', '12-lead ECG (pain-free): sinus rhythm about 55/min. Deep, symmetrical T-wave inversion V3–V6 with a biphasic T wave in V2. Wellens pattern (critical proximal LAD stenosis).', 'ecg-wellens'),
             F('ecg-lvh', 'LVH with strain', '12-lead ECG: sinus rhythm. Very large QRS voltages with lateral ST depression and T-wave inversion. Left ventricular hypertrophy with strain.', 'ecg-lvh'),
             F('ecg-long-qt', 'Long QT', '12-lead ECG: sinus rhythm about 60/min. Markedly prolonged QT interval with broad T waves.', 'ecg-long-qt')
         ],
         'POCUS': [
-            F('us-b-lines', 'Lung: B-lines', "Lung ultrasound: multiple B-lines (vertical 'comet-tail' artefacts) in both lungs. Interstitial fluid, e.g. pulmonary oedema.", 'us-b-lines'),
+            F('us-b-lines', 'Lung: B-lines', "Lung ultrasound (one right-sided zone shown): multiple B-lines, vertical artefacts running from the pleural line to the bottom of the screen, some merging. Similar in both lungs. Interstitial fluid, e.g. pulmonary oedema.", 'us-b-lines'),
             F('us-pyloric', 'Pyloric stenosis', 'Ultrasound abdomen (infant): thickened, elongated pylorus. Pyloric stenosis.', 'us-pyloric'),
             F('us-ptx', 'Lung: no sliding (pneumothorax)', 'Lung ultrasound: no lung sliding and no B-lines on the affected side; barcode (stratosphere) sign on M-mode. Pneumothorax.'),
             F('us-tamponade', 'Pericardial effusion with tamponade', 'Echo: large circumferential pericardial effusion with diastolic collapse of the right ventricle and a plethoric IVC. Tamponade.'),
@@ -188,7 +189,7 @@
     // Only where the scenario has an abnormal (or specifically illustrated) result; everything else
     // keeps its existing result. ECG entries add a real 12-lead image to the scenario's own ECG text.
     const SCENARIO_RESULTS = {
-        AM001: { ECG: 'ecg-stemi-anterior' },
+        AM001: { ECG: 'ecg-stemi-anterior-2' },   // about 90/min, as the scenario
         AM002: { 'X-ray': 'cxr-pneumonia' },
         AM003: { 'X-ray': 'cxr-asthma' },
         // AM004 (hyperkalaemia) keeps its drawn 12-lead: it is a broad complex BRADYCARDIA, and the real
@@ -217,7 +218,7 @@
         AM061: { 'X-ray': 'cxr-pjp' },
         AM064: { CT: 'ct-ich' },
         AM065: { CT: 'ct-normal-head' },
-        AM066: { 'X-ray': 'cxr-oedema-shock', ECG: 'ecg-stemi-anterior-2', POCUS: 'us-poor-lv' },
+        AM066: { 'X-ray': 'cxr-oedema-shock', ECG: 'ecg-stemi-anterior', POCUS: 'us-poor-lv' },   // tachycardic, Q waves V1–V3
         AM068: { CT: 'ct-normal-head' },
         AM069: { 'X-ray': 'cxr-svco' },
         AM072: { 'X-ray': 'cxr-free-air', CT: 'ct-perforation' },
@@ -244,7 +245,7 @@
         PT005: { POCUS: 'us-fast-positive' },
         AT031: { ECG: 'ecg-long-qt' },
         EL001: { 'X-ray': 'xr-nof' },
-        EL003: { CT: 'ct-subdural' },
+        EL003: { CT: 'ct-subdural-chronic' },   // chronic: the acute (bright) image would be wrong
         ET003: { CT: 'ct-subdural' },
         EL004: { CT: 'ct-aaa', POCUS: 'us-aaa' },
         EL006: { CT: 'ct-mesenteric' },

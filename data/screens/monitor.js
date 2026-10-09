@@ -135,20 +135,25 @@
         const [show12Lead, setShow12Lead] = useState(false);
         const [viewImage, setViewImage] = useState(null);     // full-screen view of a result image
         const INV = window.INVESTIGATIONS;
-        // The scenario's own real 12-lead, if it has one and it still fits the patient's rhythm.
+        // The scenario's own real 12-lead, if it has one and it still fits the patient's rhythm. The
+        // synced scenario carries its results at the top level (scenario.ecg); a locally loaded one
+        // under scenario.investigations.
         const scenarioEcgImage = (() => {
-            const key = scenario && scenario.investigations && scenario.investigations.ecg && scenario.investigations.ecg.image;
+            const ecg = scenario && ((scenario.ecg && scenario.ecg.image) ? scenario.ecg : (scenario.investigations && scenario.investigations.ecg));
+            const key = ecg && ecg.image;
             return (INV && key && INV.ecgImageFits(key, state.rhythm)) ? key : null;
         })();
         // Fetch the scenario's own images when it loads, so they show at once when a result is sent
         // (the service worker stores each one; they are not stored in advance with the rest of the site).
-        useEffect(() => {
-            if (!INV || !scenario) return;
-            const inv = scenario.investigations || {};
-            const keys = [scenario.chestXray, scenario.ct, scenario.pocus, ...Object.values(inv)]
+        const scenarioImageKeys = (() => {
+            if (!INV || !scenario) return '';
+            const keys = [scenario.chestXray, scenario.ct, scenario.pocus, scenario.ecg, ...Object.values(scenario.investigations || {})]
                 .map(r => r && typeof r === 'object' ? r.image : null).filter(k => k && INV.IMAGES[k]);
-            [...new Set(keys)].forEach(k => { const im = new Image(); im.src = INV.IMAGES[k].src; });
-        }, [scenario && scenario.id]);
+            return [...new Set(keys)].join(' ');
+        })();
+        useEffect(() => {
+            scenarioImageKeys.split(' ').filter(Boolean).forEach(k => { const im = new Image(); im.src = INV.IMAGES[k].src; });
+        }, [scenarioImageKeys]);
         const canvasRef = useRef(null);
         
         const lastPopupTime = useRef(0);
@@ -277,9 +282,11 @@
                 const KEYS = { 'X-ray': 'chestXray', CT: 'ct', POCUS: 'pocus', ECG: 'ecg' };
                 let image = monitorPopup.image || null;
                 if (!image && !ct && scenario && KEYS[type]) {
+                    // (On the room monitor the synced scenario carries the results at the top level.)
                     const top = scenario[KEYS[type]], gen = (scenario.investigations || {})[KEYS[type]];
-                    image = (type === 'ECG' ? (gen && gen.image) : ((top && top.image) || (gen && gen.image))) || null;
-                    if (type === 'ECG' && image && gen && gen.imageReport) content = gen.imageReport;
+                    const src = (gen && gen.image) ? gen : top;
+                    image = (type === 'ECG' ? (src && src.image) : ((top && top.image) || (gen && gen.image))) || null;
+                    if (type === 'ECG' && image && src.imageReport) content = src.imageReport;
                 }
                 if (image && type === 'ECG' && INV && !INV.ecgImageFits(image, state.rhythm)) image = null;
                 if (image && !(INV && INV.imageFor(image))) image = null;
