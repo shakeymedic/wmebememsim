@@ -755,7 +755,8 @@
             }
             case 'TRIGGER_POPUP': {
                 const p = (action.payload && typeof action.payload === 'object') ? action.payload : { type: action.payload, customText: action.customText || null };
-                return { ...state, monitorPopup: { type: p.type, timestamp: Date.now(), customText: p.customText !== undefined ? p.customText : null } };
+                return { ...state, monitorPopup: { type: p.type, timestamp: Date.now(), customText: p.customText !== undefined ? p.customText : null,
+                    image: typeof p.image === 'string' ? p.image : null, hideReport: !!p.hideReport } };
             }
             case 'CLEAR_POPUP': return { ...state, monitorPopup: { type: null, timestamp: Date.now(), customText: null } };
             case 'SET_MUTED': return { ...state, isMuted: action.payload };

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Image Credits · EM Evidence Sim</title>
+<meta name="description" content="The real clinical images used for investigation results in EM Evidence Sim, with their authors and licences.">
+<link rel="stylesheet" href="guides.css">
+<style>
+.credits { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin: 16px 0; padding: 0; list-style: none; }
+.credits li { border: 1px solid var(--line); border-radius: 8px; padding: 10px; }
+.credits img { width: 100%; height: 160px; object-fit: contain; background: #000; border-radius: 4px; display: block; }
+.credits h3 { margin: 8px 0 4px; font-size: 15px; }
+.credits p { margin: 2px 0; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header class="bar">
+    <div class="bar-inner">
+        <a class="brand" href="../index.html">EM Evidence Sim</a>
+        <nav aria-label="Guides">
+            <a href="index.html">Guides</a>
+            <a href="../index.html">Open the simulator</a>
+        </nav>
+    </div>
+</header>
+<main>
+<h1>Image credits</h1>
+<p class="lead">The X-rays, CT scans, ECGs and ultrasound images shown as investigation results are real clinical images, shared on Wikimedia Commons under open licences. We are grateful to their authors.</p>
+<p>Each image is credited where it appears in the simulator and listed below with its author, licence and original page. Images have been resized, and some cropped as stated. None has been mirrored. The written reports are our own, written to describe each image. They are for simulation teaching only, not for clinical use.</p>
+<ul class="credits" id="credits" aria-live="polite"></ul>
+<noscript><p>Turn on JavaScript to see the list of images.</p></noscript>
+</main>
+<footer>EM Evidence Sim · <a href="index.html">Instructor guides</a></footer>
+<script src="../data/investigations.js"></script>
+<script>
+(function () {
+    var INV = window.INVESTIGATIONS;
+    var list = document.getElementById('credits');
+    if (!INV || !list) return;
+    var labels = {};
+    Object.keys(INV.FINDINGS).forEach(function (type) {
+        INV.FINDINGS[type].forEach(function (f) { if (f.image) labels[f.image] = labels[f.image] || f.label; });
+    });
+    Object.keys(INV.IMAGES).forEach(function (key) {
+        var img = INV.IMAGES[key];
+        var li = document.createElement('li');
+        var pic = document.createElement('img');
+        pic.src = '../' + img.src; pic.alt = (labels[key] || key) + ' (' + img.modality + ')'; pic.loading = 'lazy';
+        var h = document.createElement('h3'); h.textContent = (labels[key] || key) + ' · ' + img.modality;
+        var a = document.createElement('p'); a.textContent = 'Author: ' + img.author;
+        var l = document.createElement('p');
+        var la = document.createElement('a'); la.href = img.licenceUrl; la.textContent = img.licence; la.rel = 'license noopener'; la.target = '_blank';
+        l.appendChild(document.createTextNode('Licence: ')); l.appendChild(la);
+        var s = document.createElement('p');
+        var sa = document.createElement('a'); sa.href = img.source; sa.textContent = img.file; sa.rel = 'noopener'; sa.target = '_blank';
+        s.appendChild(document.createTextNode('Original: ')); s.appendChild(sa);
+        var m = document.createElement('p'); m.textContent = 'Changes: ' + (img.modified || 'Resized') + '.';
+        [pic, h, a, l, s, m].forEach(function (n) { li.appendChild(n); });
+        list.appendChild(li);
+    });
+})();
+</script>
+</body>
+</html>

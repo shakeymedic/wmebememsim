@@ -120,6 +120,7 @@
     <script type="text/babel" src="data/generators.js"></script>
     <script src="data/presets.js"></script>
     <script src="data/defibsim.js"></script>
+    <script src="data/investigations.js"></script>
     <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/components.js"></script>
     <script type="text/babel" src="data/engine-model.js"></script>
@@ -380,7 +381,7 @@
                                 onResume={() => handleResume(resumeData)}
                             />
                         )}
-                        {view === 'join' && <JoinScreen onJoin={handleJoin} />}
+                        {view === 'join' && <JoinScreen onJoin={handleJoin} onBack={() => setView('setup')} />}
                         {view === 'briefing' && (
                             <BriefingScreen 
                                 scenario={generatedScenario} 
@@ -412,6 +413,8 @@
                                 <a href="guides/instructor-guide.html" target="_blank" rel="noopener" className="underline hover:text-white">Full guide</a>
                                 <span aria-hidden="true">&middot;</span>
                                 <a href="guides/index.html" target="_blank" rel="noopener" className="underline hover:text-white">PDFs</a>
+                                <span aria-hidden="true">&middot;</span>
+                                <a href="guides/image-credits.html" target="_blank" rel="noopener" className="underline hover:text-white">Image credits</a>
                             </span>
                         </p>
                         <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>

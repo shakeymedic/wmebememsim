@@ -6,7 +6,7 @@ const { useFakeFirebase, openController, startQuickSim, expect } = require('./he
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
-const PAGES = ['guides/index.html', 'guides/quick-start.html', 'guides/instructor-guide.html'];
+const PAGES = ['guides/index.html', 'guides/quick-start.html', 'guides/instructor-guide.html', 'guides/image-credits.html'];
 
 test('the footer links to the guides on the instructor screens, never on the room monitor', async ({ page, context }) => {
   const code = await openController(page);

@@ -133,6 +133,22 @@
         }, [audioContextState, audioEnabled]);
         const [invToast, setInvToast] = useState(null); 
         const [show12Lead, setShow12Lead] = useState(false);
+        const [viewImage, setViewImage] = useState(null);     // full-screen view of a result image
+        const INV = window.INVESTIGATIONS;
+        // The scenario's own real 12-lead, if it has one and it still fits the patient's rhythm.
+        const scenarioEcgImage = (() => {
+            const key = scenario && scenario.investigations && scenario.investigations.ecg && scenario.investigations.ecg.image;
+            return (INV && key && INV.ecgImageFits(key, state.rhythm)) ? key : null;
+        })();
+        // Fetch the scenario's own images when it loads, so they show at once when a result is sent
+        // (the service worker stores each one; they are not stored in advance with the rest of the site).
+        useEffect(() => {
+            if (!INV || !scenario) return;
+            const inv = scenario.investigations || {};
+            const keys = [scenario.chestXray, scenario.ct, scenario.pocus, ...Object.values(inv)]
+                .map(r => r && typeof r === 'object' ? r.image : null).filter(k => k && INV.IMAGES[k]);
+            [...new Set(keys)].forEach(k => { const im = new Image(); im.src = INV.IMAGES[k].src; });
+        }, [scenario && scenario.id]);
         const canvasRef = useRef(null);
         
         const lastPopupTime = useRef(0);
@@ -169,6 +185,7 @@
             if (monitorPopup && monitorPopup.type === null) {
                 if (invToast) setInvToast(null);
                 if (show12Lead) setShow12Lead(false);
+                setViewImage(null);
                 return;
             }
 
@@ -255,7 +272,19 @@
                         );
                     }
                 }
-                setInvToast({ title, content });
+                // The image: one the facilitator chose with the result, or (for the scenario's own
+                // result) the scenario's image. An ECG image only while the rhythm still fits it.
+                const KEYS = { 'X-ray': 'chestXray', CT: 'ct', POCUS: 'pocus', ECG: 'ecg' };
+                let image = monitorPopup.image || null;
+                if (!image && !ct && scenario && KEYS[type]) {
+                    const top = scenario[KEYS[type]], gen = (scenario.investigations || {})[KEYS[type]];
+                    image = (type === 'ECG' ? (gen && gen.image) : ((top && top.image) || (gen && gen.image))) || null;
+                    if (type === 'ECG' && image && gen && gen.imageReport) content = gen.imageReport;
+                }
+                if (image && type === 'ECG' && INV && !INV.ecgImageFits(image, state.rhythm)) image = null;
+                if (image && !(INV && INV.imageFor(image))) image = null;
+                setViewImage(null);
+                setInvToast({ title, content, image, hideReport: !!monitorPopup.hideReport });
             }
         }, [monitorPopup, scenario]);
 
@@ -311,23 +340,59 @@
                 )}
                 {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
                 
-                <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
-                    <div className="bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 w-96 max-w-[90vw]">
-                        <div className="flex justify-between items-start mb-2">
-                            <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
-                            <button aria-label="Dismiss investigation result" onClick={()=>setInvToast(null)} className="text-slate-400 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
+                {(() => {
+                    // The result card. With an image it is wider (a 12-lead needs the width) and the
+                    // image opens full screen when tapped; the credit sits under it in small print. If the
+                    // image cannot load (offline before it was fetched), the card shows the written report.
+                    const img = invToast && invToast.image && INV ? INV.imageFor(invToast.image) : null;
+                    const wide = !!img;
+                    return (
+                        <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
+                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? (img.modality === 'ECG' ? 'w-[760px]' : 'w-[520px]') : 'w-96'}`} data-testid="inv-result">
+                                <div className="flex justify-between items-start mb-2">
+                                    <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
+                                    <button aria-label="Dismiss investigation result" onClick={()=>{ setInvToast(null); setViewImage(null); }} className="text-slate-400 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
+                                </div>
+                                {img && (
+                                    <figure className="mb-2">
+                                        <button type="button" onClick={() => setViewImage(invToast.image)} className="block w-full bg-black rounded overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400" aria-label={`Open the ${img.modality === 'ECG' ? '12-lead ECG' : invToast.title} image full screen`}>
+                                            <img src={img.src} alt={img.modality === 'ECG' ? '12-lead ECG' : `${invToast.title} image`} className={`w-full object-contain ${img.modality === 'ECG' ? 'max-h-[42vh] bg-white' : 'max-h-[48vh]'}`} data-testid="inv-image"
+                                                onError={() => setInvToast(t => (t && t.image === invToast.image) ? { ...t, image: null, hideReport: false } : t)} />
+                                        </button>
+                                        <figcaption className="text-[10px] text-slate-400 mt-1 leading-tight">Tap to enlarge. Image: {INV.creditText(img)}.</figcaption>
+                                    </figure>
+                                )}
+                                {!(img && invToast.hideReport) && (
+                                    <div className="text-white text-sm font-medium leading-relaxed whitespace-pre-line">
+                                        {invToast?.content}
+                                    </div>
+                                )}
+                            </div>
                         </div>
-                        <div className="text-white text-sm font-medium leading-relaxed whitespace-pre-line">
-                            {invToast?.content}
+                    );
+                })()}
+
+                {viewImage && INV && INV.imageFor(viewImage) && (
+                    <Modal label="Investigation image" onClose={() => setViewImage(null)}>
+                        <div className="bg-black/95 flex flex-col items-center justify-center p-3 w-[96vw] h-[94vh]" onClick={() => setViewImage(null)}>
+                            <img src={INV.imageFor(viewImage).src} alt="Investigation image, full screen" className="max-w-full max-h-[86vh] object-contain bg-white" data-testid="inv-image-full" />
+                            <div className="text-[11px] text-slate-400 mt-2">Tap to close. Image: {INV.creditText(INV.imageFor(viewImage))}.</div>
                         </div>
-                    </div>
-                </div>
+                    </Modal>
+                )}
 
                 {show12Lead && (
                     <Modal label="12-lead analysis" onClose={() => setShow12Lead(false)}>
                         <div className="bg-black/90 flex flex-col items-center justify-center p-4 animate-fadeIn">
                             <h2 className="text-white font-mono text-xl mb-2">12-LEAD ANALYSIS (Tap to Close)</h2>
-                            <canvas ref={canvasRef} width="1000" height="640" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
+                            {scenarioEcgImage ? (
+                                <>
+                                    <img src={INV.imageFor(scenarioEcgImage).src} alt="12-lead ECG" className="bg-white rounded shadow-lg max-w-full max-h-[78vh] cursor-pointer" onClick={() => setShow12Lead(false)} data-testid="ecg-12lead-image" />
+                                    <div className="text-[11px] text-slate-400 mt-2">A real 12-lead ECG. Image: {INV.creditText(INV.imageFor(scenarioEcgImage))}.</div>
+                                </>
+                            ) : (
+                                <canvas ref={canvasRef} width="1000" height="640" className="bg-white rounded shadow-lg max-w-full max-h-[80vh] cursor-pointer" onClick={() => setShow12Lead(false)} />
+                            )}
                             {/* No printed interpretation: naming the rhythm here handed the team the answer. */}
                         </div>
                     </Modal>
