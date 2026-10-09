@@ -122,7 +122,7 @@
         ],
         'CT': [
             F('ct-normal-head', 'Normal CT head', 'CT head (non-contrast): no acute intracranial abnormality. No haemorrhage, mass effect or established infarct.', 'ct-normal-head'),
-            F('ct-sah', 'Subarachnoid haemorrhage', 'CT head (non-contrast): hyperdense blood in the basal cisterns. Acute subarachnoid haemorrhage.', 'ct-sah'),
+            F('ct-sah', 'Subarachnoid haemorrhage', 'CT head (non-contrast): hyperdense blood in the basal cisterns, extending into both Sylvian fissures. Acute subarachnoid haemorrhage.', 'ct-sah'),
             F('ct-dense-mca', 'Acute stroke: dense left MCA', 'CT head (non-contrast): hyperdense left middle cerebral artery (dense MCA sign), from acute thrombus. No haemorrhage.', 'ct-dense-mca'),
             F('ct-ich', 'Intracerebral haemorrhage (right)', 'CT head (non-contrast): large right-sided intraparenchymal haemorrhage with surrounding oedema and mass effect.', 'ct-ich'),
             F('ct-subdural', 'Acute subdural haematoma (left)', 'CT head (non-contrast): acute left subdural haematoma with midline shift.', 'ct-subdural'),
