@@ -120,6 +120,11 @@
     <script type="text/babel" src="data/generators.js"></script>
     <script src="data/presets.js"></script>
     <script src="data/defibsim.js"></script>
+    <!-- The ventilator's lungs, shared with vent/index.html. -->
+    <script src="data/ventprofiles.js"></script>
+    <script src="data/ventsim.js"></script>
+    <!-- What a ventilating HAMILTON-T1 does to the patient (used by the engine). -->
+    <script src="data/engine-vent.js"></script>
     <script src="data/investigations.js"></script>
     <script type="text/babel" src="data/scenarios.js"></script>
     <script type="text/babel" src="data/components.js"></script>
@@ -136,8 +141,10 @@
     <script type="text/babel" src="data/auth.js"></script>
 
     <script type="text/babel" src="data/screens/defibsetup.js"></script>
+    <script type="text/babel" src="data/screens/ventsetup.js"></script>
     <script type="text/babel" src="data/screens/setup.js"></script>
     <script type="text/babel" src="data/screens/monitor.js"></script>
+    <script type="text/babel" src="data/screens/ventcontrol.js"></script>
     <script type="text/babel" src="data/screens/livesim.js"></script>
     <script type="text/babel" src="data/screens/defibsim.js"></script>
     <script type="text/babel" src="data/screens/debrief.js"></script>
@@ -299,6 +306,23 @@
                 }
             };
 
+            // ---- VENTILATOR SIM: the same path again, with the patient built by data/ventsim.js. The
+            // engine loads the scenario's lungs and puts the ventilator on the room monitor.
+            const handleVentSim = (opts) => {
+                try {
+                    const scenario = window.VentSim.buildScenario(opts || {});
+                    setGeneratedScenario(scenario);
+                    engine.dispatch({ type: 'LOAD_SCENARIO', payload: scenario });
+                    // An intubated scenario starts with the tube recorded (the ventilator's airway check)
+                    // and IV access in place.
+                    engine.dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { add: scenario.ventSim.airway === 'tube' ? ['IV Access', 'RSI'] : ['IV Access'] } });
+                    setView('livesim');
+                } catch (err) {
+                    console.error('Ventilator Sim failed to start:', err);
+                    alert('Could not start Ventilator Sim: ' + err.message);
+                }
+            };
+
             const handleJoin = (code) => {
                 setSessionID(String(code || '').trim().toUpperCase());
                 setView('monitor');
@@ -373,6 +397,7 @@
                                 onGenerate={handleGenerate} 
                                 onQuickSim={handleQuickSim}
                                 onDefibSim={handleDefibSim}
+                                onVentSim={handleVentSim}
                                 auth={auth}
                                 onJoinClick={() => setView('join')} 
                                 sessionID={sessionID}

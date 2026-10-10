@@ -900,6 +900,22 @@
             ? `${activeDrugRows[0].label}: ${(PHASE_STYLE[activeDrugRows[0].phase] || { label: String(activeDrugRows[0].phase) }).label.toLowerCase()}${activeDrugRows[0].sustained && !activeDrugRows[0].stopped ? ', running' : (Number.isFinite(activeDrugRows[0].remaining) ? `, ${fmtRemaining(activeDrugRows[0].remaining)} left` : '')}${activeDrugRows.length > 1 ? ` (+${activeDrugRows.length - 1} more)` : ''}`
             : '';
         const conditionSummary = deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs change only when you change them';
+        // The HAMILTON-T1: on the room monitor or its own tablet, the lungs it ventilates, and what
+        // each linked ventilator is showing right now (sessions/<CODE>/ventState).
+        const VP = window.VENT_PROFILES;
+        const ventPanelOpen = !!state.ventPanelOpen;
+        const ventCfg = state.vent || { profile: VP ? VP.profileForScenario(rawScenario) : 'normal', breathing: null };
+        const VE = window.VENT_ENGINE;
+        const ventLinkOn = state.ventLink !== false;
+        const ventDriver = VE ? VE.driverFor(state) : null;
+        const VENT_KEY_NAMES = { spO2: 'SpO2', rr: 'RR', etco2: 'ETCO2', hr: 'HR', bpSys: 'BP', bpDia: 'BP' };
+        const ventHeld = VE ? VE.DRIVEN.concat(VE.NUDGED).filter(k => state.manualHold && state.manualHold[k]) : [];
+        const ventLung = VP ? VP.lungFor(ventCfg) : null;
+        const ventMirrors = Object.keys(state.ventMirror || {}).map(k => ({ id: k, ...state.ventMirror[k] }));
+        const VENT_STATE_LABEL = { off: 'Off', selftest: 'Self-test', ambient: 'Ambient (not ventilating)', standby: 'Standby', ventilating: 'Ventilating' };
+        const ventSummary = ventMirrors.length
+            ? ventMirrors.map(m => `${VENT_STATE_LABEL[m.state] || m.state}${m.state === 'ventilating' ? ` ${m.label}` : ''}${m.alarms ? ' \u00b7 ALARM' : ''}`).join(' | ')
+            : `${ventPanelOpen ? 'On the room monitor' : 'Not connected'} \u00b7 ${ventLung ? ventLung.name : ''}`;
         const resusSummary = `${RG.labelFor(state.rhythm)} \u00b7 ${defib.shockCount || 0} shock${(defib.shockCount || 0) === 1 ? '' : 's'}${cprInProgress ? ' \u00b7 CPR on' : ''}`;
         const trendBetter = () => { sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success"); };
         const trendWorse = () => { sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger"); };
@@ -1005,12 +1021,13 @@
                             </Button>
                         )}
                         <ViewModeToggle />
-                        <MenuButton label="Screens" icon="monitor" ariaLabel="Screens: launch the room monitor, join by QR code, open the defib"
+                        <MenuButton label="Screens" icon="monitor" ariaLabel="Screens: launch the room monitor, join by QR code, open the defib or the ventilator"
                             className="text-sky-300 border-sky-500/50"
                             items={[
                                 { label: 'Launch room monitor', icon: 'monitor', href: `?mode=monitor&session=${sessionID}` },
                                 { label: 'Join by QR code', icon: 'qr-code', onClick: () => setShowJoin(true) },
-                                !quickSim && { label: 'Open defib tablet', icon: 'zap', href: `defib/index.html?session=${sessionID}` }
+                                !quickSim && { label: 'Open defib tablet', icon: 'zap', href: `defib/index.html?session=${sessionID}` },
+                                { label: 'Open ventilator tablet', icon: 'wind', href: `vent/index.html?session=${sessionID}` }
                             ]} />
                         <MenuButton label="Tools" icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
                             items={[
@@ -1511,6 +1528,100 @@
                         )}
                         </div>
                         </Section>
+
+                        {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) on the room monitor or its own
+                             tablet. Its settings, tests and alarms arrive in the event log. ---- */}
+                        {VP && (
+                        <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={!!(rawScenario && rawScenario.ventSim)}>
+                            <div className="flex flex-col gap-2 text-[11px] text-slate-300">
+                                {rawScenario && rawScenario.ventSim && (
+                                    <div className="bg-cyan-950/40 border border-cyan-700/60 rounded p-2" data-testid="vent-brief">
+                                        <div className="font-bold text-cyan-300">Ventilator Sim: {rawScenario.ventSim.name} ({rawScenario.ventSim.mode === 'assessment' ? 'Assessment' : 'Education'})</div>
+                                        <div className="text-slate-300">{rawScenario.ventSim.description}</div>
+                                        {VP && rawScenario.ventSim.problems.length > 0 && <div className="mt-1"><span className="text-slate-400">Problems to inject, one at a time: </span>{rawScenario.ventSim.problems.map(id => { const p = VP.PROBLEMS.find(x => x.id === id); return p ? p.label : id; }).join(', ')}.</div>}
+                                    </div>
+                                )}
+                                <Button variant="outline" onClick={() => sim.dispatch({ type: 'SET_VENT_PANEL', payload: !ventPanelOpen })}
+                                        className={`w-full ${ventPanelOpen ? 'bg-cyan-900/30 border-cyan-500 text-cyan-300' : 'text-cyan-400 border-cyan-500/50'}`}
+                                        title="Shows the HAMILTON-T1 on the room monitor (it replaces the defib there). A ventilator tablet joined by QR code works whether this is on or off.">
+                                    <Lucide icon="wind" className="w-4 h-4"/> {ventPanelOpen ? 'Take the ventilator off the room monitor' : 'Show the ventilator on the room monitor'}
+                                </Button>
+                                <label className="flex items-center justify-between gap-2">
+                                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Lungs</span>
+                                    <select aria-label="Ventilator lungs" value={ventCfg.profile} onChange={e => { sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { profile: e.target.value } }); addLogEntry(`Ventilator lungs set to ${VP.profiles[e.target.value].name} (facilitator)`, 'system'); }}
+                                            className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
+                                        {VP.order.map(k => <option key={k} value={k}>{VP.profiles[k].name}</option>)}
+                                    </select>
+                                </label>
+                                <label className="flex items-center justify-between gap-2">
+                                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Own breathing</span>
+                                    <select aria-label="Patient's own breathing" value={ventCfg.breathing === true ? 'yes' : ventCfg.breathing === false ? 'no' : 'auto'}
+                                            onChange={e => { const v = e.target.value; sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { breathing: v === 'yes' ? true : v === 'no' ? false : null } }); addLogEntry(`Ventilator patient: ${v === 'yes' ? 'breathing for themselves' : v === 'no' ? 'not breathing (sedated and paralysed)' : 'breathing as the lungs say'} (facilitator)`, 'system'); }}
+                                            className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
+                                        <option value="auto">As the lungs say ({VP.profiles[ventCfg.profile] && VP.profiles[ventCfg.profile].sedated ? 'not breathing' : 'breathing'})</option>
+                                        <option value="yes">Breathing for themselves</option>
+                                        <option value="no">Not breathing (sedated, paralysed)</option>
+                                    </select>
+                                </label>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Obs</span>
+                                    <div className="flex gap-1" role="group" aria-label="Who sets the obs">
+                                        {[[true, 'Ventilator drives them'], [false, 'I set them']].map(([on, label]) => (
+                                            <button key={label} type="button" aria-pressed={ventLinkOn === on}
+                                                    onClick={() => { if (ventLinkOn === on) return; sim.dispatch({ type: 'SET_VENT_LINK', payload: on }); addLogEntry(on ? 'Ventilator link on: a ventilating HAMILTON-T1 drives SpO2, RR and ETCO2 (facilitator).' : 'Ventilator link off: the facilitator sets the obs (facilitator).', 'system'); }}
+                                                    className={`px-2 py-0.5 rounded border text-[10px] font-bold ${ventLinkOn === on ? 'bg-cyan-700 border-cyan-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300'}`}>{label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {ventDriver && (
+                                    <div data-testid="vent-driving" className="text-emerald-300">Breathing for the patient: SpO2, RR and ETCO2 follow the ventilator; low SpO2, high CO2 and air trapping move HR and BP.</div>
+                                )}
+                                {ventLinkOn && ventHeld.length > 0 && (
+                                    <div className="flex items-center justify-between gap-2 bg-amber-950/40 border border-amber-700/60 rounded p-1.5">
+                                        <span>You typed {Array.from(new Set(ventHeld.map(k => VENT_KEY_NAMES[k]))).join(', ')}, so {ventHeld.length === 1 ? 'it stays' : 'they stay'} as you set {ventHeld.length === 1 ? 'it' : 'them'}.</span>
+                                        <button type="button" onClick={() => { sim.dispatch({ type: 'RELEASE_MANUAL_HOLD', payload: ventHeld }); addLogEntry(`Released ${Array.from(new Set(ventHeld.map(k => VENT_KEY_NAMES[k]))).join(', ')} to the ventilator (facilitator).`, 'system'); }}
+                                                className="flex-none px-2 py-0.5 rounded bg-amber-600 text-black font-bold text-[10px]">Release to ventilator</button>
+                                    </div>
+                                )}
+                                {window.VentControls && <window.VentControls.VentPatientPanel sim={sim} cfg={ventCfg} addLogEntry={addLogEntry} />}
+                                {ventMirrors.length === 0 && (
+                                    <div className="text-slate-500">No ventilator is connected. Show it on the room monitor, or join a tablet with the Ventilator QR code (Screens &gt; Join by QR code).</div>
+                                )}
+                                {ventMirrors.map(m => {
+                                    const mon = m.mon || {};
+                                    const ibw = Number(m.ibw) || 0;
+                                    const alarms = String(m.alarms || '').split('|').filter(Boolean).map(a => { const i = a.indexOf(':'); return { p: a.slice(0, i), t: a.slice(i + 1) }; });
+                                    const cell = (label, v, unit) => (
+                                        <div key={label}><div className="text-[9px] uppercase text-slate-400 font-bold">{label}</div><div className="font-mono font-bold text-white">{Number.isFinite(v) ? v : '\u2014'}<span className="text-[9px] text-slate-400 font-normal ml-0.5">{unit}</span></div></div>
+                                    );
+                                    return (
+                                        <div key={m.id} data-testid="vent-mirror" className="bg-black/50 rounded p-2 flex flex-col gap-1">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="font-bold text-cyan-300">{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}{Date.now() - Number(m.ts) > 15000 ? <span className="ml-1 text-amber-300">(no update for {Math.round((Date.now() - Number(m.ts)) / 1000)} s: link lost?)</span> : null}</span>
+                                                <span className="font-bold text-white">{VENT_STATE_LABEL[m.state] || m.state}{m.state === 'ventilating' || m.state === 'standby' ? ` \u00b7 ${m.label}` : ''}{m.locked ? ' \u00b7 locked' : ''}</span>
+                                            </div>
+                                            {m.ctl && <div><span className="text-slate-400">Settings: </span>{m.ctl}</div>}
+                                            {m.state === 'ventilating' && (
+                                                <div className="grid grid-cols-4 gap-1">
+                                                    {cell('Ppeak', mon.ppeak, 'cmH2O')}{cell('PEEP', mon.peep, 'cmH2O')}{cell('Pplat', mon.pplat, 'cmH2O')}{cell('AutoPEEP', mon.autopeep, 'cmH2O')}
+                                                    {cell('VTE', mon.vte, 'ml')}{cell('VTE/IBW', Number.isFinite(mon.vte) && ibw ? Math.round(mon.vte / ibw * 10) / 10 : null, 'ml/kg')}{cell('MinVol', mon.mv, 'l/min')}{cell('fTotal', mon.ftot, '/min')}
+                                                    {cell('Oxygen', m.o2, '%')}{cell('Leak', mon.vleak, '%')}
+                                                </div>
+                                            )}
+                                            {alarms.length > 0 && (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {alarms.map((a, i) => <span key={i} className={`px-1.5 py-0.5 rounded font-bold ${a.p === 'hi' ? 'bg-red-700 text-white' : a.p === 'med' ? 'bg-amber-500 text-black' : 'bg-sky-700 text-white'}`}>{a.t}</span>)}
+                                                </div>
+                                            )}
+                                            <div className="text-slate-400">{m.sex}, {m.height} cm, IBW {ibw} kg{' \u00b7 '}Tests: {m.tests}{m.win && m.win !== 'standby' ? ` \u00b7 Window open: ${m.win}` : ''}</div>
+                                            {m.lim && !m.lv && <details><summary className="cursor-pointer text-slate-400">Alarm limits</summary><div>{m.lim}</div></details>}
+                                            {window.VentControls && <window.VentControls.VentRemotePanel sim={sim} m={m} />}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </Section>
+                        )}
                     </div>
                     
                     {/* The drag handle. Vertical grip, col-resize cursor, keyboard-accessible,
@@ -2119,7 +2230,8 @@
                     const base = window.location.origin + window.location.pathname;
                     const links = [
                         { key: 'monitor', title: 'Room monitor', url: `${base}?mode=monitor&session=${sessionID}`, hint: 'The patient monitor the team watches.' },
-                        { key: 'defib', title: 'Defibrillator', url: new URL(`defib/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'Standalone defib on a second tablet.' }
+                        { key: 'defib', title: 'Defibrillator', url: new URL(`defib/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'Standalone defib on a second tablet.' },
+                        { key: 'vent', title: 'Ventilator', url: new URL(`vent/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'The HAMILTON-T1 on its own tablet.' }
                     ];
                     const svgFor = (url) => {
                         try { const q = window.qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" '); }

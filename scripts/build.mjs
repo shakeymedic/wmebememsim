@@ -11,7 +11,7 @@
 //      unchanged. Visitors no longer download ~3 MB of Babel and compile ~1 MB of JSX on load.
 //   2. React, ReactDOM and the Firebase SDK are served from dist/vendor/ instead of unpkg/gstatic.
 //   3. Tailwind is a generated stylesheet (dist/assets/app.css) instead of the runtime play CDN.
-//   4. The service workers (sw.js for the app, defib/sw.js for the tablet) are stamped with this
+//   4. The service workers (sw.js for the app, defib/sw.js and vent/sw.js for the tablets) are stamped with this
 //      deploy's version and the list of files to store, so both work offline from the first visit.
 //   5. The app's JavaScript is minified (esbuild; top-level names, which the separate scripts
 //      share, are kept), with a source map next to each file for debugging.
@@ -116,8 +116,11 @@ html = localise(html, '');
 html = html.replace(/<script crossorigin src="vendor\//g, '<script src="vendor/');
 fs.writeFileSync(indexPath, html);
 
-const defibPath = path.join(OUT, 'defib', 'index.html');
-fs.writeFileSync(defibPath, localise(fs.readFileSync(defibPath, 'utf8'), '../'));
+// The two device pages (the defib tablet and the ventilator) load the Firebase SDK from ../vendor/.
+for (const dev of ['defib', 'vent']) {
+    const devPath = path.join(OUT, dev, 'index.html');
+    fs.writeFileSync(devPath, localise(fs.readFileSync(devPath, 'utf8'), '../'));
+}
 
 // ---- 4. Tailwind -----------------------------------------------------------------------------
 const twBin = path.join(NM, 'tailwindcss', 'lib', 'cli.js');
@@ -153,13 +156,20 @@ for (const rel of [V.fbApp, V.fbDb, V.fbAuth]) {
     fs.writeFileSync(f, esbuild.transformSync(fs.readFileSync(f, 'utf8'), { minify: true, target: 'es2017' }).code);
     minified++;
 }
-// Inline scripts (the compiled App in index.html, the device logic in defib/index.html).
+// Inline scripts (the compiled App in index.html, the device logic in defib/index.html and
+// vent/index.html). The ventilator's device code (copied from the standalone HAMILTON-T1 trainer)
+// uses object spread, so it is minified for es2018, which keeps spread as it is: lowering it to
+// es2017 would add global helper functions (see minifyFile). Tablets older than iOS 11.3 / Chrome 60
+// cannot run it; the defib and the app are unchanged.
 const inlineRe = /<script>([\s\S]*?)<\/script>/g;
-for (const rel of ['index.html', 'defib/index.html']) {
+const INLINE_TARGET = { 'index.html': 'es2017', 'defib/index.html': 'es2017', 'vent/index.html': 'es2018' };
+for (const rel of Object.keys(INLINE_TARGET)) {
     const f = path.join(OUT, rel);
     const html = fs.readFileSync(f, 'utf8').replace(inlineRe, (all, code) => {
         minified++;
-        return '<script>' + esbuild.transformSync(code, { minify: true, target: 'es2017' }).code + '</script>';
+        const out = esbuild.transformSync(code, { minify: true, target: INLINE_TARGET[rel] }).code;
+        if (/^var [\w$]+=Object\.define/.test(out)) fail(`${rel}: the minifier added global helper functions to an inline script.`);
+        return '<script>' + out + '</script>';
     });
     fs.writeFileSync(f, html);
 }
@@ -186,18 +196,22 @@ const stamp = (swRel, files) => {
 // The guide PDFs are left out: they are large and only wanted on demand (the guide pages are kept).
 // So are the investigation images (several MB together): the room monitor fetches the loaded
 // scenario's images when the scenario starts, and the worker stores each one as it is fetched.
-const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.endsWith('.pdf') && !r.startsWith('defib/') && !r.startsWith('images/investigations/') && !['sw.js', '_redirects'].includes(r));
+const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.endsWith('.pdf') && !r.startsWith('defib/') && !r.startsWith('vent/') && !r.startsWith('images/investigations/') && !['sw.js', '_redirects'].includes(r));
 stamp('sw.js', ['./', ...appFiles]);
-// The defib tablet: its folder plus every file its page loads from the rest of the site.
-const defibHtml = fs.readFileSync(path.join(OUT, 'defib', 'index.html'), 'utf8');
-const defibRefs = [...defibHtml.matchAll(/(?:src|href)="([^"#?]+)"/g)].map(m => m[1]).filter(u => !/^[a-z]+:/i.test(u) && !u.startsWith('//'));
-const defibFiles = [...new Set([...listFiles(path.join(OUT, 'defib')).filter(r => !r.endsWith('.map') && r !== 'sw.js'), ...defibRefs, '../sw-shared.js'])];
+// Each device tablet (defib, ventilator): its folder plus every file its page loads from the rest of the site.
+const deviceFiles = (dev) => {
+    const html = fs.readFileSync(path.join(OUT, dev, 'index.html'), 'utf8');
+    const refs = [...html.matchAll(/(?:src|href)="([^"#?]+)"/g)].map(m => m[1]).filter(u => !/^[a-z]+:/i.test(u) && !u.startsWith('//'));
+    return [...new Set([...listFiles(path.join(OUT, dev)).filter(r => !r.endsWith('.map') && r !== 'sw.js'), ...refs, '../sw-shared.js'])];
+};
+const defibFiles = deviceFiles('defib'), ventFiles = deviceFiles('vent');
 stamp('defib/sw.js', ['./', ...defibFiles]);
-log(`service workers stamped ${VERSION} (app ${appFiles.length + 1} files, defib ${defibFiles.length + 1})`);
+stamp('vent/sw.js', ['./', ...ventFiles]);
+log(`service workers stamped ${VERSION} (app ${appFiles.length + 1} files, defib ${defibFiles.length + 1}, ventilator ${ventFiles.length + 1})`);
 
 // ---- 6. refuse to ship a half-converted site -------------------------------------------------
 const problems = [];
-for (const rel of ['index.html', 'defib/index.html', 'defib/sw.js']) {
+for (const rel of ['index.html', 'defib/index.html', 'defib/sw.js', 'vent/index.html', 'vent/sw.js']) {
     const t = fs.readFileSync(path.join(OUT, rel), 'utf8');
     if (/type="text\/babel"/.test(t)) problems.push(`${rel} still contains text/babel`);
     for (const host of ['unpkg.com', 'cdn.tailwindcss.com', 'gstatic.com/firebasejs']) if (t.includes(host)) problems.push(`${rel} still references ${host}`);

@@ -267,6 +267,64 @@ Sim scenario (`scenario.defibSim`).
   first shock, adrenaline and amiodarone after the 3rd shock, sedation before cardioversion,
   analgesia for pacing, capture) and a printable certificate.
 
+### The ventilator (HAMILTON-T1)
+
+`vent/index.html` is the HAMILTON-T1 from the standalone trainer
+([shakeymedic/niv-instructions](https://github.com/shakeymedic/niv-instructions), which stays its own
+tool), copied in as a simulation device. It joins a session the way the defib tablet does, so any
+mix of tablets works at once: the room monitor, a defib tablet and a ventilator tablet, all on one
+patient.
+
+- **Where it runs.** On its own tablet (Screens > Join by QR code shows a Ventilator code, or type the
+  session code on the page), or on the room monitor: the controller's **Ventilator** section has
+  "Show the ventilator on the room monitor". The defib and the ventilator share the monitor's screen,
+  so opening one closes the other; the learner can flip to the obs and back without stopping it.
+  Closed and reopened, it carries on with the same settings (kept in that browser for 12 hours).
+- **The lungs** are chosen on the controller (Ventilator section): normal, AECOPD, cardiogenic
+  pulmonary oedema, obesity hypoventilation, ARDS or severe asthma (`data/ventprofiles.js`, the
+  trainer's values; teaching values, not validated physiology), and whether the patient breathes for
+  themselves. The first choice comes from the scenario's words.
+- **What the facilitator sees.** Every setting change, mode change, test and alarm on the device is in
+  the event log ("Ventilator: …", alarms by priority), and the Ventilator section mirrors each
+  ventilator: state, mode, settings, measured values (with VTE per kg of ideal body weight), active
+  alarms, tests and alarm limits (`sessions/<CODE>/ventState/<id>`, removed when it disconnects).
+- **What it shows of the patient.** SpO2 and pulse come from the controller when a probe is attached;
+  PetCO2 shows the controller's ETCO2 when capnography is on and the ventilator is ventilating.
+- **It breathes for the patient** (`data/engine-vent.js`). While a ventilator is ventilating, SpO2,
+  RR and ETCO2 follow what it delivers: SpO2 from the oxygen and PEEP (the shunt that PEEP recruits),
+  CO2 from the alveolar ventilation, settling over 3 to 5 minutes of real time; ETCO2 sits below
+  PaCO2 by a gap that widens with dead space, and reads 0 when the circuit is disconnected. Low SpO2
+  and high CO2 raise the HR, and air trapping lowers the BP. This runs whether or not the clock is
+  started. It does not apply in a cardiac arrest.
+- **The facilitator stays in charge.** A vital typed by hand stays as typed ("Release to ventilator"
+  hands it back), and the Obs switch ("Ventilator drives them" / "I set them") turns the link off.
+  The log says when the ventilator takes over the obs and when it lets go, and warns if an invasive
+  mode is started with no tube or supraglottic airway recorded.
+- **The facilitator controls it** (Ventilator section, `data/screens/ventcontrol.js`):
+  - *Problems*, one press each and again to fix: the trainer's ten (leaks, disconnection, coughing,
+    kinked expiratory limb, apnoea, oxygen failure, mains lost, tiring, cracked circuit) and five
+    added here: tube displaced (no CO2), tube blocked, bronchospasm, tension pneumothorax (BP falls
+    until the chest is decompressed; needle, finger thoracostomy or a drain fixes it) and mains lost
+    with the battery low. They apply to every ventilator in the session.
+  - *Lungs*: compliance, resistance, CO2 production, oxygenation impairment and spontaneous rate (the
+    trainer's Lungs panel). They change both the T1's breaths and the patient's obs.
+  - *Education / Assessment*: Assessment hides the T1's alarm help.
+  - *Control this ventilator*, per ventilator: switch on or off, start or standby, mode, every
+    setting of the current mode and every alarm limit (step or type a value; the T1 holds it to its
+    own range), silence, O2 enrichment, lock the screen (the facilitator is not locked out), and a
+    fresh ventilator. Set it up before the candidate arrives to hand over deliberate errors. Changes
+    appear as a colleague's would and are logged as the facilitator's
+    (`sessions/<CODE>/ventCmd`, consumed by the ventilator they are addressed to).
+- It runs in real time. A new scenario gives a fresh ventilator, switched off.
+- **Ventilator Sim** (setup tab, `data/ventsim.js`, `data/screens/ventsetup.js`): eight scenarios
+  (AECOPD NIV, CPO CPAP, OHS NIV, ARDS, severe asthma, after RSI, DOPES troubleshooting,
+  interhospital transfer) in Education or Assessment. It loads the scenario's lungs, records the
+  tube for intubated patients, puts the ventilator on the room monitor and opens the controller's
+  Ventilator section with the scenario brief. The debrief's **Ventilator feedback** (any session that
+  used a ventilator) reads the log and `ventSamples` (what the ventilator measured, every 15 s):
+  pre-use check, alarm limits, Vt per kg IBW, plateau and driving pressure, AutoPEEP, SpO2 time in
+  target and problem timings. The targets are teaching targets in `data/ventsim.js`, not a guideline.
+
 ---
 
 ## Firebase setup — what you must do in the console yourself

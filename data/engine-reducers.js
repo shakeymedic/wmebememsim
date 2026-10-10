@@ -18,6 +18,38 @@
         paralysisPhase, pkFactor, safeApnoeaSeconds, sanitizeForRealtimeDatabase
     } = window.__EngineModel;
 
+    // ONE SECOND OF VENTILATOR PHYSIOLOGY (data/engine-vent.js), written into `base`.
+    // SpO2, RR and ETCO2 are set to what the ventilator produces (in displayed space: the drug and
+    // intervention envelope is taken off, so NIV/CPAP/BVM bonuses are not counted twice); HR and BP
+    // get additive nudges that are removed again when the ventilator stops. A vital the facilitator
+    // typed by hand (manualHold) is never touched. Mutates `base`; returns the new ventPhys.
+    const VE = window.VENT_ENGINE;
+    const ventTick = (state, cs, base, t) => {
+        const prev = state.ventPhys;
+        const driver = VE && cs ? VE.driverFor(cs) : null;
+        const hold = state.manualHold || {};
+        if (!driver) {
+            if (!(prev && prev.active)) return { ventPhys: prev || null, changed: false, driving: false };
+            // Stopped: take the HR/BP nudges off again (not in an arrest, which set new obs).
+            const inArrest = cs ? RG.inArrest(cs.rhythm || 'Sinus Rhythm') : false;
+            if (!inArrest) VE.NUDGED.forEach(k => {
+                const a = (prev.applied && prev.applied[k]) || 0;
+                if (a && Number.isFinite(base[k])) base[k] = clampVital(k, base[k] - a);
+            });
+            return { ventPhys: null, changed: true, driving: false };
+        }
+        const res = VE.step(prev, driver, cs, state.vitals);
+        const offs = drugOffsets(cs.activeDrugs || [], t);
+        VE.DRIVEN.forEach(k => { if (!hold[k]) base[k] = clampVital(k, res.targets[k] - (offs[k] || 0)); });
+        const applied = { ...(res.ventPhys.applied || {}) };
+        VE.NUDGED.forEach(k => {
+            if (hold[k] || !Number.isFinite(base[k])) return;
+            base[k] = clampVital(k, base[k] + (res.offsets[k] - (applied[k] || 0)));
+            applied[k] = res.offsets[k];
+        });
+        return { ventPhys: { ...res.ventPhys, applied }, changed: true, driving: true };
+    };
+
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
@@ -112,6 +144,25 @@
                 return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.baseVitals } } };
             }
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
+            // The facilitator hands typed vitals back to the ventilator ("Release to ventilator").
+            case 'RELEASE_MANUAL_HOLD': {
+                const keys = Array.isArray(action.payload) ? action.payload : [];
+                if (!keys.length) return state;
+                const hold = { ...(state.manualHold || {}) };
+                keys.forEach(k => { delete hold[k]; });
+                return { ...state, manualHold: hold };
+            }
+            // The ventilator's second while the session clock is stopped (Quick Sim never presses
+            // START): breathing for the patient is not a property of scenario time.
+            case 'TICK_VENT': {
+                const base = { ...state.baseVitals };
+                const t = cs ? cs.time : 0;
+                const vt = ventTick(state, cs, base, t);
+                if (!vt.changed) return state;
+                const inArrest = cs ? RG.inArrest(cs.rhythm || 'Sinus Rhythm') : false;
+                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? (cs.activeDrugs || []) : [], t, inArrest),
+                    ventPhys: vt.ventPhys, hypoxiaTimer: vt.driving ? 0 : state.hypoxiaTimer };
+            }
             case 'TRIGGER_IMPROVE':
             case 'TRIGGER_DETERIORATE': return { ...state, trends: action.payload.trends };
             // ======================= WAVE 6 / QUICK SIM RAMPS ==========================================
@@ -159,6 +210,8 @@
                 // this tick is time0 + 1. Every pk/deterioration calculation uses tNow.
                 const tNow = time0 + 1;
                 const activeDrugs = cs ? (cs.activeDrugs || []) : [];
+                // A ventilating HAMILTON-T1 breathes for the patient: the hypoxia model below stands down.
+                const ventDriver = VE && cs ? VE.driverFor(cs) : null;
 
                 // ----- STEP 2: TRENDS. A trend interpolates the BASE from a base-space snapshot
                 // towards base-space targets. Because it no longer touches the displayed vitals, the
@@ -219,7 +272,7 @@
                 // the patient desaturating — the model must see what the monitor sees.
                 const seenSpO2 = Number.isFinite(state.vitals.spO2) ? state.vitals.spO2 : base.spO2;
                 const seenRr = (!inArrest && paraPhase === 'active') ? base.rr : (Number.isFinite(state.vitals.rr) ? state.vitals.rr : base.rr);
-                if (!inArrest && seenSpO2 > 0 && (seenRr < 8 || seenRr <= 0) && !isBagging) {
+                if (!inArrest && seenSpO2 > 0 && (seenRr < 8 || seenRr <= 0) && !isBagging && !ventDriver) {
                     currentHypoxiaTimer++;
                     // E4 / WAVE 4a: SAFE APNOEA TIME, age- and physiology-appropriate.
                     // Was: 40 s with pre-oxygenation, 10 s without, for every patient of every age.
@@ -272,6 +325,12 @@
                     }
                 }
 
+                // ----- STEP 4b: THE VENTILATOR (data/engine-vent.js), after everything above, so
+                // what it produces is what the monitor shows (manual holds aside).
+                const vt = ventTick(state, cs, base, tNow);
+                if (vt.changed) vitalsChanged = true;
+                if (vt.driving) currentHypoxiaTimer = 0;
+
                 // ----- STEPS 5 + 6: add the drug envelope, clamp, round. Recomposed EVERY tick from
                 // `base` so offsets can never accumulate rounding error, and so a drug wearing off
                 // unwinds exactly back onto the underlying trajectory.
@@ -294,7 +353,7 @@
                     nextPrev = { ...state.vitals };
                 }
 
-                return { ...state, baseVitals: base, vitals: vitalsChanged ? composed : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer };
+                return { ...state, baseVitals: base, vitals: vitalsChanged ? composed : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer, ventPhys: vt.ventPhys };
             }
             default: return state;
         }
@@ -387,6 +446,14 @@
                     arrest: { since: RG.isPulseless(initialRhythm) ? 0 : null, shocks: 0, adrenaline: [], amiodarone: [] },
                     defibStep: (action.payload.defibSim && Array.isArray(action.payload.defibSim.steps) && action.payload.defibSim.steps.length)
                         ? { index: 0, since: 0, done: false } : null,
+                    // Ventilator Sim: the scenario's lungs, and the ventilator shown on the room monitor (the
+                    // candidate's tablet), which the facilitator can take off again.
+                    ...(action.payload.ventSim && window.VENT_PROFILES ? {
+                        vent: { profile: window.VENT_PROFILES.profiles[action.payload.ventSim.profile] ? action.payload.ventSim.profile : 'normal',
+                            breathing: action.payload.ventSim.breathing === true || action.payload.ventSim.breathing === false ? action.payload.ventSim.breathing : null,
+                            lung: {}, probs: [], assess: action.payload.ventSim.mode === 'assessment' },
+                        ventPanelOpen: true
+                    } : {}),
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
                     // would hand every session the same object.
                     activeInterventions: new Set(),
@@ -419,6 +486,10 @@
                         : initialCoreState.arrest,
                     defibStep: (p.defibStep && Number.isFinite(p.defibStep.index)) ? { index: p.defibStep.index, since: Number(p.defibStep.since) || 0, done: !!p.defibStep.done } : null,
                     lastConversion: p.lastConversion || null,
+                    vent: (p.vent && typeof p.vent === 'object' && window.VENT_PROFILES && window.VENT_PROFILES.profiles[p.vent.profile])
+                        ? { profile: p.vent.profile, breathing: p.vent.breathing === true || p.vent.breathing === false ? p.vent.breathing : null,
+                            lung: (p.vent.lung && typeof p.vent.lung === 'object') ? { ...p.vent.lung } : {},
+                            probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true } : null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
                     // A resumed session is NOT a paused session. Its clock is
@@ -538,7 +609,43 @@
                 ['interference', 'movement', 'leadoff'].forEach(k => { if (action.payload && action.payload[k] !== undefined) n[k] = !!action.payload[k]; });
                 return { ...state, noise: n };
             }
-            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
+            // The defib and the ventilator share the room monitor's screen: opening one closes the other.
+            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload, ventPanelOpen: action.payload ? false : !!state.ventPanelOpen };
+            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload, defibPanelOpen: action.payload ? false : !!state.defibPanelOpen };
+            // The ventilator's lungs: a known profile, whether the patient breathes for themselves
+            // (true / false; null = as the profile says), the facilitator's lung adjustments
+            // (lung: {c, r, m, o, e}; a key set to null goes back to the profile's value; lung: null
+            // resets them all), the injected problems (probs: a list of ids) and the Assessment switch.
+            // Anything else is ignored. Until the facilitator picks a profile it is the scenario's.
+            case 'SET_VENT_CONFIG': {
+                const p = action.payload || {};
+                const VP = window.VENT_PROFILES;
+                const cur = state.vent || {};
+                const scen = action.currentState && action.currentState.scenario;
+                const fallback = VP ? VP.profileForScenario(scen) : 'normal';
+                const profile = (p.profile !== undefined ? p.profile : (cur.profile || fallback));
+                const breathing = (p.breathing !== undefined ? p.breathing : cur.breathing);
+                let lung = p.lung === null ? {} : { ...(cur.lung || {}) };
+                if (p.lung && VP) Object.keys(p.lung).forEach(k => {
+                    const d = VP.LUNG_ADJ[k]; if (!d) return;
+                    const v = p.lung[k];
+                    if (v === null || v === undefined) { delete lung[k]; return; }
+                    const n = Number(v);
+                    if (Number.isFinite(n)) lung[k] = Math.min(d.max, Math.max(d.min, n));
+                });
+                // A new profile starts from its own lung.
+                if (p.profile !== undefined && p.profile !== cur.profile && p.lung === undefined) lung = {};
+                const probs = p.probs !== undefined ? (VP ? VP.probList(p.probs) : []) : (cur.probs || []);
+                const assess = p.assess !== undefined ? p.assess === true : !!cur.assess;
+                return { ...state, vent: {
+                    profile: VP && VP.profiles[profile] ? profile : 'normal',
+                    breathing: breathing === true || breathing === false ? breathing : null,
+                    lung, probs, assess
+                } };
+            }
+            case 'SET_VENT_MIRROR': return { ...state, ventMirror: action.payload || {} };
+            case 'ADD_VENT_SAMPLE': return action.payload ? { ...state, ventSamples: [...(state.ventSamples || []), action.payload].slice(-480) } : state;
+            case 'SET_VENT_LINK': return { ...state, ventLink: action.payload !== false };
             case 'SET_DEFIB_SETTINGS': return { ...state, defibSettings: cleanDefibSettings(state.defibSettings, action.payload) };
             case 'SET_PACING_THRESHOLD': return { ...state, pacingThreshold: Math.max(10, Math.min(140, Math.round(Number(action.payload) || state.pacingThreshold))) };
             case 'SET_PACING': return { ...state, pacing: { ...state.pacing, ...(action.payload || {}) } };
@@ -581,7 +688,7 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, ventPanelOpen: !!action.payload.ventPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };

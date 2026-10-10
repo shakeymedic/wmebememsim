@@ -21,7 +21,8 @@
         // Defib Sim: the clock starts itself at the learner's first action, so a forgotten START
         // does not leave every event in the log at 00:00. Not after a deliberate facilitator pause
         // (pausedAt is set only by PAUSE_SIM), and not for display-only presses.
-        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC'];
+        // The ventilator's log lines are reports, not presses on the defib.
+        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC', 'VENT_LOG'];
         const autoStartClock = (type, p) => {
             const cur = stateRef.current;
             if (!cur || !cur.scenario || !cur.scenario.defibSim) return;
@@ -68,6 +69,18 @@
                 case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
                 case 'LEAD_CHANGE': addLogEntry(`Monitoring lead changed to ${String(p.lead || '?').slice(0, 8)} (${where})`, 'action'); break;
                 case 'SIZE_CHANGE': addLogEntry(`ECG size x${Number(p.gain) || 1} (${where})`, 'info'); break;
+                // The HAMILTON-T1 (vent/index.html): every setting, mode change, test and alarm it
+                // records in its own event log is reported here too, as text. Alarms by priority.
+                case 'VENT_LOG': {
+                    const text = String(p.text || '').slice(0, 160);
+                    if (!text) break;
+                    const pri = { hi: 'high', med: 'medium', low: 'low' }[p.p];
+                    if (p.alarm && pri) addLogEntry(`Ventilator alarm (${pri} priority): ${text} (${where})`, pri === 'low' ? 'info' : 'warning');
+                    // A change the facilitator made remotely is the facilitator's, not the candidate's.
+                    else if (p.by === 'facilitator') addLogEntry(`Ventilator (facilitator): ${text} (${where})`, 'system');
+                    else addLogEntry(`Ventilator: ${text} (${where})`, pri ? 'warning' : 'action');
+                    break;
+                }
                 default: addLogEntry(`Unhandled student device event: ${String(type).slice(0, 40)}`, 'system'); break;
             }
         };
@@ -99,6 +112,15 @@
             const edu = !!(ds && ds.mode !== 'assessment');
             return { defibSim: !!ds, pulseFeedback: edu, hints: edu, metronome: !!cur.metronomeOn };
         };
+        // The lungs the ventilator uses (the facilitator's choice, else picked from the scenario),
+        // whether the patient breathes for themselves (a paralysed or arrested patient does not,
+        // unless the facilitator says so) and the airway in place. See data/engine-vent.js.
+        const ventConfigFor = (cur) => {
+            const VE = window.VENT_ENGINE;
+            if (!VE) return { profile: 'normal', breathing: null, airway: 'none' };
+            return { ...VE.configFor(cur), airway: VE.airwayFor(cur) };
+        };
+        const DEVICE_WHERE = { 'standalone-defib': 'standalone defib', 'monitor-defib': 'monitor defib', 'monitor-vent': 'ventilator on the monitor', 'standalone-vent': 'ventilator tablet' };
         const nibpCuffOn = (cur) => !!((cur.scenario && cur.scenario.defibSim) || getSensors(cur).nibp);
         const buildDefibSyncPayload = () => {
             const cur = stateRef.current;
@@ -245,6 +267,10 @@
                     // The rules test (tests/specs/rules.spec.js) lists every key this object may carry.
                     defibPanelOpen: !!cur.defibPanelOpen,
                     defib: cur.defib || {},
+                    // The ventilator on the room monitor, and the lungs it ventilates (the
+                    // facilitator's choice, else one picked from the scenario).
+                    ventPanelOpen: !!cur.ventPanelOpen,
+                    vent: ventConfigFor(cur),
                     // The defib tablet's pulse-check result (Education) and pacing capture state.
                     pacing: { electrical: !!(cur.pacing && cur.pacing.electrical), mechanical: !!(cur.pacing && cur.pacing.mechanical) },
                     defibView: defibViewFor(cur),
@@ -326,7 +352,8 @@
             state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
             state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
             state.activeDrugs, state.deteriorationMode,
-            state.defibPanelOpen, state.defib, state.pacing, state.metronomeOn
+            state.defibPanelOpen, state.defib, state.pacing, state.metronomeOn,
+            state.ventPanelOpen, state.vent
         ]);
 
         useEffect(() => {
@@ -369,7 +396,7 @@
 
         // --- monitor side: announce ourselves and what we are showing.
         const presenceDisplay = isMonitorMode
-            ? (state.defibPanelOpen ? 'defib' : (state.arrestPanelOpen ? 'arrest view' : 'patient monitor'))
+            ? (state.defibPanelOpen ? 'defib' : state.ventPanelOpen ? 'ventilator' : (state.arrestPanelOpen ? 'arrest view' : 'patient monitor'))
             : null;
         useEffect(() => {
             const db = window.db;
@@ -454,7 +481,7 @@
                 const ev = snap.val();
                 if (!ev || !ev.type) return;
                 if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
-                handleDeviceEvent(ev.type, ev.payload, ev.device === 'standalone-defib' ? 'standalone defib' : 'monitor defib');
+                handleDeviceEvent(ev.type, ev.payload, DEVICE_WHERE[ev.device] || 'monitor defib');
                 // Consume the event so the queue cannot grow without bound across a long session.
                 snap.ref.remove().catch(() => {});
             };
@@ -464,6 +491,77 @@
             };
             ref.limitToLast(25).on('child_added', onChild, onErr);
             return () => ref.off('child_added', onChild);
+        }, [isMonitorMode, sessionID]);
+
+        // THE VENTILATOR BREATHING FOR THE PATIENT (phase 2). While the clock runs, TICK_TIME does
+        // the ventilator's second; while it is stopped (Quick Sim, a pause) this does, because a
+        // ventilated patient's oxygen and CO2 do not wait for START. The log says when the
+        // ventilator takes over the obs and when it lets go.
+        const ventDriving = !isMonitorMode && !!(window.VENT_ENGINE && window.VENT_ENGINE.driverFor(state));
+        const ventActive = ventDriving || !!(state.ventPhys && state.ventPhys.active);
+        useEffect(() => {
+            if (isMonitorMode || state.isRunning || !ventActive) return;
+            const id = setInterval(() => dispatch({ type: 'TICK_VENT' }), 1000);
+            return () => clearInterval(id);
+        }, [isMonitorMode, state.isRunning, ventActive]);
+        // The debrief's ventilator record: what the ventilator breathing for the patient measured and
+        // was set to, every 15 s of real time (data/ventsim.js reads it).
+        useEffect(() => {
+            if (isMonitorMode || !ventDriving) return;
+            const take = () => {
+                const cur = stateRef.current;
+                const d = window.VENT_ENGINE && window.VENT_ENGINE.driverFor(cur);
+                if (!d) return;
+                const mon = d.mon || {};
+                let set = {};
+                try { (JSON.parse(d.sv || '[]') || []).forEach(r => { if (Array.isArray(r)) set[r[0]] = Number(r[2]); }); } catch (e) { set = {}; }
+                const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+                const niv = ['NIV', 'NIV-ST', 'HiFlowO2'].indexOf(d.mode) !== -1;
+                const drive = num(set.pinsp) !== null ? set.pinsp : num(set.ps);
+                const t = Number.isFinite(cur.sessionTime) ? cur.sessionTime : (Number(cur.time) || 0);
+                dispatch({ type: 'ADD_VENT_SAMPLE', payload: {
+                    time: t, mode: String(d.mode || ''), niv,
+                    vte: num(mon.vte), ibw: num(d.ibw), ppeak: num(mon.ppeak), pplat: num(mon.pplat), peep: num(mon.peep), autopeep: num(mon.autopeep),
+                    mv: num(mon.mv), ftot: num(mon.ftot), o2: num(d.o2), setPeep: num(set.peep),
+                    ipap: niv && num(set.peep) !== null && drive !== null ? set.peep + drive : null
+                } });
+            };
+            take();
+            const id = setInterval(take, 15000);
+            return () => clearInterval(id);
+        }, [isMonitorMode, ventDriving]);
+        const ventDrivingRef = useRef(false);
+        useEffect(() => {
+            if (isMonitorMode || ventDrivingRef.current === ventDriving) return;
+            ventDrivingRef.current = ventDriving;
+            if (ventDriving) {
+                const held = ['spO2', 'rr', 'etco2'].filter(k => state.manualHold && state.manualHold[k]);
+                addLogEntry(`Ventilator is breathing for the patient: SpO2, RR and ETCO2 now follow it${held.length ? ` (except ${held.join(', ')}, which you set by hand)` : ''}.`, 'system');
+                const cur = stateRef.current;
+                const d = window.VENT_ENGINE.driverFor(cur);
+                if (d && d.phys && Number(d.phys.inv) > 0 && window.VENT_ENGINE.airwayFor(cur) === 'none') {
+                    addLogEntry('Ventilator started in an invasive mode with no tube or supraglottic airway recorded.', 'warning', true);
+                }
+            } else {
+                addLogEntry('Ventilator is no longer breathing for the patient (standby, switched off, or the link was turned off). The obs follow the usual model again.', 'system');
+            }
+        }, [isMonitorMode, ventDriving]);
+
+        // What each ventilator is showing (mode, settings, measured values, alarms), for the
+        // facilitator's Ventilator section. Stale after 60 s, like the defib mirror.
+        useEffect(() => {
+            const db = window.db;
+            if (!db || !sessionID || isMonitorMode) return;
+            const ref = db.ref(`sessions/${sessionID}/ventState`);
+            const onVal = (snap) => {
+                const v = snap.val() || {};
+                const now = Date.now();
+                const fresh = {};
+                Object.keys(v).forEach(k => { if (v[k] && Number(v[k].ts) > now - 60000) fresh[k] = v[k]; });
+                dispatch({ type: 'SET_VENT_MIRROR', payload: fresh });
+            };
+            ref.on('value', onVal, () => {});
+            return () => ref.off('value', onVal);
         }, [isMonitorMode, sessionID]);
 
         // What each defib tablet is displaying, so a remote facilitator sees the device.
@@ -511,7 +609,8 @@
                         showWetflag: cur.showWetflag, icp: cur.icp,
                         // Shock count / cumulative energy must survive a resume.
                         defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings,
-                        arrest: cur.arrest, defibStep: cur.defibStep
+                        arrest: cur.arrest, defibStep: cur.defibStep,
+                        vent: cur.vent || null
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
                 } catch (e) {
@@ -521,8 +620,27 @@
             return () => clearInterval(id);
         }, [isMonitorMode]);
 
+        // THE FACILITATOR'S REMOTE CONTROL OF ONE VENTILATOR (phase 3): sessions/<CODE>/ventCmd, read
+        // and removed by the ventilator it is addressed to. The ventilator logs what it did.
+        const sendVentCommand = (to, type, key, val) => {
+            if (isMonitorMode || !sessionID || !window.db || !to || !type) return false;
+            const cmd = { type: String(type).slice(0, 12), to: String(to).slice(0, 40), ts: Date.now() };
+            if (key !== undefined && key !== null) cmd.key = String(key).slice(0, 16);
+            if (Number.isFinite(Number(val)) && val !== null && val !== undefined) cmd.val = Number(val);
+            try {
+                const ref = window.db.ref(`sessions/${sessionID}/ventCmd`);
+                ref.push(cmd).catch(e => console.error('Ventilator command failed:', e));
+                // Commands nobody picked up (a ventilator that went away) are cleared after 2 minutes.
+                ref.once('value').then(snap => {
+                    const v = snap.val() || {};
+                    Object.keys(v).forEach(k => { if (v[k] && Number(v[k].ts) < Date.now() - 120000) ref.child(k).remove().catch(() => {}); });
+                }).catch(() => {});
+                return true;
+            } catch (e) { console.error('Ventilator command failed:', e); return false; }
+        };
+
         return {
-            sendDeviceEvent
+            sendDeviceEvent, sendVentCommand
         };
     };
 

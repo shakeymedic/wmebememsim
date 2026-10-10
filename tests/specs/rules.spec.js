@@ -64,7 +64,7 @@ test('session codes the app makes are the codes the rules accept, and nothing el
   ['ABCD', 'ABC0EF', 'abcdef', 'ABCDEFG', 'AIBCDE', 'A1BCDE'].forEach(c => expect(CODE_RE.test(c)).toBe(false));
 });
 
-test('everything a controller, room monitor and defib tablet write passes the rules', async ({ page, context }) => {
+test('everything a controller, room monitor, defib tablet and ventilator write passes the rules', async ({ page, context }) => {
   await useFakeFirebase(context);
   trackErrors(page);
   const code = await openController(page);
@@ -97,10 +97,25 @@ test('everything a controller, room monitor and defib tablet write passes the ru
   await page.getByRole('button', { name: /Metronome/ }).click();
   await expandSection(page, 'defibPacing');
   await page.locator('[data-artefact="movement"]').click();
+  // The ventilator: the lungs and the monitor toggle from the controller, then a tablet that
+  // powers up, self-tests and ventilates (log lines and the mirror)
+  await page.evaluate(() => { window.__simEngine.dispatch({ type: 'SET_VENT_CONFIG', payload: { profile: 'ards', breathing: false } }); window.__simEngine.dispatch({ type: 'SET_VENT_PANEL', payload: true }); });
+  const vent = await page.context().newPage();
+  await vent.goto(`/vent/index.html?session=${code}`);
+  await expect(vent.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  await vent.click('#kPower');
+  await expect(vent.getByRole('button', { name: 'Start ventilation' })).toBeVisible({ timeout: 10000 });
+  await vent.click('#kPower');
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('ventilating');
+  // The facilitator's side: lung adjustments, problems, Assessment and remote commands
+  await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { c: 80, r: 14 }, probs: ['leakM', 'bronch'], assess: true } }));
+  const ventId = await vent.evaluate(() => window.__vent.fb.presenceId);
+  await page.evaluate((id) => { const E = window.__simEngine; E.sendVentCommand(id, 'set', 'peep', 8); E.sendVentCommand(id, 'mode', 'APVsimv'); E.sendVentCommand(id, 'silence'); }, ventId);
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.mode)).toBe('APVsimv');
   await page.waitForTimeout(1500);
 
   const problems = [];
-  for (const [who, p] of [['controller', page], ['monitor', monitor], ['defib', defib]]) {
+  for (const [who, p] of [['controller', page], ['monitor', monitor], ['defib', defib], ['ventilator', vent]]) {
     const writes = await p.evaluate(() => window.__fakeRtdb.writes());
     expect(writes.length).toBeGreaterThan(0);
     for (const w of writes) {

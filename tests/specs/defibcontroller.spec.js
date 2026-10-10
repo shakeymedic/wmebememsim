@@ -44,7 +44,12 @@ test.describe('Defib controller', () => {
     await page.getByRole('button', { name: 'START', exact: true }).click();
     await expandSection(page, 'defibShock');
     await page.getByLabel('Converts').selectOption('never');
-    for (let i = 0; i < 3; i++) await engine(page, 'sim.deliverShock(150, "test")');
+    // One shock at a time, as a person gives them: each shock counts from the state the last one left
+    // (two dispatched before React re-renders would read the same count).
+    for (let i = 0; i < 3; i++) {
+      await engine(page, 'sim.deliverShock(150, "test")');
+      await expect.poll(() => engine(page, 'return (sim.state.defib && sim.state.defib.shockCount) || 0')).toBe(i + 1);
+    }
     await expect(page.getByTestId('arrest-status')).toContainText('3 shocks');
     const prompts = page.getByTestId('drug-prompts');
     await expect(prompts).toContainText('Adrenaline 1 mg IV due (after the 3rd shock)');
