@@ -131,6 +131,40 @@ breaths/min during CPR. The room monitor and controller draw it at half the ECG 
 8 s, i.e. 12.5 against 25 mm/s), the arrest view adds a CO2 lane when capnography is attached, and
 the defib tablet draws it under its ECG. `tests/specs/capnography.spec.js` checks the shapes and timing.
 
+## Start screen: how are you running the sim?
+
+The first card on the setup screen (`SessionSetupCard` in `data/screens/setup.js`) asks how the sim is
+being run, and remembers the answer on that device (`localStorage` key `wmebem_setup_mode`):
+
+- **One computer, two screens:** steps to extend the display, and a button that opens the room monitor
+  in its own window (`target="emsim-room-monitor"`) to drag onto the second screen.
+- **Two devices: run the sim here:** the session code, the site address and a QR code for the
+  monitor device.
+- **Two devices: this is the room monitor:** goes to the code entry screen, which has a way back.
+
+The session code, Join another session, New code and Change set-up are always on the card.
+`tests/specs/setup-chooser.spec.js` covers it.
+
+## Investigation results
+
+`data/investigations.js` (`window.INVESTIGATIONS`) holds a library of findings for X-ray, CT, ECG and
+POCUS. Each finding has a written report, and some have a real image in `images/investigations/`
+(all from Wikimedia Commons under CC0, public domain, CC BY or CC BY-SA; every image is credited on the
+monitor and on `guides/image-credits.html`). The reports are our own, written for teaching, and say
+which side each image shows. Images are never mirrored; where one was cropped (e.g. one slice of a
+CT series) the credit says so.
+
+- `SCENARIO_RESULTS` gives a scenario its own finding per investigation. `data/scenarios.js` applies
+  it after building the default results, so it replaces the generic "normal" result.
+- On the monitor a result with an image shows it with its report and credit; tapping it enlarges it.
+  The facilitator can untick "Show the written report with the image" to send the image alone.
+- The 12-lead button on the monitor shows the scenario's real ECG only while the current rhythm fits
+  it (`ecgImageFits`); otherwise it draws the 12-lead as before.
+- Adding an image: put a JPEG under 450 KB in `images/investigations/`, add it to `IMAGES` with the
+  author, licence, source page and any changes, and point a finding at it.
+  `tests/specs/investigations.spec.js` checks every image exists and is credited and openly licensed,
+  and that every mapping resolves.
+
 ## Launch modes
 
 | Mode | What it does |

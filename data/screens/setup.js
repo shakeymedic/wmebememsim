@@ -5,6 +5,119 @@
     // opened directly — used by the Node verification harness to render the locked Restricted section
     // without simulating clicks, and available for deep-linking a mode later. Both default to the
     // normal first-load state, so nothing changes for a real user.
+
+    // =========================================================================================
+    // HOW ARE YOU RUNNING IT? The first thing on the start screen: one computer driving two
+    // screens, or two devices; and on the second device, whether it runs the sim or shows the
+    // room monitor (or the defib). The choice is remembered on this device, and the card then
+    // shrinks to the session code plus the actions that set-up needs.
+    // =========================================================================================
+    const SETUP_KEY = 'wmebem_setup_mode';
+    const readSetup = () => { try { const v = localStorage.getItem(SETUP_KEY); return v === 'one' || v === 'two' ? v : null; } catch (e) { return null; } };
+    const qrSvg = (url) => {
+        try { const q = window.qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" role="img" aria-label="QR code" '); }
+        catch (e) { return null; }
+    };
+
+    const SessionSetupCard = ({ sessionID, onJoinClick, onNewSessionCode }) => {
+        const { Button, Lucide } = window;
+        const [setup, setSetupState] = useState(readSetup);
+        const [choosing, setChoosing] = useState(() => readSetup() === null);
+        const choose = (v) => { try { localStorage.setItem(SETUP_KEY, v); } catch (e) {} setSetupState(v); setChoosing(false); };
+        const base = window.location.origin + window.location.pathname;
+        const monitorUrl = `${base}?mode=monitor&session=${sessionID}`;
+        const defibUrl = new URL(`defib/index.html?session=${sessionID}`, window.location.href).toString();
+        const siteText = base.replace(/^https?:\/\//, '').replace(/index\.html$/, '').replace(/\/$/, '');
+
+        const tile = (id, icon, title, text, onClick, testId) => (
+            <button type="button" onClick={onClick} data-testid={testId} aria-pressed={setup === id}
+                className={`text-left rounded-lg border-2 p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${setup === id ? 'border-sky-400 bg-sky-950/40' : 'border-slate-600 bg-slate-800 hover:border-slate-400'}`}>
+                <div className="flex items-center gap-2 mb-1 text-sky-300">{icon}</div>
+                <div className="font-bold text-white text-base leading-tight">{title}</div>
+                <div className="text-xs text-slate-300 mt-1 leading-snug">{text}</div>
+            </button>
+        );
+        const codeBlock = (
+            <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest" data-testid="session-code">{sessionID}</div></div>
+        );
+        const sessionActions = (
+            <div className="flex flex-wrap gap-2">
+                <Button onClick={onJoinClick} variant="outline" className="h-9 text-xs whitespace-nowrap">Join another session</Button>
+                {onNewSessionCode && (
+                    <Button onClick={() => { if (window.confirm('Start a new session code? Any monitor or defib paired to ' + sessionID + ' will need to join the new code.')) onNewSessionCode(); }}
+                            variant="outline" className="h-9 text-xs whitespace-nowrap" title="Generate a new session code for a new group">New code</Button>
+                )}
+                {!choosing && <Button onClick={() => setChoosing(true)} variant="outline" className="h-9 text-xs whitespace-nowrap">Change set-up</Button>}
+            </div>
+        );
+
+        return (
+            <section className="bg-slate-900 border border-slate-700 p-4 rounded-lg space-y-4" aria-labelledby="setup-heading" data-testid="setup-card">
+                {choosing && (
+                    <div>
+                        <h2 id="setup-heading" className="text-lg font-bold text-white mb-1">How are you running the sim?</h2>
+                        <p className="text-xs text-slate-400 mb-3">Pick the set-up you have. This device remembers it; you can change it at any time.</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {tile('one', <><Lucide icon="laptop" className="w-6 h-6"/><span className="text-slate-500">+</span><Lucide icon="monitor" className="w-6 h-6"/></>,
+                                'One computer, two screens',
+                                'This computer runs the sim. The room monitor opens in a second window that you move onto the other screen (TV or projector).',
+                                () => choose('one'), 'setup-one')}
+                            {tile('two', <><Lucide icon="laptop" className="w-6 h-6"/><span className="text-slate-500">+</span><Lucide icon="tablet" className="w-6 h-6"/></>,
+                                'Two devices: run the sim here',
+                                'This device is your instructor screen. Another computer or tablet in the room shows the patient monitor.',
+                                () => choose('two'), 'setup-two')}
+                            {tile('monitor', <Lucide icon="monitor" className="w-6 h-6"/>,
+                                'Two devices: this is the room monitor',
+                                'Show the patient monitor on this device. You will need the code shown on the sim computer.',
+                                onJoinClick, 'setup-monitor')}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2">Using a tablet as the defibrillator? Open <a className="text-sky-400 underline" href={new URL('defib/index.html', window.location.href).toString()} target="_blank" rel="noopener noreferrer">the defib page</a> on that tablet and type the session code, or scan its QR code from <b>Join</b> once a scenario is running.</p>
+                    </div>
+                )}
+
+                {!choosing && setup === 'one' && (
+                    <div className="flex flex-col md:flex-row gap-4 md:items-start">
+                        <div className="flex-1 min-w-0">
+                            <h2 id="setup-heading" className="text-sm font-bold text-sky-300 uppercase tracking-wide mb-2 flex items-center gap-2"><Lucide icon="laptop" className="w-4 h-4"/> One computer, two screens</h2>
+                            <ol className="list-decimal pl-5 text-sm text-slate-300 space-y-1">
+                                <li>Connect the second screen and set it to <b>extend</b>, not mirror (Windows: <kbd className="font-mono text-xs bg-slate-800 px-1 rounded">Windows key + P</kbd> then Extend; Mac: System Settings, Displays).</li>
+                                <li>Press <b>Open the room monitor</b>. It opens in a new tab: drag that tab off this window and onto the other screen.</li>
+                                <li>On the monitor, press the full-screen button (top right) and tap <b>Enable sound</b>.</li>
+                            </ol>
+                        </div>
+                        <div className="flex flex-col gap-2 md:w-60">
+                            {codeBlock}
+                            <Button href={monitorUrl} target="emsim-room-monitor" variant="primary" className="h-11 text-sm gap-2" ariaLabel="Open the room monitor in a new window"><Lucide icon="monitor" className="w-4 h-4"/> Open the room monitor</Button>
+                        </div>
+                    </div>
+                )}
+
+                {!choosing && setup === 'two' && (
+                    <div className="flex flex-col md:flex-row gap-4 md:items-start">
+                        <div className="flex-1 min-w-0">
+                            <h2 id="setup-heading" className="text-sm font-bold text-sky-300 uppercase tracking-wide mb-2 flex items-center gap-2"><Lucide icon="laptop" className="w-4 h-4"/> Two devices: this one runs the sim</h2>
+                            <p className="text-sm text-slate-300 mb-1">On the room monitor (a second computer, TV browser or tablet), either:</p>
+                            <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
+                                <li>scan the QR code with its camera, or</li>
+                                <li>go to <b className="font-mono text-white">{siteText}</b>, choose <b>Two devices: this is the room monitor</b>, and type the code.</li>
+                            </ul>
+                            <p className="text-xs text-slate-400 mt-2">The monitor waits for you: it shows the patient as soon as you start a scenario here.</p>
+                        </div>
+                        <div className="flex gap-3 items-start">
+                            {codeBlock}
+                            {(() => { const svg = qrSvg(monitorUrl); return svg ? <div className="bg-white p-1.5 rounded w-28 h-28 flex-none" data-testid="setup-monitor-qr" title={monitorUrl} dangerouslySetInnerHTML={{ __html: svg }} /> : null; })()}
+                        </div>
+                    </div>
+                )}
+
+                <div className={`flex flex-wrap items-center gap-3 ${choosing || setup ? 'border-t border-slate-800 pt-3' : ''} ${choosing ? 'justify-between' : 'justify-end'}`}>
+                    {choosing && codeBlock}
+                    {sessionActions}
+                </div>
+            </section>
+        );
+    };
+
     const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onDefibSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
@@ -435,25 +548,9 @@
 
         return (
             <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
-                {/* Wraps on a phone: the code, Launch Monitor and Join used to be forced onto one
-                    row, which squeezed "Join Another Session" into three overflowing lines. */}
-                <div className="bg-slate-900 border border-slate-700 p-4 rounded-lg flex flex-wrap items-center justify-between gap-3">
-                    <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest">{sessionID}</div></div>
-                    <div className="flex flex-wrap gap-2">
-                        {/* New tab, not same tab: the facilitator keeps the controller on this laptop and
-                            drags the monitor window to the second screen. */}
-                        <Button href={`?mode=monitor&session=${sessionID}`} variant="primary" className="h-10 text-xs flex items-center gap-1 whitespace-nowrap"><Lucide icon="monitor" className="w-3 h-3"/> Launch Monitor</Button>
-                        <Button onClick={onJoinClick} variant="outline" className="h-10 text-xs whitespace-nowrap">Join Another Session</Button>
-                        {/* A fresh code for a fresh group: any monitor or defib still on the old code
-                            will need to rejoin with the new one, hence the confirmation. */}
-                        {onNewSessionCode && (
-                            <Button onClick={() => { if (window.confirm('Start a new session code? Any monitor or defib paired to ' + sessionID + ' will need to join the new code.')) onNewSessionCode(); }}
-                                    variant="outline" className="h-10 text-xs whitespace-nowrap" title="Generate a new session code for a new group">New code</Button>
-                        )}
-                    </div>
-                </div>
+                <SessionSetupCard sessionID={sessionID} onJoinClick={onJoinClick} onNewSessionCode={onNewSessionCode} />
                 <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
-                    <p className="font-bold text-sky-400 mb-1">Sim Setup Guide:</p>
+                    <p className="font-bold text-sky-400 mb-1">Choose what to run:</p>
                     <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Defib Sim</strong> trains defibrillator skills on a tablet defib. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
                 </div>
                 {savedState && (
@@ -666,10 +763,10 @@
         );
     };
 
-    const JoinScreen = ({ onJoin }) => {
+    const JoinScreen = ({ onJoin, onBack }) => {
         const { Button } = window;
         const [code, setCode] = useState("");
-        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="images/emevidence-logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-400">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && window.isCurrentSessionCode(code)) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={!window.isCurrentSessionCode(code)} className="w-full py-4 text-xl">Connect</Button></div></div>);
+        return (<div className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-4"><div className="w-full max-w-md space-y-6 text-center"><div className="flex justify-center mb-4"><img src="images/emevidence-logo.png" alt="Logo" className="h-20 object-contain" /></div><h1 className="text-3xl font-bold text-sky-400">Sim Monitor</h1><p className="text-slate-400">Enter the Session Code</p><p className="text-xs text-slate-400">Quicker: tap <b>Join</b> on the controller and scan the QR code with this tablet's camera.</p><input type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && window.isCurrentSessionCode(code)) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/><Button onClick={() => onJoin(code)} disabled={!window.isCurrentSessionCode(code)} className="w-full py-4 text-xl">Connect</Button>{onBack && <button type="button" onClick={onBack} className="text-sm text-slate-400 underline hover:text-white">Back: this device runs the sim</button>}</div></div>);
     };
 
     const BriefingScreen = ({ scenario: rawScenario, onStart, onBack }) => {

@@ -358,6 +358,8 @@
 
         const [invModal, setInvModal] = useState(null);
         const [invCustomText, setInvCustomText] = useState("");
+        // Show the written report with an image (on), or the image alone for the team to interpret.
+        const [invWithReport, setInvWithReport] = useState(true);
 
         const [showNIBPModal, setShowNIBPModal] = useState(false);
         const [nibpSys, setNibpSys] = useState(vitals.bpSys);
@@ -836,11 +838,28 @@
         // dismissing it sends nothing and does not wipe a result already on the student monitor.
         // "Clear result on monitor" is a separate, explicitly-labelled destructive action.
         const handleInvClick = (type) => { setInvModal(type); setInvCustomText(""); };
-        const sendInv = (type, text) => { revealInvestigation(type, text); setInvModal(null); };
+        const sendInv = (type, text, image) => { revealInvestigation(type, text, { image: image || null, hideReport: !!image && !invWithReport }); setInvModal(null); };
         // Passing null makes the engine/monitor resolve the scenario's OWN authored finding.
         // The previous "Scenario Default" button sent the literal placeholder string
         // "Abnormal (See scenario)" to the students' screen.
-        const sendScenarioDefault = (type) => { revealInvestigation(type, null); setInvModal(null); };
+        const sendScenarioDefault = (type) => { revealInvestigation(type, null, { hideReport: !invWithReport }); setInvModal(null); };
+        // What "Scenario finding" will show, so the facilitator can see it before sending.
+        const INV = window.INVESTIGATIONS;
+        const scenarioResultPreview = (type) => {
+            const KEYS = { 'X-ray': 'chestXray', CT: 'ct', POCUS: 'pocus', ECG: 'ecg', Urine: 'urine', VBG: 'vbg' };
+            const k = KEYS[type]; if (!k || !scenario) return null;
+            const top = scenario[k], gen = (scenario.investigations || {})[k];
+            const src = (type === 'ECG') ? gen : ((top && (top.findings || top.image)) ? top : gen);
+            if (!src) return null;
+            let text = typeof src === 'string' ? src : (src.findings || null);
+            if (type === 'ECG' && gen && gen.imageReport) text = gen.imageReport;
+            if (!text && type === 'Urine') text = Object.keys(src).map(x => `${x}: ${src[x]}`).join(', ');
+            if (!text && type === 'POCUS') text = ['heart', 'lungs', 'abdo', 'aorta', 'ivc'].filter(x => src[x]).map(x => src[x]).join(' ');
+            if (!text && type === 'VBG') text = `pH ${src.pH}, pCO2 ${src.pCO2}, lactate ${src.Lac}, K ${src.K}, glucose ${src.Glu}`;
+            let image = (src && src.image) || null;
+            const imgFits = image && (type !== 'ECG' || (INV && INV.ecgImageFits(image, state.rhythm)));
+            return { text, image: imgFits ? image : null, ecgImageNotFitting: !!image && !imgFits };
+        };
         const dismissInv = () => setInvModal(null);
         const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
 
@@ -1813,12 +1832,56 @@
                              <div className="space-y-4 overflow-y-auto flex-grow pr-2">
                                  <div className="grid grid-cols-2 gap-2">
                                      <Button onClick={()=>sendInv(invModal, "Normal / Unremarkable")} variant="secondary">Normal</Button>
-                                     <Button onClick={()=>sendScenarioDefault(invModal)} variant="secondary" title="Sends this scenario's own authored finding.">Scenario Finding</Button>
+                                     <Button onClick={()=>sendScenarioDefault(invModal)} variant="secondary" title="Sends this scenario's own result (shown below).">Scenario Finding</Button>
                                  </div>
+                                 {(() => {
+                                     const pv = scenarioResultPreview(invModal);
+                                     if (!pv || (!pv.text && !pv.image)) return null;
+                                     const img = pv.image && INV ? INV.imageFor(pv.image) : null;
+                                     return (
+                                         <div className="bg-slate-900 border border-slate-700 rounded p-2 flex gap-2 items-start" data-testid="inv-scenario-preview">
+                                             {img && <img src={img.src} alt="" className="w-20 h-16 object-cover rounded flex-none bg-white" />}
+                                             <div className="text-[11px] text-slate-300 leading-snug"><b className="text-slate-100">Scenario finding:</b> {pv.text || 'Image only.'}{pv.ecgImageNotFitting && <span className="block text-amber-300 mt-0.5">The real ECG for this scenario no longer matches the current rhythm, so the monitor will draw the 12-lead from the live rhythm instead.</span>}</div>
+                                         </div>
+                                     );
+                                 })()}
+                                 {INV && INV.FINDINGS[invModal] && (
+                                     <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                         <input type="checkbox" checked={invWithReport} onChange={e => setInvWithReport(e.target.checked)} />
+                                         Show the written report with the image (untick to show the image alone, for the team to interpret)
+                                     </label>
+                                 )}
+                                 {INV && INV.FINDINGS[invModal] && (
+                                     <div>
+                                        <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Results with a real image</label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="inv-library">
+                                            {INV.FINDINGS[invModal].filter(f => f.image).map(f => {
+                                                const img = INV.imageFor(f.image);
+                                                return (
+                                                    <button key={f.id} type="button" onClick={() => sendInv(invModal, f.report, f.image)} title={f.report}
+                                                            className="text-left flex gap-2 items-center p-1.5 bg-slate-700 hover:bg-slate-600 rounded border border-slate-600">
+                                                        <img src={img.src} alt="" className="w-14 h-11 object-cover rounded flex-none bg-white" loading="lazy" />
+                                                        <span className="text-xs text-slate-100 leading-tight">{f.label}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        {INV.FINDINGS[invModal].some(f => !f.image) && (
+                                            <>
+                                                <label className="text-xs text-slate-400 font-bold uppercase mt-3 mb-2 block">More results (written report only)</label>
+                                                <div className="grid grid-cols-1 gap-1.5">
+                                                    {INV.FINDINGS[invModal].filter(f => !f.image).map(f => (
+                                                        <button key={f.id} type="button" onClick={() => sendInv(invModal, f.report)} title={f.report} className="text-left px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs text-slate-200 rounded border border-slate-600">{f.label}</button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                     </div>
+                                 )}
                                  
                                  {PREDEFINED_FINDINGS[invModal] && (
                                      <div>
-                                        <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Quick Select Findings</label>
+                                        <label className="text-xs text-slate-400 font-bold uppercase mb-2 block">Other quick results (text)</label>
                                         <div className="grid grid-cols-1 gap-2">
                                             {PREDEFINED_FINDINGS[invModal].map(finding => (
                                                 <button key={finding} onClick={()=>sendInv(invModal, finding)} className="text-left px-3 py-2 bg-slate-700 hover:bg-slate-600 text-sm text-slate-200 rounded border border-slate-600 transition-colors">{finding}</button>

@@ -130,6 +130,10 @@ const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
 const minifyFile = (file) => {
     const rel = path.relative(OUT, file).split(path.sep).join('/');
     const r = esbuild.transformSync(fs.readFileSync(file, 'utf8'), { minify: true, sourcemap: 'external', sourcefile: rel, target: 'es2017' });
+    // Lowering newer syntax (object spread, mainly) in a plain script makes esbuild add helper
+    // functions as top-level vars with one- or two-letter names. Those are globals shared with every
+    // other script, and they overwrote the Firebase SDK's own (the database then failed to start).
+    if (/^var [\w$]+=Object\.define/.test(r.code)) fail(`${rel}: the minifier added global helper functions. Use Object.assign instead of object spread ({ ...x }) in this plain script, or load it as text/babel.`);
     fs.writeFileSync(file, r.code + `//# sourceMappingURL=${path.basename(file)}.map\n`);
     fs.writeFileSync(file + '.map', r.map);
 };
@@ -180,7 +184,9 @@ const stamp = (swRel, files) => {
 };
 // The app: every file except source maps, the defib tablet's own folder and the workers.
 // The guide PDFs are left out: they are large and only wanted on demand (the guide pages are kept).
-const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.endsWith('.pdf') && !r.startsWith('defib/') && !['sw.js', '_redirects'].includes(r));
+// So are the investigation images (several MB together): the room monitor fetches the loaded
+// scenario's images when the scenario starts, and the worker stores each one as it is fetched.
+const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.endsWith('.pdf') && !r.startsWith('defib/') && !r.startsWith('images/investigations/') && !['sw.js', '_redirects'].includes(r));
 stamp('sw.js', ['./', ...appFiles]);
 // The defib tablet: its folder plus every file its page loads from the rest of the site.
 const defibHtml = fs.readFileSync(path.join(OUT, 'defib', 'index.html'), 'utf8');

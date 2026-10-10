@@ -1066,7 +1066,10 @@
             stateRef, triggerArrest, triggerROSC
         });
 
-        const revealInvestigation = (type, customText = null) => {
+        // `opts.image` is an image key from data/investigations.js; `opts.hideReport` shows the image
+        // without its written report (the team interprets it). With no custom text, the monitor
+        // shows the scenario's own result and its image.
+        const revealInvestigation = (type, customText = null, opts = {}) => {
             dispatch({ type: 'SET_LOADING_INVESTIGATION', payload: type });
             setTimeout(() => {
                 const cur = stateRef.current;
@@ -1090,7 +1093,7 @@
                 }
 
                 dispatch({ type: 'REVEAL_INVESTIGATION', payload: type });
-                dispatch({ type: 'TRIGGER_POPUP', payload: { type, customText: finalCustomText } });
+                dispatch({ type: 'TRIGGER_POPUP', payload: { type, customText: finalCustomText, image: (opts && opts.image) || null, hideReport: !!(opts && opts.hideReport) } });
                 addLogEntry(`${type} Result Available`, 'success');
             }, 100);
         };
