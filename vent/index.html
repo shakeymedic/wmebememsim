@@ -884,7 +884,9 @@ function effortHappens() {
   const pr = P.pr, m = V.mode;
   if (P.apnoea || V.ambient || pr.sedated || P.passive) return;
   let effort = pr.effort * (1 - 0.5 * P.fatigue) * (P.deteriorate ? 0.7 : 1);
-  if (pr.ipeep && V.set.peep < 4) effort *= 0.6;
+  /* intrinsic PEEP in COPD (about 6 cmH2O here) has to be overcome before any flow reaches the trigger:
+     set PEEP / EPAP counterbalances it, so too little EPAP means missed triggers */
+  if (pr.ipeep) effort -= 1.5 * Math.max(0, 6 - V.set.peep);
   if (pr.needEpap && !isInvasive(m) && V.set.peep < pr.needEpap && Math.random() < 0.4) effort *= 0.35;
   if (P.disc) return; // mask off: patient breathes room air; ventilator sees only leak
   if (m === 'APRV' || (m === 'DuoPAP' && B.phase === 'insp' && B.br && B.br.kind !== 'spont')) { startOverlay(effort); return; }
@@ -931,10 +933,16 @@ function engineStep(dt) {
     else if (m === 'APRV' || m === 'DuoPAP') { if (B.now - B.lastMand >= mt.cycle) startBreath('mand'); }
     else if (isSIMV()) {
       /* each SIMV interval starts with Tmand: a trigger then gives a mandatory breath; without one, a mandatory breath at the end of Tmand.
-         The length of Tmand is not given in the manual: a quarter of the interval is the trainer's choice. */
+         The length of Tmand is not given in the manual. The trainer used a quarter of the interval, which put the total rate well
+         above the patient's own; most of the interval (90%) keeps a patient breathing faster than the set rate at their own rate. */
       if (B.now - B.simvC0 >= 2 * mt.cycle) { B.simvC0 = B.now; B.simvDue = true; }
       else if (B.now - B.simvC0 >= mt.cycle) { B.simvC0 += mt.cycle; B.simvDue = true; }
-      if (B.simvDue && B.now - B.simvC0 >= mt.cycle * 0.25) startBreath('mand');
+      if (B.simvDue && B.now - B.simvC0 >= mt.cycle * 0.9) {
+        startBreath('mand');
+        /* the patient's next breath waits until this machine breath is over and some way out (a breath
+           started straight after it would push the total rate above the patient's own) */
+        if (P.rr > 0 && B.br) B.nextEffort = Math.max(B.nextEffort, B.now + B.br.Ti + 0.4 * 60 / P.rr);
+      }
     }
     else if (mt && since >= mt.cycle) startBreath('mand');
     /* apnea: no breath within the Apnea time in the modes that have Apnea backup */
