@@ -178,3 +178,13 @@ test('one screen: the monitor switches between the obs, the defib and the ventil
   await expect(page.getByTestId('connection-badge')).toContainText(/patient monitor/i);
   expect(monitorErrors).toEqual([]);
 });
+
+test('Defib Sim\'s Open defib opens the defib in its own window', async ({ page, context }) => {
+  const code = await openController(page);
+  await page.getByRole('button', { name: 'Defib Sim', exact: true }).click();
+  await page.getByRole('button', { name: /^Start Defib Sim/ }).click();
+  const [win] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'Open defib' }).click()]);
+  await win.waitForLoadState();
+  expect(win.url()).toMatch(new RegExp(`/defib/index\\.html\\?session=${code}$`));
+  expect(await win.evaluate(() => window.name)).toBe('emsim-screen-defib');
+});
