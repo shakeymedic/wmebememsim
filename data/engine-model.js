@@ -181,6 +181,8 @@
         lastConversion: null,           // last CONVERSION (from !== to) — drives the persistent strip
         // Which remote devices are connected and what each is displaying.
         remotePresence: { clients: [], updatedAt: null },
+        // On a patient screen only: its role and what it is showing (SET_LOCAL_SCREEN). Never synced.
+        localScreen: null,
         // `isOffline` is kept for existing UI behaviour; syncStatus carries the actionable
         // reason that the controller and second-screen monitor display to the user.
         syncStatus: { state: 'connecting', message: null, lastWriteAt: null }

@@ -2337,7 +2337,7 @@ function fbStart(code) {
     publishMirror();
   }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
   const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
-  const write = () => pres.update({role:'vent', display:'ventilator', ua:(navigator.userAgent || '').slice(0, 120), ts:Date.now()}).catch(() => {});
+  const write = () => pres.update({role:EMBEDDED ? 'monitor-vent' : 'vent', display:'ventilator', ua:(navigator.userAgent || '').slice(0, 120), ts:Date.now()}).catch(() => {});
   pres.onDisconnect().remove().catch(() => {});
   fb.db.ref('sessions/' + code + '/ventState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
   write();
@@ -2486,8 +2486,18 @@ function frame() {
   while (dt > 0) { const s = Math.min(0.05, dt); advance(s); dt -= s; }
 }
 function rafLoop() { frame(); if (!document.hidden) drawWaves(); requestAnimationFrame(rafLoop); }
-/* a hidden tab or an iframe the monitor has put away gets few or no animation frames */
-setInterval(frame, 250);
+/* a hidden tab or an iframe the monitor has put away gets few or no animation frames, and a tab
+   the browser has put in the background gets its timers slowed to as little as once a minute. A
+   worker's timer is not slowed that way, so it drives the clock; a plain timer if workers fail. */
+(function startTicker() {
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(function () { postMessage(0); }, 250);'], {type:'text/javascript'})));
+    w.onmessage = frame;
+    w.onerror = () => { w.terminate(); setInterval(frame, 250); };
+    return;
+  } catch (e) {}
+  setInterval(frame, 250);
+})();
 window.addEventListener('resize', fitDevice);
 
 /* ---------- start-up ---------- */

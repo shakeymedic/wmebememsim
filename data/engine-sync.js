@@ -395,8 +395,11 @@
         if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10);
 
         // --- monitor side: announce ourselves and what we are showing.
+        const SHOWS = { defib: 'defib', vent: 'ventilator' };
+        const localScreen = state.localScreen || null;
+        const presenceRole = localScreen && localScreen.role === 'devices' ? 'devices' : 'monitor';
         const presenceDisplay = isMonitorMode
-            ? (state.defibPanelOpen ? 'defib' : state.ventPanelOpen ? 'ventilator' : (state.arrestPanelOpen ? 'arrest view' : 'patient monitor'))
+            ? (localScreen && SHOWS[localScreen.shows]) || (state.arrestPanelOpen ? 'arrest view' : 'patient monitor')
             : null;
         useEffect(() => {
             const db = window.db;
@@ -404,7 +407,7 @@
             const ref = db.ref(`sessions/${sessionID}/presence/${presenceIdRef.current}`);
             const write = () => {
                 ref.update({
-                    role: 'monitor',
+                    role: presenceRole,
                     display: presenceDisplay,
                     ua: (navigator.userAgent || '').slice(0, 120),
                     ts: Date.now()
@@ -416,7 +419,7 @@
             write();
             const hb = setInterval(write, 10000);
             return () => { clearInterval(hb); ref.remove().catch(() => {}); };
-        }, [isMonitorMode, sessionID, presenceDisplay]);
+        }, [isMonitorMode, sessionID, presenceDisplay, presenceRole]);
 
         // --- controller side: reduce the presence children, expiring stale heartbeats.
         useEffect(() => {

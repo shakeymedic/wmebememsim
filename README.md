@@ -66,8 +66,8 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
 ## The instructor screen
 
 - **Top bar:** Back, Finish, START/PAUSE, one connection badge (live sync plus which screens are
-  linked), the **Simple / Full** switch, and the clock. **Screens ▾** holds Launch room monitor, Join by QR code and Open defib
-  tablet; **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
+  linked), the **Simple / Full** switch, and the clock. **Screens ▾** holds Join by QR code and an Open item for each patient
+  screen in this device's set-up (each in its own window); **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
   and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted.
 - **Left column, in expandable sections** that remember whether they are open on each device: Monitoring
   & access (closed, with a one-line summary and "Attach standard" on its header), the monitor strip
@@ -133,17 +133,32 @@ the defib tablet draws it under its ECG. `tests/specs/capnography.spec.js` check
 
 ## Start screen: how are you running the sim?
 
-The first card on the setup screen (`SessionSetupCard` in `data/screens/setup.js`) asks how the sim is
-being run, and remembers the answer on that device (`localStorage` key `wmebem_setup_mode`):
+The first card on the setup screen (`SessionSetupCard` in `data/screens/setup.js`) asks how many
+patient screens there are besides the controller (1, 2 or 3) and where they are (plugged into this
+computer, or separate devices). The answer is remembered on that device (`localStorage` key
+`wmebem_screens`; the earlier `wmebem_setup_mode` is read once and carried over). Roles and layouts
+are in `data/simscreens.js`:
 
-- **One computer, two screens:** steps to extend the display, and a button that opens the room monitor
-  in its own window (`target="emsim-room-monitor"`) to drag onto the second screen.
-- **Two devices: run the sim here:** the session code, the site address and a QR code for the
-  monitor device.
-- **Two devices: this is the room monitor:** goes to the code entry screen, which has a way back.
+| Screens | Screen 1 | Screen 2 | Screen 3 |
+|---|---|---|---|
+| 1 | Monitor, defib and ventilator (`screen=all`) | | |
+| 2 | Patient monitor (`screen=monitor`) | Defib and ventilator (`screen=devices`) | |
+| 3 | Patient monitor | Defibrillator (`defib/`) | Ventilator (`vent/`) |
 
-The session code, Join another session, New code and Change set-up are always on the card.
-`tests/specs/setup-chooser.spec.js` covers it.
+- **Plugged into this computer:** each screen has an Open button that opens it in its own window
+  (`emsim-screen-<role>`), to drag onto that screen. Windows, not tabs: the browser slows hidden tabs.
+- **Separate devices:** each screen has its QR code. On the device, **This device is a patient
+  screen** asks for the code and what the screen shows.
+- The role is in the screen's own address (`?mode=monitor&session=CODE&screen=...`), never in the
+  session, so a reload keeps it.
+- The facilitator's **Defib** and **Ventilator** toggles bring a device into the room, independently.
+  A screen that can show it brings it to the front; the candidate switches with the buttons at the
+  bottom left. A device stays loaded while hidden (the ventilator keeps ventilating). A monitor-only
+  screen never shows them. The defib and ventilator inside a screen report presence as
+  `monitor-defib` / `monitor-vent`, so the badge counts screens, not pages.
+- The ventilator's clock runs from a worker timer, so a ventilator in a background tab keeps time.
+
+`tests/specs/screens.spec.js` and `tests/specs/setup-chooser.spec.js` cover it.
 
 ## Investigation results
 

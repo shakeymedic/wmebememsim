@@ -143,8 +143,12 @@ test('Screens and Tools menus hold the tools that used to crowd the top bar', as
   const code = await openController(page);
   await startScenario(page, 'Adult Medical', 'Anaphylaxis (Adult)');
   await page.getByRole('button', { name: /^Screens/ }).click();
-  await expect(page.getByRole('menuitem', { name: 'Launch room monitor' })).toHaveAttribute('href', `?mode=monitor&session=${code}`);
-  await expect(page.getByRole('menuitem', { name: 'Open defib tablet' })).toHaveAttribute('href', `defib/index.html?session=${code}`);
+  await expect(page.getByRole('menuitem', { name: 'Join by QR code' })).toBeVisible();
+  // One patient screen by default: it opens in its own window
+  const [win] = await Promise.all([context.waitForEvent('page'), page.getByRole('menuitem', { name: /^Open the patient screen/ }).click()]);
+  await win.waitForLoadState();
+  expect(win.url()).toMatch(new RegExp(`\\?mode=monitor&session=${code}$`));
+  await page.bringToFront();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
   await page.getByRole('button', { name: /^Tools/ }).click();

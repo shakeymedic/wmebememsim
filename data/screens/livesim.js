@@ -273,6 +273,8 @@
         const rhythmEvent = state.rhythmEvent;
         const lastConversion = state.lastConversion;
         const remoteClients = (state.remotePresence && state.remotePresence.clients) || [];
+        // The patient screens this device was set up for on the start screen (data/simscreens.js).
+        const screenLayout = window.SimScreens.LAYOUTS[(window.SimScreens.readSetup() || { count: 1 }).count];
         // Deterioration mode + live drug timing.
         const deteriorationMode = state.deteriorationMode || 'manual';
         const detInfo = sim.describeDeterioration ? sim.describeDeterioration() : { declared: false, type: null, rate: 0 };
@@ -984,15 +986,18 @@
                             (room monitor, defib tablet) are linked to it right now. Presence comes
                             from Firebase onDisconnect() plus a 10 s heartbeat (engine). */}
                         {(() => {
-                            const n = remoteClients.length;
-                            const shows = Array.from(new Set(remoteClients.map(c => c.display || 'patient monitor')));
+                            // A defib or ventilator loaded inside a patient screen reports itself as well
+                            // (role monitor-defib / monitor-vent); count the screens, not the pages.
+                            const screens = remoteClients.filter(c => !/^monitor-/.test(String(c.role || '')));
+                            const n = screens.length;
+                            const shows = Array.from(new Set(screens.map(c => c.display || 'patient monitor')));
                             const linked = n === 0 ? 'no screens linked' : (n === 1 ? shows[0] : `${n} screens linked`);
                             const label = syncProblem ? 'Sync error' : (syncStatus.state === 'connected' ? `Live \u00b7 ${linked}` : 'Syncing');
                             const tip = [
                                 syncStatus.message || (syncStatus.state === 'connected' ? 'Live session sync is active.' : 'Connecting to the live session.'),
                                 n === 0
-                                    ? 'No room monitor or defib tablet is linked. Use Screens \u2192 Launch Monitor, or Join to show the QR codes.'
-                                    : remoteClients.map(c => `${c.display || 'patient monitor'} (last seen ${Math.max(0, Math.round((Date.now() - Number(c.ts)) / 1000))}s ago)`).join('\n')
+                                    ? 'No patient screen is linked. Use Screens to open one, or Join by QR code.'
+                                    : screens.map(c => `${c.display || 'patient monitor'} (last seen ${Math.max(0, Math.round((Date.now() - Number(c.ts)) / 1000))}s ago)`).join('\n')
                             ].join('\n');
                             const tone = syncProblem ? 'border-red-500 bg-red-950/60 text-red-300'
                                 : syncStatus.state !== 'connected' ? 'border-amber-600 bg-amber-950/40 text-amber-300'
@@ -1021,14 +1026,15 @@
                             </Button>
                         )}
                         <ViewModeToggle />
-                        <MenuButton label="Screens" icon="monitor" ariaLabel="Screens: launch the room monitor, join by QR code, open the defib or the ventilator"
+                        <MenuButton label="Screens" icon="monitor" ariaLabel="Screens: join a patient screen by QR code, or open one in a new window on this computer"
                             className="text-sky-300 border-sky-500/50"
                             items={[
-                                { label: 'Launch room monitor', icon: 'monitor', href: `?mode=monitor&session=${sessionID}` },
-                                { label: 'Join by QR code', icon: 'qr-code', onClick: () => setShowJoin(true) },
-                                !quickSim && { label: 'Open defib tablet', icon: 'zap', href: `defib/index.html?session=${sessionID}` },
-                                { label: 'Open ventilator tablet', icon: 'wind', href: `vent/index.html?session=${sessionID}` }
-                            ]} />
+                                { label: 'Join by QR code', icon: 'qr-code', onClick: () => setShowJoin(true) }
+                            ].concat(screenLayout.map((role, i) => ({
+                                label: `Open ${screenLayout.length > 1 ? `screen ${i + 1}: ` : 'the patient screen: '}${window.SimScreens.ROLES[role].title.toLowerCase()}`,
+                                icon: window.SimScreens.ROLES[role].icon,
+                                onClick: () => { if (!window.SimScreens.openWindow(role, sessionID)) window.alert('The browser blocked the new window. Allow pop-ups for this site, or use Join by QR code.'); }
+                            })))} />
                         <MenuButton label="Tools" icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
                             items={[
                                 { label: 'Drug calculator', icon: 'pill', hint: 'D', onClick: () => setShowDrugCalc(true) },
@@ -1544,7 +1550,7 @@
                                 <Button variant="outline" onClick={() => sim.dispatch({ type: 'SET_VENT_PANEL', payload: !ventPanelOpen })}
                                         className={`w-full ${ventPanelOpen ? 'bg-cyan-900/30 border-cyan-500 text-cyan-300' : 'text-cyan-400 border-cyan-500/50'}`}
                                         title="Shows the HAMILTON-T1 on the room monitor (it replaces the defib there). A ventilator tablet joined by QR code works whether this is on or off.">
-                                    <Lucide icon="wind" className="w-4 h-4"/> {ventPanelOpen ? 'Take the ventilator off the room monitor' : 'Show the ventilator on the room monitor'}
+                                    <Lucide icon="wind" className="w-4 h-4"/> {ventPanelOpen ? 'Take the ventilator off the patient screens' : 'Show the ventilator on the patient screens'}
                                 </Button>
                                 <label className="flex items-center justify-between gap-2">
                                     <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Lungs</span>
@@ -2227,12 +2233,14 @@
 
                 {showJoin && (() => {
                     // Absolute URLs, so a camera app opens exactly this session on this deployment.
-                    const base = window.location.origin + window.location.pathname;
-                    const links = [
-                        { key: 'monitor', title: 'Room monitor', url: `${base}?mode=monitor&session=${sessionID}`, hint: 'The patient monitor the team watches.' },
-                        { key: 'defib', title: 'Defibrillator', url: new URL(`defib/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'Standalone defib on a second tablet.' },
-                        { key: 'vent', title: 'Ventilator', url: new URL(`vent/index.html?session=${sessionID}`, window.location.href).toString(), hint: 'The HAMILTON-T1 on its own tablet.' }
-                    ];
+                    // Your set-up's screens first, then every other kind of screen.
+                    const S = window.SimScreens;
+                    const order = screenLayout.concat(['all', 'monitor', 'devices', 'defib', 'vent'].filter(r => !screenLayout.includes(r)));
+                    const links = order.map((role, i) => ({
+                        key: role, mine: i < screenLayout.length,
+                        title: (i < screenLayout.length && screenLayout.length > 1 ? `Screen ${i + 1}: ` : '') + S.ROLES[role].title,
+                        url: S.urlFor(role, sessionID), hint: S.ROLES[role].text
+                    }));
                     const svgFor = (url) => {
                         try { const q = window.qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" '); }
                         catch (e) { return null; }
@@ -2244,19 +2252,22 @@
                                     <h3 className="text-lg font-bold text-white uppercase tracking-wider">Join session</h3>
                                     <button aria-label="Close join codes" onClick={() => setShowJoin(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
                                 </div>
-                                <p className="text-xs text-slate-400 mb-4">Point the tablet's camera at a code, or type the session code <b className="font-mono text-white text-base tracking-widest">{sessionID}</b> on the tablet.</p>
+                                <p className="text-xs text-slate-400 mb-4">Point each device's camera at its code, or type the session code <b className="font-mono text-white text-base tracking-widest">{sessionID}</b> on the tablet.</p>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {links.map(l => {
+                                    {links.map((l, i) => {
                                         const svg = svgFor(l.url);
                                         return (
-                                            <div key={l.key} className="bg-slate-900 border border-slate-700 rounded p-3 flex flex-col items-center gap-2">
+                                            <React.Fragment key={l.key}>
+                                            {i === screenLayout.length && <div className="sm:col-span-2 text-xs font-bold uppercase tracking-wider text-slate-400 pt-2 border-t border-slate-700">Other screens</div>}
+                                            <div data-testid={`join-qr-${l.key}`} className={`bg-slate-900 border rounded p-3 flex flex-col items-center gap-2 ${l.mine ? 'border-sky-700' : 'border-slate-700'}`}>
                                                 <div className="text-sm font-bold text-sky-300 uppercase tracking-wider">{l.title}</div>
                                                 {svg
-                                                    ? <div className="bg-white p-2 rounded w-48 h-48" dangerouslySetInnerHTML={{ __html: svg }} />
+                                                    ? <div className={`bg-white p-2 rounded ${l.mine ? 'w-48 h-48' : 'w-36 h-36'}`} dangerouslySetInnerHTML={{ __html: svg }} />
                                                     : <div className="w-48 h-48 flex items-center justify-center text-xs text-slate-400 text-center">QR code unavailable — use the link below.</div>}
                                                 <div className="text-[10px] text-slate-400 text-center">{l.hint}</div>
                                                 <div className="text-[10px] text-slate-400 font-mono break-all text-center select-all">{l.url}</div>
                                             </div>
+                                            </React.Fragment>
                                         );
                                     })}
                                 </div>

@@ -610,8 +610,12 @@
                 return { ...state, noise: n };
             }
             // The defib and the ventilator share the room monitor's screen: opening one closes the other.
-            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload, ventPanelOpen: action.payload ? false : !!state.ventPanelOpen };
-            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload, defibPanelOpen: action.payload ? false : !!state.defibPanelOpen };
+            // The defib and the ventilator are brought into the room independently; each patient
+            // screen decides what it shows (data/simscreens.js).
+            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
+            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload };
+            // A patient screen's own role and what it is showing (never synced; read by presence).
+            case 'SET_LOCAL_SCREEN': return { ...state, localScreen: action.payload || null };
             // The ventilator's lungs: a known profile, whether the patient breathes for themselves
             // (true / false; null = as the profile says), the facilitator's lung adjustments
             // (lung: {c, r, m, o, e}; a key set to null goes back to the profile's value; lung: null
