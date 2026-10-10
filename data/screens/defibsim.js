@@ -165,7 +165,7 @@
                             <Lucide icon="zap" className="w-3 h-3" /> {defibClients.length ? (defibClients.length === 1 ? 'Defib linked' : `${defibClients.length} defibs`) : 'No defib tablet'}
                         </div>
                         <Button ariaLabel="Show the QR code to open the defib" variant="outline" onClick={() => setShowJoin(true)} className="h-8 px-2 text-sky-300 border-sky-500/50"><Lucide icon="qr-code" className="w-4 h-4 mr-1"/> Join</Button>
-                        <Button variant="outline" href={`defib/index.html?session=${sessionID}`} target="_blank" className="h-8 px-2 text-amber-400 border-amber-500/50"><Lucide icon="external-link" className="w-4 h-4 mr-1"/> Open defib</Button>
+                        <Button variant="outline" onClick={() => { if (!window.SimScreens.openWindow('defib', sessionID)) window.open(`defib/index.html?session=${sessionID}`, '_blank'); }} className="h-8 px-2 text-amber-400 border-amber-500/50"><Lucide icon="external-link" className="w-4 h-4 mr-1"/> Open defib</Button>
                         <div className="font-mono text-2xl font-bold text-white ml-1">{fmt(state.time)}</div>
                     </div>
                 </div>

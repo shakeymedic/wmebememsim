@@ -66,7 +66,7 @@ test('the controller chooses the lungs: picked from the scenario, then changed b
   expect(errors).toEqual([]);
 });
 
-test('on the room monitor: the Ventilator toggle shows it, the Defib replaces it, and it carries on where it left off', async ({ page, context }) => {
+test('on the room monitor: the Ventilator toggle shows it, the learner can flip to the obs, and it carries on where it left off', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
   const monitor = await context.newPage();
@@ -75,7 +75,7 @@ test('on the room monitor: the Ventilator toggle shows it, the Defib replaces it
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
 
   await expandSection(page, 'vent');
-  await page.getByRole('button', { name: 'Show the ventilator on the room monitor' }).click();
+  await page.getByRole('button', { name: 'Show the ventilator on the patient screens' }).click();
   await expect(monitor.getByTestId('monitor-vent')).toBeVisible();
   await expect.poll(async () => Object.values(await session(page, code, '/presence') || {}).map(p => p.display)).toEqual(expect.arrayContaining(['ventilator']));
   const dev = monitor.frameLocator('iframe[title="Ventilator"]');
@@ -85,22 +85,20 @@ test('on the room monitor: the Ventilator toggle shows it, the Defib replaces it
   await expect.poll(() => logHas(page, /^Ventilator: Ventilation started .*\(ventilator on the monitor\)/)).toBe(true);
 
   // The learner can look at the obs without stopping the ventilator
-  await monitor.getByTestId('monitor-vent-flip').click();
+  const sw = monitor.getByTestId('screen-switcher');
+  await sw.getByRole('button', { name: 'Monitor' }).click();
   await expect(monitor.getByTestId('monitor-vent')).toBeHidden();
-  await monitor.getByTestId('monitor-vent-flip').click();
+  await sw.getByRole('button', { name: 'Ventilator' }).click();
   await expect(monitor.getByTestId('monitor-vent')).toBeVisible();
 
-  // One screen: the defib takes over, and the ventilator comes back as it was
+  // Taken off the screen and brought back, the ventilator comes back as it was
   await page.waitForTimeout(3500);                                          // its settings are saved every 3 s
-  await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_DEFIB_PANEL', payload: true }));
-  await expect(monitor.getByTestId('monitor-defib')).toBeVisible();
+  await page.getByRole('button', { name: 'Take the ventilator off the patient screens' }).click();
   await expect(monitor.getByTestId('monitor-vent')).toHaveCount(0);
-  expect(await page.evaluate(() => window.__simEngine.state.ventPanelOpen)).toBe(false);
-  await page.getByRole('button', { name: 'Show the ventilator on the room monitor' }).click();
-  await expect(monitor.getByTestId('monitor-defib')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Show the ventilator on the patient screens' }).click();
   const dev2 = monitor.frameLocator('iframe[title="Ventilator"]');
   await expect(dev2.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
-  await expect.poll(() => monitor.frames().find(f => /vent\/index\.html/.test(f.url())).evaluate(() => window.__vent.ventStateNow().state)).toBe('ventilating');
+  await expect.poll(async () => { const f = monitor.frames().find(x => /vent\/index\.html/.test(x.url())); return f ? f.evaluate(() => window.__vent.ventStateNow().state) : null; }).toBe('ventilating');
   expect(monitorErrors).toEqual([]);
 });
 

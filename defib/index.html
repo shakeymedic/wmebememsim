@@ -353,7 +353,7 @@
                 applyPatient(fromSession(v));
             }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
             const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
-            const write = () => pres.update({ role: 'defib', display: 'defib', ua: (navigator.userAgent || '').slice(0, 120), ts: Date.now() }).catch(() => {});
+            const write = () => pres.update({ role: EMBEDDED ? 'monitor-defib' : 'defib', display: 'defib', ua: (navigator.userAgent || '').slice(0, 120), ts: Date.now() }).catch(() => {});
             pres.onDisconnect().remove().catch(() => {});
             fb.db.ref('sessions/' + code + '/deviceState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
             write();

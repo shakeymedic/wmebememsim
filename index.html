@@ -123,6 +123,7 @@
     <!-- The ventilator's lungs, shared with vent/index.html. -->
     <script src="data/ventprofiles.js"></script>
     <script src="data/ventsim.js"></script>
+    <script src="data/simscreens.js"></script>
     <!-- What a ventilating HAMILTON-T1 does to the patient (used by the engine). -->
     <script src="data/engine-vent.js"></script>
     <script src="data/investigations.js"></script>
@@ -210,6 +211,8 @@
             const initialSession = rawInitialSession ? rawInitialSession.trim().toUpperCase() : null;
 
             const [view, setView] = useState(initialMode);
+            // A patient screen's role (data/simscreens.js); it lives in the address, so a reload keeps it.
+            const [screen, setScreen] = useState(() => urlParams.get('screen') || 'all');
             // Controller code must survive reloads and back-navigation, otherwise any monitor already
             // paired with it is orphaned. Resolve URL -> localStorage -> mint new.
             // The CONTROLLER always runs on a current-format code (six characters, no look-alikes).
@@ -237,12 +240,12 @@
 
             // 1. Monitor View (Clean, Full Screen) — no controller engine is created at all.
             if (view === 'monitor') {
-                return <ErrorBoundary><MonitorContainer sessionID={sessionID} /></ErrorBoundary>;
+                return <ErrorBoundary><MonitorContainer sessionID={sessionID} screen={screen} /></ErrorBoundary>;
             }
-            return <ControllerApp view={view} setView={setView} sessionID={sessionID} setSessionID={setSessionID} />;
+            return <ControllerApp view={view} setView={setView} sessionID={sessionID} setSessionID={setSessionID} setScreen={setScreen} />;
         };
 
-        const ControllerApp = ({ view, setView, sessionID, setSessionID }) => {
+        const ControllerApp = ({ view, setView, sessionID, setSessionID, setScreen }) => {
             const { useState, useEffect } = React;
             const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
             const [generatedScenario, setGeneratedScenario] = useState(null);
@@ -323,8 +326,16 @@
                 }
             };
 
-            const handleJoin = (code) => {
-                setSessionID(String(code || '').trim().toUpperCase());
+            // A patient screen joins: the monitor page for the monitor roles (the role goes into the
+            // address so a reload keeps it), the device pages for a defib or ventilator screen.
+            const handleJoin = (code, role) => {
+                const c = String(code || '').trim().toUpperCase();
+                const S = window.SimScreens;
+                const r = S.roleOf(role);
+                if (!S.MONITOR_PAGE_ROLES.includes(r)) { window.location.assign(S.urlFor(r, c)); return; }
+                try { window.history.replaceState({}, '', S.urlFor(r, c)); } catch (e) {}
+                setScreen(r);
+                setSessionID(c);
                 setView('monitor');
             };
 

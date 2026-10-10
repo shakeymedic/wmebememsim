@@ -35,43 +35,131 @@
     // node) NOT to sessions/<CODE>/command, which is a single set() slot already owned by NIBP.
     // The controller converges them all on applyShockOutcome / deliverShock.
     // =========================================================================================
-    // The facilitator's "Defib" toggle opens the learner's defibrillator on the room monitor. It is
-    // the same device page a tablet uses (defib/index.html), embedded, so there is one
-    // defibrillator to maintain and the monitor gets every feature the tablet has. It links to
-    // this session and shows its own trace and obs.
-    const MonitorDefib = ({ sessionID }) => (
-        <div className="absolute inset-0 z-[110] bg-black flex flex-col animate-fadeIn" data-testid="monitor-defib">
-            <iframe title="Defibrillator" src={`defib/index.html?session=${encodeURIComponent(sessionID || '')}&embedded=1`}
-                    className="w-full h-full border-0 bg-black" allow="screen-wake-lock; autoplay; fullscreen" />
-        </div>
-    );
-
-    // The facilitator's "Ventilator" toggle puts the HAMILTON-T1 (vent/index.html, the same page a
-    // tablet would use) on the room monitor. Opening the defib closes it and vice versa (one
-    // screen); closing it unmounts the page, which keeps its settings in this browser and picks up
-    // where it left off when it is opened again. The learner can flip to the obs and back without
-    // stopping the ventilator: the page stays loaded (and keeps ventilating and alarming) underneath.
-    const MonitorVent = ({ sessionID }) => {
-        const [showObs, setShowObs] = useState(false);
+    // =========================================================================================
+    // THE DEFIB AND THE VENTILATOR ON A PATIENT SCREEN. Each is the same device page a tablet
+    // uses (defib/index.html, vent/index.html), embedded, so there is one of each to maintain and
+    // the screen gets every feature the tablet has.
+    //
+    // A device that is in the room stays LOADED while the screen switches away from it: it is only
+    // hidden, so the ventilator keeps ventilating and alarming, the defib keeps its charge, and
+    // switching back is instant. The facilitator brings a device in (Defib / Ventilator on the
+    // controller); a screen that can show it brings it to the front, and the candidate switches
+    // with the buttons at the bottom left. Which screen shows what is set per screen
+    // (window.SimScreens: all-in-one, monitor only, or defib and ventilator).
+    // =========================================================================================
+    const DEVICE_PAGES = {
+        defib: { title: 'Defibrillator', src: 'defib/index.html', testId: 'monitor-defib' },
+        vent: { title: 'Ventilator', src: 'vent/index.html', testId: 'monitor-vent' }
+    };
+    const DeviceLayer = ({ kind, sessionID, shown }) => {
+        const d = DEVICE_PAGES[kind];
         return (
-            <>
-                <div className={`absolute inset-0 z-[110] bg-black flex flex-col ${showObs ? 'invisible pointer-events-none' : 'animate-fadeIn'}`} data-testid="monitor-vent" aria-hidden={showObs}>
-                    <iframe title="Ventilator" src={`vent/index.html?session=${encodeURIComponent(sessionID || '')}&embedded=1`}
-                            className="w-full h-full border-0 bg-black" allow="screen-wake-lock; autoplay; fullscreen" />
+            <div className={`absolute inset-0 z-[110] bg-black flex flex-col ${shown ? 'animate-fadeIn' : 'invisible pointer-events-none'}`} data-testid={d.testId} aria-hidden={!shown}>
+                <iframe title={d.title} src={`${d.src}?session=${encodeURIComponent(sessionID || '')}&embedded=1`}
+                        className="w-full h-full border-0 bg-black" allow="screen-wake-lock; autoplay; fullscreen" />
+            </div>
+        );
+    };
+    const SWITCH_LABELS = { monitor: 'Monitor', defib: 'Defib', vent: 'Ventilator' };
+    const SWITCH_ICONS = { monitor: 'activity', defib: 'zap', vent: 'wind' };
+    const ScreenSwitcher = ({ options, value, onChange, extra }) => {
+        const { Lucide } = window;
+        return (
+            <div role="group" aria-label="Show on this screen" data-testid="screen-switcher"
+                 className="absolute left-2 bottom-2 z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg">
+                {options.map(k => (
+                    <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={value === k} data-screen={k}
+                            className={`min-h-[44px] px-3 rounded-lg flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${value === k ? 'bg-sky-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}>
+                        <Lucide icon={SWITCH_ICONS[k]} className="w-4 h-4"/> {SWITCH_LABELS[k]}
+                    </button>
+                ))}
+                {extra}
+            </div>
+        );
+    };
+    // Which view is in front. A device the facilitator brings in comes to the front; one taken
+    // away hands the screen back. `avail` lists what this screen can show right now, in order.
+    const useFrontView = (avail, opened, fallback) => {
+        const [front, setFront] = useState(null);
+        const prev = useRef({});
+        useEffect(() => {
+            const p = prev.current;
+            const newly = ['defib', 'vent'].find(k => opened[k] && !p[k] && avail.includes(k));
+            if (newly) setFront(newly);
+            prev.current = { ...opened };
+        }, [opened.defib, opened.vent, avail.join(',')]);
+        const shown = avail.includes(front) ? front : fallback;
+        return [shown, setFront];
+    };
+    // Keep a patient screen awake (the monitor has its own, fuller version).
+    const useWakeLock = () => {
+        useEffect(() => {
+            if (!('wakeLock' in navigator)) return;
+            let lock = null, gone = false;
+            const req = async () => {
+                if (gone || document.visibilityState !== 'visible' || (lock && !lock.released)) return;
+                try { lock = await navigator.wakeLock.request('screen'); } catch (e) {}
+            };
+            req();
+            const onVis = () => req();
+            document.addEventListener('visibilitychange', onVis);
+            document.addEventListener('pointerdown', onVis);
+            return () => { gone = true; document.removeEventListener('visibilitychange', onVis); document.removeEventListener('pointerdown', onVis); try { if (lock) lock.release(); } catch (e) {} };
+        }, []);
+    };
+    const toggleFullscreenDoc = () => {
+        try {
+            if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+            else { const el = document.documentElement; const p = (el.requestFullscreen || el.webkitRequestFullscreen).call(el); if (p && p.catch) p.catch(() => {}); }
+        } catch (e) {}
+    };
+
+    // The second screen of a two-screen set-up: the defib and the ventilator, both ready, with the
+    // one the facilitator last brought in at the front.
+    const DeviceScreen = ({ sim, sessionID }) => {
+        const { Lucide } = window;
+        const { state, dispatch } = sim;
+        useWakeLock();
+        const opened = { defib: !!state.defibPanelOpen, vent: !!state.ventPanelOpen };
+        const [shown, setFront] = useFrontView(['defib', 'vent'], opened, opened.vent && !opened.defib ? 'vent' : 'defib');
+        useEffect(() => { dispatch({ type: 'SET_LOCAL_SCREEN', payload: { role: 'devices', shows: shown } }); }, [shown]);
+        if (state.isFinished) {
+            return (
+                <div className="h-full w-full bg-black text-white flex items-center justify-center p-6" role="status" aria-live="polite">
+                    <div className="max-w-xl w-full bg-slate-900 border border-slate-700 rounded-lg p-8 text-center">
+                        <Lucide icon="check-circle" className="w-14 h-14 text-emerald-500 mx-auto mb-4" />
+                        <h1 className="text-3xl font-bold mb-2">Simulation complete</h1>
+                        <p className="text-slate-300">Please turn to your facilitator for the debrief.</p>
+                    </div>
                 </div>
-                <button type="button" onClick={() => setShowObs(v => !v)} data-testid="monitor-vent-flip"
-                        className="absolute left-2 bottom-2 z-[120] px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-500 text-white text-xs font-bold uppercase tracking-wider shadow-lg">
-                    {showObs ? 'Show ventilator' : 'Show monitor'}
-                </button>
-            </>
+            );
+        }
+        const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+        return (
+            <div className="h-full w-full relative bg-black overflow-hidden" data-testid="device-screen">
+                <DeviceLayer kind="defib" sessionID={sessionID} shown={shown === 'defib'} />
+                <DeviceLayer kind="vent" sessionID={sessionID} shown={shown === 'vent'} />
+                <ScreenSwitcher options={['defib', 'vent']} value={shown} onChange={setFront}
+                    extra={fsSupported && (
+                        <button type="button" onClick={toggleFullscreenDoc} aria-label="Full screen" title="Full screen"
+                                className="min-h-[44px] px-2 rounded-lg text-slate-300 hover:bg-slate-700"><Lucide icon="maximize" className="w-4 h-4"/></button>
+                    )} />
+            </div>
         );
     };
 
-    const MonitorScreen = ({ sim, sessionID }) => {
+    const MonitorScreen = ({ sim, sessionID, screen }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
-        const ventPanelOpen = !!state.ventPanelOpen && !defibPanelOpen;
+        // 'all': this screen also shows the defib and the ventilator when the facilitator brings them
+        // in. 'monitor': they are on other screens, so this one never shows them.
+        const allInOne = !window.SimScreens || window.SimScreens.roleOf(screen) === 'all';
+        const defibHere = allInOne && !!defibPanelOpen;
+        const ventHere = allInOne && !!state.ventPanelOpen;
+        const [shownView, setFrontView] = useFrontView(['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []),
+            { defib: defibHere, vent: ventHere }, 'monitor');
+        useEffect(() => { sim.dispatch({ type: 'SET_LOCAL_SCREEN', payload: { role: allInOne ? 'all' : 'monitor', shows: shownView } }); }, [allInOne, shownView]);
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // Each sensor gates exactly its own value/trace. Derived from the shared
@@ -430,10 +518,13 @@
                 {/* A1-A3: the assessor's Defib toggle (state.defibPanelOpen, synced over Firebase
                     exactly like arrestPanelOpen) opens a WORKING defibrillator here, with the obs
                     still visible alongside it. */}
-                {defibPanelOpen && <MonitorDefib sessionID={sessionID} />}
-                {ventPanelOpen && <MonitorVent sessionID={sessionID} />}
+                {defibHere && <DeviceLayer kind="defib" sessionID={sessionID} shown={shownView === 'defib'} />}
+                {ventHere && <DeviceLayer kind="vent" sessionID={sessionID} shown={shownView === 'vent'} />}
+                {(defibHere || ventHere) && (
+                    <ScreenSwitcher options={['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : [])} value={shownView} onChange={setFrontView} />
+                )}
 
-                {arrestPanelOpen && !defibPanelOpen && (
+                {arrestPanelOpen && !defibHere && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">
                         <div className="bg-slate-900 border-b border-slate-700 p-2 flex justify-between items-center">
                             <div className="text-slate-300 font-bold uppercase tracking-wider flex items-center gap-2">
@@ -632,7 +723,7 @@
         </div>
     );
 
-    const MonitorContainer = ({ sessionID }) => { 
+    const MonitorContainer = ({ sessionID, screen }) => { 
         const { Lucide } = window;
         const sim = useSimulation(null, true, sessionID); 
         // Console / test handle on the monitor's engine (read it, don't build on it).
@@ -647,14 +738,16 @@
                     <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
                     <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
+                    {window.SimScreens && <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{window.SimScreens.ROLES[window.SimScreens.roleOf(screen)].title}</b></div>}
                     {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
                 </div>
             ); 
         }
-        return <MonitorScreen sim={sim} sessionID={sessionID} />; 
+        if (window.SimScreens && window.SimScreens.roleOf(screen) === 'devices') return <DeviceScreen sim={sim} sessionID={sessionID} />;
+        return <MonitorScreen sim={sim} sessionID={sessionID} screen={screen} />; 
     };
     
-    window.MonitorDefib = MonitorDefib;
+    window.DeviceScreen = DeviceScreen;
     window.MonitorScreen = MonitorScreen;
     window.MonitorContainer = MonitorContainer;
 })();
