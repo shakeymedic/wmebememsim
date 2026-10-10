@@ -2095,7 +2095,8 @@ function patientTick(dt) {
   const pr = P.pr, dtMin = dt / 60;
   P.simMin += dtMin;
   if (V.power && !V.standby && !V.ambient) P.onNivMin += dtMin;
-  P.rr = P.apnoea || pr.sedated || LIVE.rr === 0 ? 0 : pr.rrBase;
+  /* the patient's own breathing comes from the controller (lungs, paralysis, arrest), not from the RR it shows, which this ventilator now sets */
+  P.rr = P.apnoea || pr.sedated || P.passive ? 0 : pr.rrBase;
   P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);
   if (pr.sedated) P.fatigue = 0;
   P.spo2 = LIVE.spo2;
@@ -2171,6 +2172,35 @@ function ventReport(t, p) {
 }
 
 /* the facilitator's mirror of this ventilator (sessions/<CODE>/ventState/<id>) */
+/* what the ventilator delivers to the lungs, for the controller's physiology (data/engine-vent.js).
+   The trainer's own formulas (its patientTick): the oxygen and pressure the alveoli see, and alveolar
+   ventilation relative to the patient's own at rest. */
+// The first breaths take a few seconds to be measured; until then the simulator keeps its own obs
+// rather than read a rate and ventilation of zero.
+let physOnSince = null;
+function physNow() {
+  const pr = P.pr, ventOn = V.power && !V.standby && !V.ambient, hfo = ventOn && isHFO();
+  if (!ventOn) physOnSince = null; else if (physOnSince === null) physOnSince = Date.now();
+  const warming = ventOn && !hfo && M.ftot === null && Date.now() - physOnSince < 15000;
+  let fio2 = 0.21, peep = 0, VA;
+  if (!ventOn || P.disc) VA = P.VAbase * (1 - 0.3 * P.fatigue);
+  else if (hfo) {
+    VA = P.VAbase * (1 - 0.3 * P.fatigue) * (1 + 0.15 * V.set.hflow / 60);
+    const pif = 25 + 1.2 * P.rr, fl = V.set.hflow;
+    fio2 = (fl * measuredO2() / 100 + Math.max(0, pif - fl) * 0.21) / Math.max(pif, fl);
+    peep = 0.05 * fl;
+  } else {
+    const eff = clamp(1 - 0.5 * P.missFrac - 0.15 * P.tiMaxFrac - 0.3 * P.autoFrac, 0.3, 1);
+    VA = Math.max(0.2, (P.vtAvg - pr.vd)) * Math.max(P.rr, (M.ftot || P.rr)) * eff;
+    fio2 = measuredO2() / 100;
+    peep = ['APRV', 'DuoPAP'].includes(V.mode) && M.pmean !== null ? Math.max(B.peepNow, M.pmean - 2) : B.peepNow;
+  }
+  if (P.apnoea || (pr.sedated || P.passive) && ventOn) VA = ventOn && !P.disc && !hfo && (mandTiming() !== null || B.apnoeaVent) ? VA * (isNIV() ? 0.6 : 1) : 0.2;
+  const conn = ventOn && !P.disc;
+  const rr = conn && !hfo && M.ftot !== null ? M.ftot : P.rr;
+  const r3 = v => Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000;
+  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() ? 1 : 0};
+}
 const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
 function ventStateNow() {
   const state = !V.power ? 'off' : V.selftest > 0 ? 'selftest' : V.ambient ? 'ambient' : V.standby ? 'standby' : 'ventilating';
@@ -2185,7 +2215,7 @@ function ventStateNow() {
     alarms:topAlarms().map(a => a.p + ':' + a.t).join('|').slice(0, 600),
     win:String(win || '').slice(0, 16), locked:!!V.locked, sex:V.sex, height:V.set.height, ibw:finiteOr(calcIBW()) || 0,
     tests:('leak ' + (V.tests.leak || 'not done') + ', flow ' + (V.tests.flow || 'not done')).slice(0, 40),
-    embedded:EMBEDDED, ts:Date.now()
+    embedded:EMBEDDED, phys:physNow(), ts:Date.now()
   };
 }
 let lastMirror = '', lastMirrorAt = 0;

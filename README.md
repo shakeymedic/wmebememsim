@@ -290,8 +290,18 @@ patient.
   alarms, tests and alarm limits (`sessions/<CODE>/ventState/<id>`, removed when it disconnects).
 - **What it shows of the patient.** SpO2 and pulse come from the controller when a probe is attached;
   PetCO2 shows the controller's ETCO2 when capnography is on and the ventilator is ventilating.
-- **Not yet** (later phases of the plan): the ventilator does not yet change the patient's numbers,
-  and the facilitator cannot yet change its settings or inject problems remotely.
+- **It breathes for the patient** (`data/engine-vent.js`). While a ventilator is ventilating, SpO2,
+  RR and ETCO2 follow what it delivers: SpO2 from the oxygen and PEEP (the shunt that PEEP recruits),
+  CO2 from the alveolar ventilation, settling over 3 to 5 minutes of real time; ETCO2 sits below
+  PaCO2 by a gap that widens with dead space, and reads 0 when the circuit is disconnected. Low SpO2
+  and high CO2 raise the HR, and air trapping lowers the BP. This runs whether or not the clock is
+  started. It does not apply in a cardiac arrest.
+- **The facilitator stays in charge.** A vital typed by hand stays as typed ("Release to ventilator"
+  hands it back), and the Obs switch ("Ventilator drives them" / "I set them") turns the link off.
+  The log says when the ventilator takes over the obs and when it lets go, and warns if an invasive
+  mode is started with no tube or supraglottic airway recorded.
+- **Not yet** (later phases of the plan): the facilitator cannot yet change its settings or inject
+  problems remotely.
 - It runs in real time. A new scenario gives a fresh ventilator, switched off.
 
 ---

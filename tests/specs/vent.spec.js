@@ -141,3 +141,116 @@ test('a new scenario gives a fresh ventilator', async ({ page, context }) => {
   await page.evaluate(() => window.firebase.database().ref(`sessions/${localStorage.getItem('wmebem_session_id')}/live`).update({ scenarioTitle: 'Another patient' }));
   await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('off');
 });
+
+// ---- Phase 2: the ventilator breathes for the patient ----
+
+test('the physiology: more oxygen and PEEP raise SpO2, more ventilation lowers CO2, and CO2 settles over 3-5 minutes', async ({ page }) => {
+  await openController(page);
+  const r = await page.evaluate(() => {
+    const VE = window.VENT_ENGINE;
+    const cur = { vent: { profile: 'ards', breathing: false }, rhythm: 'Sinus Rhythm', ventLink: true };
+    const run = (phys, secs, shown) => {
+      let prev = null, out;
+      for (let i = 0; i < secs; i++) { out = VE.step(prev, { phys }, cur, shown || { spO2: 90, etco2: 5 }); prev = out.ventPhys; }
+      return out;
+    };
+    const base = { on: 1, conn: 1, rr: 18, autopeep: 0, inv: 1 };
+    const lowO2 = run({ ...base, fio2: 0.4, peep: 5, r: 1 }, 300);
+    const highO2 = run({ ...base, fio2: 1, peep: 5, r: 1 }, 300);
+    const highPeep = run({ ...base, fio2: 0.4, peep: 15, r: 1 }, 300);
+    const under = run({ ...base, fio2: 1, peep: 10, r: 0.5 }, 600);
+    const over = run({ ...base, fio2: 1, peep: 10, r: 1.5 }, 600);
+    // CO2 from 5.4 kPa towards the under-ventilated target: share of the gap closed after 1, 3 and 5 min
+    const settle = [60, 180, 300].map(s => {
+      const end = under.ventPhys.paco2, start = run({ ...base, fio2: 1, peep: 10, r: 0.5 }, 1).ventPhys.paco2;
+      const at = run({ ...base, fio2: 1, peep: 10, r: 0.5 }, s).ventPhys.paco2;
+      return (at - start) / (end - start);
+    });
+    const disc = run({ ...base, conn: 0, fio2: 0.21, peep: 0, r: 0.2 }, 5);
+    const trapped = run({ ...base, fio2: 1, peep: 5, r: 1, autopeep: 10 }, 5);
+    return { lowO2: lowO2.targets.spO2, highO2: highO2.targets.spO2, highPeep: highPeep.targets.spO2,
+      under: under.ventPhys.paco2, over: over.ventPhys.paco2, settle, discEtco2: disc.targets.etco2, trapBp: trapped.offsets.bpSys,
+      rr: highO2.targets.rr, etco2: highO2.targets.etco2, paco2: highO2.ventPhys.paco2 };
+  });
+  expect(r.highO2).toBeGreaterThan(r.lowO2 + 5);
+  expect(r.highPeep).toBeGreaterThan(r.lowO2 + 5);
+  expect(r.under).toBeGreaterThan(r.over + 0.8);        // ARDS: about 7.1 vs 6.1 kPa
+  expect(r.settle[0]).toBeGreaterThan(0.4);          // about two thirds after a minute
+  expect(r.settle[0]).toBeLessThan(0.8);
+  expect(r.settle[1]).toBeGreaterThan(0.9);          // nearly there by 3 minutes
+  expect(r.settle[2]).toBeGreaterThan(0.97);         // there by 5
+  expect(r.discEtco2).toBe(0);                       // disconnected: no CO2 at the mouth
+  expect(r.trapBp).toBeLessThan(0);                  // air trapping drops the BP
+  expect(r.rr).toBe(18);
+  expect(r.etco2).toBeLessThan(r.paco2);             // ETCO2 sits below PaCO2
+});
+
+test('a ventilating T1 drives SpO2, RR and ETCO2 while the clock is stopped; typed obs hold until released; "I set them" hands back', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expandSection(page, 'vent');
+  await page.getByLabel('Ventilator lungs').selectOption('ards');
+  const { vent, errors: ventErrors } = await openVent(context, code);
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.id)).toBe('ards');
+  await startVentilating(vent);
+
+  const eng = (fn) => page.evaluate(fn);
+  await expect.poll(() => eng(() => !!(window.__simEngine.state.ventPhys && window.__simEngine.state.ventPhys.active)), { timeout: 15000 }).toBe(true);
+  await expect(page.getByTestId('vent-driving')).toBeVisible();
+  await expect.poll(() => logHas(page, /^Ventilator is breathing for the patient/)).toBe(true);
+  // ARDS on 100% oxygen: well saturated, the rate is the ventilator's, ETCO2 is there
+  await expect.poll(() => eng(() => window.__simEngine.state.vitals.spO2), { timeout: 30000 }).toBeGreaterThan(94);
+  await expect.poll(() => eng(() => window.__simEngine.state.vitals.rr)).toBe(18);
+  expect(await eng(() => window.__simEngine.state.vitals.etco2)).toBeGreaterThan(3);
+  // The candidate turns the oxygen down to 21%: the patient desaturates
+  await vent.evaluate(() => { window.__vent.V.set.o2 = 21; });
+  await expect.poll(() => eng(() => window.__simEngine.state.vitals.spO2), { timeout: 30000 }).toBeLessThan(85);
+
+  // The facilitator types an SpO2: it stays as typed until released
+  await eng(() => window.__simEngine.dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key: 'spO2', value: 97 } }));
+  await page.waitForTimeout(2500);
+  expect(await eng(() => window.__simEngine.state.vitals.spO2)).toBe(97);
+  await page.getByRole('button', { name: 'Release to ventilator' }).click();
+  await expect.poll(() => eng(() => window.__simEngine.state.vitals.spO2), { timeout: 15000 }).toBeLessThan(96);
+  expect(await logHas(page, /^Released SpO2 to the ventilator/)).toBe(true);
+
+  // "I set them": the link is off and the ventilator lets go
+  await page.getByRole('button', { name: 'I set them' }).click();
+  await expect(page.getByTestId('vent-driving')).toHaveCount(0);
+  await expect.poll(() => eng(() => window.__simEngine.state.ventPhys)).toBe(null);
+  await expect.poll(() => logHas(page, /^Ventilator is no longer breathing for the patient/)).toBe(true);
+  await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'ards', airway: 'none' });
+  expect(errors).toEqual([]);
+  expect(ventErrors).toEqual([]);
+});
+
+test('a paralysed patient is not breathing for the ventilator', async ({ page }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'normal' });
+  expect((await live(page, code, '/vent')).breathing).toBeUndefined();
+  const cfg = await page.evaluate(() => window.VENT_ENGINE.configFor({ ...window.__simEngine.state, isParalysed: true }));
+  expect(cfg.breathing).toBe(false);
+});
+
+test('with the clock running the ventilator still drives the obs, and hypoxia does not drift on top', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expandSection(page, 'vent');
+  await page.getByLabel('Ventilator lungs').selectOption('ards');
+  const { vent } = await openVent(context, code);
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.id)).toBe('ards');
+  await page.evaluate(() => window.__simEngine.dispatch({ type: 'START_SIM' }));
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.isRunning)).toBe(true);
+  await startVentilating(vent);
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.vitals.rr), { timeout: 30000 }).toBe(18);
+  const t0 = await page.evaluate(() => window.__simEngine.state.time);
+  await page.waitForTimeout(3000);
+  const s = await page.evaluate(() => { const st = window.__simEngine.state; return { t: st.time, phys: !!(st.ventPhys && st.ventPhys.active), hyp: st.hypoxiaTimer }; });
+  expect(s.t).toBeGreaterThan(t0);
+  expect(s.phys).toBe(true);
+  expect(s.hyp).toBe(0);
+  expect(errors).toEqual([]);
+});

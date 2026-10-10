@@ -905,6 +905,11 @@
         const VP = window.VENT_PROFILES;
         const ventPanelOpen = !!state.ventPanelOpen;
         const ventCfg = state.vent || { profile: VP ? VP.profileForScenario(rawScenario) : 'normal', breathing: null };
+        const VE = window.VENT_ENGINE;
+        const ventLinkOn = state.ventLink !== false;
+        const ventDriver = VE ? VE.driverFor(state) : null;
+        const VENT_KEY_NAMES = { spO2: 'SpO2', rr: 'RR', etco2: 'ETCO2', hr: 'HR', bpSys: 'BP', bpDia: 'BP' };
+        const ventHeld = VE ? VE.DRIVEN.concat(VE.NUDGED).filter(k => state.manualHold && state.manualHold[k]) : [];
         const ventLung = VP ? VP.lungFor(ventCfg) : null;
         const ventMirrors = Object.keys(state.ventMirror || {}).map(k => ({ id: k, ...state.ventMirror[k] }));
         const VENT_STATE_LABEL = { off: 'Off', selftest: 'Self-test', ambient: 'Ambient (not ventilating)', standby: 'Standby', ventilating: 'Ventilating' };
@@ -1551,6 +1556,26 @@
                                         <option value="no">Not breathing (sedated, paralysed)</option>
                                     </select>
                                 </label>
+                                <div className="flex items-center justify-between gap-2">
+                                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Obs</span>
+                                    <div className="flex gap-1" role="group" aria-label="Who sets the obs">
+                                        {[[true, 'Ventilator drives them'], [false, 'I set them']].map(([on, label]) => (
+                                            <button key={label} type="button" aria-pressed={ventLinkOn === on}
+                                                    onClick={() => { if (ventLinkOn === on) return; sim.dispatch({ type: 'SET_VENT_LINK', payload: on }); addLogEntry(on ? 'Ventilator link on: a ventilating HAMILTON-T1 drives SpO2, RR and ETCO2 (facilitator).' : 'Ventilator link off: the facilitator sets the obs (facilitator).', 'system'); }}
+                                                    className={`px-2 py-0.5 rounded border text-[10px] font-bold ${ventLinkOn === on ? 'bg-cyan-700 border-cyan-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300'}`}>{label}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {ventDriver && (
+                                    <div data-testid="vent-driving" className="text-emerald-300">Breathing for the patient: SpO2, RR and ETCO2 follow the ventilator; low SpO2, high CO2 and air trapping move HR and BP.</div>
+                                )}
+                                {ventLinkOn && ventHeld.length > 0 && (
+                                    <div className="flex items-center justify-between gap-2 bg-amber-950/40 border border-amber-700/60 rounded p-1.5">
+                                        <span>You typed {Array.from(new Set(ventHeld.map(k => VENT_KEY_NAMES[k]))).join(', ')}, so {ventHeld.length === 1 ? 'it stays' : 'they stay'} as you set {ventHeld.length === 1 ? 'it' : 'them'}.</span>
+                                        <button type="button" onClick={() => { sim.dispatch({ type: 'RELEASE_MANUAL_HOLD', payload: ventHeld }); addLogEntry(`Released ${Array.from(new Set(ventHeld.map(k => VENT_KEY_NAMES[k]))).join(', ')} to the ventilator (facilitator).`, 'system'); }}
+                                                className="flex-none px-2 py-0.5 rounded bg-amber-600 text-black font-bold text-[10px]">Release to ventilator</button>
+                                    </div>
+                                )}
                                 {ventMirrors.length === 0 && (
                                     <div className="text-slate-500">No ventilator is connected. Show it on the room monitor, or join a tablet with the Ventilator QR code (Screens &gt; Join by QR code).</div>
                                 )}
@@ -1564,7 +1589,7 @@
                                     return (
                                         <div key={m.id} data-testid="vent-mirror" className="bg-black/50 rounded p-2 flex flex-col gap-1">
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-bold text-cyan-300">{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}</span>
+                                                <span className="font-bold text-cyan-300">{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}{Date.now() - Number(m.ts) > 15000 ? <span className="ml-1 text-amber-300">(no update for {Math.round((Date.now() - Number(m.ts)) / 1000)} s: link lost?)</span> : null}</span>
                                                 <span className="font-bold text-white">{VENT_STATE_LABEL[m.state] || m.state}{m.state === 'ventilating' || m.state === 'standby' ? ` \u00b7 ${m.label}` : ''}{m.locked ? ' \u00b7 locked' : ''}</span>
                                             </div>
                                             {m.ctl && <div><span className="text-slate-400">Settings: </span>{m.ctl}</div>}

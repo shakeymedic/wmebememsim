@@ -110,11 +110,13 @@
             const edu = !!(ds && ds.mode !== 'assessment');
             return { defibSim: !!ds, pulseFeedback: edu, hints: edu, metronome: !!cur.metronomeOn };
         };
-        // The lungs the ventilator uses: the facilitator's choice, else picked from the scenario.
+        // The lungs the ventilator uses (the facilitator's choice, else picked from the scenario),
+        // whether the patient breathes for themselves (a paralysed or arrested patient does not,
+        // unless the facilitator says so) and the airway in place. See data/engine-vent.js.
         const ventConfigFor = (cur) => {
-            const VP = window.VENT_PROFILES;
-            if (cur.vent && cur.vent.profile) return { profile: cur.vent.profile, breathing: cur.vent.breathing === true || cur.vent.breathing === false ? cur.vent.breathing : null };
-            return { profile: VP ? VP.profileForScenario(cur.scenario) : 'normal', breathing: null };
+            const VE = window.VENT_ENGINE;
+            if (!VE) return { profile: 'normal', breathing: null, airway: 'none' };
+            return { ...VE.configFor(cur), airway: VE.airwayFor(cur) };
         };
         const DEVICE_WHERE = { 'standalone-defib': 'standalone defib', 'monitor-defib': 'monitor defib', 'monitor-vent': 'ventilator on the monitor', 'standalone-vent': 'ventilator tablet' };
         const nibpCuffOn = (cur) => !!((cur.scenario && cur.scenario.defibSim) || getSensors(cur).nibp);
@@ -488,6 +490,34 @@
             ref.limitToLast(25).on('child_added', onChild, onErr);
             return () => ref.off('child_added', onChild);
         }, [isMonitorMode, sessionID]);
+
+        // THE VENTILATOR BREATHING FOR THE PATIENT (phase 2). While the clock runs, TICK_TIME does
+        // the ventilator's second; while it is stopped (Quick Sim, a pause) this does, because a
+        // ventilated patient's oxygen and CO2 do not wait for START. The log says when the
+        // ventilator takes over the obs and when it lets go.
+        const ventDriving = !isMonitorMode && !!(window.VENT_ENGINE && window.VENT_ENGINE.driverFor(state));
+        const ventActive = ventDriving || !!(state.ventPhys && state.ventPhys.active);
+        useEffect(() => {
+            if (isMonitorMode || state.isRunning || !ventActive) return;
+            const id = setInterval(() => dispatch({ type: 'TICK_VENT' }), 1000);
+            return () => clearInterval(id);
+        }, [isMonitorMode, state.isRunning, ventActive]);
+        const ventDrivingRef = useRef(false);
+        useEffect(() => {
+            if (isMonitorMode || ventDrivingRef.current === ventDriving) return;
+            ventDrivingRef.current = ventDriving;
+            if (ventDriving) {
+                const held = ['spO2', 'rr', 'etco2'].filter(k => state.manualHold && state.manualHold[k]);
+                addLogEntry(`Ventilator is breathing for the patient: SpO2, RR and ETCO2 now follow it${held.length ? ` (except ${held.join(', ')}, which you set by hand)` : ''}.`, 'system');
+                const cur = stateRef.current;
+                const d = window.VENT_ENGINE.driverFor(cur);
+                if (d && d.phys && Number(d.phys.inv) > 0 && window.VENT_ENGINE.airwayFor(cur) === 'none') {
+                    addLogEntry('Ventilator started in an invasive mode with no tube or supraglottic airway recorded.', 'warning', true);
+                }
+            } else {
+                addLogEntry('Ventilator is no longer breathing for the patient (standby, switched off, or the link was turned off). The obs follow the usual model again.', 'system');
+            }
+        }, [isMonitorMode, ventDriving]);
 
         // What each ventilator is showing (mode, settings, measured values, alarms), for the
         // facilitator's Ventilator section. Stale after 60 s, like the defib mirror.

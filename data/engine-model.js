@@ -41,7 +41,11 @@
         // which are themselves deliberate facilitator writes that define a new baseline) or by
         // loading a new scenario. Booleans only, so it survives JSON persistence untouched; it is
         // NOT part of the sync payload (the monitor does not run physiology).
-        manualHold: {}
+        manualHold: {},
+        // While a HAMILTON-T1 is breathing for the patient (data/engine-vent.js): its smoothed
+        // SpO2 and PaCO2, and the HR/BP nudges it has added to the base (taken off again when it
+        // stops). null when no ventilator is driving the obs.
+        ventPhys: null
     };
 
     const initialLogState = {
@@ -119,6 +123,9 @@
         // (VENT_PROFILES.profileForScenario). Both reach the ventilator inside the live payload.
         ventPanelOpen: false,
         vent: null,
+        // The facilitator's switch: true = a ventilating HAMILTON-T1 drives SpO2, RR and ETCO2
+        // (and nudges HR and BP); false = the facilitator sets the obs by hand.
+        ventLink: true,
         // Defibrillator device + metrics state. Previously shockCountRef was a bare useRef
         // that never reached state, Firebase, localStorage OR the debrief, and reset on resume.
         defib: {

@@ -106,6 +106,7 @@
             ".validate": "newData.hasChild('profile')",
             "profile": { ".validate": "newData.isString() && newData.val().length <= 16" },
             "breathing": { ".validate": "newData.isBoolean()" },
+            "airway": { ".validate": "newData.isString() && newData.val().length <= 8" },
             "$other": { ".validate": false }
           },
           "pacing": { ".validate": true },
@@ -175,6 +176,7 @@
             "ctl": { ".validate": "newData.isString() && newData.val().length <= 300" },
             "lim": { ".validate": "newData.isString() && newData.val().length <= 300" },
             "mon": { "$measure": { ".validate": "newData.isNumber()" } },
+            "phys": { "$measure": { ".validate": "newData.isNumber()" } },
             "o2": { ".validate": "newData.isNumber()" },
             "alarms": { ".validate": "newData.isString() && newData.val().length <= 600" },
             "win": { ".validate": "newData.isString() && newData.val().length <= 16" },
