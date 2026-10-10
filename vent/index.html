@@ -398,7 +398,8 @@ body.embedded .vbar .standalone-only{display:none}
           <button id="kCCW" aria-label="Turn knob anticlockwise">⟲ Turn −</button>
           <button class="knobp" id="kPress" aria-label="Press the knob">Press knob</button>
           <button id="kCW" aria-label="Turn knob clockwise">Turn + ⟳</button>
-                  </div>
+          
+        </div>
 <section class="hands" id="hands" hidden aria-label="Your hands">
   <h2>Your hands (physical actions for the test)</h2>
   <div class="physical" id="physical"></div>
@@ -562,7 +563,7 @@ const PROFILES = {
 let P = null;
 function resetPatient(id) {
   const pr = PROFILES[id];
-  P = {id, pr, paco2:pr.paco2, hco3:pr.hco3, spo2:88, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0.1, improve:0,
+  P = {id, pr:{...pr}, base:pr, vco2:1, passive:false, paco2:pr.paco2, hco3:pr.hco3, spo2:88, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0.1, improve:0,
        fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
        abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
   P.spo2 = P.spo2T = calcSpo2(pr.fio2Pre, 0);
@@ -723,7 +724,7 @@ function startBreath(kind) {
   const iPeep = B.Vee / pr.C;
   const dPlung = Math.max(0, dPeff - iPeep);
   const obstructed = kind === 'spont' && !isInvasive(m) && pr.needEpap && s.peep < pr.needEpap && Math.random() < 0.4;
-  const passive = auto || P.apnoea || P.pr.sedated;
+  const passive = auto || P.apnoea || P.pr.sedated || P.passive;
   let Ti = 0, tiMaxHit = false, VT;
   if (pc) Ti = kind === 'manual' && !mt ? 1.0 : mt.ti;
   if (P.disc) VT = 0.01;
@@ -879,7 +880,7 @@ function adaptASV(br) {
 
 function effortHappens() {
   const pr = P.pr, m = V.mode;
-  if (P.apnoea || V.ambient || pr.sedated) return;
+  if (P.apnoea || V.ambient || pr.sedated || P.passive) return;
   let effort = pr.effort * (1 - 0.5 * P.fatigue) * (P.deteriorate ? 0.7 : 1);
   if (pr.ipeep && V.set.peep < 4) effort *= 0.6;
   if (pr.needEpap && !isInvasive(m) && V.set.peep < pr.needEpap && Math.random() < 0.4) effort *= 0.35;
@@ -1910,6 +1911,7 @@ const PHYS = {
 };
 function setPhysical(list) {
   $('#hands').hidden = !(list && list.length);
+  const hc = $('#handsCard'); if (hc) hc.hidden = !(list && list.length);
   $('#physical').innerHTML = list && list.length ? list.map(k => `<button data-phys="${k}">${esc(PHYS[k])}</button>`).join('') : '<span style="font-size:.8rem;color:var(--muted)">Nothing to do at the moment.</span>';
 }
 function tcMsg(m) { if (V.testRun) V.testRun.msg = m; if (win === 'system' && winTab === 'tests') renderWindow(); }
@@ -2063,7 +2065,7 @@ function updateTasks() {}
 function makePatient(config) {
   const pr = VP.lungFor(config);
   const id = config && VP.profiles[config.profile] ? config.profile : 'normal';
-  P = {id, pr, paco2:pr.paco2, hco3:pr.hco3, spo2:null, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0, improve:0,
+  P = {id, pr:{...pr}, base:pr, vco2:1, passive:false, paco2:pr.paco2, hco3:pr.hco3, spo2:null, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0, improve:0,
        fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
        abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
   calcSpo2(pr.fio2Pre, 0);
@@ -2077,7 +2079,7 @@ function applyConfig(config) {
   const profileChanged = !LIVE.config || (config && config.profile) !== (LIVE.config && LIVE.config.profile);
   LIVE.config = config; LIVE.cfgKey = key;
   const pr = VP.lungFor(config);
-  P.pr = pr; P.id = config && VP.profiles[config.profile] ? config.profile : 'normal';
+  P.base = pr; P.pr = {...pr}; P.id = config && VP.profiles[config.profile] ? config.profile : 'normal';
   P.VAbase = (pr.vtBase - pr.vd) * pr.rrBase;
   if (profileChanged) { P.paco2 = pr.paco2; P.hco3 = pr.hco3; P.vtAvg = pr.vtBase; }
   if (pr.sedated) P.fatigue = 0;
@@ -2163,7 +2165,7 @@ function ventReport(t, p) {
   lastReport = {text, at:now};
   try {
     fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
-      type:'VENT_LOG', payload:{text, p:String(p || 'info').slice(0, 8)}, ts:now, from:fb.presenceId, device:EMBEDDED ? 'monitor-vent' : 'standalone-vent'
+      type:'VENT_LOG', payload:{text, p:String(p || 'info').slice(0, 8), alarm:Object.keys(ALARMS).some(id => ALARMS[id].t === t)}, ts:now, from:fb.presenceId, device:EMBEDDED ? 'monitor-vent' : 'standalone-vent'
     }).catch(() => {});
   } catch (e) { /* the log is best-effort; the device keeps working */ }
 }

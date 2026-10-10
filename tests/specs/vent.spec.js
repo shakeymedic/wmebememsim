@@ -35,6 +35,9 @@ test('a ventilator tablet joins by session code, reports to the log and mirrors 
   await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('ventilating');
   await expect.poll(() => logHas(page, /^Ventilator: Self-test passed \(ventilator tablet\)/)).toBe(true);
   await expect.poll(() => logHas(page, /^Ventilator: Ventilation started \(NIV-ST\)/)).toBe(true);
+  // An alarm arrives as an alarm, with its priority
+  await vent.evaluate(() => window.raise('phigh'));
+  await expect.poll(() => logHas(page, /^Ventilator alarm \(high priority\): High pressure \(ventilator tablet\)/)).toBe(true);
 
   // The facilitator's Ventilator section shows what the tablet shows
   await expect.poll(() => page.evaluate(() => Object.values(window.__simEngine.state.ventMirror || {}).map(m => m.state))).toContain('ventilating');
