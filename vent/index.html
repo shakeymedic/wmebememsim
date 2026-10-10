@@ -742,7 +742,9 @@ function startBreath(kind) {
   B.vlimit = false;
   if (isInvasive(m) && !V.cpr && V.lim.vthigh <= ALIM.vthigh.max && VT * 1000 > 1.5 * V.lim.vthigh) { VT = 1.5 * V.lim.vthigh / 1000; B.vlimit = true; }
   const tau = pr.tau;
-  if (!pc) {
+  /* CPAP (no pressure support): nothing to cycle, the patient breathes in for their own inspiratory time */
+  if (!pc && dPeff < 1) Ti = pr.neuralTi;
+  else if (!pc) {
     const timax = isNIV(m) ? s.timax : 3;   /* TI max is a setting in NIV and NIV-ST; elsewhere 3 s is the trainer's internal limit */
     const Fp = VT / tau * 60;
     const thr = s.ets / 100 * (Fp + inspLeak);
@@ -756,7 +758,7 @@ function startBreath(kind) {
   Ti = Math.max(0.2, Ti);
   let cough = null;
   if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: target + rnd(18, 26)};
-  B.br = {kind, auto, sigh, Ti, target: peepM + dPeff, base, peepM, dPeff, VT, inspLeak, expLeak, Fp: VT / tau * 60, tau, tauE: tau * 1.8,
+  B.br = {kind, auto, sigh, Ti, target: peepM + dPeff, base, peepM, dPeff, VT, inspLeak, expLeak, Fp: VT / tau * 60, tau, tauE: tau * 1.8 * (pr.trapX || 1),
           pramp: Math.min(s.pramp / 1000, Ti / 3), limited, tiMaxHit, cough, obstructed, maxP: 0, spiked:false};
   B.phase = 'insp'; B.t = 0;
   B.lastStart = B.now;
@@ -882,7 +884,9 @@ function effortHappens() {
   const pr = P.pr, m = V.mode;
   if (P.apnoea || V.ambient || pr.sedated || P.passive) return;
   let effort = pr.effort * (1 - 0.5 * P.fatigue) * (P.deteriorate ? 0.7 : 1);
-  if (pr.ipeep && V.set.peep < 4) effort *= 0.6;
+  /* intrinsic PEEP in COPD (about 6 cmH2O here) has to be overcome before any flow reaches the trigger:
+     set PEEP / EPAP counterbalances it, so too little EPAP means missed triggers */
+  if (pr.ipeep) effort -= 1.5 * Math.max(0, 6 - V.set.peep);
   if (pr.needEpap && !isInvasive(m) && V.set.peep < pr.needEpap && Math.random() < 0.4) effort *= 0.35;
   if (P.disc) return; // mask off: patient breathes room air; ventilator sees only leak
   if (m === 'APRV' || (m === 'DuoPAP' && B.phase === 'insp' && B.br && B.br.kind !== 'spont')) { startOverlay(effort); return; }
@@ -929,10 +933,16 @@ function engineStep(dt) {
     else if (m === 'APRV' || m === 'DuoPAP') { if (B.now - B.lastMand >= mt.cycle) startBreath('mand'); }
     else if (isSIMV()) {
       /* each SIMV interval starts with Tmand: a trigger then gives a mandatory breath; without one, a mandatory breath at the end of Tmand.
-         The length of Tmand is not given in the manual: a quarter of the interval is the trainer's choice. */
+         The length of Tmand is not given in the manual. The trainer used a quarter of the interval, which put the total rate well
+         above the patient's own; most of the interval (90%) keeps a patient breathing faster than the set rate at their own rate. */
       if (B.now - B.simvC0 >= 2 * mt.cycle) { B.simvC0 = B.now; B.simvDue = true; }
       else if (B.now - B.simvC0 >= mt.cycle) { B.simvC0 += mt.cycle; B.simvDue = true; }
-      if (B.simvDue && B.now - B.simvC0 >= mt.cycle * 0.25) startBreath('mand');
+      if (B.simvDue && B.now - B.simvC0 >= mt.cycle * 0.9) {
+        startBreath('mand');
+        /* the patient's next breath waits until this machine breath is over and some way out (a breath
+           started straight after it would push the total rate above the patient's own) */
+        if (P.rr > 0 && B.br) B.nextEffort = Math.max(B.nextEffort, B.now + B.br.Ti + 0.4 * 60 / P.rr);
+      }
     }
     else if (mt && since >= mt.cycle) startBreath('mand');
     /* apnea: no breath within the Apnea time in the modes that have Apnea backup */
@@ -2091,7 +2101,7 @@ function applyConfig(config) {
   applyProblems(VP.probList(config && config.probs));
 }
 /* the facilitator's injected problems (press again to fix): the trainer's EVENTS, set from the controller.
-   Bronchospasm, a blocked tube and a tension pneumothorax change the lung (VP.lungFor); a displaced tube
+   Bronchospasm, a blocked tube, a tension pneumothorax and a mucus plug change the lung (VP.lungFor); a displaced tube
    is modelled on the controller (no CO2). */
 let probsNow = [];
 function applyProblems(list) {
@@ -2119,7 +2129,13 @@ function patientTick(dt) {
   P.simMin += dtMin;
   if (V.power && !V.standby && !V.ambient) P.onNivMin += dtMin;
   /* the patient's own breathing comes from the controller (lungs, paralysis, arrest), not from the RR it shows, which this ventilator now sets */
-  P.rr = P.apnoea || pr.sedated || P.passive ? 0 : pr.rrBase + (P.deteriorate ? 4 : 0);
+  /* Breathing that is helped settles over a minute or two: bigger supported breaths and better
+     oxygenation bring a fast rate down towards 18 (the early sign that NIV or CPAP is working). */
+  const helped = V.power && !V.standby && !V.ambient && !P.disc;
+  const relief = helped ? clamp((P.vtAvg - pr.vtBase) / 0.15, 0, 1) * 0.7 + (LIVE.sat !== null && LIVE.sat !== undefined && LIVE.sat >= 92 ? 0.3 : 0) : 0;
+  const rrT = pr.rrBase - Math.max(0, pr.rrBase - 18) * relief + (P.deteriorate ? 4 : 0);
+  P.rrEase = P.rrEase === undefined || P.rrEase === null ? rrT : P.rrEase + (rrT - P.rrEase) * Math.min(1, dt / 90);
+  P.rr = P.apnoea || pr.sedated || P.passive ? 0 : P.rrEase;
   P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);
   if (pr.sedated) P.fatigue = 0;
   P.spo2 = LIVE.spo2;
@@ -2217,7 +2233,8 @@ function physNow() {
     peep = 0.05 * fl;
   } else {
     const eff = clamp(1 - 0.5 * P.missFrac - 0.15 * P.tiMaxFrac - 0.3 * P.autoFrac, 0.3, 1);
-    VA = Math.max(0.2, (P.vtAvg - pr.vd)) * Math.max(P.rr, (M.ftot || P.rr)) * eff;
+    /* a small floor only: with a larger one, CPAP alone looked like doubled ventilation in AECOPD and OHS */
+    VA = Math.max(0.02, (P.vtAvg - pr.vd)) * Math.max(P.rr, (M.ftot || P.rr)) * eff;
     fio2 = measuredO2() / 100;
     peep = ['APRV', 'DuoPAP'].includes(V.mode) && M.pmean !== null ? Math.max(B.peepNow, M.pmean - 2) : B.peepNow;
   }
@@ -2298,6 +2315,7 @@ function applyLive(v) {
   const acts = Array.isArray(v.activeInterventions) ? v.activeInterventions : [];
   const probe = acts.includes('Obs') || acts.includes('MonSpO2');
   LIVE.spo2 = probe && Number.isFinite(Number(vit.spO2)) ? Number(vit.spO2) : null;
+  LIVE.sat = Number.isFinite(Number(vit.spO2)) ? Number(vit.spO2) : null;   /* the patient's, probe or not */
   LIVE.hr = probe && Number.isFinite(Number(vit.hr)) ? Number(vit.hr) : null;
   LIVE.etco2 = v.etco2Enabled && Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;
   LIVE.rr = Number.isFinite(Number(vit.rr)) ? Number(vit.rr) : null;

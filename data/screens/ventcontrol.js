@@ -60,6 +60,40 @@
                          options={[[false, 'Education'], [true, 'Assessment']]}
                          onChange={(v) => { setCfg({ assess: v }); addLogEntry(v ? 'Ventilator: Assessment (no alarm help on the screen) (facilitator)' : 'Ventilator: Education (alarm help on the screen) (facilitator)', 'system'); }} />
                 </div>
+                <div data-testid="vent-problems">
+                    <div className="flex items-center justify-between">
+                        <span className="text-slate-400 uppercase font-bold text-[10px]">Problems (press again to fix)</span>
+                        {probs.length > 0 && <button type="button" className="px-2 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-bold"
+                                onClick={() => { setCfg({ probs: [] }); addLogEntry('Ventilator problems: all fixed (facilitator)', 'system'); }}>Fix all</button>}
+                    </div>
+                    {VP.PROBLEM_GROUPS.map(([group, ids]) => (
+                        <div key={group} className="mt-1">
+                            <div className="text-[9px] uppercase text-slate-500 font-bold">{group}</div>
+                            <div className="grid grid-cols-2 gap-1">
+                                {ids.map(id => VP.PROBLEMS.find(x => x.id === id)).filter(Boolean).map(p => {
+                                    const on = probs.indexOf(p.id) !== -1;
+                                    return (
+                                        <button key={p.id} type="button" aria-pressed={on} onClick={() => toggleProb(p)} title={VP.PROBLEM_SIGNS[p.id] || undefined}
+                                                className={`text-left px-1.5 py-1 rounded border text-[10px] leading-tight ${on ? 'bg-red-800 border-red-400 text-white font-bold' : 'bg-slate-900 border-slate-600 text-slate-200'}`}>
+                                            {on ? 'Fix: ' : ''}{p.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                    {probs.filter(id => VP.PROBLEM_SIGNS[id]).length > 0 && (
+                        <div className="mt-1 flex flex-col gap-0.5 text-[10px] text-amber-200" data-testid="vent-problem-signs">
+                            {probs.filter(id => VP.PROBLEM_SIGNS[id]).map(id => (
+                                <div key={id}><span className="font-bold">{VP.PROBLEMS.find(x => x.id === id).label}:</span> {VP.PROBLEM_SIGNS[id]}</div>
+                            ))}
+                        </div>
+                    )}
+                    {probs.indexOf('plug') !== -1 && sim.applyIntervention && (
+                        <button type="button" className="mt-1 w-full px-2 py-1 rounded bg-emerald-700 text-white text-[10px] font-bold"
+                                onClick={() => sim.applyIntervention('Bronchoscopy')}>Bronchoscopy done: clear the plug</button>
+                    )}
+                </div>
                 <details>
                     <summary className="cursor-pointer text-slate-300 font-bold">Lungs{Object.keys(adj).length ? ' (adjusted)' : ''}</summary>
                     <div className="flex flex-col gap-1 mt-1">
@@ -82,24 +116,6 @@
                         )}
                     </div>
                 </details>
-                <div>
-                    <div className="flex items-center justify-between">
-                        <span className="text-slate-400 uppercase font-bold text-[10px]">Problems (press again to fix)</span>
-                        {probs.length > 0 && <button type="button" className="px-2 py-0.5 rounded bg-emerald-700 text-white text-[10px] font-bold"
-                                onClick={() => { setCfg({ probs: [] }); addLogEntry('Ventilator problems: all fixed (facilitator)', 'system'); }}>Fix all</button>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-1 mt-1">
-                        {VP.PROBLEMS.map(p => {
-                            const on = probs.indexOf(p.id) !== -1;
-                            return (
-                                <button key={p.id} type="button" aria-pressed={on} onClick={() => toggleProb(p)}
-                                        className={`text-left px-1.5 py-1 rounded border text-[10px] leading-tight ${on ? 'bg-red-800 border-red-400 text-white font-bold' : 'bg-slate-900 border-slate-600 text-slate-200'}`}>
-                                    {on ? 'Fix: ' : ''}{p.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
             </div>
         );
     };

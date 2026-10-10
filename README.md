@@ -320,7 +320,13 @@ patient.
     kinked expiratory limb, apnoea, oxygen failure, mains lost, tiring, cracked circuit) and five
     added here: tube displaced (no CO2), tube blocked, bronchospasm, tension pneumothorax (BP falls
     until the chest is decompressed; needle, finger thoracostomy or a drain fixes it) and mains lost
-    with the battery low. They apply to every ventilator in the session.
+    with the battery low; then mucus plugging (lobar collapse: stiffer lung, more resistance and a
+    true shunt that oxygen cannot fix and PEEP only partly, so SpO2 sits in the high 80s on 100%;
+    the Bronchoscopy intervention or the "Bronchoscopy done" button clears it) and breath stacking
+    (the lungs empty four times more slowly: AutoPEEP builds and BP falls, worse at a high rate).
+    They are grouped as a DOPES check would find them (tube and circuit, lungs, patient, equipment),
+    and each one that has been checked shows what the candidate should see once it is in. They apply
+    to every ventilator in the session.
   - *Lungs*: compliance, resistance, CO2 production, oxygenation impairment and spontaneous rate (the
     trainer's Lungs panel). They change both the T1's breaths and the patient's obs.
   - *Education / Assessment*: Assessment hides the T1's alarm help.
@@ -331,9 +337,9 @@ patient.
     appear as a colleague's would and are logged as the facilitator's
     (`sessions/<CODE>/ventCmd`, consumed by the ventilator they are addressed to).
 - It runs in real time. A new scenario gives a fresh ventilator, switched off.
-- **Ventilator Sim** (setup tab, `data/ventsim.js`, `data/screens/ventsetup.js`): eight scenarios
+- **Ventilator Sim** (setup tab, `data/ventsim.js`, `data/screens/ventsetup.js`): nine scenarios
   (AECOPD NIV, CPO CPAP, OHS NIV, ARDS, severe asthma, after RSI, DOPES troubleshooting,
-  interhospital transfer) in Education or Assessment. It loads the scenario's lungs, records the
+  mucus plugging for bronchoscopy teaching (starts with the plug in), interhospital transfer) in Education or Assessment. It loads the scenario's lungs, records the
   tube for intubated patients, puts the ventilator on the room monitor and opens the controller's
   Ventilator section with the scenario brief. The debrief's **Ventilator feedback** (any session that
   used a ventilator) reads the log and `ventSamples` (what the ventilator measured, every 15 s):

@@ -52,7 +52,8 @@
     var LUNG_ORDER = ['c', 'r', 'm', 'o', 'e'];
 
     // Problems the facilitator can inject (press again to fix). The first ten are the trainer's; the
-    // last five are the DOPES problems added for the simulator. 'where' says which side models it:
+    // next five are the DOPES problems added for the simulator; the mucus plug (for bronchoscopy
+    // teaching; the Bronchoscopy intervention clears it too) and breath stacking came after. 'where' says which side models it:
     // the device (alarms and waveforms on the T1), the patient (the controller's obs), or both.
     var PROBLEMS = [
         { id: 'leakM', label: 'Moderate leak' },
@@ -69,8 +70,29 @@
         { id: 'block', label: 'Tube blocked by secretions' },
         { id: 'bronch', label: 'Bronchospasm' },
         { id: 'ptx', label: 'Tension pneumothorax' },
-        { id: 'battlow', label: 'Mains lost with the battery low' }
+        { id: 'battlow', label: 'Mains lost with the battery low' },
+        { id: 'plug', label: 'Mucus plugging (lobar collapse)' },
+        { id: 'trap', label: 'Breath stacking (air trapping)' }
     ];
+    // The facilitator's problem buttons, grouped as a DOPES check would find them.
+    var PROBLEM_GROUPS = [
+        ['Tube and circuit', ['tubeout', 'block', 'kink', 'disc']],
+        ['Lungs', ['ptx', 'bronch', 'plug', 'trap']],
+        ['Patient', ['cough', 'apnoea', 'det']],
+        ['Equipment', ['o2fail', 'mains', 'battlow', 'circ', 'leakM', 'leakL']]
+    ];
+    // What the candidate sees in this simulator once a problem is in (checked on an intubated
+    // patient with normal lungs in (S)CMV+, 100% oxygen). Only where it has been checked.
+    var PROBLEM_SIGNS = {
+        tubeout: 'ETCO2 goes to zero and SpO2 falls over a minute or two. Pressures and volumes look normal.',
+        block: 'Pressure limitation, low tidal volumes, AutoPEEP and a falling BP.',
+        kink: 'Exhalation obstructed and High PEEP alarms, high pressures.',
+        ptx: 'Pressure limitation, low tidal volumes, SpO2 falls, HR up and BP down. Needle or finger decompression fixes it.',
+        bronch: 'Higher pressures, lower tidal volumes and AutoPEEP.',
+        plug: 'Pressure limitation, low tidal volumes, SpO2 in the high 80s that oxygen barely helps and PEEP only partly. Bronchoscopy fixes it.',
+        trap: 'AutoPEEP builds, Pplat rises and BP falls. Worse at a high rate; a lower rate and longer expiration help.'
+    };
+    var PLUG_SHUNT = 0.35;
     var PROBLEM_IDS = PROBLEMS.map(function (p) { return p.id; });
     function probList(v) {
         var a = Array.isArray(v) ? v : String(v || '').split(',');
@@ -84,8 +106,8 @@
     // The lung the breath engine uses: the profile, with breathing effort switched off when the
     // facilitator says the patient is not breathing for themselves (sedated and paralysed), the
     // facilitator's lung adjustments, and the lung problems (bronchospasm and a blocked tube raise
-    // the resistance; a tension pneumothorax stiffens the lung and adds shunt). vco2 is CO2 production
-    // relative to the profile's (1 = as described).
+    // the resistance; a tension pneumothorax and a mucus plug stiffen the lung and add shunt; breath
+    // stacking slows emptying). vco2 is CO2 production relative to the profile's (1 = as described).
     function lungFor(config) {
         var c = config || {};
         var base = P[c.profile] || P.normal;
@@ -104,12 +126,19 @@
         if (num('o') !== null) out.s0 = num('o') / 100;
         if (num('e') !== null) out.rrBase = num('e');
         var probs = probList(c.probs);
-        if (probs.indexOf('bronch') !== -1) setR(Math.min(60, out.R * 2.5));
+        if (probs.indexOf('bronch') !== -1) setR(Math.min(60, out.R * 4));
         if (probs.indexOf('block') !== -1) setR(Math.min(80, out.R + 35));
-        if (probs.indexOf('ptx') !== -1) { setC(out.C * 0.4); out.s0 = Math.min(0.97, out.s0 + 0.25); }
+        if (probs.indexOf('ptx') !== -1) { setC(out.C * 0.4); out.s0 = Math.min(0.97, out.s0 + 0.25); out.ptxShunt = 0.3; }
+        // A mucus plug collapses a lobe: fewer lung units to inflate (stiffer), secretions in the
+        // airways (more resistance), and blood flowing past unventilated lung. That true shunt (plug)
+        // is mixed in by engine-vent.js: more oxygen cannot reach it, and PEEP only partly reopens it.
+        if (probs.indexOf('plug') !== -1) { setC(out.C * 0.3); setR(Math.min(80, out.R + 20)); out.plug = PLUG_SHUNT; }
+        // Breath stacking: expiratory flow limitation, so the lungs take four times as long to empty.
+        // Each breath starts before the last has gone out: intrinsic PEEP builds, worse at a high rate.
+        if (probs.indexOf('trap') !== -1) out.trapX = 4;
         return out;
     }
 
     window.VENT_PROFILES = { profiles: P, order: ORDER, profileForScenario: profileForScenario, lungFor: lungFor,
-        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, probList: probList, MODES: MODES };
+        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, PROBLEM_GROUPS: PROBLEM_GROUPS, PROBLEM_SIGNS: PROBLEM_SIGNS, probList: probList, MODES: MODES };
 })();

@@ -331,7 +331,7 @@ test('injected problems reach the ventilator, the lungs can be adjusted, and Ass
   await expect.poll(() => vent.evaluate(() => window.__vent.P.pr.R)).toBeGreaterThan(r0 * 2);
 
   // Lungs: compliance down a step
-  await panel.getByText('Lungs', { exact: true }).click();
+  await panel.locator('summary', { hasText: 'Lungs' }).click();
   await panel.getByRole('button', { name: 'Compliance down' }).click();
   await expect(page.getByTestId('vent-lung-c')).toContainText('90');
   await expect.poll(() => live(page, code, '/vent/lung/c')).toBe(90);
@@ -418,7 +418,7 @@ test('Ventilator Sim: ARDS in Assessment, on the room monitor, through to the ve
 test('every Ventilator Sim scenario starts with its lungs, airway and patient', async ({ page }) => {
   await openController(page);
   const ids = await page.evaluate(() => window.VentSim.SCENARIOS.map(s => s.id));
-  expect(ids.length).toBe(8);
+  expect(ids.length).toBe(9);
   for (const id of ids) {
     const r = await page.evaluate((id) => {
       const s = window.VentSim.buildScenario({ scenario: id, mode: 'education' });
@@ -428,4 +428,60 @@ test('every Ventilator Sim scenario starts with its lungs, airway and patient', 
     expect(r.title).toMatch(/^Ventilator Sim: /);
     expect(r.spo2).toBeGreaterThan(80);
   }
+  // The mucus plug scenario starts with the plug in
+  await page.getByRole('button', { name: 'Ventilator Sim', exact: true }).click();
+  await page.locator('[data-vent-scenario="plug"]').click();
+  await page.getByRole('button', { name: 'Start Ventilator Sim' }).click();
+  await expect.poll(() => page.evaluate(() => (window.__simEngine.state.vent || {}).probs)).toEqual(['plug']);
+});
+
+test('mucus plugging: low sats that oxygen barely helps, low tidal volumes, cleared by bronchoscopy', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expandSection(page, 'vent');
+  await page.getByLabel("Patient's own breathing").selectOption('no');
+  const { vent, errors } = await openVent(context, code);
+  await startVentilating(vent);
+  const E = (fn) => page.evaluate(fn);
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().mon.vte || 0), { timeout: 20000 }).toBeGreaterThan(450);
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.spO2), { timeout: 30000 }).toBeGreaterThan(96);
+
+  const panel = page.getByTestId('vent-problems');
+  await panel.getByRole('button', { name: 'Mucus plugging (lobar collapse)' }).click();
+  await expect(page.getByTestId('vent-problem-signs')).toContainText('Bronchoscopy fixes it');
+  // on 100% oxygen the sats still fall below 92%, and the pressure-limited breaths get smaller
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.spO2), { timeout: 60000 }).toBeLessThan(92);
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().mon.vte || 999), { timeout: 20000 }).toBeLessThan(400);
+  expect(await vent.evaluate(() => window.__vent.ventStateNow().mon.ppeak)).toBeGreaterThan(25);
+
+  await panel.getByRole('button', { name: 'Bronchoscopy done: clear the plug' }).click();
+  await expect.poll(() => E(() => (window.__simEngine.state.vent.probs || []).includes('plug'))).toBe(false);
+  expect(await logHas(page, /^Ventilator problem fixed: mucus plug cleared by bronchoscopy/)).toBe(true);
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.spO2), { timeout: 90000 }).toBeGreaterThan(95);
+  expect(errors).toEqual([]);
+});
+
+test('breath stacking builds AutoPEEP and drops the BP; CPAP alone does not ventilate an AECOPD patient', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expandSection(page, 'vent');
+  await page.getByLabel("Patient's own breathing").selectOption('no');
+  const { vent } = await openVent(context, code);
+  await startVentilating(vent);
+  const E = (fn) => page.evaluate(fn);
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().mon.vte || 0), { timeout: 20000 }).toBeGreaterThan(450);
+  const bp0 = await E(() => window.__simEngine.state.vitals.bpSys);
+  await page.getByTestId('vent-problems').getByRole('button', { name: 'Breath stacking (air trapping)' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().mon.autopeep || 0), { timeout: 20000 }).toBeGreaterThan(6);
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.bpSys), { timeout: 20000 }).toBeLessThan(bp0 - 15);
+
+  // A breathing AECOPD patient on CPAP with no pressure support: alveolar ventilation about their own
+  await page.getByTestId('vent-problems').getByRole('button', { name: 'Fix all' }).click();
+  await page.getByLabel('Ventilator lungs').selectOption('copd');
+  await page.getByLabel("Patient's own breathing").selectOption('yes');
+  await vent.evaluate(() => { const rc = window.__vent.remoteCommand; rc({ type: 'mode', key: 'NIV' }); rc({ type: 'set', key: 'ps', val: 0 }); });
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().mode), { timeout: 10000 }).toBe('NIV');
+  await page.waitForTimeout(15000);
+  const r = await vent.evaluate(() => window.__vent.ventStateNow().phys.r);
+  expect(r).toBeLessThan(1.6);
 });
