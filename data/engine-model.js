@@ -170,6 +170,8 @@
         deviceMirror: {},
         // What each linked ventilator is showing (sessions/<CODE>/ventState). Controller-only.
         ventMirror: {},
+        // What the ventilator breathing for the patient measured, every 15 s (the debrief's ventilator record).
+        ventSamples: [],
         // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
         // deliberately absent from the Firebase sync payload (verified by
         // tests/specs/rules.spec.js: the sync payload has no such key) because `notification`

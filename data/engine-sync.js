@@ -504,6 +504,32 @@
             const id = setInterval(() => dispatch({ type: 'TICK_VENT' }), 1000);
             return () => clearInterval(id);
         }, [isMonitorMode, state.isRunning, ventActive]);
+        // The debrief's ventilator record: what the ventilator breathing for the patient measured and
+        // was set to, every 15 s of real time (data/ventsim.js reads it).
+        useEffect(() => {
+            if (isMonitorMode || !ventDriving) return;
+            const take = () => {
+                const cur = stateRef.current;
+                const d = window.VENT_ENGINE && window.VENT_ENGINE.driverFor(cur);
+                if (!d) return;
+                const mon = d.mon || {};
+                let set = {};
+                try { (JSON.parse(d.sv || '[]') || []).forEach(r => { if (Array.isArray(r)) set[r[0]] = Number(r[2]); }); } catch (e) { set = {}; }
+                const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
+                const niv = ['NIV', 'NIV-ST', 'HiFlowO2'].indexOf(d.mode) !== -1;
+                const drive = num(set.pinsp) !== null ? set.pinsp : num(set.ps);
+                const t = Number.isFinite(cur.sessionTime) ? cur.sessionTime : (Number(cur.time) || 0);
+                dispatch({ type: 'ADD_VENT_SAMPLE', payload: {
+                    time: t, mode: String(d.mode || ''), niv,
+                    vte: num(mon.vte), ibw: num(d.ibw), ppeak: num(mon.ppeak), pplat: num(mon.pplat), peep: num(mon.peep), autopeep: num(mon.autopeep),
+                    mv: num(mon.mv), ftot: num(mon.ftot), o2: num(d.o2), setPeep: num(set.peep),
+                    ipap: niv && num(set.peep) !== null && drive !== null ? set.peep + drive : null
+                } });
+            };
+            take();
+            const id = setInterval(take, 15000);
+            return () => clearInterval(id);
+        }, [isMonitorMode, ventDriving]);
         const ventDrivingRef = useRef(false);
         useEffect(() => {
             if (isMonitorMode || ventDrivingRef.current === ventDriving) return;

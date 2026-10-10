@@ -389,6 +389,9 @@
         // Defib Sim: feedback in the standalone Defib-sim's style, and a printable certificate.
         const defibSim = scenario.defibSim && window.DefibSim && window.DefibSim.assess ? scenario.defibSim : null;
         const defibReview = defibSim ? window.DefibSim.assess(state) : null;
+        // Ventilator feedback: any session in which a ventilator was used (Ventilator Sim or not).
+        const ventSim = scenario.ventSim || null;
+        const ventReview = window.VentSim && window.VentSim.used(state) ? window.VentSim.assess(state) : null;
         const printCertificate = () => {
             const name = window.prompt('Learner name for the certificate (leave blank to omit):', '') ;
             if (name === null) return;
@@ -517,7 +520,9 @@
             const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:28px;font-size:.85rem}.events li{margin:2px 0}.chip{display:inline-block;border-radius:9px;padding:0 6px;font-size:.7rem;font-weight:bold;margin-right:4px}.timeline{overflow:hidden;margin:8px 0}.timeline svg{width:100%;height:auto;display:block}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
             const trendCard = buildReportTrend(state.history, state.log);
             const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const li = (arr) => arr.map(g => `<li>${esc(g)}</li>`).join('');
+            const ventFeedbackCard = ventReview ? `<div class="card"><h3 style="margin-top:0;">Ventilator feedback</h3>${ventSim ? `<p class="muted" style="margin-top:0;">${esc(ventSim.name)} &middot; ${ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>` : ''}${ventReview.stats.length ? `<ul>${li(ventReview.stats)}</ul>` : ''}${ventReview.good.length ? `<h4>Good practice</h4><ul>${li(ventReview.good)}</ul>` : ''}${ventReview.improve.length ? `<h4>Areas for improvement</h4><ul>${li(ventReview.improve)}</ul>` : ''}${ventReview.problems.length ? `<h4>Problems</h4><ul>${li(ventReview.problems.map(p => p.text))}</ul>` : ''}</div>` : '';
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -576,6 +581,32 @@
                                         <ul className="text-sm text-slate-200 space-y-0.5">{defibReview.improve.map(g => <li key={g}>{'\u26a0'} {g}</li>)}</ul>
                                     </div>
                                 )}
+                            </div>
+                        )}
+                        {ventReview && (
+                            <div className="bg-slate-800 p-4 rounded-lg border border-cyan-700/60" data-testid="vent-feedback">
+                                <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2"><Lucide icon="wind" className="w-4 h-4 text-cyan-400"/> Ventilator feedback</h3>
+                                {ventSim && <p className="text-xs text-slate-400 mb-2">{ventSim.name} &middot; {ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>}
+                                {ventReview.stats.length > 0 && <ul className="text-xs text-slate-300 mb-2 space-y-0.5">{ventReview.stats.map(g => <li key={g}>{'\u2022'} {g}</li>)}</ul>}
+                                {ventReview.good.length > 0 && (
+                                    <div className="mb-2 border-l-4 border-emerald-500 bg-emerald-950/20 p-2 rounded">
+                                        <div className="text-xs font-bold text-emerald-400 uppercase mb-1">Good practice</div>
+                                        <ul className="text-sm text-slate-200 space-y-0.5">{ventReview.good.map(g => <li key={g}>{'\u2713'} {g}</li>)}</ul>
+                                    </div>
+                                )}
+                                {ventReview.improve.length > 0 && (
+                                    <div className="mb-2 border-l-4 border-red-500 bg-red-950/20 p-2 rounded">
+                                        <div className="text-xs font-bold text-red-400 uppercase mb-1">Areas for improvement</div>
+                                        <ul className="text-sm text-slate-200 space-y-0.5">{ventReview.improve.map(g => <li key={g}>{'\u26a0'} {g}</li>)}</ul>
+                                    </div>
+                                )}
+                                {ventReview.problems.length > 0 && (
+                                    <div className="border-l-4 border-amber-500 bg-amber-950/20 p-2 rounded">
+                                        <div className="text-xs font-bold text-amber-400 uppercase mb-1">Problems injected</div>
+                                        <ul className="text-sm text-slate-200 space-y-0.5">{ventReview.problems.map((p, i) => <li key={i}>{p.text}</li>)}</ul>
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-slate-500 mt-2">Targets are the simulator's teaching targets for this scenario, not a guideline.</p>
                             </div>
                         )}
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">

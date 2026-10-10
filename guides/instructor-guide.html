@@ -34,6 +34,7 @@
 <li><a href="#running">Running the patient</a></li>
 <li><a href="#arrests">Arrests, rhythms and the defibrillator</a></li>
 <li><a href="#defib-sim">Running a Defib Sim</a></li>
+<li><a href="#vent-sim">The ventilator and Ventilator Sim</a></li>
 <li><a href="#paediatric">Paediatric scenarios</a></li>
 <li><a href="#log">The event log, notes and flags</a></li>
 <li><a href="#debrief">Finishing and the debrief</a></li>
@@ -83,6 +84,7 @@
 <tr><td>Laptop or tablet</td><td>Instructor screen: you drive the patient from here</td><td>Out of the team's sight, ideally where you can see the room</td></tr>
 <tr><td>Second screen, TV, projector or device</td><td>Room monitor: the patient monitor the team watches</td><td>Where a real monitor would be, visible to the whole team</td></tr>
 <tr><td>Tablet (optional)</td><td>Defibrillator</td><td>At the bedside, for Defib Sim or any scenario that needs a defib</td></tr>
+<tr><td>Tablet (optional)</td><td>Ventilator (HAMILTON-T1)</td><td>At the bedside, for Ventilator Sim or any ventilated patient. It can also show on the room monitor tablet</td></tr>
 <tr><td>Speakers (optional)</td><td>Alarms and monitor beeps</td><td>Next to the room monitor</td></tr>
 </tbody>
 </table></div>
@@ -125,13 +127,14 @@
 <p>Hover over the badge to see each linked screen and when it was last heard from.</p>
 
 <h2 id="choosing">Choosing a scenario</h2>
-<p>The setup screen has a tab for each way to start. Premade covers most teaching; Defib Sim is for defibrillator skills.</p>
+<p>The setup screen has a tab for each way to start. Premade covers most teaching; Defib Sim is for defibrillator skills and Ventilator Sim for ventilator skills.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Tab</th><th>What you get</th><th>Best for</th></tr></thead>
 <tbody>
 <tr><td><strong>Premade</strong></td><td>254 written scenarios in 8 categories: Adult Medical, Trauma, Paediatric, Cardiac Arrest, Toxicology, Obs &amp; Gynae, Elderly, Psychiatric</td><td>Planned teaching with set objectives</td></tr>
 <tr><td><strong>Quick Sim</strong></td><td>A blank patient: you set age, weight, sex, name and starting rhythm. No scenario, drugs or scoring</td><td>Ad-hoc teaching, rhythm recognition, obs drills</td></tr>
 <tr><td><strong>Defib Sim</strong></td><td>Defibrillation, cardioversion and pacing on the defib tablet, with its own controller</td><td>Defib skills and assessment (see <a href="#defib-sim">Running a Defib Sim</a>)</td></tr>
+<tr><td><strong>Ventilator Sim</strong></td><td>Eight ventilator scenarios on the HAMILTON-T1: NIV, CPAP, lung-protective and asthma ventilation, setting up after RSI, troubleshooting and transfer</td><td>Ventilator skills and assessment (see <a href="#vent-sim">The ventilator and Ventilator Sim</a>)</td></tr>
 <tr><td><strong>Random</strong></td><td>A generated patient from your choice of category, age group and acuity</td><td>Unpredictable cases for experienced teams</td></tr>
 <tr><td><strong>Custom</strong></td><td>Scenarios you have saved or imported as a file</td><td>Your own material</td></tr>
 <tr><td><strong>Builder</strong></td><td>A form to write a scenario field by field</td><td>Writing new scenarios</td></tr>
@@ -333,6 +336,35 @@
 <p><strong>How shocks resolve by default.</strong> Defib Sim uses <strong>Auto</strong>: an arrest converts on the third adequate shock, and a cardioversion on the first adequate synchronised shock. "Adequate" means at least 150 J for an adult (3 J/kg for a child) to defibrillate, and 70 J (1 J/kg) to cardiovert. These thresholds are simulator settings, not guideline values. An unsynchronised shock into a rhythm with a pulse causes VF.</p>
 <p><strong>Pacing</strong> captures electrically at the scenario's threshold (it varies by up to 15 mA each run) and gives a pulse about 10 mA above it. Demand pacing is inhibited by a faster native rate.</p>
 <p><strong>Debrief.</strong> The debrief lists good practice and areas for improvement: pulse checks, mode, SYNC, energies, time to first shock, drug timing, sedation before cardioversion, analgesia for pacing and capture. <strong>Certificate</strong> prints a certificate of completion.</p>
+
+<h2 id="vent-sim">The ventilator and Ventilator Sim</h2>
+<p>The simulator includes a HAMILTON-T1 ventilator: the same device as the standalone ventilator trainer. It works in any scenario, and Ventilator Sim builds scenarios around it. The physiology is a teaching model, not validated physiology.</p>
+<h3>Where the candidate uses it</h3>
+<ul>
+<li><strong>On the room monitor tablet.</strong> In the controller's <strong>Ventilator</strong> section, press <strong>Show the ventilator on the room monitor</strong> (Ventilator Sim does this for you). The candidate can flip between the ventilator and the obs without stopping it. The defib and the ventilator share that screen, so opening one closes the other.</li>
+<li><strong>On its own tablet.</strong> Scan the <strong>Ventilator</strong> QR code from <strong>Join</strong>, or open <strong>Screens → Open ventilator tablet</strong>. Monitor, defib and ventilator tablets can all run at once, in sync.</li>
+</ul>
+<h3>Starting a Ventilator Sim</h3>
+<ol>
+<li>On the setup screen, choose the <strong>Ventilator Sim</strong> tab.</li>
+<li>Choose <strong>Education</strong> (the ventilator shows its alarm troubleshooting help) or <strong>Assessment</strong> (no help on the screen; feedback in the debrief).</li>
+<li>Choose a scenario: AECOPD (start NIV), cardiogenic pulmonary oedema (CPAP), obesity hypoventilation (NIV), ARDS (lung-protective ventilation), severe asthma (intubated), after RSI in the ED (set up from scratch), troubleshooting (DOPES) or interhospital transfer. Intubated scenarios start with the tube recorded and the patient sedated and paralysed.</li>
+<li>Press <strong>Start Ventilator Sim</strong>. The ventilator opens on the room monitor; link a tablet instead if you prefer.</li>
+</ol>
+<h3>What the ventilator does to the patient</h3>
+<p>While it is ventilating, SpO2 follows the oxygen and PEEP, CO2 follows the ventilation and settles over 3 to 5 minutes, the RR is the ventilator's rate, and low SpO2, high CO2 and air trapping change HR and BP. This happens whether or not the clock is running, and not in a cardiac arrest. Any obs you type yourself stay as you set them until you press <strong>Release to ventilator</strong>; <strong>I set them</strong> turns the link off altogether.</p>
+<h3>Controlling it</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Control</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td>Lungs and Own breathing</td><td>The lung profile (normal, AECOPD, pulmonary oedema, obesity hypoventilation, ARDS, severe asthma) and whether the patient breathes for themselves</td></tr>
+<tr><td>Lungs (adjust)</td><td>Compliance, resistance, CO2 production, oxygenation impairment and the patient's own rate</td></tr>
+<tr><td>Problems</td><td>One press to inject, again to fix: leaks, disconnection, coughing, kinked expiratory limb, apnoea, oxygen failure, mains lost, tiring, cracked circuit, displaced tube (no CO2), blocked tube, bronchospasm, tension pneumothorax (needle, finger thoracostomy or a drain fixes it) and a low battery</td></tr>
+<tr><td>Education / Assessment</td><td>Shows or hides the ventilator's alarm help</td></tr>
+<tr><td>Control this ventilator</td><td>Under each ventilator's mirror: switch on or off, start or standby, mode, every setting and alarm limit (step or type a value), silence, O2 enrichment, lock the screen and a fresh ventilator. Use it to hand over a ventilator with deliberate errors. Your changes are logged as yours</td></tr>
+</tbody>
+</table></div>
+<p><strong>Debrief.</strong> Any session that used the ventilator gets <strong>Ventilator feedback</strong>: when ventilation started, the pre-use check, alarm limits, tidal volume per kg of ideal body weight, plateau and driving pressure, AutoPEEP, SpO2 time in target, and when each problem was injected and fixed. The targets are the simulator's teaching targets for each scenario, not a guideline.</p>
 
 <h2 id="paediatric">Paediatric scenarios</h2>
 <p>Child scenarios follow the Resuscitation Council UK (RCUK) Guidelines 2025: the Paediatric advanced life support and Paediatric cardiac arrhythmias algorithms, and the Paediatric emergency drug chart.</p>

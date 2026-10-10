@@ -446,6 +446,14 @@
                     arrest: { since: RG.isPulseless(initialRhythm) ? 0 : null, shocks: 0, adrenaline: [], amiodarone: [] },
                     defibStep: (action.payload.defibSim && Array.isArray(action.payload.defibSim.steps) && action.payload.defibSim.steps.length)
                         ? { index: 0, since: 0, done: false } : null,
+                    // Ventilator Sim: the scenario's lungs, and the ventilator shown on the room monitor (the
+                    // candidate's tablet), which the facilitator can take off again.
+                    ...(action.payload.ventSim && window.VENT_PROFILES ? {
+                        vent: { profile: window.VENT_PROFILES.profiles[action.payload.ventSim.profile] ? action.payload.ventSim.profile : 'normal',
+                            breathing: action.payload.ventSim.breathing === true || action.payload.ventSim.breathing === false ? action.payload.ventSim.breathing : null,
+                            lung: {}, probs: [], assess: action.payload.ventSim.mode === 'assessment' },
+                        ventPanelOpen: true
+                    } : {}),
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
                     // would hand every session the same object.
                     activeInterventions: new Set(),
@@ -636,6 +644,7 @@
                 } };
             }
             case 'SET_VENT_MIRROR': return { ...state, ventMirror: action.payload || {} };
+            case 'ADD_VENT_SAMPLE': return action.payload ? { ...state, ventSamples: [...(state.ventSamples || []), action.payload].slice(-480) } : state;
             case 'SET_VENT_LINK': return { ...state, ventLink: action.payload !== false };
             case 'SET_DEFIB_SETTINGS': return { ...state, defibSettings: cleanDefibSettings(state.defibSettings, action.payload) };
             case 'SET_PACING_THRESHOLD': return { ...state, pacingThreshold: Math.max(10, Math.min(140, Math.round(Number(action.payload) || state.pacingThreshold))) };

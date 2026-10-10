@@ -368,3 +368,66 @@ test('a displaced tube takes the CO2 away, and a tension pneumothorax drops the 
   await expect.poll(() => E(() => (window.__simEngine.state.vent.probs || []).includes('ptx'))).toBe(false);
   expect(await logHas(page, /^Ventilator problem fixed: tension pneumothorax decompressed/)).toBe(true);
 });
+
+// ---- Phase 4: Ventilator Sim ----
+
+test('Ventilator Sim: ARDS in Assessment, on the room monitor, through to the ventilator debrief', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await page.getByRole('button', { name: 'Ventilator Sim', exact: true }).click();
+  await page.locator('[data-vent-scenario="ards"]').click();
+  await page.getByTestId('vent-setup').getByRole('button', { name: /^Assessment/ }).click();
+  await page.getByRole('button', { name: 'Start Ventilator Sim' }).click();
+  await expect(page.getByTestId('vent-brief')).toContainText('ARDS: lung-protective ventilation (Assessment)');
+  await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'ards', breathing: false, airway: 'tube', assess: true });
+  expect(await live(page, code, '/ventPanelOpen')).toBe(true);
+
+  // The candidate's tablet is the room monitor, with the ventilator already on it
+  const monitor = await context.newPage();
+  const monitorErrors = trackErrors(monitor);
+  await monitor.goto(`/index.html?mode=monitor&session=${code}`);
+  await expect(monitor.getByTestId('monitor-vent')).toBeVisible({ timeout: 10000 });
+  const dev = monitor.frameLocator('iframe[title="Ventilator"]');
+  await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  const frame = () => monitor.frames().find(f => /vent\/index\.html/.test(f.url()));
+  await expect.poll(() => frame().evaluate(() => [window.__vent.P.id, document.body.classList.contains('assess')])).toEqual(['ards', true]);
+  await startVentilating(dev);
+  await expect.poll(() => logHas(page, /^Ventilator: Ventilation started \(\(S\)CMV\+\) \(ventilator on the monitor\)/)).toBe(true);
+  // The candidate sets a lung-protective tidal volume on the device (6 ml/kg of a 70 kg IBW)
+  await frame().evaluate(() => { E = { scope: 'ctrl', key: 'vt', val: 420 }; confirmEdit(); });
+  await expect.poll(() => logHas(page, /^Ventilator: Setting changed: Vt 420/)).toBe(true);
+
+  // A problem, injected and fixed
+  const panel = page.getByTestId('vent-patient');
+  await panel.getByRole('button', { name: 'Tube blocked by secretions' }).click();
+  await page.waitForTimeout(1500);
+  await panel.getByRole('button', { name: 'Fix: Tube blocked by secretions' }).click();
+  // Long enough for the ventilator record (every 15 s) to hold the new tidal volume
+  await expect.poll(() => page.evaluate(() => (window.__simEngine.state.ventSamples || []).filter(s => s.vte > 0).length), { timeout: 40000 }).toBeGreaterThan(1);
+
+  await page.getByRole('button', { name: 'Finish' }).first().click();
+  await expect(page.getByText('Simulation Complete')).toBeVisible();
+  const fb = page.getByTestId('vent-feedback');
+  await expect(fb).toContainText('ARDS: lung-protective ventilation');
+  await expect(fb).toContainText('Ventilation first started at');
+  await expect(fb).toContainText('Median tidal volume');
+  await expect(fb).toContainText('leak test and flow sensor calibration were not both passed');
+  await expect(fb).toContainText(/Tube blocked by secretions: injected at \d+:\d\d, fixed \d+:\d\d later/);
+  expect(errors).toEqual([]);
+  expect(monitorErrors).toEqual([]);
+});
+
+test('every Ventilator Sim scenario starts with its lungs, airway and patient', async ({ page }) => {
+  await openController(page);
+  const ids = await page.evaluate(() => window.VentSim.SCENARIOS.map(s => s.id));
+  expect(ids.length).toBe(8);
+  for (const id of ids) {
+    const r = await page.evaluate((id) => {
+      const s = window.VentSim.buildScenario({ scenario: id, mode: 'education' });
+      return { profile: s.ventSim.profile, ok: !!window.VENT_PROFILES.profiles[s.ventSim.profile], spo2: s.vitals.spO2, title: s.title, quick: s.quickSim };
+    }, id);
+    expect(r.ok, id).toBe(true);
+    expect(r.title).toMatch(/^Ventilator Sim: /);
+    expect(r.spo2).toBeGreaterThan(80);
+  }
+});

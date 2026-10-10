@@ -316,6 +316,14 @@ patient.
     appear as a colleague's would and are logged as the facilitator's
     (`sessions/<CODE>/ventCmd`, consumed by the ventilator they are addressed to).
 - It runs in real time. A new scenario gives a fresh ventilator, switched off.
+- **Ventilator Sim** (setup tab, `data/ventsim.js`, `data/screens/ventsetup.js`): eight scenarios
+  (AECOPD NIV, CPO CPAP, OHS NIV, ARDS, severe asthma, after RSI, DOPES troubleshooting,
+  interhospital transfer) in Education or Assessment. It loads the scenario's lungs, records the
+  tube for intubated patients, puts the ventilator on the room monitor and opens the controller's
+  Ventilator section with the scenario brief. The debrief's **Ventilator feedback** (any session that
+  used a ventilator) reads the log and `ventSamples` (what the ventilator measured, every 15 s):
+  pre-use check, alarm limits, Vt per kg IBW, plateau and driving pressure, AutoPEEP, SpO2 time in
+  target and problem timings. The targets are teaching targets in `data/ventsim.js`, not a guideline.
 
 ---
 

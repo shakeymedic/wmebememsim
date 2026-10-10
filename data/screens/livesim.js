@@ -1532,8 +1532,15 @@
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) on the room monitor or its own
                              tablet. Its settings, tests and alarms arrive in the event log. ---- */}
                         {VP && (
-                        <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={false}>
+                        <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={!!(rawScenario && rawScenario.ventSim)}>
                             <div className="flex flex-col gap-2 text-[11px] text-slate-300">
+                                {rawScenario && rawScenario.ventSim && (
+                                    <div className="bg-cyan-950/40 border border-cyan-700/60 rounded p-2" data-testid="vent-brief">
+                                        <div className="font-bold text-cyan-300">Ventilator Sim: {rawScenario.ventSim.name} ({rawScenario.ventSim.mode === 'assessment' ? 'Assessment' : 'Education'})</div>
+                                        <div className="text-slate-300">{rawScenario.ventSim.description}</div>
+                                        {VP && rawScenario.ventSim.problems.length > 0 && <div className="mt-1"><span className="text-slate-400">Problems to inject, one at a time: </span>{rawScenario.ventSim.problems.map(id => { const p = VP.PROBLEMS.find(x => x.id === id); return p ? p.label : id; }).join(', ')}.</div>}
+                                    </div>
+                                )}
                                 <Button variant="outline" onClick={() => sim.dispatch({ type: 'SET_VENT_PANEL', payload: !ventPanelOpen })}
                                         className={`w-full ${ventPanelOpen ? 'bg-cyan-900/30 border-cyan-500 text-cyan-300' : 'text-cyan-400 border-cyan-500/50'}`}
                                         title="Shows the HAMILTON-T1 on the room monitor (it replaces the defib there). A ventilator tablet joined by QR code works whether this is on or off.">
