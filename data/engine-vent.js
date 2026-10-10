@@ -102,7 +102,18 @@
         var shunt = Math.max(0.05, lung.s0 - lung.sPeep * peep + (det ? 0.05 : 0));
         var pao2 = Math.max(2, (fio2 * 95 - p.paco2 / 0.8) * (1 - shunt));
         var spo2T = clamp(sev(pao2 * 7.5), 40, 100);
-        var spo2 = p.spo2 + (spo2T - p.spo2) * SPO2_RATE;
+        // True shunt: blood past collapsed lung stays venous (about 65%) whatever the oxygen. A mucus
+        // plug: PEEP above 5 reopens a little of it (1% of the flow per cmH2O), never more than 40%.
+        // A tension pneumothorax: until it is decompressed.
+        var qs = (lung.ptxShunt || 0) + (lung.plug ? Math.max(lung.plug * 0.6, lung.plug - 0.01 * Math.max(0, peep - 5)) : 0);
+        if (qs > 0) spo2T = (1 - qs) * spo2T + qs * 65;
+        // A tube in the oesophagus: no oxygen reaches the lungs, so the patient desaturates over a minute or two.
+        if (tubeOut) spo2T = Math.min(spo2T, 70);
+        // Below 85% the fall slows (oxygen stores and a mixed venous reserve): a mask coming off a
+        // hypoxic patient takes a minute or two to bottom out, not seconds.
+        var rate = tubeOut && spo2T < p.spo2 ? 0.015 : spo2T < p.spo2 && p.spo2 < 85 ? 0.02 : SPO2_RATE;
+        spo2T = Math.max(spo2T, 50);
+        var spo2 = p.spo2 + (spo2T - p.spo2) * rate;
         // CO2: the trainer's curve of PaCO2 against alveolar ventilation.
         var target = lung.floor + (lung.paco2 - lung.floor) * Math.exp(-0.5 * (r - 1));
         target = Math.min(target, lung.paco2 + 4) * (lung.vco2 || 1);   // CO2 production scales it (the trainer's rule)
@@ -113,7 +124,9 @@
         // No gas through the circuit: nothing to measure at the mouth.
         var etco2 = conn && rr > 0 && !tubeOut ? clamp(paco2 - gap, 0, 15) : 0;
         // HR rises with hypoxia and hypercapnia; air trapping lowers BP (as in the trainer).
-        var trap = Math.max(0, num(ph.autopeep, 0) - 3);
+        // Only on an invasive ventilator: in NIV the measured AutoPEEP mostly reflects a short
+        // expiration from leak and TI max, not a hyperinflated chest.
+        var trap = Math.min(10, Math.max(0, num(ph.autopeep, 0) - 3)) * (Number(ph.inv) > 0 ? 1 : 0.25);
         var offsets = {
             // A tension pneumothorax also obstructs venous return (until it is decompressed or fixed).
             hr: (spo2 < 88 ? (88 - spo2) * 1.5 : 0) + (paco2 > 9 ? 6 : 0) + (ptx ? 25 : 0),

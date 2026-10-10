@@ -15,14 +15,15 @@
 
     // airway: 'tube' means intubated before the scenario starts (RSI recorded), 'none' a mask.
     // targets: spo2 [low, high] (%), vtMax / vtMin (ml/kg ideal body weight), pplatMax, dpMax
-    // (driving pressure = Pplat - PEEP), autopeepMax, ipapMax, peepMin (all cmH2O), etco2 [low, high] (kPa).
+    // (driving pressure = Pplat - PEEP), autopeepMax, ipapMin, ipapMax, peepMin (all cmH2O), etco2 [low, high] (kPa).
     // problems: the problems this scenario is written around (the facilitator injects them).
+    // startProblems: problems already present when the scenario starts.
     var SCENARIOS = [
         { id: 'copd-niv', name: 'AECOPD: start NIV', group: 'Noninvasive ventilation',
-          description: '68-year-old with an exacerbation of COPD. Drowsy, using accessory muscles. On 28% oxygen: SpO2 85%, respiratory acidosis (PaCO2 9.6 kPa). Set up and titrate NIV.',
+          description: '68-year-old with an exacerbation of COPD. Drowsy, using accessory muscles. On 28% oxygen after nebulisers: SpO2 85%, pH 7.24, PaCO2 9.6 kPa. Set up NIV and titrate it.',
           profile: 'copd', breathing: null, airway: 'none', age: 68, sex: 'Male',
-          vitals: { hr: 112, bpSys: 148, bpDia: 86, rr: 30, spO2: 85, etco2: 8.8, gcs: 14, temp: 37.4 },
-          targets: { spo2: [88, 92], ipapMax: 30, niv: true },
+          vitals: { hr: 112, bpSys: 148, bpDia: 86, rr: 30, spO2: 85, etco2: 8.2, gcs: 14, temp: 37.4 },
+          targets: { spo2: [88, 92], ipapMin: 20, ipapMax: 30, niv: true },
           problems: ['leakL', 'det', 'cough'] },
         { id: 'cpo-cpap', name: 'Cardiogenic pulmonary oedema: CPAP', group: 'Noninvasive ventilation',
           description: '74-year-old with acute pulmonary oedema. Sitting up, frothy sputum, crackles to the apices. SpO2 86% on 60% oxygen. Start CPAP (NIV mode with no pressure support) and titrate.',
@@ -31,7 +32,7 @@
           targets: { spo2: [94, 98], peepMin: 8, niv: true },
           problems: ['leakM', 'disc'] },
         { id: 'ohs-niv', name: 'Obesity hypoventilation: NIV', group: 'Noninvasive ventilation',
-          description: '58-year-old with obesity hypoventilation, drowsy with a raised CO2. Snores and obstructs when asleep. Set up NIV with enough EPAP to hold the upper airway open.',
+          description: '58-year-old with obesity hypoventilation, drowsy with a raised CO2 on 28% oxygen. Snores and obstructs when asleep. Set up NIV with enough EPAP to hold the upper airway open.',
           profile: 'ohs', breathing: null, airway: 'none', age: 58, sex: 'Male',
           vitals: { hr: 104, bpSys: 156, bpDia: 92, rr: 26, spO2: 84, etco2: 8.2, gcs: 13, temp: 37.0 },
           targets: { spo2: [88, 92], peepMin: 8, ipapMax: 30, niv: true },
@@ -60,6 +61,12 @@
           vitals: { hr: 90, bpSys: 128, bpDia: 74, rr: 14, spO2: 97, etco2: 4.9, gcs: 3, temp: 36.9 },
           targets: { spo2: [94, 98], vtMin: 6, vtMax: 8, pplatMax: 30 },
           problems: ['tubeout', 'block', 'ptx', 'disc', 'kink', 'o2fail'] },
+        { id: 'plug', name: 'Mucus plugging: bronchoscopy', group: 'Troubleshooting',
+          description: '71-year-old intubated two days ago for pneumonia, sedated and paralysed. Over the last hour the SpO2 has fallen despite more oxygen, the airway pressures are high and the tidal volumes low. Reduced air entry on the right. Work through DOPES, then bronchoscopy to clear the plug.',
+          profile: 'normal', breathing: false, airway: 'tube', age: 71, sex: 'Male',
+          vitals: { hr: 104, bpSys: 132, bpDia: 78, rr: 18, spO2: 88, etco2: 5.6, gcs: 3, temp: 37.8 },
+          targets: { spo2: [92, 96], vtMin: 6, vtMax: 8, pplatMax: 30 },
+          problems: ['plug'], startProblems: ['plug'] },
         { id: 'transfer', name: 'Interhospital transfer', group: 'Troubleshooting',
           description: 'Ventilated patient for transfer to a tertiary centre. Prepare the ventilator for transport, then manage what happens in the ambulance: mains power, battery, the oxygen cylinder and a disconnection.',
           profile: 'normal', breathing: false, airway: 'tube', age: 38, sex: 'Male',
@@ -91,7 +98,7 @@
             ventSim: {
                 scenario: sc.id, name: sc.name, group: sc.group, description: sc.description, mode: mode,
                 profile: sc.profile, breathing: sc.breathing, airway: sc.airway,
-                targets: sc.targets, problems: sc.problems.slice()
+                targets: sc.targets, problems: sc.problems.slice(), startProblems: (sc.startProblems || []).slice()
             }
         });
     }
@@ -145,8 +152,11 @@
         // NIV scenarios: an NIV mode, and a sensible inspiratory pressure
         var invStarts = starts.filter(function (l) { return /\((\(S\)CMV\+|SIMV\+|VS|PCV\+|PSIMV\+|SPONT|DuoPAP|APRV|ASV)/.test(l.msg); });
         if (tg.niv && starts.length) {
+            var nivStarts = starts.filter(function (l) { return /\((NIV|NIV-ST)\)/.test(l.msg); });
             if (invStarts.length) improve.push('An invasive mode was used for a patient with a mask: choose NIV, NIV-ST (or CPAP as NIV with no pressure support)');
-            else good.push('A noninvasive mode was used');
+            else if (nivStarts.length) good.push('A noninvasive mode was used');
+            if (starts.some(function (l) { return /\(HiFlowO2\)/.test(l.msg); }))
+                improve.push('High-flow nasal oxygen was used: it does not give the ventilatory support this patient needs. Use NIV, NIV-ST or CPAP');
         }
 
         // Ventilator samples (while it was breathing for the patient)
@@ -182,6 +192,11 @@
             var pk = Math.max.apply(null, peeps);
             if (pk >= tg.peepMin) good.push('PEEP/CPAP of ' + pk + ' cmH2O used (target at least ' + tg.peepMin + ')'); else improve.push('PEEP/CPAP never reached ' + tg.peepMin + ' cmH2O (highest ' + pk + ')');
         }
+        if (ipaps.length && tg.ipapMin) {
+            var imx = Math.max.apply(null, ipaps);
+            if (imx < tg.ipapMin) improve.push('Inspiratory pressure never reached ' + tg.ipapMin + ' cmH2O (highest ' + imx + '): in hypercapnic AECOPD, titrate IPAP up towards 20 or more over 10-30 minutes as tolerated (BTS/ICS)');
+            else good.push('Inspiratory pressure titrated up to ' + imx + ' cmH2O');
+        }
         if (ipaps.length && tg.ipapMax) {
             var im = Math.max.apply(null, ipaps);
             if (im > tg.ipapMax) improve.push('Inspiratory pressure reached ' + im + ' cmH2O: above ' + tg.ipapMax + ' needs senior review (BTS/ICS)');
@@ -210,6 +225,8 @@
         // Problems: when each was injected and when it was fixed
         var problems = [];
         var open = {};
+        // A problem the scenario starts with counts from the start.
+        ((vs && vs.startProblems) || []).forEach(function (id) { var k0 = PROBLEM_LABEL(id); open[k0] = { label: k0, at: 0, fixedAt: null, fromStart: true }; problems.push(open[k0]); });
         log.forEach(function (l) {
             var m = /^Ventilator problem injected: (.+) \(facilitator\)$/.exec(l.msg || '');
             if (m) { open[m[1]] = { label: m[1], at: t(l), fixedAt: null }; problems.push(open[m[1]]); return; }
@@ -218,10 +235,13 @@
             if (/^Ventilator problem fixed: tension pneumothorax decompressed/.test(l.msg || '')) {
                 var k = PROBLEM_LABEL('ptx'); if (open[k]) { open[k].fixedAt = t(l); open[k].by = 'decompression'; delete open[k]; } return;
             }
+            if (/^Ventilator problem fixed: mucus plug cleared by bronchoscopy/.test(l.msg || '')) {
+                var kp = PROBLEM_LABEL('plug'); if (open[kp]) { open[kp].fixedAt = t(l); open[kp].by = 'bronchoscopy'; delete open[kp]; } return;
+            }
             if (/^Ventilator problems: all fixed/.test(l.msg || '')) Object.keys(open).forEach(function (k2) { open[k2].fixedAt = t(l); delete open[k2]; });
         });
         problems.forEach(function (p) {
-            p.text = p.label + ': injected at ' + clock(p.at) + (p.fixedAt !== null ? ', fixed ' + clock(p.fixedAt - p.at) + ' later' + (p.by === 'decompression' ? ' (chest decompressed)' : '') : ', not fixed by the end');
+            p.text = p.label + (p.fromStart ? ': present from the start' : ': injected at ' + clock(p.at)) + (p.fixedAt !== null ? ', fixed ' + clock(p.fixedAt - p.at) + ' later' + (p.by === 'decompression' ? ' (chest decompressed)' : p.by === 'bronchoscopy' ? ' (bronchoscopy)' : '') : ', not fixed by the end');
         });
 
         return { good: good, improve: improve, stats: stats, problems: problems, samples: samples.length };

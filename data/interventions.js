@@ -44,6 +44,8 @@ window.INTERVENTIONS = {
     // Oxygenation via a rescue airway takes 15-60s to show on the probe, then is sustained.
     'i-gel': { label: 'i-gel / LMA', route: 'supraglottic', effect: { SpO2: 15, RR: 'vent' }, category: 'Airway', log: 'Supraglottic airway (i-gel) inserted.', type: 'continuous', duration: 30, pk: { onset: 5, peak: 40, offset: 60 } },
     'Suction': { label: 'Suction', route: 'manual', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway suctioned.', type: 'bolus', duration: 15, pk: { onset: 2, peak: 20, offset: 0, maxDoses: 3 } },
+    // Clears a mucus plug injected on the ventilator (engine.js); on its own it changes no obs.
+    'Bronchoscopy': { label: 'Bronchoscopy', route: 'via the tube', effect: {}, category: 'Airway', log: 'Bronchoscopy through the endotracheal tube: airways inspected and secretions suctioned.', type: 'bolus', duration: 60 },
     // RSI is deliberately performable with ANY induction agent or none at all — the expectations
     // below are advisory only. No SpO2 jump: oxygenation during the apnoeic period is modelled in
     // engine.js (pre-oxygenation reservoir vs. apnoeic desaturation) rather than asserted here.

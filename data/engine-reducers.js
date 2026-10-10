@@ -446,12 +446,12 @@
                     arrest: { since: RG.isPulseless(initialRhythm) ? 0 : null, shocks: 0, adrenaline: [], amiodarone: [] },
                     defibStep: (action.payload.defibSim && Array.isArray(action.payload.defibSim.steps) && action.payload.defibSim.steps.length)
                         ? { index: 0, since: 0, done: false } : null,
-                    // Ventilator Sim: the scenario's lungs, and the ventilator shown on the room monitor (the
-                    // candidate's tablet), which the facilitator can take off again.
+                    // Ventilator Sim: the scenario's lungs (and any problem it starts with), and the ventilator
+                    // shown on the room monitor (the candidate's tablet), which the facilitator can take off again.
                     ...(action.payload.ventSim && window.VENT_PROFILES ? {
                         vent: { profile: window.VENT_PROFILES.profiles[action.payload.ventSim.profile] ? action.payload.ventSim.profile : 'normal',
                             breathing: action.payload.ventSim.breathing === true || action.payload.ventSim.breathing === false ? action.payload.ventSim.breathing : null,
-                            lung: {}, probs: [], assess: action.payload.ventSim.mode === 'assessment' },
+                            lung: {}, probs: window.VENT_PROFILES.probList(action.payload.ventSim.startProblems || []), assess: action.payload.ventSim.mode === 'assessment' },
                         ventPanelOpen: true
                     } : {}),
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it

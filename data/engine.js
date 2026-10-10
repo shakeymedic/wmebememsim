@@ -881,6 +881,11 @@
                 dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'ptx') } });
                 addLogEntry('Ventilator problem fixed: tension pneumothorax decompressed.', 'system');
             }
+            // Bronchoscopy clears the ventilator's injected mucus plug.
+            if (key === 'Bronchoscopy' && cur.vent && (cur.vent.probs || []).indexOf('plug') !== -1) {
+                dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'plug') } });
+                addLogEntry('Ventilator problem fixed: mucus plug cleared by bronchoscopy.', 'system');
+            }
             // WAVE 9 / ROOT FIX (same class): send only the fields this intervention actually
             // CHANGED. The payload is merged onto the LIVE baseVitals by the reducer, so a whole
             // snapshot-derived object here meant two instant-effect interventions in one tick

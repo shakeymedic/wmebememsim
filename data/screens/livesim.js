@@ -1552,6 +1552,7 @@
                                         title="Shows the HAMILTON-T1 on the room monitor (it replaces the defib there). A ventilator tablet joined by QR code works whether this is on or off.">
                                     <Lucide icon="wind" className="w-4 h-4"/> {ventPanelOpen ? 'Take the ventilator off the patient screens' : 'Show the ventilator on the patient screens'}
                                 </Button>
+                                {window.VentControls && <window.VentControls.VentPatientPanel sim={sim} cfg={ventCfg} addLogEntry={addLogEntry} />}
                                 <label className="flex items-center justify-between gap-2">
                                     <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Lungs</span>
                                     <select aria-label="Ventilator lungs" value={ventCfg.profile} onChange={e => { sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { profile: e.target.value } }); addLogEntry(`Ventilator lungs set to ${VP.profiles[e.target.value].name} (facilitator)`, 'system'); }}
@@ -1589,7 +1590,6 @@
                                                 className="flex-none px-2 py-0.5 rounded bg-amber-600 text-black font-bold text-[10px]">Release to ventilator</button>
                                     </div>
                                 )}
-                                {window.VentControls && <window.VentControls.VentPatientPanel sim={sim} cfg={ventCfg} addLogEntry={addLogEntry} />}
                                 {ventMirrors.length === 0 && (
                                     <div className="text-slate-500">No ventilator is connected. Show it on the room monitor, or join a tablet with the Ventilator QR code (Screens &gt; Join by QR code).</div>
                                 )}
