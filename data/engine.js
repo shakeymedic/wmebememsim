@@ -169,7 +169,7 @@
         };
         // THE SIMULATION ENGINE: LIVE SESSION SYNC (data/engine-sync.js).
         const {
-            sendDeviceEvent
+            sendDeviceEvent, sendVentCommand
         } = window.__EngineSync.useSessionSync({
             addLogEntry: (...a) => addLogEntry(...a), analyseRhythm: (...a) => analyseRhythm(...a),
             deliverShock: (...a) => deliverShock(...a), dispatch, initCharge: (...a) => initCharge(...a),
@@ -876,6 +876,11 @@
             const updatedScenario = { ...scenario }; let updateNeeded = false;
             if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+            // Decompressing the chest fixes the ventilator's injected tension pneumothorax.
+            if (['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain'].indexOf(key) !== -1 && cur.vent && (cur.vent.probs || []).indexOf('ptx') !== -1) {
+                dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'ptx') } });
+                addLogEntry('Ventilator problem fixed: tension pneumothorax decompressed.', 'system');
+            }
             // WAVE 9 / ROOT FIX (same class): send only the fields this intervention actually
             // CHANGED. The payload is merged onto the LIVE baseVitals by the reducer, so a whole
             // snapshot-derived object here meant two instant-effect interventions in one tick
@@ -1584,7 +1589,7 @@
             const say = (k, v) => k === 'cvEnergy' ? `cardioversion succeeds at ${v === 'default' ? 'the default energy' : `${v} J or more`}` : `${k} = ${v}`;
             addLogEntry(`Shock response settings: ${Object.keys(patch || {}).map(k => say(k, patch[k])).join(', ')}`, 'system');
         },
-        sendDeviceEvent, recommendedShockEnergy,
+        sendDeviceEvent, sendVentCommand, recommendedShockEnergy,
         defibEnergySteps: () => RG.energySteps(defibWeight(), stateRef.current.scenario?.patientAge), audioContextState: audioCtxState, getUnmetExpectations: (action) => getUnmetExpectations(action, stateRef.current), setDeteriorationMode, toggleDeteriorationMode, describeDeterioration, getActiveDrugStatus,
         // Wave 8 surface: two-way sensor toggles, the honest fast paths and the derived obstruction.
         toggleSensor, attachStandardMonitoring, attachInvasiveMonitoring,

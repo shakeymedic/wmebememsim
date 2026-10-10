@@ -38,17 +38,78 @@
         return 'normal';
     }
 
+    // The facilitator's lung adjustments (the trainer's Lungs panel, after Hamilton's VenTrainer):
+    // compliance as % of the profile's, resistance, CO2 production as %, the oxygenation impairment
+    // (shunt, %) and the patient's own rate. Stored in live.vent.lung; a missing key means the
+    // profile's own value.
+    var LUNG_ADJ = {
+        c: { name: 'Compliance', unit: '%', min: 30, max: 200, step: 10, def: function () { return 100; } },
+        r: { name: 'Resistance', unit: 'cmH2O/(l/s)', min: 1, max: 30, step: 1, def: function (b) { return b.R; } },
+        m: { name: 'CO2 production', unit: '%', min: 65, max: 200, step: 5, def: function () { return 100; } },
+        o: { name: 'Oxygenation impairment', unit: '%', min: 0, max: 95, step: 2.5, def: function (b) { return Math.round(b.s0 * 1000) / 10; } },
+        e: { name: 'Spontaneous rate', unit: '/min', min: 6, max: 40, step: 1, def: function (b) { return b.rrBase; } }
+    };
+    var LUNG_ORDER = ['c', 'r', 'm', 'o', 'e'];
+
+    // Problems the facilitator can inject (press again to fix). The first ten are the trainer's; the
+    // last five are the DOPES problems added for the simulator. 'where' says which side models it:
+    // the device (alarms and waveforms on the T1), the patient (the controller's obs), or both.
+    var PROBLEMS = [
+        { id: 'leakM', label: 'Moderate leak' },
+        { id: 'leakL', label: 'Large leak' },
+        { id: 'disc', label: 'Mask off / circuit disconnected' },
+        { id: 'cough', label: 'Coughing / fighting the ventilator' },
+        { id: 'kink', label: 'Kinked expiratory limb' },
+        { id: 'apnoea', label: 'Patient stops breathing' },
+        { id: 'o2fail', label: 'Oxygen supply failure' },
+        { id: 'mains', label: 'Mains power lost' },
+        { id: 'det', label: 'Patient tiring / deteriorating' },
+        { id: 'circ', label: 'Cracked circuit (fails the leak test)' },
+        { id: 'tubeout', label: 'Tube displaced (oesophageal: no CO2)' },
+        { id: 'block', label: 'Tube blocked by secretions' },
+        { id: 'bronch', label: 'Bronchospasm' },
+        { id: 'ptx', label: 'Tension pneumothorax' },
+        { id: 'battlow', label: 'Mains lost with the battery low' }
+    ];
+    var PROBLEM_IDS = PROBLEMS.map(function (p) { return p.id; });
+    function probList(v) {
+        var a = Array.isArray(v) ? v : String(v || '').split(',');
+        return a.filter(function (id) { return PROBLEM_IDS.indexOf(id) !== -1; });
+    }
+
+    // The T1's modes, in the order of its Modes window (the device names).
+    var MODES = [['APVcmv', '(S)CMV+'], ['APVsimv', 'SIMV+'], ['VS', 'VS'], ['PCV+', 'PCV+'], ['PSIMV+', 'PSIMV+'], ['SPONT', 'SPONT'],
+        ['DuoPAP', 'DuoPAP'], ['APRV', 'APRV'], ['ASV', 'ASV'], ['NIV', 'NIV'], ['NIV-ST', 'NIV-ST'], ['HiFlowO2', 'HiFlowO2']];
+
     // The lung the breath engine uses: the profile, with breathing effort switched off when the
-    // facilitator says the patient is not breathing for themselves (sedated and paralysed).
+    // facilitator says the patient is not breathing for themselves (sedated and paralysed), the
+    // facilitator's lung adjustments, and the lung problems (bronchospasm and a blocked tube raise
+    // the resistance; a tension pneumothorax stiffens the lung and adds shunt). vco2 is CO2 production
+    // relative to the profile's (1 = as described).
     function lungFor(config) {
         var c = config || {};
         var base = P[c.profile] || P.normal;
         var out = {};
         for (var k in base) out[k] = base[k];
+        out.vco2 = 1;
         if (c.breathing === false) { out.sedated = true; out.effort = 0; }
         else if (c.breathing === true) { out.sedated = false; if (!out.effort) out.effort = 8; }
+        var adj = c.lung || {};
+        var num = function (key) { var d = LUNG_ADJ[key], v = Number(adj[key]); return adj[key] === undefined || adj[key] === null || !isFinite(v) ? null : Math.min(d.max, Math.max(d.min, v)); };
+        var setR = function (r) { out.tau = out.tau * r / out.R; out.R = r; };
+        var setC = function (C) { out.tau = out.tau / out.C * C; out.C = C; };
+        if (num('c') !== null) setC(base.C * num('c') / 100);
+        if (num('r') !== null) setR(num('r'));
+        if (num('m') !== null) out.vco2 = num('m') / 100;
+        if (num('o') !== null) out.s0 = num('o') / 100;
+        if (num('e') !== null) out.rrBase = num('e');
+        var probs = probList(c.probs);
+        if (probs.indexOf('bronch') !== -1) setR(Math.min(60, out.R * 2.5));
+        if (probs.indexOf('block') !== -1) setR(Math.min(80, out.R + 35));
+        if (probs.indexOf('ptx') !== -1) { setC(out.C * 0.4); out.s0 = Math.min(0.97, out.s0 + 0.25); }
         return out;
     }
 
-    window.VENT_PROFILES = { profiles: P, order: ORDER, profileForScenario: profileForScenario, lungFor: lungFor };
+    window.VENT_PROFILES = { profiles: P, order: ORDER, profileForScenario: profileForScenario, lungFor: lungFor,
+        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, probList: probList, MODES: MODES };
 })();

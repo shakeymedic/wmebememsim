@@ -76,6 +76,8 @@
                     if (!text) break;
                     const pri = { hi: 'high', med: 'medium', low: 'low' }[p.p];
                     if (p.alarm && pri) addLogEntry(`Ventilator alarm (${pri} priority): ${text} (${where})`, pri === 'low' ? 'info' : 'warning');
+                    // A change the facilitator made remotely is the facilitator's, not the candidate's.
+                    else if (p.by === 'facilitator') addLogEntry(`Ventilator (facilitator): ${text} (${where})`, 'system');
                     else addLogEntry(`Ventilator: ${text} (${where})`, pri ? 'warning' : 'action');
                     break;
                 }
@@ -592,8 +594,27 @@
             return () => clearInterval(id);
         }, [isMonitorMode]);
 
+        // THE FACILITATOR'S REMOTE CONTROL OF ONE VENTILATOR (phase 3): sessions/<CODE>/ventCmd, read
+        // and removed by the ventilator it is addressed to. The ventilator logs what it did.
+        const sendVentCommand = (to, type, key, val) => {
+            if (isMonitorMode || !sessionID || !window.db || !to || !type) return false;
+            const cmd = { type: String(type).slice(0, 12), to: String(to).slice(0, 40), ts: Date.now() };
+            if (key !== undefined && key !== null) cmd.key = String(key).slice(0, 16);
+            if (Number.isFinite(Number(val)) && val !== null && val !== undefined) cmd.val = Number(val);
+            try {
+                const ref = window.db.ref(`sessions/${sessionID}/ventCmd`);
+                ref.push(cmd).catch(e => console.error('Ventilator command failed:', e));
+                // Commands nobody picked up (a ventilator that went away) are cleared after 2 minutes.
+                ref.once('value').then(snap => {
+                    const v = snap.val() || {};
+                    Object.keys(v).forEach(k => { if (v[k] && Number(v[k].ts) < Date.now() - 120000) ref.child(k).remove().catch(() => {}); });
+                }).catch(() => {});
+                return true;
+            } catch (e) { console.error('Ventilator command failed:', e); return false; }
+        };
+
         return {
-            sendDeviceEvent
+            sendDeviceEvent, sendVentCommand
         };
     };
 

@@ -33,8 +33,18 @@
         var profile = v.profile && VP && VP.profiles[v.profile] ? v.profile : (VP ? VP.profileForScenario(cur && cur.scenario) : 'normal');
         var breathing = v.breathing === true || v.breathing === false ? v.breathing : null;
         if (breathing === null && cur && (cur.isParalysed || (RG && RG.inArrest(cur.rhythm || 'Sinus Rhythm')))) breathing = false;
-        return { profile: profile, breathing: breathing };
+        var out = { profile: profile, breathing: breathing };
+        // The facilitator's lung adjustments and injected problems (phase 3), and the Assessment
+        // switch that hides the T1's alarm help. Only present when set, so the payload stays small.
+        var lung = {};
+        if (v.lung && VP) VP.LUNG_ORDER.forEach(function (k) { var n = Number(v.lung[k]); if (v.lung[k] !== null && v.lung[k] !== undefined && isFinite(n)) lung[k] = n; });
+        if (Object.keys(lung).length) out.lung = lung;
+        var probs = VP ? VP.probList(v.probs) : [];
+        if (probs.length) out.probs = probs.join(',');
+        if (v.assess === true) out.assess = true;
+        return out;
     }
+    var hasProb = function (cfg, id) { return VP ? VP.probList(cfg.probs).indexOf(id) !== -1 : false; };
     function airwayFor(cur) {
         var a = cur && cur.activeInterventions;
         if (TUBE_KEYS.some(function (k) { return has(a, k); })) return 'tube';
@@ -78,6 +88,10 @@
         var peep = clamp(num(ph.peep, 0), 0, 40);
         var r = clamp(num(ph.r, 1), 0, 4);
         var gap = co2Gap(lung);
+        // A tube in the oesophagus: the ventilator blows into the stomach (no alveolar ventilation, no CO2).
+        var tubeOut = hasProb(cfg, 'tubeout');
+        if (tubeOut) r = 0.2;
+        var det = hasProb(cfg, 'det'), ptx = hasProb(cfg, 'ptx');
         var p = prev && prev.active ? prev : {
             active: true,
             spo2: clamp(num(shown && shown.spO2, 95), 40, 100),
@@ -85,24 +99,26 @@
             applied: { hr: 0, bpSys: 0, bpDia: 0 }
         };
         // Oxygenation: the shunt falls with PEEP; PaO2 from the alveolar gas equation (simplified).
-        var shunt = Math.max(0.05, lung.s0 - lung.sPeep * peep);
+        var shunt = Math.max(0.05, lung.s0 - lung.sPeep * peep + (det ? 0.05 : 0));
         var pao2 = Math.max(2, (fio2 * 95 - p.paco2 / 0.8) * (1 - shunt));
         var spo2T = clamp(sev(pao2 * 7.5), 40, 100);
         var spo2 = p.spo2 + (spo2T - p.spo2) * SPO2_RATE;
         // CO2: the trainer's curve of PaCO2 against alveolar ventilation.
         var target = lung.floor + (lung.paco2 - lung.floor) * Math.exp(-0.5 * (r - 1));
-        target = Math.min(target, lung.paco2 + 4);
+        target = Math.min(target, lung.paco2 + 4) * (lung.vco2 || 1);   // CO2 production scales it (the trainer's rule)
+        if (det) target += 2.5;
         var paco2 = p.paco2 + (target - p.paco2) / CO2_TAU;
         var conn = Number(ph.conn) > 0;
         var rr = clamp(Math.round(num(ph.rr, 0)), 0, 60);
         // No gas through the circuit: nothing to measure at the mouth.
-        var etco2 = conn && rr > 0 ? clamp(paco2 - gap, 0, 15) : 0;
+        var etco2 = conn && rr > 0 && !tubeOut ? clamp(paco2 - gap, 0, 15) : 0;
         // HR rises with hypoxia and hypercapnia; air trapping lowers BP (as in the trainer).
         var trap = Math.max(0, num(ph.autopeep, 0) - 3);
         var offsets = {
-            hr: (spo2 < 88 ? (88 - spo2) * 1.5 : 0) + (paco2 > 9 ? 6 : 0),
-            bpSys: -4 * trap,
-            bpDia: -2.5 * trap
+            // A tension pneumothorax also obstructs venous return (until it is decompressed or fixed).
+            hr: (spo2 < 88 ? (88 - spo2) * 1.5 : 0) + (paco2 > 9 ? 6 : 0) + (ptx ? 25 : 0),
+            bpSys: -4 * trap - (ptx ? 35 : 0),
+            bpDia: -2.5 * trap - (ptx ? 20 : 0)
         };
         return {
             ventPhys: { active: true, spo2: spo2, paco2: paco2, applied: p.applied },

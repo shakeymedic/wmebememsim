@@ -74,6 +74,14 @@ test('the ventilator: its log lines, its mirror and the lungs the controller pub
   await assertSucceeds(anon().ref(`sessions/${CODE}/live`).update({ vent: { profile: 'copd' } }));
   await assertFails(anon().ref(`sessions/${CODE}/live`).update({ vent: { breathing: true } }));
   await assertFails(anon().ref(`sessions/${CODE}/live`).update({ ventPanelOpen: 'yes' }));
+  // phase 3: lung adjustments, problems, Assessment, the structured settings and the remote commands
+  await assertSucceeds(anon().ref(`sessions/${CODE}/live`).update({ vent: { profile: 'ards', breathing: false, airway: 'tube', lung: { c: 80, o: 60 }, probs: 'leakM,bronch', assess: true } }));
+  await assertFails(anon().ref(`sessions/${CODE}/live`).update({ vent: { profile: 'ards', lung: { c: 'stiff' } } }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set({ ...mirror, phys: { on: 1, fio2: 0.6 }, sv: '[["peep","PEEP/CPAP",5,"5","cmH2O"]]', lv: '[]' }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'set', to: 'k5rzc2xy', key: 'peep', val: 8, ts: Date.now() }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'start', to: 'k5rzc2xy', ts: Date.now() }));
+  await assertFails(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'set', key: 'peep', val: 8, ts: Date.now() }));
+  await assertFails(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'set', to: 'k5rzc2xy', val: 'high', ts: Date.now() }));
 });
 
 // ---- accounts and restricted content ------------------------------------------------------------

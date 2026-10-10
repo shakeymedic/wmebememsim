@@ -2050,8 +2050,9 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelE
 /* Everything above is the HAMILTON-T1 device copied from the standalone trainer. Below is what makes it
    a simulation device: it joins a session like the defib tablet (sessions/<CODE>/live for the patient,
    presence, deviceEvents for the facilitator's log, ventState for the facilitator's mirror), runs in
-   real time, and takes its lungs from the controller (data/ventprofiles.js). Phase 1 of the plan: the
-   controller's patient numbers are shown on the T1 but the ventilator does not yet change them. */
+   real time, and takes its lungs, the facilitator's lung adjustments and injected problems from the
+   controller (data/ventprofiles.js). It reports what it delivers (phys) for the controller's physiology,
+   and obeys the facilitator's remote commands (sessions/<CODE>/ventCmd). */
 const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
 if (EMBEDDED) document.body.classList.add('embedded');
 const VP = window.VENT_PROFILES;
@@ -2071,7 +2072,8 @@ function makePatient(config) {
   calcSpo2(pr.fio2Pre, 0);
   P.spo2 = null;
 }
-const cfgKey = c => (c && c.profile || 'normal') + '|' + (c && c.breathing === false ? 'still' : c && c.breathing === true ? 'breathing' : 'auto');
+const cfgKey = c => (c && c.profile || 'normal') + '|' + (c && c.breathing === false ? 'still' : c && c.breathing === true ? 'breathing' : 'auto')
+  + '|' + JSON.stringify(c && c.lung || {}) + '|' + (c && c.probs || '');
 /* the facilitator changed the lungs or the breathing: new lung, same circuit, same problems */
 function applyConfig(config) {
   const key = cfgKey(config);
@@ -2080,9 +2082,30 @@ function applyConfig(config) {
   LIVE.config = config; LIVE.cfgKey = key;
   const pr = VP.lungFor(config);
   P.base = pr; P.pr = {...pr}; P.id = config && VP.profiles[config.profile] ? config.profile : 'normal';
-  P.VAbase = (pr.vtBase - pr.vd) * pr.rrBase;
+  P.vco2 = pr.vco2 || 1;
+  /* alveolar ventilation at rest is the profile's own (the facilitator's rate changes what the patient does, not their baseline) */
+  const own = VP.profiles[P.id];
+  P.VAbase = (own.vtBase - own.vd) * own.rrBase;
   if (profileChanged) { P.paco2 = pr.paco2; P.hco3 = pr.hco3; P.vtAvg = pr.vtBase; }
   if (pr.sedated) P.fatigue = 0;
+  applyProblems(VP.probList(config && config.probs));
+}
+/* the facilitator's injected problems (press again to fix): the trainer's EVENTS, set from the controller.
+   Bronchospasm, a blocked tube and a tension pneumothorax change the lung (VP.lungFor); a displaced tube
+   is modelled on the controller (no CO2). */
+let probsNow = [];
+function applyProblems(list) {
+  const has = id => list.includes(id), was = id => probsNow.includes(id);
+  P.fit = has('leakL') ? 'large' : has('leakM') ? 'moderate' : 'good';
+  P.disc = has('disc'); P.cough = has('cough'); P.kink = has('kink'); P.apnoea = has('apnoea');
+  P.deteriorate = has('det'); P.circLeak = has('circ');
+  if (has('o2fail') && !was('o2fail')) V.o2Enrich = 0;
+  P.o2fail = has('o2fail');
+  const mainsOff = has('mains') || has('battlow');
+  if (has('battlow') && !was('battlow')) P.batt = Math.min(P.batt, 12);
+  if (!mainsOff && !P.mains) V.ambient = false;
+  P.mains = !mainsOff;
+  probsNow = list.slice();
 }
 /* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
 function petco2() {
@@ -2096,7 +2119,7 @@ function patientTick(dt) {
   P.simMin += dtMin;
   if (V.power && !V.standby && !V.ambient) P.onNivMin += dtMin;
   /* the patient's own breathing comes from the controller (lungs, paralysis, arrest), not from the RR it shows, which this ventilator now sets */
-  P.rr = P.apnoea || pr.sedated || P.passive ? 0 : pr.rrBase;
+  P.rr = P.apnoea || pr.sedated || P.passive ? 0 : pr.rrBase + (P.deteriorate ? 4 : 0);
   P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);
   if (pr.sedated) P.fatigue = 0;
   P.spo2 = LIVE.spo2;
@@ -2117,7 +2140,7 @@ function deviceDefaults() {
   Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false});
   TR.o2.length = 0; TR.flow.length = 0; TR.lastMin = -1;
   bufP.fill(0); bufF.fill(0); bufV.fill(0); bufPl.fill(0); bufTrig.fill(0);
-  P.onNivMin = 0; P.disc = false; P.fit = 'good'; P.cough = false; P.kink = false; P.apnoea = false; P.o2fail = false; P.mains = true; P.batt = 100; P.circLeak = false;
+  P.onNivMin = 0; P.batt = 100; probsNow = []; applyProblems(VP.probList(LIVE.config && LIVE.config.probs));
   $('#dlg').hidden = true;
   setPhysical([]);
   win = null;
@@ -2156,17 +2179,20 @@ function setLinkState(linked, reason, kind) {
 
 /* every device event (settings, modes, alarms, tests) goes to the facilitator's log */
 let lastReport = {text:'', at:0}, reportWindow = {start:0, n:0};
+let REMOTE = false;   /* true while carrying out a facilitator's command: its log lines are the facilitator's */
 function ventReport(t, p) {
   if (!fb.db || !fb.code || !LIVE.linked) return;
   const text = String(t || '').slice(0, 160);
   const now = Date.now();
-  if (text === lastReport.text && now - lastReport.at < 3000) return;   /* an alarm that flickers */
+  if (text === lastReport.text && now - lastReport.at < 3000 && !REMOTE) return;   /* an alarm that flickers */
   if (now - reportWindow.start > 60000) reportWindow = {start:now, n:0};
   if (++reportWindow.n > 40) return;                                       /* never flood the log */
   lastReport = {text, at:now};
   try {
+    const payload = {text, p:String(p || 'info').slice(0, 8), alarm:Object.keys(ALARMS).some(id => ALARMS[id].t === t)};
+    if (REMOTE) payload.by = 'facilitator';
     fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
-      type:'VENT_LOG', payload:{text, p:String(p || 'info').slice(0, 8), alarm:Object.keys(ALARMS).some(id => ALARMS[id].t === t)}, ts:now, from:fb.presenceId, device:EMBEDDED ? 'monitor-vent' : 'standalone-vent'
+      type:'VENT_LOG', payload, ts:now, from:fb.presenceId, device:EMBEDDED ? 'monitor-vent' : 'standalone-vent'
     }).catch(() => {});
   } catch (e) { /* the log is best-effort; the device keeps working */ }
 }
@@ -2202,6 +2228,16 @@ function physNow() {
   return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() ? 1 : 0};
 }
 const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
+/* the current mode's controls and the alarm limits, for the facilitator's remote control:
+   [key, label, value, shown text, unit] */
+function settingsJSON(mk, c) {
+  const keys = (c ? c.basic.concat(c.more) : []).filter(k => CTRL[k] && typeof V.set[k] === 'number');
+  return JSON.stringify(keys.map(k => [k, CTRL[k].label, V.set[k], String(valStr('ctrl', k, V.set[k])), CTRL[k].unit || ''])).slice(0, 1500);
+}
+function limitsJSON() {
+  const keys = Object.keys(ALIM).filter(k => typeof V.lim[k] === 'number');
+  return JSON.stringify(keys.map(k => [k, ALIM[k].label + (k.endsWith('low') || k === 'plow' || k === 'flow' ? ' low' : k === 'apnoea' ? '' : ' high'), V.lim[k], String(valStr('lim', k, V.lim[k])), ALIM[k].unit || ''])).slice(0, 1500);
+}
 function ventStateNow() {
   const state = !V.power ? 'off' : V.selftest > 0 ? 'selftest' : V.ambient ? 'ambient' : V.standby ? 'standby' : 'ventilating';
   const mk = modeKey(), c = modeCtrls(mk, V.psync);
@@ -2215,7 +2251,7 @@ function ventStateNow() {
     alarms:topAlarms().map(a => a.p + ':' + a.t).join('|').slice(0, 600),
     win:String(win || '').slice(0, 16), locked:!!V.locked, sex:V.sex, height:V.set.height, ibw:finiteOr(calcIBW()) || 0,
     tests:('leak ' + (V.tests.leak || 'not done') + ', flow ' + (V.tests.flow || 'not done')).slice(0, 40),
-    embedded:EMBEDDED, phys:physNow(), ts:Date.now()
+    embedded:EMBEDDED, phys:physNow(), sv:settingsJSON(mk, c), lv:limitsJSON(), ts:Date.now()
   };
 }
 let lastMirror = '', lastMirrorAt = 0;
@@ -2270,6 +2306,8 @@ function applyLive(v) {
   LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
   $('#endedBanner').hidden = !LIVE.isFinished;
   applyConfig(v.vent || null);
+  document.body.classList.toggle('assess', !!(v.vent && v.vent.assess));
+  if (document.body.classList.contains('assess')) helpFor = null;
   const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
   if (LIVE.key === null) { LIVE.key = key; if (!restoreDevice()) deviceDefaults(); }
   else if (key !== LIVE.key) { LIVE.key = key; deviceDefaults(); }   /* a new scenario: a fresh ventilator */
@@ -2304,6 +2342,7 @@ function fbStart(code) {
   fb.db.ref('sessions/' + code + '/ventState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
   write();
   setInterval(write, 10000);
+  listenForCommands(code);
 }
 function sessionFromUrl() {
   try {
@@ -2312,6 +2351,97 @@ function sessionFromUrl() {
     return code || null;
   } catch (e) { return null; }
 }
+
+/* ---------- the facilitator's remote control (sessions/<CODE>/ventCmd/<id>, addressed to this ventilator) ---------- */
+/* A change appears on the screen as a colleague's would; its log line is marked as the facilitator's.
+   The screen lock does not stop the facilitator. */
+function remoteValue(scope, key, val, dir) {
+  const d = defFor(scope, key); if (!d) return null;
+  let v = scope === 'lim' ? V.lim[key] : V.set[key];
+  if (typeof v !== 'number') return null;
+  if (dir) {
+    if (d.list) { let i = d.list.reduce((bi, x, j) => Math.abs(x - v) < Math.abs(d.list[bi] - v) ? j : bi, 0); return d.list[clamp(i + dir, 0, d.list.length - 1)]; }
+    if (d.offMax && v > d.max) return dir < 0 ? d.max : v;
+    if (d.offMax && v >= d.max && dir > 0) return 99999;
+    if (d.off0 && v <= 0 && dir > 0) return typeof d.step === 'function' ? d.step(0, 1) : d.step;
+    const st = typeof d.step === 'function' ? d.step(v, dir) : d.step;
+    let n = clamp(Math.round((v + dir * st) / st) * st, d.off0 ? 0 : d.min, d.max);
+    if (d.off0 && n > 0 && n < (d.min || st)) n = dir > 0 ? (d.min || st) : 0;
+    return +n.toFixed(2);
+  }
+  if (!Number.isFinite(val)) return null;
+  if (d.list) return d.list.reduce((b, x) => Math.abs(x - val) < Math.abs(b - val) ? x : b, d.list[0]);
+  if (d.offMax && val > d.max) return 99999;
+  if (d.off0 && val <= 0) return 0;
+  const st = typeof d.step === 'function' ? d.step(val, 1) : d.step;
+  return +clamp(Math.round(val / st) * st, d.min, d.max).toFixed(2);
+}
+function remoteEdit(scope, key, v) {
+  if (v === null) return;
+  if (scope === 'lim') {
+    const pairs = {plow:'phigh', mvlow:'mvhigh', flow:'fhigh', vtlow:'vthigh'};
+    const hiOf = pairs[key]; if (hiOf && v >= V.lim[hiOf] && V.lim[hiOf] <= 3000) return;
+    const loOf = Object.keys(pairs).find(k => pairs[k] === key); if (loOf && v <= V.lim[loOf] && V.lim[loOf] > 0) return;
+  }
+  if ((scope === 'lim' ? V.lim[key] : V.set[key]) === v) return;
+  const keep = E && !(E.scope === scope && E.key === key) ? E : null;   /* the candidate's own edit in progress */
+  if (key === 'o2' && scope === 'ctrl' && V.o2Enrich > 0) V.o2Enrich = 0;
+  E = {scope, key, val:v}; confirmEdit(); E = keep; renderAll();
+}
+const REMOTE_MODES = Object.keys(MODE_CTRLS).filter(m => m !== 'CPR');
+function remoteCommand(c) {
+  const key = typeof c.key === 'string' ? c.key : '', val = Number(c.val);
+  const ctrlOk = k => { const mc = modeCtrls(modeKey(), V.psync); return k === 'height' || (mc && mc.basic.concat(mc.more).includes(k) && CTRL[k] && typeof V.set[k] === 'number'); };
+  REMOTE = true;
+  try {
+    switch (c.type) {
+      case 'power':
+        if (val > 0 && !V.power) powerOn();
+        else if (!(val > 0) && V.power) {
+          if (!V.standby) goStandby();
+          V.power = false; win = null; E = null; D = null; active.clear(); $('#dlg').hidden = true;
+          logEvent('Ventilator turned off', 'info'); renderAll();
+        }
+        break;
+      case 'start': if (V.power && V.selftest <= 0 && V.standby) { $('#dlg').hidden = true; startVentilation(); } break;
+      case 'standby': if (V.power && !V.standby) { $('#dlg').hidden = true; goStandby(); } break;
+      case 'mode':
+        if (V.power && REMOTE_MODES.includes(key) && (key !== V.mode || V.cpr)) { if (E) confirmEdit(); createDraft(key, false); applyDraft(); renderAll(); }
+        break;
+      case 'set': if (V.power && ctrlOk(key)) remoteEdit('ctrl', key, remoteValue('ctrl', key, val, 0)); break;
+      case 'setstep': if (V.power && ctrlOk(key)) remoteEdit('ctrl', key, remoteValue('ctrl', key, null, val > 0 ? 1 : -1)); break;
+      case 'lim': if (V.power && ALIM[key]) remoteEdit('lim', key, remoteValue('lim', key, val, 0)); break;
+      case 'limstep': if (V.power && ALIM[key]) remoteEdit('lim', key, remoteValue('lim', key, null, val > 0 ? 1 : -1)); break;
+      case 'silence': if (V.power) { V.audioPause = AUDIO_PAUSE_S; logEvent('Alarms silenced for 2 minutes', 'info'); renderAll(); } break;
+      case 'o2':
+        if (V.power && !P.o2fail) { if (V.o2Enrich > 0) { V.o2Enrich = 0; logEvent('O2 enrichment cancelled', 'info'); } else { V.o2Enrich = O2_ENRICH_S; logEvent('O2 enrichment started', 'info'); } renderAll(); }
+        break;
+      case 'lock': if (V.power) { V.locked = val > 0; if (V.locked && E) { confirmEdit(); E = null; } logEvent(V.locked ? 'Screen locked' : 'Screen unlocked', 'info'); renderAll(); } break;
+      case 'fresh': deviceDefaults(); logEvent('Ventilator reset to a fresh, switched-off state', 'info'); break;
+    }
+  } catch (e) { console.error('Ventilator command failed:', e); }
+  finally { REMOTE = false; }
+  publishMirror();
+}
+function listenForCommands(code) {
+  const ref = fb.db.ref('sessions/' + code + '/ventCmd');
+  const seen = new Set();
+  const onChild = snap => {
+    if (seen.has(snap.key)) return;
+    seen.add(snap.key);
+    const c = snap.val();
+    if (!c || c.to !== fb.presenceId) return;
+    snap.ref.remove().catch(() => {});
+    remoteCommand(c);
+  };
+  /* commands already waiting when this page opened were for an earlier page: never replay them */
+  ref.once('value').then(s => { Object.keys(s.val() || {}).forEach(k => seen.add(k)); ref.limitToLast(30).on('child_added', onChild); }).catch(() => {});
+}
+/* Assessment mode: no alarm troubleshooting help on the screen (as on a real T1) */
+const assessStyle = document.createElement('style');
+assessStyle.textContent = 'body.assess .abuf .i{display:none}';
+document.head.appendChild(assessStyle);
+$('#screen').addEventListener('click', e => { if (document.body.classList.contains('assess') && e.target.closest('[data-help]')) e.stopPropagation(); }, true);
 
 /* ---------- sound: on unless the facilitator has muted the session ---------- */
 let soundWanted = true;
@@ -2369,7 +2499,7 @@ requestAnimationFrame(rafLoop);
 const urlSession = sessionFromUrl();
 if (urlSession) fbStart(urlSession);
 else setLinkState(false, 'No session was supplied. Enter the session code shown on the controller to link this ventilator.', 'never');
-window.__vent = {V, get P() { return P; }, B, M, LIVE, fb, ventStateNow};
+window.__vent = {V, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};
 
 </script>
 </body>

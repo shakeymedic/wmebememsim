@@ -300,8 +300,21 @@ patient.
   hands it back), and the Obs switch ("Ventilator drives them" / "I set them") turns the link off.
   The log says when the ventilator takes over the obs and when it lets go, and warns if an invasive
   mode is started with no tube or supraglottic airway recorded.
-- **Not yet** (later phases of the plan): the facilitator cannot yet change its settings or inject
-  problems remotely.
+- **The facilitator controls it** (Ventilator section, `data/screens/ventcontrol.js`):
+  - *Problems*, one press each and again to fix: the trainer's ten (leaks, disconnection, coughing,
+    kinked expiratory limb, apnoea, oxygen failure, mains lost, tiring, cracked circuit) and five
+    added here: tube displaced (no CO2), tube blocked, bronchospasm, tension pneumothorax (BP falls
+    until the chest is decompressed; needle, finger thoracostomy or a drain fixes it) and mains lost
+    with the battery low. They apply to every ventilator in the session.
+  - *Lungs*: compliance, resistance, CO2 production, oxygenation impairment and spontaneous rate (the
+    trainer's Lungs panel). They change both the T1's breaths and the patient's obs.
+  - *Education / Assessment*: Assessment hides the T1's alarm help.
+  - *Control this ventilator*, per ventilator: switch on or off, start or standby, mode, every
+    setting of the current mode and every alarm limit (step or type a value; the T1 holds it to its
+    own range), silence, O2 enrichment, lock the screen (the facilitator is not locked out), and a
+    fresh ventilator. Set it up before the candidate arrives to hand over deliberate errors. Changes
+    appear as a colleague's would and are logged as the facilitator's
+    (`sessions/<CODE>/ventCmd`, consumed by the ventilator they are addressed to).
 - It runs in real time. A new scenario gives a fresh ventilator, switched off.
 
 ---

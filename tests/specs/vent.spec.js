@@ -254,3 +254,117 @@ test('with the clock running the ventilator still drives the obs, and hypoxia do
   expect(s.hyp).toBe(0);
   expect(errors).toEqual([]);
 });
+
+// ---- Phase 3: the examiner controls the ventilator ----
+
+test('the facilitator controls a ventilator remotely: power, start, mode, a setting, a limit, lock, standby', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await startQuickSim(page);
+  const { vent, errors: ventErrors } = await openVent(context, code);
+  await expandSection(page, 'vent');
+  await expect(page.getByTestId('vent-mirror')).toContainText('Off');
+  const remote = page.getByTestId('vent-remote');
+  await remote.locator('summary').click();
+  await remote.getByRole('button', { name: 'Switch on' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state), { timeout: 10000 }).toBe('standby');
+  await remote.getByRole('button', { name: 'Start ventilation' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('ventilating');
+  await expect.poll(() => logHas(page, /^Ventilator \(facilitator\): Ventilation started/)).toBe(true);
+  expect(await logHas(page, /^Ventilator: Ventilation started/)).toBe(false);   // the facilitator's, not the candidate's
+
+  await page.getByLabel('Ventilator mode').selectOption('APVcmv');
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.mode)).toBe('APVcmv');
+  // PEEP: one step up, then typed
+  await expect(page.getByLabel('PEEP/CPAP value')).toBeVisible();
+  const peep0 = await vent.evaluate(() => window.__vent.V.set.peep);
+  await page.getByRole('button', { name: 'PEEP/CPAP up' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.set.peep)).toBe(peep0 + 1);
+  await page.getByLabel('PEEP/CPAP value').fill('12');
+  await page.getByLabel('PEEP/CPAP value').press('Enter');
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.set.peep)).toBe(12);
+  await expect.poll(() => logHas(page, /^Ventilator \(facilitator\): Setting changed: PEEP\/CPAP 12/)).toBe(true);
+  // A typed value out of range is held to the device's range
+  await page.getByLabel('Oxygen value').fill('150');
+  await page.getByLabel('Oxygen value').press('Enter');
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.set.o2)).toBe(100);
+  // An alarm limit
+  await remote.getByText('Alarm limits').click();
+  await remote.getByLabel('Pressure high value').fill('45');
+  await remote.getByLabel('Pressure high value').press('Enter');
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.lim.phigh)).toBe(45);
+  // Lock the candidate's screen, then standby despite the lock
+  await remote.getByRole('button', { name: 'Lock screen' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.locked)).toBe(true);
+  await remote.getByRole('button', { name: 'Standby' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('standby');
+  // Commands are consumed
+  await expect.poll(async () => Object.keys(await session(page, code, '/ventCmd') || {}).length).toBe(0);
+  expect(errors).toEqual([]);
+  expect(ventErrors).toEqual([]);
+});
+
+test('injected problems reach the ventilator, the lungs can be adjusted, and Assessment hides the alarm help', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expandSection(page, 'vent');
+  await page.getByLabel('Ventilator lungs').selectOption('ards');
+  const { vent, errors } = await openVent(context, code);
+  await startVentilating(vent);
+  await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('ventilating');
+
+  const panel = page.getByTestId('vent-patient');
+  await panel.getByRole('button', { name: 'Mask off / circuit disconnected' }).click();
+  await expect.poll(() => live(page, code, '/vent/probs')).toBe('disc');
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.disc)).toBe(true);
+  expect(await logHas(page, /^Ventilator problem injected: Mask off \/ circuit disconnected \(facilitator\)/)).toBe(true);
+  await panel.getByRole('button', { name: 'Fix: Mask off / circuit disconnected' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.disc)).toBe(false);
+
+  // Mains lost: the T1 runs on battery
+  await panel.getByRole('button', { name: 'Mains power lost' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.mains)).toBe(false);
+  await panel.getByRole('button', { name: 'Fix all' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.mains)).toBe(true);
+
+  // Bronchospasm raises the resistance on the ventilator
+  const r0 = await vent.evaluate(() => window.__vent.P.pr.R);
+  await panel.getByRole('button', { name: 'Bronchospasm' }).click();
+  await expect.poll(() => vent.evaluate(() => window.__vent.P.pr.R)).toBeGreaterThan(r0 * 2);
+
+  // Lungs: compliance down a step
+  await panel.getByText('Lungs', { exact: true }).click();
+  await panel.getByRole('button', { name: 'Compliance down' }).click();
+  await expect(page.getByTestId('vent-lung-c')).toContainText('90');
+  await expect.poll(() => live(page, code, '/vent/lung/c')).toBe(90);
+  await expect.poll(() => vent.evaluate(() => Math.round(window.__vent.P.pr.C / window.VENT_PROFILES.profiles.ards.C * 100))).toBe(90);
+  expect(await logHas(page, /^Ventilator lungs: compliance 90%/)).toBe(true);
+
+  // Assessment
+  await panel.getByRole('button', { name: 'Assessment' }).click();
+  await expect.poll(() => vent.evaluate(() => document.body.classList.contains('assess'))).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a displaced tube takes the CO2 away, and a tension pneumothorax drops the BP until it is decompressed', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await expandSection(page, 'vent');
+  await page.getByLabel('Ventilator lungs').selectOption('ards');
+  const { vent } = await openVent(context, code);
+  await startVentilating(vent);
+  const E = (fn) => page.evaluate(fn);
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.etco2), { timeout: 30000 }).toBeGreaterThan(3);
+  const panel = page.getByTestId('vent-patient');
+  await panel.getByRole('button', { name: 'Tube displaced (oesophageal: no CO2)' }).click();
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.etco2), { timeout: 10000 }).toBe(0);
+  await panel.getByRole('button', { name: 'Fix: Tube displaced (oesophageal: no CO2)' }).click();
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.etco2), { timeout: 10000 }).toBeGreaterThan(3);
+
+  const bp0 = await E(() => window.__simEngine.state.vitals.bpSys);
+  await panel.getByRole('button', { name: 'Tension pneumothorax' }).click();
+  await expect.poll(() => E(() => window.__simEngine.state.vitals.bpSys), { timeout: 10000 }).toBeLessThan(bp0 - 25);
+  await E(() => window.__simEngine.applyIntervention('Needle'));
+  await expect.poll(() => E(() => (window.__simEngine.state.vent.probs || []).includes('ptx'))).toBe(false);
+  expect(await logHas(page, /^Ventilator problem fixed: tension pneumothorax decompressed/)).toBe(true);
+});

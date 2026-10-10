@@ -479,7 +479,9 @@
                     defibStep: (p.defibStep && Number.isFinite(p.defibStep.index)) ? { index: p.defibStep.index, since: Number(p.defibStep.since) || 0, done: !!p.defibStep.done } : null,
                     lastConversion: p.lastConversion || null,
                     vent: (p.vent && typeof p.vent === 'object' && window.VENT_PROFILES && window.VENT_PROFILES.profiles[p.vent.profile])
-                        ? { profile: p.vent.profile, breathing: p.vent.breathing === true || p.vent.breathing === false ? p.vent.breathing : null } : null,
+                        ? { profile: p.vent.profile, breathing: p.vent.breathing === true || p.vent.breathing === false ? p.vent.breathing : null,
+                            lung: (p.vent.lung && typeof p.vent.lung === 'object') ? { ...p.vent.lung } : {},
+                            probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true } : null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
                     // A resumed session is NOT a paused session. Its clock is
@@ -602,17 +604,35 @@
             // The defib and the ventilator share the room monitor's screen: opening one closes the other.
             case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload, ventPanelOpen: action.payload ? false : !!state.ventPanelOpen };
             case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload, defibPanelOpen: action.payload ? false : !!state.defibPanelOpen };
-            // The ventilator's lungs: a known profile, and whether the patient breathes for themselves
-            // (true / false; null = as the profile says). Anything else is ignored.
+            // The ventilator's lungs: a known profile, whether the patient breathes for themselves
+            // (true / false; null = as the profile says), the facilitator's lung adjustments
+            // (lung: {c, r, m, o, e}; a key set to null goes back to the profile's value; lung: null
+            // resets them all), the injected problems (probs: a list of ids) and the Assessment switch.
+            // Anything else is ignored. Until the facilitator picks a profile it is the scenario's.
             case 'SET_VENT_CONFIG': {
                 const p = action.payload || {};
                 const VP = window.VENT_PROFILES;
                 const cur = state.vent || {};
-                const profile = (p.profile !== undefined ? p.profile : cur.profile);
+                const scen = action.currentState && action.currentState.scenario;
+                const fallback = VP ? VP.profileForScenario(scen) : 'normal';
+                const profile = (p.profile !== undefined ? p.profile : (cur.profile || fallback));
                 const breathing = (p.breathing !== undefined ? p.breathing : cur.breathing);
+                let lung = p.lung === null ? {} : { ...(cur.lung || {}) };
+                if (p.lung && VP) Object.keys(p.lung).forEach(k => {
+                    const d = VP.LUNG_ADJ[k]; if (!d) return;
+                    const v = p.lung[k];
+                    if (v === null || v === undefined) { delete lung[k]; return; }
+                    const n = Number(v);
+                    if (Number.isFinite(n)) lung[k] = Math.min(d.max, Math.max(d.min, n));
+                });
+                // A new profile starts from its own lung.
+                if (p.profile !== undefined && p.profile !== cur.profile && p.lung === undefined) lung = {};
+                const probs = p.probs !== undefined ? (VP ? VP.probList(p.probs) : []) : (cur.probs || []);
+                const assess = p.assess !== undefined ? p.assess === true : !!cur.assess;
                 return { ...state, vent: {
                     profile: VP && VP.profiles[profile] ? profile : 'normal',
-                    breathing: breathing === true || breathing === false ? breathing : null
+                    breathing: breathing === true || breathing === false ? breathing : null,
+                    lung, probs, assess
                 } };
             }
             case 'SET_VENT_MIRROR': return { ...state, ventMirror: action.payload || {} };

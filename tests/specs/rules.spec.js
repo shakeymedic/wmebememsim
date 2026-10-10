@@ -107,6 +107,11 @@ test('everything a controller, room monitor, defib tablet and ventilator write p
   await expect(vent.getByRole('button', { name: 'Start ventilation' })).toBeVisible({ timeout: 10000 });
   await vent.click('#kPower');
   await expect.poll(() => vent.evaluate(() => window.__vent.ventStateNow().state)).toBe('ventilating');
+  // The facilitator's side: lung adjustments, problems, Assessment and remote commands
+  await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { c: 80, r: 14 }, probs: ['leakM', 'bronch'], assess: true } }));
+  const ventId = await vent.evaluate(() => window.__vent.fb.presenceId);
+  await page.evaluate((id) => { const E = window.__simEngine; E.sendVentCommand(id, 'set', 'peep', 8); E.sendVentCommand(id, 'mode', 'APVsimv'); E.sendVentCommand(id, 'silence'); }, ventId);
+  await expect.poll(() => vent.evaluate(() => window.__vent.V.mode)).toBe('APVsimv');
   await page.waitForTimeout(1500);
 
   const problems = [];

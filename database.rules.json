@@ -107,6 +107,9 @@
             "profile": { ".validate": "newData.isString() && newData.val().length <= 16" },
             "breathing": { ".validate": "newData.isBoolean()" },
             "airway": { ".validate": "newData.isString() && newData.val().length <= 8" },
+            "lung": { "$adj": { ".validate": "newData.isNumber()" } },
+            "probs": { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "assess": { ".validate": "newData.isBoolean()" },
             "$other": { ".validate": false }
           },
           "pacing": { ".validate": true },
@@ -186,6 +189,21 @@
             "ibw": { ".validate": "newData.isNumber()" },
             "tests": { ".validate": "newData.isString() && newData.val().length <= 40" },
             "embedded": { ".validate": "newData.isBoolean()" },
+            "sv": { ".validate": "newData.isString() && newData.val().length <= 1500" },
+            "lv": { ".validate": "newData.isString() && newData.val().length <= 1500" },
+            "ts": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        // The facilitator's commands to one ventilator (power, start, standby, mode, a setting or an
+        // alarm limit, silence, O2 enrichment, lock), consumed and removed by that ventilator.
+        "ventCmd": {
+          "$cmd": {
+            ".validate": "newData.hasChildren(['type', 'to', 'ts'])",
+            "type": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "to": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "key": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "val": { ".validate": "newData.isNumber()" },
             "ts": { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }
           }

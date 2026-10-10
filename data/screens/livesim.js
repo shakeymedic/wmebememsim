@@ -1576,6 +1576,7 @@
                                                 className="flex-none px-2 py-0.5 rounded bg-amber-600 text-black font-bold text-[10px]">Release to ventilator</button>
                                     </div>
                                 )}
+                                {window.VentControls && <window.VentControls.VentPatientPanel sim={sim} cfg={ventCfg} addLogEntry={addLogEntry} />}
                                 {ventMirrors.length === 0 && (
                                     <div className="text-slate-500">No ventilator is connected. Show it on the room monitor, or join a tablet with the Ventilator QR code (Screens &gt; Join by QR code).</div>
                                 )}
@@ -1606,7 +1607,8 @@
                                                 </div>
                                             )}
                                             <div className="text-slate-400">{m.sex}, {m.height} cm, IBW {ibw} kg{' \u00b7 '}Tests: {m.tests}{m.win && m.win !== 'standby' ? ` \u00b7 Window open: ${m.win}` : ''}</div>
-                                            {m.lim && <details><summary className="cursor-pointer text-slate-400">Alarm limits</summary><div>{m.lim}</div></details>}
+                                            {m.lim && !m.lv && <details><summary className="cursor-pointer text-slate-400">Alarm limits</summary><div>{m.lim}</div></details>}
+                                            {window.VentControls && <window.VentControls.VentRemotePanel sim={sim} m={m} />}
                                         </div>
                                     );
                                 })}
