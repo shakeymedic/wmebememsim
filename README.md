@@ -267,6 +267,33 @@ Sim scenario (`scenario.defibSim`).
   first shock, adrenaline and amiodarone after the 3rd shock, sedation before cardioversion,
   analgesia for pacing, capture) and a printable certificate.
 
+### The ventilator (HAMILTON-T1)
+
+`vent/index.html` is the HAMILTON-T1 from the standalone trainer
+([shakeymedic/niv-instructions](https://github.com/shakeymedic/niv-instructions), which stays its own
+tool), copied in as a simulation device. It joins a session the way the defib tablet does, so any
+mix of tablets works at once: the room monitor, a defib tablet and a ventilator tablet, all on one
+patient.
+
+- **Where it runs.** On its own tablet (Screens > Join by QR code shows a Ventilator code, or type the
+  session code on the page), or on the room monitor: the controller's **Ventilator** section has
+  "Show the ventilator on the room monitor". The defib and the ventilator share the monitor's screen,
+  so opening one closes the other; the learner can flip to the obs and back without stopping it.
+  Closed and reopened, it carries on with the same settings (kept in that browser for 12 hours).
+- **The lungs** are chosen on the controller (Ventilator section): normal, AECOPD, cardiogenic
+  pulmonary oedema, obesity hypoventilation, ARDS or severe asthma (`data/ventprofiles.js`, the
+  trainer's values; teaching values, not validated physiology), and whether the patient breathes for
+  themselves. The first choice comes from the scenario's words.
+- **What the facilitator sees.** Every setting change, mode change, test and alarm on the device is in
+  the event log ("Ventilator: …", alarms by priority), and the Ventilator section mirrors each
+  ventilator: state, mode, settings, measured values (with VTE per kg of ideal body weight), active
+  alarms, tests and alarm limits (`sessions/<CODE>/ventState/<id>`, removed when it disconnects).
+- **What it shows of the patient.** SpO2 and pulse come from the controller when a probe is attached;
+  PetCO2 shows the controller's ETCO2 when capnography is on and the ventilator is ventilating.
+- **Not yet** (later phases of the plan): the ventilator does not yet change the patient's numbers,
+  and the facilitator cannot yet change its settings or inject problems remotely.
+- It runs in real time. A new scenario gives a fresh ventilator, switched off.
+
 ---
 
 ## Firebase setup — what you must do in the console yourself

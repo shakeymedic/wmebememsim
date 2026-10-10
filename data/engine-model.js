@@ -113,6 +113,12 @@
         // The assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
         // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
         defibPanelOpen: false,
+        // The HAMILTON-T1 ventilator (vent/index.html). ventPanelOpen shows it on the room monitor
+        // (SET_VENT_PANEL, synced like defibPanelOpen; opening one closes the other). `vent` is the
+        // facilitator's choice of lungs ({ profile, breathing }); null = chosen from the scenario
+        // (VENT_PROFILES.profileForScenario). Both reach the ventilator inside the live payload.
+        ventPanelOpen: false,
+        vent: null,
         // Defibrillator device + metrics state. Previously shockCountRef was a bare useRef
         // that never reached state, Firebase, localStorage OR the debrief, and reset on resume.
         defib: {
@@ -155,6 +161,8 @@
         // What each linked defib tablet is showing (sessions/<CODE>/deviceState). Controller-only:
         // never part of the sync payload.
         deviceMirror: {},
+        // What each linked ventilator is showing (sessions/<CODE>/ventState). Controller-only.
+        ventMirror: {},
         // B4 / LEAK BARRIER: rhythmEvent and lastConversion are ASSESSOR-LOCAL. They are
         // deliberately absent from the Firebase sync payload (verified by
         // tests/specs/rules.spec.js: the sync payload has no such key) because `notification`

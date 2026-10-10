@@ -419,6 +419,8 @@
                         : initialCoreState.arrest,
                     defibStep: (p.defibStep && Number.isFinite(p.defibStep.index)) ? { index: p.defibStep.index, since: Number(p.defibStep.since) || 0, done: !!p.defibStep.done } : null,
                     lastConversion: p.lastConversion || null,
+                    vent: (p.vent && typeof p.vent === 'object' && window.VENT_PROFILES && window.VENT_PROFILES.profiles[p.vent.profile])
+                        ? { profile: p.vent.profile, breathing: p.vent.breathing === true || p.vent.breathing === false ? p.vent.breathing : null } : null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
                     // A resumed session is NOT a paused session. Its clock is
@@ -538,7 +540,23 @@
                 ['interference', 'movement', 'leadoff'].forEach(k => { if (action.payload && action.payload[k] !== undefined) n[k] = !!action.payload[k]; });
                 return { ...state, noise: n };
             }
-            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
+            // The defib and the ventilator share the room monitor's screen: opening one closes the other.
+            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload, ventPanelOpen: action.payload ? false : !!state.ventPanelOpen };
+            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload, defibPanelOpen: action.payload ? false : !!state.defibPanelOpen };
+            // The ventilator's lungs: a known profile, and whether the patient breathes for themselves
+            // (true / false; null = as the profile says). Anything else is ignored.
+            case 'SET_VENT_CONFIG': {
+                const p = action.payload || {};
+                const VP = window.VENT_PROFILES;
+                const cur = state.vent || {};
+                const profile = (p.profile !== undefined ? p.profile : cur.profile);
+                const breathing = (p.breathing !== undefined ? p.breathing : cur.breathing);
+                return { ...state, vent: {
+                    profile: VP && VP.profiles[profile] ? profile : 'normal',
+                    breathing: breathing === true || breathing === false ? breathing : null
+                } };
+            }
+            case 'SET_VENT_MIRROR': return { ...state, ventMirror: action.payload || {} };
             case 'SET_DEFIB_SETTINGS': return { ...state, defibSettings: cleanDefibSettings(state.defibSettings, action.payload) };
             case 'SET_PACING_THRESHOLD': return { ...state, pacingThreshold: Math.max(10, Math.min(140, Math.round(Number(action.payload) || state.pacingThreshold))) };
             case 'SET_PACING': return { ...state, pacing: { ...state.pacing, ...(action.payload || {}) } };
@@ -581,7 +599,7 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, ventPanelOpen: !!action.payload.ventPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };

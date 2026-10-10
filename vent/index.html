@@ -1,0 +1,2344 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EM Evidence — Ventilator Simulator</title>
+<link rel="manifest" href="manifest.json">
+<script>
+  // Wrapped: reading navigator.serviceWorker throws in a sandboxed iframe and in some private
+  // browsing modes. The page works without offline caching.
+  try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (e) {}
+</script>
+<!-- The lungs the facilitator chooses on the controller (shared with the controller). -->
+<script src="../data/ventprofiles.js"></script>
+<!-- Firebase: the same live session the controller and room monitor use. -->
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+<script src="../data/firebase-config.js"></script>
+<!--
+  THE HAMILTON-T1 VENTILATOR, AS A SIMULATION DEVICE.
+  The device (screen, keys, knob, modes, controls, alarms and breath engine) is copied from the
+  standalone HAMILTON-T1 trainer (github.com/shakeymedic/niv-instructions), which stays its own tool.
+  Here it joins a simulation session like the defib tablet does: the controller owns the patient,
+  this page breathes for it, and every setting change and alarm goes to the facilitator's log.
+  It is a training recreation, not Hamilton Medical software, and is not endorsed by Hamilton Medical.
+-->
+<style>
+:root{
+  --bg:#f2f5f9;--surface:#ffffff;--ink:#0f1b2d;--muted:#4a5b70;--line:#d6dfe9;
+  --brand:#2563a8;--brand-d:#1e4a7d;--brand-l:#e8f0fa;
+  --ok:#13703a;--ok-bg:#e6f4ec;--warn:#8a5300;--warn-bg:#fff4dc;--bad:#b42318;--bad-bg:#fdecea;
+  --radius:12px;
+  --dev:#2e3338;--dev-2:#40464d;--dev-3:#565d65;
+  --scr:#0a1322;--scr-2:#14233c;--scr-3:#1c3050;--scr-ink:#e8eef6;--scr-dim:#93a7c0;
+  --c-p:#ffd24a;--c-f:#5cc8ff;--c-sel:#f59e0b;--c-ctl:#1f4f99;--hi:#e5372b;--med:#f2b705;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#1b1e22;color:#e8eef6;display:flex;flex-direction:column;overflow:hidden;line-height:1.4}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+/* ===== Simulator: device housing (designed at 1000 x 790 px, scaled to fit) ===== */
+.t1-wrap{position:relative;width:100%;overflow:hidden;border-radius:14px;background:radial-gradient(ellipse at 50% 35%,#ffffff 0,#e9eef3 60%,#dfe5eb 100%);padding:10px 0 4px}
+.t1-wrap.zoom{overflow-x:auto;overscroll-behavior-x:contain}
+.t1-scaler{position:relative;margin:0 auto;transform-origin:0 0}
+/* full screen: the ventilator alone, filling the viewport */
+.fs-exit{display:none}
+body.t1fs{overflow:hidden}
+body.t1fs .t1-wrap{position:fixed;inset:0;z-index:1000;width:auto;border-radius:0;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#4a5058 0,#2a2e33 60%,#1b1e22 100%)}
+body.t1fs .t1-scaler{margin:0}
+body.t1fs .fs-exit{display:block;position:absolute;top:10px;right:10px;z-index:2;background:rgba(15,27,45,.55);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:6px 12px;font-size:.85rem;font-weight:600;opacity:.6;cursor:pointer}
+body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
+.t1{position:absolute;left:0;top:0;width:1000px;height:790px;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;user-select:none;-webkit-user-select:none}
+.t1 button{font-family:inherit}
+/* handle */
+.t1-handle .post{position:absolute;top:30px;width:30px;height:64px;background:linear-gradient(90deg,#2b2e31,#55595e 45%,#2b2e31);border-radius:4px}
+.t1-handle .post.l{left:318px}.t1-handle .post.r{left:652px}
+.t1-handle .bar{position:absolute;left:286px;top:6px;width:428px;height:42px;border-radius:12px;background:linear-gradient(180deg,#e2182f,#b30d22 70%,#8f0a1b);box-shadow:0 3px 6px rgba(0,0,0,.35),inset 0 2px 1px rgba(255,255,255,.25)}
+.t1-handle .grip{position:absolute;left:452px;top:0;width:96px;height:30px;border-radius:6px 6px 10px 10px;background:linear-gradient(180deg,#2c2f33,#151719)}
+/* body */
+.t1-shell{position:absolute;top:76px;width:150px;height:712px;background:linear-gradient(90deg,#9e0b1e,#d7132c 30%,#e3263b 55%,#b70f24);box-shadow:0 10px 24px rgba(0,0,0,.28)}
+.t1-shell.l{left:6px;border-radius:84px 0 0 60px}
+.t1-shell.r{right:6px;border-radius:0 84px 60px 0;background:linear-gradient(270deg,#9e0b1e,#d7132c 30%,#e3263b 55%,#b70f24)}
+.t1-face{position:absolute;left:36px;top:84px;width:928px;height:694px;border-radius:52px 52px 40px 40px;background:linear-gradient(180deg,#f4f5f6 0,#d9dcdf 7%,#c9cdd1 60%,#b9bec3 100%);box-shadow:inset 0 2px 2px #fff,inset 0 -3px 6px rgba(0,0,0,.18)}
+.t1-lamp{position:absolute;left:150px;top:12px;width:628px;height:12px;border-radius:7px;background:linear-gradient(180deg,#f9fafb,#d7dadd);box-shadow:inset 0 1px 2px rgba(0,0,0,.25)}
+.t1-lamp.hi{background:#ff2a1f;box-shadow:0 0 16px 4px rgba(255,42,31,.75);animation:t1blink .7s steps(2,start) infinite}
+.t1-lamp.med{background:#ffd400;box-shadow:0 0 14px 3px rgba(255,212,0,.7);animation:t1blink 1.4s steps(2,start) infinite}
+.t1-lamp.low{background:#ffd400;box-shadow:0 0 12px 2px rgba(255,212,0,.6)}
+.t1-lamp.self{animation:t1self 1s steps(2,start) 3}
+@keyframes t1blink{50%{background:linear-gradient(180deg,#f9fafb,#d7dadd);box-shadow:none}}
+@keyframes t1self{0%{background:#ffd400}50%{background:#ff2a1f}}
+.t1-bezel{position:absolute;left:40px;top:38px;width:848px;height:516px;border-radius:38px;background:linear-gradient(180deg,#1d1f21,#0d0e0f);box-shadow:0 0 0 3px #a9aeb3,0 0 0 4px #e9ebed,inset 0 1px 1px rgba(255,255,255,.12)}
+.t1-name{position:absolute;left:50px;top:470px;color:#fff;font-weight:700;font-size:25px;letter-spacing:1.5px}
+.t1-name small{font-size:12px;font-weight:600;letter-spacing:1px;color:#9aa3ab;margin-left:10px}
+.t1-screenbox{position:absolute;left:30px;top:26px;width:584px;height:438px;background:#000;border-radius:4px;box-shadow:0 0 0 2px #2a2c2f}
+.t1-lower .latch{position:absolute;left:62px;top:584px;width:84px;height:44px;border-radius:9px;border:2px solid #a2a7ac;background:linear-gradient(180deg,#d9dcdf,#c3c7cb)}
+.t1-lower .latch:before,.t1-lower .latch:after{content:"";position:absolute;top:6px;width:30px;height:28px;border-radius:6px;border:2px solid #9a9fa4}
+.t1-lower .latch:before{left:6px}.t1-lower .latch:after{right:6px}
+.t1-lower .badge{position:absolute;left:578px;top:584px;width:252px;height:50px;border-radius:10px;background:linear-gradient(180deg,#f2f3f4,#c6cacd);box-shadow:inset 0 0 0 2px #9aa0a5,0 1px 1px #fff;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;color:#1f4f99;font-weight:800;font-size:17px;letter-spacing:.5px}
+.t1-lower .badge small{font-size:11px;color:#47525d;font-weight:700;letter-spacing:1px}
+.t1-lower .bleed{position:absolute;left:330px;top:676px;width:270px;height:6px;border-radius:3px;background:#9ba1a6}
+/* key panel */
+.t1-keys{position:absolute;left:650px;top:24px;width:172px;height:286px;border-radius:20px;background:linear-gradient(180deg,#2e3134,#23262a);box-shadow:inset 0 0 0 1px #4a4e53,0 1px 0 rgba(255,255,255,.06)}
+.t1 .k{position:absolute;background:linear-gradient(180deg,#141516,#050505);border:2px solid #d9dcdf;border-radius:14px;color:#f2f4f6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 2px 2px rgba(0,0,0,.5)}
+.t1 .k:active{transform:translateY(1px);border-color:#fff}
+.t1 .k:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+.t1 .k svg{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.t1 .k.pw{left:56px;top:14px;width:60px;height:60px;border-radius:50%;border:3px solid #9da3a8}
+.t1 .k.pw.on{border-color:#5ff07f;box-shadow:0 0 10px rgba(95,240,127,.65),inset 0 0 6px rgba(95,240,127,.3)}
+.t1 .k.pw svg{width:28px;height:28px}
+.t1 .k.l{left:20px;width:64px;height:42px}
+.t1 .k.r{left:88px;width:64px;height:42px}
+.t1 .k.r1{top:112px}.t1 .k.r2{top:162px}.t1 .k.r3{top:212px}
+.t1 .k.ap{left:20px;top:262px;width:132px;height:40px}
+.t1 .k.ap{top:240px}
+.t1 .k.r1{top:96px}.t1 .k.r2{top:144px}.t1 .k.r3{top:192px}
+.t1 .k .o2{font-weight:700;font-size:16px;display:flex;align-items:center;gap:1px}
+.t1 .k .o2 sub{font-size:10px;margin-top:8px}
+.t1 .k .min{font-size:10px;font-weight:800;margin-left:4px}
+.t1 .led{position:absolute;width:6px;height:6px;border-radius:50%;background:#4d5257;box-shadow:inset 0 1px 1px rgba(0,0,0,.6)}
+.t1 .led.on{background:#69f58a;box-shadow:0 0 6px 1px #69f58a}
+.t1 .led.red.on{background:#ff3b30;box-shadow:0 0 6px 1px #ff3b30}
+.t1 .batt{position:absolute;left:52px;top:78px;width:68px;height:14px;display:flex;align-items:center;justify-content:center;gap:4px;color:#d7dadd;font-size:9px;font-weight:700}
+.t1 .batt i{display:inline-block;width:18px;height:8px;border:1.5px solid #d7dadd;border-radius:2px;position:relative}
+.t1 .batt i:after{content:"";position:absolute;right:-4px;top:1px;width:2px;height:4px;background:#d7dadd}
+/* knob */
+.t1-knob{position:absolute;left:668px;top:330px;width:136px;height:136px;border-radius:50%;cursor:grab;touch-action:none;padding:0;border:0;background:repeating-conic-gradient(from 0deg,#3b3f43 0 5deg,#1c1e20 5deg 10deg);box-shadow:0 6px 12px rgba(0,0,0,.55),inset 0 0 0 3px #111}
+.t1-knob:active{cursor:grabbing}
+.t1-knob:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}
+.t1-knob .rot{position:absolute;inset:0;border-radius:50%}
+.t1-knob .rot:after{content:"";position:absolute;left:50%;top:5px;width:3px;height:12px;margin-left:-1.5px;background:#6c7278;border-radius:2px}
+.t1-knob .ring{position:absolute;left:22px;top:22px;width:92px;height:92px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#3a3e42,#17191b 70%);box-shadow:0 0 0 6px #1c1f22,0 0 0 9px #59e57a,0 0 16px 9px rgba(89,229,122,.45),inset 0 2px 3px rgba(255,255,255,.12)}
+.t1-knob.press .ring{transform:scale(.96)}
+/* ===== the screen: designed at 800 x 600 logical px, scaled into the screen box ===== */
+.screen{position:absolute;left:0;top:0;width:800px;height:600px;transform-origin:0 0;background:#000;color:#fff;overflow:hidden;font-size:16px;line-height:1.15;transition:filter .3s}
+.screen.night{filter:brightness(.5)}
+.screen button{font-family:inherit;color:inherit;cursor:pointer}
+.scr-mode{position:absolute;left:0;top:0;width:180px;height:56px;background:#000;border:0;display:flex;align-items:center;gap:10px;padding:0 12px;font-size:28px;color:#fff;text-align:left}
+.scr-mode svg{width:16px;height:30px;fill:#fff;flex:0 0 auto}
+.scr-mode span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr-msg{position:absolute;left:180px;top:0;width:470px;height:56px;background:#2b2b2b;border:0;color:#fff;font-size:22px;font-weight:600;text-align:center;padding:0 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scr-msg.hi{background:#e30613;color:#fff}
+.scr-msg.med,.scr-msg.low{background:#ffde00;color:#000}
+.scr-msg.tech{background:#e30613;color:#fff}
+.scr-msg.info{color:#e6e6e6;font-weight:500;font-size:19px}
+.scr-modes{position:absolute;left:650px;top:0;width:150px;height:56px;background:#000;border:0;font-size:22px;font-weight:600;color:#fff;border-left:2px solid #2b2b2b}
+.scr-modes.open{background:#f4f4f4;color:#000}
+.mmps{position:absolute;left:0;top:56px;width:180px;height:484px;background:#1b1b1b}
+.mmp{position:absolute;left:0;width:180px;height:106px;background:#373a3d;border:0;border-bottom:2px solid #000;text-align:right;padding:2px 12px 0 4px;color:#fff;display:block}
+.mmp .v{display:block;font-size:60px;font-weight:400;letter-spacing:-1px;font-variant-numeric:tabular-nums;height:64px;line-height:66px}
+.mmp .n{display:block;font-size:17px;color:#fff;line-height:19px}
+.mmp .u{display:block;font-size:14px;color:#d5d5d5;line-height:17px}
+.mmp.alarm .v{color:#ffde00}
+.mmp.alarm:after{content:"";position:absolute;right:0;top:0;bottom:0;width:7px;background:#ffde00}
+.mmp.alarm.hi:after{background:#ff3b30}
+.mctl.enrich .c{background:#5cb03a;border-color:#5cb03a}
+.mmp.alarm.hi .v{color:#ff3b30}
+.mmp-spo2{position:absolute;left:0;top:424px;width:180px;height:60px;background:#373a3d;border:0;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:18px}
+.mmp-spo2 b{font-weight:400;font-size:22px}
+.gfx{position:absolute;left:180px;top:56px;width:470px;height:484px;background:#000;border:0;padding:0;text-align:left}
+.gfx canvas{position:absolute;left:0;width:470px;display:block}
+.gfx .freeze{position:absolute;right:8px;top:6px;width:26px;height:24px;border:1.5px solid #bbb;border-radius:3px;color:#ddd;font-size:15px;line-height:20px;text-align:center}
+.dynlung{position:absolute;left:4px;top:164px;width:462px;height:316px;background:#2493c9;border-radius:2px;overflow:hidden}
+.dynlung svg{position:absolute;left:0;top:0;width:462px;height:316px}
+.dynlung .dl-pat{position:absolute;left:10px;top:8px;font-size:15px;line-height:1.25;color:#fff}
+.dynlung .dl-row{position:absolute;left:0;right:0;bottom:6px;display:flex;justify-content:space-around;text-align:center;font-size:14px;color:#fff;line-height:1.15}
+.dynlung .dl-row b{display:block;font-weight:400;font-size:21px}
+.dynlung .dl-row small{display:block;font-size:11px;color:#dcefff}
+.dynlung .dl-side{position:absolute;right:12px;top:110px;text-align:right;font-size:14px;line-height:1.2}
+.dynlung .dl-side b{display:block;font-size:20px;font-weight:400}
+.dynlung .dl-note{position:absolute;left:10px;top:76px;font-size:11px;line-height:1.25;color:#e8f5ff;max-width:108px}
+.rcol{position:absolute;left:650px;top:56px;width:150px;height:484px;background:#000;border-left:2px solid #2b2b2b}
+.mctl{position:absolute;left:0;width:148px;height:118px;background:transparent;border:0;padding:0;color:#fff}
+.mctl .c{position:absolute;left:31px;top:10px;width:86px;height:86px;border-radius:50%;border:3px solid #e6e6e6;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:30px;line-height:1;font-variant-numeric:tabular-nums;background:#000}
+.mctl .c small{font-size:13px;margin-top:3px;color:#ddd}
+.mctl .lb{position:absolute;left:0;right:0;top:99px;font-size:16px;text-align:center;white-space:nowrap}
+.mctl .rng{display:none}
+.mctl.sel .c,.wctl.sel .c{box-shadow:0 0 0 4px #ffde00}
+.mctl.act .c,.wctl.act .c{background:#f39200;border-color:#f39200;color:#fff}
+.mctl.act .c small,.wctl.act .c small{color:#fff}
+.mctl.act .rng,.wctl.act .rng{display:flex;position:absolute;left:8px;right:8px;top:82px;justify-content:space-between;font-size:11px;color:#bbb}
+.mctl.act .lb{top:101px}
+.rbtn{position:absolute;left:0;width:148px;height:52px;background:#2b2b2b;border:0;border-top:2px solid #000;font-size:21px;font-weight:600;color:#fff}
+.rbtn.open,.bbtn.open{background:#f4f4f4;color:#000}
+.bbar{position:absolute;left:0;top:540px;width:800px;height:60px;background:#000;border-top:2px solid #2b2b2b}
+.bbtn{position:absolute;top:0;height:58px;background:#2b2b2b;border:0;border-right:2px solid #000;font-size:21px;font-weight:600;color:#fff}
+.bstat{position:absolute;left:650px;top:0;width:150px;height:58px;display:flex;align-items:center;justify-content:flex-end;gap:7px;padding-right:10px;color:#fff;font-size:12px}
+.bstat svg{height:24px}
+.bstat .ap{color:#ffde00;font-weight:700;font-size:13px;display:flex;align-items:center;gap:2px}
+.bstat .clock{position:absolute;left:4px;top:8px;font-size:11px;color:#bbb;line-height:1.25;text-align:left}
+/* windows */
+.win{position:absolute;left:180px;top:56px;width:620px;height:484px;background:#f4f4f4;color:#1a1a1a;z-index:5;font-size:16px}
+.win[hidden]{display:none}
+.win .wx{position:absolute;left:6px;top:6px;width:30px;height:30px;border:1px solid #888;background:#d9d9d9;color:#333;font-size:18px;line-height:26px;padding:0;border-radius:2px;z-index:2}
+.win .wtitle{position:absolute;left:46px;top:6px;right:10px;height:30px;font-size:19px;font-weight:600;line-height:30px;color:#222}
+.win .htabs{position:absolute;left:44px;top:4px;display:flex;gap:2px}
+.win .htabs button,.win .vtabs button{background:#d0d0d0;border:1px solid #b5b5b5;color:#222;font-size:16px;padding:0 14px;height:34px;border-radius:0}
+.win .htabs button[aria-selected="true"],.win .vtabs button[aria-selected="true"]{background:#fff;border-color:#888;font-weight:700}
+.win .vtabs{position:absolute;left:6px;top:46px;width:118px;display:flex;flex-direction:column;gap:3px}
+.win .vtabs button{height:46px;text-align:left;padding:0 10px}
+.win .wbody{position:absolute;left:6px;right:6px;top:46px;bottom:62px;overflow:auto;padding:4px 8px}
+.win .wbody.withv{left:132px}
+.win .wfoot{position:absolute;left:6px;right:6px;bottom:6px;height:50px;display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.wb{background:#d6d6d6;border:1px solid #b3b3b3;color:#1a1a1a;font-size:17px;padding:0 16px;height:44px;min-width:110px;border-radius:2px}
+.wb:hover{background:#cacaca}
+.wb.green,.wb[aria-pressed="true"]{background:#5cb03a;border-color:#4b9a2c;color:#fff}
+.wb.cur{box-shadow:0 0 0 3px #ffde00}
+.wb.red{color:#d11}
+.wb[disabled]{opacity:.45;cursor:not-allowed}
+.wb.wide{min-width:220px}
+.wgrp{font-size:14px;color:#444;margin:8px 0 4px}
+.wrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.wctl{position:relative;width:112px;height:126px;background:transparent;border:0;padding:0;color:#1a1a1a;flex:0 0 auto}
+.wctl .c{position:absolute;left:18px;top:6px;width:76px;height:76px;border-radius:50%;border:2.5px solid #5d5d5d;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:25px;line-height:1;font-variant-numeric:tabular-nums}
+.wctl .c small{font-size:12px;margin-top:2px;color:#555}
+.wctl .lb{position:absolute;left:0;right:0;top:96px;font-size:14px;text-align:center;line-height:1.1}
+.wctl.act .rng{top:80px;color:#555}
+.wctl.act .lb{top:98px}
+.wctl.conflict .c{box-shadow:0 0 0 4px #ffde00;background:#fff6a8}
+.wctl.ro .c{border-style:dashed;color:#555}
+.wgrid{display:flex;flex-wrap:wrap;gap:4px 2px}
+.wrow.tgl{margin-top:6px;gap:6px;font-size:15px}
+.wrow.tgl>span{min-width:110px}
+.dynlung.asv{background:#000}
+.dynlung .asv-side{position:absolute;left:342px;top:20px;right:6px;display:flex;flex-direction:column;gap:10px;font-size:13px;color:#ddd;line-height:1.15}
+.dynlung .asv-side b{display:block;font-weight:400;font-size:24px;color:#fff}
+.dynlung .asv-side small{display:block;font-size:11px;color:#aaa}
+.mmp.cprt .v{color:#ff9a1f;font-size:46px}
+.wnote{font-size:13px;color:#444;margin:6px 0;line-height:1.3}
+.wtable{width:100%;border-collapse:collapse;font-size:15px}
+.wtable td,.wtable th{padding:5px 6px;border-bottom:1px solid #d4d4d4;text-align:left}
+.wtable th{color:#555;font-weight:600;font-size:13px}
+.wtable td.num{text-align:right;font-variant-numeric:tabular-nums;font-size:18px}
+.mon-cols{display:grid;grid-template-columns:1fr 1fr;gap:0 24px}
+.mon-cols div{display:flex;justify-content:space-between;border-bottom:1px solid #ddd;padding:4px 2px;font-size:15px}
+.mon-cols div b{font-weight:400;font-size:20px;font-variant-numeric:tabular-nums}
+.mon-cols div span small{color:#666;font-size:12px;margin-left:4px}
+/* alarm limits (Limits 1 / 2) */
+.limits{display:flex;gap:6px;justify-content:flex-start;padding-top:2px}
+.lim{position:relative;width:92px;height:340px;flex:0 0 auto}
+.lim .wctl{position:absolute;left:-10px;width:112px;height:92px}
+.lim .wctl .c{width:62px;height:62px;left:25px;font-size:20px}
+.lim .wctl.hi{top:0}.lim .wctl.lo{top:228px}
+.lim .wctl .lb{display:none}
+.lim .wctl.act .rng{top:66px}
+.lim .bar{position:absolute;left:38px;top:76px;width:16px;height:146px;background:#d0d0d0;border:1px solid #9a9a9a}
+.lim .bar i{position:absolute;left:-6px;width:26px;height:3px;background:#1a1a1a}
+.lim .bar em{position:absolute;left:0;width:14px;background:#e30613}
+.lim .bar em.y{background:#ffde00}
+.lim .cur{position:absolute;left:58px;font-size:13px;color:#222}
+.lim .nm{position:absolute;left:-6px;right:-6px;top:302px;text-align:center;font-size:13px;line-height:1.15}
+.lim .off{position:absolute;left:34px;top:84px;font-size:22px;color:#e30613}
+/* standby */
+.sb-yellow{position:absolute;left:10px;right:10px;top:40px;height:84px;background:#fff7a6;border:1px solid #c9b800;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.sb-yellow .tri{font-size:24px;line-height:1}
+.sb-yellow .t{font-size:24px;font-variant-numeric:tabular-nums}
+.sb-yellow .m{font-size:13px;color:#4d4500}
+.sb-grid{position:absolute;left:10px;right:10px;top:130px;bottom:60px;display:grid;grid-template-columns:110px 1fr;gap:4px 10px;align-items:center}
+.sb-grid .wb{min-width:84px;height:40px;padding:0 10px}
+.sb-grid .l{font-size:14px;color:#444}
+.pt-ic{display:inline-flex;align-items:center;justify-content:center;width:56px;height:44px;background:#d6d6d6;border:1px solid #b3b3b3;border-radius:2px;padding:0}
+.pt-ic svg{height:30px;fill:#333}
+.pt-ic[aria-pressed="true"]{background:#5cb03a;border-color:#4b9a2c}
+.pt-ic[aria-pressed="true"] svg{fill:#fff}
+.ibw{font-size:26px;margin-left:8px}
+.ibw small{font-size:13px;color:#555;display:block}
+/* activate standby dialog */
+.dlg{position:absolute;left:150px;top:150px;width:420px;height:180px;background:#fff;border:2px solid #333;z-index:7;color:#111;text-align:center}
+.dlg[hidden]{display:none}
+.dlg h5{margin:14px 0 6px;font-size:26px;font-weight:500}
+.dlg p{font-size:13px;margin:0 20px 12px}
+.dlg .wx{position:absolute;left:6px;top:6px;width:28px;height:28px;border:1px solid #888;background:#d9d9d9;font-size:16px;padding:0}
+/* alarm buffer */
+.abuf{display:flex;flex-direction:column;gap:3px}
+.abuf .r{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;font-size:15px;border:0;width:100%;text-align:left;color:#000}
+.abuf .r.hi{background:#e30613;color:#fff}
+.abuf .r.med,.abuf .r.low{background:#ffde00}
+.abuf .r.inact.hi{background:#f3a2a6;color:#300}
+.abuf .r.inact.med,.abuf .r.inact.low{background:#fff3a0}
+.abuf .r time{font-variant-numeric:tabular-nums;font-size:13px;width:66px}
+.abuf .r .i{margin-left:auto;width:22px;height:22px;border-radius:50%;background:#fff;color:#1f4f99;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;font-style:italic}
+.help{background:#fff;border:1px solid #bbb;padding:8px 10px;font-size:14px;line-height:1.35;margin-top:8px}
+.help h6{font-size:15px;margin:0 0 4px}
+.help ul{margin:0;padding-left:18px}
+/* tests & calib */
+.tc{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+.tc button{height:96px;background:#d6d6d6;border:1px solid #b3b3b3;font-size:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#111}
+.tc button .st{font-size:22px}
+.tc button .st.ok{color:#2d9b1e}.tc button .st.fail{color:#d11}
+.tc button small{font-size:11px;color:#555}
+.tc-msg{margin-top:12px;background:#fff;border:1px solid #bbb;min-height:64px;padding:8px 10px;font-size:16px}
+.tc-msg b{color:#1f4f99}
+.lockic{position:absolute;right:160px;top:14px;z-index:9;font-size:22px;display:none}
+.screen.locked .lockic{display:block}
+.scr-toast{position:absolute;left:190px;top:62px;width:450px;background:rgba(20,20,20,.92);color:#fff;font-size:15px;padding:8px 12px;border-radius:4px;z-index:10;border:1px solid #555;pointer-events:none}
+.scr-toast[hidden]{display:none}
+/* below-device controls (big targets, used on phones) */
+.under{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin:10px 0 0}
+.under button{background:#1f2a37;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-weight:700;font-size:.95rem;min-width:52px}
+.under button.knobp{background:#2b8a3e}
+.under .hint{font-size:.8rem;color:var(--muted);width:100%;text-align:center}
+.scr-off{position:absolute;inset:0;background:#000;z-index:20;display:flex;align-items:center;justify-content:center;color:#d9d9d9;font-size:30px;letter-spacing:2px;text-align:center;line-height:1.5}
+.scr-off[hidden]{display:none}
+.scr-off small{display:block;font-size:16px;letter-spacing:0;color:#9a9a9a}
+.t1.off .t1-knob .ring{box-shadow:0 0 0 6px #1c1f22,0 0 0 9px #2c3a30,inset 0 2px 3px rgba(255,255,255,.12)}
+.physical{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.physical button{background:#fff4dc;border:1px solid #d08700;border-radius:8px;padding:6px 10px;font-size:.82rem;font-weight:700;color:#5a3800}
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#0f1b2d;color:#fff;padding:10px 16px;border-radius:10px;z-index:200;max-width:calc(100% - 32px);font-size:.9rem;box-shadow:0 8px 20px rgba(0,0,0,.3)}
+.toast[hidden]{display:none}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+/* ---- the simulator page around the device ---- */
+.vbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 10px;background:#0f1b2d;font-size:.8rem}
+.vbar .title{font-weight:700;color:#ffd24a;margin-right:4px}
+.vbar .tag{color:#cbd5e1}
+.vbar .tag.bad{color:#ff8a80;font-weight:700}
+.vbar .sp{flex:1}
+.vbar button{background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:3px 10px;font-size:.8rem;font-weight:600}
+.vbar button[aria-pressed="true"]{background:#ffd24a;color:#1b1300;border-color:#ffd24a}
+body.embedded .vbar .standalone-only{display:none}
+.t1-wrap{flex:1 1 auto;min-height:0;height:auto;border-radius:0;padding:4px 0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#4a5058 0,#2a2e33 60%,#1b1e22 100%)}
+.t1-scaler{margin:0}
+.under{flex:0 0 auto;margin:0;padding:4px 8px 6px;background:#14171a}
+.under button{padding:6px 12px;font-size:.85rem}
+.hands{flex:0 0 auto;padding:6px 10px 8px;background:#2a2108;border-top:2px solid #d08700}
+.hands[hidden]{display:none}
+.hands h2{font-size:.8rem;margin:0 0 2px;color:#ffd78a;text-transform:uppercase;letter-spacing:.05em}
+.hands .physical{margin-top:2px}
+.link-banner{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1200;width:min(560px,calc(100% - 24px));background:#7f1d1d;color:#fff;border:2px solid #fca5a5;border-radius:10px;padding:10px 14px;font-size:.9rem;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.link-banner[hidden]{display:none}
+.link-banner b{display:block;font-size:1rem;margin-bottom:2px}
+.link-banner form{display:flex;gap:6px;margin-top:8px}
+.link-banner input{flex:1;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #fca5a5;text-transform:uppercase;letter-spacing:.15em}
+.link-banner button{background:#fff;color:#7f1d1d;border:0;border-radius:6px;padding:6px 14px;font-weight:700}
+.ended{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1100;background:#334155;color:#fff;border-radius:8px;padding:6px 14px;font-weight:700;letter-spacing:.08em}
+.ended[hidden]{display:none}
+</style>
+</head>
+<body>
+<header class="vbar" aria-label="Ventilator simulator">
+  <span class="title">HAMILTON-T1</span>
+  <span class="tag">Training simulation</span>
+  <span class="tag" id="sessionTag">Not linked</span>
+  <span class="tag" id="simClock" aria-live="off"></span>
+  <span class="sp"></span>
+  <button id="btnSound" aria-pressed="true" title="Alarm sound on this device">Alarm sound</button>
+  <button id="btnFull" class="standalone-only" aria-pressed="false" title="Show only the ventilator, filling the screen">Full screen</button>
+</header>
+<div class="link-banner" id="linkBanner" role="alert"><b>NOT LINKED TO SESSION</b><span id="linkReason">Looking for the session&hellip;</span></div>
+<div class="ended" id="endedBanner" hidden>SESSION ENDED</div>
+        <div class="t1-wrap" id="device">
+          <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
+          <div class="t1-scaler" id="t1scaler">
+          <div class="t1" id="t1">
+            <div class="t1-handle" aria-hidden="true"><i class="post l"></i><i class="post r"></i><div class="bar"></div><div class="grip"></div></div>
+            <div class="t1-shell l" aria-hidden="true"></div>
+            <div class="t1-shell r" aria-hidden="true"></div>
+            <div class="t1-face">
+              <div class="t1-lamp" id="lamp" role="img" aria-label="Alarm lamp"></div>
+              <div class="t1-bezel">
+                <div class="t1-screenbox" id="screenbox">
+                  <div class="screen" id="screen">
+                    <button class="scr-mode" id="btnModeName" aria-label="Patient group and active mode. Touch to open Modes"><svg viewBox="0 0 16 30" aria-hidden="true"><circle cx="8" cy="4" r="3.6"/><path d="M3 9h10l1.5 10h-2.5l-.8 10h-2.4l-.6-8h-.4l-.6 8H4.8L4 19H1.5z"/></svg><span id="modeName">NIV-ST</span></button>
+                    <button class="scr-msg" id="msgbar" aria-live="polite" aria-label="Message bar. Touch to open the alarm buffer"></button>
+                    <button class="scr-modes" id="btnModes" data-open="modes">Modes</button>
+                    <div class="lockic" aria-hidden="true">🔒</div>
+                    <div class="mmps" id="mmps" aria-label="Main monitoring parameters"></div>
+                    <button class="gfx" id="gfx" aria-label="Graphics. Touch to choose waveforms or panels">
+                      <canvas id="cv1" style="top:0;height:160px"></canvas>
+                      <canvas id="cv2" style="top:162px;height:160px"></canvas>
+                      <canvas id="cv3" style="top:324px;height:160px"></canvas>
+                      <div class="dynlung" id="dynlung" hidden></div>
+                      <span class="freeze" aria-hidden="true">❄</span>
+                    </button>
+                    <div class="rcol" id="rcol"></div>
+                    <div class="bbar">
+                      <button class="bbtn" data-open="monitoring" style="left:0;width:180px">Monitoring</button>
+                      <button class="bbtn" data-open="tools" style="left:180px;width:118px">Tools</button>
+                      <button class="bbtn" data-open="events" style="left:298px;width:118px">Events</button>
+                      <button class="bbtn" data-open="system" style="left:416px;width:118px">System</button>
+                      <div class="bbtn" style="left:534px;width:116px;cursor:default" aria-hidden="true"></div>
+                      <div class="bstat" id="bstat"></div>
+                    </div>
+                    <div class="win" id="win" hidden role="dialog" aria-modal="false" aria-label="Window"></div>
+                    <div class="dlg" id="dlg" hidden role="dialog" aria-label="Activate standby">
+                      <button class="wx" id="dlgX" aria-label="Close">✕</button>
+                      <h5>Standby</h5>
+                      <p>No ventilation delivered to the patient.<br>Deactivate humidifier during Standby.</p>
+                      <button class="wb wide" id="dlgGo">Activate standby</button>
+                    </div>
+                    <div class="scr-toast" id="scrToast" hidden></div>
+                    <div class="scr-off" id="scrOff" hidden><span id="scrOffTxt"></span></div>
+                  </div>
+                </div>
+                <div class="t1-name">HAMILTON-T1<small>TRAINING SIMULATION</small></div>
+                <div class="t1-keys">
+                  <button class="k pw" id="kPower" aria-label="Power/Standby key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
+                  <div class="batt" aria-label="Battery charge indicator"><span>2</span><i></i><span>1</span><b class="led" id="led-b2" style="left:6px;top:10px"></b><b class="led on" id="led-b1" style="left:56px;top:10px"></b></div>
+                  <b class="led" id="led-day" style="left:9px;top:114px"></b><b class="led" id="led-lock" style="left:157px;top:114px"></b>
+                  <button class="k l r1" id="kDay" aria-label="Day/Night key"><svg viewBox="0 0 34 24" aria-hidden="true"><rect x="2" y="5" width="30" height="14" rx="7"/><path d="M12 8.5a4 4 0 1 0 3.2 6.5 4.8 4.8 0 0 1-3.2-6.5z"/><circle cx="23" cy="12" r="2.6"/><path d="M23 6.8v1.2M23 16v1.2M27.8 12h-1.2M19.4 12h-1.2"/></svg></button>
+                  <button class="k r r1" id="kLock" aria-label="Screen lock/unlock key"><svg viewBox="0 0 34 24" aria-hidden="true"><rect x="5" y="11" width="10" height="8" rx="1"/><path d="M7 11V8a3 3 0 0 1 6 0v3"/><path d="M19 20l6-16"/><rect x="21" y="13" width="9" height="7" rx="1"/><path d="M23 13v-2.5a2.5 2.5 0 0 1 5 0"/></svg></button>
+                  <b class="led" id="led-man" style="left:9px;top:162px"></b><b class="led" id="led-o2" style="left:157px;top:162px"></b>
+                  <button class="k l r2" id="kManual" aria-label="Manual breath key"><svg viewBox="0 0 30 24" aria-hidden="true"><path d="M15 3v8"/><path d="M15 9c-2 0-3 2-4 2"/><path d="M15 9c2 0 3 2 4 2"/><path d="M11 6.5C7 6.5 4 13 4 18c0 2 1.5 3 3.5 2.5L12 19V11"/><path d="M19 6.5c4 0 7 6.5 7 11.5 0 2-1.5 3-3.5 2.5L18 19V11"/></svg></button>
+                  <button class="k r r2" id="kO2" aria-label="O2 enrichment key"><span class="o2">↑O<sub>2</sub></span></button>
+                  <b class="led" id="led-print" style="left:9px;top:210px"></b><b class="led" id="led-neb" style="left:157px;top:210px"></b>
+                  <button class="k l r3" id="kPrint" aria-label="Print screen key"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="9" width="14" height="11" rx="2"/><path d="M9 9V5a2 2 0 0 1 4 0v8"/><path d="M13 9.5a1.6 1.6 0 0 1 3 0V12"/></svg></button>
+                  <button class="k r r3" id="kNeb" aria-label="Nebuliser key"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="9" width="10" height="12" rx="2"/><path d="M10 9V6h4v3"/><path d="M15 4l3-1.5M15 6l3.5 0M15 3l2-2.5"/></svg></button>
+                  <button class="k ap" id="kAudio" aria-label="Audio pause key"><svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:#ff4b3e"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg><span class="min">2 MIN.</span></button>
+                  <b class="led red" id="led-audio" style="left:9px;top:257px"></b>
+                </div>
+                <button class="t1-knob" id="knob" aria-label="Press-and-turn knob. Arrow keys turn it, Enter or Space presses it"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
+              </div>
+              <div class="t1-lower" aria-hidden="true"><div class="latch"></div><div class="badge">EMEvidence<small>VENTILATOR TRAINING SIMULATOR</small></div><div class="bleed"></div></div>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="under" aria-label="Knob controls">
+          <button id="kCCW" aria-label="Turn knob anticlockwise">⟲ Turn −</button>
+          <button class="knobp" id="kPress" aria-label="Press the knob">Press knob</button>
+          <button id="kCW" aria-label="Turn knob clockwise">Turn + ⟳</button>
+                  </div>
+<section class="hands" id="hands" hidden aria-label="Your hands">
+  <h2>Your hands (physical actions for the test)</h2>
+  <div class="physical" id="physical"></div>
+</section>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+'use strict';
+/* ======================= helpers ======================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
+const fmt = (v, dp = 0) => (v === null || v === undefined || Number.isNaN(v)) ? '--' : Number(v).toFixed(dp);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let toastT = null;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200); }
+let stoastT = null;
+function scrToast(msg) { const t = $('#scrToast'); t.textContent = msg; t.hidden = false; clearTimeout(stoastT); stoastT = setTimeout(() => { t.hidden = true; }, 2600); }
+
+/* ======================= device definitions (HAMILTON-T1 SW 3.0.x, adult/ped) ======================= */
+/* @@SPEC_CTRL@@ */
+/* ranges and defaults are Table 15-9 (adult/ped); the manual gives no control increments, so the step sizes are the trainer's choice */
+const IE_LIST = [1/9, 1/8, 1/7, 1/6, 1/5, 1/4, 1/3.5, 1/3, 1/2.5, 1/2, 1/1.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
+const ieStr = r => { const t = v => String(+v.toFixed(1)); return r >= 1 ? t(r) + ':1' : '1:' + t(1 / r); };
+const CTRL = {
+  peep:  {label:'PEEP/CPAP', unit:'cmH2O', min:0, max:35, step:1},
+  ps:    {label:'ΔPsupport', unit:'cmH2O', min:0, max:60, step:1},
+  pinsp: {label:'ΔPinsp', unit:'cmH2O', min:3, max:60, step:1},
+  pcontrol:{label:'ΔPcontrol', unit:'cmH2O', min:5, max:60, step:1},
+  vt:    {label:'Vt', unit:'ml', min:20, max:2000, step:v => v >= 100 ? 10 : 5},
+  o2:    {label:'Oxygen', unit:'%', min:21, max:100, step:1},
+  rate:  {label:'Rate', unit:'b/min', min:1, max:80, step:1},
+  ti:    {label:'TI', unit:'s', min:0.1, max:12, step:0.1, dp:1},
+  ie:    {label:'I:E', unit:'', list:IE_LIST},
+  phi:   {label:'P high', unit:'cmH2O', min:0, max:60, step:1},
+  thigh: {label:'T high', unit:'s', min:0.1, max:40, step:0.1, dp:1},
+  aphi:  {label:'P high', unit:'cmH2O', min:0, max:60, step:1},
+  plo:   {label:'P low', unit:'cmH2O', min:0, max:35, step:1},
+  athigh:{label:'T high', unit:'s', min:0.1, max:40, step:0.1, dp:1},
+  tlow:  {label:'T low', unit:'s', min:0.2, max:40, step:0.1, dp:1},
+  minvol:{label:'%MinVol', unit:'%', min:25, max:350, step:5},
+  hflow: {label:'Flow', unit:'l/min', min:2, max:60, step:1},
+  plim:  {label:'Plimit', unit:'cmH2O', min:5, max:60, step:1},
+  trig:  {label:'Flow trigger', unit:'l/min', min:0.5, max:20, step:0.5, dp:1},
+  ets:   {label:'ETS', unit:'%', min:5, max:80, step:1},
+  pramp: {label:'P-ramp', unit:'ms', min:0, max:200, step:v => v >= 200 ? 50 : 10},
+  timax: {label:'TI max', unit:'s', min:0.5, max:3, step:0.1, dp:1},
+  height:{label:'Pat. height', unit:'cm', min:30, max:250, step:1}
+};
+/* mode-dependent ranges (Table 15-9): Rate minimum, P-ramp maximum, trigger Off */
+function ctrlDef(key, mk) {
+  const d = CTRL[key];
+  if (key === 'rate') {
+    const min = ['APVcmv', 'PCV+', 'CPR'].includes(mk) ? 4 : ['PSIMV+', 'NIV-ST'].includes(mk) ? 5 : mk === 'APVsimv' && V.backupOn ? 10 : 1;
+    return {...d, min};
+  }
+  if (key === 'pramp' && !['ASV', 'NIV', 'NIV-ST', 'SPONT'].includes(mk)) return {...d, max:2000};
+  if (key === 'trig' && ['APVcmv', 'PCV+'].includes(mk)) return {...d, off0:true};
+  return d;
+}
+/* alarm limits (Table 15-13). Resolution: ExpMinVol 0.1 (<1), 0.5 (>=1), 1 (>=10); Vt 5 (<100), 10 (<500), 50 (>=500) */
+const mvStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 10 ? 1 : (dir > 0 ? v : v - 0.001) >= 1 ? 0.5 : 0.1;
+const vtStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 500 ? 50 : (dir > 0 ? v : v - 0.001) >= 100 ? 10 : 5;
+const ALIM = {
+  phigh: {label:'Pressure', unit:'cmH2O', min:15, max:70, step:1},
+  plow:  {label:'Pressure', unit:'cmH2O', min:4, max:60, step:1},
+  mvhigh:{label:'ExpMinVol', unit:'l/min', min:0.1, max:50, step:mvStep, dp:1, offMax:true},
+  mvlow: {label:'ExpMinVol', unit:'l/min', min:0.1, max:50, step:mvStep, dp:1, off0:true},
+  fhigh: {label:'fTotal', unit:'b/min', min:0, max:99, step:1},
+  flow:  {label:'fTotal', unit:'b/min', min:0, max:99, step:1},
+  vthigh:{label:'Vt', unit:'ml', min:10, max:3000, step:vtStep, offMax:true},
+  vtlow: {label:'Vt', unit:'ml', min:10, max:3000, step:vtStep, off0:true},
+  apnoea:{label:'Apnea time', unit:'s', min:15, max:60, step:5}
+};
+/* The manual does not list which limits sit on which tab; this layout follows Fig 5-19 (Limits 1) and is otherwise the trainer's choice */
+const LIMIT_PAGES = {
+  1: [['phigh','plow'], ['mvhigh','mvlow'], ['fhigh','flow'], ['vthigh','vtlow'], ['apnoea',null]],
+  2: [['o2hi','o2lo']]
+};
+/* Controls per mode follow the Table 7-2 matrix and the "Ventilator controls" figures (pp. 135-152).
+   Which three controls sit on the main display, and which tab each control is on, are not listed in the manual: the trainer's choice.
+   'sigh' and 'psync' are On/Off switches shown under the round controls. */
+const MODE_CTRLS = {
+  'APVcmv':  {basic:['vt','rate','ie','peep','o2','plim'], more:['trig','pramp','sigh'], main:['vt','peep','o2']},
+  'APVsimv': {basic:['vt','rate','ti','ps','peep','o2','plim'], more:['trig','ets','pramp','sigh'], main:['vt','peep','o2']},
+  'PCV+':    {basic:['pcontrol','rate','ie','peep','o2','plim'], more:['trig','pramp','sigh'], main:['pcontrol','peep','o2']},
+  'PSIMV+':  {basic:['pcontrol','rate','ti','ps','peep','o2','plim'], more:['psync','trig','ets','pramp','sigh'], main:['pcontrol','peep','o2']},
+  'DuoPAP':  {basic:['phi','rate','thigh','peep','ps','o2','plim'], more:['trig','ets','pramp'], main:['phi','peep','o2']},
+  'APRV':    {basic:['aphi','plo','athigh','tlow','o2','plim'], more:['trig','pramp'], main:['aphi','plo','o2']},
+  'VS':      {basic:['vt','peep','o2','plim'], more:['trig','ets','pramp'], main:['vt','peep','o2']},
+  'SPONT':   {basic:['ps','peep','o2','plim'], more:['trig','ets','pramp','sigh'], main:['ps','peep','o2']},
+  'ASV':     {basic:['minvol','peep','o2','plim'], more:['trig','ets','pramp','sigh'], main:['minvol','peep','o2']},
+  'NIV':     {basic:['ps','peep','o2','plim'], more:['trig','ets','pramp','timax','sigh'], main:['ps','peep','o2']},
+  'NIV-ST':  {basic:['pinsp','peep','rate','ti','o2','plim'], more:['trig','ets','pramp','timax','sigh'], main:['pinsp','peep','o2']},
+  'HiFlowO2':{basic:['hflow','o2'], more:[], main:['hflow','o2']},
+  'CPR':     {basic:['vt','rate','ie','peep','o2','plim'], more:[], main:['vt','peep','o2']}
+};
+const TOGGLES = {sigh:'Sigh', psync:'PSync'};
+/* PSIMV+ with PSync: ΔPinsp for mandatory and spontaneous breaths (7.3.3) */
+function modeCtrls(mk, psync) {
+  const c = MODE_CTRLS[mk];
+  if (mk === 'PSIMV+' && psync) return {basic:['pinsp','rate','ti','peep','o2','plim'], more:c.more, main:['pinsp','peep','o2']};
+  return c;
+}
+/* group headings as shown on a T1 Modes window in the KIDS SOP photo (older software); VS is listed with the APV modes in 7.2 */
+const MODE_GROUPS = [
+  ['Volume controlled (adaptive)', ['APVcmv', 'APVsimv', 'VS']],
+  ['Pressure controlled (biphasic)', ['PCV+', 'PSIMV+', 'SPONT', 'DuoPAP', 'APRV']],
+  ['Intelligent ventilation', ['ASV']],
+  ['Noninvasive', ['NIV', 'NIV-ST', 'HiFlowO2']]
+];
+/* Configuration offers "(S)CMV+/SIMV+" or "APVcmv/APVsimv" names; (S)CMV+/SIMV+ is the default (manual p. 278) */
+const MODE_NAME = {APVcmv:'(S)CMV+', APVsimv:'SIMV+'};
+const mName = m => MODE_NAME[m] || m;
+const APV = ['APVcmv', 'APVsimv'];
+const NIVMODES = ['NIV', 'NIV-ST'];
+const INVASIVE = ['APVcmv', 'APVsimv', 'VS', 'PCV+', 'PSIMV+', 'DuoPAP', 'APRV', 'SPONT', 'ASV'];
+const BACKUP_MODES = ['APVsimv', 'SPONT', 'DuoPAP', 'APRV', 'NIV', 'VS'];   /* Apnea backup available (5.6.3); VS is not in that list or the Table 7-2 matrix, so including it is the trainer's assumption */
+const SIGH_MODES = ['APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT', 'ASV', 'NIV', 'NIV-ST'];
+const isNIV = m => NIVMODES.includes(m === undefined ? V.mode : m);
+const isHFO = m => (m === undefined ? V.mode : m) === 'HiFlowO2';
+const isInvasive = m => INVASIVE.includes(m === undefined ? V.mode : m);
+const modeKey = () => V.cpr ? 'CPR' : V.mode;
+const modeLabel = () => V.cpr ? 'CPR/' + mName(V.mode) : mName(V.mode);
+const isSIMV = () => V.mode === 'APVsimv' || (V.mode === 'PSIMV+' && !V.psync);
+
+/* control defaults from Table 15-9. TI is IBW-based on the device; 1.0 s is the trainer's choice, as is DuoPAP T high 1.0 s.
+   Vt 560 ml = 8 ml/kg x IBW 70 kg; APRV values are Table 7-2 for IBW > 60 kg. */
+const DEFAULT_SET = {peep:5, ps:15, pinsp:15, pcontrol:15, vt:560, o2:50, rate:12, ti:1.0, ie:0.25, phi:20, thigh:1.0, aphi:20, plo:5, athigh:5.4, tlow:0.6,
+  minvol:100, hflow:15, plim:30, trig:5, ets:25, pramp:70, timax:1.5, height:174};
+/* alarm defaults from Table 15-13 for IBW 70 kg (Vt 560 ml, Rate 12), rounded to the limit resolution */
+const DEFAULT_LIM = {phigh:40, plow:5, mvhigh:10, mvlow:4, fhigh:40, flow:0, vthigh:850, vtlow:280, apnoea:20};
+const O2_BAND = 5;      /* with high-pressure O2, Oxygen alarm limits are automatic at the setting ± 5 (manual 5.7.1) */
+const O2_ENRICH_S = 120; /* adult/paediatric O2 enrichment: 100% for 2 min */
+const AUDIO_PAUSE_S = 120;
+const NEB_MIN = 30;
+
+/* ventilator state */
+const V = {
+  power:true, selftest:0, standby:true, ambient:false, mode:'NIV-ST', set:{...DEFAULT_SET}, lim:{...DEFAULT_LIM},
+  backupOn:true, sigh:false, psync:false, cpr:null, aprvInit:false, sex:'Male', locked:false, night:false, o2Enrich:0, audioPause:0, manualReq:false, neb:0,
+  standbySince:0, startSuppress:0, gfx:'wave', spo2On:true, sound:false, loud:5,
+  tests:{leak:null, flow:null, o2:'ok'}, testRun:null
+};
+let E = null;          // current edit {scope:'ctrl'|'lim'|'draft'|'standby', key, val}
+let D = null;          // draft for mode change {mode, set}
+let win = null;        // open window id
+let winTab = 'basic';
+let cursor = -1;       // knob cursor index over [data-kf] elements
+let helpFor = null;    // alarm id whose troubleshooting help is shown
+
+/* ======================= patient profiles ======================= */
+const PROFILES = {
+  copd:{name:'AECOPD', paco2:9.6, hco3:30, floor:6.5, rrBase:30, vtBase:0.32, C:0.022, tau:0.5, vd:0.25, s0:0.45, sPeep:0.005, neuralTi:0.8, effort:9, hr:112, bp:'148/86', fio2Pre:0.28, ipeep:true, R:18},
+  cpo: {name:'Cardiogenic pulmonary oedema', paco2:6.4, hco3:22, floor:4.8, rrBase:34, vtBase:0.35, C:0.03, tau:0.25, vd:0.15, s0:0.87, sPeep:0.011, neuralTi:0.7, effort:12, hr:124, bp:'182/104', fio2Pre:0.6, R:9},
+  ohs: {name:'Obesity hypoventilation', paco2:9.0, hco3:32, floor:6.5, rrBase:26, vtBase:0.30, C:0.018, tau:0.35, vd:0.2, s0:0.5, sPeep:0.01, neuralTi:1.0, effort:8, hr:104, bp:'156/92', fio2Pre:0.28, needEpap:8, R:12},
+  /* intubated, sedated and paralysed: no respiratory effort; before ventilation starts they are being hand-ventilated */
+  ards:{name:'ARDS (intubated)', paco2:6.5, hco3:22, floor:4.5, rrBase:20, vtBase:0.42, C:0.025, tau:0.3, vd:0.18, s0:0.95, sPeep:0.03, neuralTi:1.0, effort:0, hr:118, bp:'104/62', fio2Pre:1.0, R:12, sedated:true},
+  asthma:{name:'Severe asthma (intubated)', paco2:8.0, hco3:25, floor:5.0, rrBase:14, vtBase:0.5, C:0.05, tau:1.3, vd:0.18, s0:0.75, sPeep:0, neuralTi:1.0, effort:0, hr:128, bp:'112/64', fio2Pre:1.0, R:26, sedated:true}
+};
+let P = null;
+function resetPatient(id) {
+  const pr = PROFILES[id];
+  P = {id, pr, paco2:pr.paco2, hco3:pr.hco3, spo2:88, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0.1, improve:0,
+       fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
+       abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
+  P.spo2 = P.spo2T = calcSpo2(pr.fio2Pre, 0);
+}
+function sev(pmmHg) { const p = Math.max(1, pmmHg); return 100 / (1 + 23400 / (p * p * p + 150 * p)); }
+function calcPao2(fio2, peep) {
+  const pr = P.pr;
+  const s = Math.max(0.05, pr.s0 - pr.sPeep * peep - P.improve + (P.deteriorate ? 0.05 : 0));
+  return Math.max(2, (fio2 * 95 - P.paco2 / 0.8) * (1 - s));
+}
+function calcSpo2(fio2, peep) { const pao2 = calcPao2(fio2, peep); P.pao2 = pao2; return clamp(sev(pao2 * 7.5), 40, 100); }
+function phOf(paco2, hco3) { return 6.1 + Math.log10(hco3 / (0.2265 * paco2)); }
+
+/* ======================= breath engine ======================= */
+/* Every T1 mode delivers pressure-controlled breaths (the APV modes and ASV adapt the pressure between breaths to reach a volume target).
+   Mandatory breaths are time cycled; spontaneous breaths are flow cycled by ETS. The patient is a single-compartment lung
+   (compliance C, inspiratory and expiratory time constants) with its own breathing effort. All values are illustrative. */
+const LEAKK = {good:1.2, moderate:6, large:24};
+/* a well-fitted mask leaks a little; a cuffed tube (invasive modes) is treated as leak-free until a leak is added */
+const leakK = () => P.disc ? 0 : P.fit === 'good' && isInvasive() ? 0 : LEAKK[P.fit];
+const B = {phase:'exp', t:0, now:0, br:null, lastStart:0, lastMand:-1e9, nextEffort:1.2, starts:[], types:[], vols:[], apnoeaVent:false, consecTrig:0,
+  dip:0, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, peepNow:0, trigFlash:0,
+  vEndInsp:0, Vee:0, apvP:10, apvLim:false, vsP:10, nBreaths:0, simvC0:0, simvDue:true, ovl:null, vlimit:false};
+/* ASV state: targets from Table 15-16 */
+const A = {p:15, ti:1, fTarget:15, vtTarget:0.5, mvTarget:7, vtMin:0.3, vtMax:1, fMin:10, fMax:60, atMax:false, started:0};
+const M = {ppeak:null, peep:null, vte:null, vti:null, mv:null, ftot:null, fspont:null, fcontrol:null, vleak:null, mvleak:null, o2:null, ti:null, te:null, pmean:null, inspFlow:null, ie:null, autopeep:null, pplat:null, dpress:null};
+const SAMPLE_DT = 0.02, WINDOW_S = 12;
+const NBUF = Math.round(WINDOW_S / SAMPLE_DT);
+const bufP = new Float32Array(NBUF), bufF = new Float32Array(NBUF), bufV = new Float32Array(NBUF), bufPl = new Float32Array(NBUF), bufTrig = new Uint8Array(NBUF);
+let bufIdx = 0, sampleAcc = 0, trigMark = 0;
+
+function baseP() { return V.mode === 'APRV' ? V.set.plo : V.set.peep; }
+/* default Rate by IBW (Table 15-9) */
+function rateByIBW() { const w = calcIBW(); return w >= 60 ? 12 : w >= 40 ? 15 : w >= 30 ? 17 : w >= 20 ? 20 : 25; }
+/* Apnea backup: NIV backs up with PCV+, the other modes with APVsimv (Table 7-2). With "Automatic" the device derives the
+   backup controls from IBW; the manual does not list the values, so these are the trainer's choice. */
+function backupSet() {
+  const ibw = calcIBW(), rate = rateByIBW();
+  if (V.mode === 'NIV') return {mode:'PCV+', dp:Math.max(V.set.ps, 10), rate, ti:1.0};
+  return {mode:'APVsimv', dp:B.apvP, rate:Math.max(10, rate), ti:1.0, vt:Math.round(ibw * 8 / 10) * 10};
+}
+/* timing of mandatory breaths: I:E in APVcmv and PCV+ (the default breath timing), otherwise Rate and TI (7.1.1, Table 7-2) */
+function mandTiming() {
+  const s = V.set, m = V.mode;
+  if (B.apnoeaVent) { const bk = backupSet(); return {cycle:60 / bk.rate, ti:bk.ti}; }
+  if (m === 'APRV') return {cycle:s.athigh + s.tlow, ti:s.athigh};
+  if (m === 'DuoPAP') { const c = 60 / s.rate; return {cycle:c, ti:Math.min(s.thigh, c - 0.2)}; }
+  if (m === 'ASV') return {cycle:60 / A.fTarget, ti:A.ti};
+  if (m === 'APVcmv' || m === 'PCV+') { const c = 60 / s.rate; return {cycle:c, ti:c * s.ie / (1 + s.ie)}; }
+  if (m === 'APVsimv' || m === 'PSIMV+' || m === 'NIV-ST') { const c = 60 / s.rate; return {cycle:c, ti:Math.min(s.ti, c * 0.8)}; }
+  return null;   /* SPONT, NIV, HiFlowO2: no mandatory breaths */
+}
+/* pressure above the baseline for mandatory breaths */
+function mandDP() {
+  const s = V.set, m = V.mode;
+  if (B.apnoeaVent) return backupSet().dp;
+  if (APV.includes(m)) return B.apvP;
+  if (m === 'ASV') return A.p;
+  if (m === 'PCV+') return s.pcontrol;
+  if (m === 'PSIMV+') return V.psync ? s.pinsp : s.pcontrol;
+  if (m === 'NIV-ST') return s.pinsp;
+  if (m === 'DuoPAP') return Math.max(0, s.phi - s.peep);
+  if (m === 'APRV') return Math.max(0, s.aphi - s.plo);
+  return 0;
+}
+/* pressure support for spontaneous breaths */
+function spontDP() {
+  const s = V.set, m = V.mode;
+  if (m === 'NIV-ST' || (m === 'PSIMV+' && V.psync)) return s.pinsp;
+  if (m === 'ASV') return A.p;
+  if (m === 'VS') return B.vsP;
+  if (m === 'APRV') return 0;
+  if (['SPONT', 'NIV', 'APVsimv', 'PSIMV+', 'DuoPAP'].includes(m)) return s.ps;
+  return mandDP();
+}
+/* the main inspiratory pressure above PEEP in the current mode (used for prompts and the blood gas log) */
+function setDP() {
+  const m = V.mode;
+  if (m === 'NIV' || m === 'SPONT') return V.set.ps;
+  if (m === 'NIV-ST') return V.set.pinsp;
+  if (m === 'VS') return B.vsP;
+  if (isHFO()) return 0;
+  return mandDP();
+}
+/* the set total inspiratory pressure (PEEP + ΔP, or P high), for Check Plimit. Null where the pressure is adaptive (APV, ASV). */
+function totalP(m, s, psync) {
+  switch (m) {
+    case 'PCV+': return s.peep + s.pcontrol;
+    case 'PSIMV+': return psync ? s.peep + s.pinsp : s.peep + Math.max(s.pcontrol, s.ps);
+    case 'DuoPAP': return Math.max(s.phi, s.peep + s.ps);
+    case 'APRV': return s.aphi;
+    case 'SPONT': case 'NIV': return s.peep + s.ps;
+    case 'NIV-ST': return s.peep + s.pinsp;
+    default: return null;
+  }
+}
+function measuredO2() {
+  if (P.o2fail) return 21;
+  if (V.o2Enrich > 0) return 100;
+  return V.set.o2;
+}
+function pushLog(arr, v) { arr.push(v); if (arr.length > 12) arr.shift(); }
+function frac(arr) { return arr.length ? arr.filter(Boolean).length / arr.length : 0; }
+
+/* what a patient trigger produces in each mode */
+function triggeredKind() {
+  const m = V.mode;
+  if (B.apnoeaVent) return 'spont';
+  if (m === 'APVcmv' || m === 'PCV+') return 'amand';
+  if (isSIMV()) return B.simvDue ? 'amand' : 'spont';
+  if (m === 'DuoPAP') {   /* the switch to P high is synchronised with an effort near the end of the low phase */
+    const mt = mandTiming();
+    return B.now - B.lastMand >= mt.cycle - Math.min(1, 0.25 * (mt.cycle - mt.ti)) ? 'amand' : 'spont';
+  }
+  return 'spont';
+}
+function recordStart(type, vol) {
+  B.starts.push(B.now); B.types.push(type); B.vols.push(vol);
+  if (B.starts.length > 9) { B.starts.shift(); B.types.shift(); B.vols.shift(); }
+  if (B.starts.length >= 2) {
+    const n = B.starts.length, span = Math.max(0.5, B.starts[n - 1] - B.starts[0]);
+    M.ftot = clamp(60 * (n - 1) / span, 0, 99);
+    M.fspont = M.ftot * (B.types.slice(1).filter(x => x === 'spont').length / (n - 1));
+    M.fcontrol = M.ftot - M.fspont;
+    const vv = B.vols.slice(1);
+    M.mv = M.ftot * vv.reduce((a, b) => a + b, 0) / vv.length;
+  }
+}
+
+/* kinds: 'mand' (ventilator triggered), 'amand' (patient-triggered mandatory), 'spont' (pressure supported, flow cycled),
+   'manual' (Manual breath key), 'auto' (auto-triggering: delivered as whatever a trigger gives in this mode) */
+function startBreath(kind) {
+  const pr = P.pr, s = V.set, m = V.mode;
+  const auto = kind === 'auto';
+  if (auto) kind = triggeredKind();
+  const pc = kind !== 'spont';
+  /* gas left in the lung when the next breath starts (gas trapping when expiration is short) */
+  B.Vee = B.br && B.phase === 'exp' ? B.vEndInsp * Math.exp(-B.t / B.br.tauE) : 0;
+  B.nBreaths++;
+  const sigh = V.sigh && SIGH_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.nBreaths % 50 === 0;
+  const mt = mandTiming();
+  const base = baseP();
+  let dP = kind === 'spont' ? spontDP() : (kind === 'manual' && !mt) ? Math.max(spontDP(), 10) : mandDP();
+  /* Sigh: every 50th breath, 150% Vt in volume-targeted modes or 10 cmH2O more in pressure modes; it may reach high Pressure - 3 */
+  if (sigh) dP = APV.includes(m) || m === 'ASV' ? dP * 1.5 : dP + 10;
+  const lim = V.lim.phigh - (sigh ? 3 : 10);
+  const limited = base + dP > lim + 0.01;
+  const target = Math.min(base + dP, lim);
+  let k = leakK();
+  let inspLeak = k * Math.sqrt(Math.max(target, 0.5));
+  let expLeak = k * Math.sqrt(Math.max(base, 0.5));
+  let peepM = base;
+  if (expLeak > 30) peepM = Math.max(0, base - (expLeak - 30) * 0.15);
+  if (P.kink) peepM = base + 6;
+  let dPeff = Math.max(0, target - base);
+  if (inspLeak > 85) dPeff = Math.max(0, dPeff - (inspLeak - 85) * 0.35);
+  if (P.disc) { peepM = 0.3; dPeff = 1.2; inspLeak = 110; expLeak = 100; }
+  const iPeep = B.Vee / pr.C;
+  const dPlung = Math.max(0, dPeff - iPeep);
+  const obstructed = kind === 'spont' && !isInvasive(m) && pr.needEpap && s.peep < pr.needEpap && Math.random() < 0.4;
+  const passive = auto || P.apnoea || P.pr.sedated;
+  let Ti = 0, tiMaxHit = false, VT;
+  if (pc) Ti = kind === 'manual' && !mt ? 1.0 : mt.ti;
+  if (P.disc) VT = 0.01;
+  else if (kind === 'spont') {
+    let vtb = pr.vtBase * (1 - 0.5 * Math.min(1, dPlung / 20)) * (1 - 0.4 * P.fatigue);
+    if (obstructed) vtb *= 0.4;
+    VT = vtb + pr.C * dPlung * (obstructed ? 0.4 : 1);
+  } else {
+    const g = t => 1 - Math.exp(-t / pr.tau);
+    VT = pr.C * dPlung * (passive ? 1 : 1.15) * Math.min(1, g(Ti) / g(1)) + (passive ? 0 : 0.03);
+  }
+  if (P.kink) VT *= 0.7;
+  VT = Math.max(0.005, VT * rnd(0.95, 1.05));
+  /* Inspiratory volume limitation (invasive modes only): delivered volume above 1.5 x the high Vt limit ends inspiration */
+  B.vlimit = false;
+  if (isInvasive(m) && !V.cpr && V.lim.vthigh <= ALIM.vthigh.max && VT * 1000 > 1.5 * V.lim.vthigh) { VT = 1.5 * V.lim.vthigh / 1000; B.vlimit = true; }
+  const tau = pr.tau;
+  if (!pc) {
+    const timax = isNIV(m) ? s.timax : 3;   /* TI max is a setting in NIV and NIV-ST; elsewhere 3 s is the trainer's internal limit */
+    const Fp = VT / tau * 60;
+    const thr = s.ets / 100 * (Fp + inspLeak);
+    const Leff = inspLeak * 0.5;
+    if (thr <= Leff + 0.5) { Ti = timax; tiMaxHit = true; }
+    else {
+      const t = tau * Math.log(Fp / (thr - Leff));
+      Ti = clamp(t, 0.25, timax); tiMaxHit = t >= timax;
+    }
+  }
+  Ti = Math.max(0.2, Ti);
+  let cough = null;
+  if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: target + rnd(18, 26)};
+  B.br = {kind, auto, sigh, Ti, target: peepM + dPeff, base, peepM, dPeff, VT, inspLeak, expLeak, Fp: VT / tau * 60, tau, tauE: tau * 1.8,
+          pramp: Math.min(s.pramp / 1000, Ti / 3), limited, tiMaxHit, cough, obstructed, maxP: 0, spiked:false};
+  B.phase = 'insp'; B.t = 0;
+  B.lastStart = B.now;
+  if (pc) { B.lastMand = B.now; if (kind === 'mand' || kind === 'amand') B.simvDue = false; }
+  recordStart(kind === 'spont' ? 'spont' : 'mand', VT);
+  if (!auto && (kind === 'spont' || kind === 'amand')) { trigMark = 1; B.trigFlash = 0.35; }
+  pushLog(B.tiMaxLog, tiMaxHit);
+  pushLog(B.autoLog, auto);
+  B.peepNow = peepM;
+  M.peep = peepM;
+  if (peepM < base - 3) B.lowPeepBr = (B.lowPeepBr || 0) + 1; else B.lowPeepBr = 0;
+  if (kind === 'manual') addPrompt('Manual breath delivered.');
+}
+/* a spontaneous breath taken on top of a pressure level (APRV, and DuoPAP at P high) */
+function startOverlay(effort) {
+  const pr = P.pr, s = V.set, m = V.mode;
+  const sup = m === 'DuoPAP' ? Math.max(0, s.peep + s.ps - s.phi) : 0;   /* ΔPsupport is above PEEP: it only helps at P high if PEEP + ΔPsupport > P high */
+  const vol = Math.max(0.05, pr.vtBase * (1 - 0.4 * P.fatigue) * 0.8 + pr.C * sup);
+  B.ovl = {t:0, dur:pr.neuralTi, vol, sup};
+  P.vtAvg = P.vtAvg * 0.85 + vol * 0.15;
+  /* in APRV the trigger setting is only used to count spontaneous breaths */
+  if (!V.cpr && V.set.trig > 0 && effort >= V.set.trig) {
+    B.lastStart = B.now; recordStart('spont', vol); trigMark = 1; B.trigFlash = 0.35;
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    clear('apnea');
+  }
+}
+function endInsp() {
+  const br = B.br, m = V.mode;
+  const leakVol = br.inspLeak / 60 * br.Ti;
+  M.ppeak = Math.max(br.maxP, br.peepM);
+  M.vte = br.VT * 1000;
+  M.vti = (br.VT + leakVol) * 1000;
+  M.vleak = P.disc ? 100 : clamp(leakVol / (br.VT + leakVol) * 100, 0, 100);
+  const mt = mandTiming();
+  const bilevel = (m === 'APRV' || m === 'DuoPAP') && br.kind !== 'spont';
+  const te = bilevel ? Math.max(0.2, mt.cycle - br.Ti) : Math.max(0.5, (M.ftot ? 60 / M.ftot : 4) - br.Ti);
+  M.mvleak = P.disc ? 99 : (br.inspLeak * br.Ti + br.expLeak * te) / (br.Ti + te);
+  M.ti = br.Ti; M.te = te; M.ie = te / br.Ti;
+  M.inspFlow = br.Fp + br.inspLeak;
+  M.pmean = br.peepM + br.dPeff * br.Ti / (br.Ti + te);
+  M.autopeep = B.Vee / P.pr.C;
+  /* Pplateau and driving pressure (Vt / static compliance) are shown for mandatory, time-cycled breaths */
+  if (br.kind !== 'spont') { M.dpress = br.VT / P.pr.C; M.pplat = Math.min(M.ppeak, br.peepM + (B.Vee + br.VT) / P.pr.C); }
+  B.vEndInsp = B.Vee + br.VT;
+  B.phase = 'exp'; B.t = 0;
+  /* per-breath alarm counters */
+  if (V.lim.vtlow > 0 && M.vte < V.lim.vtlow) B.lowVtCount++; else B.lowVtCount = 0;
+  if (V.lim.vthigh <= ALIM.vthigh.max && M.vte > V.lim.vthigh) B.highVtCount++; else B.highVtCount = 0;
+  if (br.peepM > br.base + 5) B.highPeepCount++; else B.highPeepCount = 0;
+  P.dpAvg = P.dpAvg * 0.7 + br.dPeff * 0.3;
+  P.vtAvg = P.vtAvg * 0.7 + br.VT * 0.3;
+  /* adaptive pressure: APV modes (and APVsimv backup) on mandatory breaths, ASV on every breath */
+  if (br.kind !== 'spont' && (APV.includes(m) || (B.apnoeaVent && backupSet().mode === 'APVsimv'))) adaptAPV(br);
+  if (m === 'ASV' && !B.apnoeaVent) adaptASV(br);
+  if (m === 'VS' && br.kind === 'spont' && !B.apnoeaVent) adaptVS(br);
+  if (br.limited || ((APV.includes(m) || m === 'VS') && B.apvLim)) raise('plimit'); else clear('plimit');
+  if (M.ppeak < V.lim.plow) raise('plow'); else clear('plow');
+  /* Disconnection on patient side: VTE < 1/8 of VTI with VTI > 50 ml, invasive modes only (suppressed in CPR) */
+  if (isInvasive(m) && !V.cpr && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');
+  if (B.vlimit) raise('vlimit'); else clear('vlimit');
+}
+/* APV: pressure adjusted between breaths towards the target Vt, at least 5 cmH2O, never above Plimit (7.2).
+   The 3 cmH2O-per-breath step is the ASV specification (Table 15-16), used here for APV as well. */
+function adaptAPV(br) {
+  if (br.sigh || P.disc) return;
+  const tgt = (B.apnoeaVent ? backupSet().vt : V.set.vt) / 1000;
+  const maxP = Math.max(5, V.lim.phigh - 10 - V.set.peep);
+  const want = br.VT > 0.02 ? B.apvP * tgt / br.VT : B.apvP + 3;
+  const np = B.apvP + clamp(want - B.apvP, -3, 3);
+  B.apvLim = np > maxP + 0.01 && br.VT < tgt * 0.95;
+  B.apvP = clamp(np, 5, maxP);
+}
+/* VS: flow-cycled breaths whose pressure support adapts to deliver the set Vt (quick guide, mode table) */
+function adaptVS(br) {
+  if (br.sigh || P.disc) return;
+  const tgt = V.set.vt / 1000, maxP = Math.max(5, V.lim.phigh - 10 - V.set.peep);
+  const want = br.VT > 0.02 ? B.vsP * tgt / br.VT : B.vsP + 3;
+  const np = B.vsP + clamp(want - B.vsP, -3, 3);
+  B.apvLim = np > maxP + 0.01 && br.VT < tgt * 0.95;
+  B.vsP = clamp(np, 5, maxP);
+}
+/* ASV (Table 15-16): target minute volume = IBW x normal minute ventilation x %MinVol/100. Normal minute ventilation is only
+   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for adults is the trainer's reading. The target rate uses the
+   Otis equation with VDaw = 2.2 ml/kg; the exact ASV 1.1 rule is not published in the manual, so targets are approximate. */
+function asvTargets() {
+  const ibw = calcIBW(), s = V.set, pr = P.pr;
+  A.mvTarget = ibw * 0.1 * s.minvol / 100;
+  const vd = 0.0022 * ibw, rce = pr.tau * 1.8, a = 2 * Math.PI * Math.PI / 60;
+  let f = 15;
+  for (let i = 0; i < 40; i++) { const va = Math.max(0.05, A.mvTarget - f * vd); f = (Math.sqrt(1 + 2 * a * rce * va / vd) - 1) / (a * rce); }
+  A.vtMin = 0.0044 * ibw;
+  const vtHi = V.lim.vthigh <= ALIM.vthigh.max ? 1.5 * V.lim.vthigh / 1000 : 99;
+  A.vtMax = Math.max(A.vtMin, Math.min(0.015 * ibw, vtHi, pr.C * Math.max(5, V.lim.phigh - 10 - s.peep) * 1.15));
+  const tiMin = Math.max(0.5, rce), teMin = Math.max(0.5, 2 * rce);
+  A.fMin = 5;    /* ASV quick guide, Appendix I D: the lowest target rate for adult patients is fixed at 5 b/min */
+  A.fMax = Math.max(A.fMin, Math.min(60, 60 / (tiMin + teMin), A.mvTarget / A.vtMin));
+  f = clamp(f, A.fMin, A.fMax);
+  let vt = A.mvTarget / f;
+  if (vt > A.vtMax) { vt = A.vtMax; f = clamp(A.mvTarget / vt, A.fMin, A.fMax); }
+  if (vt < A.vtMin) { vt = A.vtMin; f = clamp(A.mvTarget / vt, A.fMin, A.fMax); }
+  A.fTarget = f; A.vtTarget = vt;
+  const c = 60 / f;
+  A.ti = clamp(c / 3, Math.max(tiMin, c / 5), Math.min(ibw >= 30 ? 2 : 1.5, c / 2, c - teMin));
+}
+function asvInit() {
+  const ibw = calcIBW();
+  const row = ibw >= 100 ? [20, 1.5, 15] : ibw >= 90 ? [18, 1.5, 15] : ibw >= 40 ? [15, 1, 15] : ibw >= 30 ? [15, 1, 18] : [15, 1, 20];   /* Table 7-3, adult rows */
+  A.p = row[0]; asvTargets(); A.ti = row[1]; A.fTarget = row[2]; A.started = B.now; A.atMax = false;
+}
+function adaptASV(br) {
+  const fT = A.fTarget, tiT = A.ti;
+  asvTargets();
+  if (B.now - A.started < 12) { A.fTarget = fT; A.ti = tiT; }   /* initial test breaths at the Table 7-3 pattern */
+  if (br.sigh || P.disc) return;
+  const maxP = Math.max(5, V.lim.phigh - 10 - V.set.peep);
+  const want = br.VT > 0.02 ? A.p * A.vtTarget / br.VT : A.p + 3;
+  A.p = clamp(A.p + clamp(want - A.p, -3, 3), 5, maxP);
+  A.atMax = A.p >= maxP - 0.01;
+}
+
+function effortHappens() {
+  const pr = P.pr, m = V.mode;
+  if (P.apnoea || V.ambient || pr.sedated) return;
+  let effort = pr.effort * (1 - 0.5 * P.fatigue) * (P.deteriorate ? 0.7 : 1);
+  if (pr.ipeep && V.set.peep < 4) effort *= 0.6;
+  if (pr.needEpap && !isInvasive(m) && V.set.peep < pr.needEpap && Math.random() < 0.4) effort *= 0.35;
+  if (P.disc) return; // mask off: patient breathes room air; ventilator sees only leak
+  if (m === 'APRV' || (m === 'DuoPAP' && B.phase === 'insp' && B.br && B.br.kind !== 'spont')) { startOverlay(effort); return; }
+  if (B.phase === 'insp' || B.t < 0.25) return;
+  const triggered = !V.cpr && V.set.trig > 0 && effort >= V.set.trig;
+  pushLog(B.missLog, !triggered);
+  if (triggered) {
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    clear('apnea');
+    startBreath(triggeredKind());
+  } else {
+    B.dip = 0.35;
+    if (B.apnoeaVent) B.consecTrig = 0;
+  }
+}
+
+function engineStep(dt) {
+  if (!P) return;
+  if (!V.power || V.standby || V.ambient || isHFO()) {
+    B.now += dt; sampleAcc += dt;
+    while (sampleAcc >= SAMPLE_DT) { sampleAcc -= SAMPLE_DT; writeSample(0, 0, 0); }
+    return;
+  }
+  B.now += dt; B.t += dt;
+  if (B.trigFlash > 0) B.trigFlash -= dt;
+  if (B.ovl) { B.ovl.t += dt; if (B.ovl.t >= 2 * B.ovl.dur) B.ovl = null; }
+  const s = V.set, m = V.mode;
+  if (B.now >= B.nextEffort) {
+    const rr = Math.max(4, P.rr);
+    B.nextEffort = B.now + 60 / rr * rnd(0.9, 1.1);
+    effortHappens();
+  }
+  if (B.phase === 'insp') {
+    const br = B.br;
+    if (br.cough && !br.spiked && B.t >= br.cough.at) {
+      br.spiked = true; br.maxP = Math.max(br.maxP, br.cough.p);
+      if (br.cough.p >= V.lim.phigh) { raise('phigh'); B.highPT = 3; endInsp(); M.ppeak = br.cough.p; }
+    }
+    if (B.phase === 'insp' && B.t >= br.Ti) endInsp();
+  } else {
+    const since = B.now - B.lastStart, mt = mandTiming();
+    if (V.manualReq && B.t > 0.3) { V.manualReq = false; startBreath('manual'); }
+    else if (B.apnoeaVent) { if (since >= mt.cycle) startBreath('mand'); }
+    else if (m === 'APRV' || m === 'DuoPAP') { if (B.now - B.lastMand >= mt.cycle) startBreath('mand'); }
+    else if (isSIMV()) {
+      /* each SIMV interval starts with Tmand: a trigger then gives a mandatory breath; without one, a mandatory breath at the end of Tmand.
+         The length of Tmand is not given in the manual: a quarter of the interval is the trainer's choice. */
+      if (B.now - B.simvC0 >= 2 * mt.cycle) { B.simvC0 = B.now; B.simvDue = true; }
+      else if (B.now - B.simvC0 >= mt.cycle) { B.simvC0 += mt.cycle; B.simvDue = true; }
+      if (B.simvDue && B.now - B.simvC0 >= mt.cycle * 0.25) startBreath('mand');
+    }
+    else if (mt && since >= mt.cycle) startBreath('mand');
+    /* apnea: no breath within the Apnea time in the modes that have Apnea backup */
+    if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= V.lim.apnoea) {
+      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }
+      else raise('apnea');
+    }
+    if (B.phase === 'exp' && B.t > 0.4 && !V.cpr && s.trig > 0 && m !== 'APRV' && m !== 'DuoPAP') {
+      let lam = 0;
+      const k = leakK();
+      const expLeak = k * Math.sqrt(Math.max(s.peep, 0.5));
+      if (P.disc) lam = 0.45;
+      else if (expLeak > 30) lam = 0.35;
+      else if (s.trig <= 1 && expLeak > 6) lam = 0.3;
+      else if (s.trig <= 0.5) lam = 0.06;
+      if (Math.random() < lam * dt) startBreath('auto');
+    }
+  }
+  sampleAcc += dt;
+  while (sampleAcc >= SAMPLE_DT) { sampleAcc -= SAMPLE_DT; writeSample(...currentPFV()); }
+}
+function currentPFV() {
+  const br = B.br; if (!br) return [baseP(), 0, 0];
+  const t = B.t;
+  let p, f, v;
+  if (B.phase === 'insp') {
+    const rise = br.pramp > 0.01 ? Math.min(1, t / br.pramp) : 1;
+    p = br.peepM + br.dPeff * rise;
+    if (br.pramp < 0.05 && t < 0.12) p += br.dPeff * 0.08 * Math.sin(t / 0.12 * Math.PI);
+    if (br.cough && br.spiked && t - br.cough.at < 0.25 && t >= br.cough.at) p = br.cough.p;
+    br.maxP = Math.max(br.maxP, p);
+    f = (br.Fp * Math.exp(-t / br.tau)) * Math.min(1, (t + 0.02) / (br.pramp + 0.04)) + br.inspLeak;
+    v = Math.min(br.VT, br.VT * (1 - Math.exp(-t / br.tau)) / Math.max(0.01, 1 - Math.exp(-br.Ti / br.tau))) * 1000;
+  } else {
+    p = Math.max(0, br.peepM + br.dPeff * Math.exp(-t / 0.06));
+    const decay = Math.exp(-t / br.tauE);
+    f = -(B.vEndInsp / br.tauE * 60) * decay + br.expLeak * 0.6;
+    if (B.dip > 0) { f -= 12 * Math.sin((0.35 - B.dip) / 0.35 * Math.PI); B.dip -= SAMPLE_DT; }
+    v = Math.max(0, br.VT - B.vEndInsp * (1 - decay)) * 1000;
+  }
+  if (B.ovl) {
+    const o = B.ovl, ph = Math.PI * o.t / o.dur;
+    f += o.vol * Math.PI / (2 * o.dur) * Math.sin(ph) * 60;
+    v += o.vol * (1 - Math.cos(ph)) / 2 * 1000;
+    if (o.t < o.dur) p += o.sup > 0 ? o.sup * Math.sin(ph) * 0.8 : -1.2 * Math.sin(ph);
+  }
+  return [p, f, v];
+}
+/* plethysmogram (SpO2 option): a stylised pulse wave at the simulated heart rate */
+function plethNow() {
+  if (!V.spo2On || !P || !V.power) return 0;
+  const ph = (B.now * P.hr / 60) % 1;
+  return ph < 0.18 ? Math.sin(ph / 0.18 * Math.PI / 2) : Math.exp(-(ph - 0.18) * 3.2) * (1 + 0.12 * Math.sin((ph - 0.18) * 14));
+}
+function writeSample(p, f, v) {
+  bufP[bufIdx] = p; bufF[bufIdx] = f; bufV[bufIdx] = v; bufPl[bufIdx] = plethNow(); bufTrig[bufIdx] = trigMark; trigMark = 0;
+  bufIdx = (bufIdx + 1) % NBUF;
+}
+
+/* ======================= alarm sound (Web Audio; off until the user turns it on) ======================= */
+let actx = null, soundT = 0;
+function beep(n, gap, freq) {
+  if (!V.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime + 0.02, vol = 0.04 + 0.02 * V.loud;
+    for (let i = 0; i < n; i++) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'square'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t0 + i * gap); g.gain.linearRampToValueAtTime(vol * 0.25, t0 + i * gap + 0.02);
+      g.gain.setValueAtTime(vol * 0.25, t0 + i * gap + 0.13); g.gain.linearRampToValueAtTime(0, t0 + i * gap + 0.16);
+      o.connect(g).connect(actx.destination); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.18);
+    }
+  } catch (e) { /* audio not available */ }
+}
+const lowBeeped = new Set();
+function soundTick(dt) {
+  soundT -= dt;
+  if (!V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
+  const list = topAlarms();
+  if (!list.length) return;
+  const top = list[0].p;
+  if (top === 'low') { list.filter(a => a.p === 'low').forEach(a => { if (!lowBeeped.has(a.id)) { lowBeeped.add(a.id); beep(2, 0.3, 700); setTimeout(() => beep(2, 0.3, 700), 1100); } }); return; }
+  if (soundT > 0) return;
+  if (top === 'hi') { beep(5, 0.22, 960); soundT = 5; }
+  else if (top === 'med') { beep(3, 0.3, 780); soundT = 12; }
+}
+
+/* ======================= alarms ======================= */
+/* @@SPEC_ALARMS@@ */
+const ALARMS = {
+  phigh:   {t:'High pressure', p:'hi', mmp:'ppeak'},
+  plow:    {t:'Low pressure', p:'hi', mmp:'ppeak'},
+  plimit:  {t:'Pressure limitation', p:'med', mmp:'ppeak'},
+  chkplim: {t:'Check Plimit', p:'low'},
+  plimchg: {t:'Pressure limit has changed', p:'low'},
+  losspeep:{t:'Loss of PEEP', p:'med'},
+  highpeep:{t:'High PEEP', p:'med'},
+  exobs:   {t:'Exhalation obstructed', p:'hi'},
+  mvlow:   {t:'Low minute volume', p:'hi', mmp:'mv'},
+  mvhigh:  {t:'High minute volume', p:'hi', mmp:'mv'},
+  vtlow:   {t:'Vt low', p:'med', mmp:'vte'},
+  vthigh:  {t:'Vt high', p:'med', mmp:'vte'},
+  fhigh:   {t:'High frequency', p:'med', mmp:'ftot'},
+  flow:    {t:'Low frequency', p:'med', mmp:'ftot'},
+  apnea:   {t:'Apnea', p:'hi'},
+  apvent:  {t:'Apnea ventilation', p:'low'},
+  o2fail:  {t:'Oxygen supply failed', p:'hi'},
+  lowo2:   {t:'Low oxygen', p:'hi'},
+  higho2:  {t:'High oxygen', p:'hi'},
+  mains:   {t:'Loss of external power', p:'low'},
+  battmed: {t:'Battery low', p:'med'},
+  batthi:  {t:'Battery low', p:'hi'},
+  battdead:{t:'Battery totally discharged', p:'hi'},
+  discpat: {t:'Disconnection on patient side', p:'hi', mmp:'vte'},
+  vlimit:  {t:'Inspiratory volume limitation', p:'med', mmp:'vte'},
+  irv:     {t:'IRV', p:'low'},
+  maxleak: {t:'Maximum leak compensation', p:'low'},
+  asvtarget:{t:'ASV: Cannot meet target', p:'low', mmp:'mv'},
+  cpron:   {t:'CPR ON', p:'low'}
+};
+/* on-screen help: summarised from Table 9-2 of the manual */
+const HELP = {
+  phigh:'<ul><li>Measured inspiratory pressure exceeded the high Pressure limit: gas flow stops and the expiratory valve opens to PEEP.</li><li>Check the patient (coughing, fighting, secretions) and the circuit for kinks.</li><li>Adjust the Pressure limit if appropriate.</li></ul>',
+  plow:'<ul><li>The set pressure was not reached during inspiration.</li><li>Check the circuit for a disconnection or a large leak (in NIV: the mask).</li><li>Check the patient.</li></ul>',
+  plimit:'<ul><li>Inspiratory pressure, including PEEP, is at Plimit (10 cmH2O below the high Pressure limit). The target pressure may not be reached.</li><li>Check the patient, the settings and the circuit.</li></ul>',
+  chkplim:'<ul><li>The total inspiratory pressure setting is above Plimit.</li><li>Reduce the pressure controls or raise Plimit (the high Pressure limit).</li></ul>',
+  plimchg:'<ul><li>Plimit or the high Pressure limit was changed. Make sure it is still high enough.</li></ul>',
+  losspeep:'<ul><li>Pressure during exhalation is more than 3 cmH2O below the set PEEP.</li><li>Check the circuit and interface for leaks or a disconnection. In NIV this indicates an uncompensated leak.</li></ul>',
+  highpeep:'<ul><li>Monitored PEEP is more than 5 cmH2O above the set PEEP for two breaths.</li><li>Check the expiratory valve, the expiratory limb and the tubing.</li></ul>',
+  exobs:'<ul><li>End-expiratory pressure is too high or end-expiratory flow too low.</li><li>Check the expiratory limb, valve and tubing for obstruction. Consider a longer expiratory time.</li></ul>',
+  mvlow:'<ul><li>Minute volume is below the low limit.</li><li>Check the patient, the circuit and the settings. In NIV, volumes are leak-affected: the manual advises setting the volume limits low (or Off).</li></ul>',
+  mvhigh:'<ul><li>Minute volume is above the high limit.</li><li>Check the patient, the settings and the trigger (auto-triggering).</li></ul>',
+  vtlow:'<ul><li>VTE below the low Vt limit for two consecutive breaths.</li><li>Check the patient, the circuit and the interface for leaks or a disconnection.</li></ul>',
+  vthigh:'<ul><li>VTE above the high Vt limit for two consecutive breaths.</li><li>Check the settings and for leaks.</li></ul>',
+  fhigh:'<ul><li>fTotal is above the high limit.</li><li>Check the patient, the limits and the trigger.</li></ul>',
+  flow:'<ul><li>fTotal is below the low limit.</li><li>Check the patient and the trigger.</li></ul>',
+  apnea:'<ul><li>No breath was triggered within the Apnea time and Apnea backup is off.</li><li>Check the patient. Check the trigger. Consider a mode with mandatory breaths or turning Apnea backup on.</li></ul>',
+  apvent:'<ul><li>Apnea backup ventilation has started. It ends after two consecutive patient-triggered breaths.</li><li>Check the patient and the backup settings.</li></ul>',
+  o2fail:'<ul><li>Flow from the oxygen source is lower than expected.</li><li>Check the oxygen supply and connections. Provide an alternative oxygen source.</li></ul>',
+  lowo2:'<ul><li>Measured oxygen is more than 5% below the setting.</li><li>Check the oxygen supply. Calibrate or replace the O2 sensor.</li></ul>',
+  higho2:'<ul><li>Measured oxygen is more than 5% above the setting.</li><li>Calibrate or replace the O2 sensor.</li></ul>',
+  mains:'<ul><li>The ventilator is running on battery after loss of the primary power supply.</li><li>Check the power connection and the battery charge.</li></ul>',
+  battmed:'<ul><li>The battery is low. Connect to mains (AC) power.</li></ul>',
+  batthi:'<ul><li>The battery is nearly empty. Connect to mains (AC) power now and prepare alternative ventilation.</li></ul>',
+  battdead:'<ul><li>The battery is below 5%: the ventilator enters the Ambient state and the patient breathes room air.</li><li>Ventilate the patient by other means. Connect to mains power.</li></ul>',
+  discpat:'<ul><li>VTE is less than one-eighth of VTI (invasive modes only).</li><li>Check the circuit between the patient and the flow sensor for a disconnection. Check for a large leak at the endotracheal tube (cuff).</li></ul>',
+  vlimit:'<ul><li>Delivered volume exceeded 1.5 times the high Vt limit: inspiration was ended. Disabled in noninvasive modes.</li><li>Check the patient and the settings (for example, reduce ΔPsupport). Check the high Vt limit.</li></ul>',
+  irv:'<ul><li>The set inspiratory time is longer than the expiratory time (I:E above 1:1).</li><li>Check the Rate, TI or I:E settings.</li></ul>',
+  maxleak:'<ul><li>The set Vt cannot be reached because of a leak (APV modes only).</li><li>Inspect the circuit and the endotracheal tube for leaks. Consider another mode.</li></ul>',
+  asvtarget:'<ul><li>ASV cannot deliver the target minute volume within its lung-protective limits.</li><li>Check Plimit (the high Pressure limit) and the high Vt limit. Check the patient. Consider another mode.</li></ul>',
+  cpron:'<ul><li>CPR ventilation is active: ExpMinVol, fTotal and Vt limits are at their minimum and maximum settings and the trigger is off.</li><li>To stop CPR ventilation, enter Standby or select another mode.</li></ul>'
+};
+const PRI_ORDER = {hi:3, med:2, low:1};
+const active = new Map();
+const inactive = new Map();
+const history = [];
+function raise(id) {
+  if (!active.has(id)) {
+    active.set(id, clockStr());
+    inactive.delete(id);
+    logEvent(ALARMS[id].t, ALARMS[id].p);
+    if (id === 'phigh') addPrompt('Pressure high: the ventilator stops gas flow and opens the expiratory valve. Look at the patient: coughing, fighting, secretions or a kinked limb?');
+    if (id === 'plow') addPrompt('Pressure low: set pressure not reached. In NIV think disconnection or a very large leak.');
+  }
+}
+function clear(id) { if (active.has(id)) { inactive.set(id, active.get(id)); active.delete(id); lowBeeped.delete(id); } }
+function logEvent(t, p) {
+  ventReport(t, p);
+  history.unshift({time: clockStr(), wall: wallClock(), t, p}); if (history.length > 60) history.pop();
+  if (win === 'events' || win === 'buffer') renderWindow();
+}
+let msgCycle = 0;
+function topAlarms() {
+  return [...active.keys()].map(id => ({id, ...ALARMS[id]})).sort((a, b) => PRI_ORDER[b.p] - PRI_ORDER[a.p]);
+}
+const PATIENT_ALARMS = ['phigh','plow','plimit','chkplim','losspeep','highpeep','exobs','mvlow','mvhigh','vtlow','vthigh','fhigh','flow','apnea','apvent','discpat','vlimit','irv','maxleak','asvtarget'];
+function evalAlarms() {
+  if (!P || !V.power || V.standby || V.ambient) return;
+  const L = V.lim, m = V.mode, s = V.set;
+  const o2m = measuredO2();
+  if (P.o2fail && s.o2 > 21) { raise('o2fail'); raise('lowo2'); }
+  else { clear('o2fail'); if (V.o2Enrich <= 0 && o2m < s.o2 - O2_BAND) raise('lowo2'); else clear('lowo2'); }
+  if (V.o2Enrich <= 0 && o2m > s.o2 + O2_BAND) raise('higho2'); else clear('higho2');
+  if (V.cpr) raise('cpron'); else clear('cpron');
+  if (B.plimchgT > 0) { B.plimchgT -= 0.25; if (B.plimchgT <= 0) clear('plimchg'); }
+  /* HiFlowO2: no breath monitoring; disconnection and apnea alarms are inactive (10.5) */
+  if (isHFO()) { PATIENT_ALARMS.forEach(clear); return; }
+  const base = baseP();
+  if (B.peepNow < base - 3) B.lossPeepT += 0.25; else B.lossPeepT = 0;
+  if (B.lossPeepT > 10 || B.lowPeepBr >= 2) raise('losspeep'); else clear('losspeep');
+  if (B.highPeepCount >= 2) raise('highpeep'); else clear('highpeep');
+  if (P.kink && B.highPeepCount >= 2) raise('exobs'); else if (!P.kink) clear('exobs');
+  if (M.mv !== null && B.now > 15) { if (L.mvlow > 0 && M.mv < L.mvlow) raise('mvlow'); else clear('mvlow'); if (L.mvhigh <= ALIM.mvhigh.max && M.mv > L.mvhigh) raise('mvhigh'); else clear('mvhigh'); }
+  if (B.lowVtCount >= 2) raise('vtlow'); else clear('vtlow');
+  if (B.highVtCount >= 2) raise('vthigh'); else clear('vthigh');
+  if (M.ftot !== null && B.now > 15) { if (M.ftot > L.fhigh) raise('fhigh'); else clear('fhigh'); if (L.flow > 0 && M.ftot < L.flow) raise('flow'); else clear('flow'); }
+  /* Check Plimit: set total pressure above Plimit; not in the APV modes or ASV */
+  const tp = totalP(m, s, V.psync);
+  if (tp !== null && tp > L.phigh - 10) raise('chkplim'); else clear('chkplim');
+  /* IRV: set I:E above 1:1. Not in PSIMV+ PSync, SPONT, NIV, NIV-ST or HiFlowO2 (p. 218). The manual does not mention APRV, ASV or VS; the trainer leaves them out. */
+  const mt = mandTiming();
+  const irvMode = ['APVcmv', 'APVsimv', 'PCV+', 'DuoPAP'].includes(m) || (m === 'PSIMV+' && !V.psync);
+  if (irvMode && mt && !B.apnoeaVent && mt.ti > mt.cycle - mt.ti) raise('irv'); else clear('irv');
+  /* Maximum leak compensation: APV modes, set Vt not reached because of a leak */
+  if (APV.includes(m) && B.apvLim && (M.vleak || 0) > 30) raise('maxleak'); else clear('maxleak');
+  if (m === 'ASV' && M.mv !== null && B.now - A.started > 60 && A.atMax && M.mv < 0.9 * A.mvTarget) raise('asvtarget'); else clear('asvtarget');
+  if (!isInvasive(m) || V.cpr) { clear('discpat'); clear('vlimit'); }
+  if (B.highPT) { B.highPT -= 0.25; if (B.highPT <= 0) { B.highPT = 0; clear('phigh'); } }
+  if (!BACKUP_MODES.includes(m) || V.cpr) { clear('apnea'); clear('apvent'); B.apnoeaVent = false; }
+  if (!V.backupOn) { clear('apvent'); B.apnoeaVent = false; }
+}
+function powerTick(dtReal) {
+  if (P.mains) { P.batt = Math.min(100, P.batt + dtReal * 0.5); clear('mains'); clear('battmed'); clear('batthi'); clear('battdead'); return; }
+  if (!V.power) return;
+  raise('mains');
+  P.batt = Math.max(0, P.batt - dtReal * 0.8);
+  if (P.batt <= 0) { clear('batthi'); raise('battdead'); if (!V.ambient && !V.standby) { V.ambient = true; addPrompt('Battery totally discharged: the ventilator has entered the Ambient state (patient breathes room air unassisted). Provide alternative respiratory support immediately.'); } }
+  else if (P.batt < 12) { clear('battmed'); raise('batthi'); }
+  else if (P.batt < 30) raise('battmed');
+}
+
+/* ======================= screen: scaling ======================= */
+const DEV_W = 1000, DEV_H = 790;
+function fitDevice() {
+  const wrap = $('#device'), sc = $('#t1scaler'), t1 = $('#t1');
+  const s = Math.max(0.2, Math.min(wrap.clientWidth / DEV_W, (wrap.clientHeight - 4) / DEV_H));
+  t1.style.transform = 'scale(' + s + ')'; t1.style.transformOrigin = '0 0';
+  sc.style.width = (DEV_W * s) + 'px'; sc.style.height = (DEV_H * s) + 'px';
+  const box = $('#screenbox');
+  $('#screen').style.transform = 'scale(' + (box.clientWidth / 800) + ')';
+}
+new ResizeObserver(fitDevice).observe($('#device'));
+
+/* ======================= waveforms ======================= */
+function sizeCanvas(cv) {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.max(10, Math.round(r.width * dpr)), h = Math.max(10, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+}
+const CV = [$('#cv1'), $('#cv2'), $('#cv3')];
+function prepCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1) * 1.2;
+  const w = 470 * dpr, h = 160 * dpr;
+  if (cv.width !== Math.round(w) || cv.height !== Math.round(h)) { cv.width = Math.round(w); cv.height = Math.round(h); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
+}
+function niceTop(v, steps) { for (const s of steps) if (v <= s) return s; return steps[steps.length - 1]; }
+function drawWave(cv, buf, opt) {
+  const ctx = prepCanvas(cv);
+  ctx.clearRect(0, 0, 470, 160);
+  const L = 54, R = 462, T = 26, Bm = 140;
+  const {ymin, ymax, colour, label, unit, ticks, lines, marks} = opt;
+  const y = v => Bm - (clamp(v, ymin, ymax) - ymin) / (ymax - ymin) * (Bm - T);
+  ctx.font = '13px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, 8, 11); ctx.fillStyle = '#cfcfcf'; ctx.font = '11px "Segoe UI",system-ui,sans-serif'; ctx.fillText(unit, 8 + ctx.measureText(label).width * 1.2 + 6, 11);
+  // axes
+  ctx.strokeStyle = '#d9d9d9'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, T - 4); ctx.lineTo(L, Bm + 2); ctx.stroke();
+  ctx.font = '11px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#e6e6e6';
+  ticks.forEach(tv => { ctx.fillText(String(tv), L - 6, y(tv)); ctx.beginPath(); ctx.moveTo(L - 3, y(tv)); ctx.lineTo(L, y(tv)); ctx.stroke(); });
+  const y0 = y(Math.max(ymin, 0));
+  ctx.beginPath(); ctx.moveTo(L, y0); ctx.lineTo(R, y0); ctx.stroke();
+  ctx.textAlign = 'center';
+  for (let s = 2; s <= 12; s += 2) { const x = L + s / WINDOW_S * (R - L); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + 3); ctx.stroke(); ctx.fillText(String(s), x, Math.min(Bm + 12, y0 + 11)); }
+  ctx.textAlign = 'left';
+  (lines || []).forEach(Ln => { ctx.strokeStyle = Ln.c; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(L, y(Ln.v)); ctx.lineTo(R, y(Ln.v)); ctx.stroke(); });
+  // sweep trace with an erase gap ahead of the write position
+  const gap = Math.round(0.35 / SAMPLE_DT);
+  ctx.strokeStyle = colour; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
+  let pen = false;
+  for (let i = 0; i < NBUF; i++) {
+    const ahead = (i - bufIdx + NBUF) % NBUF;
+    if (ahead < gap) { pen = false; continue; }
+    const x = L + i / (NBUF - 1) * (R - L), yy = y(buf[i]);
+    if (!pen) { ctx.moveTo(x, yy); pen = true; } else ctx.lineTo(x, yy);
+  }
+  ctx.stroke();
+  if (marks) {
+    ctx.fillStyle = '#ff7ad9';
+    for (let i = 0; i < NBUF; i++) if (bufTrig[i] && (i - bufIdx + NBUF) % NBUF >= gap) { const x = L + i / (NBUF - 1) * (R - L); ctx.beginPath(); ctx.moveTo(x, Bm - 1); ctx.lineTo(x - 4, Bm + 7); ctx.lineTo(x + 4, Bm + 7); ctx.closePath(); ctx.fill(); }
+  }
+}
+function waveOpts() {
+  const ph = V.lim.phigh;
+  const pTop = niceTop(ph, [40, 80, 120]);
+  let vmax = 0, fmax = 0; for (let i = 0; i < NBUF; i++) { vmax = Math.max(vmax, bufV[i]); fmax = Math.max(fmax, Math.abs(bufF[i])); }
+  const vTop = niceTop(vmax * 1.1, [800, 1600, 3200]);
+  const fTop = niceTop(fmax * 1.05, [75, 150, 300]);
+  return {
+    paw: {ymin:-5, ymax:pTop, colour:'#ffe100', label:'Paw', unit:'cmH2O', ticks:[0, pTop / 2, pTop], lines:[{v:ph, c:'#ff3b30'}, {v:ph - 10, c:'#3b8bff'}], marks:true},
+    vol: {ymin:0, ymax:vTop, colour:'#3fd16b', label:'Volume', unit:'ml', ticks:[0, vTop / 4, vTop / 2, vTop * 3 / 4, vTop]},
+    flow:{ymin:-fTop, ymax:fTop, colour:'#e44fd0', label:'Flow', unit:'l/min', ticks:[-fTop, -fTop / 3 * 2, -fTop / 3, 0, fTop / 3, fTop / 3 * 2, fTop].map(v => Math.round(v))}
+  };
+}
+function drawWaves() {
+  if (!V.power || V.selftest > 0) { CV.forEach(cv => prepCanvas(cv).clearRect(0, 0, 470, 160)); return; }
+  /* HiFlowO2: Oxygen and Flow trends, and the plethysmogram if SpO2 is on (10.5.1) */
+  if (isHFO()) {
+    drawTrend(CV[0], TR.o2, {ymin:0, ymax:100, colour:'#3fd16b', label:'Oxygen', unit:'%', ticks:[0, 50, 100]});
+    drawTrend(CV[1], TR.flow, {ymin:0, ymax:60, colour:'#e44fd0', label:'Flow', unit:'l/min', ticks:[0, 30, 60]});
+    if (V.spo2On) drawWave(CV[2], bufPl, {ymin:0, ymax:1.3, colour:'#3ec6ff', label:'Pleth', unit:'', ticks:[]});
+    else prepCanvas(CV[2]).clearRect(0, 0, 470, 160);
+    return;
+  }
+  const o = waveOpts();
+  drawWave(CV[0], bufP, o.paw);
+  if (V.gfx === 'wave') { drawWave(CV[1], bufV, o.vol); drawWave(CV[2], bufF, o.flow); }
+  else if (V.gfx === 'asv' && V.mode === 'ASV') drawASVGraph();
+  else drawDynLung();
+}
+/* trend of one value per simulated minute over the last hour */
+const TR = {o2:[], flow:[], lastMin:-1};
+function trendTick() {
+  const mi = Math.floor(P.simMin);
+  if (mi === TR.lastMin) return;
+  TR.lastMin = mi;
+  const on = V.power && !V.standby && isHFO();
+  TR.o2.push(on ? measuredO2() : null); TR.flow.push(on ? V.set.hflow : null);
+  if (TR.o2.length > 60) { TR.o2.shift(); TR.flow.shift(); }
+}
+function drawTrend(cv, arr, opt) {
+  const ctx = prepCanvas(cv);
+  ctx.clearRect(0, 0, 470, 160);
+  const L = 54, R = 462, T = 26, Bm = 140;
+  const {ymin, ymax, colour, label, unit, ticks} = opt;
+  const y = v => Bm - (clamp(v, ymin, ymax) - ymin) / (ymax - ymin) * (Bm - T);
+  ctx.font = '13px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.fillText(label + ' trend', 8, 11); ctx.fillStyle = '#cfcfcf'; ctx.font = '11px "Segoe UI",system-ui,sans-serif'; ctx.fillText(unit + '   1 h', 8 + ctx.measureText(label + ' trend').width * 1.2 + 6, 11);
+  ctx.strokeStyle = '#d9d9d9'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, T - 4); ctx.lineTo(L, Bm); ctx.lineTo(R, Bm); ctx.stroke();
+  ctx.textAlign = 'right'; ctx.fillStyle = '#e6e6e6';
+  ticks.forEach(tv => ctx.fillText(String(tv), L - 6, y(tv)));
+  ctx.textAlign = 'center';
+  [-60, -45, -30, -15, 0].forEach(mn => { const x = L + (mn + 60) / 60 * (R - L); ctx.fillText(mn ? String(mn) : '0', x, Bm + 11); });
+  ctx.strokeStyle = colour; ctx.lineWidth = 2; ctx.beginPath();
+  let pen = false;
+  arr.forEach((v, i) => {
+    const x = L + (60 - arr.length + i + 1) / 60 * (R - L);
+    if (v === null) { pen = false; return; }
+    if (!pen) { ctx.moveTo(x, y(v)); pen = true; } else ctx.lineTo(x, y(v));
+  });
+  ctx.stroke();
+}
+/* ---------- ASV Graph (Intelligent panel, ASV only; Figure 7-17) ---------- */
+function drawASVGraph() {
+  const el = $('#dynlung');
+  const L = 64, R = 330, T = 22, Bt = 270, fAx = 60;
+  const vAx = niceTop(Math.max(A.vtMax * 1000 * 1.15, 600), [600, 800, 1000, 1200, 1600, 2000, 2500]);
+  const x = f => L + clamp(f, 0, fAx) / fAx * (R - L), y = v => Bt - clamp(v, 0, vAx) / vAx * (Bt - T);
+  const mv = A.mvTarget * 1000;
+  let curve = '';
+  for (let f = Math.max(1, mv / vAx); f <= fAx; f += 0.5) curve += (curve ? 'L' : 'M') + x(f).toFixed(1) + ' ' + y(mv / f).toFixed(1);
+  const vtNow = B.vols.length ? B.vols.slice(-4).reduce((a, b) => a + b, 0) / Math.min(4, B.vols.length) * 1000 : null;
+  const cur = !V.standby && M.ftot !== null && vtNow !== null ? `<g transform="translate(${x(M.ftot).toFixed(1)} ${y(vtNow).toFixed(1)})" stroke="#ffde00" stroke-width="3"><path d="M-9 0H9M0 -9V9"/><circle r="4" fill="#ffde00"/></g>` : '';
+  const axisT = [0, 20, 40, 60].map(f => `<text x="${x(f)}" y="${Bt + 16}" fill="#ddd" font-size="12" text-anchor="middle">${f}</text>`).join('') +
+    [0, vAx / 2, vAx].map(v => `<text x="${L - 6}" y="${y(v) + 4}" fill="#ddd" font-size="12" text-anchor="end">${Math.round(v)}</text>`).join('');
+  el.className = 'dynlung asv';
+  el.innerHTML = `<svg viewBox="0 0 462 316" aria-hidden="true">
+    <path d="M${L} ${T - 6}V${Bt}H${R + 6}" stroke="#ddd" fill="none"/>${axisT}
+    <text x="8" y="16" fill="#fff" font-size="13">Vt (ml)</text><text x="${R}" y="${Bt + 32}" fill="#fff" font-size="13" text-anchor="end">f (b/min)</text>
+    <path d="${curve}" stroke="#3fd16b" stroke-width="2" fill="none"/>
+    <rect x="${x(A.fMin)}" y="${y(A.vtMax * 1000)}" width="${x(A.fMax) - x(A.fMin)}" height="${y(A.vtMin * 1000) - y(A.vtMax * 1000)}" stroke="#e6e6e6" stroke-dasharray="5 4" fill="none"/>
+    <circle cx="${x(A.fTarget)}" cy="${y(A.vtTarget * 1000)}" r="9" stroke="#3fd16b" stroke-width="3" fill="none"/>${cur}
+  </svg>
+  <div class="asv-side"><span>Target MinVol<b>${fmt(A.mvTarget, 1)}</b><small>l/min</small></span><span>fControl<b>${V.standby ? '--' : fmt(M.fcontrol)}</b><small>b/min</small></span><span>fSpont<b>${V.standby ? '--' : fmt(M.fspont)}</b><small>b/min</small></span><span>ΔPinsp<b>${V.standby ? '--' : fmt(A.p)}</b><small>cmH2O</small></span></div>`;
+}
+/* ---------- Dynamic Lung (Intelligent panel) ---------- */
+function drawDynLung() {
+  const el = $('#dynlung'); el.className = 'dynlung';
+  const vNow = bufV[(bufIdx - 1 + NBUF) % NBUF] || 0;
+  const k = P.disc && !V.standby ? 0.72 : 1 + clamp(vNow / 1000, 0, 0.6) * 0.35;
+  const trig = B.trigFlash > 0;
+  const ibw = calcIBW();
+  const inv = isInvasive() && !V.standby && !P.disc;
+  const spo2 = V.spo2On && !V.standby ? fmt(P.spo2) : '---';
+  const pulse = V.spo2On && !V.standby ? fmt(P.hr) : '---';
+  const beat = V.spo2On && !V.standby ? (1 + 0.06 * Math.max(0, Math.sin(B.now * P.hr / 60 * Math.PI * 2))) : 1;
+  el.innerHTML = `<svg viewBox="0 0 462 316" aria-hidden="true">
+    <g transform="translate(250 176) scale(0.92)">
+      <path d="M-6 -118 L-6 -58 L-30 -40 M6 -118 L6 -58 L30 -40" stroke="#eaf6ff" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <g transform="scale(${k.toFixed(3)})">
+        <path d="M-18 -70 C-55 -78 -92 -30 -98 20 C-102 60 -90 82 -60 84 C-38 86 -22 70 -16 40 C-12 10 -12 -40 -18 -70Z" fill="#9fdcf6" stroke="#eaf6ff" stroke-width="3"/>
+        <path d="M18 -70 C55 -78 92 -30 98 20 C102 60 90 82 60 84 C38 86 22 70 16 40 C12 10 12 -40 18 -70Z" fill="#9fdcf6" stroke="#eaf6ff" stroke-width="3"/>
+        <path d="M-30 -40 L-52 -10 M-30 -40 L-40 10 M-52 -10 L-70 10 M30 -40 L52 -10 M30 -40 L40 10 M52 -10 L70 10" stroke="#5a9fc4" stroke-width="3" fill="none"/>
+      </g>
+      ${V.spo2On ? `<g transform="translate(-8 40) scale(${beat.toFixed(3)})"><path d="M0 18 C-22 4 -26 -12 -14 -18 C-6 -22 0 -14 0 -10 C0 -14 6 -22 14 -18 C26 -12 22 4 0 18Z" fill="#c8323c"/><path d="M8 -14 C40 -30 70 -24 96 -14" stroke="#c8323c" stroke-width="7" fill="none"/></g>` : ''}
+      <path d="M-104 96 Q0 ${trig ? 70 : 84} 104 96" stroke="${trig ? '#ffffff' : '#1b6f99'}" stroke-width="${trig ? 6 : 4}" fill="none"/>
+    </g></svg>
+    <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
+    <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+}
+
+/* ======================= screen rendering ======================= */
+function valStr(scope, key, v) {
+  if (key === 'o2hi' || key === 'o2lo') return fmt(v);
+  const d = defFor(scope, key);
+  if (d.list) return ieStr(v);
+  if (d.off0 && v <= 0) return 'Off';
+  if (scope === 'lim' && d.offMax && v > d.max) return 'Off';
+  return fmt(v, d.dp || 0);
+}
+function defFor(scope, key) { return scope === 'lim' ? ALIM[key] : ctrlDef(key, scope === 'draft' && D ? (D.cpr ? 'CPR' : D.mode) : modeKey()); }
+function curVal(scope, key) {
+  if (scope === 'lim') return V.lim[key];
+  if (scope === 'draft') return D.set[key];
+  return V.set[key];
+}
+function isAct(scope, key) { return E && E.key === key && (E.scope === scope || (scope === 'ctrl' && E.scope === 'standby' && key === 'height')); }
+function ctlHTML(cls, key, scope, val, extra) {
+  const d = defFor(scope, key);
+  const act = isAct(scope, key);
+  const v = act ? E.val : val;
+  let lb = extra && extra.label !== undefined ? extra.label : d.label;
+  if (key === 'o2' && scope === 'ctrl' && V.o2Enrich > 0 && !act) {
+    return `<button class="${cls} enrich" data-kf data-scope="ctrl" data-key="o2" aria-label="O2 enrichment 100% active"><span class="c">100<small>%</small></span><span class="lb">${Math.floor(V.o2Enrich / 60)}:${String(Math.floor(V.o2Enrich % 60)).padStart(2, '0')}</span></button>`;
+  }
+  return `<button class="${cls} ${act ? 'act' : ''} ${extra && extra.cls ? extra.cls : ''}" data-kf data-scope="${scope}" data-key="${key}" aria-pressed="${act}" aria-label="${esc(lb)} ${valStr(scope, key, v)} ${esc(d.unit)}">
+    <span class="c">${valStr(scope, key, v)}<small>${esc(d.unit)}</small></span><span class="rng"><i>${d.list ? ieStr(d.list[0]) : d.off0 && scope !== 'lim' ? 'Off' : fmt(d.min, d.dp || 0)}</i><i>${d.list ? ieStr(d.list[d.list.length - 1]) : fmt(d.max, d.dp || 0)}</i></span><span class="lb">${esc(lb)}</span></button>`;
+}
+function renderRcol() {
+  if (!V.power || V.selftest > 0) { $('#rcol').innerHTML = ''; return; }
+  const mc = modeCtrls(modeKey(), V.psync).main;
+  let h = mc.map((k, i) => ctlHTML('mctl', k, 'ctrl', V.set[k]).replace('class="mctl', `style="top:${8 + i * 120}px" class="mctl`)).join('');
+  h += `<button class="rbtn ${win === 'controls' || win === 'draft' ? 'open' : ''}" data-kf data-open="controls" style="top:380px">Controls</button>`;
+  h += `<button class="rbtn ${win === 'alarms' ? 'open' : ''}" data-kf data-open="alarms" style="top:432px">Alarms</button>`;
+  $('#rcol').innerHTML = h;
+}
+/* default MMPs (Table 15-14); CPR MMPs (10.9.3); HiFlowO2 shows Oxygen and Flow (10.5) */
+const MMP_DEF = [
+  {id:'ppeak', n:'Ppeak', u:'cmH2O', dp:0},
+  {id:'mv', n:'ExpMinVol', nniv:'MinVol NIV', u:'l/min', dp:1},
+  {id:'vte', n:'VTE', nniv:'VTE NIV', u:'ml', dp:0},
+  {id:'ftot', n:'fTotal', u:'b/min', dp:0}
+];
+const MMP_CPR = [MMP_DEF[0], MMP_DEF[2], MMP_DEF[3], {id:'cprt', n:'CPR Timer', u:'mm:ss'}];
+const MMP_HFO = [{id:'o2m', n:'Oxygen', u:'%', dp:0}, {id:'hflow', n:'Flow', u:'l/min', dp:0}];
+function mmpVal(id) {
+  if (id === 'o2m') return measuredO2();
+  if (id === 'hflow') return V.set.hflow;
+  return M[id];
+}
+function renderMMP() {
+  const el = $('#mmps');
+  if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
+  const niv = isNIV();
+  const pri = {};
+  topAlarms().forEach(a => { if (a.mmp && !pri[a.mmp]) pri[a.mmp] = a.p; });
+  el.innerHTML = (V.cpr ? MMP_CPR : isHFO() ? MMP_HFO : MMP_DEF).map((m, i) => {
+    if (m.id === 'cprt') {
+      const t = V.standby ? 0 : Math.max(0, B.now - V.cpr.t0);
+      return `<button class="mmp cprt" data-open="alarms" style="top:${i * 106}px" aria-label="CPR timer"><span class="v">${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}</span><span class="n">CPR Timer</span><span class="u">mm:ss</span></button>`;
+    }
+    const v = V.standby ? null : mmpVal(m.id);
+    const p = pri[m.id];
+    return `<button class="mmp ${p ? 'alarm ' + p : ''}" data-open="alarms" style="top:${i * 106}px" aria-label="${m.n} ${fmt(v, m.dp)} ${m.u}. Touch for alarm limits">
+      <span class="v">${v === null ? '--' : fmt(v, m.dp)}</span><span class="n">${niv && m.nniv ? m.nniv : m.n}</span><span class="u">${m.u}</span></button>`;
+  }).join('') + (V.spo2On ? `<button class="mmp-spo2" data-open="alarms" data-tab="2"><b>${V.standby ? '--' : fmt(P.spo2)}%</b><span>SpO2</span></button>` : '');
+}
+function renderModeName() {
+  $('#modeName').textContent = (!V.power || V.selftest > 0) ? '' : modeLabel();
+  $('#btnModes').classList.toggle('open', win === 'modes');
+  $('#btnModes').style.visibility = V.power && V.selftest <= 0 ? '' : 'hidden';
+  $('#btnModeName').style.visibility = V.power && V.selftest <= 0 ? '' : 'hidden';
+  $$('.bbtn[data-open]').forEach(b => { b.classList.toggle('open', b.dataset.open === win || (b.dataset.open === 'system' && win === 'system')); b.style.visibility = V.power && V.selftest <= 0 ? '' : 'hidden'; });
+}
+function wallClock() { const d = new Date(); return d.toTimeString().slice(0, 5); }
+function renderBstat() {
+  const el = $('#bstat');
+  if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
+  const b = Math.round(P.batt);
+  const col = b < 12 ? '#ff3b30' : b < 30 ? '#ffde00' : '#3fd16b';
+  const ap = V.audioPause > 0 ? `<span class="ap"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ffde00" stroke-width="2"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M3 3l18 18"/></svg>${Math.floor(V.audioPause / 60)}:${String(Math.ceil(V.audioPause % 60) % 60).padStart(2, '0')}</span>` : '';
+  el.innerHTML = `${ap}<svg viewBox="0 0 22 20" width="22" height="20" aria-label="Humidifier"><path d="M6 4c3 4 4 6 4 8a4 4 0 0 1-8 0c0-2 1-4 4-8zM15 2c3 4 4 6 4 8a4 4 0 0 1-8 0c0-2 1-4 4-8z" fill="#e6e6e6"/></svg>
+    <svg viewBox="0 0 14 26" width="12" height="24" aria-label="Battery ${b}%"><rect x="1" y="3" width="12" height="22" rx="2" fill="none" stroke="#e6e6e6" stroke-width="1.5"/><rect x="4" y="0.5" width="6" height="3" fill="#e6e6e6"/><rect x="3" y="${5 + 18 * (1 - b / 100)}" width="8" height="${18 * b / 100}" fill="${col}"/></svg>
+    ${P.mains ? '<svg viewBox="0 0 16 24" width="12" height="22" aria-label="Mains power"><path d="M5 2v6M11 2v6M2 8h12v4a6 6 0 0 1-12 0zM8 18v5" stroke="#e6e6e6" stroke-width="2" fill="none"/></svg>' : ''}`;
+}
+function renderAlarmBar() {
+  const bar = $('#msgbar'), lamp = $('#lamp');
+  bar.className = 'scr-msg';
+  if (!V.power) { bar.textContent = ''; bar.style.visibility = 'hidden'; lamp.className = 't1-lamp'; return; }
+  bar.style.visibility = '';
+  if (V.selftest > 0) { bar.textContent = ''; return; }
+  const list = topAlarms();
+  if (V.standby) { bar.textContent = ''; bar.classList.add('info'); lamp.className = 't1-lamp' + (list.length ? ' ' + list[0].p : ''); return; }
+  if (!list.length) {
+    bar.textContent = '';
+    bar.classList.add('info'); lamp.className = 't1-lamp'; return;
+  }
+  msgCycle = (msgCycle + 1) % (list.length * 8);
+  const a = list[Math.floor(msgCycle / 8) % list.length];
+  bar.textContent = a.t;
+  bar.classList.add(a.p);
+  lamp.className = 't1-lamp ' + list[0].p;
+}
+function renderLEDs() {
+  const on = (id, v) => $('#led-' + id).classList.toggle('on', !!v);
+  on('day', V.power && V.night); on('lock', V.power && V.locked); on('man', V.power && V.manualReq); on('o2', V.power && V.o2Enrich > 0);
+  on('neb', V.power && V.neb > 0); on('print', false); on('audio', V.power && V.audioPause > 0);
+  on('b1', true); on('b2', false);
+  $('#kPower').classList.toggle('on', V.power);
+  $('#screen').classList.toggle('night', V.night);
+  $('#screen').classList.toggle('locked', V.locked);
+  const off = $('#scrOff');
+  off.hidden = V.power && V.selftest <= 0;
+  $('#scrOffTxt').innerHTML = V.power ? 'HAMILTON-T1<small>Self-test in progress…</small>' : '';
+  $('#t1').classList.toggle('off', !V.power);
+}
+function renderAll() { V.set.plim = V.lim.phigh - 10; renderModeName(); renderRcol(); renderMMP(); renderAlarmBar(); renderBstat(); renderLEDs(); if (win) renderWindow(); else $('#win').hidden = true; applyCursor(); const lungish = (V.gfx === 'lung' || (V.gfx === 'asv' && V.mode === 'ASV')) && !isHFO(); $('#dynlung').hidden = !lungish || !V.power; CV[1].style.display = CV[2].style.display = lungish ? 'none' : ''; }
+
+/* ---------- windows ---------- */
+function openWin(id, tab) {
+  if (V.locked) { scrToast('Screen locked'); return; }
+  if (!V.power || V.selftest > 0) return;
+  if (E && E.scope !== 'draft' && id !== win) { E = null; }
+  win = id; winTab = tab || defaultTab(id); helpFor = null; cursor = -1;
+  renderAll();
+}
+function defaultTab(id) { return ({controls:'basic', draft:'basic', alarms:'1', system:'info', monitoring:'1', events:'all', tools:'tools'})[id] || ''; }
+function closeWin() {
+  if (V.standby && win !== 'standby') { if (win === 'draft' || win === 'modes') D = null; E = null; win = 'standby'; renderAll(); return; }
+  if (win === 'draft' || win === 'modes') { D = null; }
+  if (E) E = null;
+  win = null; cursor = -1; renderAll();
+}
+function tabs(list, vertical) {
+  return `<div class="${vertical ? 'vtabs' : 'htabs'}" role="tablist">${list.map(([id, nm]) => `<button role="tab" data-kf data-tab="${id}" aria-selected="${winTab === id}">${nm}</button>`).join('')}</div>`;
+}
+const X = '<button class="wx" data-kf id="wClose" aria-label="Close window">✕</button>';
+function limCol(hiKey, loKey) {
+  if (hiKey === 'o2hi') {
+    const s = V.o2Enrich > 0 ? 100 : V.set.o2;
+    const hi = Math.min(103, s + O2_BAND), lo = Math.max(18, s - O2_BAND), cur = V.standby ? null : measuredO2();
+    return `<div class="lim"><div class="wctl ro hi"><span class="c">${hi}<small>%</small></span></div><div class="bar">${barMarks(cur, lo, hi, 0, 105, active.has('lowo2') ? 'hi' : '')}</div>${curLbl(cur, 0, 105)}<div class="wctl ro lo"><span class="c">${lo}<small>%</small></span></div><div class="nm">Oxygen<br><small>automatic: set ±${O2_BAND}</small></div></div>`;
+  }
+  const d = ALIM[hiKey];
+  const meas = {phigh:M.ppeak, mvhigh:M.mv, fhigh:M.ftot, vthigh:M.vte, apnoea:null}[hiKey];
+  const cur = V.standby ? null : meas;
+  const hiV = isAct('lim', hiKey) ? E.val : V.lim[hiKey];
+  const loV = loKey ? (isAct('lim', loKey) ? E.val : V.lim[loKey]) : null;
+  const hiEff = d.offMax && hiV > d.max ? d.max : hiV;
+  const scaleMax = hiKey === 'apnoea' ? 60 : Math.max(hiEff * 1.25, (cur || 0) * 1.1, 1);
+  const alarmId = {phigh:['phigh', 'plow'], mvhigh:['mvhigh', 'mvlow'], fhigh:['fhigh', 'flow'], vthigh:['vthigh', 'vtlow']}[hiKey] || [];
+  const ap = alarmId.map(a => active.get(a) ? ALARMS[a].p : null).filter(Boolean)[0];
+  const offIcon = (loKey && ALIM[loKey].off0 && loV <= 0) || (d.offMax && hiV > d.max) ? '<span class="off" title="Alarm off">🔕</span>' : '';
+  return `<div class="lim">${ctlHTML('wctl hi', hiKey, 'lim', V.lim[hiKey], {label:''})}
+    ${hiKey === 'apnoea' ? '' : `<div class="bar">${barMarks(cur, loV || 0, hiEff, 0, scaleMax, ap)}</div>${curLbl(cur, 0, scaleMax, d.dp)}`}
+    ${offIcon}
+    ${loKey ? ctlHTML('wctl lo', loKey, 'lim', V.lim[loKey], {label:''}) : ''}
+    <div class="nm">${esc(d.label)}<br><small>${esc(d.unit)}</small></div></div>`;
+}
+function barMarks(cur, lo, hi, smin, smax, pri) {
+  const y = v => 146 - clamp((v - smin) / (smax - smin), 0, 1) * 146;
+  let h = `<i style="top:${y(hi) - 1}px"></i><i style="top:${y(lo) - 1}px"></i>`;
+  if (cur !== null && cur !== undefined) {
+    const out = cur > hi || cur < lo;
+    if (out || pri) h += `<em class="${pri === 'hi' ? '' : 'y'}" style="top:${Math.min(y(cur), y(hi))}px;height:${Math.abs(y(cur) - (cur > hi ? y(hi) : y(lo)))}px"></em>`;
+  }
+  return h;
+}
+function curLbl(cur, smin, smax, dp) {
+  if (cur === null || cur === undefined) return '';
+  const y = 76 + 146 - clamp((cur - smin) / (smax - smin), 0, 1) * 146;
+  return `<span class="cur" style="top:${y - 8}px">◂ ${fmt(cur, dp || 0)}</span>`;
+}
+function renderWindow() {
+  const w = $('#win');
+  if (!win) { w.hidden = true; return; }
+  w.hidden = false;
+  let h = '';
+  if (win === 'standby') {
+    const el = Math.floor((B.now - V.standbySince));
+    const hh = String(Math.floor(el / 3600)).padStart(2, '0'), mm = String(Math.floor(el / 60) % 60).padStart(2, '0'), ss = String(el % 60).padStart(2, '0');
+    h = `<div class="wtitle" style="left:10px">Standby</div>
+      <div class="sb-yellow"><span class="tri">⚠</span><span class="t">${hh}:${mm}:${ss}</span><span class="m">No ventilation is delivered to the patient. Patient alarms are suppressed.</span></div>
+      <div class="sb-grid">
+        <span class="l">Patient group</span><span class="wrow"><button class="wb green" data-kf>Adult/Ped</button><button class="wb" disabled title="Neonatal option not simulated">Neonatal</button><button class="wb" disabled title="Not simulated">Last patient</button></span>
+        <span class="l">Sex and height</span><span class="wrow">
+          <button class="pt-ic" data-kf data-sex="Male" aria-pressed="${V.sex === 'Male'}" aria-label="Male"><svg viewBox="0 0 16 30"><circle cx="8" cy="4" r="3.6"/><path d="M3 9h10l1.5 10h-2.5l-.8 10h-2.4l-.6-8h-.4l-.6 8H4.8L4 19H1.5z"/></svg></button>
+          <button class="pt-ic" data-kf data-sex="Female" aria-pressed="${V.sex === 'Female'}" aria-label="Female"><svg viewBox="0 0 18 30"><circle cx="9" cy="4" r="3.6"/><path d="M6 9h6l4 12h-3.5l-.5 8h-2.2l-.4-8h-.8l-.4 8H6l-.5-8H2z"/></svg></button>
+          ${ctlHTML('wctl', 'height', 'standby', V.set.height, {label:'Pat. height'})}
+          <span class="ibw">${calcIBW()}<small>IBW (kg)</small></span></span>
+        <span class="l">Mode</span><span class="wrow"><b style="font-size:20px;min-width:90px">${esc(modeLabel())}</b><button class="wb" data-kf data-open="modes">Modes</button><button class="wb" data-kf data-open="controls">Controls</button><button class="wb" data-kf data-open="alarms">Alarms</button></span>
+        <span class="l">Before use</span><span class="wrow"><button class="wb" data-kf data-open="system" data-tab="tests">Preop check</button><span class="wnote">Leak test ${testMark(V.tests.leak)} · Flow sensor ${testMark(V.tests.flow)} · O2 sensor ${testMark(V.tests.o2)}</span></span>
+      </div>
+      <div class="wfoot" style="justify-content:center"><button class="wb wide cur" data-kf id="sbStart">${V.cpr ? 'Start CPR' : isHFO() ? 'Start therapy' : 'Start ventilation'}</button></div>`;
+  } else if (win === 'modes') {
+    const sel = D && !D.cpr ? D.mode : null;
+    h = X + `<div class="wbody" style="top:6px;left:44px">${MODE_GROUPS.map(([g, ms]) => `<div class="wgrp">${g}</div><div class="wrow">${ms.map(m => {
+      const lock = !V.standby && m !== V.mode && (isHFO(m) || isHFO());
+      const act = m === V.mode && !V.cpr;
+      return `<button class="wb ${act ? 'green' : ''} ${sel === m && !act ? 'cur' : ''}" data-kf data-mode="${m}" ${lock ? 'disabled title="Select in Standby"' : ''}>${esc(mName(m))}</button>`;
+    }).join('')}</div>`).join('')}
+      <p class="wnote">HiFlowO2 can only be selected in Standby. Neonatal modes (nCPAP, nCPAP-PC) and the INTELLiVENT-ASV option are not included in this adult trainer.</p></div>
+      <div class="wfoot" style="justify-content:space-between"><button class="wb red" data-kf id="mCPR" ${isHFO() ? 'disabled title="CPR ventilation is not available with HiFlowO2"' : ''}>CPR</button><span class="wrow"><button class="wb" data-kf id="mCancel">Cancel</button>${D && !D.cpr && (D.mode !== V.mode || V.cpr) ? '<button class="wb green" data-kf id="mConfirm">Confirm</button>' : ''}</span></div>`;
+  } else if (win === 'controls' || win === 'draft') {
+    const isDraft = win === 'draft';
+    const mode = isDraft ? D.mode : V.mode;
+    const mk = isDraft ? (D.cpr ? 'CPR' : D.mode) : modeKey();
+    const psync = isDraft ? D.psync : V.psync;
+    const src = isDraft ? D.set : V.set;
+    const mc = modeCtrls(mk, psync);
+    const tl = [['basic', 'Basic']];
+    if (mc.more.length) tl.push(['more', 'More']);
+    if (BACKUP_MODES.includes(mk)) tl.push(['apnoea', 'Apnea']);
+    tl.push(['patient', 'Patient']);
+    if (!tl.some(t => t[0] === winTab)) winTab = 'basic';
+    const title = isDraft ? (D.cpr ? '<b>CPR ventilation</b>: review, then Confirm' : 'New mode: <b>' + esc(mName(mode)) + '</b> (not active until confirmed)') : 'Controls · ' + esc(modeLabel());
+    h = X + `<div class="wtitle">${title}</div>` + tabs(tl, true);
+    let body = '';
+    if (winTab === 'apnoea') {
+      const bk = mk === 'NIV' ? 'PCV+' : 'SIMV+ (APVsimv)';
+      body = `<div class="wrow" style="margin-top:6px"><span>Backup</span><button class="wb ${V.backupOn ? 'green' : ''}" data-kf data-backup="on">On</button><button class="wb ${!V.backupOn ? 'green' : ''}" data-kf data-backup="off">Off</button><span class="wnote" style="margin:0 0 0 10px">Backup mode: <b>${bk}</b> · Automatic</span></div>
+        <p class="wnote">With Apnea backup on, if no breath occurs within the Apnea time (Alarms &gt; Limits 1), the ventilator switches to backup ventilation in ${bk}, shows the low-priority alarm "Apnea ventilation", and returns to ${esc(mName(mk))} after two consecutive patient-triggered breaths ("Apnea ventilation ended"). With backup off, a high-priority "Apnea" alarm is generated instead. With Automatic on, the device sets the backup controls from IBW; the manual does not list them, so in this trainer backup breaths are ${mk === 'NIV' ? 'ΔPsupport (at least 10 cmH2O)' : 'Vt 8 ml/kg IBW'} at the default rate for IBW.</p>`;
+    } else if (winTab === 'patient') {
+      body = `<div class="wrow" style="margin-top:6px"><span style="min-width:80px">Sex</span><button class="wb ${V.sex === 'Male' ? 'green' : ''}" data-kf data-sex="Male">Male</button><button class="wb ${V.sex === 'Female' ? 'green' : ''}" data-kf data-sex="Female">Female</button></div>
+        <div class="wrow" style="margin-top:6px">${ctlHTML('wctl', 'height', isDraft ? 'draft' : 'ctrl', src.height)}<span class="ibw">${calcIBW()}<small>IBW (kg)</small></span></div>`;
+    } else {
+      const all = mc[winTab] || [];
+      const keys = all.filter(k => !TOGGLES[k]), tg = all.filter(k => TOGGLES[k]);
+      const scope = isDraft ? 'draft' : 'ctrl';
+      const tp = totalP(mode, src, psync), plim = src.plim;
+      const PRESS = ['ps', 'pinsp', 'pcontrol', 'peep', 'phi', 'aphi'];
+      body = `<div class="wgrid">${keys.map(k => ctlHTML('wctl', k, scope, src[k], {cls: tp !== null && tp > plim && PRESS.includes(k) ? 'conflict' : ''})).join('')}</div>
+        ${tg.map(k => { const on = isDraft ? D[k] : V[k]; return `<div class="wrow tgl"><span>${TOGGLES[k]}</span><button class="wb ${on ? 'green' : ''}" data-kf data-toggle="${k}" data-val="1">On</button><button class="wb ${!on ? 'green' : ''}" data-kf data-toggle="${k}" data-val="0">Off</button></div>`; }).join('')}
+        <p class="wnote">${controlsNote(mode, mk, src, psync, winTab, tp, plim, isDraft)}</p>`;
+    }
+    h += `<div class="wbody withv">${body}</div>`;
+    if (isDraft) h += `<div class="wfoot"><button class="wb" data-kf id="dCancel">Cancel</button><button class="wb green" data-kf id="dConfirm">Confirm</button></div>`;
+  } else if (win === 'alarms') {
+    const tl = [['1', 'Limits 1'], ['2', 'Limits 2'], ['buffer', 'Buffer']];
+    h = X + tabs(tl);
+    if (winTab === '1' || winTab === '2') {
+      h += `<div class="wbody" style="top:48px"><div class="limits">${LIMIT_PAGES[winTab].map(([a, b]) => limCol(a, b)).join('')}</div></div>
+        <div class="wfoot" style="justify-content:space-between"><button class="wb" data-kf id="limAuto">Auto</button><span class="wnote" style="max-width:420px">NIV tip from the manual: set the low Pressure limit near the set pressure so that a disconnection or large leak alarms.</span></div>`;
+    } else {
+      h += bufferHTML();
+    }
+  } else if (win === 'monitoring') {
+    const sb = V.standby, niv = isNIV();
+    let rows1, rows2;
+    if (isHFO()) {
+      rows1 = [['Oxygen', sb ? null : measuredO2(), 0, '%'], ['Flow', sb ? null : V.set.hflow, 0, 'l/min']];
+      rows2 = [['fTotal', null, 0, 'b/min'], ['Pprox', null, 0, 'cmH2O']];
+    } else {
+      rows1 = [['Ppeak', M.ppeak, 0, 'cmH2O'], ...(niv ? [] : [['Pplateau', M.pplat, 0, 'cmH2O'], ['Driving pressure', M.dpress, 0, 'cmH2O']]), ['Pmean', M.pmean, 0, 'cmH2O'], ['PEEP/CPAP', M.peep, 0, 'cmH2O'], ['AutoPEEP', niv ? null : M.autopeep, 1, 'cmH2O'], ['VTI', M.vti, 0, 'ml'], [niv ? 'VTE NIV' : 'VTE', M.vte, 0, 'ml'], [niv ? 'MinVol NIV' : 'ExpMinVol', M.mv, 1, 'l/min'], ['VLeak', M.vleak, 0, '%'], ['MVLeak', M.mvleak, 1, 'l/min']];
+      rows2 = [['fTotal', M.ftot, 0, 'b/min'], ['fControl', M.fcontrol, 0, 'b/min'], ['fSpont', M.fspont, 0, 'b/min'], ['TI', M.ti, 2, 's'], ['TE', M.te, 2, 's'], ['I:E', M.ie, 1, '1:x'], ['Insp Flow', M.inspFlow, 0, 'l/min'], ['Oxygen', sb ? null : measuredO2(), 0, '%']];
+      if (V.mode === 'ASV' || APV.includes(V.mode) || V.mode === 'VS') rows2.push(['ΔPinsp', V.mode === 'ASV' ? A.p : V.mode === 'VS' ? B.vsP : B.apvP, 0, 'cmH2O']);
+    }
+    const rows3 = [['SpO2', V.spo2On ? P.spo2 : null, 0, '%'], ['Pulse', V.spo2On ? P.hr : null, 0, '1/min'], ['PetCO2', petco2(), 0, 'mmHg']];
+    const rows = winTab === '1' ? rows1 : winTab === '2' ? rows2 : rows3;
+    const note = isHFO() ? 'In HiFlowO2 only Oxygen and Flow are monitored (Pprox needs a flow sensor; not simulated).' : niv ? 'In noninvasive modes VTE is replaced by VTE NIV and ExpMinVol by MinVol NIV: leak-adjusted estimates. Use VLeak and MVLeak to judge mask fit. AutoPEEP is not reliable in NIV.' : 'AutoPEEP rises when expiration is too short for the lung to empty (watch it in APRV and at high rates). Simulated values.';
+    h = X + tabs([['1', 'General 1'], ['2', 'General 2'], ['3', 'SpO2']]) + `<div class="wbody" style="top:48px"><div class="mon-cols">${rows.map(r => `<div><span>${r[0]}<small>${r[3]}</small></span><b>${sb ? '--' : fmt(r[1], r[2])}</b></div>`).join('')}</div>
+      <p class="wnote">${note}</p></div>`;
+  } else if (win === 'tools') {
+    h = X + tabs([['tools', 'Utilities'], ['cfg', 'Configuration']]) + `<div class="wbody" style="top:48px">${winTab === 'cfg' ? '<p class="wnote">Configuration needs an access code and is only available in Standby. Not simulated.</p>' : '<div class="wrow"><button class="wb" disabled>HPO / LPO</button><button class="wb" disabled>Set Oxygen alarm limits manually</button><button class="wb" disabled>Export logs</button></div><p class="wnote">Utilities include the oxygen source mode (high- or low-pressure O2), manual Oxygen alarm limits and log export. Not simulated. The suctioning tool is disabled in NIV and NIV-ST.</p>'}</div>`;
+  } else if (win === 'events') {
+    h = X + tabs([['all', 'All']]) + `<div class="wbody" style="top:48px"><table class="wtable"><thead><tr><th>Clock</th><th>${P.pr.sedated ? 'Ventilated' : 'On NIV'}</th><th>Event</th></tr></thead><tbody>${history.map(e => `<tr><td>${e.wall}</td><td>${e.time}</td><td>${e.p === 'hi' ? '🔴 ' : e.p === 'med' || e.p === 'low' ? '🟡 ' : ''}${esc(e.t)}</td></tr>`).join('') || '<tr><td colspan="3">No events</td></tr>'}</tbody></table></div>`;
+  } else if (win === 'system') {
+    const tl = [['info', 'Info'], ['tests', 'Tests & calib'], ['sensors', 'Sensors'], ['settings', 'Settings']];
+    h = X + tabs(tl);
+    if (winTab === 'info') {
+      const mv = M.mv || 8, fio2 = V.standby ? V.set.o2 : measuredO2();
+      const o2c = (mv + 3) * (fio2 - 20.9) / 79.1;
+      h += `<div class="wbody" style="top:48px"><table class="wtable"><tbody>
+        <tr><td>Power source</td><td>${P.mains ? 'AC (mains)' : 'Battery'}</td></tr>
+        <tr><td>Battery 1</td><td>${fmt(P.batt)} %</td></tr>
+        <tr><td>Time on ventilation</td><td>${clockStr()}</td></tr>
+        <tr><td>Estimated O2 consumption</td><td>${fmt(Math.max(0, o2c), 1)} l/min</td></tr>
+        <tr><td>Software (simulated)</td><td>Trainer, modelled on SW 3.0.x</td></tr></tbody></table>
+        <p class="wnote">Pre-transport estimate (T1 Quick Guide, adult): O2 consumption = (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1. It excludes the nebuliser; in NIV, leak increases use. <b>Check cylinder sizes and durations locally.</b></p></div>`;
+    } else if (winTab === 'tests') {
+      h += `<div class="wbody" style="top:48px"><div class="tc">
+        <button data-kf data-test="leak">Leak test<span class="st ${V.tests.leak || ''}">${testMark(V.tests.leak)}</span><small>${V.tests.leakAt || 'not done'}</small></button>
+        <button data-kf data-test="flow">Flow sensor<span class="st ${V.tests.flow || ''}">${testMark(V.tests.flow)}</span><small>${V.tests.flowAt || 'not done'}</small></button>
+        <button data-kf data-test="o2">O2 sensor<span class="st ${V.tests.o2 || ''}">${testMark(V.tests.o2)}</span><small>${V.tests.o2At || 'calibrated'}</small></button></div>
+        <div class="tc-msg" id="tcMsg">${V.testRun ? V.testRun.msg : (V.standby ? 'Select a test. Use the "Your hands" buttons beside the simulator for the physical steps.' : 'Tests and calibrations are run in Standby.')}</div></div>`;
+    } else if (winTab === 'sensors') {
+      h += `<div class="wbody" style="top:48px"><div class="wrow"><span style="min-width:160px">O2 monitoring</span><button class="wb green" data-kf>On</button></div>
+        <div class="wrow" style="margin-top:8px"><span style="min-width:160px">SpO2 (pulse oximetry)</span><button class="wb ${V.spo2On ? 'green' : ''}" data-kf data-spo2="on">On</button><button class="wb ${!V.spo2On ? 'green' : ''}" data-kf data-spo2="off">Off</button></div>
+        <div class="wrow" style="margin-top:8px"><span style="min-width:160px">CO2</span><button class="wb" disabled>Not fitted</button></div>
+        <p class="wnote">SpO2 and CO2 monitoring are options that need the communication board and sensor.</p></div>`;
+    } else {
+      h += `<div class="wbody" style="top:48px"><div class="wgrp">Loudness</div><div class="wrow">${[1,2,3,4,5,6,7,8,9,10].map(n => `<button class="wb ${V.loud === n ? 'green' : ''}" data-kf data-loud="${n}" style="min-width:42px;padding:0 6px">${n}</button>`).join('')}<button class="wb" data-kf id="loudTest">Test</button></div>
+        <div class="wgrp">Day &amp; Night</div><div class="wrow"><button class="wb ${!V.night ? 'green' : ''}" data-kf data-night="0">Day</button><button class="wb ${V.night ? 'green' : ''}" data-kf data-night="1">Night</button></div>
+        <p class="wnote">Loudness 1–10 (default 5). Sound only plays if "Alarm sound" above the simulator is on. Night lowers the display brightness; the Day/Night key does the same.</p></div>`;
+    }
+  } else if (win === 'gfx') {
+    h = X + `<div class="htabs"><button disabled>Trends</button><button disabled>Loops</button><button data-kf data-gfx="lung" aria-selected="${V.gfx === 'lung'}">Graphics</button><button data-kf data-gfx="wave" aria-selected="${V.gfx === 'wave'}">Waveforms</button></div><div class="wbody" style="top:48px"><div class="wrow">
+      <button class="wb ${V.gfx === 'wave' ? 'green' : ''}" data-kf data-gfx="wave">Paw, Volume, Flow</button>
+      <button class="wb ${V.gfx === 'lung' ? 'green' : ''}" data-kf data-gfx="lung">Dynamic Lung</button>${V.mode === 'ASV' ? `<button class="wb ${V.gfx === 'asv' ? 'green' : ''}" data-kf data-gfx="asv">ASV Graph</button>` : ''}</div>
+      <p class="wnote">Trends (except in HiFlowO2) and loops are not simulated; the real device also offers the Vent Status panel. Paw: red line = Pressure high alarm limit, blue line = Plimit (10 cmH2O below it). Pink marks show patient-triggered breaths in this trainer.</p></div>`;
+  }
+  w.innerHTML = h;
+  if (win === 'alarms' && winTab === 'buffer') bindHelp();
+}
+
+/* the text under the controls: derived timing, pressure totals and how the mode works */
+function controlsNote(mode, mk, s, psync, tab, tp, plim, isDraft) {
+  if (tab === 'more') {
+    if (mk === 'CPR') return '';
+    if (mode === 'APRV') return 'In APRV the trigger is only used to count spontaneous breaths. P-ramp sets the rise to P high.';
+    return 'Flow trigger: a lower value is more sensitive' + (['APVcmv', 'PCV+'].includes(mode) ? '; it can be set to Off in this mode' : '') + '. ETS: the % of peak inspiratory flow at which a spontaneous breath ends.' + (TOGGLES.sigh && SIGH_MODES.includes(mode) ? ' Sigh: every 50th breath is a sigh breath.' : '');
+  }
+  const parts = [];
+  const live = !isDraft && !V.standby;
+  if (mode === 'APVcmv' || mode === 'PCV+') { const c = 60 / s.rate, ti = c * s.ie / (1 + s.ie); parts.push(`TI ${ti.toFixed(2)} s · TE ${(c - ti).toFixed(2)} s.`); }
+  if (['APVsimv', 'PSIMV+', 'NIV-ST'].includes(mode)) { const c = 60 / s.rate, ti = Math.min(s.ti, c * 0.8); parts.push(`I:E ${ieStr(ti / (c - ti))} · TE ${(c - ti).toFixed(2)} s.`); }
+  if (mode === 'DuoPAP') parts.push(`Time at PEEP/CPAP ${Math.max(0, 60 / s.rate - s.thigh).toFixed(2)} s. ΔPsupport is above PEEP, so it only supports breaths at P high when PEEP + ΔPsupport (${s.peep + s.ps}) is above P high (${s.phi}).`);
+  if (mode === 'APRV') parts.push(`Rate ${(60 / (s.athigh + s.tlow)).toFixed(1)} b/min (from T high + T low). APRV settings are kept separately from the other modes.`);
+  if (mk === 'CPR') parts.push('CPR ventilation (Table 10-3): flow trigger Off, P-ramp fixed at 50 ms; ExpMinVol, fTotal and Vt alarm limits go to their minimum and maximum; the CPR ON alarm shows while it is on.');
+  if (APV.includes(mode) || mode === 'VS') parts.push(`The pressure is adjusted between breaths to reach Vt (at least 5 cmH2O above PEEP, never above Plimit ${plim} cmH2O).` + (live && !V.cpr ? ` Current ΔPinsp ${fmt(mode === 'VS' ? B.vsP : B.apvP)} cmH2O.` : ''));
+  if (mode === 'ASV') {
+    const ibw = calcIBW();
+    parts.push(`Target MinVol = IBW ${ibw} kg × 0.1 l/kg/min × ${s.minvol}% = ${fmt(ibw * 0.1 * s.minvol / 100, 1)} l/min. ASV chooses rate, Vt, TI and ΔPinsp within lung-protective limits (max ΔPinsp = Plimit ${plim} − PEEP).` + (live ? ` Now: target f ${fmt(A.fTarget)} b/min, Vt ${fmt(A.vtTarget * 1000)} ml, ΔPinsp ${fmt(A.p)} cmH2O.` : ''));
+  }
+  if (mode === 'HiFlowO2') parts.push('HiFlowO2 delivers a continuous flow through a nasal cannula. It is not life-supporting: disconnection and apnea alarms are inactive, and Manual breath is disabled.');
+  if (tp !== null) parts.push(`Total inspiratory pressure ${tp} cmH2O; Plimit ${plim} cmH2O (high Pressure alarm − 10).` + (tp > plim ? ' <b>Total pressure exceeds Plimit: delivered pressure will be limited.</b>' : ''));
+  return parts.join(' ');
+}
+/* a draft for a new mode, shown in the Controls window until Confirm (5.4.1) */
+function createDraft(mode, cpr) {
+  const ibw = calcIBW();
+  let set = V.cpr && !cpr ? {...V.cpr.prevSet} : {...V.set};
+  set.plim = V.cpr && !cpr ? V.cpr.prevLim.phigh - 10 : V.lim.phigh - 10;
+  if (cpr) { mode = 'APVcmv'; Object.assign(set, {rate:10, ie:0.2, peep:5, o2:100, vt:Math.max(20, Math.round(ibw * 6 / 10) * 10), trig:0, pramp:50, plim:45}); }
+  if (!cpr && mode === 'APRV' && !V.aprvInit) Object.assign(set, ibw >= 60 ? {aphi:20, plo:5, athigh:5.4, tlow:0.6} : ibw >= 40 ? {aphi:20, plo:5, athigh:4.4, tlow:0.6} : {aphi:20, plo:5, athigh:3.5, tlow:0.5});
+  if (!cpr && (APV.includes(mode) || mode === 'VS') && !APV.includes(V.mode) && V.mode !== 'VS') set.vt = Math.max(20, Math.round(ibw * 8 / 10) * 10);
+  const mk = cpr ? 'CPR' : mode;
+  ['rate', 'pramp', 'trig'].forEach(k => {
+    const d = ctrlDef(k, mk);
+    if (k === 'trig' && set.trig <= 0 && !d.off0 && !cpr) set.trig = DEFAULT_SET.trig;
+    else if (k !== 'trig') set[k] = clamp(set[k], d.min, d.max);
+  });
+  D = {mode, cpr:!!cpr, set, psync:V.psync, sigh:V.sigh};
+}
+const ifaceOf = m => isHFO(m) ? 'hfo' : isNIV(m) ? 'niv' : 'inv';
+function applyDraft() {
+  const oldLabel = modeLabel(), prev = V.mode, oldIf = ifaceOf(V.mode);
+  const entering = D.cpr && !V.cpr, leaving = !D.cpr && V.cpr;
+  if (leaving) { V.lim = {...V.cpr.prevLim}; V.cpr = null; clear('cpron'); }
+  if (entering) {
+    V.cpr = {t0:B.now, prevLim:{...V.lim}, prevSet:{...V.set}};
+    Object.assign(V.lim, {mvhigh:99999, mvlow:0, fhigh:99, flow:0, vthigh:99999, vtlow:0});   /* 10.9.1: Apnea time is only changed (to 10 s) for neonates */
+  }
+  const plimOld = V.lim.phigh - 10;
+  V.set = {...D.set}; V.mode = D.mode; V.psync = D.psync; V.sigh = D.sigh;
+  if (V.set.plim !== plimOld) { V.lim.phigh = clamp(V.set.plim + 10, 15, 70); if (!entering && !leaving) { raise('plimchg'); B.plimchgT = 10; } }
+  if (V.mode === 'APRV') V.aprvInit = true;
+  D = null;
+  modeEntered(prev);
+  logEvent((entering ? 'CPR ventilation started' : leaving ? 'CPR ventilation stopped' : 'Mode changed ' + oldLabel + ' → ' + modeLabel()), 'info');
+  if (entering) addPrompt('CPR ventilation on (' + modeLabel() + '): Rate 10, I:E 1:5, Oxygen 100%, trigger Off. The CPR timer runs while it is on. To stop, select and confirm another mode (alarm limits return to their previous settings), or enter Standby; Start CPR then restarts it.');
+  else addPrompt('Mode changed to ' + modeLabel() + '. On the device the change takes effect at the end of the current breath cycle.');
+  const nIf = ifaceOf(V.mode);
+  if (nIf !== oldIf) {
+    if (nIf === 'inv') addPrompt('Invasive mode: this trainer now assumes the patient has been intubated (the NIV patient scenarios are written for a mask). The leak buttons act as a leak at the tube or circuit. Disconnection on patient side and Inspiratory volume limitation now apply.');
+    if (nIf === 'niv') addPrompt('Noninvasive mode: the trainer assumes a non-vented mask. Volume alarms are less meaningful; set the low Pressure limit near the set pressure.');
+    if (nIf === 'hfo') addPrompt('HiFlowO2: the trainer assumes a nasal cannula. There is no pressure support. Only Oxygen and Flow are monitored, and disconnection and apnea alarms are inactive.');
+  }
+  if (entering && V.standby) { startVentilation(); return; }
+  win = null; closeWin(); updateTasks();
+}
+function modeEntered(prev) {
+  B.apnoeaVent = false; clear('apvent'); clear('apnea');
+  if (APV.includes(V.mode) && !APV.includes(prev)) B.apvP = 10;
+  if (V.mode === 'VS' && prev !== 'VS') B.vsP = 10;
+  if (V.mode === 'ASV') asvInit();
+  B.simvC0 = B.now; B.simvDue = true; B.lastMand = -1e9;
+  if (V.gfx === 'asv' && V.mode !== 'ASV') V.gfx = 'wave';
+  if (!isInvasive()) { clear('discpat'); clear('vlimit'); }
+  if (isHFO()) { for (const k in M) M[k] = null; B.starts = []; B.types = []; B.vols = []; }
+}
+function testMark(s) { return s === 'ok' ? '✔' : s === 'fail' ? '✖' : '–'; }
+function bufferHTML() {
+  const rows = [...active.keys()].map(id => ({id, at: active.get(id), act: true})).concat([...inactive.keys()].map(id => ({id, at: inactive.get(id), act: false})));
+  rows.sort((a, b) => (b.act - a.act) || PRI_ORDER[ALARMS[b.id].p] - PRI_ORDER[ALARMS[a.id].p]);
+  let h = `<div class="wbody" style="top:48px"><div class="abuf">${rows.map(r => `<button class="r ${ALARMS[r.id].p} ${r.act ? '' : 'inact'}" data-kf data-help="${r.id}"><time>${r.at}</time>${esc(ALARMS[r.id].t)}${r.act ? '' : ' (inactive)'}<span class="i">i</span></button>`).join('') || '<p class="wnote">No alarms.</p>'}</div>`;
+  if (helpFor) { const hp = HELP[helpFor]; h += `<div class="help"><h6>${esc(ALARMS[helpFor].t)}</h6>${hp ? hp : '<p>No on-screen help text in this trainer.</p>'}</div>`; }
+  h += '</div>';
+  if (inactive.size) h += '<div class="wfoot"><button class="wb" data-kf id="bufReset">Reset</button></div>';
+  return h;
+}
+function bindHelp() {}
+
+function calcIBW() {
+  const h = V.set.height;
+  const base = V.sex === 'Male' ? 50 : 45.5;
+  return Math.max(30, Math.round(base + 0.91 * (h - 152.4)));
+}
+
+/* ---------- knob cursor (yellow outline) ---------- */
+function kfList() {
+  const scope = win ? $('#win') : $('#screen');
+  return $$('[data-kf]', scope).filter(el => !el.disabled && el.offsetParent !== null && (win || !el.closest('#win')));
+}
+function applyCursor() {
+  $$('.kcur', $('#screen')).forEach(el => el.classList.remove('kcur', 'sel', 'cur'));
+  if (cursor < 0 || E) return;
+  const L = kfList(); if (!L.length) return;
+  const el = L[cursor % L.length];
+  el.classList.add('kcur', el.classList.contains('mctl') || el.classList.contains('wctl') ? 'sel' : 'cur');
+}
+
+/* ---------- editing with press-and-turn ---------- */
+function selectControl(scope, key) {
+  if (V.locked) { scrToast('Screen is locked!'); return; }
+  if (key === 'o2' && scope === 'ctrl' && V.o2Enrich > 0) { V.o2Enrich = 0; logEvent('O2 enrichment stopped (Oxygen changed)', 'info'); }
+  if (E && E.key === key && E.scope === scope) { confirmEdit(); return; }
+  if (E) { confirmEdit(); if (E) return; }
+  E = {scope, key, val: curVal(scope === 'standby' ? 'ctrl' : scope, key)};
+  renderAll();
+}
+function turn(dir) {
+  rotateKnob(dir);
+  if (!V.power || V.selftest > 0) return;
+  if (V.locked) { scrToast('Screen is locked!'); return; }
+  if (!E) {
+    const L = kfList(); if (!L.length) return;
+    cursor = cursor < 0 ? (dir > 0 ? 0 : L.length - 1) : (cursor + dir + L.length) % L.length;
+    applyCursor(); return;
+  }
+  if (E.scope === 'lim' && (E.key === 'o2hi' || E.key === 'o2lo')) return;
+  const d = defFor(E.scope === 'standby' ? 'ctrl' : E.scope, E.key);
+  if (d.list) {
+    let i = d.list.findIndex(x => Math.abs(x - E.val) < 1e-6);
+    if (i < 0) i = d.list.reduce((bi, x, j) => Math.abs(x - E.val) < Math.abs(d.list[bi] - E.val) ? j : bi, 0);
+    E.val = d.list[clamp(i + dir, 0, d.list.length - 1)]; renderAll(); return;
+  }
+  if (d.offMax && E.val > d.max) { if (dir < 0) { E.val = d.max; renderAll(); } return; }
+  if (d.offMax && E.val >= d.max && dir > 0) { E.val = 99999; renderAll(); return; }
+  if (d.off0 && E.val <= 0 && dir > 0) { E.val = typeof d.step === 'function' ? d.step(0, 1) : d.step; renderAll(); return; }
+  const st = typeof d.step === 'function' ? d.step(E.val, dir) : d.step;
+  let v = Math.round((E.val + dir * st) / st) * st;
+  v = clamp(v, d.off0 ? 0 : d.min, d.max);
+  if (d.off0 && v > 0 && v < (d.min || st)) v = dir > 0 ? (d.min || st) : 0;
+  if (E.scope === 'lim') {
+    const pairs = {plow:'phigh', mvlow:'mvhigh', flow:'fhigh', vtlow:'vthigh'};
+    const hiOf = pairs[E.key]; if (hiOf && v >= V.lim[hiOf] && V.lim[hiOf] <= 3000) return;
+    const loOf = Object.keys(pairs).find(k => pairs[k] === E.key); if (loOf && v <= V.lim[loOf] && V.lim[loOf] > 0) return;
+  }
+  E.val = +v.toFixed(2);
+  renderAll();
+}
+function pressKnob() {
+  const kn = $('#knob'); kn.classList.add('press'); setTimeout(() => kn.classList.remove('press'), 140);
+  if (!V.power || V.selftest > 0) return;
+  if (V.locked) { scrToast('Screen locked'); return; }
+  if (E) { confirmEdit(); return; }
+  const L = kfList();
+  if (cursor >= 0 && L.length) { const el = L[cursor % L.length]; el.click(); return; }
+  scrToast('Turn the knob to move the cursor, or touch a control.');
+}
+function confirmEdit() {
+  if (!E) return;
+  const {scope, key, val} = E;
+  if (scope === 'lim') {
+    V.lim[key] = val;
+    if (key === 'phigh') { raise('plimchg'); B.plimchgT = 10; V.set.plim = val - 10; }
+    logEvent('Alarm limit changed: ' + ALIM[key].label + (key.endsWith('low') || key === 'plow' || key === 'flow' ? ' low ' : key === 'apnoea' ? ' ' : ' high ') + valStr('lim', key, val), 'info');
+    checkSettingPrompts(key);
+  } else if (scope === 'draft') D.set[key] = val;
+  else {
+    V.set[key] = val;
+    if (key === 'plim') { V.lim.phigh = clamp(val + 10, 15, 70); raise('plimchg'); B.plimchgT = 10; }
+    if (key !== 'height') logEvent('Setting changed: ' + CTRL[key].label + ' ' + valStr('ctrl', key, val), 'info');
+    checkSettingPrompts(key);
+  }
+  E = null; renderAll();
+  updateTasks();
+}
+function cancelEdit() { E = null; renderAll(); }
+let knobAngle = 0;
+function rotateKnob(dir) { knobAngle += dir * 15; $('#knobRot').style.transform = 'rotate(' + knobAngle + 'deg)'; }
+
+function checkSettingPrompts(key) {
+  if (isHFO()) return;
+  const tp = totalP(V.mode, V.set, V.psync), ipap = V.set.peep + setDP();
+  if (isNIV() && ipap > 30) addPrompt('IPAP ' + ipap + ' cmH2O: BTS/ICS advises IPAP should not exceed 30 (or EPAP 8) without expert review.');
+  if (isNIV() && ipap > 33) addPrompt('Hamilton manual: peak pressures above 33 cmH2O may increase the risk of aspiration from gastric insufflation. Consider an invasive mode.');
+  if (tp !== null && tp > V.lim.phigh - 10) addPrompt('Total inspiratory pressure is above Plimit (Pressure high − 10). Delivered pressure will be limited and the Pressure limitation alarm will appear. Adjust the pressure settings or raise the Pressure high limit if intended.');
+  if (key === 'trig' && V.set.trig <= 1) addPrompt('Very sensitive trigger: watch for auto-triggering, especially with leak.');
+  if (key === 'trig' && V.set.trig >= 10) addPrompt('Insensitive trigger: weak patients may fail to trigger (missed efforts).');
+  if (key === 'plow' && isNIV() && V.lim.plow < V.set.peep + setDP() - 6) addPrompt('Low Pressure limit is well below the set pressure. In NIV a disconnection may not alarm promptly. The manual advises setting it near the set pressure.');
+}
+
+/* ---------- event wiring: screen ---------- */
+$('#screen').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (!V.power || V.selftest > 0) return;
+  if (V.locked) { scrToast('Screen is locked!'); return; }
+  cursor = -1;
+  if (b.dataset.scope && b.dataset.key) { selectControl(b.dataset.scope, b.dataset.key); return; }
+  if (E) confirmEdit();
+  if (b.id === 'gfx') { openWin('gfx'); return; }
+  if (b.dataset.open) { if (win === b.dataset.open && !b.closest('#win')) { closeWin(); return; } openWin(b.dataset.open, b.dataset.tab); return; }
+  if (b.dataset.tab) { winTab = b.dataset.tab; helpFor = null; renderWindow(); return; }
+  if (b.dataset.sex) { V.sex = b.dataset.sex; renderAll(); return; }
+  if (b.dataset.backup) { V.backupOn = b.dataset.backup === 'on'; logEvent('Apnea backup ' + (V.backupOn ? 'on' : 'off'), 'info'); renderWindow(); return; }
+  if (b.dataset.loud) { V.loud = +b.dataset.loud; renderWindow(); return; }
+  if (b.dataset.gfx) { V.gfx = b.dataset.gfx; closeWin(); return; }
+  if (b.dataset.spo2) { V.spo2On = b.dataset.spo2 === 'on'; renderAll(); return; }
+  if (b.dataset.night) { V.night = b.dataset.night === '1'; renderAll(); return; }
+  if (b.dataset.help) { helpFor = helpFor === b.dataset.help ? null : b.dataset.help; renderWindow(); return; }
+  if (b.dataset.test) { startTest(b.dataset.test); return; }
+  if (b.dataset.mode) { if (b.dataset.mode === V.mode && !V.cpr) { D = null; openWin('controls'); return; } createDraft(b.dataset.mode, false); renderWindow(); return; }
+  if (b.dataset.toggle) {
+    const k = b.dataset.toggle, on = b.dataset.val === '1';
+    if (win === 'draft' && D) D[k] = on;
+    else { V[k] = on; logEvent(TOGGLES[k] + (on ? ' on' : ' off'), 'info'); }
+    renderWindow(); return;
+  }
+  switch (b.id) {
+    case 'btnModeName': openWin('modes'); break;
+    case 'msgbar': openWin('alarms', 'buffer'); break;
+    case 'wClose': closeWin(); break;
+    case 'mCancel': D = null; closeWin(); break;
+    case 'mConfirm': win = 'draft'; winTab = 'basic'; renderAll(); break;
+    case 'mCPR': createDraft(null, true); win = 'draft'; winTab = 'basic'; renderAll(); break;
+    case 'dCancel': E = null; D = null; closeWin(); break;
+    case 'dConfirm': if (E) confirmEdit(); applyDraft(); renderAll(); break;
+    case 'sbStart': startVentilation(); break;
+    case 'limAuto': autoLimits(); break;
+    case 'loudTest': { const s = V.sound; V.sound = true; beep(3, 0.3, 780); V.sound = s; break; }
+    case 'bufReset': inactive.clear(); helpFor = null; renderWindow(); break;
+    case 'dlgX': $('#dlg').hidden = true; break;
+    case 'dlgGo': $('#dlg').hidden = true; goStandby(); break;
+  }
+});
+function autoLimits() {
+  if (V.standby || M.mv === null) { scrToast('Auto sets limits around the current monitored values: start ventilation first.'); return; }
+  V.lim.phigh = clamp(Math.round(Math.max(M.ppeak + 10, 35)), 15, 70);
+  V.lim.mvhigh = +clamp(M.mv * 1.5, 0.5, 50).toFixed(1);
+  V.lim.mvlow = +clamp(M.mv * 0.6, 0, V.lim.mvhigh - 0.1).toFixed(1);
+  V.lim.fhigh = clamp(Math.round(M.ftot * 1.4 + 5), 2, 99);
+  V.lim.flow = clamp(Math.round(M.ftot * 0.6), 0, V.lim.fhigh - 1);
+  logEvent('Alarm limits set with Auto', 'info');
+  addPrompt('Auto set the alarm limits around the current values (Vt and Apnea limits are not changed). The manual warns that automatic limits are not appropriate in all situations: check them, and in NIV set the low Pressure limit yourself. (This trainer\'s Auto rules are illustrative.)');
+  renderAll();
+}
+
+function startVentilation() {
+  if (E) confirmEdit();
+  V.standby = false; V.ambient = false; V.startSuppress = 60;
+  B.lastStart = B.now; B.nextEffort = B.now + 0.6; B.starts = []; B.types = []; B.vols = [];
+  Object.assign(B, {Vee:0, vEndInsp:0, simvC0:B.now, simvDue:true, lastMand:-1e9, apnoeaVent:false, ovl:null, br:null, phase:'exp', t:0});
+  if (V.mode === 'ASV') asvInit();
+  if (V.cpr) V.cpr.t0 = B.now;
+  win = null;
+  if (isHFO()) {
+    logEvent('Therapy started (HiFlowO2)', 'info');
+    addPrompt('HiFlowO2 therapy started: Flow ' + V.set.hflow + ' l/min, Oxygen ' + V.set.o2 + '%. Watch SpO2 and the respiratory rate; HiFlowO2 does not ventilate the patient.');
+  } else {
+    logEvent('Ventilation started (' + modeLabel() + ')', 'info');
+    addPrompt('Ventilation started in ' + modeLabel() + '. Acoustic patient alarms are suppressed for 1 minute after starting from Standby. Check synchrony, SpO2 target and leak.');
+  }
+  if (V.tests.leak !== 'ok' || V.tests.flow !== 'ok') addPrompt('Note: the leak test and flow sensor calibration have not both passed (System > Tests & calib). The manual expects the preoperational check before connecting a patient.');
+  updateTasks(); renderAll();
+}
+function goStandby() {
+  V.standby = true; V.standbySince = B.now; active.clear(); B.apnoeaVent = false;
+  for (const k in M) M[k] = null;
+  logEvent('Standby activated', 'info');
+  win = 'standby'; renderAll();
+}
+
+/* ---------- Tests & calib with physical-action prompts ---------- */
+const PHYS = {
+  disc: 'Disconnect circuit at the patient side of the flow sensor',
+  block: 'Block the opening (gloved finger)',
+  recon: 'Reconnect the breathing circuit',
+  flip: 'Attach calibration adapter and flip 180°',
+  flipback: 'Flip back 180° and remove the adapter',
+  wait: 'Do nothing'
+};
+function setPhysical(list) {
+  $('#hands').hidden = !(list && list.length);
+  $('#physical').innerHTML = list && list.length ? list.map(k => `<button data-phys="${k}">${esc(PHYS[k])}</button>`).join('') : '<span style="font-size:.8rem;color:var(--muted)">Nothing to do at the moment.</span>';
+}
+function tcMsg(m) { if (V.testRun) V.testRun.msg = m; if (win === 'system' && winTab === 'tests') renderWindow(); }
+function startTest(kind) {
+  if (!V.standby) { scrToast('Tests and calibrations are only available in Standby.'); return; }
+  if (V.testRun) { scrToast('A test is already running.'); return; }
+  V.testRun = {kind, step:0, msg:''};
+  if (kind === 'leak') { tcMsg('<b>Leak test.</b> Disconnect patient.'); setPhysical(['block', 'disc', 'recon']); }
+  else if (kind === 'flow') { tcMsg('<b>Flow sensor calibration.</b> Attach the calibration adapter and flip the components 180°.'); setPhysical(['flipback', 'flip', 'block']); }
+  else { tcMsg('<b>O2 sensor calibration</b> in progress…'); setPhysical([]); setTimeout(() => finishTest('o2', true, 'O2 sensor calibration passed.'), 3000); }
+}
+function finishTest(kind, ok, why) {
+  V.tests[kind] = ok ? 'ok' : 'fail'; V.tests[kind + 'At'] = new Date().toLocaleString('en-GB', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  V.testRun = null; setPhysical([]);
+  logEvent((kind === 'leak' ? 'Leak test' : kind === 'flow' ? 'Flow sensor calibration' : 'O2 sensor calibration') + (ok ? ' passed' : ' failed'), ok ? 'info' : 'med');
+  if (win === 'system' && winTab === 'tests') { renderWindow(); $('#tcMsg').innerHTML = (ok ? '✔ ' : '✖ ') + esc(why); }
+  if (!ok) addPrompt(why);
+  updateTasks();
+}
+$('#physical').addEventListener('click', e => {
+  const b = e.target.closest('[data-phys]'); if (!b || !V.testRun) return;
+  const a = b.dataset.phys, T = V.testRun;
+  if (T.kind === 'leak') {
+    if (T.step === 0) { if (a !== 'disc') return finishTest('leak', false, 'Leak test failed: when "Disconnect patient" is shown, disconnect at the patient side of the flow sensor first. Check each step and repeat.');
+      T.step = 1; tcMsg('<b>Leak test.</b> Block breathing circuit.'); setPhysical(['recon', 'block', 'wait']); }
+    else if (T.step === 1) { if (a !== 'block') return finishTest('leak', false, 'Leak test failed: the opening was not fully blocked. Check each step (was the opening completely blocked?) and repeat.');
+      T.step = 2; tcMsg('<b>Leak test</b> in progress…'); setPhysical([]);
+      setTimeout(() => { if (!V.testRun) return; if (P.circLeak) return finishTest('leak', false, 'Leak test failed: there is a leak in the circuit. Look for disconnections or cracks, check the flow sensor and expiratory valve set are seated, replace the expiratory valve set or circuit, and repeat. If it still fails, take the ventilator out of use.');
+        T.step = 3; tcMsg('<b>Leak test.</b> Reconnect breathing circuit.'); setPhysical(['wait', 'recon']); }, 2200); }
+    else if (T.step === 3) { if (a !== 'recon') return; finishTest('leak', true, 'Leak test passed.'); }
+  } else if (T.kind === 'flow') {
+    if (T.step === 0) { if (a !== 'flip') return finishTest('flow', false, 'Flow sensor calibration failed: follow the on-screen order (attach the calibration adapter and flip 180° first). Repeat.');
+      T.step = 1; tcMsg('<b>Flow sensor calibration</b> in progress…'); setPhysical([]);
+      setTimeout(() => { if (!V.testRun) return; T.step = 2; tcMsg('<b>Flow sensor calibration.</b> Flip back 180° and remove the calibration adapter.'); setPhysical(['flipback', 'disc']); }, 2000); }
+    else if (T.step === 2) { if (a !== 'flipback') return finishTest('flow', false, 'Flow sensor calibration failed: flip the components back and remove the adapter when asked. Repeat.'); finishTest('flow', true, 'Flow sensor calibration passed.'); }
+  }
+});
+
+/* ---------- front-panel keys ---------- */
+let pwT = null, pwLong = false;
+const kPower = $('#kPower');
+kPower.addEventListener('pointerdown', () => { pwLong = false; clearTimeout(pwT); pwT = setTimeout(() => { pwLong = true; powerHold(); }, 3000); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => kPower.addEventListener(ev, () => clearTimeout(pwT)));
+kPower.addEventListener('click', () => {
+  if (pwLong) { pwLong = false; return; }
+  if (!V.power) { powerOn(); return; }
+  if (V.locked) { scrToast('Screen is locked! The Power/Standby key is inactive while locked.'); return; }
+  if (V.selftest > 0) return;
+  if (V.standby) { startVentilation(); return; }
+  $('#dlg').hidden = false;
+});
+function powerHold() {
+  if (!V.power) return;
+  if (!V.standby) { scrToast('Enter Standby first (press and release the key, then touch Activate standby).'); return; }
+  V.power = false; win = null; E = null; D = null; active.clear(); $('#dlg').hidden = true;
+  logEvent('Ventilator turned off', 'info'); renderAll();
+}
+function powerOn() {
+  V.power = true; V.selftest = 4; V.standby = true; V.standbySince = B.now;
+  $('#lamp').className = 't1-lamp'; void $('#lamp').offsetWidth; $('#lamp').classList.add('self');
+  renderAll();
+}
+$('#kDay').addEventListener('click', () => { if (!V.power) return; V.night = !V.night; renderAll(); });
+$('#kLock').addEventListener('click', () => { if (!V.power) return; V.locked = !V.locked; if (V.locked) { if (E) confirmEdit(); E = null; } renderAll(); });
+$('#kManual').addEventListener('click', () => {
+  if (!V.power) return;
+  if (V.standby) { scrToast('Not available in Standby'); return; }
+  V.manualReq = true; renderLEDs();
+});
+$('#kO2').addEventListener('click', () => {
+  if (!V.power) return;
+  if (P.o2fail) { scrToast('O2 enrichment is not available without an oxygen supply'); return; }
+  if (V.o2Enrich > 0) { V.o2Enrich = 0; logEvent('O2 enrichment cancelled', 'info'); }
+  else { V.o2Enrich = O2_ENRICH_S; logEvent('O2 enrichment started', 'info'); if (!V.standby) addPrompt('O2 enrichment: 100% oxygen for 2 minutes (adult/paediatric). In hypercapnic patients, return to the target SpO2 of 88–92% afterwards.'); }
+  renderAll();
+});
+$('#kNeb').addEventListener('click', () => {
+  if (!V.power) return;
+  if (V.standby) { scrToast('Nebulisation is only available during ventilation'); return; }
+  if (V.neb > 0) { V.neb = 0; logEvent('Nebulisation stopped', 'info'); }
+  else { V.neb = NEB_MIN * 60; logEvent('Nebulisation started', 'info'); addPrompt('Nebuliser started (simulated). BTS: give nebulised drugs during NIV breaks unless the patient depends on NIV; nebulising in-line can affect the measured volumes.'); }
+  renderAll();
+});
+$('#kPrint').addEventListener('click', () => { if (!V.power) return; if (V.locked) { scrToast('Screen is locked!'); return; } const l = $('#led-print'); l.classList.add('on'); setTimeout(() => l.classList.remove('on'), 600); scrToast('Screenshot saved to the USB memory device (simulated).'); });
+$('#kAudio').addEventListener('click', () => { if (!V.power) return; V.audioPause = V.audioPause > 0 ? 0 : AUDIO_PAUSE_S; renderAll(); });
+$('#btnSound').addEventListener('click', e => { V.sound = !V.sound; e.currentTarget.setAttribute('aria-pressed', V.sound); if (V.sound) beep(1, 0.2, 700); });
+/* full screen: CSS takes the device over the whole window; the Fullscreen API also hides the browser bars where it is supported (not on iPhone) */
+function setFull(on) {
+  document.body.classList.toggle('t1fs', on);
+  $('#btnFull').setAttribute('aria-pressed', on);
+  const d = document, el = d.documentElement;
+  const fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+  try {
+    if (on && !fsEl) { const r = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen && el.webkitRequestFullscreen(); if (r && r.catch) r.catch(() => {}); }
+    else if (!on && fsEl) { const r = d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen && d.webkitExitFullscreen(); if (r && r.catch) r.catch(() => {}); }
+  } catch (er) {}
+  fitDevice();
+  if (on) $('#knob').focus({ preventScroll: true }); else $('#btnFull').focus({ preventScroll: true });
+}
+$('#btnFull').addEventListener('click', () => setFull(true));
+$('#btnFsExit').addEventListener('click', () => setFull(false));
+['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => {
+  if (!(document.fullscreenElement || document.webkitFullscreenElement) && document.body.classList.contains('t1fs')) setFull(false);
+  else fitDevice();
+}));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !E && document.body.classList.contains('t1fs')) setFull(false); });
+
+/* ---------- knob ---------- */
+const knob = $('#knob');
+let drag = null, suppressClick = false;
+knob.addEventListener('pointerdown', e => { drag = {a: angleOf(e), acc: 0, moved: 0}; knob.setPointerCapture(e.pointerId); });
+knob.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const a = angleOf(e); let d = a - drag.a; if (d > 180) d -= 360; if (d < -180) d += 360;
+  drag.a = a; drag.acc += d; drag.moved += Math.abs(d);
+  while (drag.acc >= 20) { drag.acc -= 20; turn(1); }
+  while (drag.acc <= -20) { drag.acc += 20; turn(-1); }
+});
+knob.addEventListener('pointerup', () => { if (drag && drag.moved > 12) suppressClick = true; drag = null; });
+knob.addEventListener('pointercancel', () => { drag = null; });
+function angleOf(e) { const r = knob.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI; }
+knob.addEventListener('click', () => { if (suppressClick) { suppressClick = false; return; } pressKnob(); });
+knob.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); turn(1); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); turn(-1); }
+  else if (e.key === 'Escape') { cancelEdit(); }
+});
+knob.addEventListener('wheel', e => { e.preventDefault(); turn(e.deltaY < 0 ? 1 : -1); }, {passive:false});
+$('#kCW').addEventListener('click', () => turn(1));
+$('#kCCW').addEventListener('click', () => turn(-1));
+$('#kPress').addEventListener('click', pressKnob);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelEdit(); });
+
+
+/* ======================= SIMULATOR LINK ======================= */
+/* Everything above is the HAMILTON-T1 device copied from the standalone trainer. Below is what makes it
+   a simulation device: it joins a session like the defib tablet (sessions/<CODE>/live for the patient,
+   presence, deviceEvents for the facilitator's log, ventState for the facilitator's mirror), runs in
+   real time, and takes its lungs from the controller (data/ventprofiles.js). Phase 1 of the plan: the
+   controller's patient numbers are shown on the T1 but the ventilator does not yet change them. */
+const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
+if (EMBEDDED) document.body.classList.add('embedded');
+const VP = window.VENT_PROFILES;
+const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null};
+
+/* the trainer's teaching prompts and task list are not part of the simulation device */
+function addPrompt() {}
+function updateTasks() {}
+
+/* ---------- the patient the breath engine ventilates ---------- */
+function makePatient(config) {
+  const pr = VP.lungFor(config);
+  const id = config && VP.profiles[config.profile] ? config.profile : 'normal';
+  P = {id, pr, paco2:pr.paco2, hco3:pr.hco3, spo2:null, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0, improve:0,
+       fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
+       abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
+  calcSpo2(pr.fio2Pre, 0);
+  P.spo2 = null;
+}
+const cfgKey = c => (c && c.profile || 'normal') + '|' + (c && c.breathing === false ? 'still' : c && c.breathing === true ? 'breathing' : 'auto');
+/* the facilitator changed the lungs or the breathing: new lung, same circuit, same problems */
+function applyConfig(config) {
+  const key = cfgKey(config);
+  if (key === LIVE.cfgKey) return;
+  const profileChanged = !LIVE.config || (config && config.profile) !== (LIVE.config && LIVE.config.profile);
+  LIVE.config = config; LIVE.cfgKey = key;
+  const pr = VP.lungFor(config);
+  P.pr = pr; P.id = config && VP.profiles[config.profile] ? config.profile : 'normal';
+  P.VAbase = (pr.vtBase - pr.vd) * pr.rrBase;
+  if (profileChanged) { P.paco2 = pr.paco2; P.hco3 = pr.hco3; P.vtAvg = pr.vtBase; }
+  if (pr.sedated) P.fatigue = 0;
+}
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+function petco2() {
+  if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
+  return Math.round(LIVE.etco2 * 7.50062);
+}
+function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+/* real time: one second of the page is one second of the patient */
+function patientTick(dt) {
+  const pr = P.pr, dtMin = dt / 60;
+  P.simMin += dtMin;
+  if (V.power && !V.standby && !V.ambient) P.onNivMin += dtMin;
+  P.rr = P.apnoea || pr.sedated || LIVE.rr === 0 ? 0 : pr.rrBase;
+  P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);
+  if (pr.sedated) P.fatigue = 0;
+  P.spo2 = LIVE.spo2;
+  P.hr = LIVE.hr !== null ? LIVE.hr : pr.hr;
+  trendTick();
+}
+
+/* ---------- a fresh ventilator (new scenario, or first start) ---------- */
+function deviceDefaults() {
+  Object.assign(V, {power:false, selftest:0, standby:true, ambient:false, mode:'NIV-ST', set:{...DEFAULT_SET}, lim:{...DEFAULT_LIM}, backupOn:true, cpr:null, psync:false, sigh:false, aprvInit:false,
+    gfx:'wave', locked:false, night:false, o2Enrich:0, audioPause:0, manualReq:false, neb:0, startSuppress:0, standbySince:B.now, testRun:null, tests:{leak:null, flow:null, o2:'ok'}});
+  V.sex = LIVE.sex === 'Female' ? 'Female' : 'Male';
+  V.set.height = V.sex === 'Female' ? 162 : 174;
+  /* an intubated patient: (S)CMV+ at typical post-intubation settings, as in the trainer */
+  if (P.pr.sedated) { V.mode = 'APVcmv'; Object.assign(V.set, {vt:Math.round(calcIBW() * 8 / 10) * 10, rate:18, ie:0.5, peep:5, o2:100}); }
+  E = null; D = null; active.clear(); inactive.clear(); history.length = 0; helpFor = null; cursor = -1;
+  for (const k in M) M[k] = null;
+  Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false});
+  TR.o2.length = 0; TR.flow.length = 0; TR.lastMin = -1;
+  bufP.fill(0); bufF.fill(0); bufV.fill(0); bufPl.fill(0); bufTrig.fill(0);
+  P.onNivMin = 0; P.disc = false; P.fit = 'good'; P.cough = false; P.kink = false; P.apnoea = false; P.o2fail = false; P.mains = true; P.batt = 100; P.circLeak = false;
+  $('#dlg').hidden = true;
+  setPhysical([]);
+  win = null;
+  renderAll();
+}
+
+/* ---------- what the facilitator sees ---------- */
+const fb = {code:null, db:null, linked:false, connected:false, presenceId:Math.random().toString(36).slice(2, 10)};
+let everLinked = false;
+function setLinkState(linked, reason, kind) {
+  LIVE.linked = !!linked;
+  if (linked) everLinked = true;
+  const el = $('#linkBanner');
+  if (linked) { el.hidden = true; return; }
+  el.hidden = false;
+  const lost = kind === 'lost' || (kind === undefined && everLinked);
+  el.textContent = '';
+  const b = document.createElement('b'); b.textContent = lost ? 'LOST CONTACT WITH THE CONTROLLER' : 'NOT LINKED TO SESSION';
+  const span = document.createElement('span'); span.id = 'linkReason';
+  span.textContent = reason || (lost ? 'The link to the controller has dropped. Settings and alarms are not reaching the facilitator.' : 'No session has been supplied to this page.');
+  el.append(b, span);
+  if (!fb.code) {
+    const form = document.createElement('form'); form.id = 'joinForm';
+    const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters');
+    const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link';
+    form.append(input, btn); el.appendChild(form);
+    form.onsubmit = ev => {
+      ev.preventDefault();
+      const code = String(input.value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!code) return;
+      const u = new URL(window.location.href); u.searchParams.set('session', code);
+      window.location.href = u.toString();
+    };
+  }
+}
+
+/* every device event (settings, modes, alarms, tests) goes to the facilitator's log */
+let lastReport = {text:'', at:0}, reportWindow = {start:0, n:0};
+function ventReport(t, p) {
+  if (!fb.db || !fb.code || !LIVE.linked) return;
+  const text = String(t || '').slice(0, 160);
+  const now = Date.now();
+  if (text === lastReport.text && now - lastReport.at < 3000) return;   /* an alarm that flickers */
+  if (now - reportWindow.start > 60000) reportWindow = {start:now, n:0};
+  if (++reportWindow.n > 40) return;                                       /* never flood the log */
+  lastReport = {text, at:now};
+  try {
+    fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
+      type:'VENT_LOG', payload:{text, p:String(p || 'info').slice(0, 8)}, ts:now, from:fb.presenceId, device:EMBEDDED ? 'monitor-vent' : 'standalone-vent'
+    }).catch(() => {});
+  } catch (e) { /* the log is best-effort; the device keeps working */ }
+}
+
+/* the facilitator's mirror of this ventilator (sessions/<CODE>/ventState/<id>) */
+const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
+function ventStateNow() {
+  const state = !V.power ? 'off' : V.selftest > 0 ? 'selftest' : V.ambient ? 'ambient' : V.standby ? 'standby' : 'ventilating';
+  const mk = modeKey(), c = modeCtrls(mk, V.psync);
+  const ctl = (c && c.basic ? c.basic : []).filter(k => V.set[k] !== undefined && CTRL[k]).map(k => CTRL[k].label + ' ' + valStr('ctrl', k, V.set[k]) + (CTRL[k].unit ? ' ' + CTRL[k].unit : '')).join(' · ');
+  const lim = Object.keys(ALIM).filter(k => V.lim[k] !== undefined).map(k => ALIM[k].label + (k.endsWith('low') || k === 'plow' || k === 'flow' ? ' low ' : k === 'apnoea' ? ' ' : ' high ') + valStr('lim', k, V.lim[k])).join(' · ');
+  const mon = {};
+  ['ppeak', 'pplat', 'peep', 'vte', 'mv', 'ftot', 'vleak', 'autopeep', 'pmean'].forEach(k => { const v = finiteOr(M[k]); if (v !== null) mon[k] = v; });
+  return {
+    state, mode:mk, label:String(modeLabel()).slice(0, 24), ctl:ctl.slice(0, 300), lim:lim.slice(0, 300), mon,
+    o2:finiteOr(measuredO2()) || 0,
+    alarms:topAlarms().map(a => a.p + ':' + a.t).join('|').slice(0, 600),
+    win:String(win || '').slice(0, 16), locked:!!V.locked, sex:V.sex, height:V.set.height, ibw:finiteOr(calcIBW()) || 0,
+    tests:('leak ' + (V.tests.leak || 'not done') + ', flow ' + (V.tests.flow || 'not done')).slice(0, 40),
+    embedded:EMBEDDED, ts:Date.now()
+  };
+}
+let lastMirror = '', lastMirrorAt = 0;
+function publishMirror() {
+  if (!fb.db || !fb.code || !LIVE.linked) return;
+  const s = ventStateNow(), sig = JSON.stringify({...s, ts:0}), now = Date.now();
+  if (sig === lastMirror && now - lastMirrorAt < 10000) return;
+  lastMirror = sig; lastMirrorAt = now;
+  fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).set(s).catch(() => {});
+}
+
+/* ---------- keep the ventilator's state if the page reloads or the monitor re-opens it ---------- */
+const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'backupOn', 'sigh', 'psync', 'sex', 'locked', 'night', 'spo2On', 'gfx', 'tests', 'loud'];
+const saveKey = () => 'wmebem_vent_' + fb.code;
+function saveDevice() {
+  if (!fb.code || !LIVE.key) return;
+  const v = {}; SAVE_KEYS.forEach(k => { v[k] = V[k]; });
+  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, at:Date.now(), v, onNivMin:P.onNivMin})); } catch (e) {}
+}
+function restoreDevice() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(saveKey()) || 'null'); } catch (e) { s = null; }
+  if (!s || s.key !== LIVE.key || !(Date.now() - s.at < 12 * 3600 * 1000) || !s.v) return false;
+  SAVE_KEYS.forEach(k => { if (s.v[k] !== undefined) V[k] = s.v[k]; });
+  V.set = {...DEFAULT_SET, ...V.set}; V.lim = {...DEFAULT_LIM, ...V.lim};
+  V.selftest = 0; V.testRun = null; V.cpr = null;
+  P.onNivMin = Number(s.onNivMin) || 0;
+  if (V.power && !V.standby) {
+    /* carry on ventilating, primed as startVentilation does, without logging a new start */
+    B.lastStart = B.now; B.nextEffort = B.now + 0.6; B.starts = []; B.types = []; B.vols = [];
+    Object.assign(B, {Vee:0, vEndInsp:0, simvC0:B.now, simvDue:true, lastMand:-1e9, apnoeaVent:false, ovl:null, br:null, phase:'exp', t:0});
+    if (V.mode === 'ASV') asvInit();
+  }
+  win = V.power && V.standby ? 'standby' : null;
+  renderAll();
+  return true;
+}
+setInterval(saveDevice, 3000);
+window.addEventListener('pagehide', saveDevice);
+
+/* ---------- the patient from the controller ---------- */
+function applyLive(v) {
+  const vit = v.vitals || {};
+  const acts = Array.isArray(v.activeInterventions) ? v.activeInterventions : [];
+  const probe = acts.includes('Obs') || acts.includes('MonSpO2');
+  LIVE.spo2 = probe && Number.isFinite(Number(vit.spO2)) ? Number(vit.spO2) : null;
+  LIVE.hr = probe && Number.isFinite(Number(vit.hr)) ? Number(vit.hr) : null;
+  LIVE.etco2 = v.etco2Enabled && Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;
+  LIVE.rr = Number.isFinite(Number(vit.rr)) ? Number(vit.rr) : null;
+  LIVE.isFinished = !!v.isFinished;
+  LIVE.muted = !!v.isMuted;
+  LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
+  $('#endedBanner').hidden = !LIVE.isFinished;
+  applyConfig(v.vent || null);
+  const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
+  if (LIVE.key === null) { LIVE.key = key; if (!restoreDevice()) deviceDefaults(); }
+  else if (key !== LIVE.key) { LIVE.key = key; deviceDefaults(); }   /* a new scenario: a fresh ventilator */
+  applySound();
+}
+
+function fbStart(code) {
+  if (!window.firebase || !window.FIREBASE_CONFIG) { setLinkState(false, 'The live-session service did not load (no network?). This page cannot reach session ' + code + '.', 'never'); return; }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    fb.db = firebase.database();
+    if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(fb.db);
+  } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }
+  fb.code = code;
+  $('#sessionTag').textContent = 'Session ' + code;
+  fb.db.ref('.info/connected').on('value', snap => {
+    fb.connected = !!snap.val();
+    if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. Settings and alarms are not reaching the facilitator until it returns.', 'lost');
+    if (fb.linked && fb.connected) setLinkState(true);
+  });
+  fb.db.ref('sessions/' + code + '/live').on('value', snap => {
+    const v = snap.val();
+    if (!v || !v.vitals) { setLinkState(false, 'Session ' + code + ' has no patient yet. Start the scenario on the controller, or check the code.', fb.linked ? 'lost' : 'never'); return; }
+    fb.linked = true;
+    setLinkState(true);
+    applyLive(v);
+    publishMirror();
+  }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
+  const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
+  const write = () => pres.update({role:'vent', display:'ventilator', ua:(navigator.userAgent || '').slice(0, 120), ts:Date.now()}).catch(() => {});
+  pres.onDisconnect().remove().catch(() => {});
+  fb.db.ref('sessions/' + code + '/ventState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+  write();
+  setInterval(write, 10000);
+}
+function sessionFromUrl() {
+  try {
+    const raw = new URLSearchParams(window.location.search).get('session');
+    const code = raw ? raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+    return code || null;
+  } catch (e) { return null; }
+}
+
+/* ---------- sound: on unless the facilitator has muted the session ---------- */
+let soundWanted = true;
+function applySound() {
+  V.sound = soundWanted && !LIVE.muted;
+  $('#btnSound').setAttribute('aria-pressed', V.sound);
+}
+/* the device's own Alarm sound handler flips V.sound; this keeps that choice and the session mute together */
+$('#btnSound').addEventListener('click', () => { soundWanted = V.sound; applySound(); });
+/* browsers start audio only after a touch: wake it on the first one */
+document.addEventListener('pointerdown', () => {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+}, {capture:true});
+
+/* ---------- main loop: real time, and it keeps ventilating when the tab is hidden ---------- */
+let acc250 = 0, acc1000 = 0, lastT = performance.now();
+function advance(dt) {
+  engineStep(dt);
+  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = 'standby'; logEvent('Self-test passed', 'info'); renderAll(); } }
+  if (V.o2Enrich > 0) V.o2Enrich = Math.max(0, V.o2Enrich - dt);
+  if (V.audioPause > 0) V.audioPause = Math.max(0, V.audioPause - dt);
+  if (V.startSuppress > 0) V.startSuppress = Math.max(0, V.startSuppress - dt);
+  if (V.neb > 0) V.neb = Math.max(0, V.neb - dt);
+  soundTick(dt);
+  acc250 += dt; acc1000 += dt;
+  if (acc250 >= 0.25) {
+    acc250 = 0; evalAlarms(); powerTick(0.25);
+    if (!E) { renderMMP(); renderAlarmBar(); renderBstat(); renderLEDs(); applyCursor(); }
+    else { renderAlarmBar(); renderBstat(); renderLEDs(); }
+  }
+  if (acc1000 >= 1) {
+    acc1000 = 0; patientTick(1);
+    $('#simClock').textContent = V.power && !V.standby ? 'Ventilating ' + clockStr() : '';
+    publishMirror();
+    if (win && !E && ['monitoring', 'alarms', 'system', 'standby'].includes(win) && cursor < 0 && !(win === 'system' && winTab === 'tests' && V.testRun === null && $('#tcMsg') && /✔|✖/.test($('#tcMsg').textContent))) renderWindow();
+  }
+}
+function frame() {
+  const t = performance.now();
+  let dt = Math.min(5, (t - lastT) / 1000); lastT = t;
+  if (!(dt > 0)) return;
+  while (dt > 0) { const s = Math.min(0.05, dt); advance(s); dt -= s; }
+}
+function rafLoop() { frame(); if (!document.hidden) drawWaves(); requestAnimationFrame(rafLoop); }
+/* a hidden tab or an iframe the monitor has put away gets few or no animation frames */
+setInterval(frame, 250);
+window.addEventListener('resize', fitDevice);
+
+/* ---------- start-up ---------- */
+makePatient(null);
+deviceDefaults();
+applySound();
+fitDevice();
+requestAnimationFrame(rafLoop);
+const urlSession = sessionFromUrl();
+if (urlSession) fbStart(urlSession);
+else setLinkState(false, 'No session was supplied. Enter the session code shown on the controller to link this ventilator.', 'never');
+window.__vent = {V, get P() { return P; }, B, M, LIVE, fb, ventStateNow};
+
+</script>
+</body>
+</html>

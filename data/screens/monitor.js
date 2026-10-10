@@ -46,10 +46,32 @@
         </div>
     );
 
+    // The facilitator's "Ventilator" toggle puts the HAMILTON-T1 (vent/index.html, the same page a
+    // tablet would use) on the room monitor. Opening the defib closes it and vice versa (one
+    // screen); closing it unmounts the page, which keeps its settings in this browser and picks up
+    // where it left off when it is opened again. The learner can flip to the obs and back without
+    // stopping the ventilator: the page stays loaded (and keeps ventilating and alarming) underneath.
+    const MonitorVent = ({ sessionID }) => {
+        const [showObs, setShowObs] = useState(false);
+        return (
+            <>
+                <div className={`absolute inset-0 z-[110] bg-black flex flex-col ${showObs ? 'invisible pointer-events-none' : 'animate-fadeIn'}`} data-testid="monitor-vent" aria-hidden={showObs}>
+                    <iframe title="Ventilator" src={`vent/index.html?session=${encodeURIComponent(sessionID || '')}&embedded=1`}
+                            className="w-full h-full border-0 bg-black" allow="screen-wake-lock; autoplay; fullscreen" />
+                </div>
+                <button type="button" onClick={() => setShowObs(v => !v)} data-testid="monitor-vent-flip"
+                        className="absolute left-2 bottom-2 z-[120] px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-500 text-white text-xs font-bold uppercase tracking-wider shadow-lg">
+                    {showObs ? 'Show ventilator' : 'Show monitor'}
+                </button>
+            </>
+        );
+    };
+
     const MonitorScreen = ({ sim, sessionID }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
+        const ventPanelOpen = !!state.ventPanelOpen && !defibPanelOpen;
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // Each sensor gates exactly its own value/trace. Derived from the shared
@@ -409,6 +431,7 @@
                     exactly like arrestPanelOpen) opens a WORKING defibrillator here, with the obs
                     still visible alongside it. */}
                 {defibPanelOpen && <MonitorDefib sessionID={sessionID} />}
+                {ventPanelOpen && <MonitorVent sessionID={sessionID} />}
 
                 {arrestPanelOpen && !defibPanelOpen && (
                     <div className="absolute inset-0 z-[100] bg-black flex flex-col animate-fadeIn">

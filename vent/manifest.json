@@ -1,0 +1,20 @@
+{
+  "name": "HAMILTON-T1 Ventilator Simulator",
+  "short_name": "Vent Sim",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1b1e22",
+  "theme_color": "#0f1b2d",
+  "icons": [
+    {
+      "src": "../defib/images/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "../defib/images/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

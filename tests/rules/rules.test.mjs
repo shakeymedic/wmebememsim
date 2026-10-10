@@ -63,6 +63,19 @@ test('defib presses, the defib mirror and monitor commands', async () => {
   await assertFails(anon().ref(`sessions/${CODE}/command`).set({ type: 'START_NIBP' }));
 });
 
+test('the ventilator: its log lines, its mirror and the lungs the controller publishes', async () => {
+  await assertSucceeds(anon().ref(`sessions/${CODE}/deviceEvents`).push({ type: 'VENT_LOG', payload: { text: 'Setting changed: PEEP/CPAP 8', p: 'info', alarm: false }, ts: Date.now(), from: 'k5rzc2xy', device: 'monitor-vent' }));
+  const mirror = { state: 'ventilating', mode: 'APVcmv', label: '(S)CMV+', ctl: 'Vt 450 ml', lim: 'Pressure high 40', mon: { ppeak: 22, vte: 448.5 }, o2: 60, alarms: 'hi:High pressure', win: '', locked: false, sex: 'Male', height: 174, ibw: 70, tests: 'leak ok, flow ok', embedded: true, ts: Date.now() };
+  await assertSucceeds(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set(mirror));
+  await assertFails(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set({ ...mirror, extra: 1 }));
+  await assertFails(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set({ ...mirror, mon: { ppeak: 'high' } }));
+  await assertFails(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set({ mode: 'APVcmv', ts: Date.now() }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/live`).update({ ventPanelOpen: true, vent: { profile: 'ards', breathing: false } }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/live`).update({ vent: { profile: 'copd' } }));
+  await assertFails(anon().ref(`sessions/${CODE}/live`).update({ vent: { breathing: true } }));
+  await assertFails(anon().ref(`sessions/${CODE}/live`).update({ ventPanelOpen: 'yes' }));
+});
+
 // ---- accounts and restricted content ------------------------------------------------------------
 test('a user can edit their own profile but never their role, status or entitlements', async () => {
   // Exactly what data/auth.js writes: the profile on sign-up / sign-in, lastSeenAt, an access request

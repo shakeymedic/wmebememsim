@@ -101,6 +101,13 @@
           "isFinished": { ".validate": true },
           "defibPanelOpen": { ".validate": true },
           "defib": { ".validate": true },
+          "ventPanelOpen": { ".validate": "newData.isBoolean()" },
+          "vent": {
+            ".validate": "newData.hasChild('profile')",
+            "profile": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "breathing": { ".validate": "newData.isBoolean()" },
+            "$other": { ".validate": false }
+          },
           "pacing": { ".validate": true },
           "defibView": { ".validate": true },
           "monitorPopup": { ".validate": true },
@@ -135,7 +142,7 @@
             "$other": { ".validate": false }
           }
         },
-        // Presses on a learner's defib, consumed by the controller.
+        // Presses on a learner's defib and the ventilator's log lines, consumed by the controller.
         "deviceEvents": {
           "$event": {
             ".validate": "newData.hasChildren(['type', 'ts'])",
@@ -154,6 +161,29 @@
             "mode": { ".validate": "newData.isString() && newData.val().length <= 12" }, "machine": { ".validate": "newData.isString() && newData.val().length <= 16" }, "energy": { ".validate": "newData.isNumber()" }, "sync": { ".validate": "newData.isBoolean()" },
             "lead": { ".validate": "newData.isString() && newData.val().length <= 8" }, "gain": { ".validate": "newData.isNumber()" }, "pacerOutput": { ".validate": "newData.isNumber()" }, "pacerRate": { ".validate": "newData.isNumber()" },
             "pacerDemand": { ".validate": "newData.isBoolean()" }, "message": { ".validate": "newData.isString() && newData.val().length <= 120" }, "messageType": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "ts": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        // What each HAMILTON-T1 ventilator (vent/index.html) is showing, mirrored on the controller.
+        "ventState": {
+          "$client": {
+            ".validate": "newData.hasChildren(['state', 'ts'])",
+            "state": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "mode": { ".validate": "newData.isString() && newData.val().length <= 12" },
+            "label": { ".validate": "newData.isString() && newData.val().length <= 24" },
+            "ctl": { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "lim": { ".validate": "newData.isString() && newData.val().length <= 300" },
+            "mon": { "$measure": { ".validate": "newData.isNumber()" } },
+            "o2": { ".validate": "newData.isNumber()" },
+            "alarms": { ".validate": "newData.isString() && newData.val().length <= 600" },
+            "win": { ".validate": "newData.isString() && newData.val().length <= 16" },
+            "locked": { ".validate": "newData.isBoolean()" },
+            "sex": { ".validate": "newData.isString() && newData.val().length <= 8" },
+            "height": { ".validate": "newData.isNumber()" },
+            "ibw": { ".validate": "newData.isNumber()" },
+            "tests": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "embedded": { ".validate": "newData.isBoolean()" },
             "ts": { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }
           }
