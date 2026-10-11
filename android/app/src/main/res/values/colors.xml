@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sim_dark">#0F172A</color>
+    <color name="sim_accent">#0EA5E9</color>
+    <color name="icon_background">#FFFFFF</color>
+</resources>

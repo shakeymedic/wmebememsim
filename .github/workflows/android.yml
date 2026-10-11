@@ -1,0 +1,42 @@
+name: Android app
+
+# Builds the EM Sim Android app (android/): a debug APK to install for testing, and a release
+# app bundle (.aab) for Google Play. The release is signed only when the SIM_KEYSTORE_* secrets
+# are set (see android/README.md).
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Build the debug APK and the release bundle
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug bundleRelease assembleRelease
+        env:
+          SIM_KEYSTORE_BASE64: ${{ secrets.SIM_KEYSTORE_BASE64 }}
+          SIM_KEYSTORE_PASSWORD: ${{ secrets.SIM_KEYSTORE_PASSWORD }}
+          SIM_KEY_ALIAS: ${{ secrets.SIM_KEY_ALIAS }}
+          SIM_KEY_PASSWORD: ${{ secrets.SIM_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: em-sim-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: em-sim-release
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
