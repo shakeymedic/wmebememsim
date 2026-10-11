@@ -206,7 +206,12 @@
 
             // URL Params for Monitor Mode
             const urlParams = new URLSearchParams(window.location.search);
-            const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
+            // A new visit first asks what this device is for (controller or patient screen). A
+            // reload in the same browser tab goes straight back to the controller.
+            const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : (() => {
+                try { if (sessionStorage.getItem('wmebem_device_role') === 'controller') return 'setup'; } catch (e) {}
+                return 'welcome';
+            })();
             const rawInitialSession = urlParams.get('session');
             const initialSession = rawInitialSession ? (rawInitialSession.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || null) : null;
 
@@ -247,7 +252,7 @@
 
         const ControllerApp = ({ view, setView, sessionID, setSessionID, setScreen }) => {
             const { useState, useEffect } = React;
-            const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
+            const { SetupScreen, JoinScreen, WelcomeScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
             const [generatedScenario, setGeneratedScenario] = useState(null);
 
             // Accounts are OPTIONAL and OFF THE CRITICAL PATH. useAuth() never
@@ -396,7 +401,7 @@
                             <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Evidence Sim</h1>
                         </div>
                         <div className="flex items-center gap-3">
-                            {view !== 'setup' && sessionID && (
+                            {!['setup', 'welcome', 'join'].includes(view) && sessionID && (
                                 <div className="flex flex-col items-end">
                                     <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Session ID</div>
                                     <div className="font-mono text-lg font-bold text-white tracking-widest leading-none select-all cursor-pointer" title="Copy the session code" onClick={()=>{
@@ -429,7 +434,13 @@
                                 onResume={() => handleResume(resumeData)}
                             />
                         )}
-                        {view === 'join' && <JoinScreen onJoin={handleJoin} onBack={() => setView('setup')} />}
+                        {view === 'welcome' && WelcomeScreen && (
+                            <WelcomeScreen
+                                onController={() => { try { sessionStorage.setItem('wmebem_device_role', 'controller'); } catch (e) {} setView('setup'); }}
+                                onPatientScreen={() => setView('join')}
+                            />
+                        )}
+                        {view === 'join' && <JoinScreen onJoin={handleJoin} onBack={() => setView('welcome')} />}
                         {view === 'briefing' && (
                             <BriefingScreen 
                                 scenario={generatedScenario} 

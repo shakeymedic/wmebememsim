@@ -1,5 +1,5 @@
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, session, live, expect } = require('./helpers');
 
 // Existing behaviour that later changes must not break
 
@@ -59,6 +59,7 @@ test('a monitor that joins before the controller publishes waits instead of cras
   expect(monitorErrors).toEqual([]);
   // The controller then takes that code and starts publishing: the monitor picks the patient up
   await page.goto('/index.html?session=ZZZ999');
+  await chooseController(page);
   await expect(page.getByText('Session Code', { exact: true })).toBeVisible();
   // A monitor-only code like this is not a current-format code, so the controller mints its own;
   // point the monitor at it instead.

@@ -123,6 +123,7 @@ test('a new session code gets the whole patient, not just what changed', async (
   await startQuickSim(page);
   await page.waitForTimeout(800);
   await page.getByRole('button', { name: /Back/ }).first().click();
+  await page.getByTestId('setup-toggle').click();
   await page.getByRole('button', { name: 'New code' }).click();
   const code = await page.evaluate(() => localStorage.getItem('wmebem_session_id'));
   await startQuickSim(page);
@@ -154,7 +155,7 @@ test('keyboard shortcuts still work after clicking a button', async ({ page }) =
 
 test('editing an arrest scenario in Builder keeps HR 0 and BP 0', async ({ page }) => {
   await openController(page);
-  await page.getByRole('button', { name: /^premade$/i }).click();
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
   await page.getByRole('button', { name: 'Cardiac Arrest', exact: true }).click();
   const row = page.locator('div.justify-between', { hasText: 'VF Arrest' }).first();
   await row.getByRole('button', { name: 'Edit' }).click();

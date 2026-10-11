@@ -65,7 +65,7 @@ test('restricted scenarios: locked without the entitlement, listed with it', asy
   }, [uid]);
   await signIn(page, 'a.learner@example.org');
   await page.getByRole('button', { name: 'Close account panel' }).click();
-  await page.getByRole('button', { name: /^premade$/i }).click();
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
   await page.getByRole('button', { name: /Restricted \(RCUK\)/ }).click();
   await expect(page.getByText('This section is locked.')).toBeVisible();
   await expect(page.getByText('awaiting approval')).toBeVisible();

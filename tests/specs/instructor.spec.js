@@ -7,7 +7,7 @@ const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSecti
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
 async function startScenario(page, category, title) {
-  await page.getByRole('button', { name: /^premade$/i }).click();
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
   await page.getByRole('button', { name: category, exact: true }).click();
   await page.locator('div.justify-between', { hasText: title }).first().getByRole('button', { name: 'Load' }).click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();

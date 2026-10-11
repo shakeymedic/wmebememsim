@@ -8,6 +8,7 @@ const read = (page, path) => page.evaluate(p => window.db.ref(p).once('value').t
 test('controller, room monitor and defib tablet share a live session through the real SDK and rules', async ({ page, context }) => {
   const errors = errorsOf(page);
   await page.goto(`/index.html?${EMU}`);
+  await page.getByTestId('welcome-controller').click();
   await expect(page.getByText('Session Code', { exact: true })).toBeVisible();
   const code = await page.evaluate(() => localStorage.getItem('wmebem_session_id'));
 

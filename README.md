@@ -38,7 +38,7 @@ python3 -m http.server 8000
 The **Session ID** shown in the controller header is what pairs the screens. It maps to
 `sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
 characters (no 0/O, 1/I/L). The database rules accept only codes in this format. The controller replaces any older four-character code (from this browser
-or the address bar) with a new one when it loads, and **New code** on the setup screen starts a fresh
+or the address bar) with a new one when it loads, and **New code** (under **Connect patient screens** on the start screen) starts a fresh
 one at any time. **Screens ▾ → Join by QR code** on the controller (and the setup screen) shows QR codes
 for the room monitor, the defib and the ventilator, so a tablet can pair by scanning instead of typing.
 The Defib controller has its own **Join** button.
@@ -138,9 +138,19 @@ breaths/min during CPR. The room monitor and controller draw it at half the ECG 
 8 s, i.e. 12.5 against 25 mm/s), the arrest view adds a CO2 lane when capnography is attached, and
 the defib tablet draws it under its ECG. `tests/specs/capnography.spec.js` checks the shapes and timing.
 
-## Start screen: how are you running the sim?
+## Start screen
 
-The first card on the setup screen (`SessionSetupCard` in `data/screens/setup.js`) asks how many
+The app first asks **What is this device for?** (`WelcomeScreen` in `data/screens/setup.js`):
+**Controller** or **Patient screen**. The controller choice is kept for that tab
+(`sessionStorage` key `wmebem_device_role`), so a reload skips the question; `?mode=monitor` links
+skip it too. A patient screen goes to the code entry (`JoinScreen`).
+
+The controller then sees **What do you want to run?**, one card per launch mode (below); a card opens
+that mode's panel and **All options** goes back. Nothing about the screens has to be chosen first:
+with no set-up saved, the controller uses one patient screen.
+
+Below the cards, the session code and **Connect patient screens** (`SessionSetupCard`) open the
+optional screen set-up. It asks how many
 patient screens there are besides the controller (1, 2 or 3) and where they are (plugged into this
 computer, or separate devices). The answer is remembered on that device (`localStorage` key
 `wmebem_screens`; the earlier `wmebem_setup_mode` is read once and carried over). Roles and layouts
@@ -154,8 +164,8 @@ are in `data/simscreens.js`:
 
 - **Plugged into this computer:** each screen has an Open button that opens it in its own window
   (`emsim-screen-<role>`), to drag onto that screen. Windows, not tabs: the browser slows hidden tabs.
-- **Separate devices:** each screen has its QR code. On the device, **This device is a patient
-  screen** asks for the code and what the screen shows.
+- **Separate devices:** each screen has its QR code. On the device, **Patient screen** on the
+  first screen asks for the code and what the screen shows.
 - The role is in the screen's own address (`?mode=monitor&session=CODE&screen=...`), never in the
   session, so a reload keeps it.
 - The facilitator's **Defib** and **Ventilator** toggles bring a device into the room, independently.
@@ -194,11 +204,11 @@ CT series) the credit says so.
 | **Quick Sim** | A blank synthetic patient and nothing else. Editable obs, the full rhythm list, arrest/ROSC, the monitor and the defib toggle. No scenario, no drugs, no interventions. For ad-hoc teaching at the bedside. |
 | **Defib Sim** | Defibrillator skills on a ZOLL-style tablet defib, with its own Defib controller. Built-in defibrillation, cardioversion and pacing scenarios, free play, or a custom sequence of rhythms. Education or Assessment mode. |
 | **Ventilator Sim** | Ventilator skills on the HAMILTON-T1 (tablet or room monitor) with the full controller: nine scenarios (NIV, CPAP, ARDS, asthma, after RSI, DOPES, mucus plugging, transfer) in Education or Assessment mode. See [The ventilator](#the-ventilator-hamilton-t1) below. |
-| **Random** | Generates a patient from the scenario templates with randomised demographics and obs. |
-| **Premade** | Pick from the 254 built-in scenarios by category. |
-| **Restricted** | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
-| **Custom** | Paste or import a scenario JSON file. Saved scenarios can be edited, loaded or deleted (with a confirmation) from the Custom tab. |
-| **Builder** | Build a scenario field by field in the UI. |
+| **Random scenario** | Generates a patient from the scenario templates with randomised demographics and obs. |
+| **Scenario library** | Pick from the 254 built-in scenarios by category. |
+| **Restricted** (a Scenario library category) | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
+| **My scenarios: Saved** | Paste or import a scenario JSON file. Saved scenarios can be edited, loaded or deleted (with a confirmation). |
+| **My scenarios: Builder** | Build a scenario field by field in the UI. |
 
 ### Quick Sim
 

@@ -26,6 +26,8 @@
         const [count, setCount] = useState(() => (S.readSetup() || {}).count || null);
         const [where, setWhere] = useState(() => (S.readSetup() || {}).where || null);
         const [blocked, setBlocked] = useState({});
+        // Closed until wanted: screens can be connected now or at any time during a scenario.
+        const [open, setOpen] = useState(false);
         const pick = (c, w) => {
             setCount(c); setWhere(w);
             // The first choice closes the chooser; changing an existing set-up keeps it open until Done.
@@ -36,7 +38,7 @@
 
         const tile = (on, onClick, testId, icon, title, text) => (
             <button type="button" onClick={onClick} data-testid={testId} aria-pressed={on}
-                className={`text-left rounded-lg border-2 p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${on ? 'border-sky-400 bg-sky-950/40' : 'border-slate-600 bg-slate-800 hover:border-slate-400'}`}>
+                className={`text-left flex flex-col items-start justify-start rounded-lg border-2 p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${on ? 'border-sky-400 bg-sky-950/40' : 'border-slate-600 bg-slate-800 hover:border-slate-400'}`}>
                 <div className="flex items-center gap-1 mb-1 text-sky-300">{icon}</div>
                 <div className="font-bold text-white text-sm leading-tight">{title}</div>
                 <div className="text-xs text-slate-300 mt-1 leading-snug">{text}</div>
@@ -87,7 +89,7 @@
                     ) : (
                         <div className="mt-auto flex gap-3 items-end">
                             {(() => { const svg = qrSvg(url); return svg ? <div className="bg-white p-1.5 rounded w-28 h-28 flex-none" data-testid={`setup-qr-${role}`} title={url} dangerouslySetInnerHTML={{ __html: svg }} /> : null; })()}
-                            <div className="text-[11px] text-slate-400 leading-snug">Scan with that device's camera, or go to <b className="font-mono text-slate-200 break-all">{siteText}</b>, choose <b>This device is a patient screen</b>, type the code and pick <b>{R.short}</b>.</div>
+                            <div className="text-[11px] text-slate-400 leading-snug">Scan with that device's camera, or go to <b className="font-mono text-slate-200 break-all">{siteText}</b>, choose <b>Patient screen</b>, type the code and pick <b>{R.short}</b>.</div>
                         </div>
                     )}
                 </div>
@@ -95,12 +97,26 @@
         };
 
         return (
-            <section className="bg-slate-900 border border-slate-700 p-4 rounded-lg space-y-4" aria-labelledby="setup-heading" data-testid="setup-card">
-                {editing && (
+            <section className="bg-slate-900 border border-slate-700 p-4 rounded-lg space-y-4" aria-label="Patient screens" data-testid="setup-card">
+                <div className="flex flex-wrap items-center gap-3 justify-between">
+                    <div className="flex items-center gap-4">
+                        {codeBlock}
+                        <div className="text-xs text-slate-400 max-w-xs leading-snug">
+                            {saved
+                                ? <>{saved.count} patient screen{saved.count > 1 ? 's' : ''}, {saved.where === 'here' ? 'plugged into this computer' : 'on separate devices'}.</>
+                                : <>The candidates' screens join with this code. Connect them now, or later from <b>Screens</b> during a scenario.</>}
+                        </div>
+                    </div>
+                    <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} data-testid="setup-toggle"
+                            className={`h-9 px-3 rounded font-bold text-sm flex items-center gap-1.5 border transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${open ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-sky-700 hover:bg-sky-600 border-sky-500 text-white'}`}>
+                        <Lucide icon="monitor" className="w-4 h-4"/> Connect patient screens <Lucide icon={open ? 'chevron-down' : 'chevron-right'} className="w-3 h-3"/>
+                    </button>
+                </div>
+                {open && editing && (
                     <div className="space-y-3">
                         <div>
-                            <h2 id="setup-heading" className="text-lg font-bold text-white mb-1">How are you running the sim?</h2>
-                            <p className="text-xs text-slate-400">This computer is your controller. Pick how many patient screens the candidates will see, and where they are. This device remembers it; you can change it at any time.</p>
+                            <h2 id="setup-heading" className="text-lg font-bold text-white mb-1">How many patient screens, and where?</h2>
+                            <p className="text-xs text-slate-400">Pick how many screens the candidates will see, and where they are. This device remembers it; you can change it at any time.</p>
                         </div>
                         <div>
                             <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Patient screens</div>
@@ -118,15 +134,10 @@
                             </div>
                         </div>
                         {saved && <Button onClick={() => setEditing(false)} variant="primary" className="h-10 px-6 text-sm">Done</Button>}
-                        <button type="button" onClick={onJoinClick} data-testid="setup-join"
-                                className="w-full text-left rounded-lg border border-dashed border-slate-500 p-3 hover:border-slate-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
-                            <div className="font-bold text-white text-sm flex items-center gap-2"><Lucide icon="tablet" className="w-4 h-4 text-sky-300"/> This device is a patient screen</div>
-                            <div className="text-xs text-slate-300">Type the code shown on the controller and choose what this screen shows.</div>
-                        </button>
                     </div>
                 )}
 
-                {!editing && saved && (
+                {open && !editing && saved && (
                     <div className="space-y-3">
                         <div>
                             <h2 id="setup-heading" className="text-sm font-bold text-sky-300 uppercase tracking-wide flex items-center gap-2">
@@ -145,10 +156,11 @@
                     </div>
                 )}
 
-                <div className={`flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3 justify-between`}>
-                    {codeBlock}
-                    {sessionActions}
-                </div>
+                {open && (
+                    <div className="flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3 justify-end">
+                        {sessionActions}
+                    </div>
+                )}
             </section>
         );
     };
@@ -157,7 +169,7 @@
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
-        const [mode, setMode] = useState(initialMode || 'random'); 
+        const [mode, setMode] = useState(initialMode || null);
         const [category, setCategory] = useState('Medical');
         const [age, setAge] = useState('Any');
         const [acuity, setAcuity] = useState('Any'); 
@@ -583,34 +595,61 @@
             { id: 'Restricted', label: 'Restricted (RCUK)', icon: 'lock', restricted: true, filter: () => false },
         ];
 
+        // WHAT TO RUN. Six plain choices, nothing preselected; picking one opens its panel. The
+        // patient screens are connected whenever they are needed (a collapsed card below), and
+        // the WETFLAG option sits only where a child can come up.
+        const MODES = [
+            { id: 'premade', label: 'Scenario library', icon: 'book-open', text: 'Pick a ready-made case: medical, trauma, paediatric, arrest and more.' },
+            { id: 'random', label: 'Random scenario', icon: 'shuffle', text: 'Generate a case from a few filters.' },
+            { id: 'quick', label: 'Quick Sim', icon: 'sliders', text: 'A blank patient. You set the obs and the rhythm as you go.' },
+            { id: 'vent', label: 'Ventilator Sim', icon: 'wind', text: 'HAMILTON-T1 ventilator scenarios, in Education or Assessment mode.' },
+            { id: 'defib', label: 'Defib Sim', icon: 'zap', text: 'Defibrillator skills on a tablet defib.' },
+            { id: 'custom', label: 'My scenarios', icon: 'folder', text: 'Scenarios you have built or imported, and the scenario builder.' }
+        ];
+        const modeGroup = mode === 'builder' ? 'custom' : mode;
+        const current = MODES.find(m => m.id === modeGroup);
+        const pickMode = (m) => { setMode(m); setPremadeCategory(null); };
+        const wetflagOption = ['premade', 'random', 'custom', 'builder'].includes(mode) && (
+            <label className="flex items-start gap-2 text-xs text-slate-300 mt-4 pt-3 border-t border-slate-700 cursor-pointer">
+                <input type="checkbox" aria-label="Show WETFLAG on the monitor" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="mt-0.5 w-4 h-4 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
+                <span><b className="text-white">Show WETFLAG on the monitor from the start</b> (paediatric scenarios). Off by default; you can show or hide it at any time from Rhythm &amp; resus.</span>
+            </label>
+        );
+
         return (
-            <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-6">
-                <SessionSetupCard sessionID={sessionID} onJoinClick={onJoinClick} onNewSessionCode={onNewSessionCode} />
-                <div className="bg-slate-800 p-4 rounded border border-slate-600 text-sm text-slate-300">
-                    <p className="font-bold text-sky-400 mb-1">Choose what to run:</p>
-                    <p>Select a mode below. <strong>Quick Sim</strong> is a blank patient with just obs and a rhythm, for ad-hoc teaching. <strong>Defib Sim</strong> trains defibrillator skills on a tablet defib. <strong>Ventilator Sim</strong> trains HAMILTON-T1 ventilator skills. <strong>Random</strong> generates a patient from filters. <strong>Premade</strong> lists specific conditions. <strong>Builder</strong> lets you edit any scenario.</p>
-                </div>
+            <div className="max-w-4xl mx-auto p-4 h-full overflow-y-auto space-y-5">
                 {savedState && (
-                    <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
-                        <div><h3 className="font-bold text-emerald-400">{savedState.live ? 'Scenario paused' : 'Resume Previous?'}</h3><p className="text-sm text-slate-300">{(savedState.scenario && savedState.scenario.title) || 'Saved session'}{savedState.live ? ' is paused where you left it. Return to it, or choose a new scenario below.' : ''}</p></div>
-                        <Button onClick={onResume} variant="success">{savedState.live ? 'Return to scenario' : 'Resume'}</Button>
+                    <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between gap-3 animate-fadeIn">
+                        <div><h3 className="font-bold text-emerald-400">{savedState.live ? 'Scenario paused' : 'Resume Previous?'}</h3><p className="text-sm text-slate-300">{(savedState.scenario && savedState.scenario.title) || 'Saved session'}{savedState.live ? ' is paused where you left it. Return to it, or choose something new below.' : ''}</p></div>
+                        <Button onClick={onResume} variant="success" className="flex-none">{savedState.live ? 'Return to scenario' : 'Resume'}</Button>
                     </div>
                 )}
-                
-                <div className="flex items-center gap-2 p-2 bg-slate-800 rounded border border-slate-600">
-                    <input type="checkbox" aria-label="Show WETFLAG on the monitor" checked={showWetflag} onChange={e => setShowWetflag(e.target.checked)} className="w-5 h-5 rounded border-slate-500 text-sky-500 focus:ring-sky-500" />
-                    <span className="text-sm font-bold text-white">Show WETFLAG on Monitor from the start (Paediatric Scenarios) <span className="font-normal text-slate-400">— off by default; you can show or hide it at any time from Rhythm &amp; resus</span></span>
-                </div>
 
-                <div className="bg-slate-800 p-6 rounded-lg border border-slate-700 shadow-xl">
-                    {/* Wraps rather than scrolls: `no-scrollbar` removed the only affordance that more tabs
-                        existed, so Builder/Edit was effectively invisible at phone widths. */}
-                    <div className="flex flex-wrap gap-x-2 gap-y-1 mb-6 border-b border-slate-700">
-                        {/* QUICK SIM sits first — it is the fastest route to a running
-                            monitor and skips scenario generation entirely. */}
-                        {['quick', 'defib', 'vent', 'random', 'premade', 'custom', 'builder'].map(m => (
-                            <button key={m} onClick={() => { setMode(m); setPremadeCategory(null); }} className={`pb-2 px-2 sm:px-4 text-xs sm:text-sm font-bold uppercase whitespace-nowrap transition-colors ${mode === m ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-400 hover:text-slate-300'}`}>{m === 'builder' ? 'Builder/Edit' : m === 'quick' ? 'Quick Sim' : m === 'defib' ? 'Defib Sim' : m === 'vent' ? 'Ventilator Sim' : m}</button>
-                        ))}
+                {!mode ? (
+                    <section aria-labelledby="run-heading" data-testid="mode-chooser">
+                        <h2 id="run-heading" className="text-xl font-bold text-white mb-3">What do you want to run?</h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {MODES.map(m => (
+                                <button key={m.id} type="button" onClick={() => pickMode(m.id)} aria-label={m.label} data-testid={`mode-${m.id}`}
+                                        className="text-left flex flex-col items-start justify-start rounded-lg border-2 border-slate-600 bg-slate-800 hover:border-sky-400 hover:bg-slate-700/60 p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
+                                    <Lucide icon={m.icon} className="w-6 h-6 text-sky-300 mb-2"/>
+                                    <div className="font-bold text-white">{m.label}</div>
+                                    <div className="text-xs text-slate-300 mt-1 leading-snug">{m.text}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </section>
+                ) : (
+                <div className="bg-slate-800 p-4 sm:p-6 rounded-lg border border-slate-700 shadow-xl">
+                    <div className="flex flex-wrap items-center gap-3 mb-5 pb-3 border-b border-slate-700">
+                        <Button variant="secondary" onClick={() => pickMode(null)} className="h-9 px-3 text-sm"><Lucide icon="arrow-left" className="w-4 h-4"/> All options</Button>
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">{current && <Lucide icon={current.icon} className="w-5 h-5 text-sky-300"/>}{current ? current.label : ''}</h2>
+                        {modeGroup === 'custom' && (
+                            <div className="flex gap-1 ml-auto" role="group" aria-label="My scenarios">
+                                <button type="button" onClick={() => setMode('custom')} aria-pressed={mode === 'custom'} className={`px-3 h-8 rounded text-xs font-bold ${mode === 'custom' ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}>Saved</button>
+                                <button type="button" onClick={() => setMode('builder')} aria-pressed={mode === 'builder'} className={`px-3 h-8 rounded text-xs font-bold ${mode === 'builder' ? 'bg-sky-700 text-white' : 'bg-slate-700 text-slate-300 hover:text-white'}`}>Builder</button>
+                            </div>
+                        )}
                     </div>
                     {/* ============================ WAVE 4b / PART A: QUICK SIM ============================
                         No scenario, no brief, no drugs, no objectives. Just a blank patient whose obs and
@@ -731,7 +770,7 @@
                                      <input type="file" accept=".json" onChange={importCustomScenariosFile} className="hidden"/>
                                  </label>
                              </div>
-                             {customScenarios.length === 0 && <p className="text-slate-400 text-sm italic text-center py-4">No custom scenarios saved yet. Use Builder to create one.</p>}
+                             {customScenarios.length === 0 && <p className="text-slate-400 text-sm italic text-center py-4">No saved scenarios yet. Use <b>Builder</b> (top right) to make one, or import a file.</p>}
                              {customScenarios.map((s, i) => (
                                  <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
                                      <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{getScenarioPreviewText(s)}</div></div>
@@ -804,6 +843,40 @@
                             {builderInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields above to run this scenario.</p>}
                         </div>
                     )}
+                    {wetflagOption}
+                </div>
+                )}
+
+                <SessionSetupCard sessionID={sessionID} onJoinClick={onJoinClick} onNewSessionCode={onNewSessionCode} />
+            </div>
+        );
+    };
+
+    // THE FIRST QUESTION: is this device running the sim, or is it a screen the candidates see?
+    // Everything else (what to run, how many screens) comes after, and only for the controller.
+    const WelcomeScreen = ({ onController, onPatientScreen }) => {
+        const { Lucide } = window;
+        const card = (onClick, testId, icon, title, text) => (
+            <button type="button" onClick={onClick} data-testid={testId} aria-label={title}
+                    className="text-left rounded-xl border-2 border-slate-600 bg-slate-800 hover:border-sky-400 hover:bg-slate-700/60 p-6 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 flex flex-col items-start justify-start gap-2">
+                <div className="flex items-center gap-2 text-sky-300">{icon}</div>
+                <div className="text-xl font-bold text-white">{title}</div>
+                <div className="text-sm text-slate-300 leading-snug">{text}</div>
+            </button>
+        );
+        return (
+            <div className="flex flex-col items-center h-full p-4 overflow-y-auto">
+                <div className="w-full max-w-3xl my-auto space-y-6" data-testid="welcome">
+                    <div className="text-center">
+                        <h2 className="text-2xl sm:text-3xl font-bold text-white">What is this device for?</h2>
+                        <p className="text-sm text-slate-400 mt-1">Each device in the room is one or the other. Open the sim on each device and choose.</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {card(onController, 'welcome-controller', <Lucide icon="sliders" className="w-8 h-8"/>, 'Controller',
+                            'I am running the sim from here: choosing the patient, changing the obs and following what the team does.')}
+                        {card(onPatientScreen, 'welcome-screen', <><Lucide icon="monitor" className="w-8 h-8"/><Lucide icon="zap" className="w-6 h-6"/><Lucide icon="wind" className="w-6 h-6"/></>, 'Patient screen',
+                            'This is what the candidates see: the monitor, the defib or the ventilator. You will type the code shown on the controller.')}
+                    </div>
                 </div>
             </div>
         );
@@ -821,7 +894,7 @@
                 <div className="w-full max-w-xl space-y-5 text-center my-auto">
                     <div className="flex justify-center"><img src="images/emevidence-logo.png" alt="Logo" className="h-20 object-contain" /></div>
                     <h1 className="text-3xl font-bold text-sky-400">Patient screen</h1>
-                    <p className="text-xs text-slate-400">Quicker: scan this screen's QR code on the controller's start screen, or from <b>Screens</b>, <b>Join by QR code</b>.</p>
+                    <p className="text-xs text-slate-400">Quicker: on the controller, press <b>Connect patient screens</b> (or, during a scenario, <b>Screens</b>, <b>Join by QR code</b>) and scan this screen's QR code.</p>
                     <div>
                         <label htmlFor="join-code" className="block text-slate-300 mb-2">Session code</label>
                         <input id="join-code" type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && ok) onJoin(code, role); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/>
@@ -841,8 +914,9 @@
                             })}
                         </div>
                     </div>
+                    {code.length > 0 && !ok && <p className="text-xs text-amber-300">The code is the six characters shown on the controller. It never uses O, 0, I, 1 or L.</p>}
                     <Button onClick={() => onJoin(code, role)} disabled={!ok} className="w-full py-4 text-xl">Connect</Button>
-                    {onBack && <button type="button" onClick={onBack} className="text-sm text-slate-400 underline hover:text-white">Back: this device runs the sim</button>}
+                    {onBack && <button type="button" onClick={onBack} className="text-sm text-slate-400 underline hover:text-white">Back</button>}
                 </div>
             </div>
         );
@@ -908,5 +982,6 @@
 
     window.SetupScreen = SetupScreen;
     window.JoinScreen = JoinScreen;
+    window.WelcomeScreen = WelcomeScreen;
     window.BriefingScreen = BriefingScreen;
 })();
