@@ -328,7 +328,7 @@
                         });
                     } catch (e) {}
                 }
-            }, 'Account created. Access to restricted content needs approval — use "Request access" below.'), [run]);
+            }), [run]);
 
         const resetPassword = useCallback((email) =>
             run(auth => auth.sendPasswordResetEmail(String(email || '').trim()),
@@ -557,6 +557,12 @@
 
         const TABS = [['signin', 'Sign in'], ['signup', 'Create account'], ['reset', 'Reset password']];
 
+        // Once signed in (email, new account or the Google window) the box has done its job: close
+        // it so the header shows the account straight away instead of a sign-in form that looks
+        // as if nothing happened.
+        const signedInNow = auth.phase === 'signedIn' && !!auth.user;
+        useEffect(() => { if (signedInNow && onClose) onClose(); }, [signedInNow]);
+
         return (
             <Modal label="Account" onClose={onClose}>
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-md shadow-2xl">
@@ -564,7 +570,7 @@
                         <div>
                             <h3 className="text-lg font-bold text-white uppercase tracking-wider">Account</h3>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                                An account saves your own scenarios and unlocks restricted content. Everything else in the app works without one.
+                                An account saves your own scenarios so you can use them on any device. Everything else in the app works without one.
                             </p>
                         </div>
                         <button aria-label="Close account panel" onClick={onClose} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
@@ -756,18 +762,70 @@
         );
     };
 
+    // ---- ACCOUNT PANEL -------------------------------------------------------------------------
+    // Opened from the header once signed in: who you are, sign out, and (only if you want it) a
+    // request for access to course scenarios. Course access is opt-in here rather than a status
+    // badge in the header, because most people never need it.
+    const COURSE_ACCESS_TEXT = 'Scenarios from specific courses (for example ALS, ETC and others) are copyrighted, so they are only released to approved course faculty and participants.';
+    const AccountPanel = ({ auth, onClose }) => {
+        const { Button, Lucide, Modal } = window;
+        const p = auth.profile || {};
+        const requested = !!(p.requestedAccess && p.requestedAccess.rcuk);
+        const courseState = auth.has && auth.has('rcuk') ? 'approved'
+            : p.status === 'rejected' ? 'declined'
+            : requested ? 'requested' : 'none';
+        return (
+            <Modal label="Your account" onClose={onClose}>
+                <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-md shadow-2xl space-y-4">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h3 className="text-lg font-bold text-white uppercase tracking-wider">Your account</h3>
+                            <p className="text-sm text-emerald-300 mt-1 flex items-center gap-1"><Lucide icon="check-circle" className="w-4 h-4"/> Signed in{auth.user && auth.user.email ? <> as <span className="font-bold text-white">{auth.user.email}</span></> : null}</p>
+                        </div>
+                        <button aria-label="Close account panel" onClick={onClose} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                    </div>
+                    <p className="text-xs text-slate-300">Your saved scenarios (My scenarios) are kept in this account and are available on any device you sign in on.</p>
+
+                    <section className="bg-slate-900 border border-slate-700 rounded p-3 space-y-2" aria-labelledby="course-access-heading">
+                        <h4 id="course-access-heading" className="text-sm font-bold text-white">Course scenarios (optional)</h4>
+                        <p className="text-xs text-slate-400">{COURSE_ACCESS_TEXT} You only need this if you teach or attend one of those courses.</p>
+                        {courseState === 'approved' ? (
+                            <p className="text-xs text-emerald-300 font-bold">Access approved. Course scenarios are in Scenario library.</p>
+                        ) : courseState === 'declined' ? (
+                            <p className="text-xs text-red-300">Your request was not approved. Contact the site owner if you think this is wrong.</p>
+                        ) : courseState === 'requested' ? (
+                            <p className="text-xs text-amber-300">Requested. You will get access once the site owner approves it.</p>
+                        ) : (
+                            <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-300 border-amber-500/60">Request access to course scenarios</Button>
+                        )}
+                        {auth.notice && <div className="text-[11px] text-emerald-300">{auth.notice}</div>}
+                        {auth.error && <div className="text-[11px] text-red-300">{auth.error}</div>}
+                    </section>
+
+                    <div className="flex gap-2">
+                        <Button onClick={async () => { await auth.signOut(); onClose(); }} variant="secondary" disabled={auth.busy} className="flex-1 h-10"><Lucide icon="log-out" className="w-4 h-4 mr-1"/> Sign out</Button>
+                        <Button onClick={onClose} variant="outline" className="flex-1 h-10">Close</Button>
+                    </div>
+                </div>
+            </Modal>
+        );
+    };
+
     // ---- HEADER BUTTON -------------------------------------------------------------------------
     // Sits in the controller header. It is a plain button: it never auto-opens, never nags, and
-    // never gates anything. Requirement B4.
+    // never gates anything. Requirement B4. Signed in, it shows the account's name and opens the
+    // account panel.
     const AccountButton = ({ auth }) => {
         const { Button, Lucide } = window;
         const [showAuth, setShowAuth] = useState(false);
+        const [showAccount, setShowAccount] = useState(false);
         const [showAdmin, setShowAdmin] = useState(false);
 
         const signedIn = auth.phase === 'signedIn' && auth.user;
-        const label = signedIn
-            ? ((auth.profile && auth.profile.displayName) || auth.user.email || 'Account')
-            : 'Sign in';
+        const name = signedIn ? ((auth.profile && auth.profile.displayName) || auth.user.displayName || auth.user.email || 'Account') : null;
+        // Each box belongs to one state: signing in closes the sign-in box, signing out the
+        // account panel, so neither reappears by itself on the next change.
+        useEffect(() => { if (signedIn) setShowAuth(false); else setShowAccount(false); }, [!!signedIn]);
 
         return (
             <div className="flex items-center gap-1">
@@ -776,19 +834,20 @@
                         <Lucide icon="shield" className="w-3 h-3 mr-1"/> Admin
                     </Button>
                 )}
-                <Button onClick={() => (signedIn ? auth.signOut() : setShowAuth(true))} variant="secondary"
-                    className="h-8 px-2 text-[10px] uppercase font-bold max-w-[11rem]"
-                    title={signedIn ? `Signed in as ${auth.user.email} — status: ${auth.profile ? auth.profile.status : 'pending'}. Click to sign out.` : 'Optional. Only needed for restricted content.'}>
-                    <Lucide icon={signedIn ? 'user' : 'log-in'} className="w-3 h-3 mr-1"/>
-                    <span className="truncate">{signedIn ? 'Sign out' : label}</span>
-                </Button>
-                {signedIn && auth.profile && (
-                    <span className={`hidden sm:inline text-[9px] px-1.5 py-0.5 rounded border uppercase font-bold tracking-wider ${auth.profile.status === 'approved' ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300' : auth.profile.status === 'rejected' ? 'bg-red-950/60 border-red-700 text-red-300' : 'bg-amber-950/60 border-amber-700 text-amber-300'}`}
-                        title="Approval status for restricted content only. It does not affect anything else in the app.">
-                        {auth.profile.status}
-                    </span>
+                {signedIn ? (
+                    <Button onClick={() => setShowAccount(true)} variant="secondary" ariaLabel={`Your account (${name})`}
+                        className="h-8 px-2 text-[11px] font-bold max-w-[13rem] border-emerald-700/70">
+                        <Lucide icon="user" className="w-3 h-3 mr-1 text-emerald-300"/>
+                        <span className="truncate">{name}</span>
+                    </Button>
+                ) : (
+                    <Button onClick={() => setShowAuth(true)} variant="secondary" className="h-8 px-2 text-[10px] uppercase font-bold">
+                        <Lucide icon="log-in" className="w-3 h-3 mr-1"/>
+                        <span>Sign in</span>
+                    </Button>
                 )}
-                {showAuth && <AuthModal auth={auth} onClose={() => { auth.clearFeedback(); setShowAuth(false); }} />}
+                {showAuth && !signedIn && <AuthModal auth={auth} onClose={() => { auth.clearFeedback(); setShowAuth(false); }} />}
+                {showAccount && signedIn && <AccountPanel auth={auth} onClose={() => { auth.clearFeedback(); setShowAccount(false); }} />}
                 {showAdmin && <AdminPanel auth={auth} onClose={() => setShowAdmin(false)} />}
             </div>
         );
@@ -797,4 +856,5 @@
     window.AuthModal = AuthModal;
     window.AdminPanel = AdminPanel;
     window.AccountButton = AccountButton;
+    window.AccountPanel = AccountPanel;
 })();

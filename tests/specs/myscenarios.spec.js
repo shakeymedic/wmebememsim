@@ -93,7 +93,6 @@ test('each account sees only its own scenarios, and Delete removes one from the 
     window.__fakeRtdb.set('userScenarios/uid_b_learner_example_org/CUST_2', { id: 'CUST_2', title: 'Learner B case', category: 'Medical', savedAt: 1 });
   });
   await signIn(page);
-  await page.getByRole('button', { name: 'Close account panel' }).click();
   await openMyScenarios(page);
   await expect(page.getByText('Learner A case')).toBeVisible();
   await expect(page.getByText('Learner B case')).toHaveCount(0);
@@ -102,10 +101,10 @@ test('each account sees only its own scenarios, and Delete removes one from the 
   await expect(page.getByText('Learner A case')).toHaveCount(0);
   expect(await mine(page)).toBeNull();
 
+  await page.getByRole('button', { name: /^Your account/ }).click();
   await page.getByRole('button', { name: /Sign out/ }).click();
   await expect(page.getByText('Sign in to save your own scenarios')).toBeVisible();
   await signIn(page, 'b.learner@example.org');
-  await page.getByRole('button', { name: 'Close account panel' }).click();
   await expect(page.getByText('Learner B case')).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -128,7 +127,6 @@ test('scenarios saved on this device before can still run signed out, and move i
   await expect(device.getByText('Old device case')).toBeVisible();
 
   await signIn(page);
-  await page.getByRole('button', { name: 'Close account panel' }).click();
   await device.getByRole('button', { name: 'Add to my account' }).click();
   await expect(page.getByText('Added 2 scenario(s) from this device to your account.')).toBeVisible();
   await expect(page.getByTestId('device-scenarios')).toHaveCount(0);
@@ -148,7 +146,6 @@ test('importing a file adds its scenarios to the account and skips ones already 
   await openController(page);
   await page.evaluate(() => window.__fakeRtdb.set('userScenarios/uid_a_learner_example_org/CUST_1', { id: 'CUST_1', title: 'Already mine', savedAt: 1 }));
   await signIn(page);
-  await page.getByRole('button', { name: 'Close account panel' }).click();
   await openMyScenarios(page);
   await expect(page.getByText('Already mine')).toBeVisible();
   const dialogs = [];

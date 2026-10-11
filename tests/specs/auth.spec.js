@@ -39,12 +39,15 @@ test('signing in fetches the library, a reload restores the account, and signing
   await page.locator('form button[type=submit]').click();   // still wrong
   await page.getByLabel('Password').fill('correct horse');
   await page.locator('form button[type=submit]').click();
-  await page.getByRole('button', { name: 'Close account panel' }).click();
-  await expect(page.getByRole('button', { name: /Sign out/ })).toBeVisible();
+  // The sign-in box closes by itself and the header shows the account
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Your account/ })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByRole('button', { name: /Sign out/ })).toBeVisible();    // restored at start-up
+  await expect(page.getByRole('button', { name: /^Your account/ })).toBeVisible();    // restored at start-up
 
+  await page.getByRole('button', { name: /^Your account/ }).click();
+  await expect(page.getByText('Signed in as')).toBeVisible();
   await page.getByRole('button', { name: /Sign out/ }).click();
   await expect(page.getByRole('button', { name: /^Sign in$/ })).toBeVisible();
   const before = seen.length;
@@ -64,11 +67,14 @@ test('restricted scenarios: locked without the entitlement, listed with it', asy
     window.__fakeRtdb.set('restrictedScenarios/RC001', { id: 'RC001', title: 'Restricted Test Scenario', category: 'Cardiac Arrest', ageRange: 'Adult', acuity: 'Resus', patientProfileTemplate: 'Test.', vitalsMod: { hr: 0, bpSys: 0 }, ecg: { type: 'VF', findings: 'VF' } });
   }, [uid]);
   await signIn(page, 'a.learner@example.org');
-  await page.getByRole('button', { name: 'Close account panel' }).click();
+  // No approval status in the header by default
+  await expect(page.getByText('pending', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
-  await page.getByRole('button', { name: /Restricted \(RCUK\)/ }).click();
+  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC\)/ }).click();
   await expect(page.getByText('This section is locked.')).toBeVisible();
+  await page.getByRole('button', { name: 'Request access to course scenarios' }).click();
   await expect(page.getByText('awaiting approval')).toBeVisible();
+  await expect.poll(() => page.evaluate(([u]) => window.__fakeRtdb.get(`users/${u}/requestedAccess/rcuk`), [uid])).toBe(true);
 
   await page.evaluate(([u]) => window.__fakeRtdb.set(`users/${u}`, { email: 'a.learner@example.org', status: 'approved', entitlements: { rcuk: true } }), [uid]);
   await expect(page.getByText('Restricted Test Scenario')).toBeVisible({ timeout: 10000 });
@@ -85,9 +91,24 @@ test('Continue with Google: a clear message when it is not switched on, and it s
 
   await page.evaluate(() => { window.__fakeGoogleEmail = 'g.user@gmail.com'; });
   await page.getByRole('button', { name: 'Create account with Google' }).click();
-  await page.getByRole('button', { name: 'Close account panel' }).click();
-  await expect(page.getByRole('button', { name: /Sign out/ })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);                              // closes by itself
+  await expect(page.getByRole('button', { name: 'Your account (Google User)' })).toBeVisible();
   // The profile is created on first sign-in, exactly as for an email account
   await expect.poll(() => page.evaluate(() => window.__fakeRtdb.get('users/uid_g_user_gmail_com/email'))).toBe('g.user@gmail.com');
+  expect(errors).toEqual([]);
+});
+
+test('the account panel: course access is opt-in, requested from the panel, and sign out is there', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await signIn(page, 'a.learner@example.org');
+  await page.getByRole('button', { name: /^Your account/ }).click();
+  const panel = page.getByRole('dialog');
+  await expect(panel.getByText('Course scenarios (optional)')).toBeVisible();
+  await expect(panel.getByText(/ALS, ETC and others/)).toBeVisible();
+  await panel.getByRole('button', { name: 'Request access to course scenarios' }).click();
+  await expect(panel.getByText('Requested. You will get access once the site owner approves it.')).toBeVisible();
+  await panel.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
