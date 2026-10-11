@@ -62,14 +62,16 @@
     };
     const SWITCH_LABELS = { monitor: 'Monitor', defib: 'Defib', vent: 'Ventilator' };
     const SWITCH_ICONS = { monitor: 'activity', defib: 'zap', vent: 'wind' };
+    // Bottom left over the monitor and the ventilator; TOP left over the defib, whose page leaves a
+    // margin there for it (bottom left it covered SYNC).
     const ScreenSwitcher = ({ options, value, onChange, extra }) => {
         const { Lucide } = window;
         return (
             <div role="group" aria-label="Show on this screen" data-testid="screen-switcher"
-                 className="absolute left-2 bottom-2 z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg">
+                 className={`absolute left-2 ${value === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg`}>
                 {options.map(k => (
                     <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={value === k} data-screen={k}
-                            className={`min-h-[44px] px-3 rounded-lg flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${value === k ? 'bg-sky-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}>
+                            className={`min-h-[40px] px-3 rounded-lg flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${value === k ? 'bg-sky-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}>
                         <Lucide icon={SWITCH_ICONS[k]} className="w-4 h-4"/> {SWITCH_LABELS[k]}
                     </button>
                 ))}
@@ -142,7 +144,7 @@
                 <ScreenSwitcher options={['defib', 'vent']} value={shown} onChange={setFront}
                     extra={fsSupported && (
                         <button type="button" onClick={toggleFullscreenDoc} aria-label="Full screen" title="Full screen"
-                                className="min-h-[44px] px-2 rounded-lg text-slate-300 hover:bg-slate-700"><Lucide icon="maximize" className="w-4 h-4"/></button>
+                                className="min-h-[40px] px-2 rounded-lg text-slate-300 hover:bg-slate-700"><Lucide icon="maximize" className="w-4 h-4"/></button>
                     )} />
             </div>
         );
@@ -405,6 +407,33 @@
             }
         }, [monitorPopup, scenario]);
 
+        // A tap inside the embedded defib or ventilator (iframes) never reaches this page, so the
+        // device pages post a message on their first touch and the monitor's sound is enabled from
+        // it (the child frame's gesture also activates this page). Without it, a team working only on
+        // the hosted defib had no sound, with the "Tap to Enable Sound" card hidden behind it.
+        const enableAudioRef = useRef(null);
+        useEffect(() => {
+            const onMsg = (e) => {
+                if (e.origin !== window.location.origin || !e.data || e.data.type !== 'wmebem-device-gesture') return;
+                if (enableAudioRef.current) enableAudioRef.current();
+            };
+            window.addEventListener('message', onMsg);
+            return () => window.removeEventListener('message', onMsg);
+        }, []);
+        // The arrest view's status: SHOCK DELIVERED for three seconds after a shock (timed from
+        // when THIS screen saw it, so the controller's clock does not matter), not for as long as
+        // the screen flash happens to be red.
+        const lastShockAt = state.defib ? state.defib.lastShockAt : null;
+        const seenShockRef = useRef(lastShockAt);
+        const [shockShownAt, setShockShownAt] = useState(null);
+        useEffect(() => {
+            if (!lastShockAt || lastShockAt === seenShockRef.current) { seenShockRef.current = lastShockAt; return; }
+            seenShockRef.current = lastShockAt;
+            setShockShownAt(Date.now());
+            const id = setTimeout(() => setShockShownAt(null), 3000);
+            return () => clearTimeout(id);
+        }, [lastShockAt]);
+
         // ---- WAVE 5 / ITEM 1: SESSION-COMPLETE STATE -----------------------------------------
         // The monitor used to render a bare black div when the facilitator pressed Finish, so the
         // trainees' screen simply went blank with no explanation — no crash, no console error, just
@@ -435,13 +464,23 @@
             if (result && typeof result.then === 'function') result.then(() => setAudioEnabled(true)).catch(() => setAudioEnabled(true));
             else setAudioEnabled(true);
         };
+        enableAudioRef.current = audioEnabled ? null : handleEnableAudio;
         const isPaeds = scenario && (scenario.ageRange === 'Paediatric' || scenario.wetflag);
         const thresholds = (window.getAlarmThresholds && window.getAlarmThresholds(scenario?.patientAge ?? 40)) || { hr: {low:40,high:130}, rr:{low:8,high:30}, spO2:90 };
 
+        const tileCount = 4 + (hasArtLine ? 1 : 0) + (etco2Enabled ? 1 : 0);
+        const denseTiles = tileCount >= 5;      // smaller type so the numbers fit a tablet-width tile
+        // A pulseless ORGANISED rhythm (PEA, pulseless VT, agonal) is held at HR 0 but still draws
+        // complexes; a real monitor counts them, so the tile shows the rate that is drawn (the
+        // same number the defib shows). VF and asystole have no QRS to count and are unchanged.
+        const hrShown = (() => {
+            const RG = window.RHYTHMS;
+            if (!RG || !RG.isPulseless(rhythm) || vitals.hr > 0) return vitals.hr;
+            const q = RG.displayRate(rhythm, vitals.hr);
+            return q === null ? vitals.hr : q;
+        })();
         const getGridCols = () => {
-            let count = 4;
-            if (hasArtLine) count++;
-            if (etco2Enabled) count++;
+            const count = tileCount;
             if (count === 4) return 'md:grid-cols-4';
             if (count === 5) return 'md:grid-cols-5';
             return 'md:grid-cols-6';
@@ -455,7 +494,17 @@
                         {syncStatus.message && <span className="ml-2 font-normal text-red-200">{syncStatus.message}</span>}
                     </div>
                 )}
-                {!audioEnabled && (<div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
+                {/* Above everything on this page (the arrest view, the devices, the switcher). With the defib
+                    or ventilator in front it is a small button at the top instead of a full-screen
+                    card, so the learner's first press on the device is not swallowed; a press on the
+                    device enables the sound too (the device page posts its gesture here). */}
+                {!audioEnabled && shownView === 'monitor' && (<div className="absolute inset-0 z-[140] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
+                {!audioEnabled && shownView !== 'monitor' && (
+                    <button type="button" onClick={handleEnableAudio} data-testid="enable-sound"
+                            className="absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[40px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white text-sm font-bold shadow-lg flex items-center gap-2">
+                        <Lucide icon="volume-2" className="w-4 h-4 text-sky-400"/> Tap to Enable Sound
+                    </button>
+                )}
                 
                 {(() => {
                     // The result card. With an image it is wider (a 12-lead needs the width) and the
@@ -562,7 +611,13 @@
                              </div>
                              <div className="bg-black border border-slate-700 rounded p-2 text-center flex flex-col justify-center">
                                  <div className="text-slate-400 text-xs uppercase mb-1">Status</div>
-                                 <div className="text-xl font-mono text-white font-bold">{flash === 'yellow' ? 'CHARGING...' : (flash === 'red' ? 'SHOCK DELIVERED' : 'READY')}</div>
+                                 <div className="text-xl font-mono text-white font-bold">{(() => {
+                                     const d = state.defib || {};
+                                     if (flash === 'yellow') return 'CHARGING...';
+                                     if (d.charged) return `CHARGED${d.chargeEnergy ? ` ${d.chargeEnergy} J` : ''}`;
+                                     if (shockShownAt) return 'SHOCK DELIVERED';
+                                     return 'READY';
+                                 })()}</div>
                              </div>
                              
                              <div className="col-span-2 flex items-center justify-end gap-4">
@@ -611,31 +666,31 @@
                     </div>
 
                     <div className={`flex-none grid grid-cols-2 ${getGridCols()} gap-2 h-[25vh] md:h-[28vh]`}>
-                        <VitalDisplay label="Heart Rate" value={vitals.hr} prev={prevVitals.hr} unit="bpm" alert={vitals.hr > thresholds.hr.high || vitals.hr < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Heart Rate" value={hrShown} prev={prevVitals.hr} unit="bpm" alert={hrShown > thresholds.hr.high || hrShown < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         
-                        <div className="relative h-full">
+                        <div className="relative h-full min-w-0">
                             {/* NIBP is the one sensor that does NOT blank when removed: like a real
                                 monitor, the last measured reading stays up with its time, marked
                                 CUFF OFF, and no new reading can be taken until the cuff is back on. */}
-                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={sNibp || !!nibp.sys} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={sNibp ? triggerNIBP : undefined} note={sNibp ? null : 'cuff off'} />
+                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={sNibp || !!nibp.sys} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={sNibp ? triggerNIBP : undefined} note={sNibp ? null : 'cuff off'} dense={denseTiles} reserveBottom={sNibp} />
                             {sNibp && (
-                                <div className="absolute bottom-1 right-1 left-1 flex gap-2 z-20 px-1">
-                                    <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold px-2 py-2 rounded border border-slate-600 uppercase tracking-wide transition-colors shadow-lg flex-1 h-12">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-sm font-bold px-2 py-2 rounded border uppercase tracking-wide transition-colors shadow-lg h-12 flex-1 max-w-[80px] ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
+                                <div className="absolute bottom-1 right-1 left-1 flex gap-1 lg:gap-2 z-20 px-1">
+                                    <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border border-slate-600 uppercase lg:tracking-wide transition-colors shadow-lg flex-1 min-w-0 h-12 truncate">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border uppercase lg:tracking-wide transition-colors shadow-lg h-12 flex-1 min-w-0 max-w-[80px] truncate ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
 
-                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={sSpo2} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={sSpo2} isMonitor={true} hideTrends={true} dense={denseTiles} />
 
                         {hasArtLine && (
-                            <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} />
+                            <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
 
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg} isMonitor={true} hideTrends={true} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} />
 
                         {etco2Enabled && (
-                            <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={etco2Enabled} isMonitor={true} hideTrends={true} />
+                            <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
                     </div>
 
@@ -700,7 +755,7 @@
                          <div className="bg-purple-900/40 border border-purple-500/50 p-2 rounded mb-2">
                              <h3 className="text-purple-400 font-bold text-center text-sm">WETFLAG</h3>
                              <div className="text-center text-white font-mono text-xl font-bold">{scenario.wetflag.weight}kg</div>
-                             <div className="text-center bg-slate-800 text-white font-bold text-sm mt-1 py-1 rounded">Age: {scenario.patientAge} yrs</div>
+                             <div className="text-center bg-slate-800 text-white font-bold text-sm mt-1 py-1 rounded">Age: {window.shortAge ? window.shortAge(scenario.patientAge) : (window.formatAge ? window.formatAge(scenario.patientAge) : `${scenario.patientAge} yrs`)}</div>
                          </div>
                          <div className="flex-1 flex flex-col gap-1 overflow-y-auto">
                              <WetFlagItem label="Energy" value={`${scenario.wetflag.energy}J`} />

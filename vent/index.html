@@ -2066,7 +2066,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelE
 const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
 if (EMBEDDED) document.body.classList.add('embedded');
 const VP = window.VENT_PROFILES;
-const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null};
+const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
 
 /* the trainer's teaching prompts and task list are not part of the simulation device */
 function addPrompt() {}
@@ -2286,12 +2286,13 @@ const saveKey = () => 'wmebem_vent_' + fb.code;
 function saveDevice() {
   if (!fb.code || !LIVE.key) return;
   const v = {}; SAVE_KEYS.forEach(k => { v[k] = V[k]; });
-  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, at:Date.now(), v, onNivMin:P.onNivMin})); } catch (e) {}
+  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, run:LIVE.run, at:Date.now(), v, onNivMin:P.onNivMin})); } catch (e) {}
 }
 function restoreDevice() {
   let s = null;
   try { s = JSON.parse(localStorage.getItem(saveKey()) || 'null'); } catch (e) { s = null; }
   if (!s || s.key !== LIVE.key || !(Date.now() - s.at < 12 * 3600 * 1000) || !s.v) return false;
+  if (s.run && LIVE.run && s.run !== LIVE.run) return false;   /* saved in an earlier run of the same scenario */
   SAVE_KEYS.forEach(k => { if (s.v[k] !== undefined) V[k] = s.v[k]; });
   V.set = {...DEFAULT_SET, ...V.set}; V.lim = {...DEFAULT_LIM, ...V.lim};
   V.selftest = 0; V.testRun = null; V.cpr = null;
@@ -2326,9 +2327,13 @@ function applyLive(v) {
   applyConfig(v.vent || null);
   document.body.classList.toggle('assess', !!(v.vent && v.vent.assess));
   if (document.body.classList.contains('assess')) helpFor = null;
+  /* A new scenario gets a fresh ventilator. The controller's run id (new on every scenario load, kept on
+     resume) tells a re-run of the same scenario apart; without one, fall back to the title and patient. */
   const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
-  if (LIVE.key === null) { LIVE.key = key; if (!restoreDevice()) deviceDefaults(); }
-  else if (key !== LIVE.key) { LIVE.key = key; deviceDefaults(); }   /* a new scenario: a fresh ventilator */
+  const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
+  if (LIVE.key === null) { LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); }
+  else if (key !== LIVE.key || (run && LIVE.run && run !== LIVE.run)) { LIVE.key = key; LIVE.run = run; deviceDefaults(); }
+  else if (run) LIVE.run = run;
   applySound();
 }
 
@@ -2343,6 +2348,12 @@ function fbStart(code) {
   $('#sessionTag').textContent = 'Session ' + code;
   fb.db.ref('.info/connected').on('value', snap => {
     fb.connected = !!snap.val();
+    // onDisconnect() fires once and is not re-armed by the SDK after a reconnect, so arm it on
+    // every (re)connection; otherwise a ventilator closed after a WiFi drop kept "ventilating".
+    if (fb.connected) {
+      fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+      fb.db.ref('sessions/' + code + '/ventState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+    }
     if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. Settings and alarms are not reaching the facilitator until it returns.', 'lost');
     if (fb.linked && fb.connected) setLinkState(true);
   });
@@ -2356,8 +2367,6 @@ function fbStart(code) {
   }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
   const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
   const write = () => pres.update({role:EMBEDDED ? 'monitor-vent' : 'vent', display:'ventilator', ua:(navigator.userAgent || '').slice(0, 120), ts:Date.now()}).catch(() => {});
-  pres.onDisconnect().remove().catch(() => {});
-  fb.db.ref('sessions/' + code + '/ventState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
   write();
   setInterval(write, 10000);
   listenForCommands(code);
@@ -2472,6 +2481,8 @@ $('#btnSound').addEventListener('click', () => { soundWanted = V.sound; applySou
 /* browsers start audio only after a touch: wake it on the first one */
 document.addEventListener('pointerdown', () => {
   try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+  /* embedded in the room monitor: tell it, so it enables its own sound from this touch */
+  try { if (EMBEDDED && window.parent !== window) window.parent.postMessage({type:'wmebem-device-gesture'}, window.location.origin); } catch (e) {}
 }, {capture:true});
 
 /* ---------- main loop: real time, and it keeps ventilating when the tab is hidden ---------- */

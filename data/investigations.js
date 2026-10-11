@@ -246,6 +246,8 @@
         AT024: { POCUS: 'us-fast-positive' },
         PT003: { POCUS: 'us-fast-positive' },
         PT005: { POCUS: 'us-fast-positive' },
+        AT026: { POCUS: 'us-fast-positive' },   // stabbed abdomen in haemorrhagic shock (not a pneumothorax)
+        PT006: { POCUS: 'us-fast-positive' },   // left flank stab in haemorrhagic shock
         AT031: { ECG: 'ecg-long-qt' },
         EL001: { 'X-ray': 'xr-nof' },
         EL003: { CT: 'ct-subdural-chronic' },   // chronic: the acute (bright) image would be wrong

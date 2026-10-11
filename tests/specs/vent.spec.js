@@ -388,7 +388,7 @@ test('Ventilator Sim: ARDS in Assessment, on the room monitor, through to the ve
   const dev = monitor.frameLocator('iframe[title="Ventilator"]');
   await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
   const frame = () => monitor.frames().find(f => /vent\/index\.html/.test(f.url()));
-  await expect.poll(() => frame().evaluate(() => [window.__vent.P.id, document.body.classList.contains('assess')])).toEqual(['ards', true]);
+  await expect.poll(() => frame().evaluate(() => window.__vent ? [window.__vent.P.id, document.body.classList.contains('assess')] : null)).toEqual(['ards', true]);
   await startVentilating(dev);
   await expect.poll(() => logHas(page, /^Ventilator: Ventilation started \(\(S\)CMV\+\) \(ventilator on the monitor\)/)).toBe(true);
   // The candidate sets a lung-protective tidal volume on the device (6 ml/kg of a 70 kg IBW)
@@ -410,7 +410,7 @@ test('Ventilator Sim: ARDS in Assessment, on the room monitor, through to the ve
   await expect(fb).toContainText('Ventilation first started at');
   await expect(fb).toContainText('Median tidal volume');
   await expect(fb).toContainText('leak test and flow sensor calibration were not both passed');
-  await expect(fb).toContainText(/Tube blocked by secretions: injected at \d+:\d\d, fixed \d+:\d\d later/);
+  await expect(fb).toContainText(/Tube blocked by secretions: injected at \d\d:\d\d, fixed (\d+ min )?(\d+ s )?later/);
   expect(errors).toEqual([]);
   expect(monitorErrors).toEqual([]);
 });

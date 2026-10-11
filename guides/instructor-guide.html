@@ -20,7 +20,7 @@
 </header>
 <main>
 <h1>Full Instructor Guide</h1>
-<p class="byline">EM Evidence Sim · updated 1 October 2026</p>
+<p class="byline">EM Evidence Sim · updated 10 October 2026</p>
 <p class="lead">This guide explains everything an instructor needs to set up, run and debrief a scenario. New to the app? Start with the <a href="quick-start.html">Quick Start Guide</a>.</p>
 
 <nav class="toc" aria-label="Contents">
@@ -134,9 +134,9 @@
 <tr><td><strong>Premade</strong></td><td>254 written scenarios in 8 categories: Adult Medical, Trauma, Paediatric, Cardiac Arrest, Toxicology, Obs &amp; Gynae, Elderly, Psychiatric</td><td>Planned teaching with set objectives</td></tr>
 <tr><td><strong>Quick Sim</strong></td><td>A blank patient: you set age, weight, sex, name and starting rhythm. No scenario, drugs or scoring</td><td>Ad-hoc teaching, rhythm recognition, obs drills</td></tr>
 <tr><td><strong>Defib Sim</strong></td><td>Defibrillation, cardioversion and pacing on the defib tablet, with its own controller</td><td>Defib skills and assessment (see <a href="#defib-sim">Running a Defib Sim</a>)</td></tr>
-<tr><td><strong>Ventilator Sim</strong></td><td>Eight ventilator scenarios on the HAMILTON-T1: NIV, CPAP, lung-protective and asthma ventilation, setting up after RSI, troubleshooting and transfer</td><td>Ventilator skills and assessment (see <a href="#vent-sim">The ventilator and Ventilator Sim</a>)</td></tr>
+<tr><td><strong>Ventilator Sim</strong></td><td>Nine ventilator scenarios on the HAMILTON-T1: NIV, CPAP, lung-protective and asthma ventilation, setting up after RSI, troubleshooting, mucus plugging and transfer, with the full instructor screen</td><td>Ventilator skills and assessment (see <a href="#vent-sim">The ventilator and Ventilator Sim</a>)</td></tr>
 <tr><td><strong>Random</strong></td><td>A generated patient from your choice of category, age group and acuity</td><td>Unpredictable cases for experienced teams</td></tr>
-<tr><td><strong>Custom</strong></td><td>Scenarios you have saved or imported as a file</td><td>Your own material</td></tr>
+<tr><td><strong>Custom</strong></td><td>Scenarios you have saved or imported as a file. <strong>Edit</strong>, <strong>Load</strong> or <strong>Delete</strong> each one (Delete asks you to confirm and removes it from that device)</td><td>Your own material</td></tr>
 <tr><td><strong>Builder</strong></td><td>A form to write a scenario field by field</td><td>Writing new scenarios</td></tr>
 <tr><td><strong>Restricted</strong></td><td>Copyright-restricted scenarios (for example RCUK)</td><td>Only if your account has been given access</td></tr>
 </tbody>
@@ -154,6 +154,7 @@
 </ul>
 <p>Press <strong>Start Scenario</strong> to begin, or <strong>Back to Setup</strong> to choose another.</p>
 <p><strong>Resume Previous?</strong> If the instructor tab was closed during a scenario, the setup screen offers to resume it. The app saves your progress every few seconds.</p>
+<p><strong>Scenario paused.</strong> Pressing <strong>Back</strong> during a scenario pauses it and returns to the setup screen, which shows <strong>Return to scenario</strong>. Press it to carry on where you left off, then <strong>START</strong>. Starting a different scenario replaces the paused one.</p>
 
 <h2 id="tour">A tour of the instructor screen</h2>
 <p>The screen has a top bar, the patient on the left, and treatments and the event log on the right. Drag the divider between the columns to widen either side.</p>
@@ -161,14 +162,14 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Control</th><th>What it does</th></tr></thead>
 <tbody>
-<tr><td><strong>Back</strong></td><td>Returns to the setup screen</td></tr>
+<tr><td><strong>Back</strong></td><td>Pauses the scenario and returns to the setup screen; <strong>Return to scenario</strong> there brings you back</td></tr>
 <tr><td><strong>Finish</strong></td><td>Ends the scenario and opens the debrief (asks you to confirm)</td></tr>
 <tr><td><strong>PAUSE / START</strong></td><td>Stops or restarts the clock</td></tr>
 <tr><td>Connection badge</td><td>Shows the session is live and which screens are linked</td></tr>
 <tr><td><strong>Safety flags</strong></td><td>Appears when the team does something out of the usual order; opens the list</td></tr>
 <tr><td><strong>Muted</strong></td><td>Appears in red while alarms are muted; press to unmute</td></tr>
 <tr><td><strong>Simple / Full</strong></td><td>Hides or shows the advanced controls (below)</td></tr>
-<tr><td><strong>Screens ▾</strong></td><td>Join by QR code, and Open for each patient screen in your set-up</td></tr>
+<tr><td><strong>Screens ▾</strong></td><td><strong>Join by QR code</strong> (a QR code for each kind of screen: monitor, defib, ventilator), and <strong>Open screen 1: …</strong>, <strong>Open screen 2: …</strong> for each patient screen in your set-up, in a new window on this computer</td></tr>
 <tr><td><strong>Tools ▾</strong></td><td>Drug calculator, Timer alerts, Full simulation log, where sound plays, Mute alarms, Keyboard shortcuts</td></tr>
 </tbody>
 </table></div>
@@ -297,7 +298,7 @@
 <li><strong>Cardioversion succeeds at:</strong> the lowest energy at which cardioversion works.</li>
 </ul>
 <p>When a shock converts the rhythm, or fails to, a pop-up tells you on your screen only. The team never sees it.</p>
-<p><strong>Learner defib on a tablet.</strong> For defib skills with a real-looking device, use the defib tablet (see <a href="#defib-sim">Running a Defib Sim</a>). It works in a normal scenario too: link it with <strong>Screens → Open defib tablet</strong> or the QR code.</p>
+<p><strong>Learner defib on a tablet.</strong> For defib skills with a real-looking device, use the defib tablet (see <a href="#defib-sim">Running a Defib Sim</a>). It works in a normal scenario too: scan the <strong>Defib</strong> QR code from <strong>Screens → Join by QR code</strong> on the tablet, or, if your set-up has a defib screen, open it with <strong>Screens → Open screen N</strong>.</p>
 
 <h2 id="defib-sim">Running a Defib Sim</h2>
 <p>In a Defib Sim the learner works a ZOLL-style defibrillator on a tablet, and you run the patient from the <strong>Defib controller</strong>, which replaces the normal instructor screen.</p>
@@ -341,8 +342,8 @@
 <p>The simulator includes a HAMILTON-T1 ventilator: the same device as the standalone ventilator trainer. It works in any scenario, and Ventilator Sim builds scenarios around it. The physiology is a teaching model, not validated physiology.</p>
 <h3>Where the candidate uses it</h3>
 <ul>
-<li><strong>On the room monitor tablet.</strong> In the controller's <strong>Ventilator</strong> section, press <strong>Show the ventilator on the room monitor</strong> (Ventilator Sim does this for you). The candidate can flip between the ventilator and the obs without stopping it. The defib and the ventilator share that screen, so opening one closes the other.</li>
-<li><strong>On its own tablet.</strong> Scan the <strong>Ventilator</strong> QR code from <strong>Join</strong>, or open <strong>Screens → Open ventilator tablet</strong>. Monitor, defib and ventilator tablets can all run at once, in sync.</li>
+<li><strong>On the room monitor tablet.</strong> In the controller's <strong>Ventilator</strong> section, press <strong>Show the ventilator on the patient screens</strong> (Ventilator Sim does this for you; the same button then reads <strong>Take the ventilator off the patient screens</strong>). The candidate can flip between the ventilator and the obs without stopping it. The defib and the ventilator share that screen, so opening one closes the other.</li>
+<li><strong>On its own tablet.</strong> Scan the <strong>Ventilator</strong> QR code from <strong>Screens → Join by QR code</strong>, or, if your set-up has a ventilator screen, open it with <strong>Screens → Open screen N</strong>. Monitor, defib and ventilator tablets can all run at once, in sync.</li>
 </ul>
 <h3>Starting a Ventilator Sim</h3>
 <ol>
@@ -350,7 +351,9 @@
 <li>Choose <strong>Education</strong> (the ventilator shows its alarm troubleshooting help) or <strong>Assessment</strong> (no help on the screen; feedback in the debrief).</li>
 <li>Choose a scenario: AECOPD (start NIV), cardiogenic pulmonary oedema (CPAP), obesity hypoventilation (NIV), ARDS (lung-protective ventilation), severe asthma (intubated), after RSI in the ED (set up from scratch), troubleshooting (DOPES), mucus plugging (bronchoscopy teaching) or interhospital transfer. Intubated scenarios start with the tube recorded and the patient sedated and paralysed.</li>
 <li>Press <strong>Start Ventilator Sim</strong>. The ventilator opens on the room monitor; link a tablet instead if you prefer.</li>
+<li>Press <strong>START</strong> when the candidate begins, so the event log, the obs graph and the debrief have real times.</li>
 </ol>
+<p>The full instructor screen is available, with the scenario's brief at the top of the <strong>Ventilator</strong> section and its likely treatments in <strong>Recommended actions</strong>: needle decompression and finger thoracostomy, bronchoscopy, suction, sedation and paralysis, nebulisers and the rest of the treatment list. Re-running the same scenario gives the candidate a fresh ventilator.</p>
 <h3>What the ventilator does to the patient</h3>
 <p>While it is ventilating, SpO2 follows the oxygen and PEEP, CO2 follows the ventilation and settles over 3 to 5 minutes, the RR is the ventilator's rate, and low SpO2, high CO2 and air trapping change HR and BP. This happens whether or not the clock is running, and not in a cardiac arrest. Any obs you type yourself stay as you set them until you press <strong>Release to ventilator</strong>; <strong>I set them</strong> turns the link off altogether.</p>
 <h3>Controlling it</h3>
@@ -364,7 +367,7 @@
 <tr><td>Control this ventilator</td><td>Under each ventilator's mirror: switch on or off, start or standby, mode, every setting and alarm limit (step or type a value), silence, O2 enrichment, lock the screen and a fresh ventilator. Use it to hand over a ventilator with deliberate errors. Your changes are logged as yours</td></tr>
 </tbody>
 </table></div>
-<p><strong>Debrief.</strong> Any session that used the ventilator gets <strong>Ventilator feedback</strong>: when ventilation started, the pre-use check, alarm limits, tidal volume per kg of ideal body weight, plateau and driving pressure, AutoPEEP, SpO2 time in target, and when each problem was injected and fixed. The targets are the simulator's teaching targets for each scenario, not a guideline.</p>
+<p><strong>Debrief.</strong> Any session that used the ventilator gets <strong>Ventilator feedback</strong>: when ventilation started, the pre-use check, alarm limits, tidal volume per kg of ideal body weight, plateau and driving pressure, AutoPEEP, SpO2 time in target, and when each problem was injected and how long it took to fix (for example "fixed 2 min 10 s later"). A Ventilator Sim debrief is headed with the scenario and its mode and is not scored against learning objectives. The targets are the simulator's teaching targets for each scenario, not a guideline: the troubleshooting scenarios (DOPES, mucus plugging, transfer) accept up to 8.5 ml/kg, the tidal volume the ventilator starts on, while ARDS and after RSI keep 6 to 8 ml/kg.</p>
 
 <h2 id="paediatric">Paediatric scenarios</h2>
 <p>Child scenarios follow the Resuscitation Council UK (RCUK) Guidelines 2025: the Paediatric advanced life support and Paediatric cardiac arrhythmias algorithms, and the Paediatric emergency drug chart.</p>
@@ -401,12 +404,13 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Part of the debrief</th><th>What it shows</th></tr></thead>
 <tbody>
-<tr><td>Performance Summary</td><td>Objectives met, the score (fully met, and with partial credit) and the time taken</td></tr>
+<tr><td>Performance Summary</td><td>Objectives met and the score (fully met, and with partial credit). The session's duration is at the top of the debrief. Quick Sim, Defib Sim and Ventilator Sim are not scored against objectives</td></tr>
 <tr><td>Learning Objectives</td><td>Each objective as fully met, partly done or not in place, with the steps behind it</td></tr>
 <tr><td>Obs, interventions and changes</td><td>The graph described below, at the top of the debrief</td></tr>
 <tr><td>Sequence Deviations</td><td>The safety flags</td></tr>
-<tr><td>Defibrillation &amp; Rhythm</td><td>Shocks, energies and each rhythm change</td></tr>
+<tr><td>Defibrillation &amp; Rhythm</td><td>Shown only when a shock was given: shocks, the shocks counted towards ROSC (a shock stacked within 5 s of the last one does not count), energies and each rhythm change</td></tr>
 <tr><td>Defib Sim feedback</td><td>Defib Sim only: good practice and areas for improvement</td></tr>
+<tr><td>Ventilator feedback</td><td>Any session that used the ventilator: when ventilation started, the pre-use check, settings against the scenario's targets, good practice, areas for improvement and each problem injected (see <a href="#vent-sim">The ventilator and Ventilator Sim</a>)</td></tr>
 <tr><td>Simulation Log</td><td>Every entry with its time</td></tr>
 <tr><td>Instructor Notes</td><td>A box for your own feedback notes</td></tr>
 </tbody>
@@ -417,7 +421,7 @@
 <ul>
 <li><strong>Rhythm</strong> along the top. Time without a pulse is red, and the same red shading runs down every chart below.</li>
 <li>One small chart each for heart rate, blood pressure (systolic and diastolic), SpO2 and respiratory rate. ETCO2 is added while capnography was attached. Temperature, glucose, pH and GCS are added only if they changed.</li>
-<li>Numbered markers underneath, in four rows: <strong>Rhythm, arrest and shocks</strong>; <strong>Team actions and treatment</strong>; <strong>Facilitator changes</strong> (the obs you changed or trended, with the values before and after, the patient's voice and presets); and <strong>Flags and warnings</strong>. Markers that would overlap share one label, such as "5 +2".</li>
+<li>Numbered markers underneath, in four rows: <strong>Rhythm, arrest and shocks</strong>; <strong>Team actions and treatment</strong>; <strong>Facilitator changes</strong> (the obs you changed or trended, with the values before and after, the patient's voice, presets, and the ventilator problems, lungs and settings you changed); and <strong>Flags and warnings</strong>. Markers that would overlap share one label, such as "5 +2".</li>
 <li><strong>What happened</strong>, under the graph, lists every numbered marker with its time. Click one to mark it on the graph.</li>
 <li>Move the pointer over the graph, or click it and use the arrow keys, to read every value at that moment.</li>
 <li><strong>Show the obs as a table</strong> lists the values every 30 seconds.</li>
@@ -445,7 +449,7 @@
 </tbody>
 </table></div>
 <p><strong>Room monitor timer.</strong> <strong>Show Timer</strong>, above the waveforms, puts a timer on the room monitor that you start and pause from your screen. It is useful for the team's own timings.</p>
-<p><strong>Keyboard shortcuts</strong> (they do nothing while a pop-up is open or a box or button is selected; if one does not work, click an empty part of the screen first)</p>
+<p><strong>Keyboard shortcuts</strong> (they work straight after you click a button, except <kbd>Space</kbd>, which then presses that button again; they do nothing while you are typing in a box or a pop-up is open)</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Key</th><th>Action</th></tr></thead>
 <tbody>
@@ -467,9 +471,9 @@
 <tr><td>No sound</td><td>Sound not enabled, muted, or playing on the other screen</td><td>Tap <strong>Tap to Enable Sound</strong> on the monitor; check for the red <strong>Muted</strong> button; check <strong>Tools → Sound plays on</strong>; check the device's volume</td></tr>
 <tr><td>Badge says Sync error</td><td>The internet connection has dropped</td><td>Check the connection on each device</td></tr>
 <tr><td>Room monitor or defib not following your changes</td><td>It is on a different session code, for example after <strong>New code</strong></td><td>Join it again with the current code</td></tr>
-<tr><td>Defib tablet asks for a code</td><td>It was opened without one</td><td>Type the session code, or scan the QR code from <strong>Join</strong></td></tr>
+<tr><td>Defib tablet asks for a code</td><td>It was opened without one</td><td>Type the session code, or scan the QR code from <strong>Screens → Join by QR code</strong></td></tr>
 <tr><td>Defib Sim log times all 00:00</td><td>The clock has not started</td><td>Press <strong>START</strong>; it also starts at the learner's first press</td></tr>
-<tr><td>Space bar or other shortcut does nothing</td><td>A button, box or pop-up is selected</td><td>Click an empty part of the screen and try again</td></tr>
+<tr><td>Space bar does nothing, or presses a button</td><td>A button you clicked is still selected (Space presses it), or you are typing in a box or a pop-up is open</td><td>Click an empty part of the screen and try again; the other shortcuts work with a button selected</td></tr>
 <tr><td>Instructor tab closed or crashed</td><td>—</td><td>Reopen the site and press <strong>Resume</strong> under "Resume Previous?"</td></tr>
 <tr><td>The Restricted tab is locked</td><td>Restricted scenarios need an account with access</td><td>Sign in, then use <strong>Request access</strong></td></tr>
 <tr><td>A screen looks out of date after an update</td><td>The browser is showing the old version</td><td>Reload the page</td></tr>

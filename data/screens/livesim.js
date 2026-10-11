@@ -400,14 +400,16 @@
         // here only for on-screen reference by future panels.
         const thresholds = (window.getAlarmThresholds && window.getAlarmThresholds(scenario?.patientAge ?? 40)) || { hr: {low:40,high:130}, rr:{low:8,high:30}, spO2:90 };
 
-        const [assessments, setAssessments] = useState({
+        // Seeded from the engine, so ticks made before Back (or a resume) are not wiped on return.
+        const [assessments, setAssessments] = useState(() => ({
             "Safe Approach": null,
             "Team Leadership": null,
             "Communication": null,
             "CPR Quality": null,
             "Defib Safety": null,
-            "Re-evaluation": null
-        });
+            "Re-evaluation": null,
+            ...((state.assessments && typeof state.assessments === 'object') ? state.assessments : {})
+        }));
 
         // Every rhythm menu is now derived from the shared registry, so the arrest menu can
         // no longer offer a rhythm no scenario uses, and the ROSC menu can no longer omit Atrial
@@ -490,11 +492,23 @@
 
         useEffect(() => {
             const handler = (e) => {
-                const modalOpen = showJoin || modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || arrestPanelOpen;
-                if (modalOpen) return;
+                if (e.ctrlKey || e.metaKey || e.altKey) return;
                 const active = document.activeElement;
-                if (active?.matches?.('button, a, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
-                if (e.key === ' ') { e.preventDefault(); isRunning ? pause() : start(); }
+                // Typing never triggers a shortcut. A focused button only blocks Space (which presses
+                // it); previously any focused button blocked every shortcut, so after one click on
+                // START none of them worked.
+                if (active?.matches?.('input, select, textarea, [contenteditable="true"]')) return;
+                // D, T and ? close their own window again, as the shortcut help says ("Toggle").
+                if ((e.key === 'd' || e.key === 'D') && showDrugCalc) { setShowDrugCalc(false); return; }
+                if ((e.key === 't' || e.key === 'T') && showTimerModal) { setShowTimerModal(false); return; }
+                if (e.key === '?' && showKeyHelp) { setShowKeyHelp(false); return; }
+                // Arrest View is a layout on the team's monitor, not a window here, so it does not block.
+                const modalOpen = showJoin || modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu;
+                if (modalOpen) return;
+                if (e.key === ' ') {
+                    if (active?.matches?.('button, a, [role="button"]')) return;
+                    e.preventDefault(); isRunning ? pause() : start();
+                }
                 if (e.key === 'f' || e.key === 'F') confirmFinish();
                 if (e.key === 'd' || e.key === 'D') setShowDrugCalc(v => !v);
                 if (e.key === 't' || e.key === 'T') setShowTimerModal(v => !v);
@@ -502,7 +516,7 @@
             };
             window.addEventListener('keydown', handler);
             return () => window.removeEventListener('keydown', handler);
-        }, [isRunning, showJoin, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, arrestPanelOpen]);
+        }, [isRunning, showJoin, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu]);
 
         // A blank entry is never logged (Enter or a stray click on an empty box used to add empty
         // lines to the log and the debrief timeline).
@@ -675,7 +689,8 @@
         const traceFrozen = !isRunning && (pausedByFacilitator || state.isFinished);
         const showEtco2 = etco2Enabled;
         const showArt = activeInterventions.has('ArtLine');
-        const isPaeds = scenario.ageRange === 'Paediatric' || scenario.wetflag;
+        // A weight entered for an adult Quick Sim patient is not a child (it made a 40-year-old "paeds").
+        const isPaeds = scenario.ageRange === 'Paediatric' || (!!scenario.wetflag && !(Number(scenario.patientAge) >= 16));
 
         const cycleAudioOutput = () => {
              const next = audioOutput === 'controller' ? 'monitor' : (audioOutput === 'monitor' ? 'both' : 'controller');
@@ -1061,15 +1076,15 @@
                          {quickSim ? (
                          <div className="flex-none bg-slate-800 p-2 rounded border-l-4 border-sky-500 shadow-md flex items-center justify-between gap-2">
                             <div className="min-w-0">
-                                <div className="text-[9px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1"><Lucide icon="sliders" className="w-3 h-3"/> Quick Sim — no scenario</div>
-                                <div className="text-sm text-white font-bold truncate">{scenario.patientName} ({scenario.patientAge}y {scenario.sex}{scenario.wetflag?.weight ? `, ${scenario.wetflag.weight} kg` : ''})</div>
+                                <div className="text-[9px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1"><Lucide icon="sliders" className="w-3 h-3"/> {rawScenario && rawScenario.ventSim ? `Ventilator Sim — ${rawScenario.ventSim.name}` : 'Quick Sim — no scenario'}</div>
+                                <div className="text-sm text-white font-bold truncate">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex}{scenario.wetflag?.weight ? `, ${scenario.wetflag.weight} kg` : ''})</div>
                             </div>
                             {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
                          </div>
                          ) : (
                          <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
                             <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
-                            <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex})</div>
+                            <div className="text-sm text-white font-bold">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex})</div>
                             {scenario.title && <div className="text-xs text-emerald-400 font-bold uppercase mt-0.5">{scenario.title}</div>}
                             {scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
                             <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>
@@ -1441,7 +1456,7 @@
                              <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
                                      <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator {defibPanelOpen ? '(on monitor)' : '(arrest view)'}</h3>
-                                     <button aria-label="Close defibrillator panel" onClick={() => { sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
+                                     <button aria-label="Close defibrillator panel" onClick={() => { if (defibPanelOpen) sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); else sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
                                  </div>
 
                                  {/* Weight-based energy ladder. 4 J/kg is highlighted as recommended;
@@ -1449,7 +1464,7 @@
                                  <div className="mb-2">
                                      <div className="flex items-center justify-between mb-1">
                                         <span className="text-slate-400 text-[10px] uppercase font-bold">Energy</span>
-                                        <span className="text-[10px] text-slate-400">Recommended <b className="text-emerald-400">{recommendedEnergy}J</b>{scenario.wetflag?.weight ? ` (4 J/kg, ${scenario.wetflag.weight}kg)` : ''}</span>
+                                        <span className="text-[10px] text-slate-400">Recommended <b className="text-emerald-400">{recommendedEnergy}J</b>{isPaeds && scenario.wetflag?.weight ? ` (4 J/kg, ${scenario.wetflag.weight}kg)` : ''}</span>
                                      </div>
                                      <div className="flex flex-wrap gap-1">
                                         {energySteps.map(j => (
@@ -1780,9 +1795,9 @@
                             <input type="text" aria-label="Search interventions" className="w-full bg-slate-800 border border-slate-600 rounded px-4 h-11 text-base text-white focus:border-sky-500 outline-none" placeholder="Search interventions (name or route, e.g. IM)..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
                         </div>
 
-                        {/* Nine categories won't fit on a phone, so this one stays a scroller — but the
-                            scrollbar is left visible, otherwise there is no cue the later tabs exist. */}
-                        <div className="flex flex-wrap md:flex-nowrap md:overflow-x-auto bg-slate-900 border-b border-slate-700">
+                        {/* Wraps at every width: as a horizontal scroller, Investigations, Voice and
+                            Assessment were off-screen at 1024 px with no cue that the row scrolled. */}
+                        <div className="flex flex-wrap bg-slate-900 border-b border-slate-700">
                              {['Common', 'Drugs', 'Airway', 'Breathing', 'Circulation', 'Procedures', 'Investigations', 'Voice', 'Assessment'].map(cat => (
                                  <button key={cat} onClick={() => setActiveTab(cat)} className={`px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-xs font-bold uppercase tracking-wider transition-colors whitespace-nowrap ${activeTab === cat ? 'bg-slate-800 text-sky-400 border-t-2 border-sky-400' : 'text-slate-400 hover:text-slate-300'} ${cat === 'Assessment' ? 'md:ml-auto border-l border-slate-700 text-amber-400' : ''}`}>{cat}</button>
                              ))}
@@ -2017,7 +2032,7 @@
                                  <div>
                                     <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Custom Finding</label>
                                     <textarea value={invCustomText} onChange={e=>setInvCustomText(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm h-20" placeholder="Type custom finding here..."></textarea>
-                                    <Button onClick={()=>sendInv(invModal, invCustomText)} variant="primary" className="w-full mt-2" disabled={!invCustomText}>Send Custom</Button>
+                                    <Button onClick={()=>sendInv(invModal, invCustomText)} variant="primary" className="w-full mt-2" disabled={!invCustomText.trim()}>Send Custom</Button>
                                  </div>
                              </div>
                              <div className="border-t border-slate-700 pt-4 mt-2 flex-shrink-0 grid grid-cols-2 gap-2">

@@ -77,7 +77,8 @@
                 return { ...initialVitalsState, vitals: initialVitals, baseVitals: { ...initialVitals }, prevVitals: { ...initialVitals } };
             case 'RESTORE_SESSION': {
                 const restoredVitals = { ...initialVitalsState.vitals, ...(action.payload.vitals || {}) };
-                return { ...state, vitals: restoredVitals, baseVitals: { ...restoredVitals, ...(action.payload.baseVitals || {}) }, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0, manualHold: action.payload.manualHold || {} };
+                return { ...state, vitals: restoredVitals, baseVitals: { ...restoredVitals, ...(action.payload.baseVitals || {}) }, prevVitals: { ...restoredVitals, ...(action.payload.prevVitals || {}) }, trends: action.payload.trends || state.trends, hypoxiaTimer: action.payload.hypoxiaTimer || 0, hypoxiaDeficit: Number(action.payload.hypoxiaDeficit) || 0, manualHold: action.payload.manualHold || {},
+                    ventPhys: (action.payload.ventPhys && typeof action.payload.ventPhys === 'object') ? action.payload.ventPhys : null };
             }
             // The monitor does not run physiology; the authoritative composed vitals arrive over the
             // wire, so base == displayed there.
@@ -88,7 +89,10 @@
             case 'UPDATE_VITALS': {
                 const base = { ...state.baseVitals, ...action.payload };
                 const t = cs ? cs.time : 0;
-                const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
+                // A rhythm change writes its obs BEFORE the rhythm itself lands, so it says which
+                // side of the arrest the new obs belong to (`forceArrest`); otherwise drug offsets
+                // were composed onto arrest obs (HR 15, BP 40 in VF) until the next tick.
+                const inArrest = typeof action.forceArrest === 'boolean' ? action.forceArrest : (cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false);
                 // Arrest, ROSC and pulseless<->organised transitions define a NEW
                 // baseline, so they explicitly release the manual hold on the vitals they rewrite.
                 let hold = state.manualHold || {};
@@ -96,7 +100,10 @@
                     hold = { ...hold };
                     action.releaseManual.forEach(k => { delete hold[k]; });
                 }
-                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? cs.activeDrugs : [], t, inArrest), manualHold: hold };
+                // A transition that rewrites SpO2 sets a new baseline, so any apnoea deficit is spent.
+                const resetDeficit = Array.isArray(action.releaseManual) && action.releaseManual.indexOf('spO2') !== -1;
+                return { ...state, baseVitals: base, vitals: composeVitals(base, cs ? cs.activeDrugs : [], t, inArrest), manualHold: hold,
+                    hypoxiaDeficit: resetDeficit ? 0 : state.hypoxiaDeficit };
             }
             case 'MANUAL_VITAL_UPDATE': {
                 // Boundary guard: a NaN here propagates into the Firebase payload, which RTDB rejects,
@@ -125,7 +132,9 @@
                 }
                 const base = { ...state.baseVitals, [key]: baseValue };
                 // Record that the facilitator typed this one. See `manualHold`.
-                return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
+                // A typed SpO2 is the new baseline: any earlier apnoea deficit no longer applies.
+                return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true },
+                    hypoxiaDeficit: key === 'spO2' ? 0 : state.hypoxiaDeficit };
             }
             case 'START_TREND': {
                 const safeTargets = {};
@@ -197,6 +206,7 @@
                 let vitalsChanged = false;
                 let newTrends = { ...state.trends };
                 let currentHypoxiaTimer = state.hypoxiaTimer;
+                let hypoxiaDeficit = Math.max(0, Number(state.hypoxiaDeficit) || 0);
                 const isRunning = cs ? cs.isRunning : false;
                 const activeInt = cs ? cs.activeInterventions : new Set();
                 const icp = cs ? cs.icp : 10;
@@ -262,7 +272,10 @@
                 const paraFromDrugs = paralysisFromDrugs(activeDrugs, tNow);
                 const paraPhase = paraFromDrugs ? 'active' : paralysisPhase(cs ? cs.paralysis : null, tNow);
                 if (!inArrest && paraPhase === 'active') {
-                    const targetRr = isBagging ? VENTILATOR_RATE : 0;
+                    // Ventilated: the DISPLAYED rate is the ventilation rate, so the drug envelope's RR
+                    // offset (opioids, sedatives) is taken off the base, as ventTick does; otherwise
+                    // a ventilated, paralysed patient showed fewer breaths than were being given.
+                    const targetRr = isBagging ? clampVital('rr', VENTILATOR_RATE - (drugOffsets(activeDrugs, tNow).rr || 0)) : 0;
                     if (base.rr !== targetRr) { base.rr = targetRr; vitalsChanged = true; }
                 }
 
@@ -291,7 +304,9 @@
                         // Steeper drop below 88 (Severinghaus curve)
                         let dropRate = seenSpO2 < 88 ? 1.5 : 0.5;
                         if (apnoeicO2) dropRate = dropRate / 2;
+                        const before = base.spO2;
                         base.spO2 = Math.max(20, base.spO2 - dropRate);
+                        hypoxiaDeficit += Math.max(0, before - base.spO2);
                         vitalsChanged = true;
                     }
                 } else {
@@ -300,8 +315,19 @@
                     // an integer and +0.2/s rounded straight back. `base` is now unrounded, so a smooth
                     // +0.35/s is both correct and visible. Count any positive-pressure or high-flow
                     // source, not just the 'Oxygen' key.
+                    //
+                    // Only the DEFICIT the apnoea model above created is recovered here. The oxygen
+                    // sources' own pk envelopes already add their SpO2 benefit, so recovering the
+                    // underlying disease towards 98 as well counted oxygen twice and took every
+                    // hypoxic patient (pneumonia, PJP, AUTO deterioration running) to 100% within a
+                    // minute. No recovery at all in a pulseless rhythm: there is no circulation.
                     const oxygenSource = activeInt.has('Oxygen') || activeInt.has('Preoxygenation') || activeInt.has('ApnoeicOxygenation') || isBagging;
-                    if (oxygenSource && base.spO2 < 98) { base.spO2 = Math.min(98, base.spO2 + 0.35); vitalsChanged = true; }
+                    if (!inArrest && oxygenSource && hypoxiaDeficit > 0 && base.spO2 < 98) {
+                        const step = Math.min(0.35, hypoxiaDeficit, 98 - base.spO2);
+                        base.spO2 += step;
+                        hypoxiaDeficit -= step;
+                        vitalsChanged = true;
+                    }
                 }
 
                 if (scen && scen.deterioration && normaliseDeteriorationType(scen.deterioration.type) === 'neuro' && isRunning) {
@@ -329,7 +355,7 @@
                 // what it produces is what the monitor shows (manual holds aside).
                 const vt = ventTick(state, cs, base, tNow);
                 if (vt.changed) vitalsChanged = true;
-                if (vt.driving) currentHypoxiaTimer = 0;
+                if (vt.driving) { currentHypoxiaTimer = 0; hypoxiaDeficit = 0; }
 
                 // ----- STEPS 5 + 6: add the drug envelope, clamp, round. Recomposed EVERY tick from
                 // `base` so offsets can never accumulate rounding error, and so a drug wearing off
@@ -353,7 +379,7 @@
                     nextPrev = { ...state.vitals };
                 }
 
-                return { ...state, baseVitals: base, vitals: vitalsChanged ? composed : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer, ventPhys: vt.ventPhys };
+                return { ...state, baseVitals: base, vitals: vitalsChanged ? composed : state.vitals, prevVitals: nextPrev, trends: newTrends, hypoxiaTimer: currentHypoxiaTimer, hypoxiaDeficit, ventPhys: vt.ventPhys };
             }
             default: return state;
         }
@@ -492,6 +518,10 @@
                             probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true } : null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
+                    // Point-of-care results and compressions in progress, when the snapshot carries them.
+                    pocReadings: (p.pocReadings && typeof p.pocReadings === 'object') ? { ...p.pocReadings } : {},
+                    ventSamples: Array.isArray(p.ventSamples) ? p.ventSamples.slice(-480) : [],
+                    cprInProgress: p.cprInProgress === undefined ? state.cprInProgress : !!p.cprInProgress,
                     // A resumed session is NOT a paused session. Its clock is
                     // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
                     // therefore froze the controller's waveform strip until START was pressed. The

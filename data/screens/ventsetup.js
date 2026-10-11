@@ -4,7 +4,7 @@
     // =============================================================================================
     // VENTILATOR SIM: the start-screen tab. Pick a scenario and Education or Assessment. The
     // candidate uses the HAMILTON-T1 on the room monitor tablet (shown there from the start) or on
-    // its own tablet (Join -> Ventilator QR code); the facilitator runs it from the controller's
+    // its own tablet (Screens -> Join by QR code -> Ventilator); the facilitator runs it from the controller's
     // Ventilator section. Everything else (engine, session, monitor, debrief) is shared.
     // =============================================================================================
     const VentSimSetup = ({ onStart }) => {
@@ -28,7 +28,7 @@
             <div className="space-y-4 animate-fadeIn" data-testid="vent-setup">
                 <div className="bg-cyan-950/30 border border-cyan-700/50 rounded p-3 text-sm text-slate-300">
                     <p className="font-bold text-cyan-300 mb-1 flex items-center gap-2"><Lucide icon="wind" className="w-4 h-4"/> Ventilator Sim: HAMILTON-T1 skills</p>
-                    <p className="text-xs text-slate-400">The candidate uses the ventilator on the room monitor tablet (it opens there; they can flip to the obs and back) or on its own tablet (<b>Join</b> → Ventilator QR code). You run it from the controller's <b>Ventilator</b> section: problems, lungs, and full remote control of the device. The ventilator drives SpO2, CO2 and the breathing rate.</p>
+                    <p className="text-xs text-slate-400">The candidate uses the ventilator on the room monitor tablet (it opens there; they can flip to the obs and back) or on its own tablet (<b>Screens</b> → <b>Join by QR code</b> → Ventilator). You run it from the controller's <b>Ventilator</b> section: problems, lungs, and full remote control of the device. The ventilator drives SpO2, CO2 and the breathing rate.</p>
                 </div>
                 <div>
                     <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Mode</div>

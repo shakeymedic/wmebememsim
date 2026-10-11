@@ -53,7 +53,7 @@
         );
         const sessionActions = (
             <div className="flex flex-wrap gap-2">
-                <Button onClick={onJoinClick} variant="outline" className="h-9 text-xs whitespace-nowrap">Join another session</Button>
+                <Button onClick={onJoinClick} variant="outline" className="h-9 text-xs whitespace-nowrap">Use this device as a patient screen</Button>
                 {onNewSessionCode && (
                     <Button onClick={() => { if (window.confirm('Start a new session code? Every patient screen paired to ' + sessionID + ' will need to join the new code.')) onNewSessionCode(); }}
                             variant="outline" className="h-9 text-xs whitespace-nowrap" title="Generate a new session code for a new group">New code</Button>
@@ -277,13 +277,15 @@
             setBuildCtUrl(s.customImages?.ct || "");
             setBuildLearningObj(Array.isArray(s.learningObjectives) ? s.learningObjectives.join(', ') : (s.instructorBrief?.learningObjectives?.join(', ') || ''));
             setBuildCustomActions(Array.isArray(s.customActions) ? s.customActions.join(', ') : '');
+            // ?? not ||: an arrest's HR 0 / BP 0 must survive into the Builder (|| turned a VF
+            // arrest into VF with HR 80 and BP 120).
             setBuildVitals({
-                hr: s.vitalsMod?.hr || s.vitals?.hr || 80,
-                bpSys: s.vitalsMod?.bpSys || s.vitals?.bpSys || 120,
-                rr: s.vitalsMod?.rr || s.vitals?.rr || 16,
-                spO2: s.vitalsMod?.spO2 || s.vitals?.spO2 || 98,
-                temp: s.vitalsMod?.temp || s.vitals?.temp || 37,
-                gcs: s.vitalsMod?.gcs || s.vitals?.gcs || 15,
+                hr: s.vitalsMod?.hr ?? s.vitals?.hr ?? 80,
+                bpSys: s.vitalsMod?.bpSys ?? s.vitals?.bpSys ?? 120,
+                rr: s.vitalsMod?.rr ?? s.vitals?.rr ?? 16,
+                spO2: s.vitalsMod?.spO2 ?? s.vitals?.spO2 ?? 98,
+                temp: s.vitalsMod?.temp ?? s.vitals?.temp ?? 37,
+                gcs: s.vitalsMod?.gcs ?? s.vitals?.gcs ?? 15,
                 rhythm: s.ecg?.type || "Sinus Rhythm"
             });
             setMode('builder');
@@ -349,7 +351,7 @@
                 id: buildId && buildId.startsWith('CUST_') ? buildId : `CUST_${Date.now()}`,
                 title: buildTitle,
                 category: buildCat,
-                ageRange: finalAge < 18 ? "Paediatric" : "Adult",
+                ageRange: finalAge < 16 ? "Paediatric" : "Adult",
                 acuity: 'Majors',
                 patientAge: finalAge,
                 patientName: finalName,
@@ -590,8 +592,8 @@
                 </div>
                 {savedState && (
                     <div className="bg-emerald-900/30 border border-emerald-500 p-4 rounded-lg flex items-center justify-between animate-fadeIn">
-                        <div><h3 className="font-bold text-emerald-400">Resume Previous?</h3><p className="text-sm text-slate-300">{(savedState.scenario && savedState.scenario.title) || 'Saved session'}</p></div>
-                        <Button onClick={onResume} variant="success">Resume</Button>
+                        <div><h3 className="font-bold text-emerald-400">{savedState.live ? 'Scenario paused' : 'Resume Previous?'}</h3><p className="text-sm text-slate-300">{(savedState.scenario && savedState.scenario.title) || 'Saved session'}{savedState.live ? ' is paused where you left it. Return to it, or choose a new scenario below.' : ''}</p></div>
+                        <Button onClick={onResume} variant="success">{savedState.live ? 'Return to scenario' : 'Resume'}</Button>
                     </div>
                 )}
                 
@@ -676,7 +678,7 @@
                     {mode === 'random' && (
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">
-                                <div><label className="text-xs font-bold text-slate-400">Category</label><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Cardiac Arrest">Cardiac Arrest</option></select></div>
+                                <div><label className="text-xs font-bold text-slate-400">Category</label><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Medical">Medical</option><option value="Trauma">Trauma</option><option value="Obstetrics & Gynae">Obs & Gynae</option><option value="Cardiac Arrest">Cardiac Arrest</option><option value="Toxicology">Toxicology</option><option value="Psychiatric">Psychiatric</option></select></div>
                                 <div><label className="text-xs font-bold text-slate-400">Age</label><select aria-label="Age" value={age} onChange={e=>setAge(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Adult">Adult</option><option value="Paediatric">Paediatric</option><option value="Elderly">Elderly</option></select></div>
                                 <div><label className="text-xs font-bold text-slate-400">Acuity</label><select aria-label="Acuity" value={acuity} onChange={e=>setAcuity(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600"><option value="Any">Any</option><option value="Majors">Majors</option><option value="Resus">Resus</option></select></div>
                                 <div><label className="text-xs font-bold text-slate-400">Human Factors</label><select aria-label="Human Factors" value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-700 rounded p-2 text-sm text-white border border-slate-600">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select></div>
@@ -706,7 +708,7 @@
                                             <div key={s.id} className="flex justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
                                                 <div className="flex-1">
                                                     <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
-                                                    <div className="text-xs text-slate-400">{getScenarioPreviewText(s).substring(0, 60)}...</div>
+                                                    <div className="text-xs text-slate-400">{(t => t.length > 60 ? t.substring(0, 60) + '…' : t)(getScenarioPreviewText(s))}</div>
                                                 </div>
                                                 <div className="flex gap-2">
                                                     <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
@@ -736,6 +738,12 @@
                                      <div className="flex gap-2">
                                         <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs">Edit</Button>
                                         <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
+                                        <Button onClick={() => {
+                                            if (!window.confirm(`Delete "${s.title}" from this device? This cannot be undone.`)) return;
+                                            const updated = customScenarios.filter((_, j) => j !== i);
+                                            setCustomScenarios(updated);
+                                            storeSet('wmebem_custom_scenarios', JSON.stringify(updated));
+                                        }} variant="danger" className="h-8 text-xs" aria-label={`Delete ${s.title}`}>Delete</Button>
                                      </div>
                                  </div>
                              ))}

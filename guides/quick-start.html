@@ -20,7 +20,7 @@
 </header>
 <main>
 <h1>Quick Start Guide</h1>
-<p class="byline">EM Evidence Sim · for instructors running scenarios · updated 1 October 2026</p>
+<p class="byline">EM Evidence Sim · for instructors running scenarios · updated 10 October 2026</p>
 
 <h2 id="what-you-need">What you need</h2>
 <p>You can run a simulation with one laptop and one screen the team can see. Everything runs in a web browser at <a href="https://wmebemsim.netlify.app">wmebemsim.netlify.app</a>; there is nothing to install.</p>
@@ -30,6 +30,7 @@
 <tr><td>Laptop or tablet: the <strong>instructor screen</strong></td><td>You, out of the team's sight</td><td>Always</td></tr>
 <tr><td>A second screen, TV, projector or device: the <strong>room monitor</strong></td><td>The team</td><td>Always</td></tr>
 <tr><td>A tablet: the <strong>defib</strong></td><td>The team</td><td>Only for Defib Sim, or if you want the team to use a defibrillator</td></tr>
+<tr><td>A tablet: the <strong>ventilator</strong> (HAMILTON-T1)</td><td>The team</td><td>Optional, for Ventilator Sim or a ventilated patient. Without one, the ventilator shows on the room monitor instead</td></tr>
 </tbody>
 </table></div>
 <ul>
@@ -42,7 +43,7 @@
 <ol>
 <li>On your laptop, open <a href="https://wmebemsim.netlify.app">wmebemsim.netlify.app</a>.</li>
 <li>Note the six-character <strong>Session Code</strong> (for example K7PQ3M). It is shown on the setup screen and in the top right corner as "Session ID".</li>
-<li>The code is what links the room monitor and the defib to your screen. Each group can keep the same code all day.</li>
+<li>The code is what links the room monitor, the defib and the ventilator to your screen. Each group can keep the same code all day.</li>
 </ol>
 <p>Starting with a new group? Press <strong>New code</strong>. Any monitor or defib still on the old code will need to join again.</p>
 
@@ -54,6 +55,7 @@
 <tr><td><strong>Premade</strong></td><td>A ready-written scenario (anaphylaxis, sepsis, trauma, paediatrics and more)</td><td>Pick a category, press <strong>Load</strong>, read the brief, press <strong>Start Scenario</strong></td></tr>
 <tr><td><strong>Quick Sim</strong></td><td>A blank patient you control by hand, for ad-hoc bedside teaching</td><td>Set age, weight and starting rhythm, press <strong>Start Quick Sim</strong></td></tr>
 <tr><td><strong>Defib Sim</strong></td><td>Defibrillation, cardioversion and pacing skills on the defib tablet</td><td>Pick Education or Assessment, pick a scenario, press <strong>Start Defib Sim</strong></td></tr>
+<tr><td><strong>Ventilator Sim</strong></td><td>Ventilator skills on the HAMILTON-T1: nine scenarios covering NIV, CPAP, invasive ventilation, troubleshooting, mucus plugging and transfer</td><td>Pick Education or Assessment, pick a scenario, press <strong>Start Ventilator Sim</strong>, then <strong>START</strong></td></tr>
 <tr><td><strong>Random</strong></td><td>A generated patient from a category and acuity you choose</td><td>Press <strong>Generate Scenario</strong>, then start it</td></tr>
 <tr><td><strong>Custom / Builder</strong></td><td>Scenarios you have written or imported</td><td>Load or build one, then start it</td></tr>
 </tbody>
@@ -87,6 +89,7 @@
 <p>Also useful:</p>
 <ul>
 <li><strong>PAUSE / START</strong> (or the space bar) stops and starts the clock.</li>
+<li><strong>Back</strong> pauses the scenario and returns to the setup screen. Press <strong>Return to scenario</strong> there to carry on where you left off.</li>
 <li><strong>Patient condition</strong> shows whether the patient gets worse on their own (AUTO) or only when you change things (MANUAL). <strong>Better</strong> and <strong>Worse</strong> nudge the whole patient.</li>
 <li><strong>Event log</strong> (bottom right) records everything with a time. Type a note and press <strong>Add note</strong>, or tap the flag beside any entry to discuss it later.</li>
 <li><strong>Simple / Full</strong> (top bar): Simple hides the advanced controls. Use Full when you need them.</li>
@@ -98,12 +101,13 @@
 <li>Use it to lead the debrief:
     <ul>
     <li><strong>Performance Summary</strong>: which learning objectives were met, partly done or not done.</li>
+    <li><strong>Defib Sim feedback</strong> (Defib Sim) and <strong>Ventilator feedback</strong> (any session that used the ventilator): good practice and areas for improvement. The ventilator feedback also lists when each problem was injected and how long it took to fix.</li>
     <li><strong>Obs, interventions and changes</strong>: a graph of the patient's obs over the whole session, with the rhythm, every treatment, every change you made and your flags marked and numbered. Hover over it to read the values at any moment.</li>
     <li><strong>Simulation Log</strong>: every action with its time.</li>
     </ul>
 </li>
 <li>Press <strong>Download Report</strong> to keep a copy, or <strong>Print</strong>. <strong>Certificate</strong> (Defib Sim only) makes a certificate of completion for the learner.</li>
-<li>Press <strong>Exit to Menu</strong> to set up the next scenario. The room monitor and defib stay linked.</li>
+<li>Press <strong>Exit to Menu</strong> to set up the next scenario. The room monitor, defib and ventilator stay linked, and the ventilator starts afresh for the next scenario.</li>
 </ol>
 
 <h2 id="quick-fixes">Quick fixes</h2>
@@ -115,10 +119,11 @@
 <tr><td>Badge says <strong>Sync error</strong></td><td>Check the internet connection on each device</td></tr>
 <tr><td>Room monitor or defib not following your changes</td><td>Check it has the same session code as your laptop; join again if not</td></tr>
 <tr><td>Instructor tab closed by mistake</td><td>Reopen the site and press <strong>Resume</strong> under "Resume Previous?"</td></tr>
+<tr><td>Pressed <strong>Back</strong> by mistake</td><td>The scenario is paused, not lost. Press <strong>Return to scenario</strong> on the setup screen, then <strong>START</strong></td></tr>
 <tr><td>Defib Sim log times stuck at 00:00</td><td>The clock has not started. Press <strong>START</strong>, or it starts at the learner's first press on the defib</td></tr>
 </tbody>
 </table></div>
-<p><strong>Keyboard shortcuts:</strong> <kbd>Space</kbd> = pause or start; <kbd>F</kbd> = finish; <kbd>D</kbd> = drug calculator; <kbd>T</kbd> = timer alerts; <kbd>?</kbd> = list of shortcuts. If a shortcut does nothing, click an empty part of the screen first.</p>
+<p><strong>Keyboard shortcuts:</strong> <kbd>Space</kbd> = pause or start; <kbd>F</kbd> = finish; <kbd>D</kbd> = drug calculator; <kbd>T</kbd> = timer alerts; <kbd>?</kbd> = list of shortcuts. They work straight after you click a button, except that <kbd>Space</kbd> then presses that button again; they do nothing while you are typing in a box or a pop-up is open.</p>
 <p>For everything else, see the <a href="instructor-guide.html">Full Instructor Guide</a>.</p>
 </main>
 <footer>EM Evidence Sim · <a href="../index.html">Open the simulator</a> · <a href="index.html">All guides</a></footer>

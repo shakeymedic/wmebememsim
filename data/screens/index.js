@@ -11,6 +11,10 @@
             }
         }, [resumeData]);
 
+        // Back to the menu pauses the run, so it does not carry on unseen; the menu offers a way
+        // straight back into it.
+        const goBack = () => { if (sim.state.isRunning) sim.pause(); setView('setup'); };
+
         if (view === 'debrief') {
             return <DebriefScreen sim={sim} onExit={onRestart} />;
         }
@@ -22,7 +26,7 @@
                 <DefibSimScreen
                     sim={sim}
                     onFinish={() => { sim.stop(); setView('debrief'); }}
-                    onBack={() => setView('setup')}
+                    onBack={goBack}
                     sessionID={sessionID}
                 />
             );
@@ -35,7 +39,7 @@
                     sim.stop();
                     setView('debrief');
                 }}
-                onBack={() => setView('setup')}
+                onBack={goBack}
                 sessionID={sessionID}
             />
         );

@@ -149,6 +149,7 @@ test('one screen: the monitor switches between the obs, the defib and the ventil
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
   await expect(monitor.getByTestId('screen-switcher')).toHaveCount(0);       // nothing brought in yet
+  await monitor.getByText('Tap to Enable Sound').click({ force: true });     // the (bouncing) sound card sits on top of everything
 
   await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_VENT_PANEL', payload: true }));
   await expect(monitor.getByTestId('monitor-vent')).toBeVisible();
