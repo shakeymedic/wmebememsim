@@ -15,12 +15,31 @@ async function check(page, where) {
   expect(bad).toEqual([]);
 }
 
-test('setup screen, every start tab', async ({ page }) => {
-  await openController(page);
-  for (const tab of [/^quick sim$/i, /^defib sim$/i, /^random$/i, /^premade$/i, /^custom$/i, /^builder/i]) {
-    await page.getByRole('button', { name: tab }).first().click();
-    await check(page, `setup ${tab}`);
+test('welcome screen, the start options, each option and the patient screens card', async ({ page }) => {
+  await page.goto('/index.html');
+  await expect(page.getByTestId('welcome-controller')).toBeVisible();
+  await check(page, 'welcome');
+  await page.getByTestId('welcome-controller').click();
+  await expect(page.getByTestId('mode-chooser')).toBeVisible();
+  await check(page, 'start options');
+  for (const id of ['quick', 'defib', 'vent', 'random', 'premade', 'custom']) {
+    await page.getByTestId(`mode-${id}`).click();
+    await check(page, `setup ${id}`);
+    if (id === 'custom') {
+      await page.getByRole('button', { name: 'Builder', exact: true }).click();
+      await check(page, 'setup builder');
+    }
+    await page.getByRole('button', { name: 'All options' }).click();
   }
+  await page.getByTestId('setup-toggle').click();
+  await check(page, 'patient screens');
+});
+
+test('the patient screen join page', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.getByTestId('welcome-screen').click();
+  await expect(page.getByRole('heading', { name: 'Patient screen' })).toBeVisible();
+  await check(page, 'join');
 });
 
 test('Quick Sim controller and the room monitor', async ({ page, context }) => {

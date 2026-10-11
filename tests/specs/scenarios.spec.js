@@ -6,7 +6,7 @@ test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
 // The real Premade flow: category -> Load -> briefing -> Start Scenario
 async function startPremade(page, category, title) {
-  await page.getByRole('button', { name: /^premade$/i }).click();
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
   await page.getByRole('button', { name: category, exact: true }).click();
   const row = page.locator('div.justify-between', { hasText: title }).first();
   await row.getByRole('button', { name: 'Load' }).click();

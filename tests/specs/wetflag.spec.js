@@ -7,6 +7,7 @@ test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
 test('the setup option to show WETFLAG from the start is off by default', async ({ page }) => {
   await openController(page);
+  await page.getByTestId('mode-premade').click();
   await expect(page.getByRole('checkbox', { name: 'Show WETFLAG on the monitor' })).not.toBeChecked();
 });
 

@@ -1,6 +1,6 @@
 // Offline: after one online visit the app and the defib tablet load with no network at all.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, expect } = require('./helpers');
+const { useFakeFirebase, chooseController, expect } = require('./helpers');
 
 test.use({ serviceWorkers: 'allow' });
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
@@ -16,6 +16,7 @@ async function waitForStoredFiles(page, prefix) {
 
 test('the controller works offline after one visit', async ({ page, context }) => {
   await page.goto('/index.html');
+  await chooseController(page);
   await expect(page.getByText('Session Code', { exact: true })).toBeVisible();
   await waitForStoredFiles(page, 'emsim-app-');
   await context.setOffline(true);

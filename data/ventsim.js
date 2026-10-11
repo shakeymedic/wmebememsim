@@ -16,6 +16,9 @@
     // airway: 'tube' means intubated before the scenario starts (RSI recorded), 'none' a mask.
     // targets: spo2 [low, high] (%), vtMax / vtMin (ml/kg ideal body weight), pplatMax, dpMax
     // (driving pressure = Pplat - PEEP), autopeepMax, ipapMin, ipapMax, peepMin (all cmH2O), etco2 [low, high] (kPa).
+    // The troubleshooting scenarios (DOPES, mucus plugging, transfer) are not about the tidal volume and start on
+    // the ventilator's own default (Vt = 8 ml/kg IBW, measured a little above it), so they allow up to 8.5 ml/kg
+    // rather than marking a candidate down for a setting they were handed; ARDS and post-RSI keep the strict 8.
     // problems: the problems this scenario is written around (the facilitator injects them).
     // startProblems: problems already present when the scenario starts.
     var SCENARIOS = [
@@ -59,19 +62,19 @@
           description: 'Intubated, sedated and paralysed patient on the ventilator. The facilitator introduces problems one at a time: displaced or blocked tube, pneumothorax, equipment failure, stacked breaths. Find and fix each one.',
           profile: 'normal', breathing: false, airway: 'tube', age: 60, sex: 'Female',
           vitals: { hr: 90, bpSys: 128, bpDia: 74, rr: 14, spO2: 97, etco2: 4.9, gcs: 3, temp: 36.9 },
-          targets: { spo2: [94, 98], vtMin: 6, vtMax: 8, pplatMax: 30 },
+          targets: { spo2: [94, 98], vtMin: 6, vtMax: 8.5, pplatMax: 30 },
           problems: ['tubeout', 'block', 'ptx', 'disc', 'kink', 'o2fail'] },
         { id: 'plug', name: 'Mucus plugging: bronchoscopy', group: 'Troubleshooting',
           description: '71-year-old intubated two days ago for pneumonia, sedated and paralysed. Over the last hour the SpO2 has fallen despite more oxygen, the airway pressures are high and the tidal volumes low. Reduced air entry on the right. Work through DOPES, then bronchoscopy to clear the plug.',
           profile: 'normal', breathing: false, airway: 'tube', age: 71, sex: 'Male',
           vitals: { hr: 104, bpSys: 132, bpDia: 78, rr: 18, spO2: 88, etco2: 5.6, gcs: 3, temp: 37.8 },
-          targets: { spo2: [92, 96], vtMin: 6, vtMax: 8, pplatMax: 30 },
+          targets: { spo2: [92, 96], vtMin: 6, vtMax: 8.5, pplatMax: 30 },
           problems: ['plug'], startProblems: ['plug'] },
         { id: 'transfer', name: 'Interhospital transfer', group: 'Troubleshooting',
           description: 'Ventilated patient for transfer to a tertiary centre. Prepare the ventilator for transport, then manage what happens in the ambulance: mains power, battery, the oxygen cylinder and a disconnection.',
           profile: 'normal', breathing: false, airway: 'tube', age: 38, sex: 'Male',
           vitals: { hr: 88, bpSys: 122, bpDia: 72, rr: 14, spO2: 98, etco2: 4.7, gcs: 3, temp: 36.7 },
-          targets: { spo2: [94, 98], vtMin: 6, vtMax: 8, pplatMax: 30 },
+          targets: { spo2: [94, 98], vtMin: 6, vtMax: 8.5, pplatMax: 30 },
           problems: ['mains', 'battlow', 'o2fail', 'disc'] }
     ];
     function byId(id) { for (var i = 0; i < SCENARIOS.length; i++) if (SCENARIOS[i].id === id) return SCENARIOS[i]; return null; }
@@ -85,8 +88,22 @@
         var base = window.buildQuickSimScenario({ age: sc.age, sex: sc.sex, name: opts.name || 'Ventilator Sim Patient', rhythm: rhythm });
         var vitals = Object.assign({}, base.vitals, sc.vitals);
         var mode = opts.mode === 'assessment' ? 'assessment' : 'education';
+        var intubated = sc.airway === 'tube';
+        // The controller's intervention list starts with what this scenario is likely to need.
+        var recommended = ['Obs', 'ToggleETCO2', 'CheckVBG'];
+        if (intubated) recommended.push('Suction', 'Propofol', 'Fentanyl', 'Roc');
+        if (sc.profile === 'asthma' || sc.profile === 'copd') recommended.push('Nebs', 'Hydrocortisone');
+        if (sc.profile === 'cpo') recommended.push('GTN', 'Furosemide');
+        if (sc.problems.indexOf('ptx') !== -1) recommended.push('Needle', 'FingerThoracostomy');
+        if (sc.problems.indexOf('plug') !== -1 || sc.problems.indexOf('block') !== -1) recommended.push('Bronchoscopy');
+        var defs = window.INTERVENTIONS || null;
+        if (defs) recommended = recommended.filter(function (k) { return !!defs[k]; });
+        var probNames = sc.problems.map(PROBLEM_LABEL);
         return Object.assign({}, base, {
             id: 'VENT_' + sc.id + '_' + Date.now(),
+            // The full controller (interventions, drugs, investigations), as Defib Sim has: needle
+            // decompression, bronchoscopy, sedation and nebulisers are part of these scenarios.
+            quickSim: false,
             title: 'Ventilator Sim: ' + sc.name,
             category: 'Ventilator Sim',
             acuity: 'Resus',
@@ -95,6 +112,14 @@
             patientProfileTemplate: sc.description,
             vitalsMod: vitals,
             vitals: vitals,
+            recommendedActions: recommended,
+            // No learning objectives on purpose: they are scored from the controller's interventions, and
+            // this is scored by the ventilator feedback instead, so they would always read as missed.
+            learningObjectives: [],
+            instructorBrief: {
+                progression: sc.description + (probNames.length ? ' Problems to inject, one at a time: ' + probNames.join(', ') + '.' : ''),
+                interventions: [], learningObjectives: []
+            },
             ventSim: {
                 scenario: sc.id, name: sc.name, group: sc.group, description: sc.description, mode: mode,
                 profile: sc.profile, breathing: sc.breathing, airway: sc.airway,
@@ -104,7 +129,13 @@
     }
 
     // ---- DEBRIEF -----------------------------------------------------------------------------
-    var clock = function (sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); };
+    // A time on the session clock, as the rest of the debrief writes it (00:00), and a duration in words.
+    var clock = function (sec) { sec = Math.max(0, Math.round(Number(sec) || 0)); return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); };
+    var duration = function (sec) {
+        sec = Math.max(0, Math.round(Number(sec) || 0));
+        var m = Math.floor(sec / 60), r = sec % 60;
+        return m ? m + ' min' + (r ? ' ' + r + ' s' : '') : r + ' s';
+    };
     var median = function (a) { if (!a.length) return null; var s = a.slice().sort(function (x, y) { return x - y; }); var m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
     var round1 = function (v) { return Math.round(v * 10) / 10; };
     var PROBLEM_LABEL = function (id) { var VP = window.VENT_PROFILES; var p = VP && VP.PROBLEMS.filter(function (x) { return x.id === id; })[0]; return p ? p.label : id; };
@@ -194,8 +225,13 @@
         }
         if (ipaps.length && tg.ipapMin) {
             var imx = Math.max.apply(null, ipaps);
+            // The T1's NIV default is already 20 cmH2O, so only an increase counts as titration.
+            var rose = imx > ipaps[0];
+            var adjusted = settings.some(function (l) { return /Setting changed: (PEEP\/CPAP|\u0394Psupport|\u0394Pinsp) /.test(l.msg); });
             if (imx < tg.ipapMin) improve.push('Inspiratory pressure never reached ' + tg.ipapMin + ' cmH2O (highest ' + imx + '): in hypercapnic AECOPD, titrate IPAP up towards 20 or more over 10-30 minutes as tolerated (BTS/ICS)');
-            else good.push('Inspiratory pressure titrated up to ' + imx + ' cmH2O');
+            else if (rose) good.push('Inspiratory pressure titrated up to ' + imx + ' cmH2O');
+            else if (adjusted) good.push('Inspiratory pressure adjusted during the session (highest ' + imx + ' cmH2O)');
+            else stats.push('Inspiratory pressure stayed at the starting ' + imx + ' cmH2O (the ventilator\u2019s default): it was not titrated to the patient\u2019s response');
         }
         if (ipaps.length && tg.ipapMax) {
             var im = Math.max.apply(null, ipaps);
@@ -241,7 +277,7 @@
             if (/^Ventilator problems: all fixed/.test(l.msg || '')) Object.keys(open).forEach(function (k2) { open[k2].fixedAt = t(l); delete open[k2]; });
         });
         problems.forEach(function (p) {
-            p.text = p.label + (p.fromStart ? ': present from the start' : ': injected at ' + clock(p.at)) + (p.fixedAt !== null ? ', fixed ' + clock(p.fixedAt - p.at) + ' later' + (p.by === 'decompression' ? ' (chest decompressed)' : p.by === 'bronchoscopy' ? ' (bronchoscopy)' : '') : ', not fixed by the end');
+            p.text = p.label + (p.fromStart ? ': present from the start' : ': injected at ' + clock(p.at)) + (p.fixedAt !== null ? ', fixed ' + duration(p.fixedAt - p.at) + ' later' + (p.by === 'decompression' ? ' (chest decompressed)' : p.by === 'bronchoscopy' ? ' (bronchoscopy)' : '') : ', not fixed by the end');
         });
 
         return { good: good, improve: improve, stats: stats, problems: problems, samples: samples.length };

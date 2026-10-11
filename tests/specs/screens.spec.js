@@ -15,7 +15,8 @@ test('first visit asks how many patient screens and where; two screens on separa
   const errors = trackErrors(page);
   const code = await openController(page);
   const card = page.getByTestId('setup-card');
-  await expect(card.getByRole('heading', { name: 'How are you running the sim?' })).toBeVisible();
+  await card.getByTestId('setup-toggle').click();
+  await expect(card.getByRole('heading', { name: 'How many patient screens, and where?' })).toBeVisible();
   await shot(page, 'setup-chooser');
   await card.getByTestId('setup-count-2').click();
   await expect(card.getByTestId('setup-screen-monitor')).toHaveCount(0);      // still needs "where"
@@ -29,13 +30,15 @@ test('first visit asks how many patient screens and where; two screens on separa
 
   // Remembered on this device
   await page.reload();
-  await expect(page.getByTestId('setup-card').getByTestId('setup-screen-devices')).toBeVisible();
-  await expect(page.getByTestId('setup-card').getByRole('heading', { name: 'How are you running the sim?' })).toHaveCount(0);
+  await expect(card.getByText('2 patient screens, on separate devices.')).toBeVisible();
+  await card.getByTestId('setup-toggle').click();
+  await expect(card.getByTestId('setup-screen-devices')).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'How many patient screens, and where?' })).toHaveCount(0);
 
   // Changing it stays open until Done
   await page.getByRole('button', { name: 'Change set-up' }).click();
   await card.getByTestId('setup-count-3').click();
-  await expect(card.getByRole('heading', { name: 'How are you running the sim?' })).toBeVisible();
+  await expect(card.getByRole('heading', { name: 'How many patient screens, and where?' })).toBeVisible();
   await card.getByRole('button', { name: 'Done' }).click();
   await expect(card.getByTestId('setup-qr-vent')).toHaveAttribute('title', new RegExp(`vent/index\\.html\\?session=${code}$`));
   await expect(card.getByTestId('setup-qr-defib')).toHaveAttribute('title', new RegExp(`defib/index\\.html\\?session=${code}$`));
@@ -45,6 +48,7 @@ test('first visit asks how many patient screens and where; two screens on separa
 test('screens plugged into this computer open in their own windows', async ({ page, context }) => {
   const code = await openController(page);
   const card = page.getByTestId('setup-card');
+  await card.getByTestId('setup-toggle').click();
   await card.getByTestId('setup-count-3').click();
   await card.getByTestId('setup-where-here').click();
   await expect(card.getByText(/set the extra screens to/i)).toBeVisible();
@@ -60,6 +64,7 @@ test('screens plugged into this computer open in their own windows', async ({ pa
 test('the earlier one computer, two screens choice carries over as one patient screen on this computer', async ({ page }) => {
   await page.addInitScript(() => { try { if (!sessionStorage.getItem('seeded')) { localStorage.setItem('wmebem_setup_mode', 'one'); sessionStorage.setItem('seeded', '1'); } } catch (e) {} });
   await openController(page);
+  await page.getByTestId('setup-toggle').click();
   await expect(page.getByTestId('setup-card').getByRole('heading', { name: /1 patient screen, plugged into this computer/ })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Open patient screen/ })).toBeVisible();
 });
@@ -70,7 +75,7 @@ test('a device joins as a patient screen and picks what it shows', async ({ page
   const screen = await context.newPage();
   const errors = trackErrors(screen);
   await screen.goto('/index.html');
-  await screen.getByTestId('setup-join').click();
+  await screen.getByTestId('welcome-screen').click();
   await expect(screen.getByRole('heading', { name: 'Patient screen' })).toBeVisible();
   await screen.getByLabel('Session code').fill(code);
   await screen.locator('[data-join-role="devices"]').click();
@@ -85,7 +90,7 @@ test('a device joins as a patient screen and picks what it shows', async ({ page
   // A ventilator screen goes straight to the ventilator page
   const vent = await context.newPage();
   await vent.goto('/index.html');
-  await vent.getByTestId('setup-join').click();
+  await vent.getByTestId('welcome-screen').click();
   await vent.getByLabel('Session code').fill(code);
   await vent.locator('[data-join-role="vent"]').click();
   await vent.getByRole('button', { name: 'Connect' }).click();
@@ -149,6 +154,7 @@ test('one screen: the monitor switches between the obs, the defib and the ventil
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
   await expect(monitor.getByTestId('screen-switcher')).toHaveCount(0);       // nothing brought in yet
+  await monitor.getByText('Tap to Enable Sound').click({ force: true });     // the (bouncing) sound card sits on top of everything
 
   await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_VENT_PANEL', payload: true }));
   await expect(monitor.getByTestId('monitor-vent')).toBeVisible();

@@ -30,6 +30,8 @@
             if (cur.pausedAt !== null && cur.pausedAt !== undefined) return;
             if (PASSIVE_DEVICE_EVENTS.indexOf(type) !== -1) return;
             if (type === 'DEVICE_MODE' && p && p.mode === 'off') return;
+            // The defib page resets its pacer to 0 mA on load and when it closes: not a learner action.
+            if (type === 'PACER_UPDATE' && p && !(Number(p.output) > 0)) return;
             addLogEntry('Clock started automatically at the learner\'s first action on the defibrillator.', 'system');
             start();
         };
@@ -142,7 +144,7 @@
                 wetflag: cur.scenario?.wetflag || null,
                 recommendedEnergy: RG.recommendedEnergy(Number.isFinite(weight) && weight > 0 ? weight : null, age),
                 energyLevels: RG.energySteps(Number.isFinite(weight) && weight > 0 ? weight : null, age),
-                defib: cur.defib || {},
+                defib: { ...(cur.defib || {}), runId: cur.runId || null },
                 noise: cur.noise || {},
                 pacing: { electrical: !!(cur.pacing && cur.pacing.electrical), mechanical: !!(cur.pacing && cur.pacing.mechanical) },
                 defibView: defibViewFor(cur),
@@ -191,6 +193,9 @@
             const connectionRef = db.ref('.info/connected');
             const onConnection = (snap) => {
                 if (snap.val() === true) {
+                    // After a reconnect, send the whole patient again rather than a diff against what
+                    // the server held before the drop (it may have been deleted meanwhile).
+                    lastPayloadRef.current = {};
                     dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
                 } else {
                     dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'disconnected', message: 'Realtime Database connection is unavailable.' } });
@@ -214,6 +219,7 @@
             // (presence, deviceEvents, deviceState, command), so a device's heartbeat or a defib
             // screen update does not re-deliver the whole patient to every monitor.
             const sessionRef = db.ref(`sessions/${sessionID}/live`);
+            lastPayloadRef.liveSession = sessionID;
 
             const flush = () => {
                 syncTimerRef.current = null;
@@ -266,7 +272,10 @@
                     // the STUDENT monitor; conversion announcements are assessor-only by design and
                     // The rules test (tests/specs/rules.spec.js) lists every key this object may carry.
                     defibPanelOpen: !!cur.defibPanelOpen,
-                    defib: cur.defib || {},
+                    // runId rides inside `defib` (a free-form key in the rules) so a ventilator or
+                    // defib tablet can tell a re-run of the same scenario from the run before it
+                    // without a database-rules change.
+                    defib: { ...(cur.defib || {}), runId: cur.runId || null },
                     // The ventilator on the room monitor, and the lungs it ventilates (the
                     // facilitator's choice, else one picked from the scenario).
                     ventPanelOpen: !!cur.ventPanelOpen,
@@ -311,17 +320,28 @@
                         payload: { state: 'degraded', message: `Invalid data omitted from sync: ${dropped}` }
                     });
                 }
+                // The diff base is the last payload the server accepted FOR THIS CODE. After "New code"
+                // (or the daily clean-up deleting the session under an open tab) a diff against the
+                // old code's payload sent only the changed keys, so the new session never received
+                // vitals and every screen waited forever. A new minute (updatedAt rolls over) also
+                // sends the whole patient once, which repairs a server copy deleted underneath us.
+                const last = lastPayloadRef.current || {};
+                const base = (lastPayloadRef.session === sessionID && last.updatedAt === safePayload.updatedAt) ? last : {};
                 const diff = {};
                 for (const key in safePayload) {
-                    if (JSON.stringify(safePayload[key]) !== JSON.stringify(lastPayloadRef.current[key])) {
+                    if (JSON.stringify(safePayload[key]) !== JSON.stringify(base[key])) {
                         diff[key] = safePayload[key];
                     }
                 }
                 if (Object.keys(diff).length > 0) {
                     // Only advance the acknowledged snapshot after RTDB accepts the write. Advancing it
                     // before the promise resolves made a permission-denied write look successful forever.
+                    const sentFor = sessionID;
                     sessionRef.update(diff).then(() => {
+                        // A late acknowledgement from a previous code must not become this code's base.
+                        if (lastPayloadRef.liveSession !== sentFor) return;
                         lastPayloadRef.current = safePayload;
+                        lastPayloadRef.session = sentFor;
                         dispatch({
                             type: 'SET_SYNC_STATUS',
                             payload: {
@@ -415,10 +435,13 @@
             };
             // onDisconnect() is what makes a closed tab / dead tablet disappear promptly; the
             // heartbeat is what makes a WIFI dropout (where onDisconnect never fires) detectable.
-            ref.onDisconnect().remove().catch(() => {});
+            // onDisconnect() is one-shot and the SDK does not re-arm it after a reconnect.
+            const connRef = db.ref('.info/connected');
+            const onConn = (snap) => { if (snap.val() === true) ref.onDisconnect().remove().catch(() => {}); };
+            connRef.on('value', onConn);
             write();
             const hb = setInterval(write, 10000);
-            return () => { clearInterval(hb); ref.remove().catch(() => {}); };
+            return () => { clearInterval(hb); connRef.off('value', onConn); ref.remove().catch(() => {}); };
         }, [isMonitorMode, sessionID, presenceDisplay, presenceRole]);
 
         // --- controller side: reduce the presence children, expiring stale heartbeats.
@@ -541,6 +564,13 @@
                 const held = ['spO2', 'rr', 'etco2'].filter(k => state.manualHold && state.manualHold[k]);
                 addLogEntry(`Ventilator is breathing for the patient: SpO2, RR and ETCO2 now follow it${held.length ? ` (except ${held.join(', ')}, which you set by hand)` : ''}.`, 'system');
                 const cur = stateRef.current;
+                // Ventilator Sim: the clock starts itself when the ventilator first breathes for the
+                // patient, as Defib Sim's does at the learner's first press, so a forgotten START
+                // does not leave every log time at 00:00. Not after a deliberate pause.
+                if (cur.scenario && cur.scenario.ventSim && !cur.isRunning && !cur.isFinished && (cur.pausedAt === null || cur.pausedAt === undefined)) {
+                    addLogEntry('Clock started automatically when the ventilator started.', 'system');
+                    start();
+                }
                 const d = window.VENT_ENGINE.driverFor(cur);
                 if (d && d.phys && Number(d.phys.inv) > 0 && window.VENT_ENGINE.airwayFor(cur) === 'none') {
                     addLogEntry('Ventilator started in an invasive mode with no tube or supraglottic airway recorded.', 'warning', true);
@@ -556,15 +586,22 @@
             const db = window.db;
             if (!db || !sessionID || isMonitorMode) return;
             const ref = db.ref(`sessions/${sessionID}/ventState`);
-            const onVal = (snap) => {
-                const v = snap.val() || {};
+            // Re-filtered every 10 s as well as on each change: a tablet that vanished without its
+            // onDisconnect firing sends no further value, and must still drop out after 60 s.
+            let latest = {};
+            let lastKeys = '';
+            const push = () => {
                 const now = Date.now();
                 const fresh = {};
-                Object.keys(v).forEach(k => { if (v[k] && Number(v[k].ts) > now - 60000) fresh[k] = v[k]; });
-                dispatch({ type: 'SET_VENT_MIRROR', payload: fresh });
+                Object.keys(latest).forEach(k => { if (latest[k] && Number(latest[k].ts) > now - 60000) fresh[k] = latest[k]; });
+                const keys = Object.keys(fresh).sort().join(',');
+                if (push.fromValue || keys !== lastKeys) dispatch({ type: 'SET_VENT_MIRROR', payload: fresh });
+                lastKeys = keys;
             };
+            const onVal = (snap) => { latest = snap.val() || {}; push.fromValue = true; push(); push.fromValue = false; };
             ref.on('value', onVal, () => {});
-            return () => ref.off('value', onVal);
+            const sweep = setInterval(push, 10000);
+            return () => { clearInterval(sweep); ref.off('value', onVal); };
         }, [isMonitorMode, sessionID]);
 
         // What each defib tablet is displaying, so a remote facilitator sees the device.
@@ -572,15 +609,22 @@
             const db = window.db;
             if (!db || !sessionID || isMonitorMode) return;
             const ref = db.ref(`sessions/${sessionID}/deviceState`);
-            const onVal = (snap) => {
-                const v = snap.val() || {};
+            // Re-filtered every 10 s as well as on each change: a tablet that vanished without its
+            // onDisconnect firing sends no further value, and must still drop out after 60 s.
+            let latest = {};
+            let lastKeys = '';
+            const push = () => {
                 const now = Date.now();
                 const fresh = {};
-                Object.keys(v).forEach(k => { if (v[k] && Number(v[k].ts) > now - 60000) fresh[k] = v[k]; });
-                dispatch({ type: 'SET_DEVICE_MIRROR', payload: fresh });
+                Object.keys(latest).forEach(k => { if (latest[k] && Number(latest[k].ts) > now - 60000) fresh[k] = latest[k]; });
+                const keys = Object.keys(fresh).sort().join(',');
+                if (push.fromValue || keys !== lastKeys) dispatch({ type: 'SET_DEVICE_MIRROR', payload: fresh });
+                lastKeys = keys;
             };
+            const onVal = (snap) => { latest = snap.val() || {}; push.fromValue = true; push(); push.fromValue = false; };
             ref.on('value', onVal, () => {});
-            return () => ref.off('value', onVal);
+            const sweep = setInterval(push, 10000);
+            return () => { clearInterval(sweep); ref.off('value', onVal); };
         }, [isMonitorMode, sessionID]);
 
         // Persist a slim snapshot to localStorage every 5s. This is a single interval keyed only on
@@ -591,7 +635,7 @@
             const id = setInterval(() => {
                 try {
                     const cur = stateRef.current;
-                    if (!cur.scenario || cur.log.length === 0) return;
+                    if (!cur.scenario || cur.log.length === 0 || cur.isFinished) return;
                     const slim = {
                         // The whole scenario, not just an identifier: every screen dereferences fields
                         // like patientProfileTemplate, and a stub makes them throw on resume.
@@ -605,11 +649,17 @@
                         activeInterventions: Array.from(cur.activeInterventions),
                         interventionCounts: cur.interventionCounts, activeDurations: cur.activeDurations,
                         completedObjectives: Array.from(cur.completedObjectives),
-                        log: cur.log.slice(-200), // recent log only
+                        log: cur.log.slice(-1500), // a ventilator session logs every setting change; 200 lost its start
                         // The debrief's obs graph (one sample per 5 s; about 2.8 h kept).
                         history: (cur.history || []).slice(-2000),
                         nibp: cur.nibp, etco2Enabled: cur.etco2Enabled, isParalysed: cur.isParalysed, paralysis: cur.paralysis,
                         showWetflag: cur.showWetflag, icp: cur.icp,
+                        // Obs the facilitator set by hand, and point-of-care readings, must survive a
+                        // resume: without them a held HR went back under AUTO and the BM vanished.
+                        manualHold: cur.manualHold || {}, pocReadings: cur.pocReadings || {},
+                        cprInProgress: !!cur.cprInProgress,
+                        // The ventilator record behind the debrief's ventilator feedback.
+                        ventSamples: (cur.ventSamples || []).slice(-800), ventPhys: cur.ventPhys || null,
                         // Shock count / cumulative energy must survive a resume.
                         defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings,
                         arrest: cur.arrest, defibStep: cur.defibStep,

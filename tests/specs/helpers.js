@@ -22,9 +22,17 @@ function trackErrors(page) {
   return errors;
 }
 
+// The first screen asks what this device is for; a reload in the same tab skips it.
+async function chooseController(page) {
+  const first = page.getByTestId('welcome-controller').or(page.getByText('Session Code', { exact: true }));
+  await expect(first.first()).toBeVisible();
+  if (await page.getByTestId('welcome-controller').isVisible()) await page.getByTestId('welcome-controller').click();
+}
+
 // Open the controller and return its session code
 async function openController(page) {
   await page.goto('/index.html');
+  await chooseController(page);
   await expect(page.getByText('Session Code', { exact: true })).toBeVisible();
   return page.evaluate(() => localStorage.getItem('wmebem_session_id'));
 }
@@ -46,4 +54,4 @@ const session = (page, code, sub = '') => page.evaluate(([c, s]) => window.__fak
 // The live patient the controller publishes (sessions/<CODE>/live)
 const live = (page, code, sub = '') => session(page, code, '/live' + sub);
 
-module.exports = { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, session, live, expect };
+module.exports = { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, expandSection, session, live, expect };

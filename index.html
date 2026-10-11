@@ -206,9 +206,14 @@
 
             // URL Params for Monitor Mode
             const urlParams = new URLSearchParams(window.location.search);
-            const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : 'setup';
+            // A new visit first asks what this device is for (controller or patient screen). A
+            // reload in the same browser tab goes straight back to the controller.
+            const initialMode = urlParams.get('mode') === 'monitor' ? 'monitor' : (() => {
+                try { if (sessionStorage.getItem('wmebem_device_role') === 'controller') return 'setup'; } catch (e) {}
+                return 'welcome';
+            })();
             const rawInitialSession = urlParams.get('session');
-            const initialSession = rawInitialSession ? rawInitialSession.trim().toUpperCase() : null;
+            const initialSession = rawInitialSession ? (rawInitialSession.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || null) : null;
 
             const [view, setView] = useState(initialMode);
             // A patient screen's role (data/simscreens.js); it lives in the address, so a reload keeps it.
@@ -247,7 +252,7 @@
 
         const ControllerApp = ({ view, setView, sessionID, setSessionID, setScreen }) => {
             const { useState, useEffect } = React;
-            const { SetupScreen, JoinScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
+            const { SetupScreen, JoinScreen, WelcomeScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
             const [generatedScenario, setGeneratedScenario] = useState(null);
 
             // Accounts are OPTIONAL and OFF THE CRITICAL PATH. useAuth() never
@@ -341,6 +346,9 @@
 
             const handleResume = (saved) => {
                 if (!saved || !saved.scenario) return;
+                // The scenario is still loaded in this tab (Back from the live screen): go straight
+                // back to it. Restoring the 5-second snapshot instead lost the latest shocks and log.
+                if (saved.live) { setView('livesim'); return; }
                 try {
                     // Snapshots only ever held {id, title} before, so rebuild the full scenario from
                     // the live definitions before anything tries to render it.
@@ -362,6 +370,11 @@
             useEffect(() => {
                 // localStorage throws outright in sandboxed frames (previews, embeds), which used to
                 // take the whole React tree down with a blank screen. Never let storage be fatal.
+                if (view !== 'setup') return;
+                if (engine.state.scenario && !engine.state.isFinished) {
+                    setResumeData({ scenario: engine.state.scenario, live: true });
+                    return;
+                }
                 let saved = null;
                 try { saved = localStorage.getItem('wmebem_sim_state'); } catch (e) { console.warn('Session recovery unavailable (storage blocked)', e); }
                 if (saved && view === 'setup') {
@@ -388,10 +401,14 @@
                             <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Evidence Sim</h1>
                         </div>
                         <div className="flex items-center gap-3">
-                            {view !== 'setup' && sessionID && (
+                            {!['setup', 'welcome', 'join'].includes(view) && sessionID && (
                                 <div className="flex flex-col items-end">
                                     <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">Session ID</div>
-                                    <div className="font-mono text-lg font-bold text-white tracking-widest leading-none select-all cursor-pointer" onClick={()=>{navigator.clipboard.writeText(sessionID); alert('Copied!');}}>{sessionID}</div>
+                                    <div className="font-mono text-lg font-bold text-white tracking-widest leading-none select-all cursor-pointer" title="Copy the session code" onClick={()=>{
+                                        const ok = () => alert('Session code copied.');
+                                        const fail = () => alert('Could not copy automatically. The session code is ' + sessionID);
+                                        try { navigator.clipboard ? navigator.clipboard.writeText(sessionID).then(ok, fail) : fail(); } catch (e) { fail(); }
+                                    }}>{sessionID}</div>
                                 </div>
                             )}
                             {/* Optional account control. Renders "Sign in" and nothing else until
@@ -417,7 +434,13 @@
                                 onResume={() => handleResume(resumeData)}
                             />
                         )}
-                        {view === 'join' && <JoinScreen onJoin={handleJoin} onBack={() => setView('setup')} />}
+                        {view === 'welcome' && WelcomeScreen && (
+                            <WelcomeScreen
+                                onController={() => { try { sessionStorage.setItem('wmebem_device_role', 'controller'); } catch (e) {} setView('setup'); }}
+                                onPatientScreen={() => setView('join')}
+                            />
+                        )}
+                        {view === 'join' && <JoinScreen onJoin={handleJoin} onBack={() => setView('welcome')} />}
                         {view === 'briefing' && (
                             <BriefingScreen 
                                 scenario={generatedScenario} 
@@ -430,7 +453,12 @@
                                 sim={engine} 
                                 view={view} 
                                 setView={setView} 
-                                onRestart={() => { engine.reset(); setView('setup'); }}
+                                onRestart={() => {
+                                    // A finished run is not offered for resuming.
+                                    try { localStorage.removeItem('wmebem_sim_state'); } catch (e) {}
+                                    setResumeData(null);
+                                    engine.reset(); setView('setup');
+                                }}
                                 sessionID={sessionID}
                             />
                         )}

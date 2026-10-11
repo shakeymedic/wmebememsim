@@ -12,8 +12,8 @@
 
     const useDefib = (ctx) => {
         const {
-            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, dispatch, isMonitorMode, state,
-            stateRef, triggerArrest, triggerROSC
+            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, clearSimTimer, dispatch, isMonitorMode,
+            simTimeout, state, stateRef, triggerArrest, triggerROSC
         } = ctx;
 
         // =====================================================================================
@@ -40,12 +40,13 @@
             const table = RG.SHOCK_OUTCOMES[RG.canonical(fromRhythm)];
             if (!table || !table.refibChance) return;
             if (Math.random() >= table.refibChance) return;
-            if (refibTimerRef.current) clearTimeout(refibTimerRef.current);
-            const delay = 20000 + Math.random() * 40000;
-            refibTimerRef.current = setTimeout(() => {
+            // On the sim clock (paused with the scenario, cancelled by a new one), not the wall clock.
+            clearSimTimer(refibTimerRef.current);
+            const delay = 20 + Math.random() * 40;
+            refibTimerRef.current = simTimeout(() => {
                 refibTimerRef.current = null;
                 const cur = stateRef.current;
-                if (!cur.isRunning || cur.isFinished) return;
+                if (cur.isFinished) return;
                 if (RG.isPulseless(cur.rhythm)) return;     // already re-arrested another way
                 dispatch({ type: 'UPDATE_VITALS', payload: arrestVitals(cur.baseVitals) });
                 changeRhythm(fromRhythm, 'refibrillation', { note: 're-arrest after ROSC' });
@@ -75,9 +76,9 @@
         };
         // "VF recurs once": 30-90 s after ROSC, if the patient is still in the rhythm they converted to.
         const scheduleFixedRefib = (convertedTo) => {
-            if (refibTimerRef.current) clearTimeout(refibTimerRef.current);
+            clearSimTimer(refibTimerRef.current);
             dispatch({ type: 'SET_DEFIB_STATE', payload: { refibDone: true } });
-            refibTimerRef.current = setTimeout(() => {
+            refibTimerRef.current = simTimeout(() => {
                 refibTimerRef.current = null;
                 const now = stateRef.current;
                 if (!now || now.isFinished || RG.canonical(now.rhythm) !== RG.canonical(convertedTo)) return;
@@ -85,7 +86,7 @@
                 changeRhythm('VF', 'refibrillation', { note: 're-arrest after ROSC' });
                 addLogEntry('VF has recurred after ROSC (refibrillation). Restart CPR and the shockable pathway.', 'danger', true);
                 dispatch({ type: 'SET_FLASH', payload: 'red' });
-            }, 30000 + Math.random() * 60000);
+            }, 30 + Math.random() * 60);
         };
         const afterShockRosc = (cur, fromRhythm, convertedTo) => {
             const refib = (cur.defibSettings && cur.defibSettings.refib) || 'model';
@@ -556,11 +557,18 @@
             if (!electrical && pacing.electrical) {
                 const pre = pacing.pre || {};
                 dispatch({ type: 'SET_PACING', payload: { electrical: false, mechanical: false, underlying: null, pre: null } });
-                changeRhythm(pacing.underlying || 'Sinus Rhythm', 'pacing', { note: mode === 'pacer' ? 'capture lost' : 'pacing stopped' });
+                // Three different reasons, three different messages: the pacer was switched off (or
+                // its output/rate set to 0, as the defib tablet does when it loads or closes), demand
+                // pacing is inhibited by the patient's own faster rate, or the output fell below
+                // threshold. Only the last is a true loss of capture.
+                const why = !on ? 'stopped' : (inhibited ? 'inhibited' : 'lost');
+                changeRhythm(pacing.underlying || 'Sinus Rhythm', 'pacing', { note: why === 'stopped' ? 'pacing stopped' : (why === 'inhibited' ? 'demand pacing inhibited' : 'capture lost') });
                 const restore = {};
                 ['hr', 'bpSys', 'bpDia', 'spO2'].forEach(k => { if (Number.isFinite(Number(pre[k]))) restore[k] = Number(pre[k]); });
                 dispatch({ type: 'UPDATE_VITALS', payload: restore });
-                addLogEntry(mode === 'pacer' ? `Pacing: capture LOST (${output}mA < threshold). Increase the output.` : 'Pacing stopped — back to the underlying rhythm.', 'warning', mode === 'pacer');
+                if (why === 'stopped') addLogEntry('Pacing stopped — back to the underlying rhythm.', 'warning');
+                else if (why === 'inhibited') addLogEntry(`Pacing: demand mode INHIBITED — the patient's own rate (${Math.round(ownRate)}/min) is at or above the set rate (${rate}/min), so the pacer is not firing. Raise the rate to pace.`, 'info');
+                else addLogEntry(`Pacing: capture LOST (${output}mA < threshold). Increase the output.`, 'warning', true);
                 return;
             }
             if (!electrical) return;

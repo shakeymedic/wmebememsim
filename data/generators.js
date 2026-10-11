@@ -10,10 +10,35 @@ window.clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 // Scenario briefs are stored as templates containing {age} / {sex} placeholders. Anything that
 // renders a brief (preview card, builder, live dashboard) must go through here, otherwise the raw
 // placeholder leaks into the UI.
+// Ages are held in YEARS everywhere (WETFLAG, weight, energy and doses all need the real value), so
+// an infant is a fraction: 4 months = 0.33, 6 weeks = 0.12. formatAge turns that into what a
+// clinician would say: "newborn", "5 days", "6 weeks" (under 8 weeks), "4 months" (under 1 year,
+// and for a fractional age under 2 years), then whole years. `adjective: true` gives the
+// hyphenated form for "A 6-week-old", and screens that show an age should use this rather than
+// printing patientAge with a "y" after it.
+window.formatAge = (age, opts = {}) => {
+    const adj = !!opts.adjective;
+    const a = (age === undefined || age === null || age === '') ? NaN : Number(age);
+    if (!Number.isFinite(a) || a < 0) return adj ? 'unknown-age' : 'unknown age';
+    const unit = (n, word) => adj ? `${n}-${word}-old` : `${n} ${word}${n === 1 ? '' : 's'}`;
+    if (a === 0) return 'newborn';
+    const days = Math.round(a * 365.25);
+    if (days < 7) return unit(Math.max(1, days), 'day');
+    const weeks = Math.round(a * 365.25 / 7);
+    if (weeks < 8) return unit(weeks, 'week');
+    if (a < 1 || (a < 2 && !Number.isInteger(a))) return unit(Math.min(23, Math.max(2, Math.round(a * 12))), 'month');
+    return unit(Math.floor(a), 'year');
+};
+
 window.formatProfileTemplate = (template, age, sex) => {
     if (!template) return "";
-    const ageStr = (age === undefined || age === null || age === '') ? 'unknown-age' : age;
-    return String(template).replace(/\{age\}/g, ageStr).replace(/\{sex\}/g, sex || 'patient');
+    const sexStr = sex ? String(sex).toLowerCase() : 'patient';
+    return String(template)
+        .replace(/\{age\}-year-old/g, window.formatAge(age, { adjective: true }))
+        .replace(/\{age\}/g, window.formatAge(age))
+        .replace(/\{sex\}/g, sexStr)
+        // "A 8-year-old" / "A 11-year-old" / "A 80-year-old" read wrongly once the number is in.
+        .replace(/\b([Aa]) (?=(?:8\d*|11|18)-)/g, '$1n ');
 };
 
 // Preview cards render before a patient is generated, so there is no patientAge yet. Draw one
@@ -147,6 +172,28 @@ window.getBaseVitals = (age) => {
     return v;
 };
 
+// Sinus rate bands for naming a sinus rhythm when a scenario does not state one. Children: the APLS
+// normal heart-rate ranges by age (under 1 year 110-160, 1-2 years 100-150, 2-5 years 95-140, 5-12
+// years 80-120, over 12 years 60-100); adults: under 60 is a sinus bradycardia, over 100 a sinus
+// tachycardia.
+window.sinusRateBand = (age) => {
+    const a = (age === undefined || age === null || age === '') ? 40 : Number(age);
+    if (!Number.isFinite(a)) return { low: 60, high: 100 };
+    if (a < 1)   return { low: 110, high: 160 };
+    if (a < 2)   return { low: 100, high: 150 };
+    if (a < 5)   return { low: 95,  high: 140 };
+    if (a <= 12) return { low: 80,  high: 120 };
+    return { low: 60, high: 100 };
+};
+// The default ECG for a scenario that does not author one: sinus, named from the heart rate.
+window.sinusEcgForHr = (hr, age) => {
+    const rate = Number(hr);
+    const band = window.sinusRateBand(age);
+    if (Number.isFinite(rate) && rate > 0 && rate > band.high) return { type: 'Sinus Tachycardia', findings: `Sinus tachycardia, rate ${Math.round(rate)}`, derivedFromHr: true };
+    if (Number.isFinite(rate) && rate > 0 && rate < band.low) return { type: 'Sinus Bradycardia', findings: `Sinus bradycardia, rate ${Math.round(rate)}`, derivedFromHr: true };
+    return { type: 'Sinus Rhythm', findings: 'Normal sinus rhythm', derivedFromHr: true };
+};
+
 // RCUK Paediatric emergency drug chart (Guidelines 2025, updated Feb 2026): weights are averaged
 // lean body mass from 50th-centile weights. Ages between the chart's rows are interpolated.
 // Under 1 year the rows are in months (< 1 month 3.5 kg, 1 month 4, 3 months 5, 6 months 7).
@@ -206,6 +253,9 @@ window.generateVbg = (clinicalState = "normal") => {
     vbg.pH += window.getRandomFloat(-0.03, 0.03, 2);
     switch (clinicalState) {
         case "dka_severe": vbg = { pH: 6.95, pCO2: 2.5, pO2: 4.0, HCO3: 5, BE: -24, Lac: 2.5, K: 5.4, Glu: 28.0, Ketones: 5.8 }; break;
+        // HHS (JBDS-IP 2022 criteria): glucose >= 30 mmol/L, osmolality >= 320 mOsm/kg, pH >= 7.3,
+        // bicarbonate >= 15 mmol/L, ketones < 3 mmol/L. Hypernatraemic and dry, not acidotic.
+        case "hhs": vbg = { pH: 7.34, pCO2: 5.0, pO2: 5.0, HCO3: 20, BE: -4, Lac: 2.2, K: 4.8, Na: 152, Glu: 42.0, Ketones: 1.0, Osm: 360 }; break;
         case "septic_shock": vbg = { pH: 7.25, pCO2: 4.5, pO2: 3.5, HCO3: 16, BE: -8, Lac: 6.5, K: 4.2, Glu: 4.0, Ketones: 0.5 }; break;
         case "haemorrhagic_shock": vbg = { pH: 7.20, pCO2: 4.8, pO2: 3.5, HCO3: 14, BE: -10, Lac: 8.0, K: 3.8, Glu: 9.0, Ketones: 1.2 }; break;
         case "copd_retainer": vbg = { pH: 7.30, pCO2: 9.5, pO2: 4.5, HCO3: 34, BE: 8, Lac: 1.2, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
@@ -265,6 +315,7 @@ window.generateUrine = (type = "normal") => {
     const base = { leuks: "-", nitrites: "-", blood: "-", ketones: "-", protein: "-", glucose: "-", bhcg: "Negative" };
     if(type === "uti") return { ...base, leuks: "+++", nitrites: "+" };
     if(type === "dka") return { ...base, ketones: "++++", glucose: "++++" };
+    if(type === "hhs") return { ...base, ketones: "Trace", glucose: "++++" };
     if(type === "rhabdo") return { ...base, blood: "+++ (Myoglobin)" };
     if(type === "pregnancy") return { ...base, bhcg: "POSITIVE" };
     if(type === "renal_colic") return { ...base, blood: "++" };
@@ -272,7 +323,7 @@ window.generateUrine = (type = "normal") => {
 };
 
 window.generatePocus = (type = "normal") => {
-    const base = { heart: "Normal contractility. No pericardial effusion.", lungs: "Lung sliding present bilaterally. No B-lines.", abdo: "No free fluid in Morrison's pouch or splenorenal angle." };
+    const base = { heart: "Normal contractility. No pericardial effusion.", lungs: "Lung sliding present bilaterally. No B-lines.", abdo: "No free fluid in Morison's pouch or splenorenal angle." };
     if(type === "tamponade") return { ...base, heart: "Large pericardial effusion. RV diastolic collapse present." };
     if(type === "pneumothorax") return { ...base, lungs: "Left: Absent lung sliding. Barcode sign present." };
     if(type === "pulmonary_oedema") return { ...base, lungs: "Diffuse B-lines bilaterally (Rocket tails)." };
@@ -326,7 +377,8 @@ window.HUMAN_FACTOR_CHALLENGES = [
 //     links and investigation findings, none of which Quick Sim shows. A minimal `ecg`/`vbg` pair is
 //     supplied directly so the monitor trace and any repeat-gas code path still have valid input.
 window.buildQuickSimScenario = (opts = {}) => {
-    const rawAge = Number(opts.age);
+    // Number('') and Number(null) are 0, which silently made a blank age field a newborn.
+    const rawAge = (opts.age === undefined || opts.age === null || String(opts.age).trim() === '') ? NaN : Number(opts.age);
     const age = Number.isFinite(rawAge) && rawAge >= 0 && rawAge <= 120 ? rawAge : 40;
     const sex = opts.sex === 'Female' ? 'Female' : 'Male';
     const name = String(opts.name || '').trim() || 'Quick Sim Patient';
@@ -338,7 +390,9 @@ window.buildQuickSimScenario = (opts = {}) => {
     if (Number.isFinite(rawWeight) && rawWeight > 0) weight = rawWeight;
     else if (age < 16) { const est = window.estimateWeight(age); weight = est === null ? null : parseFloat(est); }
 
-    const wetflag = weight ? window.calculateWetflag(age, weight) : null;
+    // WETFLAG is the paediatric chart, so only a child (< 16) gets one. An adult's typed weight is
+    // kept (weight-based drugs) but must not turn on the paediatric card, 4 J/kg energies and doses.
+    const wetflag = (weight && age < 16) ? window.calculateWetflag(age, weight) : null;
     const base = window.getBaseVitals(age);
     const rhythm = (window.RHYTHMS && window.RHYTHMS.isKnown(opts.rhythm)) ? window.RHYTHMS.canonical(opts.rhythm) : 'Sinus Rhythm';
 
@@ -353,14 +407,14 @@ window.buildQuickSimScenario = (opts = {}) => {
         quickSim: true,
         title: 'Quick Sim',
         category: 'Quick Sim',
-        ageRange: age < 18 ? 'Paediatric' : (age > 65 ? 'Elderly' : 'Adult'),
+        ageRange: age < 16 ? 'Paediatric' : (age > 65 ? 'Elderly' : 'Adult'),
         acuity: 'Majors',
         patientName: name,
         patientAge: age,
         sex,
         // Kept deliberately factual: there is no clinical story to tell.
         patientProfileTemplate: `Blank {age}-year-old {sex} for ad-hoc teaching. No scenario — the facilitator drives the obs and rhythm directly.`,
-        profile: `Blank ${age}-year-old ${sex.toLowerCase()} for ad-hoc teaching. No scenario — the facilitator drives the obs and rhythm directly.`,
+        profile: window.formatProfileTemplate(`Blank {age}-year-old {sex} for ad-hoc teaching. No scenario — the facilitator drives the obs and rhythm directly.`, age, sex),
         presentingComplaint: 'Quick Sim (no scenario)',
         vitalsMod: vitals,
         vitals,
@@ -387,46 +441,74 @@ window.buildQuickSimScenario = (opts = {}) => {
 // exactly what the app does.
 window.generatePatientFromTemplate = (base, opts = {}) => {
     const { generateHistory, estimateWeight, calculateWetflag, generateName, formatProfileTemplate, generateVbg } = window;
+    // Number(null) and Number('') are 0 — a newborn — so a blank authored field must read as absent.
+    const num = (v) => (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) ? NaN : Number(v);
     // Honour an AUTHORED patientAge before falling back to 40. Built-in scenarios all carry an
     // `ageGenerator`; a restricted scenario pasted into Firebase (or a hand-written custom one)
     // states its age directly as `patientAge` — and that age drives WETFLAG, the
     // paediatric 4 J/kg defibrillation energy and every weight-based dose, so silently
     // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
-    // cosmetic one.
-    const authoredAge = Number(base.patientAge);
+    // cosmetic one. Age 0 (a newborn) is a real age and must stay 0.
+    const authoredAge = num(base.patientAge);
     const patientAge = base.ageGenerator ? base.ageGenerator()
-        : (Number.isFinite(authoredAge) && authoredAge > 0 ? authoredAge : 40);
-    let sex = Math.random() > 0.5 ? 'Male' : 'Female';
-    const t = base.title.toLowerCase();
-    const p = String(base.patientProfileTemplate || '').toLowerCase();
+        : (Number.isFinite(authoredAge) && authoredAge >= 0 ? authoredAge : 40);
+    const title = String(base.title || '').toLowerCase();
+    const template = base.patientProfileTemplate || base.profile || '';
+    const p = String(template).toLowerCase();
     const forceFemale = ["ectopic", "ovarian", "pregnant", "labour", "birth", "gynae", "obstetric", "eclampsia", "uterus", "vaginal"];
     const forceMale = ["testicular", "prostate", "scrotal"];
-
-    if (forceFemale.some(k => t.includes(k) || p.includes(k)) || base.category === 'Obstetrics & Gynae') sex = 'Female';
-    else if (forceMale.some(k => t.includes(k) || p.includes(k))) sex = 'Male';
+    // An authored sex (built-in, Builder or restricted) wins; then the clinical keywords; then chance.
+    let sex = (base.sex === 'Male' || base.sex === 'Female') ? base.sex : null;
+    if (!sex) {
+        if (forceFemale.some(k => title.includes(k) || p.includes(k)) || base.category === 'Obstetrics & Gynae') sex = 'Female';
+        else if (forceMale.some(k => title.includes(k) || p.includes(k))) sex = 'Male';
+        else sex = Math.random() > 0.5 ? 'Male' : 'Female';
+    }
 
     const history = generateHistory(patientAge, sex);
     // An authored weight wins over the age estimate, for the same reason.
-    const authoredWeight = Number(base.weight);
+    const authoredWeight = num(base.weight);
     const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
         : (patientAge < 16 ? estimateWeight(patientAge) : null);
-    const wetflag = weight ? calculateWetflag(patientAge, weight) : null;
-    const randomName = generateName(sex);
+    // WETFLAG is the paediatric chart: children (< 16) only, whatever weight was authored.
+    const wetflag = (weight && patientAge < 16) ? calculateWetflag(patientAge, weight) : null;
+    const patientName = (typeof base.patientName === 'string' && base.patientName.trim()) ? base.patientName.trim() : generateName(sex);
 
-    let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...base.vitalsMod };
-    if (base.vitalsMod && base.vitalsMod.bpSys !== undefined && base.vitalsMod.bpDia === undefined) { 
-        finalVitals.bpDia = Math.floor(base.vitalsMod.bpSys * 0.65); 
+    // Built-in scenarios author `vitalsMod`; the Builder, custom and restricted scenarios author
+    // `vitals`. Both are honoured (vitals last, as the more explicit of the two).
+    const vitalsMod = (base.vitalsMod && typeof base.vitalsMod === 'object') ? base.vitalsMod : {};
+    const authoredVitals = (base.vitals && typeof base.vitals === 'object') ? base.vitals : {};
+    let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...vitalsMod, ...authoredVitals };
+    const sysGiven = vitalsMod.bpSys !== undefined || authoredVitals.bpSys !== undefined;
+    const diaGiven = vitalsMod.bpDia !== undefined || authoredVitals.bpDia !== undefined;
+    if (sysGiven && !diaGiven) finalVitals.bpDia = Math.floor(finalVitals.bpSys * 0.65);
+
+    // A scenario with no authored ECG was given a provisional sinus rhythm at enrichment; name it
+    // from this patient's actual heart rate and age (sinus tachycardia / bradycardia).
+    let ecgFields = {};
+    if (base.ecg && base.ecg.derivedFromHr && window.sinusEcgForHr) {
+        const ecg = window.sinusEcgForHr(finalVitals.hr, patientAge);
+        ecgFields.ecg = ecg;
+        if (base.investigations && base.investigations.ecg && base.investigations.ecg.derivedFromHr) {
+            ecgFields.investigations = { ...base.investigations, ecg: { ...base.investigations.ecg, ...ecg } };
+        }
     }
 
-    return { 
-       ...base, 
-       patientName: randomName, patientAge, sex,
-       profile: formatProfileTemplate(base.patientProfileTemplate, patientAge, sex),
-       vitals: finalVitals, 
-       pmh: base.pmh || history.pmh, 
-       dhx: base.dhx || history.dhx, 
+    // The scenario's own VBG (resolved once by enrichScenario, or authored) is the baseline; it is
+    // only generated when there is none.
+    let vbg = (base.vbg && typeof base.vbg === 'object') ? base.vbg : generateVbg(base.vbgClinicalState || "normal");
+    if (!base.vbg && Number.isFinite(num(vitalsMod.bm))) vbg = { ...vbg, Glu: num(vitalsMod.bm) };
+
+    return {
+       ...base,
+       ...ecgFields,
+       patientName, patientAge, sex,
+       profile: formatProfileTemplate(template, patientAge, sex),
+       vitals: finalVitals,
+       pmh: base.pmh || history.pmh,
+       dhx: base.dhx || history.dhx,
        allergies: base.allergies || history.allergies,
-       vbg: generateVbg(base.vbgClinicalState || "normal"),
+       vbg,
        hf: opts.hf || null,
        weight, wetflag,
        showWetflag: opts.showWetflag === true

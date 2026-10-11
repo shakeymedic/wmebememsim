@@ -26,6 +26,9 @@
             'chevron-down': '<polyline points="6 9 12 15 18 9"></polyline>',
             'chevron-right': '<polyline points="9 18 15 12 9 6"></polyline>',
             'heart-pulse': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><path d="M12 5 9.04 11H6"/><path d="M12 5l3 6h3"/>',
+            'shuffle': '<path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/>',
+            'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+            'book-open': '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
             'zap': '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
             'laptop': '<path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16"/>',
             'tablet': '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><line x1="12" x2="12.01" y1="18" y2="18"/>',
@@ -233,11 +236,22 @@
         );
     };
 
+    // A compact age for patient strips: "40y" from 2 years, otherwise "4 months", "3 weeks", "newborn"
+    // (infant ages are fractional years, which printed as "0.33y").
+    window.shortAge = (age) => {
+        const a = Number(age);
+        if (Number.isFinite(a) && a >= 2) return `${Math.floor(a)}y`;
+        return window.formatAge ? window.formatAge(age) : `${age}y`;
+    };
+
     // A small drop-down menu for the controller's top bar. Items: { label, icon, onClick } or
     // { label, icon, href } (opened in a new tab, like the buttons they replace). Closes on a
     // choice, an outside click or Escape.
     const MenuButton = ({ label, icon, items, className = '', ariaLabel = null }) => {
         const [open, setOpen] = useState(false);
+        // Opens towards whichever side has room: right-aligned, a menu whose button sits near the
+        // left of a phone screen ran off the left edge.
+        const [alignLeft, setAlignLeft] = useState(false);
         const ref = useRef(null);
         useEffect(() => {
             if (!open) return;
@@ -252,12 +266,16 @@
         const itemClass = 'w-full flex items-center gap-2 px-3 py-2 rounded text-left text-sm text-slate-200 hover:bg-slate-700 focus:bg-slate-700 outline-none whitespace-nowrap';
         return (
             <div className="relative" ref={ref}>
-                <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={ariaLabel || undefined} onClick={() => setOpen(o => !o)}
+                <button type="button" aria-haspopup="menu" aria-expanded={open} aria-label={ariaLabel || undefined} onClick={() => {
+                            const r = ref.current && ref.current.getBoundingClientRect();
+                            setAlignLeft(!!r && r.right < 240);
+                            setOpen(o => !o);
+                        }}
                         className={`h-8 px-2 sm:px-3 rounded font-bold text-sm flex items-center gap-1 border bg-transparent transition-colors ${open ? 'border-slate-400 text-white' : 'border-slate-600 text-slate-300 hover:border-slate-400 hover:text-white'} ${className}`}>
                     {icon && <Lucide icon={icon} className="w-4 h-4" />} {label} <Lucide icon="chevron-down" className="w-3 h-3" />
                 </button>
                 {open && (
-                    <div role="menu" className="absolute right-0 top-9 z-50 min-w-[14rem] bg-slate-800 border border-slate-600 rounded shadow-2xl p-1">
+                    <div role="menu" className={`absolute ${alignLeft ? 'left-0' : 'right-0'} top-9 z-50 min-w-[14rem] max-w-[calc(100vw-1rem)] bg-slate-800 border border-slate-600 rounded shadow-2xl p-1`}>
                         {items.filter(Boolean).map(it => it.href
                             ? <a key={it.label} role="menuitem" href={it.href} target="_blank" rel="noopener noreferrer" onClick={() => setOpen(false)} className={itemClass}>
                                   {it.icon && <Lucide icon={it.icon} className="w-4 h-4 flex-none text-slate-400" />}{it.label}
@@ -452,6 +470,7 @@
             // Layout changed (a lane added or dropped) -> the whole picture is stale: clear it and
             // restart every cursor. Same layout, a trace switched off -> clear just that lane.
             if (canvas.width > 0 && canvas.height > 0) {
+                ctx.setTransform(1, 0, 0, 1, 0, 0);      // device pixels for the clearing below
                 const prevDrawn = anim.drawnSig ? anim.drawnSig.split(',') : [];
                 if (anim.layoutSig !== null && anim.layoutSig !== layoutSig) {
                     ctx.fillStyle = '#000';
@@ -468,14 +487,20 @@
             }
             anim.layoutSig = layoutSig;
             anim.drawnSig = drawnSig;
+            // The backing store is devicePixelRatio times the CSS size (crisp traces on a retina
+            // tablet); everything is drawn in CSS pixels through this transform.
+            ctx.setTransform(anim.dpr || 1, 0, 0, anim.dpr || 1, 0, 0);
 
             const render = (ts) => {
                 if (!canvas.parentElement) return;
                 const newWidth = canvas.parentElement.clientWidth;
                 const newHeight = canvas.parentElement.clientHeight;
-                if (canvas.width !== newWidth || canvas.height !== newHeight) {
-                    canvas.width = newWidth;
-                    canvas.height = newHeight;
+                const dpr = Math.min(3, window.devicePixelRatio || 1);
+                if (canvas.width !== Math.round(newWidth * dpr) || canvas.height !== Math.round(newHeight * dpr)) {
+                    canvas.width = Math.round(newWidth * dpr);
+                    canvas.height = Math.round(newHeight * dpr);
+                    anim.dpr = dpr; anim.cssW = newWidth; anim.cssH = newHeight;
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                     setWidth(newWidth);
                     ctx.fillStyle = '#000';
                     ctx.fillRect(0, 0, newWidth, newHeight);
@@ -493,7 +518,7 @@
                 lastTs = ts;
 
                 const live = liveRef.current;
-                const W = canvas.width, Hgt = canvas.height;
+                const W = newWidth, Hgt = newHeight;
 
                 // -------- trace layout: one lane per drawn or reserved trace, top to bottom
                 const numTraces = Math.max(1, layoutKeys.length);
@@ -583,14 +608,14 @@
                 // must be drawn at a rhythm-appropriate intrinsic rate instead of silently defaulting
                 // to 60/min (PEA previously drew a perfusing-looking trace at whatever rate the
                 // numbers happened to hold).
+                // RG.drawRate also runs Mobitz II's beat slots at 4/3 of the HR (one in four is
+                // dropped), so the QRS drawn per minute always equals the HR shown.
                 const rid = RG.canonical(live.rhythmType);
-                const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
                 let ecgFreq;
                 if (rid === 'VF') ecgFreq = 4;
                 else if (rid === 'Fine VF') ecgFreq = 5;
                 else if (rid === 'Asystole') ecgFreq = 0.1;
-                else if (live.hr > 0) ecgFreq = live.hr / 60;
-                else ecgFreq = (INTRINSIC[rid] || 60) / 60;
+                else ecgFreq = RG.drawRate(rid, live.hr) / 60;
 
                 // ---- ADVANCE THE PHASE. `beatIntervalFactor` lengthens or shortens INDIVIDUAL beats
                 // for the rhythms that are supposed to be irregular; it returns exactly 1 for
@@ -690,9 +715,12 @@
                 // A smooth sinusoid is the CORRECT shape for a thoracic impedance trace. It is a
                 // different measurement from capnography, which is drawn below with a real
                 // capnogram morphology on its own slower time base.
+                // Apnoea (no rate, no CPR, nothing moving gas) is a FLAT line, the same rule as
+                // the capnogram: capnoRate's 12/min fallback is only a clock, not a breath.
                 if (respOn) {
                     const respBaseY = traceHeight * (laneIdx.resp + 0.5);
-                    const respY = respBaseY - respImpedance(respCycle, respRate);
+                    const apnoeic = !(Number(live.rr) > 0) && !live.isCPR && !live.ventilating;
+                    const respY = respBaseY - (apnoeic ? -15 : respImpedance(respCycle, respRate));   // -15: the resting level
                     drawLane('resp', '#eab308', respY);
                 }
 
@@ -771,9 +799,14 @@
                             // Phone controller: small tiles so all the obs fit on one screen.
                             compact = false,
                             // Controller panel: a little smaller than the room monitor's tiles.
-                            medium = false }) => {
+                            medium = false,
+                            // Room monitor with five or six tiles in a row: smaller type so '120/75'
+                            // and '4.5' fit a tablet-width tile.
+                            dense = false,
+                            // Room monitor NIBP: keep the bottom clear for the Cycle / Auto buttons.
+                            reserveBottom = false }) => {
         if (!visible) return (
-            <div className="bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
+            <div className="h-full min-w-0 bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
                 <span className="text-slate-400 text-xs uppercase">{label} Off</span>
             </div>
         );
@@ -802,17 +835,17 @@
         const tileProps = onClick ? { type: 'button', onClick, 'aria-label': `Adjust ${label}` } : {};
         if (isNIBP && isMonitor) {
             return (
-                <Tile {...tileProps} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
-                     <div className="flex justify-between items-start">
-                        <span className={`text-sm font-bold uppercase ${color}`}>{label}</span>
-                        <span className="text-xs text-slate-400">{unit}</span>
+                <Tile {...tileProps} className={`relative h-full w-full min-w-0 overflow-hidden bg-slate-900 border-2 rounded p-2 ${reserveBottom ? 'pb-14' : ''} flex flex-col justify-between text-left ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
+                     <div className="flex justify-between items-start gap-1 min-w-0">
+                        <span className={`${dense ? 'text-[10px] lg:text-sm' : 'text-sm'} font-bold uppercase truncate ${color}`}>{label}</span>
+                        <span className="text-xs text-slate-400 whitespace-nowrap">{unit}</span>
                      </div>
-                     <div className="flex items-end justify-center gap-1 my-1">
-                         <span className={`text-5xl md:text-6xl lg:text-7xl font-mono font-bold leading-none ${color}`}>{show(value)}</span>
-                         <span className="text-2xl text-slate-400 font-bold mb-1">/</span>
-                         <span className={`text-4xl md:text-5xl lg:text-6xl font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
+                     <div className="flex items-end justify-center gap-1 my-1 whitespace-nowrap min-w-0">
+                         <span className={`${dense ? 'text-3xl lg:text-4xl xl:text-5xl' : 'text-5xl md:text-6xl xl:text-7xl'} font-mono font-bold leading-none ${color}`}>{show(value)}</span>
+                         <span className={`${dense ? 'text-xl' : 'text-2xl'} text-slate-400 font-bold mb-1`}>/</span>
+                         <span className={`${dense ? 'text-2xl lg:text-3xl xl:text-4xl' : 'text-4xl md:text-5xl xl:text-6xl'} font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
                      </div>
-                     <div className="text-right text-[10px] text-slate-400 uppercase font-mono mt-auto">
+                     <div className="text-right text-[10px] text-slate-400 uppercase font-mono mt-auto whitespace-nowrap truncate">
                          {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
                          {lastNIBP ? `Last: ${new Date(lastNIBP).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}` : 'No reading'}
                      </div>
@@ -839,15 +872,17 @@
         }
 
         return (
-            <Tile {...tileProps} className={`relative bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
-                <div className="flex justify-between items-start">
-                    <span className={`text-xs md:text-sm font-bold uppercase ${color}`}>{label}</span>
-                    <span className="text-[10px] md:text-xs text-slate-400">{unit}</span>
+            <Tile {...tileProps} className={`relative min-w-0 bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
+                <div className="flex justify-between items-start gap-1 min-w-0">
+                    <span className={`${dense ? 'text-[10px] lg:text-sm' : 'text-xs md:text-sm'} font-bold uppercase truncate ${color}`}>{label}</span>
+                    <span className="text-[10px] md:text-xs text-slate-400 whitespace-nowrap">{unit}</span>
                 </div>
                 
-                <div className="flex items-baseline justify-center gap-1 h-full mt-2">
+                <div className="flex items-baseline justify-center gap-1 h-full mt-2 min-w-0 whitespace-nowrap">
                     <span className={`${medium
                             ? (hasValue2 ? 'text-2xl md:text-3xl lg:text-4xl' : 'text-4xl md:text-5xl lg:text-6xl')
+                            : dense
+                            ? (hasValue2 ? 'text-2xl lg:text-3xl xl:text-5xl' : 'text-5xl lg:text-6xl xl:text-8xl')
                             : (hasValue2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl')} font-mono font-bold tracking-tight ${color}`}>
                         {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}
                     </span>

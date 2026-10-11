@@ -31,14 +31,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 .screen-header { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px; background: rgba(0,0,0,0.6); border-radius: 5px; margin-bottom: 10px; }
 .screen-info { color: #00ffff; font-size: 13px; text-shadow: 0 0 5px currentColor; white-space: nowrap; }
 .screen-info.sync-indicator { color: #ffff00; font-weight: bold; animation: blink 1s infinite; }
-.ecg-canvas-container { background: #000; height: 300px; border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 12px; }
+/* The ECG takes whatever height the viewport leaves (up to 300px), so the screen and the controls
+   fit a tablet without scrolling; --ecg-h is narrowed for short and portrait screens below. */
+:root { --ecg-h: 300px; }
+.ecg-canvas-container { background: #000; height: var(--ecg-h); border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 12px; }
 #ecgCanvas { width: 100%; height: 100%; display: block; }
 .trace-label { position: absolute; left: 8px; top: 6px; color: #39ff14; font-size: 12px; font-weight: bold; z-index: 5; text-shadow: 0 0 4px rgba(57,255,20,0.6); }
 .trace-warning { position: absolute; right: 8px; top: 6px; color: #ffff00; font-size: 12px; font-weight: bold; z-index: 5; }
 /* Capnogram below the ECG (ZOLL R Series: "below the ECG trace", at half the ECG speed). The
    screen keeps its height: the ECG gives up the room the capnogram takes. */
-.ecg-canvas-container.with-co2 { height: 190px; margin-bottom: 6px; }
-.co2-canvas-container { background: #000; height: 104px; border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 12px; }
+.ecg-canvas-container.with-co2 { height: calc(var(--ecg-h) * 0.63); margin-bottom: 6px; }
+.co2-canvas-container { background: #000; height: calc(var(--ecg-h) * 0.35); border-radius: 8px; position: relative; overflow: hidden; margin-bottom: 12px; }
 #co2Canvas { width: 100%; height: 100%; display: block; }
 .vitals-display { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 12px; background: rgba(0,0,0,0.6); border-radius: 8px; }
 .vital-item { text-align: center; }
@@ -105,6 +108,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 .link-banner form { margin-top: 8px; display: flex; gap: 6px; justify-content: center; }
 .link-banner input { font: inherit; font-size: 16px; padding: 6px 8px; width: 10em; text-transform: uppercase; border-radius: 4px; border: 1px solid #666; background: #111; color: #fff; }
 .link-banner button { font: inherit; font-weight: bold; padding: 6px 12px; border-radius: 4px; border: 1px solid #0a0; background: #063; color: #fff; cursor: pointer; }
+.link-banner .change-code { margin-top: 8px; min-height: 40px; background: #334155; border-color: #94a3b8; }
 .ended-banner { position: absolute; inset: 0; z-index: 70; background: rgba(0,0,0,0.92); color: #94a3b8; display: flex; align-items: center; justify-content: center; font-family: 'Share Tech Mono', monospace; font-size: 28px; letter-spacing: 4px; }
 #paperOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 150; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
 #paperCanvas { max-width: 100%; max-height: 80%; border: 5px solid white; background: white; }
@@ -123,7 +127,79 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 .app-footer { text-align: center; color: #a3adb8; font-size: 12px; padding: 16px; }
 
 /* --- Responsive --- */
-@media (max-width: 1100px) { .zoll-device { grid-template-columns: 1fr; max-width: 760px; } .device-controls-section { display: grid; grid-template-columns: 1fr 1fr; } .top-buttons, .zoll-branding { grid-column: 1 / -1; } }
+/* Landscape tablets (1024x768, 1280x800): two columns down to 900px wide. Where the screen is not
+   tall enough for the controls in one long column, they are packed two to a row (SYNC | SHOCK,
+   ANALYSE | CHARGE, ENERGY | MODE dial, the pacer underneath) and the ECG shrinks with the viewport
+   height, so the screen, CHARGE, SHOCK, energy and the mode dial all fit without scrolling. */
+@media (min-width: 900px) and (max-width: 1100px) { .zoll-device { grid-template-columns: 1.1fr 0.9fr; } }
+@media (min-width: 900px) and (max-height: 960px) {
+    :root { --ecg-h: clamp(140px, calc(100vh - 420px), 300px); }
+    body { padding: 8px; }
+    .zoll-device { border-width: 10px; padding: 14px; gap: 14px; }
+    .zoll-top-link { top: 4px; right: 8px; } .zoll-top-logo { height: 28px; padding: 3px; }
+    .device-screen-section { padding: 12px; }
+    .screen { padding: 10px; }
+    .screen-header { padding: 6px 8px; margin-bottom: 8px; }
+    .vitals-display { padding: 8px; }
+    .message-bar { padding: 10px; margin-top: 8px; }
+    .softkeys { margin-top: 10px; }
+    .device-controls-section { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start;
+        grid-template-areas: "sync shock" "side side" "analyse charge" "energy dial" "pacing pacing"; }
+    .top-buttons, .action-buttons-group { display: contents; }
+    .btn-sync { grid-area: sync; justify-self: center; align-self: center; }
+    .btn-shock { grid-area: shock; justify-self: center; width: 96px; height: 96px; font-size: 18px; }
+    .btn-shock::before { font-size: 64px; }
+    .btn-shock .number { bottom: 6px; font-size: 16px; }
+    .side-buttons { grid-area: side; grid-auto-flow: column; grid-auto-columns: 1fr; grid-template-columns: none; gap: 8px; }
+    .side-btn { padding: 10px 6px; }
+    .btn-analyze { grid-area: analyse; } .btn-charge { grid-area: charge; }
+    .btn-analyze, .btn-charge { padding: 10px 10px; font-size: 14px; min-height: 52px; }
+    .energy-selector { grid-area: energy; padding: 10px 6px; gap: 4px; justify-content: center; }
+    .energy-display { font-size: 30px; }
+    .mode-dial-container { grid-area: dial; padding: 8px; }
+    .mode-dial { width: 76px; height: 76px; margin-bottom: 8px; border-width: 5px; }
+    .mode-dial::before { height: 28px; top: 8px; width: 6px; }
+    .mode-labels { gap: 6px; }
+    .mode-label { padding: 10px 2px; font-size: 12px; }
+    .pacing-controls { grid-area: pacing; padding: 6px 0 8px; gap: 6px; }
+    .pacer-dial { width: 56px; height: 56px; border-width: 4px; }
+    .pacer-dial::before { height: 20px; top: 6px; transform-origin: center 20px; }
+    .pacer-label { margin-top: 2px; } .pacer-value { margin-top: 0; font-size: 18px; }
+    .pacer-mode-btn { padding: 6px; }
+    .zoll-branding { display: none; }
+}
+@media (max-width: 899px) { .zoll-device { grid-template-columns: 1fr; max-width: 760px; } .device-controls-section { display: grid; grid-template-columns: 1fr 1fr; } .top-buttons, .zoll-branding { grid-column: 1 / -1; } }
+/* Portrait tablets (768x1024): the screen stacks above the controls, the ECG gives up height, and
+   the controls start with SYNC | SHOCK, then ANALYSE, CHARGE and ENERGY, so the controls a shock
+   needs are on screen without scrolling. */
+@media (min-width: 601px) and (max-width: 899px) {
+    :root { --ecg-h: clamp(150px, calc(100vh - 860px), 260px); }
+    body { padding: 8px; }
+    .zoll-device { border-width: 10px; padding: 12px; gap: 12px; }
+    .zoll-top-link { top: 4px; right: 8px; } .zoll-top-logo { height: 28px; padding: 3px; }
+    .device-screen-section { padding: 10px; }
+    .screen { padding: 10px; }
+    .screen-header { padding: 6px 8px; margin-bottom: 8px; }
+    .vitals-display { padding: 8px; }
+    .message-bar { padding: 10px; margin-top: 8px; }
+    .softkeys { margin-top: 10px; }
+    .device-controls-section { gap: 10px; align-content: start;
+        grid-template-areas: "sync shock" "analyse energy" "charge energy" "dial pacing" "side side" "brand brand"; }
+    .top-buttons, .action-buttons-group { display: contents; }
+    .btn-sync { grid-area: sync; justify-self: center; align-self: center; }
+    .btn-shock { grid-area: shock; justify-self: center; width: 100px; height: 100px; font-size: 18px; }
+    .btn-shock::before { font-size: 64px; }
+    .btn-analyze { grid-area: analyse; } .btn-charge { grid-area: charge; }
+    .energy-selector { grid-area: energy; justify-content: center; padding: 10px; gap: 4px; }
+    .side-buttons { grid-area: side; grid-auto-flow: column; grid-auto-columns: 1fr; grid-template-columns: none; }
+    .mode-dial-container { grid-area: dial; padding: 8px; }
+    .mode-dial { width: 76px; height: 76px; margin-bottom: 8px; border-width: 5px; }
+    .mode-dial::before { height: 28px; top: 8px; width: 6px; }
+    .mode-labels { gap: 6px; }
+    .mode-label { padding: 10px 4px; }
+    .pacing-controls { grid-area: pacing; }
+    .zoll-branding { grid-area: brand; grid-column: auto; }
+}
 @media (max-width: 600px) {
     body { padding: 6px; }
     .zoll-device { padding: 10px; border-width: 6px; border-radius: 12px; gap: 10px; }
@@ -139,6 +215,13 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 }
 
 /* Embedded in the room monitor */
-body.embedded { padding: 8px; }
+/* The room monitor's screen switcher sits at the top left, over this top margin and the device's
+   border, so it covers no control and no part of the screen. */
+body.embedded { padding: 8px; padding-top: 44px; }
 body.embedded .zoll-top-link, body.embedded .app-footer { display: none; }
 body.embedded .zoll-device { border-width: 10px; padding: 16px; max-width: none; }
+@media (min-width: 900px) and (max-height: 960px) {
+    body.embedded .zoll-device { padding: 14px; }
+    body.embedded { --ecg-h: clamp(140px, calc(100vh - 456px), 300px); }
+}
+@media (min-width: 601px) and (max-width: 899px) { body.embedded { --ecg-h: clamp(150px, calc(100vh - 896px), 260px); } }

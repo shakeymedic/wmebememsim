@@ -73,11 +73,54 @@
 
         useEffect(() => { stateRef.current = state; }, [state]);
 
+        // ---- SIM-CLOCK TIMERS ------------------------------------------------------------------------
+        // Delayed consequences (sugammadex reversal, VF recurring after ROSC, a drug's rhythm effect)
+        // used to be wall-clock setTimeouts: they kept counting while the scenario was paused and
+        // fired into whatever scenario had been loaded since. These count down only while the
+        // session is live (running, or a live Quick Sim, which never presses START), and die with the
+        // run that scheduled them (runId) or when the session finishes.
+        // The instant (no-pk) change each running continuous intervention made to the base vitals
+        // ({ [key]: { runId, arrest, deltas } }), so removing BVM, pacing, CPR, the LUCAS or an
+        // airway adjunct takes its effect off again instead of leaving it in the base for good.
+        const instantDeltasRef = useRef({});
+        const REVERSIBLE_INSTANT = ['Bagging', 'Pacing', 'CPR', 'Lucas', 'OPA', 'NPA'];
+        const simTimersRef = useRef(new Set());
+        const clearSimTimer = (id) => { if (id === null || id === undefined) return; clearInterval(id); simTimersRef.current.delete(id); };
+        const clearSimTimers = () => { simTimersRef.current.forEach(id => clearInterval(id)); simTimersRef.current.clear(); };
+        const simTimeout = (fn, seconds) => {
+            const runId = stateRef.current ? stateRef.current.runId : null;
+            let left = Math.max(0, Math.round(Number(seconds) || 0));
+            const id = setInterval(() => {
+                const now = stateRef.current;
+                if (!now || now.runId !== runId || now.isFinished) { clearSimTimer(id); return; }
+                const live = now.isRunning || (!!(now.scenario && now.scenario.quickSim) && (now.pausedAt === null || now.pausedAt === undefined));
+                if (!live) return;
+                left -= 1;
+                if (left > 0) return;
+                clearSimTimer(id);
+                fn();
+            }, 1000);
+            simTimersRef.current.add(id);
+            return id;
+        };
+        useEffect(() => () => clearSimTimers(), []);
+
         const dispatch = (action) => {
             // A new run's id is decided here, once, so the shadow copy and React agree on it.
             if ((action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION') && !action.runId) action = { ...action, runId: newRunId() };
+            // Nothing scheduled by the previous run may fire into the new one.
+            if (action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION' || action.type === 'CLEAR_SESSION') clearSimTimers();
             let enhancedAction = { ...action, currentState: stateRef.current };
-            
+
+            // A pulseless patient has no BP or saturation to trend: Better/Worse (or a stabilising
+            // drug) during an arrest used to ramp BP and SpO2 up from 0 on a patient in VF or
+            // asystole. The trend waits for ROSC; the flash still shows the button registered.
+            if ((action.type === 'TRIGGER_IMPROVE' || action.type === 'TRIGGER_DETERIORATE') && RG.inArrest(stateRef.current.rhythm)) {
+                dispatch({ type: 'SET_FLASH', payload: action.type === 'TRIGGER_IMPROVE' ? 'green' : 'red' });
+                dispatch({ type: 'SET_NOTIFICATION', payload: { msg: 'In cardiac arrest: the obs stay at zero until ROSC.', type: 'info', id: Date.now() } });
+                return;
+            }
+
             if (action.type === 'TRIGGER_IMPROVE') {
                 let impTargets = {}; 
                 const scen = stateRef.current.scenario;
@@ -119,6 +162,9 @@
                 // releases the hold (it defines a new baseline); an organised -> organised rhythm
                 // change respects it.
                 let releaseManual = [];
+                // Crossing into or out of arrest sets a new baseline, so earlier instant effects are
+                // no longer there to be taken off.
+                if (RG.isPulseless(newRhythm) !== RG.isPulseless(cur.rhythm)) instantDeltasRef.current = {};
 
                 if (RG.isPulseless(newRhythm)) {
                     // A shockable/pulseless rhythm showing a pre-arrest BP and SpO2 is clinically
@@ -146,7 +192,12 @@
                 // facilitator has NOT typed an HR of their own (or has just had the hold released by
                 // an arrest/ROSC transition above). If they have, their number stands and the rhythm
                 // change says so in the log, rather than silently replacing 130 with 140.
-                if (!cur.arrestPanelOpen && !cur.defibPanelOpen && !isArrest) {
+                //
+                // Whether the Defib or arrest panel happens to be open no longer matters (a cardioverted
+                // SVT used to read "Sinus Rhythm" at 195 because the panel was open). An "unchanged"
+                // transition (a failed shock or cardioversion) keeps the current rate rather than
+                // re-rolling it.
+                if (!isArrest && newRhythm !== RG.canonical(cur.rhythm)) {
                     const band = RG.defaultHrRange(newRhythm);
                     const stillHeld = !applyRhythmHrBand(cur, releaseManual);
                     if (band && !stillHeld) {
@@ -159,13 +210,34 @@
                         } });
                     }
                 }
-                dispatchVitals({ type: 'UPDATE_VITALS', payload: rhythmVitals, releaseManual, currentState: stateRef.current });
+                dispatchVitals({ type: 'UPDATE_VITALS', payload: rhythmVitals, releaseManual, forceArrest: isArrest, currentState: stateRef.current });
             }
+
+            // Taking a continuous intervention off undoes the instant change it made to the base
+            // (see instantDeltasRef), whichever screen removed it.
+            let reversal = null;
+            if (action.type === 'REMOVE_INTERVENTION') {
+                const rec = instantDeltasRef.current[action.payload];
+                delete instantDeltasRef.current[action.payload];
+                const cur = stateRef.current;
+                // Not across an arrest or ROSC (that transition wrote new obs of its own), not into a
+                // different run, and never over a value the facilitator has typed since.
+                if (rec && cur.activeInterventions.has(action.payload) && rec.runId === cur.runId && !RG.inArrest(cur.rhythm) && !rec.arrest) {
+                    const hold = cur.manualHold || {};
+                    reversal = {};
+                    Object.keys(rec.deltas).forEach(f => {
+                        const bv = Number(cur.baseVitals[f]);
+                        if ((!hold[f] || rec.held[f]) && Number.isFinite(bv)) reversal[f] = clampVital(f, bv - rec.deltas[f]);
+                    });
+                }
+            }
+            if (action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION' || action.type === 'CLEAR_SESSION') instantDeltasRef.current = {};
 
             dispatchVitals(enhancedAction);
             dispatchLog(enhancedAction);
             dispatchScenario(enhancedAction);
             dispatchCore(enhancedAction);
+            if (reversal && Object.keys(reversal).length) dispatchVitals({ type: 'UPDATE_VITALS', payload: reversal, currentState: stateRef.current });
         };
         // THE SIMULATION ENGINE: LIVE SESSION SYNC (data/engine-sync.js).
         const {
@@ -425,6 +497,10 @@
             // where the closed-over `state` would be stale.
             const cur = stateRef.current;
             const scenario = cur.scenario;
+            // Declared here, before its first use: the overdose and adenosine branches below read it,
+            // and as a later `const` (compiled to `var` by Babel) it was undefined there, so 1 mg IV
+            // adrenaline in cardiac arrest was flagged as an overdose in a patient with a pulse.
+            const isArrest = RG.inArrest(cur.rhythm);   // Registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
             // These two used to be silent no-ops, so a mistyped key or a not-yet-loaded scenario made
             // the button look broken with no explanation anywhere.
             if (!scenario) {
@@ -566,12 +642,15 @@
                 const effectiveCap = Math.min(drugEntry.maxDoses, capDoses);
                 if (givenBefore + 1 >= effectiveCap) {
                     const totalText = cum ? ` (cumulative ${((givenBefore + 1) * Number(cum.perDose)).toLocaleString()} ${cum.unit} of a ${Number(cum.max).toLocaleString()} ${cum.unit} maximum)` : '';
-                    const atOrPast = givenBefore + 1 > effectiveCap;
-                    const msg = atOrPast
-                        ? `${action.label}: MAXIMUM MODELLED DOSE ALREADY REACHED${totalText} — this dose adds NO further response.${cum ? ' ' + cum.message : ''}`
-                        : `${action.label}: maximum modelled dose reached${totalText}.${cum ? ' ' + cum.message : ' Further doses will add no further response.'}`;
-                    addLogEntry(msg, 'warning', true, { action: key, label: action.label, missing: ['within maximum cumulative dose'] });
-                    dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — MAX DOSE reached (no further effect)`, type: 'warning', id: Date.now() } });
+                    // Reaching the maximum is correct practice and is only noted; going PAST it is the
+                    // deviation that is flagged (and reaches the debrief).
+                    const pastCap = givenBefore + 1 > effectiveCap;
+                    if (pastCap) {
+                        addLogEntry(`${action.label}: MAXIMUM MODELLED DOSE ALREADY REACHED${totalText} — this dose adds NO further response.${cum ? ' ' + cum.message : ''}`, 'warning', true, { action: key, label: action.label, missing: ['within maximum cumulative dose'] });
+                        dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} — MAX DOSE reached (no further effect)`, type: 'warning', id: Date.now() } });
+                    } else {
+                        addLogEntry(`${action.label}: maximum modelled dose reached${totalText}.${cum ? ' ' + cum.message : ' Further doses will add no further response.'}`, 'info');
+                    }
                 } else if (!drugEntry.sustained && drugEntry.onset > 15) {
                     addLogEntry(`${action.label}: onset ~${drugEntry.onset}s, peak ~${Math.round(drugEntry.peak / 60 * 10) / 10} min${drugEntry.offset > drugEntry.peak ? `, wears off by ~${Math.round(drugEntry.offset / 60)} min` : ''}.`, 'info');
                 }
@@ -678,7 +757,6 @@
                 const onsetS = Math.max(0, Number(rev.onset) || 0);
                 const fullS = Math.max(onsetS + 1, Number(rev.full) || onsetS + 120);
                 addLogEntry(`${action.label}: reversal is NOT instant — first twitches at ~${onsetS}s, full reversal by ~${Math.round(fullS / 60 * 10) / 10} min. KEEP VENTILATING until spontaneous effort is adequate.`, 'warning', true, { action: key, label: action.label, missing: ['continued ventilation during reversal'] });
-                const startedAt = Date.now();
                 const finishReversal = () => {
                     const now = stateRef.current;
                     if (!now || now.isFinished) return;
@@ -687,15 +765,16 @@
                     if (!isVentilated(now.activeInterventions)) {
                         dispatch({ type: 'UPDATE_VITALS', payload: { ...now.baseVitals, rr: Math.max(now.baseVitals.rr || 0, 10) } });
                     }
-                    addLogEntry(`${action.label}: neuromuscular blockade now fully reversed (${Math.round((Date.now() - startedAt) / 1000)}s) — spontaneous ventilation returning.`, 'success');
+                    addLogEntry(`${action.label}: neuromuscular blockade now fully reversed — spontaneous ventilation returning.`, 'success');
                 };
-                // Partial reversal first (weak, inadequate effort), then full reversal.
-                setTimeout(() => {
+                // Partial reversal first (weak, inadequate effort), then full reversal. Both on the
+                // sim clock, so a pause holds them and a newly loaded scenario cancels them.
+                simTimeout(() => {
                     const now = stateRef.current;
                     if (!now || now.isFinished) return;
                     addLogEntry(`${action.label}: first twitches returning — respiratory effort is present but INADEQUATE. Continue to support ventilation.`, 'info');
-                }, onsetS * 1000);
-                setTimeout(finishReversal, fullS * 1000);
+                }, onsetS);
+                simTimeout(finishReversal, fullS);
             }
 
             // --- B3: effect.cpr. Wave 3 owns the full CPR/cprInProgress/defib work; this is the safe,
@@ -724,7 +803,9 @@
                     // No reservoir: desaturation starts immediately. The tick-level hypoxia model carries
                     // it on from here if the airway is not secured promptly.
                     newVitals.spO2 = clamp(newVitals.spO2 - 6, 0, 100);
-                    addLogEntry('Apnoeic period begins with NO pre-oxygenation — desaturating.', 'warning', true, { action: 'RSI', label: action.label, missing: ['pre-oxygenation'] });
+                    // Flagged only: the permissive gating above has already recorded the missing
+                    // pre-oxygenation as this RSI's one sequence deviation.
+                    addLogEntry('Apnoeic period begins with NO pre-oxygenation — desaturating.', 'warning', true);
                 }
                 if (!cur.activeInterventions.has('ApnoeicOxygenation')) {
                     addLogEntry('No apnoeic oxygenation in place — safe apnoea time is shorter.', 'info');
@@ -781,12 +862,12 @@
                 addLogEntry(`Transient AV block / sinus pause for ~${ab.pause || 8}s — run a rhythm strip NOW: this is the diagnostic window.`, 'warning');
                 const chances = Array.isArray(ab.chanceByDose) ? ab.chanceByDose : [0.55, 0.75, 0.8];
                 const chance = chances[Math.min(doseNo, chances.length) - 1];
-                setTimeout(() => {
+                simTimeout(() => {
                     const now = stateRef.current;
-                    if (!now || !now.isRunning || now.isFinished) return;
+                    if (!now || now.isFinished) return;
                     if (RG.inArrest(now.rhythm)) return;
                     applyDrugConversion(now, 'Adenosine', `Adenosine ${doseText}`, { chance });
-                }, Math.max(1, Number(ab.convertAt) || 12) * 1000);
+                }, Math.max(1, Number(ab.convertAt) || 12));
             }
 
             // All three changeRhythm modes are handled now. 'sync' and 'chance' were silently
@@ -799,7 +880,18 @@
             } else if (action.effect.changeRhythm === 'sync') {
                 applyCardioversion(cur, { energy: (cur.defib && cur.defib.energy) || undefined, source: 'facilitator' });
             } else if (action.effect.changeRhythm === 'chance') {
-                applyDrugConversion(cur, key, action.label || key);
+                // A drug cannot change the rhythm before it has reached the heart: the roll (and any
+                // shock bonus) happens at the drug's onset on the sim clock, and only if the rhythm
+                // it was given for is still the rhythm then.
+                const onsetS = drugEntry && Number(drugEntry.onset) > 0 ? Number(drugEntry.onset) : 0;
+                if (onsetS > 0) {
+                    const givenIn = RG.canonical(cur.rhythm);
+                    simTimeout(() => {
+                        const now = stateRef.current;
+                        if (!now || now.isFinished || RG.canonical(now.rhythm) !== givenIn) return;
+                        applyDrugConversion(now, key, action.label || key);
+                    }, onsetS);
+                } else applyDrugConversion(cur, key, action.label || key);
             } else if (typeof action.effect.changeRhythm === 'string' && RG.isKnown(action.effect.changeRhythm)) {
                 // A scenario/intervention may name a specific target rhythm outright.
                 changeRhythm(action.effect.changeRhythm, 'intervention', { agent: action.label || key });
@@ -809,7 +901,6 @@
             // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
             // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
             // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
-            const isArrest = RG.inArrest(cur.rhythm);   // Registry. The old literal also required bpSys<10 AND wrongly included VT-with-a-pulse.
             if (isArrest) {
                 const e = action.effect || {};
                 const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
@@ -895,6 +986,18 @@
             // Still dispatched unconditionally (an empty delta simply recomposes the displayed
             // vitals from the live base + the drug envelope, exactly as before).
             dispatch({ type: 'UPDATE_VITALS', payload: vitalsDelta });
+            if (action.type === 'continuous' && REVERSIBLE_INSTANT.indexOf(key) !== -1) {
+                const deltas = {};
+                Object.keys(vitalsDelta).forEach(f => {
+                    const d = Number(vitalsDelta[f]) - Number(cur.baseVitals[f]);
+                    if (Number.isFinite(d) && d !== 0) deltas[f] = d;
+                });
+                // `held`: vitals already typed by hand BEFORE this intervention went on (its effect
+                // overrode them, so removal may take it off); a value typed afterwards is left alone.
+                const held = {};
+                Object.keys(deltas).forEach(f => { if (cur.manualHold && cur.manualHold[f]) held[f] = true; });
+                instantDeltasRef.current[key] = { runId: cur.runId, arrest: isArrest, deltas, held };
+            }
         };
 
         const applyInterventionRef = useRef(applyIntervention);
@@ -1007,6 +1110,20 @@
             return () => clearTimeout(id);
         }, [coreState.rhythmEvent && coreState.rhythmEvent.id]);
 
+        // A flash is a momentary cue. 'red' after Worse or an arrest used to stay set, and the
+        // monitor's .flash-red animates for as long as it is set (and reads it as SHOCK DELIVERED),
+        // so the room pulsed red indefinitely. Whatever set it, it clears itself after 1.5 s, unless
+        // it has changed or a new scenario has loaded meanwhile.
+        useEffect(() => {
+            if (isMonitorMode || !state.flash) return;
+            const f = state.flash, run = state.runId;
+            const id = setTimeout(() => {
+                const now = stateRef.current;
+                if (now && now.flash === f && now.runId === run) dispatch({ type: 'SET_FLASH', payload: null });
+            }, 1500);
+            return () => clearTimeout(id);
+        }, [state.flash, isMonitorMode]);
+
         const arrestVitals = (base) => ({ ...base, hr: 0, bpSys: 0, bpDia: 0, spO2: 0, rr: 0, gcs: 3, pupils: 'Dilated', etco2: 1.5 });
         // The vitals an arrest / ROSC write owns outright. Writing them releases the
         // facilitator's manual hold, because the transition itself establishes a new baseline.
@@ -1072,8 +1189,8 @@
             setDefibEnergy, setDefibMode, setQueuedRhythm, shockPolicy, stepsRunning, toggleCPR,
             toggleDefibSync
         } = window.__EngineDefib.useDefib({
-            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, dispatch, isMonitorMode, state,
-            stateRef, triggerArrest, triggerROSC
+            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, clearSimTimer, dispatch, isMonitorMode,
+            simTimeout, state, stateRef, triggerArrest, triggerROSC
         });
 
         // `opts.image` is an image key from data/investigations.js; `opts.hideReport` shows the image
@@ -1419,7 +1536,7 @@
         };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
-        const reset = () => { if (refibTimerRef.current) { clearTimeout(refibTimerRef.current); refibTimerRef.current = null; } dispatch({ type: 'CLEAR_SESSION' }); };
+        const reset = () => { clearSimTimers(); refibTimerRef.current = null; dispatch({ type: 'CLEAR_SESSION' }); };
         // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
         // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
         const enableAudio = () => {
