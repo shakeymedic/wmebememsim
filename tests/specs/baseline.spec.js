@@ -26,7 +26,7 @@ test.describe('Controller, monitor and defib linked by session code', () => {
     const monitor = await context.newPage();
     const monitorErrors = trackErrors(monitor);
     await monitor.goto(`/index.html?mode=monitor&session=${code}`);
-    await expect.poll(async () => Object.values(await session(page, code, '/presence') || {}).map(p => p.role)).toContain('monitor');
+    await expect.poll(async () => Object.values(await session(page, code, '/presence') || {}).map(p => p.role)).toContain('screen:all');
     expect(monitorErrors).toEqual([]);
 });
 
