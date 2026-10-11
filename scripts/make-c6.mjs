@@ -253,8 +253,8 @@ sub("  plo:   {label:'P low', unit:'cmH2O', min:0, max:35, step:1},", "  plo:   
 sub("  hflow: {label:'Flow', unit:'l/min', min:2, max:60, step:1},", "  hflow: {label:'Flow', unit:'l/min', min:2, max:100, step:1},");
 sub("  plim:  {label:'Plimit', unit:'cmH2O', min:5, max:60, step:1},", "  plim:  {label:'Plimit', unit:'cmH2O', min:5, max:100, step:1},");
 /* Pause: the end-inspiratory pause of the volume-controlled modes, as a % of TI. The manual lists the control; its range and default are the simulator's choice. */
-sub("  height:{label:'Pat. height', unit:'cm', min:30, max:250, step:1}\n};",
-    "  height:{label:'Pat. height', unit:'cm', min:30, max:250, step:1},\n  pause: {label:'Pause', unit:'%', min:0, max:70, step:5}   /* (S)CMV and SIMV; range and default are the simulator's choice */\n};");
+sub("  height:{label:'Pat. height', unit:'cm', min:130, max:250, step:1}\n};",
+    "  height:{label:'Pat. height', unit:'cm', min:130, max:250, step:1},\n  pause: {label:'Pause', unit:'%', min:0, max:70, step:5}   /* (S)CMV and SIMV; range and default are the simulator's choice */\n};");
 sub("    const min = ['APVcmv', 'PCV+', 'CPR'].includes(mk) ? 4", "    const min = ['APVcmv', 'PCV+', 'CPR', 'SCMV'].includes(mk) ? 4");
 sub("  if (key === 'trig' && ['APVcmv', 'PCV+'].includes(mk)) return {...d, off0:true};", "  if (key === 'trig' && ['APVcmv', 'PCV+', 'SCMV'].includes(mk)) return {...d, off0:true};");
 sub("  phigh: {label:'Pressure', unit:'cmH2O', min:15, max:70, step:1},", "  phigh: {label:'Pressure', unit:'cmH2O', min:15, max:110, step:1},");
@@ -280,7 +280,7 @@ sub(`const MODE_GROUPS = [
   ['Intelligent ventilation', ['ASV']],
   ['Noninvasive', ['NIV', 'NIV-ST', 'HiFlowO2']]
 ];`);
-sub(`/* Configuration offers "(S)CMV+/SIMV+" or "APVcmv/APVsimv" names; (S)CMV+/SIMV+ is the default (manual p. 278) */
+sub(`/* Configuration offers "(S)CMV+/SIMV+" or "APVcmv/APVsimv" names; (S)CMV+/SIMV+ is the default (3.0.x manual 13.4.2, p. 260; Table 15-14) */
 const MODE_NAME = {APVcmv:'(S)CMV+', APVsimv:'SIMV+'};`, `/* C6: APVcmv/APVsimv is the default naming (Configuration can switch to (S)CMV+/SIMV+; manual 14.4.2). SCMV is the internal key for (S)CMV. */
 const MODE_NAME = {SCMV:'(S)CMV'};
 const VCM = ['SCMV', 'SIMV'];

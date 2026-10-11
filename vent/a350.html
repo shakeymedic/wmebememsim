@@ -873,7 +873,7 @@ function recordStart(type, vol) {
   if (B.starts.length > 9) { B.starts.shift(); B.types.shift(); B.vols.shift(); }
   if (B.starts.length >= 2) {
     const n = B.starts.length, span = Math.max(0.5, B.starts[n - 1] - B.starts[0]);
-    M.ftot = clamp(60 * (n - 1) / span, 0, 99);
+    M.ftot = clamp(60 * (n - 1) / span, 0, 999);   /* display range 0-999 (Table 15-10) */
     M.fspont = M.ftot * (B.types.slice(1).filter(x => x === 'spont').length / (n - 1));
     M.fcontrol = M.ftot - M.fspont;
     const vv = B.vols.slice(1);
@@ -1078,7 +1078,7 @@ function adaptVS(br) {
   B.vsP = clamp(np, 5, maxP);
 }
 /* ASV (Table 15-16): target minute volume = IBW x normal minute ventilation x %MinVol/100. Normal minute ventilation is only
-   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for adults is the trainer's reading. The target rate uses the
+   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for IBW of 30 kg or more (Figure 7-18). The target rate uses the
    Otis equation with VDaw = 2.2 ml/kg; the exact ASV 1.1 rule is not published in the manual, so targets are approximate. */
 function asvTargets() {
   const ibw = calcIBW(), s = V.set, pr = P.pr;

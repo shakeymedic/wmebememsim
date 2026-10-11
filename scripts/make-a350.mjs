@@ -110,7 +110,7 @@ sub(`  if (peepM < base - 3) B.lowPeepBr = (B.lowPeepBr || 0) + 1; else B.lowPee
 /* a spontaneous breath taken on top of a pressure level`);
 sub("  M.ppeak = Math.max(br.maxP, br.peepM);", "  M.ppeak = Math.max(br.maxP, br.peepM);\n  if (M.ppeak >= V.lim.phigh - 0.01 && !(br.kind === 'manual' && V.mode === 'MAN')) { raise('phigh'); B.highPT = 3; }");
 sub("  if (M.ppeak < V.lim.plow) raise('plow'); else clear('plow');\n", '');
-sub("  if (isInvasive(m) && !V.cpr && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');\n", '');
+sub("  if (isInvasive(m) && !V.cpr && V.o2Enrich <= 0 && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');   /* suppressed during O2 enrichment (10.4) */\n", '');
 sub("  if (B.vlimit) raise('vlimit'); else clear('vlimit');\n", '');
 sub("  const triggered = !V.cpr && V.set.trig > 0 && effort >= V.set.trig;",
     "  /* Man/Spon: every breath the patient takes is their own; CMV modes are not patient-triggered on the A350 (simulator's reading of SIMV/CMV) */\n  const triggered = m === 'MAN' ? effort > 0 : !V.cpr && !CMV_MODES.includes(m) && V.set.trig > 0 && effort >= V.set.trig;");
