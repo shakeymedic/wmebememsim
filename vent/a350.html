@@ -1,0 +1,2656 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EM Evidence — Anaesthetic Machine Simulator</title>
+<link rel="manifest" href="manifest.json">
+<script>
+  // Wrapped: reading navigator.serviceWorker throws in a sandboxed iframe and in some private
+  // browsing modes. The page works without offline caching.
+  try { if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {}); } catch (e) {}
+</script>
+<!-- The lungs the facilitator chooses on the controller (shared with the controller). -->
+<script src="../data/ventprofiles.js"></script>
+<!-- Firebase: the same live session the controller and room monitor use. -->
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+<script src="../data/firebase-config.js"></script>
+<!--
+  GENERATED FILE: made from vent/c6.html by scripts/make-a350.mjs (parts in scripts/a350/). Do not edit;
+  edit vent/index.html or the generators and rerun scripts/make-c6.mjs, then scripts/make-a350.mjs.
+  THE DRÄGER ATLAN A350 ANAESTHETIC MACHINE, AS A SIMULATION DEVICE. It shares the HAMILTON-T1 page's breath
+  engine; the machine, its screen and its gas are this generator's (see the notes in scripts/make-a350.mjs).
+  It is a training recreation, not Dräger software, and is not endorsed by Drägerwerk AG.
+  The device (screen, keys, knob, modes, controls, alarms and breath engine) is copied from the
+  standalone HAMILTON-T1 trainer (github.com/shakeymedic/niv-instructions), which stays its own tool.
+  Here it joins a simulation session like the defib tablet does: the controller owns the patient,
+  this page breathes for it, and every setting change and alarm goes to the facilitator's log.
+  It is a training recreation, not Hamilton Medical software, and is not endorsed by Hamilton Medical.
+-->
+<style>
+:root{
+  --bg:#f2f5f9;--surface:#ffffff;--ink:#0f1b2d;--muted:#4a5b70;--line:#d6dfe9;
+  --brand:#2563a8;--brand-d:#1e4a7d;--brand-l:#e8f0fa;
+  --ok:#13703a;--ok-bg:#e6f4ec;--warn:#8a5300;--warn-bg:#fff4dc;--bad:#b42318;--bad-bg:#fdecea;
+  --radius:12px;
+  --dev:#2e3338;--dev-2:#40464d;--dev-3:#565d65;
+  --scr:#0a1322;--scr-2:#14233c;--scr-3:#1c3050;--scr-ink:#e8eef6;--scr-dim:#93a7c0;
+  --c-p:#ffd24a;--c-f:#5cc8ff;--c-sel:#f59e0b;--c-ctl:#1f4f99;--hi:#e5372b;--med:#f2b705;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#1b1e22;color:#e8eef6;display:flex;flex-direction:column;overflow:hidden;line-height:1.4}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+/* ===== Simulator: the Dräger Atlan A350 anaesthetic machine (designed at 1500 x 900 px, scaled to fit) =====
+   The four screen areas and the control colours are the IFU's; every position, size and colour value is the
+   simulator's (the IFU gives no drawing measurements or RGB values). */
+.t1-wrap{position:relative;width:100%;overflow:hidden;border-radius:14px;background:radial-gradient(ellipse at 50% 35%,#ffffff 0,#e9eef3 60%,#dfe5eb 100%);padding:10px 0 4px}
+.t1-scaler{position:relative;margin:0 auto;transform-origin:0 0}
+.fs-exit{display:none}
+body.t1fs{overflow:hidden}
+body.t1fs .t1-wrap{position:fixed;inset:0;z-index:1000;width:auto;border-radius:0;padding:0;overflow:hidden;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#4a5058 0,#2a2e33 60%,#1b1e22 100%)}
+body.t1fs .t1-scaler{margin:0}
+body.t1fs .fs-exit{display:block;position:absolute;top:10px;right:10px;z-index:2;background:rgba(15,27,45,.55);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:6px 12px;font-size:.85rem;font-weight:600;opacity:.6;cursor:pointer}
+body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
+.t1{position:absolute;left:0;top:0;width:1500px;height:900px;font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;user-select:none;-webkit-user-select:none}
+.t1 button{font-family:inherit}
+/* the machine: a light grey housing, the screen in a dark bezel, the hardware column on the right */
+.a-body{position:absolute;left:0;top:10px;width:1500px;height:886px;border-radius:24px;background:linear-gradient(180deg,#e4e8eb 0,#d3d8dc 50%,#c3c9ce 100%);box-shadow:0 12px 28px rgba(0,0,0,.4),inset 0 0 0 2px #aab2b9,inset 0 2px 2px rgba(255,255,255,.8)}
+.t1.lightOn .a-body{background:linear-gradient(180deg,#fffdf2 0,#eceee6 50%,#d6dad6 100%)}
+.t1-lamp{position:absolute;left:260px;top:16px;width:560px;height:14px;border-radius:7px;background:linear-gradient(180deg,#9aa2a8,#7c858c);box-shadow:inset 0 -2px 3px rgba(0,0,0,.25)}
+.t1-lamp.hi{background:#ff2a1f;box-shadow:0 0 22px 6px rgba(255,42,31,.75);animation:t1blink .7s steps(2,start) infinite}
+.t1-lamp.med{background:#ffd400;box-shadow:0 0 18px 4px rgba(255,212,0,.7);animation:t1blink 1.4s steps(2,start) infinite}
+.t1-lamp.low{background:#33d6e8;box-shadow:0 0 14px 3px rgba(51,214,232,.6)}
+.t1-lamp.self{animation:t1self 1s steps(2,start) 3}
+@keyframes t1blink{50%{background:linear-gradient(180deg,#9aa2a8,#7c858c);box-shadow:none}}
+@keyframes t1self{0%{background:#ffd400}50%{background:#ff2a1f}}
+.t1-screenbox{position:absolute;left:30px;top:40px;width:1040px;height:650px;background:#000;border-radius:4px;box-shadow:0 0 0 10px #2a2e33,0 0 0 12px #5b636a}
+.t1-name{position:absolute;left:36px;top:710px;color:#2b3238;font-weight:700;font-size:28px;letter-spacing:1px}
+.t1-name small{display:block;font-size:11px;font-weight:600;letter-spacing:1.5px;color:#5c666f;margin-top:2px}
+/* the keys under the screen */
+.t1 .k{position:absolute;top:772px;width:96px;height:66px;background:linear-gradient(180deg,#3a4046,#23272b);border:2px solid #7e878f;border-radius:12px;color:#f2f4f6;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 2px 3px rgba(0,0,0,.4)}
+.t1 .k:active{transform:translateY(1px);border-color:#fff}
+.t1 .k:focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
+.t1 .k svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.t1 .k.lit{border-color:#ffd400;box-shadow:0 0 12px rgba(255,212,0,.7),inset 0 0 10px rgba(255,212,0,.35)}
+.t1 .k.pw{width:72px;height:72px;top:769px;border-radius:50%;border:3px solid #7e878f}
+.t1 .k.pw.on{border-color:#5ff07f;box-shadow:0 0 10px rgba(95,240,127,.65),inset 0 0 6px rgba(95,240,127,.3)}
+.t1 .k .min{font-size:10px;font-weight:800;margin-left:4px}
+.t1 .k.ap{width:118px}
+.t1 .klbl{position:absolute;top:846px;font-size:12px;color:#3f474e;text-align:center;width:110px;letter-spacing:.3px}
+/* the rotary knob under the screen, on the right */
+.t1-knob{position:absolute;left:930px;top:730px;width:112px;height:112px;border-radius:50%;cursor:grab;touch-action:none;padding:0;border:0;background:repeating-conic-gradient(from 0deg,#4b5157 0 5deg,#2a2e32 5deg 10deg);box-shadow:0 6px 12px rgba(0,0,0,.45),inset 0 0 0 3px #1a1c1e}
+.t1-knob:active{cursor:grabbing}
+.t1-knob:focus-visible{outline:3px solid #f59e0b;outline-offset:3px}
+.t1-knob .rot{position:absolute;inset:0;border-radius:50%}
+.t1-knob .rot:after{content:"";position:absolute;left:50%;top:5px;width:3px;height:12px;margin-left:-1.5px;background:#9aa2a8;border-radius:2px}
+.t1-knob .ring{position:absolute;left:18px;top:18px;width:76px;height:76px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#50565c,#24282b 70%);box-shadow:0 0 0 5px #2a2e32,inset 0 2px 3px rgba(255,255,255,.15)}
+.t1-knob.press .ring{transform:scale(.96)}
+.t1.off .t1-knob .ring{box-shadow:0 0 0 5px #2a2e32}
+/* ---- the hardware column ---- */
+.hw{position:absolute;left:1100px;top:40px;width:370px;height:830px}
+.hw-h{font-size:14px;font-weight:700;color:#2b3238;text-align:center;line-height:1.1}
+.hw-h small{display:block;font-size:11px;font-weight:600;color:#5c666f}
+.hw-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px}
+.hw-row b{min-width:56px;text-align:center;font-size:26px;font-weight:600;color:#111;background:#f7f8f8;border:1px solid #9aa2a8;border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums}
+.hw-row .hu{font-size:12px;color:#3f474e;margin-left:-6px}
+.hb{width:50px;height:50px;border-radius:50%;border:2px solid #6c757d;background:linear-gradient(180deg,#f5f6f7,#c9ced2);font-size:26px;font-weight:700;color:#222;padding:0;cursor:pointer}
+.hb:active{transform:translateY(1px)}
+.hw-sup{position:absolute;left:0;top:0;width:370px;height:66px;background:#2a2e33;border-radius:10px;display:flex;justify-content:space-around;align-items:center;color:#e8eef6;font-size:13px}
+.hw-sup span{text-align:center;line-height:1.15}
+.hw-sup b{display:block;font-size:20px;font-weight:600;color:#7fe08a;font-variant-numeric:tabular-nums}
+.hw-sup .bad b{color:#ff5a4f}
+.hw-vap{position:absolute;left:0;top:80px;width:370px;height:190px;background:#f1d6e6;border:2px solid #b04f8b;border-radius:12px;padding:8px 0}
+.vdial{position:relative;margin:6px auto 0;width:84px;height:84px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#fbfbfb,#cfd3d6 70%);border:3px solid #b04f8b}
+.vdial span{position:absolute;left:50%;top:6px;width:4px;height:36px;margin-left:-2px;background:#b04f8b;border-radius:2px;transform-origin:2px 36px}
+.hw-o2{position:absolute;left:0;top:282px;width:370px;height:196px;background:#e8f3ea;border:2px solid #3e8a52;border-radius:12px;padding:8px 0}
+.flush{position:absolute;right:14px;top:12px;width:78px;height:78px;border-radius:50%;border:3px solid #2f6e40;background:linear-gradient(180deg,#fff,#d7e7db);font-size:24px;font-weight:800;color:#1e5a2e;padding:0;cursor:pointer;touch-action:none}
+.flush sub{font-size:13px}
+.flush.lit{background:#7fe08a;box-shadow:0 0 14px rgba(127,224,138,.9)}
+.hw-o2 .hw-h{width:260px}
+.hsw{display:block;margin:4px 0 8px 40px;width:180px;height:40px;border-radius:20px;border:2px solid #3e8a52;background:#fff;font-size:15px;font-weight:700;color:#1e5a2e;cursor:pointer}
+.hsw.add{background:#ffd400;border-color:#b38f00;color:#2b2100}
+.hw-o2 .hw-row{width:260px}
+.hw-apl{position:absolute;left:0;top:492px;width:370px;height:100px;background:#e9edf0;border:2px solid #7e878f;border-radius:12px;padding:8px 0}
+.hw-apl b{min-width:110px}
+.bag{position:absolute;left:24px;top:612px;width:180px;height:210px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;border:0;background:transparent;padding:0;cursor:pointer;touch-action:none}
+.bag-in{position:absolute;left:50%;top:50%;width:170px;height:200px;margin:-100px 0 0 -85px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;background:radial-gradient(circle at 38% 32%,#5c6168,#2b2f34 70%);box-shadow:inset 0 -8px 16px rgba(0,0,0,.5),0 4px 10px rgba(0,0,0,.35);transition:transform .25s}
+.bag.sq .bag-in{transition:transform .15s}
+.bag-t{position:absolute;left:0;right:0;top:92px;text-align:center;color:#dfe5ea;font-weight:700;font-size:15px;pointer-events:none}
+.ypiece{position:absolute;left:226px;top:640px;width:134px;height:150px;border-radius:12px;border:2px solid #7e878f;background:#f7f8f8;font-size:13px;font-weight:700;color:#2b3238;cursor:pointer;padding:6px;line-height:1.25}
+.ypiece.sealed{background:#fff4c2;border-color:#b38f00}
+.ypiece svg{display:block;margin:0 auto 4px;width:60px;height:46px;stroke:#2b3238;fill:none;stroke-width:3;stroke-linecap:round}
+/* ===== the screen: designed at 1280 x 800 logical px, scaled into the screen box ===== */
+.screen{position:absolute;left:0;top:0;width:1280px;height:800px;transform-origin:0 0;background:#0b0f14;color:#fff;overflow:hidden;font-size:16px;line-height:1.15;transition:filter .3s}
+.screen.night{filter:brightness(.5)}
+.screen button{font-family:inherit;color:inherit;cursor:pointer}
+/* header bar */
+.hdr-pat{position:absolute;left:0;top:0;width:220px;height:56px;background:#1c2630;display:flex;flex-direction:column;justify-content:center;padding:0 12px;font-size:14px;color:#cfd8e0}
+.hdr-pat b{font-size:19px;color:#fff;font-weight:600}
+.scr-msg{position:absolute;left:220px;top:0;width:780px;height:56px;background:#141c24;border:0;display:flex;gap:4px;align-items:stretch;padding:4px}
+.af{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 8px;border-radius:2px}
+.af.hi{background:#e30613;color:#fff}
+.af.med{background:#ffd400;color:#000}
+.af.low{background:#33d6e8;color:#000}
+.af.more{flex:0 0 56px;background:#3a4550;color:#fff}
+.bstat{position:absolute;left:1000px;top:0;width:280px;height:56px;display:flex;align-items:center;justify-content:flex-end;gap:10px;padding-right:12px;color:#cfd8e0;font-size:14px;background:#1c2630}
+.bstat .ap{color:#ffd400;font-weight:700}
+.bstat .pw.batt{color:#ffd400;font-weight:700}
+.bstat .clock{font-size:18px;color:#fff}
+/* main menu bar (right) */
+.mmenu{position:absolute;left:1160px;top:56px;width:120px;height:744px;background:#1c2630;display:flex;flex-direction:column;gap:4px;padding:6px}
+.mm{height:64px;border:0;border-radius:4px;background:#3c4b59;color:#fff;font-size:15px;font-weight:600;line-height:1.15;padding:0 4px;white-space:normal}
+.mm.open{background:#e9eef2;color:#000}
+.mm[aria-disabled="true"]{opacity:.45}
+.mmenu .sp{flex:1}
+/* monitoring area: curves, parameter fields, gas field */
+.gfx{position:absolute;left:0;top:56px;width:760px;height:530px;background:#000;border:0;padding:0;text-align:left;cursor:default}
+.gfx canvas{position:absolute;left:0;width:760px;display:block}
+.mmps{position:absolute;left:760px;top:56px;width:220px;height:530px;display:flex;flex-direction:column;gap:2px;background:#0b0f14}
+.pf{position:relative;flex:1 1 0;border:0;background:#141c24;color:#fff;text-align:right;padding:2px 12px 0 8px;display:block}
+.pf .n{position:absolute;left:8px;top:6px;font-size:15px;color:#fff}
+.pf .u{position:absolute;left:8px;top:24px;font-size:12px;color:#93a3b3}
+.pf .v{display:block;font-size:44px;line-height:60px;font-variant-numeric:tabular-nums}
+.pf .lm{position:absolute;right:10px;bottom:3px;font-size:11px;color:#93a3b3}
+.pf.al.med .v{color:#ffd400}.pf.al.hi .v{color:#ff4b3e}.pf.al.low .v{color:#33d6e8}
+.pf.al:after{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:#ffd400}
+.pf.al.hi:after{background:#ff4b3e}
+.smp{position:absolute;left:980px;top:56px;width:180px;height:530px;background:#10161d;border-left:2px solid #0b0f14;padding:6px 0}
+.smp .gh,.smp .gr{display:grid;grid-template-columns:72px 1fr 1fr;align-items:baseline;padding:4px 8px}
+.smp .gh{font-size:12px;color:#93a3b3;text-align:right}
+.smp .gr{border-bottom:1px solid #222d38;font-size:14px;color:#cfd8e0}
+.smp .gr .n small{display:block;font-size:11px;color:#93a3b3}
+.smp .gr b{font-weight:400;font-size:24px;color:#fff;text-align:right;font-variant-numeric:tabular-nums}
+.smp .gr.o2 b{color:#fff}.smp .gr.co2 b{color:#d8d8d8}.smp .gr.ag b{color:#f2a7d4}.smp .gr.mac b{color:#f2a7d4}
+.smp .gr.al.med b{color:#ffd400}.smp .gr.al.hi b{color:#ff4b3e}
+/* the Standby page (over the monitoring area) */
+.sbpage{position:absolute;left:0;top:56px;width:1160px;height:530px;background:#10161d;padding:24px 40px;z-index:2}
+.sbpage[hidden]{display:none}
+.sb-h{font-size:34px;font-weight:300;color:#fff;margin-bottom:16px}
+.sb-ready{display:flex;align-items:center;gap:14px;font-size:22px;color:#fff;background:#1c2630;border-radius:6px;padding:14px 18px}
+.sb-ready .dot{width:30px;height:30px;border-radius:50%;flex:0 0 auto}
+.sb-ready.green .dot{background:#3ccf5a}.sb-ready.yellow .dot{background:#ffd400}.sb-ready.red .dot{background:#ff3b30}
+.sb-tests{margin:14px 0;font-size:17px;color:#cfd8e0;line-height:1.6}
+.sb-btns{display:flex;gap:12px}
+.sb-btns .wb{height:56px;font-size:19px;min-width:200px}
+.sb-note{font-size:14px;color:#93a3b3;margin-top:16px}
+/* therapy bar */
+.tbar{position:absolute;left:0;top:586px;width:1160px;height:214px;background:#1c2630;border-top:2px solid #0b0f14}
+.tbar[hidden]{display:none}
+.tb-mode{position:absolute;left:10px;top:6px;width:430px;height:40px;display:flex;flex-direction:column;justify-content:center;font-size:20px;color:#fff;line-height:1.1}
+.tb-mode .pend{font-size:12px;color:#b8f0b0;font-weight:400}
+.tb-tabs{position:absolute;left:440px;top:4px;right:6px;height:44px;display:flex;gap:4px;justify-content:flex-end}
+.ttab,.tsync,.tmore{height:44px;border:0;border-radius:4px 4px 0 0;font-size:16px;font-weight:600;padding:0 12px;min-width:84px}
+.tsync{border-radius:4px;min-width:64px}
+.tmore{border-radius:4px;background:#3c4b59;color:#fff;margin-left:8px}
+.tmore[aria-pressed="true"]{background:#e9eef2;color:#000}
+.ttab.on,.tsync.on{background:#1f7a3a;color:#fff}
+.ttab.avail,.tsync.avail{background:#3c4b59;color:#fff}
+.ttab.sel,.tsync.sel{background:#9be39b;color:#062b0e}
+.tb-ctls{position:absolute;left:6px;top:52px;width:800px;height:136px;display:flex;gap:6px;flex-wrap:nowrap;overflow:hidden}
+.tb-fg{position:absolute;left:812px;top:52px;width:342px;height:136px;display:flex;gap:6px;border-left:2px solid #0b0f14;padding-left:6px;position:absolute}
+.tb-fg .fgh{position:absolute;left:8px;top:140px;font-size:11px;color:#93a3b3;letter-spacing:.05em;text-transform:uppercase}
+.tb-note{position:absolute;left:10px;right:360px;bottom:2px;height:22px;font-size:13px;color:#93a3b3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* a therapy control: dark green active, light green belonging to a mode not yet active, yellow selected */
+.tctl{position:relative;flex:0 0 auto;width:104px;height:132px;border:0;border-radius:6px;padding:0;color:#fff;background:#1f7a3a;box-shadow:inset 0 0 0 2px #2f9a4e}
+.tctl .lb{position:absolute;left:0;right:0;top:6px;font-size:15px;text-align:center;white-space:nowrap}
+.tctl .v{position:absolute;left:0;right:0;top:36px;font-size:36px;text-align:center;font-variant-numeric:tabular-nums;line-height:1}
+.tctl .u{position:absolute;left:0;right:0;top:80px;font-size:12px;text-align:center;color:#d5f2dc}
+.tctl .rng{position:absolute;left:4px;right:4px;bottom:6px;font-size:11px;text-align:center;color:#3b3000}
+.tctl.avail{background:#9be39b;color:#062b0e;box-shadow:inset 0 0 0 2px #b8f0b0}
+.tctl.avail .u{color:#1d4a26}
+.tctl.sel{background:#ffd400;color:#000;box-shadow:inset 0 0 0 2px #fff08a}
+.tctl.sel .u{color:#3b3000}
+.tctl.warn{animation:tblink .5s steps(2,start) infinite}
+@keyframes tblink{50%{background:#fff3a0}}
+.tb-fg .tctl{width:106px}
+.tinfo{display:flex;flex-direction:column;gap:6px;padding:8px 10px;font-size:15px;color:#cfd8e0;max-width:780px}
+.tinfo b{font-size:18px;color:#fff}
+.tinfo .apl{font-size:20px;color:#ffd400;font-weight:600}
+/* the knob cursor */
+.kcur.cur{box-shadow:0 0 0 4px #ffd400 !important}
+/* windows */
+.win{position:absolute;left:30px;top:70px;width:1100px;height:500px;background:#eef1f3;color:#1a1a1a;z-index:5;font-size:16px;border-radius:4px;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+.win[hidden]{display:none}
+.win .wx{position:absolute;right:8px;top:8px;width:34px;height:34px;border:1px solid #888;background:#d9d9d9;color:#333;font-size:18px;line-height:30px;padding:0;border-radius:3px;z-index:2}
+.win .wtitle{position:absolute;left:14px;top:8px;right:50px;height:34px;font-size:21px;font-weight:600;line-height:34px;color:#222}
+.win .htabs{position:absolute;left:10px;top:8px;display:flex;gap:2px}
+.win .htabs button{background:#d0d4d8;border:1px solid #b5b5b5;color:#222;font-size:16px;padding:0 16px;height:36px;border-radius:3px 3px 0 0}
+.win .htabs button[aria-selected="true"]{background:#fff;border-color:#888;font-weight:700}
+.win .wbody{position:absolute;left:10px;right:10px;top:50px;bottom:62px;overflow:auto;padding:4px 8px}
+.win .wfoot{position:absolute;left:10px;right:10px;bottom:8px;height:50px;display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.wb{background:#d6dadd;border:1px solid #b3b3b3;color:#1a1a1a;font-size:17px;padding:0 16px;height:46px;min-width:110px;border-radius:4px}
+.wb:hover{background:#cacfd3}
+.wb.green{background:#1f7a3a;border-color:#17602d;color:#fff}
+.screen .wb{color:#1a1a1a}.screen .wb.green{color:#fff}
+.wb[disabled]{opacity:.45;cursor:not-allowed}
+.wb.wide{min-width:220px}
+.wgrp{font-size:14px;color:#444;margin:12px 0 6px;font-weight:600}
+.wrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.wnote{font-size:13px;color:#444;margin:8px 0;line-height:1.35}
+.wtable{width:100%;border-collapse:collapse;font-size:15px}
+.wtable td,.wtable th{padding:5px 6px;border-bottom:1px solid #d4d4d4;text-align:left}
+.wtable th{color:#555;font-weight:600;font-size:13px}
+.win .tctl{width:110px;height:120px}
+.limgrid{display:flex;flex-direction:column;gap:6px}
+.limrow{display:grid;grid-template-columns:150px 110px 110px 1fr;gap:8px;align-items:center}
+.limrow .tctl{height:84px}
+.limrow .tctl .v{top:28px;font-size:30px}
+.limrow .tctl .u{display:none}
+.limrow .tctl .lb{font-size:13px}
+.limrow .ln{font-size:17px;font-weight:600}
+.limrow .ln small{display:block;font-size:12px;color:#555;font-weight:400}
+.limrow .lc{font-size:15px;color:#333}
+/* standby dialog */
+.dlg{position:absolute;left:390px;top:250px;width:500px;height:200px;background:#fff;border:2px solid #333;z-index:7;color:#111;text-align:center;border-radius:4px}
+.dlg[hidden]{display:none}
+.dlg h5{margin:16px 0 6px;font-size:26px;font-weight:500}
+.dlg p{font-size:15px;margin:0 30px 14px}
+.dlg .wx{position:absolute;right:6px;top:6px;width:30px;height:30px;border:1px solid #888;background:#d9d9d9;font-size:16px;padding:0}
+/* alarm list */
+.abuf{display:flex;flex-direction:column;gap:3px}
+.abuf .r{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;font-size:16px;border:0;width:100%;text-align:left;color:#000}
+.abuf .r.hi{background:#e30613;color:#fff}
+.abuf .r.med{background:#ffd400}
+.abuf .r.low{background:#33d6e8}
+.abuf .r.inact{opacity:.55}
+.abuf .r time{font-variant-numeric:tabular-nums;font-size:13px;width:66px}
+.abuf .r .i{margin-left:auto;width:22px;height:22px;border-radius:50%;background:#fff;color:#1f4f99;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;font-style:italic}
+.help{background:#fff;border:1px solid #bbb;padding:8px 10px;font-size:14px;line-height:1.35;margin-top:8px}
+.help h6{font-size:15px;margin:0 0 4px}
+.help ul{margin:0;padding-left:18px}
+/* tests */
+.tc{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px}
+.tc button{height:100px;background:#d6dadd;border:1px solid #b3b3b3;font-size:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#111;border-radius:4px}
+.tc button .st{font-size:22px}
+.tc button .st.ok{color:#1f7a3a}.tc button .st.fail{color:#d11}
+.tc button small{font-size:12px;color:#555}
+.tc-msg{margin-top:12px;background:#fff;border:1px solid #bbb;min-height:70px;padding:8px 10px;font-size:16px;line-height:1.35}
+.tc-msg b{color:#1f7a3a}
+.prog{margin-top:10px;height:14px;background:#d0d4d8;border-radius:7px;overflow:hidden}
+.prog i{display:block;height:100%;background:#1f7a3a}
+.lockic{display:none}
+.scr-toast{position:absolute;left:300px;top:70px;width:560px;background:rgba(20,20,20,.94);color:#fff;font-size:16px;padding:10px 14px;border-radius:4px;z-index:10;border:1px solid #555;pointer-events:none}
+.scr-toast[hidden]{display:none}
+/* below-device controls (big targets, used on phones) */
+.under{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin:10px 0 0}
+.under button{background:#1f2a37;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-weight:700;font-size:.95rem;min-width:52px}
+.under button.knobp{background:#2b8a3e}
+.under .hint{font-size:.8rem;color:var(--muted);width:100%;text-align:center}
+.scr-off{position:absolute;inset:0;background:#000;z-index:20;display:flex;align-items:center;justify-content:center;color:#d9d9d9;font-size:30px;letter-spacing:2px;text-align:center;line-height:1.5}
+.scr-off[hidden]{display:none}
+.scr-off small{display:block;font-size:16px;letter-spacing:0;color:#9a9a9a}
+.t1.off .t1-knob .ring{box-shadow:0 0 0 6px #1c1f22,0 0 0 9px #2c3a30,inset 0 2px 3px rgba(255,255,255,.12)}
+.physical{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.physical button{background:#fff4dc;border:1px solid #d08700;border-radius:8px;padding:6px 10px;font-size:.82rem;font-weight:700;color:#5a3800}
+.toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);background:#0f1b2d;color:#fff;padding:10px 16px;border-radius:10px;z-index:200;max-width:calc(100% - 32px);font-size:.9rem;box-shadow:0 8px 20px rgba(0,0,0,.3)}
+.toast[hidden]{display:none}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+/* ---- the simulator page around the device ---- */
+.vbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 10px;background:#0f1b2d;font-size:.8rem}
+.vbar .title{font-weight:700;color:#ffd24a;margin-right:4px}
+.vbar .tag{color:#cbd5e1}
+.vbar .tag.bad{color:#ff8a80;font-weight:700}
+.vbar .sp{flex:1}
+.vbar button{background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:3px 10px;font-size:.8rem;font-weight:600}
+.vbar button[aria-pressed="true"]{background:#ffd24a;color:#1b1300;border-color:#ffd24a}
+body.embedded .vbar .standalone-only{display:none}
+.t1-wrap{flex:1 1 auto;min-height:0;height:auto;border-radius:0;padding:4px 0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 40%,#4a5058 0,#2a2e33 60%,#1b1e22 100%)}
+.t1-scaler{margin:0}
+.under{flex:0 0 auto;margin:0;padding:4px 8px 6px;background:#14171a}
+.under button{padding:6px 12px;font-size:.85rem}
+.hands{flex:0 0 auto;padding:6px 10px 8px;background:#2a2108;border-top:2px solid #d08700}
+.hands[hidden]{display:none}
+.hands h2{font-size:.8rem;margin:0 0 2px;color:#ffd78a;text-transform:uppercase;letter-spacing:.05em}
+.hands .physical{margin-top:2px}
+.link-banner{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1200;width:min(560px,calc(100% - 24px));background:#7f1d1d;color:#fff;border:2px solid #fca5a5;border-radius:10px;padding:10px 14px;font-size:.9rem;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.link-banner[hidden]{display:none}
+.link-banner b{display:block;font-size:1rem;margin-bottom:2px}
+.link-banner form{display:flex;gap:6px;margin-top:8px}
+.link-banner input{flex:1;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #fca5a5;text-transform:uppercase;letter-spacing:.15em}
+.link-banner button{background:#fff;color:#7f1d1d;border:0;border-radius:6px;padding:6px 14px;font-weight:700}
+.ended{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1100;background:#334155;color:#fff;border-radius:8px;padding:6px 14px;font-weight:700;letter-spacing:.08em}
+.ended[hidden]{display:none}
+</style>
+</head>
+<body>
+<header class="vbar" aria-label="Ventilator simulator">
+  <span class="title">Atlan A350</span>
+  <span class="tag">Training simulation</span>
+  <span class="tag" id="sessionTag">Not linked</span>
+  <span class="tag" id="simClock" aria-live="off"></span>
+  <span class="sp"></span>
+  <button id="btnSound" aria-pressed="true" title="Alarm sound on this device">Alarm sound</button>
+  <button id="btnFull" class="standalone-only" aria-pressed="false" title="Show only the ventilator, filling the screen">Full screen</button>
+</header>
+<div class="link-banner" id="linkBanner" role="alert"><b>NOT LINKED TO SESSION</b><span id="linkReason">Looking for the session&hellip;</span></div>
+<div class="ended" id="endedBanner" hidden>SESSION ENDED</div>
+        <div class="t1-wrap" id="device">
+          <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
+          <div class="t1-scaler" id="t1scaler">
+          <!-- the machine: the screen on its arm, the hardware beside it. The arrangement is the simulator's, not a drawing of the A350. -->
+          <div class="t1 a350" id="t1">
+            <div class="a-body" aria-hidden="true"></div>
+            <div class="t1-lamp" id="lamp" role="img" aria-label="Alarm lamp"></div>
+            <div class="t1-screenbox" id="screenbox">
+              <div class="screen" id="screen">
+                <div class="hdr-pat" id="hdrPat"></div>
+                <button class="scr-msg" id="msgbar" data-open="alarms" data-tab="current" aria-live="polite" aria-label="Alarm messages. Touch to open the alarms"></button>
+                <div class="bstat" id="bstat"></div>
+                <button class="gfx" id="gfx" tabindex="-1" aria-label="Curves: airway pressure, flow and CO2">
+                  <canvas id="cv1" style="top:0;height:176px"></canvas>
+                  <canvas id="cv2" style="top:177px;height:176px"></canvas>
+                  <canvas id="cv3" style="top:354px;height:176px"></canvas>
+                </button>
+                <div class="mmps" id="mmps" aria-label="Parameter fields"></div>
+                <div class="smp" id="smp" aria-label="Gas measurement"></div>
+                <div class="sbpage" id="sbpage" hidden></div>
+                <div class="mmenu" id="mmenu" aria-label="Main menu"></div>
+                <div class="tbar" id="tbar" aria-label="Therapy bar">
+                  <div class="tb-mode" id="modeName"></div>
+                  <div class="tb-tabs" id="tabs"></div>
+                  <div class="tb-ctls" id="rcol"></div>
+                  <div class="tb-fg" id="fgctl"></div>
+                  <div class="tb-note" id="tbNote"></div>
+                </div>
+                <div class="win" id="win" hidden role="dialog" aria-modal="false" aria-label="Window"></div>
+                <div class="dlg" id="dlg" hidden role="dialog" aria-label="Standby">
+                  <button class="wx" id="dlgX" aria-label="Close">✕</button>
+                  <h5>Standby</h5>
+                  <p>Stop the therapy? Ventilation and the fresh-gas flow stop in Standby.</p>
+                  <button class="wb green wide" id="dlgGo">Standby</button>
+                </div>
+                <div class="scr-toast" id="scrToast" hidden></div>
+                <div class="scr-off" id="scrOff" hidden><span id="scrOffTxt"></span></div>
+              </div>
+            </div>
+            <div class="t1-name">Atlan A350<small>EMEVIDENCE · ANAESTHETIC MACHINE TRAINING SIMULATOR</small></div>
+            <!-- keys under the screen (the simulator's arrangement) -->
+            <button class="k ap" id="kAudio" style="left:60px" aria-label="Alarm silence key, 2 minutes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg><span class="min">2 min</span></button>
+            <span class="klbl" aria-hidden="true" style="left:64px">Alarm silence</span>
+            <button class="k" id="kLight" style="left:210px" aria-label="Work light key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/></svg></button>
+            <span class="klbl" aria-hidden="true" style="left:199px">Work light</span>
+            <button class="k pw" id="kPower" style="left:340px" aria-label="Power key: press to switch on or to go to Standby; hold in Standby to switch off"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
+            <span class="klbl" aria-hidden="true" style="left:321px">On / Standby</span>
+            <button class="t1-knob" id="knob" aria-label="Rotary knob. Arrow keys turn it, Enter or Space presses it to confirm"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
+            <span class="klbl" aria-hidden="true" style="left:930px">Rotary knob</span>
+            <!-- the gas supply, the vaporiser, O2+ and the emergency O2, the APL valve, the bag and the Y-piece -->
+            <div class="hw" aria-label="Machine hardware">
+              <div class="hw-sup" id="supply" aria-label="Gas supply pressures"></div>
+              <div class="hw-vap">
+                <div class="hw-h">Vaporiser<small>Sevoflurane</small></div>
+                <div class="vdial" aria-hidden="true"><span id="vapNeedle"></span></div>
+                <div class="hw-row"><button class="hb" id="vapDn" aria-label="Vaporiser down">−</button><b id="vapVal" aria-live="polite">0</b><span class="hu">%</span><button class="hb" id="vapUp" aria-label="Vaporiser up">+</button></div>
+              </div>
+              <div class="hw-o2">
+                <button class="flush" id="kFlush" aria-label="O2+ flush: hold to flush oxygen">O<sub>2</sub>+</button>
+                <div class="hw-h">O2 switch</div>
+                <button class="hsw" id="o2sw" aria-label="O2 switch: Aux. O2 or Add. O2"></button>
+                <div class="hw-h">Flow</div>
+                <div class="hw-row"><button class="hb" id="auxDn" aria-label="Emergency O2 flow down">−</button><b id="auxVal">0</b><span class="hu">L/min</span><button class="hb" id="auxUp" aria-label="Emergency O2 flow up">+</button></div>
+              </div>
+              <div class="hw-apl">
+                <div class="hw-h">APL valve<small>Man / Spont</small></div>
+                <div class="hw-row"><button class="hb" id="aplDn" aria-label="APL valve down (towards Spont)">−</button><b id="aplVal">30</b><button class="hb" id="aplUp" aria-label="APL valve up">+</button></div>
+              </div>
+              <button class="bag" id="bag" aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <button class="ypiece" id="ypiece" aria-label="Y-piece: seal it on the circuit plug for the tests, or connect it to the patient"></button>
+            </div>
+          </div>
+          </div>
+        </div>
+        <div class="under" aria-label="Knob controls">
+          <button id="kCCW" aria-label="Turn knob anticlockwise">⟲ Turn −</button>
+          <button class="knobp" id="kPress" aria-label="Press the knob">Press knob</button>
+          <button id="kCW" aria-label="Turn knob clockwise">Turn + ⟳</button>
+          
+        </div>
+<section class="hands" id="hands" hidden aria-label="Your hands">
+  <h2>Your hands (physical actions for the test)</h2>
+  <div class="physical" id="physical"></div>
+</section>
+<div class="toast" id="toast" role="status" hidden></div>
+<script>
+'use strict';
+/* ======================= helpers ======================= */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
+const fmt = (v, dp = 0) => (v === null || v === undefined || Number.isNaN(v)) ? '--' : Number(v).toFixed(dp);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let toastT = null;
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3200); }
+let stoastT = null;
+function scrToast(msg) { const t = $('#scrToast'); t.textContent = msg; t.hidden = false; clearTimeout(stoastT); stoastT = setTimeout(() => { t.hidden = true; }, 2600); }
+
+/* ======================= device definitions (Dräger Atlan A350) ======================= */
+/* Ranges are the IFU's technical data ([IFU1] pp. 269-273; [PI] pp. 10-11). Start values are the factory
+   configuration ([IFU2] pp. 216-219: VT 500 mL, RR 12, Pmax 40, Pinsp 15, ΔPsupp 10, Insp term 25%, PEEP 3,
+   Slope 0.2 s, RRmin 6, I:E 1:2 (so Tinsp 1.7 s at RR 12), %Tplat 20, Trigger 4.0 L/min, FG O2 100%,
+   FG flow 2.00 L/min). Step sizes are not in the IFU: the simulator's choice. Pressures are shown in cmH2O
+   (the device can be set to hPa, mbar or cmH2O; 1 hPa is about 1 cmH2O). */
+const IE_LIST = [1/9, 1/8, 1/7, 1/6, 1/5, 1/4, 1/3.5, 1/3, 1/2.5, 1/2, 1/1.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
+const ieStr = r => { const t = v => String(+v.toFixed(1)); return r >= 1 ? t(r) + ':1' : '1:' + t(1 / r); };
+const CTRL = {
+  vt:    {label:'VT', unit:'mL', min:10, max:1500, step:v => v >= 100 ? 10 : 5},
+  rate:  {label:'RR', unit:'/min', min:3, max:100, step:1},
+  ti:    {label:'Tinsp', unit:'s', min:0.2, max:10, step:0.1, dp:1},
+  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1},
+  pmax:  {label:'Pmax', unit:'cmH2O', min:10, max:80, step:1},
+  peep:  {label:'PEEP', unit:'cmH2O', min:2, max:35, step:1, off0:true},
+  ps:    {label:'ΔPsupp', unit:'cmH2O', min:3, max:80, step:1, off0:true},
+  trig:  {label:'Trigger', unit:'L/min', min:0.3, max:15, step:v => v >= 1 ? 0.5 : 0.1, dp:1},
+  ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5},
+  pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1},
+  pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5},
+  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true},
+  o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1},
+  fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true},
+  carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O']},
+  height:{label:'Height', unit:'cm', min:30, max:250, step:1},
+  age:   {label:'Age', unit:'years', min:1, max:110, step:1}
+};
+/* ranges that depend on other settings ([IFU1] p. 270: Pinsp PEEP+5 to 80, Pmax PEEP+10 to 80, ΔPsupp up to
+   80 - PEEP; [PI]: FG O2 at least 25% with N2O) */
+function ctrlDef(key, mk, src) {
+  const d = CTRL[key], s = src || V.set;
+  if (!d) return d;
+  if (key === 'pinsp') return {...d, min:Math.max(d.min, (s.peep || 0) + 5)};
+  if (key === 'pmax') return {...d, min:Math.max(d.min, (s.peep || 0) + 10)};
+  if (key === 'ps') return {...d, max:80 - (s.peep || 0)};
+  if (key === 'o2') return {...d, min:s.carrier === 1 ? 25 : 21};
+  return d;
+}
+/* alarm limits ([IFU2] pp. 211-212 and 216). MV limits start at VT x RR x (1 ± 40%), at least 2.0 / 0.3 L/min,
+   and MV high starts Off ([IFU2] p. 202). The Apnea time is not a setting here: 20 s is the simulator's. */
+const mvStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 10 ? 1 : (dir > 0 ? v : v - 0.001) >= 1 ? 0.5 : 0.1;
+const vtStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 500 ? 50 : (dir > 0 ? v : v - 0.001) >= 100 ? 10 : 5;
+const ALIM = {
+  phigh:    {label:'Paw', unit:'cmH2O', min:5, max:99, step:1},
+  mvhigh:   {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, offMax:true},
+  mvlow:    {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, off0:true},
+  o2high:   {label:'FiO2', unit:'%', min:19, max:99, step:1, offMax:true},
+  o2low:    {label:'FiO2', unit:'%', min:18, max:98, step:1},
+  etco2high:{label:'etCO2', unit:'kPa', min:0.1, max:9.8, step:0.1, dp:1, offMax:true},
+  etco2low: {label:'etCO2', unit:'kPa', min:0.1, max:9.7, step:0.1, dp:1, off0:true},
+  /* not shown on the A350: the shared engine reads them (unset, so they never alarm) */
+  vthigh:   {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, offMax:true, hidden:true},
+  vtlow:    {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, off0:true, hidden:true}
+};
+const LIM_ROWS = [['phigh', null], ['mvhigh', 'mvlow'], ['o2high', 'o2low'], ['etco2high', 'etco2low']];
+/* Therapy bar per mode ([IFU1] pp. 300-301, a table the text extractor scrambled: approximate). basic: the
+   therapy controls always shown; more: those the expand ("More") button adds. The fresh-gas controls (FG)
+   sit at the right of the therapy bar in every mode. */
+const FG = ['carrier', 'o2', 'fgf'];
+const MODE_CTRLS = {
+  'MAN':    {basic:[], more:[]},
+  'APVcmv': {basic:['vt','rate','ti','peep'], more:['pramp']},
+  'APVsimv':{basic:['vt','rate','ti','peep'], more:['ps','pramp','trig','ets']},
+  'SCMV':   {basic:['vt','rate','ti','pmax','peep'], more:['pause']},
+  'SIMV':   {basic:['vt','rate','ti','pmax','peep'], more:['ps','pause','pramp','trig','ets']},
+  'PCV+':   {basic:['pinsp','rate','ti','peep'], more:['pramp']},
+  'PSIMV+': {basic:['pinsp','rate','ti','peep'], more:['ps','pramp','trig','ets']},
+  'SPONT':  {basic:['peep','ps','trig','rrmin'], more:['pinsp','pramp','ets']}
+};
+const TOGGLES = {};
+/* the facilitator's remote control can set any therapy control, the fresh gas included */
+function modeCtrls(mk) {
+  const c = MODE_CTRLS[mk] || MODE_CTRLS.MAN;
+  return {basic:c.basic.concat(FG), more:c.more, vent:c.basic};
+}
+/* the mode tabs ([IFU2] p. 150) and the SIMV/CMV buttons: each tab and synchronisation is one engine mode */
+const TABS = [['MAN', 'Man/Spon'], ['AF', 'VC - AF'], ['VC', 'VC'], ['PC', 'PC'], ['PSV', 'PSV']];
+const TAB_MODES = {MAN:{cmv:'MAN'}, AF:{cmv:'APVcmv', simv:'APVsimv'}, VC:{cmv:'SCMV', simv:'SIMV'}, PC:{cmv:'PCV+', simv:'PSIMV+'}, PSV:{cmv:'SPONT'}};
+const tabOf = m => Object.keys(TAB_MODES).find(t => TAB_MODES[t].cmv === m || TAB_MODES[t].simv === m) || 'MAN';
+const syncOf = m => ['APVsimv', 'SIMV', 'PSIMV+'].includes(m) ? 'simv' : 'cmv';
+const MODE_GROUPS = [];
+/* the full mode names ([IFU1] pp. 298-301; [PI] p. 11) */
+const MODE_NAME = {MAN:'Man/Spon', APVcmv:'VC-CMV/AutoFlow', APVsimv:'VC-SIMV/AutoFlow', SCMV:'VC-CMV', SIMV:'VC-SIMV', 'PCV+':'PC-CMV', 'PSIMV+':'PC-SIMV', SPONT:'CPAP/PSV'};
+const VCM = ['SCMV', 'SIMV'];
+const CMV_MODES = ['SCMV', 'APVcmv', 'PCV+'];
+const isVC = m => VCM.includes(m === undefined ? V.mode : m);
+const mName = (m, src) => { const s = src || V.set, n = MODE_NAME[m] || m; return ['SIMV', 'APVsimv', 'PSIMV+'].includes(m) && s.ps > 0 ? n.replace('SIMV', 'SIMV/PS') : n; };
+const APV = ['APVcmv', 'APVsimv'];
+const NIVMODES = [];
+const INVASIVE = ['MAN', 'SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT'];
+const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnea in Man/Spon; RRmin backup in PSV */
+const SIGH_MODES = [];
+const isNIV = () => false;
+const isHFO = () => false;
+const isInvasive = m => INVASIVE.includes(m === undefined ? V.mode : m);
+const modeKey = () => V.mode;
+const modeLabel = () => mName(V.mode);
+const isSIMV = () => ['SIMV', 'APVsimv', 'PSIMV+'].includes(V.mode);
+
+const DEFAULT_SET = {vt:500, rate:12, ti:1.7, pinsp:15, pmax:40, peep:3, ps:10, trig:4, ets:25, pramp:0.2, pause:20, rrmin:6,
+  o2:100, fgf:2, carrier:0, height:170, age:40,
+  /* the shared engine's own keys for modes the A350 does not have */
+  ie:0.5, pcontrol:15, minvol:100, hflow:15, plim:30, timax:1.5, phi:20, thigh:1, aphi:20, plo:5, athigh:5.4, tlow:0.6};
+const DEFAULT_LIM = {phigh:40, mvhigh:99999, mvlow:3.6, o2high:99999, o2low:20, etco2high:7.0, etco2low:0, apnoea:20};
+const O2_BAND = 5;
+const O2_ENRICH_S = 120;
+const AUDIO_PAUSE_S = 120;   /* the alarm silence key mutes for 2 min ([IFU1]) */
+const NEB_MIN = 30;
+const EDIT_TIMEOUT_S = 15;   /* an unconfirmed change resets after 15 s, with tones in the last 5 s ([IFU1] pp. 84-85) */
+
+/* the machine's state (the ventilator's settings are V.set) */
+const V = {
+  power:false, selftest:0, standby:true, ambient:false, mode:'MAN', set:{...DEFAULT_SET}, lim:{...DEFAULT_LIM},
+  backupOn:false, sigh:false, psync:false, cpr:null, aprvInit:false, sex:'Male', locked:false, night:false, o2Enrich:0, audioPause:0, manualReq:false, neb:0,
+  standbySince:0, startSuppress:0, gfx:'wave', spo2On:false, sound:false, loud:5,
+  tests:{sys:null, leak:null}, testRun:null,
+  /* the breathing system and gas supply around the ventilator */
+  apl:30, vap:0, o2sw:'aux', auxO2:0, light:false, more:false, caseStart:0, modeSince:0
+};
+/* the gas in the machine and the circle (gasTick), and the hardware's moment-to-moment state */
+const G = {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null,
+  lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0};
+let E = null;          // current edit {scope:'ctrl'|'lim'|'draft', key, val, t0}
+let D = null;          // a new mode, shown in the therapy bar until it is confirmed {mode, set}
+let win = null;        // open dialog: 'start' | 'alarms' | 'tests' | 'setup' | 'info'
+let winTab = '';
+let cursor = -1;       // knob cursor index over [data-kf] elements
+let helpFor = null;    // alarm id whose troubleshooting help is shown
+
+/* ======================= the machine's gas: fresh gas, the circle, the bag and the vaporiser ======================= */
+/* A teaching model, not Dräger's. The IFU gives: O2+ 25-75 L/min bypassing the vaporisers; Add. O2 up to at least
+   10 L/min; FG flow Off or 0.2-15 L/min; MAC at 40 years (sevoflurane 2.1%, N2O 105%) with the Mapleson age
+   correction ([IFU2] p. 169). The rest are the simulator's values. */
+const VO2 = 0.25;          /* L/min of oxygen the patient takes up */
+const BAG_L = 3;           /* the breathing bag */
+const BAG_SQUEEZE = 35;    /* cmH2O: the most a firm squeeze of the bag reaches */
+const SYS_L = 6;           /* L of gas the fresh gas has to wash through: circle, absorber and lungs */
+const FLUSH_LPM = 50;      /* O2+ */
+const MAC40 = {sev:2.1, n2o:105};
+const macAge = (mac40, age) => mac40 * Math.pow(10, -0.00269 * (age - 40));
+const patientAge = () => clamp(Number(V.set.age) || 40, 1, 110);
+/* the fresh gas leaving the machine now: total L/min and its O2, N2O and agent (all %) */
+function freshGas() {
+  const on = V.power && !V.standby && V.selftest <= 0;
+  const n2o = V.set.carrier === 1, o2ok = !(P && P.o2fail);
+  let f = on ? (V.set.fgf || 0) : 0, o2 = V.set.o2;
+  /* no O2 supply: the mixer cannot add O2; with N2O it stops altogether (simulator's reading of the hypoxic guard) */
+  if (!o2ok) { if (n2o) f = 0; else o2 = 21; }
+  /* O2+ and Add. O2 are pneumatic: they work in Standby and switched off ([PI]: emergency Man/Spon) */
+  const extra = o2ok ? (G.flush ? FLUSH_LPM : 0) + (V.o2sw === 'add' ? V.auxO2 : 0) : 0;
+  const total = f + extra;
+  if (total <= 0) return {total:0, mixer:0, o2:21, n2o:0, ag:0};
+  return {total, mixer:f, o2:(f * o2 / 100 + extra) / total * 100, n2o:n2o ? f * (100 - o2) / total : 0, ag:f > 0 ? V.vap * f / total : 0};
+}
+/* the APL valve works on the bag in Man/Spon and Standby; in the ventilator modes excess gas leaves through the
+   ventilator's own exhaust (simulator's reading) */
+const aplActive = () => V.mode === 'MAN' || V.standby || !V.power;
+/* the pressure a squeeze of the bag reaches above the circuit's: up to the APL setting, nothing with the valve open */
+function bagDP() {
+  if (V.apl <= 0) return 0.5;
+  return Math.max(0, Math.min(V.apl, BAG_SQUEEZE) - baseP());
+}
+/* the Y-piece on the circuit plug: a sealed breathing system, a few millilitres per cmH2O (the system test) */
+function sealedLung() { return {...P.base, C:0.004, R:4, tau:0.016, effort:0, sedated:true, vtBase:0.005}; }
+function gasTick(dt) {
+  if (!P) return;
+  const fg = freshGas(); G.fg = fg;
+  const conn = !P.disc && !G.ySealed;
+  const breathing = V.power && !V.standby && B.now - B.lastStart < 12;
+  const vo2 = conn && (breathing || !P.pr.sedated) ? VO2 : 0;
+  const tau = 60 * SYS_L / Math.max(fg.total, 0.3), k = 1 - Math.exp(-dt / Math.min(tau, 1200));
+  /* oxygen: the patient's uptake lowers the inspired O2 at low flows, Fi = (FGF x FO2 - VO2) / (FGF - VO2) */
+  if (fg.total > 0 || vo2 > 0) {
+    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : 10;
+    o2T = clamp(o2T, 5, 100);
+    G.fio2 += (o2T - G.fio2) * k;
+    const n2oT = fg.total > vo2 + 0.05 ? Math.min(100 - o2T, fg.n2o * fg.total / (fg.total - vo2)) : G.fin2o;
+    G.fin2o += (n2oT - G.fin2o) * k;
+    /* the agent: below the minute volume the patient rebreathes exhaled gas, so Fi lies between the fresh gas and Et */
+    const fresh = clamp(fg.total / Math.max(1, M.mv || 0), 0, 1);
+    G.fiag += (fg.ag * fresh + G.etag * (1 - fresh) - G.fiag) * k;
+  }
+  /* uptake: end-tidal follows inspired within a minute or so while the lungs are ventilated, settling at Et/Fi
+     about 0.85 (a simplification of the uptake curve: the slow later rise is left out) */
+  if (conn && breathing) {
+    const ke = 1 - Math.exp(-dt / 40);
+    G.etag += (G.fiag * 0.85 - G.etag) * ke; G.etn2o += (G.fin2o * 0.9 - G.etn2o) * ke;
+  }
+  /* the bag: fresh gas fills it; the patient's uptake and any leak empty it */
+  const setMV = V.set.vt / 1000 * V.set.rate;
+  const leak = (P.disc ? (V.mode === 'MAN' || V.standby ? fg.total + 2 : Math.max(fg.total, setMV)) : 0) + (P.circLeak ? 3 : 0)
+    + (V.mode === 'MAN' && P.fit !== 'good' ? (P.fit === 'large' ? 15 : 5) : 0);
+  G.bag = clamp(G.bag + (fg.total - vo2 - leak) * dt / 60, 0, BAG_L + 2);
+  /* an over-full bag: the pressure rises (40 cmH2O per extra litre) until the APL valve (or the exhaust) vents it */
+  const vent = aplActive() ? (V.apl <= 0 ? 0.5 : V.apl) : 0.5;
+  let p = G.bag > BAG_L ? (G.bag - BAG_L) * 40 : 0;
+  if (p > vent) { p = vent; G.bag = BAG_L + vent / 40; }
+  G.circP = p;
+}
+/* the capnogram: CO2 rises to end-tidal through expiration and falls to the inspired CO2 (0 here) on inspiration */
+function co2Now() {
+  const et = etco2kPa();
+  if (et === null || !B.br) return 0;
+  if (B.phase === 'insp') return Math.max(0, (B.co2Last || 0) * Math.exp(-B.t / 0.08));
+  const v = et * (1 - Math.exp(-Math.max(0, B.t - 0.15) / 0.18)) * (1 + 0.03 * Math.min(1, B.t / 2));
+  B.co2Last = v;
+  return v;
+}
+/* etCO2 in kPa while gas moves through the circuit and the gas module sees it (null when there is nothing to measure) */
+function etco2kPa() {
+  if (!V.power || V.standby || V.selftest > 0 || LIVE.etco2 === null || G.ySealed || P.disc) return null;
+  return LIVE.etco2;
+}
+function xMAC() {
+  const age = patientAge();
+  return G.etag / macAge(MAC40.sev, age) + G.etn2o / macAge(MAC40.n2o, age);
+}
+
+/* ======================= patient profiles ======================= */
+const PROFILES = {
+  copd:{name:'AECOPD', paco2:9.6, hco3:30, floor:6.5, rrBase:30, vtBase:0.32, C:0.022, tau:0.5, vd:0.25, s0:0.45, sPeep:0.005, neuralTi:0.8, effort:9, hr:112, bp:'148/86', fio2Pre:0.28, ipeep:true, R:18},
+  cpo: {name:'Cardiogenic pulmonary oedema', paco2:6.4, hco3:22, floor:4.8, rrBase:34, vtBase:0.35, C:0.03, tau:0.25, vd:0.15, s0:0.87, sPeep:0.011, neuralTi:0.7, effort:12, hr:124, bp:'182/104', fio2Pre:0.6, R:9},
+  ohs: {name:'Obesity hypoventilation', paco2:9.0, hco3:32, floor:6.5, rrBase:26, vtBase:0.30, C:0.018, tau:0.35, vd:0.2, s0:0.5, sPeep:0.01, neuralTi:1.0, effort:8, hr:104, bp:'156/92', fio2Pre:0.28, needEpap:8, R:12},
+  /* intubated, sedated and paralysed: no respiratory effort; before ventilation starts they are being hand-ventilated */
+  ards:{name:'ARDS (intubated)', paco2:6.5, hco3:22, floor:4.5, rrBase:20, vtBase:0.42, C:0.025, tau:0.3, vd:0.18, s0:0.95, sPeep:0.03, neuralTi:1.0, effort:0, hr:118, bp:'104/62', fio2Pre:1.0, R:12, sedated:true},
+  asthma:{name:'Severe asthma (intubated)', paco2:8.0, hco3:25, floor:5.0, rrBase:14, vtBase:0.5, C:0.05, tau:1.3, vd:0.18, s0:0.75, sPeep:0, neuralTi:1.0, effort:0, hr:128, bp:'112/64', fio2Pre:1.0, R:26, sedated:true}
+};
+let P = null;
+function resetPatient(id) {
+  const pr = PROFILES[id];
+  P = {id, pr:{...pr}, base:pr, vco2:1, passive:false, paco2:pr.paco2, hco3:pr.hco3, spo2:88, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0.1, improve:0,
+       fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
+       abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
+  P.spo2 = P.spo2T = calcSpo2(pr.fio2Pre, 0);
+}
+function sev(pmmHg) { const p = Math.max(1, pmmHg); return 100 / (1 + 23400 / (p * p * p + 150 * p)); }
+function calcPao2(fio2, peep) {
+  const pr = P.pr;
+  const s = Math.max(0.05, pr.s0 - pr.sPeep * peep - P.improve + (P.deteriorate ? 0.05 : 0));
+  return Math.max(2, (fio2 * 95 - P.paco2 / 0.8) * (1 - s));
+}
+function calcSpo2(fio2, peep) { const pao2 = calcPao2(fio2, peep); P.pao2 = pao2; return clamp(sev(pao2 * 7.5), 40, 100); }
+function phOf(paco2, hco3) { return 6.1 + Math.log10(hco3 / (0.2265 * paco2)); }
+
+/* ======================= breath engine ======================= */
+/* Every T1 mode delivers pressure-controlled breaths (the APV modes and ASV adapt the pressure between breaths to reach a volume target).
+   Mandatory breaths are time cycled; spontaneous breaths are flow cycled by ETS. The patient is a single-compartment lung
+   (compliance C, inspiratory and expiratory time constants) with its own breathing effort. All values are illustrative. */
+const LEAKK = {good:1.2, moderate:6, large:24};
+/* a well-fitted mask leaks a little; a cuffed tube (invasive modes) is treated as leak-free until a leak is added */
+const leakK = () => P.disc ? 0 : P.fit === 'good' && isInvasive() ? 0 : LEAKK[P.fit];
+const B = {phase:'exp', t:0, now:0, br:null, lastStart:0, lastMand:-1e9, nextEffort:1.2, starts:[], types:[], vols:[], apnoeaVent:false, consecTrig:0,
+  dip:0, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, peepNow:0, trigFlash:0,
+  vEndInsp:0, Vee:0, apvP:10, apvLim:false, vsP:10, nBreaths:0, simvC0:0, simvDue:true, ovl:null, vlimit:false};
+/* ASV state: targets from Table 15-16 */
+const A = {p:15, ti:1, fTarget:15, vtTarget:0.5, mvTarget:7, vtMin:0.3, vtMax:1, fMin:10, fMax:60, atMax:false, started:0};
+const M = {ppeak:null, peep:null, vte:null, vti:null, mv:null, ftot:null, fspont:null, fcontrol:null, vleak:null, mvleak:null, o2:null, ti:null, te:null, pmean:null, inspFlow:null, ie:null, autopeep:null, pplat:null, dpress:null};
+const SAMPLE_DT = 0.02, WINDOW_S = 12;
+const NBUF = Math.round(WINDOW_S / SAMPLE_DT);
+const bufC = new Float32Array(NBUF), bufP = new Float32Array(NBUF), bufF = new Float32Array(NBUF), bufV = new Float32Array(NBUF), bufPl = new Float32Array(NBUF), bufTrig = new Uint8Array(NBUF);
+let bufIdx = 0, sampleAcc = 0, trigMark = 0;
+
+function baseP() { return V.mode === 'MAN' ? G.circP : (V.set.peep || 0); }   /* Man/Spon: whatever pressure the bag and APL valve hold */
+/* default Rate by IBW (Table 15-9) */
+function rateByIBW() { const w = calcIBW(); return w >= 60 ? 12 : w >= 40 ? 15 : w >= 30 ? 17 : w >= 20 ? 20 : 25; }
+/* PSV: with RRmin set, mandatory pressure-controlled breaths at RRmin when the patient breathes too slowly
+   (the IFU names RRmin; how the backup breaths are shaped is the simulator's choice: Pinsp, Tinsp 1 s) */
+function backupSet() {
+  return {mode:'PCV+', dp:Math.max(5, V.set.pinsp - (V.set.peep || 0)), rate:Math.max(3, V.set.rrmin || 6), ti:1.0};
+}
+/* timing of mandatory breaths: I:E in APVcmv and PCV+ (the default breath timing), otherwise Rate and TI (7.1.1, Table 7-2) */
+function mandTiming() {
+  const s = V.set, m = V.mode;
+  if (B.apnoeaVent) { const bk = backupSet(); return {cycle:60 / bk.rate, ti:bk.ti}; }
+  if (m === 'APRV') return {cycle:s.athigh + s.tlow, ti:s.athigh};
+  if (m === 'DuoPAP') { const c = 60 / s.rate; return {cycle:c, ti:Math.min(s.thigh, c - 0.2)}; }
+  if (m === 'ASV') return {cycle:60 / A.fTarget, ti:A.ti};
+  if (m === 'APVcmv' || m === 'PCV+' || m === 'SCMV') { const c = 60 / s.rate; return {cycle:c, ti:Math.min(s.ti, c * 0.8)}; }   /* A350: Tinsp is set (I:E up to 4:1) */
+  if (m === 'APVsimv' || m === 'PSIMV+' || m === 'NIV-ST' || m === 'SIMV') { const c = 60 / s.rate; return {cycle:c, ti:Math.min(s.ti, c * 0.8)}; }
+  return null;   /* SPONT, NIV, HiFlowO2: no mandatory breaths */
+}
+/* pressure above the baseline for mandatory breaths */
+function mandDP() {
+  const s = V.set, m = V.mode;
+  if (B.apnoeaVent) return backupSet().dp;
+  if (APV.includes(m)) return B.apvP;
+  if (m === 'ASV') return A.p;
+  if (m === 'PCV+' || m === 'PSIMV+') return Math.max(0, s.pinsp - (s.peep || 0));   /* Dräger's Pinsp is the total pressure, not above PEEP */
+  if (m === 'NIV-ST') return s.pinsp;
+  if (m === 'DuoPAP') return Math.max(0, s.phi - s.peep);
+  if (m === 'APRV') return Math.max(0, s.aphi - s.plo);
+  return 0;
+}
+/* pressure support for spontaneous breaths */
+function spontDP() {
+  const s = V.set, m = V.mode;
+  if (m === 'NIV-ST' || (m === 'PSIMV+' && V.psync)) return s.pinsp;
+  if (m === 'ASV') return A.p;
+  if (m === 'VS') return B.vsP;
+  if (m === 'APRV') return 0;
+  if (['SPONT', 'NIV', 'APVsimv', 'PSIMV+', 'DuoPAP', 'SIMV'].includes(m)) return s.ps;
+  return mandDP();
+}
+/* the main inspiratory pressure above PEEP in the current mode (used for prompts and the blood gas log) */
+function setDP() {
+  const m = V.mode;
+  if (m === 'NIV' || m === 'SPONT') return V.set.ps;
+  if (m === 'NIV-ST') return V.set.pinsp;
+  if (m === 'VS') return B.vsP;
+  if (isHFO()) return 0;
+  return mandDP();
+}
+/* the set total inspiratory pressure (PEEP + ΔP, or P high), for Check Plimit. Null where the pressure is adaptive (APV, ASV). */
+function totalP(m, s, psync) {
+  switch (m) {
+    case 'PCV+': return s.peep + s.pcontrol;
+    case 'PSIMV+': return psync ? s.peep + s.pinsp : s.peep + Math.max(s.pcontrol, s.ps);
+    case 'DuoPAP': return Math.max(s.phi, s.peep + s.ps);
+    case 'APRV': return s.aphi;
+    case 'SPONT': case 'NIV': return s.peep + s.ps;
+    case 'NIV-ST': return s.peep + s.pinsp;
+    default: return null;
+  }
+}
+/* the inspired O2 the A350's gas module measures (the circle and fresh-gas model, gasTick) */
+function measuredO2() { return G.fio2; }
+function pushLog(arr, v) { arr.push(v); if (arr.length > 12) arr.shift(); }
+function frac(arr) { return arr.length ? arr.filter(Boolean).length / arr.length : 0; }
+
+/* what a patient trigger produces in each mode */
+function triggeredKind() {
+  const m = V.mode;
+  if (B.apnoeaVent) return 'spont';
+  if (m === 'APVcmv' || m === 'PCV+' || m === 'SCMV') return 'amand';
+  if (isSIMV()) return B.simvDue ? 'amand' : 'spont';
+  if (m === 'DuoPAP') {   /* the switch to P high is synchronised with an effort near the end of the low phase */
+    const mt = mandTiming();
+    return B.now - B.lastMand >= mt.cycle - Math.min(1, 0.25 * (mt.cycle - mt.ti)) ? 'amand' : 'spont';
+  }
+  return 'spont';
+}
+function recordStart(type, vol) {
+  B.starts.push(B.now); B.types.push(type); B.vols.push(vol);
+  if (B.starts.length > 9) { B.starts.shift(); B.types.shift(); B.vols.shift(); }
+  if (B.starts.length >= 2) {
+    const n = B.starts.length, span = Math.max(0.5, B.starts[n - 1] - B.starts[0]);
+    M.ftot = clamp(60 * (n - 1) / span, 0, 99);
+    M.fspont = M.ftot * (B.types.slice(1).filter(x => x === 'spont').length / (n - 1));
+    M.fcontrol = M.ftot - M.fspont;
+    const vv = B.vols.slice(1);
+    M.mv = M.ftot * vv.reduce((a, b) => a + b, 0) / vv.length;
+  }
+}
+
+/* kinds: 'mand' (ventilator triggered), 'amand' (patient-triggered mandatory), 'spont' (pressure supported, flow cycled),
+   'manual' (Manual breath key), 'auto' (auto-triggering: delivered as whatever a trigger gives in this mode) */
+function startBreath(kind) {
+  const pr = P.pr, s = V.set, m = V.mode;
+  const auto = kind === 'auto';
+  if (auto) kind = triggeredKind();
+  const pc = kind !== 'spont';
+  /* gas left in the lung when the next breath starts (gas trapping when expiration is short) */
+  B.Vee = B.br && B.phase === 'exp' ? B.vEndInsp * Math.exp(-B.t / B.br.tauE) : 0;
+  B.nBreaths++;
+  const sigh = V.sigh && SIGH_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.nBreaths % 50 === 0;
+  const mt = mandTiming();
+  const base = baseP();
+  B.vcLim = 0; B.vcLimVt = 0;
+  if (pc && isVC(m) && !B.apnoeaVent && mt && startVCBreath(kind, auto, sigh, mt, base)) return;
+  let dP = kind === 'spont' ? spontDP() : (kind === 'manual' && !mt) ? bagDP() : B.vcLim > 0 ? B.vcLim : mandDP();
+  /* Sigh: every 50th breath, 150% Vt in volume-targeted modes or 10 cmH2O more in pressure modes; it may reach high Pressure - 3 */
+  if (sigh) dP = APV.includes(m) || m === 'ASV' ? dP * 1.5 : dP + 10;
+  const lim = kind === 'manual' && !mt ? 999 : V.lim.phigh;   /* the bag is limited by the APL valve, the ventilator by Paw high */
+  const limited = base + dP > lim + 0.01 || B.vcLim > 0;
+  const target = Math.min(base + dP, lim);
+  let k = leakK();
+  let inspLeak = k * Math.sqrt(Math.max(target, 0.5));
+  let expLeak = k * Math.sqrt(Math.max(base, 0.5));
+  let peepM = base;
+  if (expLeak > 30) peepM = Math.max(0, base - (expLeak - 30) * 0.15);
+  if (P.kink) peepM = base + 6;
+  let dPeff = Math.max(0, target - base);
+  if (inspLeak > 85) dPeff = Math.max(0, dPeff - (inspLeak - 85) * 0.35);
+  if (P.disc) { peepM = 0.3; dPeff = 1.2; inspLeak = 110; expLeak = 100; }
+  const iPeep = B.Vee / pr.C;
+  const dPlung = Math.max(0, dPeff - iPeep);
+  const obstructed = kind === 'spont' && !isInvasive(m) && pr.needEpap && s.peep < pr.needEpap && Math.random() < 0.4;
+  const passive = auto || P.apnoea || P.pr.sedated || P.passive;
+  let Ti = 0, tiMaxHit = false, VT;
+  if (pc) Ti = kind === 'manual' && !mt ? 3.0 : mt.ti;   /* a squeeze lasts until the bag is let go (at most 3 s) */
+  if (P.disc) VT = 0.01;
+  else if (kind === 'spont') {
+    let vtb = pr.vtBase * (1 - 0.5 * Math.min(1, dPlung / 20)) * (1 - 0.4 * P.fatigue);
+    if (obstructed) vtb *= 0.4;
+    VT = vtb + pr.C * dPlung * (obstructed ? 0.4 : 1);
+  } else {
+    const g = t => 1 - Math.exp(-t / pr.tau);
+    VT = pr.C * dPlung * (passive ? 1 : 1.15) * Math.min(1, g(Ti) / g(1)) + (passive ? 0 : 0.03);
+  }
+  if (P.kink) VT *= 0.7;
+  if (B.vcLimVt > 0) VT = Math.min(VT, B.vcLimVt);
+  if (kind === 'manual' && !mt) VT = Math.min(VT, Math.max(0.005, G.bag));   /* an empty bag has nothing to give */
+  VT = Math.max(0.005, VT * rnd(0.95, 1.05));
+  /* Inspiratory volume limitation (invasive modes only): delivered volume above 1.5 x the high Vt limit ends inspiration */
+  B.vlimit = false;
+  if (isInvasive(m) && !V.cpr && V.lim.vthigh <= ALIM.vthigh.max && VT * 1000 > 1.5 * V.lim.vthigh) { VT = 1.5 * V.lim.vthigh / 1000; B.vlimit = true; }
+  const tau = pr.tau;
+  /* CPAP (no pressure support): nothing to cycle, the patient breathes in for their own inspiratory time */
+  if (!pc && dPeff < 1) Ti = pr.neuralTi;
+  else if (!pc) {
+    const timax = isNIV(m) ? s.timax : 3;   /* TI max is a setting in NIV and NIV-ST; elsewhere 3 s is the trainer's internal limit */
+    const Fp = VT / tau * 60;
+    const thr = s.ets / 100 * (Fp + inspLeak);
+    const Leff = inspLeak * 0.5;
+    if (thr <= Leff + 0.5) { Ti = timax; tiMaxHit = true; }
+    else {
+      const t = tau * Math.log(Fp / (thr - Leff));
+      Ti = clamp(t, 0.25, timax); tiMaxHit = t >= timax;
+    }
+  }
+  Ti = Math.max(0.2, Ti);
+  let cough = null;
+  if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: target + rnd(18, 26)};
+  B.br = {kind, auto, sigh, Ti, target: peepM + dPeff, base, peepM, dPeff, VT, inspLeak, expLeak, Fp: VT / tau * 60, tau, tauE: tau * 1.8 * (pr.trapX || 1),
+          pramp: Math.min(kind === 'manual' ? 0.25 : s.pramp, Ti / 3), limited, tiMaxHit, cough, obstructed, maxP: 0, spiked:false};
+  B.phase = 'insp'; B.t = 0;
+  B.lastStart = B.now;
+  if (pc) { B.lastMand = B.now; if (kind === 'mand' || kind === 'amand') B.simvDue = false; }
+  recordStart(kind === 'spont' ? 'spont' : 'mand', VT);
+  if (!auto && (kind === 'spont' || kind === 'amand')) { trigMark = 1; B.trigFlash = 0.35; }
+  pushLog(B.tiMaxLog, tiMaxHit);
+  pushLog(B.autoLog, auto);
+  B.peepNow = peepM;
+  M.peep = peepM;
+  if (peepM < base - 3) B.lowPeepBr = (B.lowPeepBr || 0) + 1; else B.lowPeepBr = 0;
+  if (kind === 'manual') addPrompt('Manual breath delivered.');
+}
+/* (S)CMV and SIMV: a volume-controlled breath. The set Vt is delivered at a constant (square) flow over TI less
+   the pause, so the airway pressure is PEEP + intrinsic PEEP + resistance x flow + volume / compliance: Ppeak shows
+   resistance and compliance together, Pplateau (during the pause) compliance alone. If the pressure reaches the high
+   Pressure limit, inspiration ends there (High pressure). A leak is not compensated. The model is illustrative. */
+function startVCBreath(kind, auto, sigh, mt, base) {
+  const pr = P.pr, s = V.set;
+  const Ti0 = mt.ti;
+  let tFlow = Math.max(0.2, Ti0 * (1 - s.pause / 100));
+  const VTset = s.vt / 1000 * (sigh ? 1.5 : 1);
+  const k = leakK();
+  let inspLeak = k * Math.sqrt(Math.max(base + 10, 0.5));
+  let expLeak = k * Math.sqrt(Math.max(base, 0.5));
+  let peepM = base;
+  if (expLeak > 30) peepM = Math.max(0, base - (expLeak - 30) * 0.15);
+  if (P.kink) peepM = base + 6;
+  const R = pr.R * (P.kink ? 2.5 : 1), C = pr.C;
+  const iPeep = B.Vee / C;
+  const F = VTset / tFlow;   /* l/s from the ventilator */
+  let VT = Math.max(0.005, (VTset - inspLeak / 60 * tFlow * 0.5) * rnd(0.98, 1.02));
+  let Ti = Ti0, hiP = false;
+  if (P.disc) { VT = 0.01; peepM = 0.3; inspLeak = 110; expLeak = 100; }
+  else {
+    /* Pmax: when the volume would need more pressure, the breath is pressure-limited at Pmax for the rest of
+       inspiration (IFU: Pmax is the pressure limitation in VC; the decelerating-flow shape is the simulator's) */
+    const pmax = Math.min(V.set.pmax, V.lim.phigh);
+    if (peepM + iPeep + VT / C + R * F > pmax + 0.01) { B.vcLim = Math.max(0, pmax - base); B.vcLimVt = VT; return false; }
+  }
+  const plat = peepM + iPeep + VT / C, peak = plat + R * F;
+  let cough = null;
+  if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: peak + rnd(18, 26)};
+  B.vlimit = false;
+  B.br = {kind, auto, sigh, Ti, target: peak, base, peepM, dPeff: (s.pause > 0 && !hiP ? plat : peak) - peepM, VT, inspLeak, expLeak, Fp: F * 60, tau: pr.tau, tauE: pr.tau * 1.8 * (pr.trapX || 1),
+          pramp: 0, limited:false, tiMaxHit:false, cough, obstructed:false, maxP: 0, spiked:false, vc:{F, tFlow, R, C, iPeep, hiP}};
+  B.phase = 'insp'; B.t = 0;
+  B.lastStart = B.now; B.lastMand = B.now;
+  if (kind === 'mand' || kind === 'amand') B.simvDue = false;
+  recordStart('mand', VT);
+  if (!auto && kind === 'amand') { trigMark = 1; B.trigFlash = 0.35; }
+  pushLog(B.tiMaxLog, false);
+  pushLog(B.autoLog, auto);
+  B.peepNow = peepM;
+  M.peep = peepM;
+  if (peepM < base - 3) B.lowPeepBr = (B.lowPeepBr || 0) + 1; else B.lowPeepBr = 0;
+  return true;
+}
+/* a spontaneous breath taken on top of a pressure level (APRV, and DuoPAP at P high) */
+function startOverlay(effort) {
+  const pr = P.pr, s = V.set, m = V.mode;
+  const sup = m === 'DuoPAP' ? Math.max(0, s.peep + s.ps - s.phi) : 0;   /* ΔPsupport is above PEEP: it only helps at P high if PEEP + ΔPsupport > P high */
+  const vol = Math.max(0.05, pr.vtBase * (1 - 0.4 * P.fatigue) * 0.8 + pr.C * sup);
+  B.ovl = {t:0, dur:pr.neuralTi, vol, sup};
+  P.vtAvg = P.vtAvg * 0.85 + vol * 0.15;
+  /* in APRV the trigger setting is only used to count spontaneous breaths */
+  if (!V.cpr && V.set.trig > 0 && effort >= V.set.trig) {
+    B.lastStart = B.now; recordStart('spont', vol); trigMark = 1; B.trigFlash = 0.35;
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    clear('apnea');
+  }
+}
+function endInsp() {
+  const br = B.br, m = V.mode;
+  const leakVol = br.inspLeak / 60 * br.Ti;
+  M.ppeak = Math.max(br.maxP, br.peepM);
+  if (M.ppeak >= V.lim.phigh - 0.01 && !(br.kind === 'manual' && V.mode === 'MAN')) { raise('phigh'); B.highPT = 3; }
+  M.vte = br.VT * 1000;
+  M.vti = (br.VT + leakVol) * 1000;
+  M.vleak = P.disc ? 100 : clamp(leakVol / (br.VT + leakVol) * 100, 0, 100);
+  const mt = mandTiming();
+  const bilevel = (m === 'APRV' || m === 'DuoPAP') && br.kind !== 'spont';
+  const te = bilevel ? Math.max(0.2, mt.cycle - br.Ti) : Math.max(0.5, (M.ftot ? 60 / M.ftot : 4) - br.Ti);
+  M.mvleak = P.disc ? 99 : (br.inspLeak * br.Ti + br.expLeak * te) / (br.Ti + te);
+  M.ti = br.Ti; M.te = te; M.ie = te / br.Ti;
+  M.inspFlow = br.Fp + br.inspLeak;
+  M.pmean = br.peepM + br.dPeff * br.Ti / (br.Ti + te);
+  M.autopeep = B.Vee / P.pr.C;
+  /* Pplateau and driving pressure (Vt / static compliance) are shown for mandatory, time-cycled breaths */
+  if (br.kind !== 'spont') { M.dpress = br.VT / P.pr.C; M.pplat = Math.min(M.ppeak, br.peepM + (B.Vee + br.VT) / P.pr.C); }
+  B.vEndInsp = B.Vee + br.VT;
+  B.phase = 'exp'; B.t = 0;
+  if (br.vc && br.vc.hiP) { raise('phigh'); B.highPT = 3; }
+  /* per-breath alarm counters */
+  if (V.lim.vtlow > 0 && M.vte < V.lim.vtlow) B.lowVtCount++; else B.lowVtCount = 0;
+  if (V.lim.vthigh <= ALIM.vthigh.max && M.vte > V.lim.vthigh) B.highVtCount++; else B.highVtCount = 0;
+  if (br.peepM > br.base + 5) B.highPeepCount++; else B.highPeepCount = 0;
+  P.dpAvg = P.dpAvg * 0.7 + br.dPeff * 0.3;
+  P.vtAvg = P.vtAvg * 0.7 + br.VT * 0.3;
+  /* adaptive pressure: APV modes (and APVsimv backup) on mandatory breaths, ASV on every breath */
+  if (br.kind !== 'spont' && (APV.includes(m) || (B.apnoeaVent && backupSet().mode === 'APVsimv'))) adaptAPV(br);
+  if (m === 'ASV' && !B.apnoeaVent) adaptASV(br);
+  if (m === 'VS' && br.kind === 'spont' && !B.apnoeaVent) adaptVS(br);
+  if (br.limited || ((APV.includes(m) || m === 'VS') && B.apvLim)) raise('plimit'); else clear('plimit');
+  /* Disconnection on patient side: VTE < 1/8 of VTI with VTI > 50 ml, invasive modes only (suppressed in CPR) */
+}
+/* APV: pressure adjusted between breaths towards the target Vt, at least 5 cmH2O, never above Plimit (7.2).
+   The 3 cmH2O-per-breath step is the ASV specification (Table 15-16), used here for APV as well. */
+function adaptAPV(br) {
+  if (br.sigh || P.disc) return;
+  const tgt = (B.apnoeaVent ? backupSet().vt : V.set.vt) / 1000;
+  const maxP = Math.max(5, V.lim.phigh - 10 - V.set.peep);
+  const want = br.VT > 0.02 ? B.apvP * tgt / br.VT : B.apvP + 3;
+  const np = B.apvP + clamp(want - B.apvP, -3, 3);
+  B.apvLim = np > maxP + 0.01 && br.VT < tgt * 0.95;
+  B.apvP = clamp(np, 5, maxP);
+}
+/* VS: flow-cycled breaths whose pressure support adapts to deliver the set Vt (quick guide, mode table) */
+function adaptVS(br) {
+  if (br.sigh || P.disc) return;
+  const tgt = V.set.vt / 1000, maxP = Math.max(5, V.lim.phigh - 10 - V.set.peep);
+  const want = br.VT > 0.02 ? B.vsP * tgt / br.VT : B.vsP + 3;
+  const np = B.vsP + clamp(want - B.vsP, -3, 3);
+  B.apvLim = np > maxP + 0.01 && br.VT < tgt * 0.95;
+  B.vsP = clamp(np, 5, maxP);
+}
+/* ASV (Table 15-16): target minute volume = IBW x normal minute ventilation x %MinVol/100. Normal minute ventilation is only
+   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for adults is the trainer's reading. The target rate uses the
+   Otis equation with VDaw = 2.2 ml/kg; the exact ASV 1.1 rule is not published in the manual, so targets are approximate. */
+function asvTargets() {
+  const ibw = calcIBW(), s = V.set, pr = P.pr;
+  A.mvTarget = ibw * 0.1 * s.minvol / 100;
+  const vd = 0.0022 * ibw, rce = pr.tau * 1.8, a = 2 * Math.PI * Math.PI / 60;
+  let f = 15;
+  for (let i = 0; i < 40; i++) { const va = Math.max(0.05, A.mvTarget - f * vd); f = (Math.sqrt(1 + 2 * a * rce * va / vd) - 1) / (a * rce); }
+  A.vtMin = 0.0044 * ibw;
+  const vtHi = V.lim.vthigh <= ALIM.vthigh.max ? 1.5 * V.lim.vthigh / 1000 : 99;
+  A.vtMax = Math.max(A.vtMin, Math.min(0.015 * ibw, vtHi, pr.C * Math.max(5, V.lim.phigh - 10 - s.peep) * 1.15));
+  const tiMin = Math.max(0.5, rce), teMin = Math.max(0.5, 2 * rce);
+  A.fMin = 5;    /* ASV quick guide, Appendix I D: the lowest target rate for adult patients is fixed at 5 b/min */
+  A.fMax = Math.max(A.fMin, Math.min(60, 60 / (tiMin + teMin), A.mvTarget / A.vtMin));
+  f = clamp(f, A.fMin, A.fMax);
+  let vt = A.mvTarget / f;
+  if (vt > A.vtMax) { vt = A.vtMax; f = clamp(A.mvTarget / vt, A.fMin, A.fMax); }
+  if (vt < A.vtMin) { vt = A.vtMin; f = clamp(A.mvTarget / vt, A.fMin, A.fMax); }
+  A.fTarget = f; A.vtTarget = vt;
+  const c = 60 / f;
+  A.ti = clamp(c / 3, Math.max(tiMin, c / 5), Math.min(ibw >= 30 ? 2 : 1.5, c / 2, c - teMin));
+}
+function asvInit() {
+  const ibw = calcIBW();
+  const row = ibw >= 100 ? [20, 1.5, 15] : ibw >= 90 ? [18, 1.5, 15] : ibw >= 40 ? [15, 1, 15] : ibw >= 30 ? [15, 1, 18] : [15, 1, 20];   /* Table 7-3, adult rows */
+  A.p = row[0]; asvTargets(); A.ti = row[1]; A.fTarget = row[2]; A.started = B.now; A.atMax = false;
+}
+function adaptASV(br) {
+  const fT = A.fTarget, tiT = A.ti;
+  asvTargets();
+  if (B.now - A.started < 12) { A.fTarget = fT; A.ti = tiT; }   /* initial test breaths at the Table 7-3 pattern */
+  if (br.sigh || P.disc) return;
+  const maxP = Math.max(5, V.lim.phigh - 10 - V.set.peep);
+  const want = br.VT > 0.02 ? A.p * A.vtTarget / br.VT : A.p + 3;
+  A.p = clamp(A.p + clamp(want - A.p, -3, 3), 5, maxP);
+  A.atMax = A.p >= maxP - 0.01;
+}
+
+function effortHappens() {
+  const pr = P.pr, m = V.mode;
+  if (P.apnoea || V.ambient || pr.sedated || P.passive) return;
+  let effort = pr.effort * (1 - 0.5 * P.fatigue) * (P.deteriorate ? 0.7 : 1);
+  /* intrinsic PEEP in COPD (about 6 cmH2O here) has to be overcome before any flow reaches the trigger:
+     set PEEP / EPAP counterbalances it, so too little EPAP means missed triggers */
+  if (pr.ipeep) effort -= 1.5 * Math.max(0, 6 - V.set.peep);
+  if (pr.needEpap && !isInvasive(m) && V.set.peep < pr.needEpap && Math.random() < 0.4) effort *= 0.35;
+  if (P.disc) return; // mask off: patient breathes room air; ventilator sees only leak
+  if (m === 'APRV' || (m === 'DuoPAP' && B.phase === 'insp' && B.br && B.br.kind !== 'spont')) { startOverlay(effort); return; }
+  if (B.phase === 'insp' || B.t < 0.25) return;
+  /* Man/Spon: every breath the patient takes is their own; CMV modes are not patient-triggered on the A350 (simulator's reading of SIMV/CMV) */
+  const triggered = m === 'MAN' ? effort > 0 : !V.cpr && !CMV_MODES.includes(m) && V.set.trig > 0 && effort >= V.set.trig;
+  pushLog(B.missLog, !triggered);
+  if (triggered) {
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    clear('apnea');
+    startBreath(triggeredKind());
+  } else {
+    B.dip = 0.35;
+    if (B.apnoeaVent) B.consecTrig = 0;
+  }
+}
+
+function engineStep(dt) {
+  if (!P) return;
+  if (!V.power || V.standby || V.ambient || isHFO()) {
+    B.now += dt; sampleAcc += dt;
+    while (sampleAcc >= SAMPLE_DT) { sampleAcc -= SAMPLE_DT; writeSample(0, 0, 0); }
+    return;
+  }
+  B.now += dt; B.t += dt;
+  if (B.trigFlash > 0) B.trigFlash -= dt;
+  if (B.ovl) { B.ovl.t += dt; if (B.ovl.t >= 2 * B.ovl.dur) B.ovl = null; }
+  const s = V.set, m = V.mode;
+  if (B.now >= B.nextEffort) {
+    const rr = Math.max(4, P.rr);
+    B.nextEffort = B.now + 60 / rr * rnd(0.9, 1.1);
+    effortHappens();
+  }
+  if (B.phase === 'insp') {
+    const br = B.br;
+    if (br.cough && !br.spiked && B.t >= br.cough.at) {
+      br.spiked = true; br.maxP = Math.max(br.maxP, br.cough.p);
+      if (br.cough.p >= V.lim.phigh) { raise('phigh'); B.highPT = 3; endInsp(); M.ppeak = br.cough.p; }
+    }
+    if (B.phase === 'insp' && B.t >= br.Ti) endInsp();
+  } else {
+    const since = B.now - B.lastStart, mt = mandTiming();
+    if (V.manualReq && B.t > 0.3) { V.manualReq = false; startBreath('manual'); }
+    else if (B.apnoeaVent) { if (since >= mt.cycle) startBreath('mand'); }
+    else if (m === 'APRV' || m === 'DuoPAP') { if (B.now - B.lastMand >= mt.cycle) startBreath('mand'); }
+    else if (isSIMV()) {
+      /* each SIMV interval starts with Tmand: a trigger then gives a mandatory breath; without one, a mandatory breath at the end of Tmand.
+         The length of Tmand is not given in the manual. The trainer used a quarter of the interval, which put the total rate well
+         above the patient's own; most of the interval (90%) keeps a patient breathing faster than the set rate at their own rate. */
+      if (B.now - B.simvC0 >= 2 * mt.cycle) { B.simvC0 = B.now; B.simvDue = true; }
+      else if (B.now - B.simvC0 >= mt.cycle) { B.simvC0 += mt.cycle; B.simvDue = true; }
+      if (B.simvDue && B.now - B.simvC0 >= mt.cycle * 0.9) {
+        startBreath('mand');
+        /* the patient's next breath waits until this machine breath is over and some way out (a breath
+           started straight after it would push the total rate above the patient's own) */
+        if (P.rr > 0 && B.br) B.nextEffort = Math.max(B.nextEffort, B.now + B.br.Ti + 0.4 * 60 / P.rr);
+      }
+    }
+    else if (mt && since >= mt.cycle) startBreath('mand');
+    /* apnea: no breath within the Apnea time in the modes that have Apnea backup */
+    if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= (V.backupOn ? 60 / backupSet().rate : V.lim.apnoea)) {
+      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }   /* Apnea itself: evalAlarms (no breath and no CO2) */
+    }
+    if (B.phase === 'exp' && B.t > 0.4 && !V.cpr && s.trig > 0 && m !== 'MAN' && !CMV_MODES.includes(m)) {
+      let lam = 0;
+      const k = leakK();
+      const expLeak = k * Math.sqrt(Math.max(s.peep, 0.5));
+      if (P.disc) lam = 0.45;
+      else if (expLeak > 30) lam = 0.35;
+      else if (s.trig <= 1 && expLeak > 6) lam = 0.3;
+      else if (s.trig <= 0.5) lam = 0.06;
+      if (Math.random() < lam * dt) startBreath('auto');
+    }
+  }
+  sampleAcc += dt;
+  while (sampleAcc >= SAMPLE_DT) { sampleAcc -= SAMPLE_DT; writeSample(...currentPFV()); }
+}
+function currentPFV() {
+  const br = B.br; if (!br) return [baseP(), 0, 0];
+  const t = B.t;
+  let p, f, v;
+  if (B.phase === 'insp' && br.vc) {
+    const c = br.vc;
+    if (t < c.tFlow) {
+      const vol = Math.min(br.VT, br.VT * t / c.tFlow);
+      p = br.peepM + c.iPeep + c.R * c.F * Math.min(1, t / 0.04) + vol / c.C;
+      f = c.F * 60 + br.inspLeak;
+      v = vol * 1000;
+    } else {
+      p = br.peepM + c.iPeep + br.VT / c.C + c.R * c.F * Math.exp(-(t - c.tFlow) / 0.05);
+      f = br.inspLeak * 0.3 + c.F * 60 * Math.exp(-(t - c.tFlow) / 0.02);
+      v = br.VT * 1000;
+    }
+    if (br.cough && br.spiked && t - br.cough.at < 0.25 && t >= br.cough.at) p = br.cough.p;
+    br.maxP = Math.max(br.maxP, p);
+  } else if (B.phase === 'insp') {
+    const rise = br.pramp > 0.01 ? Math.min(1, t / br.pramp) : 1;
+    p = br.peepM + br.dPeff * rise;
+    if (br.pramp < 0.05 && t < 0.12) p += br.dPeff * 0.08 * Math.sin(t / 0.12 * Math.PI);
+    if (br.cough && br.spiked && t - br.cough.at < 0.25 && t >= br.cough.at) p = br.cough.p;
+    br.maxP = Math.max(br.maxP, p);
+    f = (br.Fp * Math.exp(-t / br.tau)) * Math.min(1, (t + 0.02) / (br.pramp + 0.04)) + br.inspLeak;
+    v = Math.min(br.VT, br.VT * (1 - Math.exp(-t / br.tau)) / Math.max(0.01, 1 - Math.exp(-br.Ti / br.tau))) * 1000;
+  } else {
+    p = Math.max(0, br.peepM + br.dPeff * Math.exp(-t / 0.06));
+    const decay = Math.exp(-t / br.tauE);
+    f = -(B.vEndInsp / br.tauE * 60) * decay + br.expLeak * 0.6;
+    if (B.dip > 0) { f -= 12 * Math.sin((0.35 - B.dip) / 0.35 * Math.PI); B.dip -= SAMPLE_DT; }
+    v = Math.max(0, br.VT - B.vEndInsp * (1 - decay)) * 1000;
+  }
+  if (B.ovl) {
+    const o = B.ovl, ph = Math.PI * o.t / o.dur;
+    f += o.vol * Math.PI / (2 * o.dur) * Math.sin(ph) * 60;
+    v += o.vol * (1 - Math.cos(ph)) / 2 * 1000;
+    if (o.t < o.dur) p += o.sup > 0 ? o.sup * Math.sin(ph) * 0.8 : -1.2 * Math.sin(ph);
+  }
+  if (V.mode === 'MAN' && B.phase !== 'insp') p = Math.max(p, G.circP);   /* a bag held full by the APL valve */
+  return [p, f, v];
+}
+/* plethysmogram (SpO2 option): a stylised pulse wave at the simulated heart rate */
+function plethNow() {
+  if (!V.spo2On || !P || !V.power) return 0;
+  const ph = (B.now * P.hr / 60) % 1;
+  return ph < 0.18 ? Math.sin(ph / 0.18 * Math.PI / 2) : Math.exp(-(ph - 0.18) * 3.2) * (1 + 0.12 * Math.sin((ph - 0.18) * 14));
+}
+function writeSample(p, f, v) {
+  bufC[bufIdx] = co2Now(); bufP[bufIdx] = p; bufF[bufIdx] = f; bufV[bufIdx] = v; bufPl[bufIdx] = plethNow(); bufTrig[bufIdx] = trigMark; trigMark = 0;
+  bufIdx = (bufIdx + 1) % NBUF;
+}
+
+/* ======================= alarm sound (Web Audio; off until the user turns it on) ======================= */
+let actx = null, soundT = 0;
+function beep(n, gap, freq) {
+  if (!V.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t0 = actx.currentTime + 0.02, vol = 0.04 + 0.02 * V.loud;
+    for (let i = 0; i < n; i++) {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'square'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, t0 + i * gap); g.gain.linearRampToValueAtTime(vol * 0.25, t0 + i * gap + 0.02);
+      g.gain.setValueAtTime(vol * 0.25, t0 + i * gap + 0.13); g.gain.linearRampToValueAtTime(0, t0 + i * gap + 0.16);
+      o.connect(g).connect(actx.destination); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.18);
+    }
+  } catch (e) { /* audio not available */ }
+}
+const lowBeeped = new Set();
+function soundTick(dt) {
+  soundT -= dt;
+  if (!V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
+  const list = topAlarms();
+  if (!list.length) return;
+  const top = list[0].p;
+  if (top === 'low') { list.filter(a => a.p === 'low').forEach(a => { if (!lowBeeped.has(a.id)) { lowBeeped.add(a.id); beep(2, 0.3, 700); setTimeout(() => beep(2, 0.3, 700), 1100); } }); return; }
+  if (soundT > 0) return;
+  if (top === 'hi') { beep(5, 0.22, 960); soundT = 5; }
+  else if (top === 'med') { beep(3, 0.3, 780); soundT = 12; }
+}
+
+/* ======================= alarms ======================= */
+/* Priorities: high !!! red, medium !! yellow, low ! cyan ([IFU2] p. 197). The texts are the IFU's ([IFU1]
+   pp. 202-218) except those marked "simulator's wording", which the IFU text available here did not give.
+   Thresholds and delays the IFU does not give are the simulator's. */
+const ALARMS = {
+  phigh:    {t:'Airway pressure high', p:'hi', f:'pip'},
+  pcont:    {t:'Airway press. continuously high', p:'hi', f:'peep'},
+  plow:     {t:'Airway pressure not achieved', p:'med', f:'pip'},
+  plimit:   {t:'Pressure limited', p:'low', f:'pip'},                 /* simulator's wording */
+  apnea:    {t:'Apnea', p:'med'},
+  apnea2:   {t:'Apnea', p:'hi'},                                      /* the IFU: !! escalating to !!! */
+  apvent:   {t:'Apnea ventilation', p:'low'},                         /* simulator's wording (RRmin backup in PSV) */
+  mvlow:    {t:'Minute volume low', p:'med', f:'mv'},
+  mvhigh:   {t:'Minute volume high', p:'med', f:'mv'},
+  o2low:    {t:'FiO2 low', p:'hi', f:'o2'},
+  o2high:   {t:'FiO2 high', p:'med', f:'o2'},
+  etco2high:{t:'etCO2 high', p:'med', f:'co2'},
+  etco2low: {t:'etCO2 low', p:'med', f:'co2'},
+  fglow:    {t:'Fresh gas low or leakage', p:'med'},
+  nofg:     {t:'No fresh-gas flow', p:'hi'},
+  o2fail:   {t:'O2 supply low', p:'hi'},
+  addo2:    {t:'Add. O2 activated', p:'med'},
+  mains:    {t:'Mains power failure', p:'med'},                       /* simulator's wording */
+  battmed:  {t:'Battery low', p:'med'},                               /* simulator's wording */
+  batthi:   {t:'Battery low', p:'hi'},                                /* simulator's wording */
+  battdead: {t:'Battery empty', p:'hi'},                              /* simulator's wording */
+  /* raised by the shared engine for other machines; never by the A350 */
+  discpat:  {t:'Disconnection', p:'hi'}, vlimit:{t:'Volume limited', p:'low'}, chkplim:{t:'Check Pmax', p:'low'}, plimchg:{t:'Pressure limit changed', p:'low'},
+  losspeep: {t:'PEEP not achieved', p:'med'}, highpeep:{t:'PEEP high', p:'med'}, exobs:{t:'Expiration obstructed', p:'hi'},
+  vtlow:{t:'VT low', p:'med'}, vthigh:{t:'VT high', p:'med'}, fhigh:{t:'RR high', p:'med'}, flow:{t:'RR low', p:'med'},
+  lowo2:{t:'FiO2 low', p:'hi'}, higho2:{t:'FiO2 high', p:'med'}, irv:{t:'IRV', p:'low'}, maxleak:{t:'Leakage', p:'low'}, asvtarget:{t:'Target not met', p:'low'}, cpron:{t:'CPR', p:'low'}
+};
+/* troubleshooting help (Education mode): the simulator's summary of what to check, not Dräger's text */
+const HELP = {
+  phigh:'<ul><li>The airway pressure reached the Paw high limit: inspiration ends there.</li><li>Look at the patient (coughing, light anaesthesia, bronchospasm) and along the circuit and tube (kinked, blocked, endobronchial).</li><li>Hand-ventilate to feel the lungs if in doubt.</li></ul>',
+  pcont:'<ul><li>The pressure in the breathing system is staying high between breaths.</li><li>In Man/Spon: is the APL valve closed down with the bag filling? Open the APL valve (Spont) or squeeze the excess out.</li><li>Check the expiratory limb and the scavenging.</li></ul>',
+  plow:'<ul><li>The set pressure is not being reached: gas is escaping.</li><li>Check for a disconnection, a leak at the tube cuff or the circuit, and the fresh-gas flow.</li></ul>',
+  plimit:'<ul><li>The breath was limited at Pmax: the set VT may not be delivered.</li><li>Find out why the pressure is high before raising Pmax.</li></ul>',
+  apnea:'<ul><li>No breath (no CO2) has been detected.</li><li>In Man/Spon: is the patient breathing? Ventilate by hand or start a ventilator mode.</li><li>Ventilating and still no CO2: think disconnection, oesophageal intubation, or no cardiac output.</li></ul>',
+  apnea2:'<ul><li>No breath (no CO2) for some time.</li><li>Ventilate the patient now. Ventilating and still no CO2: disconnection, oesophageal intubation or cardiac arrest.</li></ul>',
+  mvlow:'<ul><li>Less gas is going in and out than the limit.</li><li>Check the patient, a leak or disconnection, and the settings.</li></ul>',
+  mvhigh:'<ul><li>The minute volume is above the limit. Check the settings and the patient.</li></ul>',
+  o2low:'<ul><li>The inspired O2 is below the limit.</li><li>Raise FG O2 and the fresh-gas flow. With N2O, the O2 in the circle falls at low flows.</li><li>Check the O2 supply.</li></ul>',
+  o2high:'<ul><li>The inspired O2 is above the limit.</li></ul>',
+  etco2high:'<ul><li>The end-tidal CO2 is above the limit.</li><li>Ventilate more. Think of rebreathing (exhausted soda lime), malignant hyperthermia, sepsis or a CO2 load.</li></ul>',
+  etco2low:'<ul><li>The end-tidal CO2 is below the limit.</li><li>Think of over-ventilation, a leak, a falling cardiac output or an embolus.</li></ul>',
+  fglow:'<ul><li>The breathing bag is running empty: there is not enough fresh gas for what is being lost.</li><li>Look for a leak or a disconnection. Raise the fresh-gas flow; O2+ refills the bag.</li></ul>',
+  nofg:'<ul><li>No fresh gas is flowing. Set a FG flow.</li><li>If the mixer has failed, use Add. O2 and keep the patient asleep (TIVA if the vapour has stopped).</li></ul>',
+  o2fail:'<ul><li>The O2 supply pressure is low (pipeline or cylinder).</li><li>Open the O2 cylinder, check the patient\'s SpO2, call for help (QRH 4-1).</li><li>Have a self-inflating bag and an O2 cylinder ready.</li></ul>',
+  addo2:'<ul><li>The O2 switch is set to Add. O2: emergency O2 goes straight into the breathing system.</li><li>Set the switch back to Aux. O2 when it is no longer needed.</li></ul>',
+  mains:'<ul><li>The machine is running on its battery. Check the mains plug and supply (QRH 4-2).</li></ul>',
+  battmed:'<ul><li>The battery is low. Restore mains power.</li></ul>',
+  batthi:'<ul><li>The battery is nearly empty. Restore mains power and prepare to ventilate by hand with a self-inflating bag and TIVA.</li></ul>',
+  battdead:'<ul><li>The battery is empty: the ventilator has stopped. Ventilate by hand (Man/Spon still works with Add. O2) or with a self-inflating bag.</li></ul>'
+};
+const PRI_ORDER = {hi:3, med:2, low:1};
+const PRI_MARK = {hi:'!!!', med:'!!', low:'!'};
+const active = new Map();
+const inactive = new Map();
+const history = [];
+function raise(id) {
+  if (!active.has(id)) {
+    active.set(id, clockStr());
+    inactive.delete(id);
+    logEvent(ALARMS[id].t, ALARMS[id].p);
+  }
+}
+function clear(id) { if (active.has(id)) { inactive.set(id, active.get(id)); active.delete(id); lowBeeped.delete(id); } }
+function logEvent(t, p) {
+  ventReport(t, p);
+  history.unshift({time: clockStr(), wall: wallClock(), t, p}); if (history.length > 60) history.pop();
+  if (win === 'alarms') renderWindow();
+}
+let msgCycle = 0;
+function topAlarms() {
+  return [...active.keys()].map(id => ({id, ...ALARMS[id]})).sort((a, b) => PRI_ORDER[b.p] - PRI_ORDER[a.p]);
+}
+const PATIENT_ALARMS = ['phigh', 'pcont', 'plow', 'plimit', 'apnea', 'apnea2', 'apvent', 'mvlow', 'mvhigh', 'o2low', 'o2high', 'etco2high', 'etco2low', 'fglow', 'nofg'];
+function evalAlarms() {
+  if (!P || !V.power || V.selftest > 0) return;
+  /* the gas supply: also in Standby */
+  if (P.o2fail) raise('o2fail'); else clear('o2fail');
+  if (V.o2sw === 'add' && V.auxO2 > 0) raise('addo2'); else clear('addo2');
+  if (V.standby || V.ambient) { PATIENT_ALARMS.forEach(clear); G.apneaT = 0; return; }
+  const L = V.lim, m = V.mode, fg = G.fg || freshGas(), dt = 0.25;
+  /* no breath for 15 s: the measured rate and minute volume fall to zero (the shared engine only updates them on a breath) */
+  if (B.now - B.lastStart > 15) { M.ftot = 0; M.mv = 0; }
+  /* fresh gas */
+  if (!(fg.total > 0)) raise('nofg'); else clear('nofg');
+  G.fgLowT = G.bag < 0.15 ? G.fgLowT + dt : 0;
+  if (G.fgLowT > 5) raise('fglow'); else if (G.bag > 0.5) clear('fglow');
+  /* gas measurement */
+  if (G.fio2 < L.o2low) raise('o2low'); else clear('o2low');
+  if (L.o2high <= ALIM.o2high.max && G.fio2 > L.o2high) raise('o2high'); else clear('o2high');
+  const et = etco2kPa();
+  if (et !== null && et > 0.5) G.lastCO2 = B.now;
+  const settled = B.now - V.caseStart > 45 && B.now - V.modeSince > 45;
+  if (et !== null && L.etco2high <= ALIM.etco2high.max && et > L.etco2high) raise('etco2high'); else clear('etco2high');
+  if (et !== null && L.etco2low > 0 && et > 0.5 && et < L.etco2low && settled) raise('etco2low'); else clear('etco2low');
+  /* Apnea: no breath and no CO2 for the Apnea time (20 s, the simulator's); !! then !!! after another 30 s */
+  const sinceBreath = B.now - Math.max(B.lastStart, V.caseStart), sinceCO2 = B.now - Math.max(G.lastCO2, V.caseStart, V.modeSince);
+  const apnoeic = (m === 'MAN' && sinceBreath >= L.apnoea) || (sinceBreath >= L.apnoea && !V.backupOn) || sinceCO2 >= L.apnoea + 10;
+  if (apnoeic) { G.apneaT += dt; if (G.apneaT > 30) { clear('apnea'); raise('apnea2'); } else raise('apnea'); }
+  else { G.apneaT = 0; clear('apnea'); clear('apnea2'); }
+  if (B.apnoeaVent) raise('apvent'); else clear('apvent');
+  if (!V.backupOn) B.apnoeaVent = false;
+  /* pressure */
+  if (B.highPT) { B.highPT -= dt; if (B.highPT <= 0) { B.highPT = 0; clear('phigh'); } }
+  const baseline = m === 'MAN' ? G.circP : (M.peep === null ? 0 : M.peep);
+  const pcontLim = Math.max((V.set.peep || 0) + 10, 15);   /* the simulator's threshold */
+  G.pcontT = baseline > pcontLim ? G.pcontT + dt : 0;
+  if (G.pcontT > 15) raise('pcont'); else if (baseline < pcontLim - 2) clear('pcont');
+  const mandatory = m !== 'MAN' && m !== 'SPONT';
+  G.plowT = mandatory && M.ppeak !== null && M.ppeak < (V.set.peep || 0) + 4 ? G.plowT + dt : 0;
+  if (G.plowT > 10) raise('plow'); else if (G.plowT === 0) clear('plow');
+  /* minute volume: MV low not in the first 45 s of a case or after a mode change ([IFU2] p. 202) */
+  if (M.mv !== null && settled && L.mvlow > 0 && M.mv < L.mvlow) raise('mvlow'); else clear('mvlow');
+  if (M.mv !== null && L.mvhigh <= ALIM.mvhigh.max && M.mv > L.mvhigh) raise('mvhigh'); else clear('mvhigh');
+}
+function powerTick(dtReal) {
+  if (P.mains) { P.batt = Math.min(100, P.batt + dtReal * 0.5); clear('mains'); clear('battmed'); clear('batthi'); clear('battdead'); return; }
+  if (!V.power) return;
+  raise('mains');
+  P.batt = Math.max(0, P.batt - dtReal * 0.8);
+  if (P.batt <= 0) { clear('batthi'); raise('battdead'); if (!V.ambient && !V.standby) { V.ambient = true; logEvent('Ventilator stopped: battery empty', 'hi'); } }
+  else if (P.batt < 12) { clear('battmed'); raise('batthi'); }
+  else if (P.batt < 30) raise('battmed');
+}
+
+/* ======================= screen: scaling ======================= */
+const DEV_W = 1500, DEV_H = 900;
+function fitDevice() {
+  const wrap = $('#device'), sc = $('#t1scaler'), t1 = $('#t1');
+  const s = Math.max(0.2, Math.min(wrap.clientWidth / DEV_W, (wrap.clientHeight - 4) / DEV_H));
+  t1.style.transform = 'scale(' + s + ')'; t1.style.transformOrigin = '0 0';
+  sc.style.width = (DEV_W * s) + 'px'; sc.style.height = (DEV_H * s) + 'px';
+  const box = $('#screenbox');
+  $('#screen').style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
+}
+new ResizeObserver(fitDevice).observe($('#device'));
+
+/* ======================= waveforms ======================= */
+function sizeCanvas(cv) {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const w = Math.max(10, Math.round(r.width * dpr)), h = Math.max(10, Math.round(r.height * dpr));
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+}
+const CV = [$('#cv1'), $('#cv2'), $('#cv3')];
+const GW = 760, GH = 176;   /* one waveform panel, in screen pixels */
+function prepCanvas(cv) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1) * 1.2;
+  const w = GW * dpr, h = GH * dpr;
+  if (cv.width !== Math.round(w) || cv.height !== Math.round(h)) { cv.width = Math.round(w); cv.height = Math.round(h); }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
+}
+function niceTop(v, steps) { for (const s of steps) if (v <= s) return s; return steps[steps.length - 1]; }
+function drawWave(cv, buf, opt) {
+  const ctx = prepCanvas(cv);
+  ctx.clearRect(0, 0, GW, GH);
+  const L = 54, R = GW - 8, T = 26, Bm = GH - 20;
+  const {ymin, ymax, colour, label, unit, ticks, lines, marks} = opt;
+  const y = v => Bm - (clamp(v, ymin, ymax) - ymin) / (ymax - ymin) * (Bm - T);
+  ctx.font = '13px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+  ctx.fillText(label, 8, 11); ctx.fillStyle = '#cfcfcf'; ctx.font = '11px "Segoe UI",system-ui,sans-serif'; ctx.fillText(unit, 8 + ctx.measureText(label).width * 1.2 + 6, 11);
+  // axes
+  ctx.strokeStyle = '#d9d9d9'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, T - 4); ctx.lineTo(L, Bm + 2); ctx.stroke();
+  ctx.font = '11px "Segoe UI",system-ui,sans-serif'; ctx.textAlign = 'right'; ctx.fillStyle = '#e6e6e6';
+  ticks.forEach(tv => { ctx.fillText(String(tv), L - 6, y(tv)); ctx.beginPath(); ctx.moveTo(L - 3, y(tv)); ctx.lineTo(L, y(tv)); ctx.stroke(); });
+  const y0 = y(Math.max(ymin, 0));
+  ctx.beginPath(); ctx.moveTo(L, y0); ctx.lineTo(R, y0); ctx.stroke();
+  ctx.textAlign = 'center';
+  for (let s = 2; s <= 12; s += 2) { const x = L + s / WINDOW_S * (R - L); ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y0 + 3); ctx.stroke(); ctx.fillText(String(s), x, Math.min(Bm + 12, y0 + 11)); }
+  ctx.textAlign = 'left';
+  (lines || []).forEach(Ln => { ctx.strokeStyle = Ln.c; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(L, y(Ln.v)); ctx.lineTo(R, y(Ln.v)); ctx.stroke(); });
+  // sweep trace with an erase gap ahead of the write position
+  const gap = Math.round(0.35 / SAMPLE_DT);
+  ctx.strokeStyle = colour; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.beginPath();
+  let pen = false;
+  for (let i = 0; i < NBUF; i++) {
+    const ahead = (i - bufIdx + NBUF) % NBUF;
+    if (ahead < gap) { pen = false; continue; }
+    const x = L + i / (NBUF - 1) * (R - L), yy = y(buf[i]);
+    if (!pen) { ctx.moveTo(x, yy); pen = true; } else ctx.lineTo(x, yy);
+  }
+  ctx.stroke();
+  if (marks) {
+    ctx.fillStyle = '#ff7ad9';
+    for (let i = 0; i < NBUF; i++) if (bufTrig[i] && (i - bufIdx + NBUF) % NBUF >= gap) { const x = L + i / (NBUF - 1) * (R - L); ctx.beginPath(); ctx.moveTo(x, Bm - 1); ctx.lineTo(x - 4, Bm + 7); ctx.lineTo(x + 4, Bm + 7); ctx.closePath(); ctx.fill(); }
+  }
+}
+/* the three curves: Paw, Flow and CO2. The IFU does not give the colours (they are configurable, and the agent
+   and gas colours follow ISO 5359): these are the simulator's, with CO2 grey as in the ISO gas colours. */
+function waveOpts() {
+  const ph = V.lim.phigh;
+  const pTop = niceTop(Math.max(ph, G.circP + 5), [20, 40, 60, 80, 100]);
+  let fmax = 0; for (let i = 0; i < NBUF; i++) fmax = Math.max(fmax, Math.abs(bufF[i]));
+  const fTop = niceTop(fmax * 1.05, [30, 60, 90, 120, 180]);
+  let cmax = 0; for (let i = 0; i < NBUF; i++) cmax = Math.max(cmax, bufC[i]);
+  const cTop = niceTop(cmax * 1.1, [6, 8, 10, 12]);
+  return {
+    paw: {ymin:-5, ymax:pTop, colour:'#ffd84a', label:'Paw', unit:'cmH2O', ticks:[0, pTop / 2, pTop], lines:[{v:ph, c:'#e5372b'}], marks:false},
+    flow:{ymin:-fTop, ymax:fTop, colour:'#7fd3ff', label:'Flow', unit:'L/min', ticks:[-fTop, 0, fTop]},
+    co2: {ymin:0, ymax:cTop, colour:'#d8d8d8', label:'CO2', unit:'kPa', ticks:[0, cTop / 2, cTop]}
+  };
+}
+function drawWaves() {
+  if (!V.power || V.selftest > 0 || V.standby) { CV.forEach(cv => prepCanvas(cv).clearRect(0, 0, GW, GH)); return; }
+  const o = waveOpts();
+  drawWave(CV[0], bufP, o.paw);
+  drawWave(CV[1], bufF, o.flow);
+  drawWave(CV[2], bufC, o.co2);
+}
+/* trend of one value per simulated minute over the last hour */
+const TR = {o2:[], flow:[], lastMin:-1};
+function trendTick() {
+  const mi = Math.floor(P.simMin);
+  if (mi === TR.lastMin) return;
+  TR.lastMin = mi;
+  const on = V.power && !V.standby && isHFO();
+  TR.o2.push(on ? measuredO2() : null); TR.flow.push(on ? V.set.hflow : null);
+  if (TR.o2.length > 60) { TR.o2.shift(); TR.flow.shift(); }
+}
+function drawTrend(cv, arr, opt) {
+  const ctx = prepCanvas(cv);
+  ctx.clearRect(0, 0, GW, GH);
+  const L = 54, R = GW - 8, T = 26, Bm = GH - 20;
+  const {ymin, ymax, colour, label, unit, ticks} = opt;
+  const y = v => Bm - (clamp(v, ymin, ymax) - ymin) / (ymax - ymin) * (Bm - T);
+  ctx.font = '13px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  ctx.fillText(label + ' trend', 8, 11); ctx.fillStyle = '#cfcfcf'; ctx.font = '11px "Segoe UI",system-ui,sans-serif'; ctx.fillText(unit + '   1 h', 8 + ctx.measureText(label + ' trend').width * 1.2 + 6, 11);
+  ctx.strokeStyle = '#d9d9d9'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(L, T - 4); ctx.lineTo(L, Bm); ctx.lineTo(R, Bm); ctx.stroke();
+  ctx.textAlign = 'right'; ctx.fillStyle = '#e6e6e6';
+  ticks.forEach(tv => ctx.fillText(String(tv), L - 6, y(tv)));
+  ctx.textAlign = 'center';
+  [-60, -45, -30, -15, 0].forEach(mn => { const x = L + (mn + 60) / 60 * (R - L); ctx.fillText(mn ? String(mn) : '0', x, Bm + 11); });
+  ctx.strokeStyle = colour; ctx.lineWidth = 2; ctx.beginPath();
+  let pen = false;
+  arr.forEach((v, i) => {
+    const x = L + (60 - arr.length + i + 1) / 60 * (R - L);
+    if (v === null) { pen = false; return; }
+    if (!pen) { ctx.moveTo(x, y(v)); pen = true; } else ctx.lineTo(x, y(v));
+  });
+  ctx.stroke();
+}
+/* ---------- ASV Graph (Intelligent panel, ASV only; Figure 7-17) ---------- */
+function drawASVGraph() {
+  const el = $('#dynlung');
+  const L = 64, R = 330, T = 22, Bt = 270, fAx = 60;
+  const vAx = niceTop(Math.max(A.vtMax * 1000 * 1.15, 600), [600, 800, 1000, 1200, 1600, 2000, 2500]);
+  const x = f => L + clamp(f, 0, fAx) / fAx * (R - L), y = v => Bt - clamp(v, 0, vAx) / vAx * (Bt - T);
+  const mv = A.mvTarget * 1000;
+  let curve = '';
+  for (let f = Math.max(1, mv / vAx); f <= fAx; f += 0.5) curve += (curve ? 'L' : 'M') + x(f).toFixed(1) + ' ' + y(mv / f).toFixed(1);
+  const vtNow = B.vols.length ? B.vols.slice(-4).reduce((a, b) => a + b, 0) / Math.min(4, B.vols.length) * 1000 : null;
+  const cur = !V.standby && M.ftot !== null && vtNow !== null ? `<g transform="translate(${x(M.ftot).toFixed(1)} ${y(vtNow).toFixed(1)})" stroke="#ffde00" stroke-width="3"><path d="M-9 0H9M0 -9V9"/><circle r="4" fill="#ffde00"/></g>` : '';
+  const axisT = [0, 20, 40, 60].map(f => `<text x="${x(f)}" y="${Bt + 16}" fill="#ddd" font-size="12" text-anchor="middle">${f}</text>`).join('') +
+    [0, vAx / 2, vAx].map(v => `<text x="${L - 6}" y="${y(v) + 4}" fill="#ddd" font-size="12" text-anchor="end">${Math.round(v)}</text>`).join('');
+  el.className = 'dynlung asv';
+  el.innerHTML = `<svg viewBox="0 0 462 316" aria-hidden="true">
+    <path d="M${L} ${T - 6}V${Bt}H${R + 6}" stroke="#ddd" fill="none"/>${axisT}
+    <text x="8" y="16" fill="#fff" font-size="13">Vt (ml)</text><text x="${R}" y="${Bt + 32}" fill="#fff" font-size="13" text-anchor="end">f (b/min)</text>
+    <path d="${curve}" stroke="#3fd16b" stroke-width="2" fill="none"/>
+    <rect x="${x(A.fMin)}" y="${y(A.vtMax * 1000)}" width="${x(A.fMax) - x(A.fMin)}" height="${y(A.vtMin * 1000) - y(A.vtMax * 1000)}" stroke="#e6e6e6" stroke-dasharray="5 4" fill="none"/>
+    <circle cx="${x(A.fTarget)}" cy="${y(A.vtTarget * 1000)}" r="9" stroke="#3fd16b" stroke-width="3" fill="none"/>${cur}
+  </svg>
+  <div class="asv-side"><span>Target MinVol<b>${fmt(A.mvTarget, 1)}</b><small>l/min</small></span><span>fControl<b>${V.standby ? '--' : fmt(M.fcontrol)}</b><small>b/min</small></span><span>fSpont<b>${V.standby ? '--' : fmt(M.fspont)}</b><small>b/min</small></span><span>ΔPinsp<b>${V.standby ? '--' : fmt(A.p)}</b><small>cmH2O</small></span></div>`;
+}
+/* ---------- Dynamic Lung (Intelligent panel) ---------- */
+function drawDynLung() {
+  const el = $('#dynlung'); el.className = 'dynlung';
+  const vNow = bufV[(bufIdx - 1 + NBUF) % NBUF] || 0;
+  const k = P.disc && !V.standby ? 0.72 : 1 + clamp(vNow / 1000, 0, 0.6) * 0.35;
+  const trig = B.trigFlash > 0;
+  const ibw = calcIBW();
+  const inv = isInvasive() && !V.standby && !P.disc;
+  const spo2 = V.spo2On && !V.standby ? fmt(P.spo2) : '---';
+  const pulse = V.spo2On && !V.standby ? fmt(P.hr) : '---';
+  const beat = V.spo2On && !V.standby ? (1 + 0.06 * Math.max(0, Math.sin(B.now * P.hr / 60 * Math.PI * 2))) : 1;
+  el.innerHTML = `<svg viewBox="0 0 462 316" aria-hidden="true">
+    <g transform="translate(250 176) scale(0.92)">
+      <path d="M-6 -118 L-6 -58 L-30 -40 M6 -118 L6 -58 L30 -40" stroke="#eaf6ff" stroke-width="9" fill="none" stroke-linecap="round"/>
+      <g transform="scale(${k.toFixed(3)})">
+        <path d="M-18 -70 C-55 -78 -92 -30 -98 20 C-102 60 -90 82 -60 84 C-38 86 -22 70 -16 40 C-12 10 -12 -40 -18 -70Z" fill="#9fdcf6" stroke="#eaf6ff" stroke-width="3"/>
+        <path d="M18 -70 C55 -78 92 -30 98 20 C102 60 90 82 60 84 C38 86 22 70 16 40 C12 10 12 -40 18 -70Z" fill="#9fdcf6" stroke="#eaf6ff" stroke-width="3"/>
+        <path d="M-30 -40 L-52 -10 M-30 -40 L-40 10 M-52 -10 L-70 10 M30 -40 L52 -10 M30 -40 L40 10 M52 -10 L70 10" stroke="#5a9fc4" stroke-width="3" fill="none"/>
+      </g>
+      ${V.spo2On ? `<g transform="translate(-8 40) scale(${beat.toFixed(3)})"><path d="M0 18 C-22 4 -26 -12 -14 -18 C-6 -22 0 -14 0 -10 C0 -14 6 -22 14 -18 C26 -12 22 4 0 18Z" fill="#c8323c"/><path d="M8 -14 C40 -30 70 -24 96 -14" stroke="#c8323c" stroke-width="7" fill="none"/></g>` : ''}
+      <path d="M-104 96 Q0 ${trig ? 70 : 84} 104 96" stroke="${trig ? '#ffffff' : '#1b6f99'}" stroke-width="${trig ? 6 : 4}" fill="none"/>
+    </g></svg>
+    <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
+    <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+}
+
+/* ======================= screen rendering ======================= */
+/* The four areas of the Atlan screen ([IFU1] pp. 79-81): the header bar (patient, alarms, time), the main menu
+   bar, the monitoring area (curves, parameter fields, gas field; the Standby page in Standby) and the therapy
+   bar (mode name and tabs, SIMV/CMV, therapy controls, More, fresh-gas controls). Where each sits and how big
+   it is are the simulator's choice. */
+function valStr(scope, key, v) {
+  const d = defFor(scope, key);
+  if (!d) return fmt(v);
+  if (d.names) return d.names[v] || '?';
+  if (d.list) return ieStr(v);
+  if (d.off0 && v <= 0) return 'Off';
+  if (scope === 'lim' && d.offMax && v > d.max) return 'Off';
+  return fmt(v, d.dp || 0);
+}
+function defFor(scope, key) { return scope === 'lim' ? ALIM[key] : ctrlDef(key, null, scope === 'draft' && D ? D.set : V.set); }
+function curVal(scope, key) {
+  if (scope === 'lim') return V.lim[key];
+  if (scope === 'draft') return D.set[key];
+  return V.set[key];
+}
+function isAct(scope, key) { return !!E && E.key === key && E.scope === scope; }
+const labelFor = (key, mode) => key === 'peep' && mode === 'SPONT' ? 'CPAP' : CTRL[key].label;
+const limLabel = k => ALIM[k].label + (k.endsWith('low') ? ' low' : ' high');
+function rangeStr(d) {
+  if (d.names) return d.names.join(' / ');
+  return (d.off0 ? 'Off, ' : '') + fmt(d.min, d.dp || 0) + '–' + fmt(d.max, d.dp || 0);
+}
+/* a therapy control: dark green when active, yellow while selected and not yet confirmed, light green when it
+   belongs to a mode that is not active yet ([IFU2] p. 104) */
+function ctlHTML(key, scope, val, mode) {
+  const d = defFor(scope, key), act = isAct(scope, key), v = act ? E.val : val;
+  const lb = scope === 'lim' ? limLabel(key) : labelFor(key, mode);
+  const st = act ? 'sel' : scope === 'draft' ? 'avail' : 'on';
+  const left = act && E.t0 !== undefined ? Math.max(0, EDIT_TIMEOUT_S - (B.now - E.t0)) : null;
+  return `<button class="tctl ${st}${left !== null && left <= 5 ? ' warn' : ''}" data-kf data-scope="${scope}" data-key="${key}" aria-pressed="${act}" aria-label="${esc(lb)} ${esc(valStr(scope, key, v))} ${esc(d.unit)}">`
+    + `<span class="lb">${esc(lb)}</span><span class="v">${esc(valStr(scope, key, v))}</span><span class="u">${esc(d.unit)}</span>`
+    + (act ? `<span class="rng">${esc(rangeStr(d))}</span>` : '') + '</button>';
+}
+/* ---------- the therapy bar ---------- */
+function renderRcol() {
+  const tb = $('#tbar');
+  if (!V.power || V.selftest > 0) { tb.hidden = true; return; }
+  tb.hidden = false;
+  const mode = D ? D.mode : V.mode, src = D ? D.set : V.set, scope = D ? 'draft' : 'ctrl';
+  const tabNow = tabOf(V.mode), tabSel = tabOf(mode);
+  $('#modeName').innerHTML = `<b>${esc(V.standby ? 'Standby' : mName(V.mode))}</b>` + (D ? `<span class="pend">New: ${esc(mName(D.mode, D.set))}. Press the rotary knob to confirm.</span>` : '');
+  $('#tabs').innerHTML = TABS.map(([t, n]) => {
+    const st = t === tabSel && D && t !== tabNow ? 'sel' : t === tabNow ? 'on' : 'avail';
+    return `<button class="ttab ${st}" data-kf data-tabmode="${t}" aria-pressed="${t === tabNow}">${esc(n)}</button>`;
+  }).join('') + (TAB_MODES[tabSel].simv ? ['simv', 'cmv'].map(sy => {
+    const cur = syncOf(V.mode) === sy && tabSel === tabNow, sel = D && syncOf(D.mode) === sy && !cur;
+    return `<button class="tsync ${sel ? 'sel' : cur ? 'on' : 'avail'}" data-kf data-sync="${sy}">${sy.toUpperCase()}</button>`;
+  }).join('') : '') + (MODE_CTRLS[mode].more.length ? `<button class="tmore" data-kf id="tMore" aria-pressed="${V.more}">${V.more ? 'Less' : 'More'}</button>` : '');
+  const c = MODE_CTRLS[mode];
+  const keys = c.basic.concat(V.more ? c.more : []);
+  $('#rcol').innerHTML = keys.length ? keys.map(k => ctlHTML(k, scope, src[k], mode)).join('')
+    : `<div class="tinfo"><b>Man/Spon</b><span>Ventilate with the bag. The APL valve sets the pressure limit: turn it fully anticlockwise to Spont (open) for spontaneous breathing.</span><span class="apl">APL ${V.apl > 0 ? V.apl + ' cmH2O' : 'Spont (open)'}</span></div>`;
+  $('#fgctl').innerHTML = `<div class="fgh">Fresh gas</div>` + FG.map(k => ctlHTML(k, 'ctrl', V.set[k], mode)).join('');
+  $('#tbNote').innerHTML = therapyNote(mode, src);
+}
+/* the extra-information field: derived timing, and what the mode does (the simulator's text) */
+function therapyNote(mode, s) {
+  const parts = [];
+  if (['SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+'].includes(mode)) {
+    const c = 60 / s.rate, ti = Math.min(s.ti, c * 0.8);
+    parts.push(`I:E ${ieStr(ti / (c - ti))}`);
+    if (isVC(mode)) parts.push(`insp. flow ${fmt(s.vt / 1000 / Math.max(0.2, ti * (1 - s.pause / 100)) * 60)} L/min`);
+  }
+  if (mode === 'SPONT' && s.rrmin > 0) parts.push(`RRmin ${s.rrmin}/min: backup breaths at Pinsp ${s.pinsp}`);
+  if (!V.standby && M.fspont !== null && M.fspont > 0) parts.push(`spontaneous ${fmt(M.fspont)}/min`);
+  return parts.join(' · ');
+}
+/* ---------- the monitoring area: parameter fields and the gas field ---------- */
+const PARAMS = [
+  {id:'pip', n:'PIP', u:'cmH2O', dp:0, v:() => M.ppeak, lim:() => 'high ' + V.lim.phigh},
+  {id:'pplat', n:'Pplat', u:'cmH2O', dp:0, v:() => M.pplat},
+  {id:'peep', n:'PEEP', u:'cmH2O', dp:0, v:() => V.mode === 'MAN' ? Math.max(G.circP, M.peep || 0) : M.peep},
+  {id:'mv', n:'MV', u:'L/min', dp:1, v:() => M.mv, lim:() => (V.lim.mvhigh <= ALIM.mvhigh.max ? fmt(V.lim.mvhigh, 1) : 'Off') + ' / ' + (V.lim.mvlow > 0 ? fmt(V.lim.mvlow, 1) : 'Off')},
+  {id:'vt', n:'VT', u:'mL', dp:0, v:() => M.vte},
+  {id:'rr', n:'RR', u:'/min', dp:0, v:() => M.ftot}
+];
+function renderMMP() {
+  const el = $('#mmps');
+  if (!V.power || V.selftest > 0) { el.innerHTML = ''; $('#smp').innerHTML = ''; return; }
+  const pri = {};
+  topAlarms().forEach(a => { if (a.f && !pri[a.f]) pri[a.f] = a.p; });
+  el.innerHTML = PARAMS.map(p => {
+    const v = V.standby ? null : p.v();
+    return `<button class="pf ${pri[p.id] ? 'al ' + pri[p.id] : ''}" data-kf data-open="alarms" data-tab="limits" aria-label="${p.n} ${fmt(v, p.dp)} ${p.u}"><span class="n">${p.n}</span><span class="u">${p.u}</span>`
+      + `<span class="v">${v === null || v === undefined ? '--' : fmt(v, p.dp)}</span>${p.lim ? `<span class="lm">${esc(p.lim())}</span>` : ''}</button>`;
+  }).join('');
+  renderSMP(pri);
+}
+/* the gas field: inspired and expired O2, CO2, N2O and agent, and xMAC ([IFU2] p. 170; N2O and agent only when not zero) */
+function renderSMP(pri) {
+  const el = $('#smp');
+  if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
+  const sb = V.standby, et = etco2kPa(), moving = !sb && B.now - B.lastStart < 12 && !G.ySealed && !P.disc;
+  const rows = [['O2', '%', G.fio2, moving ? Math.max(0, G.fio2 - 4.5) : null, 0, 'o2']];
+  rows.push(['CO2', 'kPa', et === null ? null : 0, et === null || !moving ? null : et, 1, 'co2']);
+  if (G.fin2o > 0.5 || G.etn2o > 0.5) rows.push(['N2O', '%', G.fin2o, moving ? G.etn2o : null, 0, '']);
+  if (G.fiag > 0.04 || G.etag > 0.04) rows.push(['Sev', '%', G.fiag, moving ? G.etag : null, 1, 'ag']);
+  const mac = xMAC();
+  el.innerHTML = `<div class="gh"><span></span><span>in</span><span>et</span></div>` + rows.map(r => `<div class="gr ${r[5]} ${pri && pri[r[5]] ? 'al ' + pri[r[5]] : ''}"><span class="n">${r[0]}<small>${r[1]}</small></span><b>${sb || r[2] === null ? '--' : fmt(r[2], r[4])}</b><b>${sb || r[3] === null ? '--' : fmt(r[3], r[4])}</b></div>`).join('')
+    + (mac > 0.05 ? `<div class="gr mac"><span class="n">xMAC<small>age ${patientAge()}</small></span><b></b><b>${sb ? '--' : fmt(mac, 1)}</b></div>` : '');
+}
+/* the header bar: patient category and data (left) */
+function renderModeName() {
+  const on = V.power && V.selftest <= 0;
+  $('#hdrPat').style.visibility = on ? '' : 'hidden';
+  $('#hdrPat').innerHTML = `<b>Adult</b><span>${patientAge()} y · ${V.set.height} cm</span>`;
+}
+function wallClock() { const d = new Date(); return d.toTimeString().slice(0, 5); }
+/* the header bar: silenced alarms, power and the time (right) */
+function renderBstat() {
+  const el = $('#bstat');
+  if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
+  const b = Math.round(P.batt);
+  const ap = V.audioPause > 0 ? `<span class="ap" title="Alarms silenced">🔕 ${Math.floor(V.audioPause / 60)}:${String(Math.floor(V.audioPause % 60)).padStart(2, '0')}</span>` : '';
+  el.innerHTML = `${ap}<span class="pw ${P.mains ? '' : 'batt'}">${P.mains ? 'Mains' : 'Battery ' + b + '%'}</span><span class="clock">${wallClock()}</span>`;
+}
+/* the header bar: the alarm message field, highest priority first, with !!! / !! / ! */
+function renderAlarmBar() {
+  const bar = $('#msgbar');
+  if (!V.power || V.selftest > 0) { bar.innerHTML = ''; return; }
+  const list = topAlarms();
+  bar.innerHTML = list.slice(0, 3).map(a => `<span class="af ${a.p}">${PRI_MARK[a.p]} ${esc(a.t)}</span>`).join('') + (list.length > 3 ? `<span class="af more">+${list.length - 3}</span>` : '');
+  $('#lamp').className = 't1-lamp' + (list.length ? ' ' + list[0].p : '');
+}
+/* the main menu bar ([IFU2] pp. 350-353; the simulated ones work, the others say so) */
+function renderMenu() {
+  const el = $('#mmenu');
+  if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
+  const b = (id, label, opts = {}) => `<button class="mm ${win === opts.open ? 'open' : ''}" data-kf ${opts.open ? `data-open="${opts.open}"` : `id="${id}"`} ${opts.dis ? 'aria-disabled="true"' : ''}>${label}</button>`;
+  el.innerHTML = b('mAlarms', 'Alarms...', {open:'alarms'}) + b('mAuto', 'Autoset limits') + b('mViews', 'Views...', {dis:true}) + b('mTrends', 'Trends/ Data...', {dis:true})
+    + b('mProc', 'Proce- dures...', {dis:true}) + b('mSetup', 'System setup...', {open:'setup'}) + (V.standby ? b('mTests', 'Tests...', {open:'tests'}) : '')
+    + '<span class="sp"></span>' + (V.standby ? b('mStart', 'Start...', {open:'start'}) : b('mStandby', 'Standby...'));
+}
+/* the Standby page, in the monitoring area: readiness after the tests ([IFU1] p. 87: green, yellow or red) */
+function renderStandbyPage() {
+  const el = $('#sbpage');
+  const show = V.power && V.selftest <= 0 && V.standby;
+  el.hidden = !show; $('#gfx').style.visibility = show ? 'hidden' : '';
+  if (!show) return;
+  const t = V.tests, ready = t.sys === 'fail' || t.leak === 'fail' ? 'red' : t.sys === 'ok' && t.leak === 'ok' ? 'green' : 'yellow';
+  const txt = {green:'Fully operational', yellow:'Operational with restrictions: the tests have not all been done today', red:'Not operational: a test failed. Repeat it.'}[ready];
+  const at = k => t[k] === 'ok' ? 'passed ' + (t[k + 'At'] || '') : t[k] === 'fail' ? 'failed ' + (t[k + 'At'] || '') : 'not done';
+  el.innerHTML = `<div class="sb-h">Standby</div>
+    <div class="sb-ready ${ready}"><span class="dot"></span><span>${txt}</span></div>
+    <div class="sb-tests">System test: ${at('sys')}<br>Leak test: ${at('leak')}</div>
+    <div class="sb-btns"><button class="wb green" data-kf data-open="start">Start...</button><button class="wb" data-kf id="qsMan">Quick start Man/Spon</button><button class="wb" data-kf data-open="tests">Tests...</button></div>
+    <p class="sb-note">Fresh gas and ventilation are off in Standby. Squeezing the breathing bag also opens the Start dialog.</p>`;
+}
+function renderLEDs() {
+  const lit = (id, v) => { const e = $('#' + id); if (e) e.classList.toggle('lit', !!v); };
+  lit('kAudio', V.power && V.audioPause > 0); lit('kLight', V.light);
+  $('#kPower').classList.toggle('on', V.power);
+  $('#t1').classList.toggle('lightOn', V.light);
+  $('#screen').classList.toggle('night', V.night);
+  const off = $('#scrOff');
+  off.hidden = V.power && V.selftest <= 0;
+  $('#scrOffTxt').innerHTML = V.power ? 'Atlan A350<small>Starting up…</small>' : '';
+  $('#t1').classList.toggle('off', !V.power);
+  renderHW();
+}
+function renderAll() {
+  V.backupOn = V.mode === 'SPONT' && V.set.rrmin > 0;
+  renderModeName(); renderRcol(); renderMMP(); renderAlarmBar(); renderBstat(); renderMenu(); renderStandbyPage(); renderLEDs();
+  if (win) renderWindow(); else $('#win').hidden = true;
+  applyCursor();
+}
+
+/* ---------- dialogs ---------- */
+function openWin(id, tab) {
+  if (!V.power || V.selftest > 0) return;
+  if (id === 'tests' && !V.standby) { scrToast('Tests are only available in Standby.'); return; }
+  if (id === 'start' && !V.standby) return;
+  if (E && E.scope === 'lim' && id !== 'alarms') E = null;
+  win = id; winTab = tab || ({alarms:'limits'})[id] || ''; helpFor = null; cursor = -1;
+  renderAll();
+}
+function closeWin() {
+  if (E && E.scope === 'lim') E = null;
+  win = null; cursor = -1; renderAll();
+}
+const X = '<button class="wx" data-kf id="wClose" aria-label="Close">✕</button>';
+function tabs(list) {
+  return `<div class="htabs" role="tablist">${list.map(([id, nm]) => `<button role="tab" data-kf data-tab="${id}" aria-selected="${winTab === id}">${nm}</button>`).join('')}</div>`;
+}
+function renderWindow() {
+  const w = $('#win');
+  if (!win) { w.hidden = true; return; }
+  w.hidden = false;
+  let h = '';
+  if (win === 'start') {
+    h = X + `<div class="wtitle">Start</div><div class="wbody">
+      <div class="wrow"><button class="wb green" data-kf id="stNew">New adult</button><button class="wb" disabled title="Not simulated">New pediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont">Continue case</button></div>
+      <div class="wgrp">Patient data</div>
+      <div class="wrow">${ctlHTML('age', 'ctrl', V.set.age)}${ctlHTML('height', 'ctrl', V.set.height)}
+        <button class="wb ${V.sex === 'Male' ? 'green' : ''}" data-kf data-sex="Male">Male</button><button class="wb ${V.sex === 'Female' ? 'green' : ''}" data-kf data-sex="Female">Female</button></div>
+      <div class="wgrp">Therapy</div>
+      <p class="wnote">Mode: <b>${esc(mName(V.mode))}</b> · ${esc(valStr('ctrl', 'carrier', V.set.carrier))} · FG O2 ${V.set.o2}% · FG flow ${valStr('ctrl', 'fgf', V.set.fgf)} L/min. Choose the mode with the tabs and set the fresh gas in the therapy bar below.</p>
+      <p class="wnote">Age is used for xMAC. Press the rotary knob to start therapy.</p></div>
+      <div class="wfoot"><button class="wb" data-kf id="wCancel">Cancel</button><button class="wb green wide" data-kf id="sbStart">Start therapy</button></div>`;
+  } else if (win === 'alarms') {
+    h = X + tabs([['limits', 'Limits'], ['current', 'Current alarms'], ['log', 'Log']]);
+    if (winTab === 'limits') {
+      h += `<div class="wbody" style="top:52px"><div class="limgrid">${LIM_ROWS.map(([hi, lo]) => {
+        const cur = {phigh:M.ppeak, mvhigh:M.mv, o2high:G.fio2, etco2high:etco2kPa()}[hi];
+        return `<div class="limrow"><span class="ln">${esc(ALIM[hi].label)}<small>${esc(ALIM[hi].unit)}</small></span>${ctlHTML(hi, 'lim', V.lim[hi])}${lo ? ctlHTML(lo, 'lim', V.lim[lo]) : '<span></span>'}<span class="lc">now ${V.standby || cur === null || cur === undefined ? '--' : fmt(cur, ALIM[hi].dp || 0)}</span></div>`;
+      }).join('')}</div><p class="wnote">Factory limits: Paw high 40, FiO2 low 20, etCO2 high 7.0 kPa; MV limits are set from VT × RR ± 40% at the start of ventilation, with MV high Off.</p></div>
+      <div class="wfoot"><button class="wb" data-kf id="limAuto">Autoset limits</button></div>`;
+    } else if (winTab === 'current') {
+      h += bufferHTML();
+    } else {
+      h += `<div class="wbody" style="top:52px"><table class="wtable"><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${history.map(e => `<tr><td>${e.wall}</td><td>${e.p !== 'info' && PRI_MARK[e.p] ? PRI_MARK[e.p] + ' ' : ''}${esc(e.t)}</td></tr>`).join('') || '<tr><td colspan="2">No events.</td></tr>'}</tbody></table></div>`;
+    }
+  } else if (win === 'tests') {
+    const r = V.testRun;
+    h = X + `<div class="wtitle">Tests</div><div class="wbody">
+      <div class="tc"><button data-kf data-test="sys" ${r ? 'disabled' : ''}>System test<span class="st ${V.tests.sys || ''}">${testMark(V.tests.sys)}</span><small>${V.tests.sysAt || 'not done'}</small></button>
+      <button data-kf data-test="leak" ${r ? 'disabled' : ''}>Leak test<span class="st ${V.tests.leak || ''}">${testMark(V.tests.leak)}</span><small>${V.tests.leakAt || 'not done'}</small></button></div>
+      ${r ? `<div class="prog"><i style="width:${Math.round(100 * r.t / r.dur)}%"></i></div>` : ''}
+      <div class="tc-msg" id="tcMsg">${r ? r.msg : (V.testMsg || 'Before the system test: seal the Y-piece on the circuit plug of the bag elbow, set the APL valve to 30, vaporiser dial at 0, O2 switch to Aux. O2. Then start the test.')}</div>
+      <p class="wnote">On the machine the system test takes about 8 minutes and the leak test about 2. Here they are shortened, and the checks inside them are summarised, not Dräger's own sequence.</p></div>`;
+  } else if (win === 'setup') {
+    h = X + `<div class="wtitle">System setup</div><div class="wbody">
+      <div class="wgrp">Alarm volume</div><div class="wrow">${[1,2,3,4,5,6,7,8,9,10].map(n => `<button class="wb ${V.loud === n ? 'green' : ''}" data-kf data-loud="${n}" style="min-width:44px;padding:0">${n}</button>`).join('')}</div>
+      <div class="wgrp">Colour scheme</div><div class="wrow"><button class="wb ${!V.night ? 'green' : ''}" data-kf data-night="0">Day dark</button><button class="wb ${V.night ? 'green' : ''}" data-kf data-night="1">Night</button></div>
+      <p class="wnote">Sound only plays if "Alarm sound" above the simulator is on. The device also has "Day light"; it is not simulated.</p></div>`;
+  }
+  w.innerHTML = h;
+}
+function bufferHTML() {
+  const rows = [...active.keys()].map(id => ({id, at: active.get(id), act: true})).concat([...inactive.keys()].map(id => ({id, at: inactive.get(id), act: false})));
+  rows.sort((a, b) => (b.act - a.act) || PRI_ORDER[ALARMS[b.id].p] - PRI_ORDER[ALARMS[a.id].p]);
+  let h = `<div class="wbody" style="top:52px"><div class="abuf">${rows.map(r => `<button class="r ${ALARMS[r.id].p} ${r.act ? '' : 'inact'}" data-kf data-help="${r.id}"><time>${r.at}</time>${PRI_MARK[ALARMS[r.id].p]} ${esc(ALARMS[r.id].t)}${r.act ? '' : ' (over)'}<span class="i" aria-hidden="true">i</span></button>`).join('') || '<p class="wnote">No alarms.</p>'}</div>`;
+  if (helpFor) { const hp = HELP[helpFor]; h += `<div class="help"><h6>${esc(ALARMS[helpFor].t)}</h6>${hp ? hp : '<p>No help text in this simulator.</p>'}<p class="wnote">The simulator's summary, not Dräger's text.</p></div>`; }
+  h += '</div>';
+  if (inactive.size) h += '<div class="wfoot"><button class="wb" data-kf id="bufReset">ALARM RESET</button></div>';
+  return h;
+}
+function bindHelp() {}
+function testMark(s) { return s === 'ok' ? '✔' : s === 'fail' ? '✖' : '–'; }
+/* a new mode: shown in the therapy bar (light green) until the knob confirms it ([IFU1] p. 99) */
+function createDraft(mode) {
+  D = {mode, set:{...V.set}, t0:B.now};
+}
+function applyDraft() {
+  const prev = V.mode, oldLabel = modeLabel();
+  V.set = {...D.set}; V.mode = D.mode; D = null;
+  modeEntered(prev);
+  logEvent('Mode changed ' + oldLabel + ' → ' + modeLabel(), 'info');
+  renderAll();
+}
+function modeEntered(prev) {
+  B.apnoeaVent = false; clear('apvent'); clear('apnea'); clear('apnea2'); G.apneaT = 0;
+  if (APV.includes(V.mode) && !APV.includes(prev)) B.apvP = 10;
+  B.simvC0 = B.now; B.simvDue = true; B.lastMand = -1e9;
+  V.modeSince = B.now;
+  V.backupOn = V.mode === 'SPONT' && V.set.rrmin > 0;
+}
+function calcIBW() {
+  const h = V.set.height;
+  const base = V.sex === 'Male' ? 50 : 45.5;
+  return Math.max(30, Math.round(base + 0.91 * (h - 152.4)));
+}
+
+/* ---------- knob cursor (yellow outline) ---------- */
+function kfList() {
+  const scope = win ? $('#win') : $('#screen');
+  return $$('[data-kf]', scope).filter(el => !el.disabled && el.getAttribute('aria-disabled') !== 'true' && el.offsetParent !== null && (win || !el.closest('#win')));
+}
+function applyCursor() {
+  $$('.kcur', $('#screen')).forEach(el => el.classList.remove('kcur', 'cur'));
+  if (cursor < 0 || E) return;
+  const L = kfList(); if (!L.length) return;
+  L[cursor % L.length].classList.add('kcur', 'cur');
+}
+
+/* ---------- editing: touch a control (yellow), turn the knob, press the knob to confirm ([IFU1] pp. 84-85) ----------
+   Not confirmed within 15 s, the change is dropped (tones in the last 5 s). The IFU does not say whether turning
+   the knob restarts the 15 s; here it does (the simulator's reading). */
+function selectControl(scope, key) {
+  if (E && E.key === key && E.scope === scope) { cancelEdit(); return; }   /* touched again: no change */
+  E = {scope, key, val:curVal(scope, key), t0:B.now};
+  renderAll();
+}
+function turn(dir) {
+  rotateKnob(dir);
+  if (!V.power || V.selftest > 0) return;
+  if (!E) {
+    const L = kfList(); if (!L.length) return;
+    cursor = cursor < 0 ? (dir > 0 ? 0 : L.length - 1) : (cursor + dir + L.length) % L.length;
+    applyCursor(); return;
+  }
+  E.t0 = B.now;
+  const d = defFor(E.scope, E.key);
+  if (d.list) {
+    let i = d.list.findIndex(x => Math.abs(x - E.val) < 1e-6);
+    if (i < 0) i = 0;
+    E.val = d.list[clamp(i + dir, 0, d.list.length - 1)]; renderAll(); return;
+  }
+  if (d.offMax && E.val > d.max) { if (dir < 0) { E.val = d.max; renderAll(); } return; }
+  if (d.offMax && E.val >= d.max && dir > 0) { E.val = 99999; renderAll(); return; }
+  if (d.off0 && E.val <= 0) { if (dir > 0) { E.val = d.min; renderAll(); } return; }
+  const st = typeof d.step === 'function' ? d.step(E.val, dir) : d.step;
+  let v = Math.round((E.val + dir * st) / st) * st;
+  if (d.off0 && v < d.min) v = dir < 0 ? 0 : d.min;
+  else v = clamp(v, d.min, d.max);
+  if (E.scope === 'lim') {
+    const pairs = {mvlow:'mvhigh', o2low:'o2high', etco2low:'etco2high'};
+    const hiOf = pairs[E.key]; if (hiOf && v >= V.lim[hiOf] && V.lim[hiOf] <= ALIM[hiOf].max) return;
+    const loOf = Object.keys(pairs).find(k => pairs[k] === E.key); if (loOf && v <= V.lim[loOf] && V.lim[loOf] > 0) return;
+  }
+  E.val = +v.toFixed(2);
+  renderAll();
+}
+function pressKnob() {
+  const kn = $('#knob'); kn.classList.add('press'); setTimeout(() => kn.classList.remove('press'), 140);
+  if (!V.power || V.selftest > 0) return;
+  if (E) { confirmEdit(); return; }
+  if (D) { applyDraft(); return; }
+  if (!$('#dlg').hidden) { $('#dlg').hidden = true; goStandby(); return; }
+  if (win === 'start' && cursor < 0) { startVentilation(); return; }
+  const L = kfList();
+  if (cursor >= 0 && L.length) { L[cursor % L.length].click(); return; }
+  scrToast('Touch a control, turn the knob to change it and press the knob to confirm.');
+}
+/* the settings that depend on PEEP and the carrier gas follow them ([IFU1] p. 270; [PI]) */
+function keepDependent(s) {
+  const pe = s.peep || 0;
+  if (s.pinsp < pe + 5) s.pinsp = Math.min(80, pe + 5);
+  if (s.pmax < pe + 10) s.pmax = Math.min(80, pe + 10);
+  if (s.ps > 80 - pe) s.ps = 80 - pe;
+  if (s.carrier === 1 && s.o2 < 25) s.o2 = 25;
+}
+function confirmEdit() {
+  if (!E) return;
+  const {scope, key, val} = E;
+  E = null;
+  if (scope === 'lim') {
+    V.lim[key] = val;
+    logEvent('Alarm limit changed: ' + limLabel(key) + ' ' + valStr('lim', key, val), 'info');
+  } else if (scope === 'draft') { if (D) { D.set[key] = val; keepDependent(D.set); D.t0 = B.now; } }
+  else {
+    const was = V.set[key];
+    V.set[key] = val; keepDependent(V.set);
+    if (key === 'carrier' && was !== val) logEvent('Carrier gas: ' + CTRL.carrier.names[val] + (val === 1 ? ' (FG O2 at least 25%)' : ''), 'info');
+    else if (key !== 'height' && key !== 'age') logEvent('Setting changed: ' + CTRL[key].label + ' ' + valStr('ctrl', key, val) + (CTRL[key].unit ? ' ' + CTRL[key].unit : ''), 'info');
+  }
+  renderAll();
+  updateTasks();
+}
+function cancelEdit() { E = null; renderAll(); }
+let knobAngle = 0;
+function rotateKnob(dir) { knobAngle += dir * 15; $('#knobRot').style.transform = 'rotate(' + knobAngle + 'deg)'; }
+function checkSettingPrompts() {}
+/* the 15 s confirmation time, the timed tests and the O2+ log line, every engine step */
+let editBeep = -1;
+function editTick(dt) {
+  if (E && E.t0 !== undefined) {
+    const left = EDIT_TIMEOUT_S - (B.now - E.t0);
+    if (left <= 0) { E = null; editBeep = -1; scrToast('Change not confirmed: the setting is unchanged.'); renderAll(); }
+    else if (left <= 5 && Math.ceil(left) !== editBeep) { editBeep = Math.ceil(left); beep(1, 0.2, 880); renderRcol(); if (win) renderWindow(); }
+  }
+  if (D && B.now - D.t0 > EDIT_TIMEOUT_S) { D = null; scrToast('New mode not confirmed: the therapy is unchanged.'); renderAll(); }
+  if (V.testRun) testTick(dt);
+}
+
+/* ---------- event wiring: screen ---------- */
+$('#screen').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (!V.power || V.selftest > 0) return;
+  cursor = -1;
+  if (b.getAttribute('aria-disabled') === 'true') { scrToast('Not simulated in this trainer.'); return; }
+  if (b.dataset.scope && b.dataset.key) { selectControl(b.dataset.scope, b.dataset.key); return; }
+  if (E) { E = null; }   /* touching anything else drops an unconfirmed change */
+  if (b.dataset.tabmode) { chooseMode(TAB_MODES[b.dataset.tabmode][syncOf(D ? D.mode : V.mode)] || TAB_MODES[b.dataset.tabmode].cmv); return; }
+  if (b.dataset.sync) { const t = tabOf(D ? D.mode : V.mode); chooseMode(TAB_MODES[t][b.dataset.sync] || TAB_MODES[t].cmv); return; }
+  if (b.dataset.open) { if (win === b.dataset.open && !b.closest('#win')) { closeWin(); return; } openWin(b.dataset.open, b.dataset.tab); return; }
+  if (b.dataset.tab) { winTab = b.dataset.tab; helpFor = null; renderWindow(); return; }
+  if (b.dataset.sex) { V.sex = b.dataset.sex; renderAll(); return; }
+  if (b.dataset.loud) { V.loud = +b.dataset.loud; beep(1, 0.2, 700); renderWindow(); return; }
+  if (b.dataset.night) { V.night = b.dataset.night === '1'; renderAll(); return; }
+  if (b.dataset.help) { helpFor = helpFor === b.dataset.help ? null : b.dataset.help; renderWindow(); return; }
+  if (b.dataset.test) { startTest(b.dataset.test); return; }
+  switch (b.id) {
+    case 'tMore': V.more = !V.more; renderAll(); break;
+    case 'mAuto': autoLimits(); break;
+    case 'mStandby': $('#dlg').hidden = false; break;
+    case 'qsMan': quickStartMan(); break;
+    case 'stNew':
+      V.set = {...DEFAULT_SET, age:V.set.age, height:V.set.height}; V.lim = {...DEFAULT_LIM}; V.mode = 'MAN'; D = null;
+      logEvent('New adult case: the start values are set', 'info'); renderAll(); break;
+    case 'stCont': scrToast('Continue case: the last settings are kept.'); break;
+    case 'sbStart': startVentilation(); break;
+    case 'wCancel': case 'wClose': closeWin(); break;
+    case 'limAuto': autoLimits(); break;
+    case 'bufReset': inactive.clear(); helpFor = null; renderWindow(); break;
+    case 'dlgX': $('#dlg').hidden = true; break;
+    case 'dlgGo': $('#dlg').hidden = true; goStandby(); break;
+  }
+});
+/* a tab or SIMV/CMV: straight away in Standby; during therapy the new mode waits for the knob ([IFU1] p. 99) */
+function chooseMode(m) {
+  if (!m) return;
+  if (V.standby) {
+    if (m !== V.mode) { const prev = V.mode; V.mode = m; D = null; modeEntered(prev); logEvent('Mode set: ' + modeLabel(), 'info'); }
+    renderAll(); return;
+  }
+  if (m === V.mode) { D = null; renderAll(); return; }
+  createDraft(m); renderAll();
+}
+/* Autoset limits: around the values measured now (the rule is the simulator's: MV ± 40%, Paw high PIP + 10) */
+function autoLimits() {
+  if (V.standby || M.mv === null || !(M.mv > 0)) { scrToast('Autoset uses the measured values: start the therapy first.'); return; }
+  V.lim.mvhigh = +clamp(Math.max(M.mv * 1.4, 2), 0.1, 40).toFixed(1);
+  V.lim.mvlow = +clamp(Math.max(M.mv * 0.6, 0.3), 0.1, V.lim.mvhigh - 0.1).toFixed(1);
+  if (M.ppeak !== null) V.lim.phigh = clamp(Math.round(M.ppeak + 10), 15, 99);
+  logEvent('Alarm limits set with Autoset', 'info');
+  renderAll();
+}
+/* MV low from the set VT and RR, -40%, at least 0.3 L/min; MV high stays as it is (Off at the start) ([IFU2] p. 202) */
+function mvLimitsFromSettings() {
+  if (V.mode === 'MAN' || V.mode === 'SPONT') return;
+  V.lim.mvlow = +Math.max(0.3, V.set.vt / 1000 * V.set.rate * 0.6).toFixed(1);
+  if (V.lim.mvhigh <= ALIM.mvhigh.max && V.lim.mvhigh <= V.lim.mvlow) V.lim.mvhigh = 99999;
+}
+
+function startVentilation() {
+  if (E) confirmEdit();
+  if (D) { V.mode = D.mode; V.set = {...D.set}; D = null; }
+  V.standby = false; V.ambient = false; V.startSuppress = 0;
+  B.lastStart = B.now; B.nextEffort = B.now + 0.6; B.starts = []; B.types = []; B.vols = [];
+  Object.assign(B, {Vee:0, vEndInsp:0, simvC0:B.now, simvDue:true, lastMand:-1e9, apnoeaVent:false, ovl:null, br:null, phase:'exp', t:0});
+  V.caseStart = B.now; G.lastCO2 = B.now;
+  modeEntered(null);
+  mvLimitsFromSettings();
+  win = null; $('#dlg').hidden = true;
+  logEvent('Therapy started (' + modeLabel() + ')', 'info');
+  if (V.tests.sys !== 'ok' || V.tests.leak !== 'ok') logEvent('Started without a passed system test and leak test', 'info');
+  updateTasks(); renderAll();
+}
+function quickStartMan() { const prev = V.mode; V.mode = 'MAN'; D = null; if (prev !== 'MAN') modeEntered(prev); startVentilation(); }
+function goStandby() {
+  V.standby = true; V.standbySince = B.now; active.clear(); B.apnoeaVent = false; E = null; D = null;
+  for (const k in M) M[k] = null;
+  logEvent('Standby', 'info');
+  win = null; renderAll();
+}
+
+/* ---------- the system test and the leak test (condensed: the simulator's sequence, not Dräger's) ---------- */
+const PHYS = {seal:'Seal the Y-piece on the circuit plug', unseal:'Connect the Y-piece to the patient'};
+function setPhysical(list) {
+  $('#hands').hidden = !(list && list.length);
+  const hc = $('#handsCard'); if (hc) hc.hidden = !(list && list.length);
+  $('#physical').innerHTML = list && list.length ? list.map(k => `<button data-phys="${k}">${esc(PHYS[k])}</button>`).join('') : '';
+}
+$('#physical').addEventListener('click', e => { const b = e.target.closest('[data-phys]'); if (b) setYPiece(b.dataset.phys === 'seal'); });
+const TEST_NAME = {sys:'System test', leak:'Leak test'};
+const TEST_STEPS = {
+  sys:[[0, 'Checking the gas supply and the fresh-gas mixer…'], [0.25, 'Checking the ventilator and the pressure measurement…'], [0.5, 'Checking the breathing system for leaks…'], [0.75, 'Checking the gas measurement and the valves…']],
+  leak:[[0, 'Pressurising the breathing system…'], [0.5, 'Measuring the leak…']]
+};
+function startTest(kind) {
+  if (!V.standby) { scrToast('Tests are only available in Standby.'); return; }
+  if (V.testRun) { scrToast('A test is already running.'); return; }
+  V.testMsg = '';
+  V.testRun = {kind, t:0, dur:kind === 'sys' ? 40 : 15, msg:'<b>' + TEST_NAME[kind] + '</b> starting…'};
+  logEvent(TEST_NAME[kind] + ' started', 'info');
+  setPhysical(['seal', 'unseal']);
+  renderAll();
+}
+function testTick(dt) {
+  const T = V.testRun;
+  if (!V.power || !V.standby) { V.testRun = null; setPhysical([]); return; }
+  T.t += dt;
+  const f = T.t / T.dur;
+  /* what makes a test fail: the Y-piece not on the plug, a leak in the breathing system, no O2 supply,
+     the APL valve open (it must be closed for the system to hold pressure) */
+  if (T.t > 2 && !G.ySealed) return finishTest(T.kind, false, 'The breathing system is open. Seal the Y-piece on the circuit plug of the bag elbow and repeat the test.');
+  if (T.t > 2 && V.apl <= 0) return finishTest(T.kind, false, 'The APL valve is open (Spont). Set it to 30 and repeat the test.');
+  if (T.kind === 'sys' && f > 0.1 && P.o2fail) return finishTest('sys', false, 'O2 supply pressure too low. Check the pipeline connection or the O2 cylinder.');
+  if (f > 0.6 && P.circLeak) return finishTest(T.kind, false, 'Leak in the breathing system. Check the absorber, the hoses, the bag and the connections, then repeat.');
+  if (f >= 1) return finishTest(T.kind, true, TEST_NAME[T.kind] + ' passed.');
+  const step = TEST_STEPS[T.kind].filter(s => f >= s[0]).pop();
+  T.msg = '<b>' + TEST_NAME[T.kind] + '</b> ' + step[1];
+}
+function finishTest(kind, ok, why) {
+  V.tests[kind] = ok ? 'ok' : 'fail';
+  V.tests[kind + 'At'] = new Date().toLocaleString('en-GB', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+  V.testRun = null; setPhysical([]);
+  V.testMsg = (ok ? '✔ ' : '✖ ') + esc(why);
+  logEvent(TEST_NAME[kind] + (ok ? ' passed' : ' failed'), ok ? 'info' : 'med');
+  renderAll();
+  updateTasks();
+}
+/* ---------- front-panel keys ---------- */
+let pwT = null, pwLong = false;
+const kPower = $('#kPower');
+kPower.addEventListener('pointerdown', () => { pwLong = false; clearTimeout(pwT); pwT = setTimeout(() => { pwLong = true; powerHold(); }, 3000); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => kPower.addEventListener(ev, () => clearTimeout(pwT)));
+kPower.addEventListener('click', () => {
+  if (pwLong) { pwLong = false; return; }
+  if (!V.power) { powerOn(); return; }
+  if (V.selftest > 0) return;
+  if (V.standby) { scrToast('In Standby: hold the key for 3 seconds to switch the machine off.'); return; }
+  $('#dlg').hidden = false;
+});
+function powerHold() {
+  if (!V.power) return;
+  if (!V.standby) { scrToast('Go to Standby first (press the key, then confirm Standby).'); return; }
+  V.power = false; win = null; E = null; D = null; active.clear(); $('#dlg').hidden = true; V.testRun = null; setPhysical([]);
+  logEvent('Machine switched off', 'info'); renderAll();
+}
+function powerOn() {
+  V.power = true; V.selftest = 4; V.standby = true; V.standbySince = B.now;
+  $('#lamp').className = 't1-lamp'; void $('#lamp').offsetWidth; $('#lamp').classList.add('self');
+  renderAll();
+}
+$('#kAudio').addEventListener('click', () => { if (!V.power) return; V.audioPause = V.audioPause > 0 ? 0 : AUDIO_PAUSE_S; if (V.audioPause) logEvent('Alarms silenced for 2 minutes', 'info'); renderAll(); });
+$('#kLight').addEventListener('click', () => { V.light = !V.light; renderLEDs(); });
+$('#btnSound').addEventListener('click', e => { V.sound = !V.sound; e.currentTarget.setAttribute('aria-pressed', V.sound); if (V.sound) beep(1, 0.2, 700); });
+
+/* ---------- the machine's hardware (the simulator's arrangement and scales; the supply pressures shown are
+   typical UK pipeline values, not measured) ---------- */
+/* the vaporiser: a sevoflurane dial, 0 to 8% in 0.2% steps (simulator's scale) */
+function setVap(v) {
+  const was = V.vap; V.vap = clamp(Math.round(v * 5) / 5, 0, 8);
+  if (V.vap !== was) logEvent('Vaporiser: sevoflurane ' + fmt(V.vap, 1) + '%', 'info');
+  renderHW();
+}
+$('#vapUp').addEventListener('click', () => setVap(V.vap + (V.vap >= 2 ? 0.5 : 0.2)));
+$('#vapDn').addEventListener('click', () => setVap(V.vap - (V.vap > 2 ? 0.5 : 0.2)));
+/* O2+: oxygen straight into the breathing system while it is held (it bypasses the vaporiser) */
+const kFlush = $('#kFlush');
+function flush(on) {
+  if (on === G.flush) return;
+  G.flush = on;
+  if (on) logEvent('O2+ (oxygen flush)', 'info');
+  renderHW();
+}
+kFlush.addEventListener('pointerdown', e => { e.preventDefault(); try { kFlush.setPointerCapture(e.pointerId); } catch (er) {} flush(true); });
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => kFlush.addEventListener(ev, () => flush(false)));
+kFlush.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); flush(true); } });
+kFlush.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') flush(false); });
+/* the O2 switch: Aux. O2 (to an O2 outlet for a mask or nasal cannula) or Add. O2 (into the breathing system) */
+$('#o2sw').addEventListener('click', () => {
+  V.o2sw = V.o2sw === 'add' ? 'aux' : 'add';
+  logEvent('O2 switch: ' + (V.o2sw === 'add' ? 'Add. O2' : 'Aux. O2'), 'info'); renderHW();
+});
+const setAux = v => { V.auxO2 = clamp(v, 0, 10); renderHW(); };
+$('#auxUp').addEventListener('click', () => setAux(V.auxO2 + 1));
+$('#auxDn').addEventListener('click', () => setAux(V.auxO2 - 1));
+/* the APL valve: Spont (fully open) or 5 to 70 cmH2O for Man */
+const setAPL = v => { const was = V.apl; V.apl = v < 5 ? 0 : clamp(v, 5, 70); if (V.apl !== was) logEvent('APL valve: ' + (V.apl ? V.apl + ' cmH2O' : 'Spont'), 'info'); renderHW(); renderRcol(); };
+$('#aplUp').addEventListener('click', () => setAPL(V.apl <= 0 ? 5 : V.apl + 5));
+$('#aplDn').addEventListener('click', () => setAPL(V.apl - 5));
+/* the breathing bag: squeeze (hold) to give a breath in Man/Spon; letting go ends it */
+const bagEl = $('#bag');
+function squeeze(on) {
+  if (on) {
+    if (!V.power) { toast('The machine is switched off. Press the On / Standby key.'); return; }
+    if (V.selftest > 0) return;
+    if (V.standby) { openWin('start'); return; }
+    if (V.mode !== 'MAN') { scrToast('The ventilator is breathing for the patient. Choose Man/Spon to ventilate by hand.'); return; }
+    G.squeeze = B.now; V.manualReq = true;
+  } else {
+    if (G.squeeze === null) return;
+    G.squeeze = null; V.manualReq = false;
+    const br = B.br;
+    if (B.phase === 'insp' && br && br.kind === 'manual' && !br.vc && B.t < br.Ti) {
+      /* let go early: the breath ends now, with the volume it had reached */
+      const g = t => 1 - Math.exp(-t / br.tau);
+      br.VT *= g(B.t) / Math.max(0.01, g(br.Ti));
+      br.Ti = Math.max(0.15, B.t);
+    }
+  }
+  renderHW();
+}
+bagEl.addEventListener('pointerdown', e => { e.preventDefault(); try { bagEl.setPointerCapture(e.pointerId); } catch (er) {} squeeze(true); });
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => bagEl.addEventListener(ev, () => squeeze(false)));
+bagEl.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); squeeze(true); } });
+bagEl.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') squeeze(false); });
+/* the Y-piece: sealed on the circuit plug of the bag elbow (for the tests) or connected to the patient */
+function setYPiece(sealed) {
+  if (G.ySealed === sealed) return;
+  G.ySealed = sealed;
+  P.pr = sealed ? sealedLung() : {...P.base};
+  logEvent(sealed ? 'Y-piece sealed on the circuit plug' : 'Y-piece connected to the patient', 'info');
+  renderHW();
+}
+$('#ypiece').addEventListener('click', () => setYPiece(!G.ySealed));
+function renderHW() {
+  const fgOn = V.power && !V.standby;
+  $('#vapVal').textContent = fmt(V.vap, 1);
+  $('#vapNeedle').style.transform = 'rotate(' + (V.vap / 8 * 270 - 135) + 'deg)';
+  kFlush.classList.toggle('lit', G.flush);
+  const sw = $('#o2sw'); sw.textContent = V.o2sw === 'add' ? 'Add. O2' : 'Aux. O2'; sw.classList.toggle('add', V.o2sw === 'add');
+  $('#auxVal').textContent = V.auxO2;
+  $('#aplVal').textContent = V.apl > 0 ? V.apl : 'Spont';
+  const o2 = P && !P.o2fail;
+  $('#supply').innerHTML = `<span class="${o2 ? '' : 'bad'}">O2<b>${o2 ? '4.1' : '0.0'}</b>bar</span><span>Air<b>4.1</b>bar</span><span>N2O<b>4.1</b>bar</span><span>Fresh gas<b>${fgOn && G.fg ? fmt(G.fg.total, 1) : '0.0'}</b>L/min</span>`;
+  /* the bag: its size follows the volume in it; squeezed while a hand breath is going in */
+  const full = clamp(G.bag / BAG_L, 0.15, 1.25), sq = G.squeeze !== null && B.phase === 'insp';
+  bagEl.classList.toggle('sq', sq);
+  $('#bagIn').style.transform = 'scale(' + (0.55 + 0.4 * full) * (sq ? 0.8 : 1) + ',' + (0.5 + 0.45 * full) * (sq ? 0.85 : 1) + ')';
+  const y = $('#ypiece');
+  y.classList.toggle('sealed', G.ySealed);
+  y.innerHTML = `<svg viewBox="0 0 60 46" aria-hidden="true"><path d="M8 4l22 22 22-22M30 26v18"/></svg>${G.ySealed ? 'Y-piece on the circuit plug<br><small>(touch to connect the patient)</small>' : 'Y-piece on the patient<br><small>(touch to seal it on the plug)</small>'}`;
+}
+/* full screen: CSS takes the device over the whole window; the Fullscreen API also hides the browser bars where it is supported (not on iPhone) */
+function setFull(on) {
+  document.body.classList.toggle('t1fs', on);
+  $('#btnFull').setAttribute('aria-pressed', on);
+  const d = document, el = d.documentElement;
+  const fsEl = d.fullscreenElement || d.webkitFullscreenElement;
+  try {
+    if (on && !fsEl) { const r = el.requestFullscreen ? el.requestFullscreen() : el.webkitRequestFullscreen && el.webkitRequestFullscreen(); if (r && r.catch) r.catch(() => {}); }
+    else if (!on && fsEl) { const r = d.exitFullscreen ? d.exitFullscreen() : d.webkitExitFullscreen && d.webkitExitFullscreen(); if (r && r.catch) r.catch(() => {}); }
+  } catch (er) {}
+  fitDevice();
+  if (on) $('#knob').focus({ preventScroll: true }); else $('#btnFull').focus({ preventScroll: true });
+}
+$('#btnFull').addEventListener('click', () => setFull(true));
+$('#btnFsExit').addEventListener('click', () => setFull(false));
+['fullscreenchange', 'webkitfullscreenchange'].forEach(ev => document.addEventListener(ev, () => {
+  if (!(document.fullscreenElement || document.webkitFullscreenElement) && document.body.classList.contains('t1fs')) setFull(false);
+  else fitDevice();
+}));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !E && document.body.classList.contains('t1fs')) setFull(false); });
+
+/* ---------- knob ---------- */
+const knob = $('#knob');
+let drag = null, suppressClick = false;
+knob.addEventListener('pointerdown', e => { drag = {a: angleOf(e), acc: 0, moved: 0}; knob.setPointerCapture(e.pointerId); });
+knob.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const a = angleOf(e); let d = a - drag.a; if (d > 180) d -= 360; if (d < -180) d += 360;
+  drag.a = a; drag.acc += d; drag.moved += Math.abs(d);
+  while (drag.acc >= 20) { drag.acc -= 20; turn(1); }
+  while (drag.acc <= -20) { drag.acc += 20; turn(-1); }
+});
+knob.addEventListener('pointerup', () => { if (drag && drag.moved > 12) suppressClick = true; drag = null; });
+knob.addEventListener('pointercancel', () => { drag = null; });
+function angleOf(e) { const r = knob.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI; }
+knob.addEventListener('click', () => { if (suppressClick) { suppressClick = false; return; } pressKnob(); });
+knob.addEventListener('keydown', e => {
+  if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { e.preventDefault(); turn(1); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { e.preventDefault(); turn(-1); }
+  else if (e.key === 'Escape') { cancelEdit(); }
+});
+knob.addEventListener('wheel', e => { e.preventDefault(); turn(e.deltaY < 0 ? 1 : -1); }, {passive:false});
+$('#kCW').addEventListener('click', () => turn(1));
+$('#kCCW').addEventListener('click', () => turn(-1));
+$('#kPress').addEventListener('click', pressKnob);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelEdit(); });
+
+
+/* ======================= SIMULATOR LINK ======================= */
+/* Everything above is the HAMILTON-T1 device copied from the standalone trainer. Below is what makes it
+   a simulation device: it joins a session like the defib tablet (sessions/<CODE>/live for the patient,
+   presence, deviceEvents for the facilitator's log, ventState for the facilitator's mirror), runs in
+   real time, and takes its lungs, the facilitator's lung adjustments and injected problems from the
+   controller (data/ventprofiles.js). It reports what it delivers (phys) for the controller's physiology,
+   and obeys the facilitator's remote commands (sessions/<CODE>/ventCmd). */
+const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
+if (EMBEDDED) document.body.classList.add('embedded');
+const VP = window.VENT_PROFILES;
+/* Which machine this page is. The pages share this link layer; the session's live.vent.model says
+   which one the facilitator wants, and the others hand over to it (keeping the address's query). */
+const DEVICE_MODEL = 'a350';
+const MODEL_PAGES = {t1:'index.html', c6:'c6.html', a350:'a350.html'};
+let switching = false;
+function switchModel(model) {
+  if (switching || !MODEL_PAGES[model]) return;
+  switching = true;
+  saveDevice();
+  try { if (fb.db && fb.code) { fb.db.ref('sessions/' + fb.code + '/presence/' + fb.presenceId).remove(); fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).remove(); } } catch (e) {}
+  window.location.replace(MODEL_PAGES[model] + window.location.search);
+}
+const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
+
+/* the trainer's teaching prompts and task list are not part of the simulation device */
+function addPrompt() {}
+function updateTasks() {}
+
+/* ---------- the patient the breath engine ventilates ---------- */
+function makePatient(config) {
+  const pr = VP.lungFor(config);
+  const id = config && VP.profiles[config.profile] ? config.profile : 'normal';
+  P = {id, pr:{...pr}, base:pr, vco2:1, passive:false, paco2:pr.paco2, hco3:pr.hco3, spo2:null, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0, improve:0,
+       fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
+       abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
+  calcSpo2(pr.fio2Pre, 0);
+  P.spo2 = null;
+}
+const cfgKey = c => (c && c.profile || 'normal') + '|' + (c && c.breathing === false ? 'still' : c && c.breathing === true ? 'breathing' : 'auto')
+  + '|' + JSON.stringify(c && c.lung || {}) + '|' + (c && c.probs || '');
+/* the facilitator changed the lungs or the breathing: new lung, same circuit, same problems */
+function applyConfig(config) {
+  const key = cfgKey(config);
+  if (key === LIVE.cfgKey) return;
+  const profileChanged = !LIVE.config || (config && config.profile) !== (LIVE.config && LIVE.config.profile);
+  LIVE.config = config; LIVE.cfgKey = key;
+  const pr = VP.lungFor(config);
+  P.base = pr; P.pr = G.ySealed ? sealedLung() : {...pr}; P.id = config && VP.profiles[config.profile] ? config.profile : 'normal';
+  P.vco2 = pr.vco2 || 1;
+  /* alveolar ventilation at rest is the profile's own (the facilitator's rate changes what the patient does, not their baseline) */
+  const own = VP.profiles[P.id];
+  P.VAbase = (own.vtBase - own.vd) * own.rrBase;
+  if (profileChanged) { P.paco2 = pr.paco2; P.hco3 = pr.hco3; P.vtAvg = pr.vtBase; }
+  if (pr.sedated) P.fatigue = 0;
+  applyProblems(VP.probList(config && config.probs));
+}
+/* the facilitator's injected problems (press again to fix): the trainer's EVENTS, set from the controller.
+   Bronchospasm, a blocked tube, a tension pneumothorax and a mucus plug change the lung (VP.lungFor); a displaced tube
+   is modelled on the controller (no CO2). */
+let probsNow = [];
+function applyProblems(list) {
+  const has = id => list.includes(id), was = id => probsNow.includes(id);
+  P.fit = has('leakL') ? 'large' : has('leakM') ? 'moderate' : 'good';
+  P.disc = has('disc'); P.cough = has('cough'); P.kink = has('kink'); P.apnoea = has('apnoea');
+  P.deteriorate = has('det'); P.circLeak = has('circ');
+  if (has('o2fail') && !was('o2fail')) V.o2Enrich = 0;
+  P.o2fail = has('o2fail');
+  const mainsOff = has('mains') || has('battlow');
+  if (has('battlow') && !was('battlow')) P.batt = Math.min(P.batt, 12);
+  if (!mainsOff && !P.mains) V.ambient = false;
+  P.mains = !mainsOff;
+  probsNow = list.slice();
+}
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+function petco2() {
+  if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
+  return Math.round(LIVE.etco2 * 7.50062);
+}
+function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+/* real time: one second of the page is one second of the patient */
+function patientTick(dt) {
+  const pr = P.pr, dtMin = dt / 60;
+  P.simMin += dtMin;
+  if (V.power && !V.standby && !V.ambient) P.onNivMin += dtMin;
+  /* the patient's own breathing comes from the controller (lungs, paralysis, arrest), not from the RR it shows, which this ventilator now sets */
+  /* Breathing that is helped settles over a minute or two: bigger supported breaths and better
+     oxygenation bring a fast rate down towards 18 (the early sign that NIV or CPAP is working). */
+  const helped = V.power && !V.standby && !V.ambient && !P.disc;
+  const relief = helped ? clamp((P.vtAvg - pr.vtBase) / 0.15, 0, 1) * 0.7 + (LIVE.sat !== null && LIVE.sat !== undefined && LIVE.sat >= 92 ? 0.3 : 0) : 0;
+  const rrT = pr.rrBase - Math.max(0, pr.rrBase - 18) * relief + (P.deteriorate ? 4 : 0);
+  P.rrEase = P.rrEase === undefined || P.rrEase === null ? rrT : P.rrEase + (rrT - P.rrEase) * Math.min(1, dt / 90);
+  P.rr = P.apnoea || pr.sedated || P.passive ? 0 : P.rrEase;
+  P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);
+  if (pr.sedated) P.fatigue = 0;
+  P.spo2 = LIVE.spo2;
+  P.hr = LIVE.hr !== null ? LIVE.hr : pr.hr;
+  trendTick();
+}
+
+/* ---------- a fresh ventilator (new scenario, or first start) ---------- */
+function deviceDefaults() {
+  Object.assign(V, {power:false, selftest:0, standby:true, ambient:false, mode:'MAN', set:{...DEFAULT_SET}, lim:{...DEFAULT_LIM}, backupOn:false, cpr:null, psync:false, sigh:false, aprvInit:false,
+    gfx:'wave', locked:false, night:false, o2Enrich:0, audioPause:0, manualReq:false, neb:0, startSuppress:0, standbySince:B.now, testRun:null, testMsg:'', tests:{sys:null, leak:null},
+    apl:30, vap:0, o2sw:'aux', auxO2:0, light:false, more:false, caseStart:B.now, modeSince:B.now});
+  V.sex = LIVE.sex === 'Female' ? 'Female' : 'Male';
+  V.set.height = V.sex === 'Female' ? 162 : 174;
+  if (LIVE.age !== null && LIVE.age !== undefined) V.set.age = clamp(Math.round(LIVE.age), 1, 110);
+  Object.assign(G, {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null, lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0});
+  P.pr = {...P.base};
+  E = null; D = null; active.clear(); inactive.clear(); history.length = 0; helpFor = null; cursor = -1;
+  for (const k in M) M[k] = null;
+  Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false, vcLim:0, vcLimVt:0});
+  TR.o2.length = 0; TR.flow.length = 0; TR.lastMin = -1;
+  bufC.fill(0); bufP.fill(0); bufF.fill(0); bufV.fill(0); bufPl.fill(0); bufTrig.fill(0);
+  P.onNivMin = 0; P.batt = 100; probsNow = []; applyProblems(VP.probList(LIVE.config && LIVE.config.probs));
+  $('#dlg').hidden = true;
+  setPhysical([]);
+  win = null;
+  renderAll();
+}
+
+/* ---------- what the facilitator sees ---------- */
+const fb = {code:null, db:null, linked:false, connected:false, presenceId:Math.random().toString(36).slice(2, 10)};
+let everLinked = false;
+function setLinkState(linked, reason, kind) {
+  LIVE.linked = !!linked;
+  if (linked) everLinked = true;
+  const el = $('#linkBanner');
+  if (linked) { el.hidden = true; return; }
+  el.hidden = false;
+  const lost = kind === 'lost' || (kind === undefined && everLinked);
+  el.textContent = '';
+  const b = document.createElement('b'); b.textContent = lost ? 'LOST CONTACT WITH THE CONTROLLER' : 'NOT LINKED TO SESSION';
+  const span = document.createElement('span'); span.id = 'linkReason';
+  span.textContent = reason || (lost ? 'The link to the controller has dropped. Settings and alarms are not reaching the facilitator.' : 'No session has been supplied to this page.');
+  el.append(b, span);
+  if (!fb.code) {
+    const form = document.createElement('form'); form.id = 'joinForm';
+    const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters');
+    const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link';
+    form.append(input, btn); el.appendChild(form);
+    form.onsubmit = ev => {
+      ev.preventDefault();
+      const code = String(input.value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (!code) return;
+      const u = new URL(window.location.href); u.searchParams.set('session', code);
+      window.location.href = u.toString();
+    };
+  }
+}
+
+/* every device event (settings, modes, alarms, tests) goes to the facilitator's log */
+let lastReport = {text:'', at:0}, reportWindow = {start:0, n:0};
+let REMOTE = false;   /* true while carrying out a facilitator's command: its log lines are the facilitator's */
+function ventReport(t, p) {
+  if (!fb.db || !fb.code || !LIVE.linked) return;
+  const text = String(t || '').slice(0, 160);
+  const now = Date.now();
+  if (text === lastReport.text && now - lastReport.at < 3000 && !REMOTE) return;   /* an alarm that flickers */
+  if (now - reportWindow.start > 60000) reportWindow = {start:now, n:0};
+  if (++reportWindow.n > 40) return;                                       /* never flood the log */
+  lastReport = {text, at:now};
+  try {
+    const payload = {text, p:String(p || 'info').slice(0, 8), alarm:Object.keys(ALARMS).some(id => ALARMS[id].t === t)};
+    if (REMOTE) payload.by = 'facilitator';
+    fb.db.ref('sessions/' + fb.code + '/deviceEvents').push({
+      type:'VENT_LOG', payload, ts:now, from:fb.presenceId, device:EMBEDDED ? 'monitor-vent' : 'standalone-vent'
+    }).catch(() => {});
+  } catch (e) { /* the log is best-effort; the device keeps working */ }
+}
+
+/* the facilitator's mirror of this ventilator (sessions/<CODE>/ventState/<id>) */
+/* what the ventilator delivers to the lungs, for the controller's physiology (data/engine-vent.js).
+   The trainer's own formulas (its patientTick): the oxygen and pressure the alveoli see, and alveolar
+   ventilation relative to the patient's own at rest. */
+// The first breaths take a few seconds to be measured; until then the simulator keeps its own obs
+// rather than read a rate and ventilation of zero.
+let physOnSince = null;
+function physNow() {
+  const pr = P.pr, ventOn = V.power && !V.standby && !V.ambient, hfo = ventOn && isHFO();
+  if (!ventOn) physOnSince = null; else if (physOnSince === null) physOnSince = Date.now();
+  const warming = ventOn && !hfo && M.ftot === null && Date.now() - physOnSince < 15000;
+  let fio2 = 0.21, peep = 0, VA;
+  if (!ventOn || P.disc || G.ySealed) VA = P.VAbase * (1 - 0.3 * P.fatigue);
+  else if (hfo) {
+    VA = P.VAbase * (1 - 0.3 * P.fatigue) * (1 + 0.15 * V.set.hflow / 60);
+    const pif = 25 + 1.2 * P.rr, fl = V.set.hflow;
+    fio2 = (fl * measuredO2() / 100 + Math.max(0, pif - fl) * 0.21) / Math.max(pif, fl);
+    peep = 0.05 * fl;
+  } else {
+    const eff = clamp(1 - 0.5 * P.missFrac - 0.15 * P.tiMaxFrac - 0.3 * P.autoFrac, 0.3, 1);
+    /* a small floor only: with a larger one, CPAP alone looked like doubled ventilation in AECOPD and OHS */
+    VA = Math.max(0.02, (P.vtAvg - pr.vd)) * Math.max(P.rr, (M.ftot || P.rr)) * eff;
+    fio2 = measuredO2() / 100;
+    peep = Math.max(B.peepNow || 0, V.mode === 'MAN' ? G.circP : 0);
+  }
+  if (P.apnoea || (pr.sedated || P.passive) && ventOn) VA = ventOn && !P.disc && !hfo && (mandTiming() !== null || B.apnoeaVent || (V.mode === 'MAN' && B.now - B.lastStart < 10)) ? VA * (isNIV() ? 0.6 : 1) : 0.2;
+  const conn = ventOn && !P.disc && !G.ySealed;
+  const rr = conn && !hfo && M.ftot !== null ? M.ftot : P.rr;
+  const r3 = v => Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000;
+  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() ? 1 : 0};
+}
+const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
+/* the current mode's controls and the alarm limits, for the facilitator's remote control:
+   [key, label, value, shown text, unit] */
+function settingsJSON(mk, c) {
+  const keys = (c ? c.basic.concat(c.more) : []).filter(k => CTRL[k] && typeof V.set[k] === 'number');
+  return JSON.stringify(keys.map(k => [k, CTRL[k].label, V.set[k], String(valStr('ctrl', k, V.set[k])), CTRL[k].unit || ''])).slice(0, 1500);
+}
+function limitsJSON() {
+  const keys = Object.keys(ALIM).filter(k => typeof V.lim[k] === 'number');
+  return JSON.stringify(keys.map(k => [k, ALIM[k].label + (k.endsWith('low') || k === 'plow' || k === 'flow' ? ' low' : k === 'apnoea' ? '' : ' high'), V.lim[k], String(valStr('lim', k, V.lim[k])), ALIM[k].unit || ''])).slice(0, 1500);
+}
+function ventStateNow() {
+  const state = !V.power ? 'off' : V.selftest > 0 ? 'selftest' : V.ambient ? 'ambient' : V.standby ? 'standby' : 'ventilating';
+  const mk = modeKey(), c = modeCtrls(mk);
+  const show = k => CTRL[k].label + ' ' + valStr('ctrl', k, V.set[k]) + (CTRL[k].unit ? ' ' + CTRL[k].unit : '');
+  const ctl = c.vent.concat(FG).filter(k => V.set[k] !== undefined && CTRL[k]).map(show).join(' · ')
+    + (mk === 'MAN' ? ' · APL ' + (V.apl > 0 ? V.apl + ' cmH2O' : 'Spont') : '') + (V.vap > 0 ? ' · Sevo ' + fmt(V.vap, 1) + '%' : '');
+  const limKeys = Object.keys(ALIM).filter(k => !ALIM[k].hidden && V.lim[k] !== undefined);
+  const lim = limKeys.map(k => limLabel(k) + ' ' + valStr('lim', k, V.lim[k])).join(' · ');
+  const mon = {};
+  ['ppeak', 'pplat', 'peep', 'vte', 'mv', 'ftot'].forEach(k => { const v = finiteOr(M[k]); if (v !== null) mon[k] = v; });
+  if (V.power && !V.standby) {
+    mon.fio2 = finiteOr(G.fio2);
+    mon.fgf = finiteOr(G.fg ? G.fg.total : 0);
+    if (G.etag > 0.04) mon.etag = finiteOr(G.etag);
+    const mac = xMAC(); if (mac > 0.05) mon.mac = finiteOr(mac);
+  }
+  const lv = JSON.stringify(limKeys.map(k => [k, limLabel(k), V.lim[k], String(valStr('lim', k, V.lim[k])), ALIM[k].unit || ''])).slice(0, 1500);
+  return {
+    state, mode:mk, label:String(modeLabel()).slice(0, 24), ctl:ctl.slice(0, 300), lim:lim.slice(0, 300), mon,
+    o2:finiteOr(measuredO2()) || 0,
+    alarms:topAlarms().map(a => a.p + ':' + a.t).join('|').slice(0, 600),
+    win:String(win || '').slice(0, 16), locked:false, sex:V.sex, height:V.set.height, ibw:finiteOr(calcIBW()) || 0,
+    tests:('system ' + (V.tests.sys || 'not done') + ', leak ' + (V.tests.leak || 'not done')).slice(0, 40),
+    embedded:EMBEDDED, model:'a350', phys:physNow(), sv:settingsJSON(mk, c), lv, ts:Date.now()
+  };
+}
+let lastMirror = '', lastMirrorAt = 0;
+function publishMirror() {
+  if (!fb.db || !fb.code || !LIVE.linked) return;
+  const s = ventStateNow(), sig = JSON.stringify({...s, ts:0}), now = Date.now();
+  if (sig === lastMirror && now - lastMirrorAt < 10000) return;
+  lastMirror = sig; lastMirrorAt = now;
+  fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).set(s).catch(() => {});
+}
+
+/* ---------- keep the ventilator's state if the page reloads or the monitor re-opens it ---------- */
+const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'sex', 'night', 'tests', 'loud', 'apl', 'vap', 'o2sw', 'auxO2', 'light'];
+const saveKey = () => 'wmebem_a350_' + fb.code;
+function saveDevice() {
+  if (!fb.code || !LIVE.key) return;
+  const v = {}; SAVE_KEYS.forEach(k => { v[k] = V[k]; });
+  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, run:LIVE.run, at:Date.now(), v, onNivMin:P.onNivMin})); } catch (e) {}
+}
+function restoreDevice() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(saveKey()) || 'null'); } catch (e) { s = null; }
+  if (!s || s.key !== LIVE.key || !(Date.now() - s.at < 12 * 3600 * 1000) || !s.v) return false;
+  if (s.run && LIVE.run && s.run !== LIVE.run) return false;   /* saved in an earlier run of the same scenario */
+  SAVE_KEYS.forEach(k => { if (s.v[k] !== undefined) V[k] = s.v[k]; });
+  V.set = {...DEFAULT_SET, ...V.set}; V.lim = {...DEFAULT_LIM, ...V.lim};
+  V.selftest = 0; V.testRun = null; V.cpr = null;
+  P.onNivMin = Number(s.onNivMin) || 0;
+  if (V.power && !V.standby) {
+    /* carry on ventilating, primed as startVentilation does, without logging a new start */
+    B.lastStart = B.now; B.nextEffort = B.now + 0.6; B.starts = []; B.types = []; B.vols = [];
+    Object.assign(B, {Vee:0, vEndInsp:0, simvC0:B.now, simvDue:true, lastMand:-1e9, apnoeaVent:false, ovl:null, br:null, phase:'exp', t:0});
+    if (V.mode === 'ASV') asvInit();
+  }
+  win = null;
+  renderAll();
+  return true;
+}
+setInterval(saveDevice, 3000);
+window.addEventListener('pagehide', saveDevice);
+
+/* ---------- the patient from the controller ---------- */
+function applyLive(v) {
+  const vit = v.vitals || {};
+  const acts = Array.isArray(v.activeInterventions) ? v.activeInterventions : [];
+  const probe = acts.includes('Obs') || acts.includes('MonSpO2');
+  LIVE.spo2 = probe && Number.isFinite(Number(vit.spO2)) ? Number(vit.spO2) : null;
+  LIVE.sat = Number.isFinite(Number(vit.spO2)) ? Number(vit.spO2) : null;   /* the patient's, probe or not */
+  LIVE.hr = probe && Number.isFinite(Number(vit.hr)) ? Number(vit.hr) : null;
+  LIVE.etco2 = Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;   /* the A350 measures CO2 itself */
+  LIVE.age = Number.isFinite(Number(v.patientAge)) ? Number(v.patientAge) : null;
+  LIVE.rr = Number.isFinite(Number(vit.rr)) ? Number(vit.rr) : null;
+  LIVE.isFinished = !!v.isFinished;
+  LIVE.muted = !!v.isMuted;
+  LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
+  $('#endedBanner').hidden = !LIVE.isFinished;
+  /* The facilitator chose another machine (HAMILTON-T1, HAMILTON-C6 or Atlan A350): open its page, same session */
+  const model = v.vent && Object.prototype.hasOwnProperty.call(MODEL_PAGES, v.vent.model) ? v.vent.model : 't1';
+  if (model !== DEVICE_MODEL) { switchModel(model); return; }
+  applyConfig(v.vent || null);
+  document.body.classList.toggle('assess', !!(v.vent && v.vent.assess));
+  if (document.body.classList.contains('assess')) helpFor = null;
+  /* A new scenario gets a fresh ventilator. The controller's run id (new on every scenario load, kept on
+     resume) tells a re-run of the same scenario apart; without one, fall back to the title and patient. */
+  const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
+  const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
+  if (LIVE.key === null) { LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); }
+  else if (key !== LIVE.key || (run && LIVE.run && run !== LIVE.run)) { LIVE.key = key; LIVE.run = run; deviceDefaults(); }
+  else if (run) LIVE.run = run;
+  applySound();
+}
+
+function fbStart(code) {
+  if (!window.firebase || !window.FIREBASE_CONFIG) { setLinkState(false, 'The live-session service did not load (no network?). This page cannot reach session ' + code + '.', 'never'); return; }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    fb.db = firebase.database();
+    if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(fb.db);
+  } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }
+  fb.code = code;
+  $('#sessionTag').textContent = 'Session ' + code;
+  fb.db.ref('.info/connected').on('value', snap => {
+    fb.connected = !!snap.val();
+    // onDisconnect() fires once and is not re-armed by the SDK after a reconnect, so arm it on
+    // every (re)connection; otherwise a ventilator closed after a WiFi drop kept "ventilating".
+    if (fb.connected) {
+      fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+      fb.db.ref('sessions/' + code + '/ventState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+    }
+    if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. Settings and alarms are not reaching the facilitator until it returns.', 'lost');
+    if (fb.linked && fb.connected) setLinkState(true);
+  });
+  fb.db.ref('sessions/' + code + '/live').on('value', snap => {
+    const v = snap.val();
+    if (!v || !v.vitals) { setLinkState(false, 'Session ' + code + ' has no patient yet. Start the scenario on the controller, or check the code.', fb.linked ? 'lost' : 'never'); return; }
+    fb.linked = true;
+    setLinkState(true);
+    applyLive(v);
+    publishMirror();
+  }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
+  const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
+  const write = () => pres.update({role:EMBEDDED ? 'monitor-vent' : 'vent', display:'ventilator', ua:(navigator.userAgent || '').slice(0, 120), ts:Date.now()}).catch(() => {});
+  write();
+  setInterval(write, 10000);
+  listenForCommands(code);
+}
+function sessionFromUrl() {
+  try {
+    const raw = new URLSearchParams(window.location.search).get('session');
+    const code = raw ? raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') : '';
+    return code || null;
+  } catch (e) { return null; }
+}
+
+/* ---------- the facilitator's remote control (sessions/<CODE>/ventCmd/<id>, addressed to this ventilator) ---------- */
+/* A change appears on the screen as a colleague's would; its log line is marked as the facilitator's.
+   The screen lock does not stop the facilitator. */
+function remoteValue(scope, key, val, dir) {
+  const d = defFor(scope, key); if (!d) return null;
+  let v = scope === 'lim' ? V.lim[key] : V.set[key];
+  if (typeof v !== 'number') return null;
+  if (dir) {
+    if (d.list) { let i = d.list.reduce((bi, x, j) => Math.abs(x - v) < Math.abs(d.list[bi] - v) ? j : bi, 0); return d.list[clamp(i + dir, 0, d.list.length - 1)]; }
+    if (d.offMax && v > d.max) return dir < 0 ? d.max : v;
+    if (d.offMax && v >= d.max && dir > 0) return 99999;
+    if (d.off0 && v <= 0 && dir > 0) return typeof d.step === 'function' ? d.step(0, 1) : d.step;
+    const st = typeof d.step === 'function' ? d.step(v, dir) : d.step;
+    let n = clamp(Math.round((v + dir * st) / st) * st, d.off0 ? 0 : d.min, d.max);
+    if (d.off0 && n > 0 && n < (d.min || st)) n = dir > 0 ? (d.min || st) : 0;
+    return +n.toFixed(2);
+  }
+  if (!Number.isFinite(val)) return null;
+  if (d.list) return d.list.reduce((b, x) => Math.abs(x - val) < Math.abs(b - val) ? x : b, d.list[0]);
+  if (d.offMax && val > d.max) return 99999;
+  if (d.off0 && val <= 0) return 0;
+  const st = typeof d.step === 'function' ? d.step(val, 1) : d.step;
+  return +clamp(Math.round(val / st) * st, d.min, d.max).toFixed(2);
+}
+function remoteEdit(scope, key, v) {
+  if (v === null) return;
+  if (scope === 'lim') {
+    const pairs = {plow:'phigh', mvlow:'mvhigh', flow:'fhigh', vtlow:'vthigh'};
+    const hiOf = pairs[key]; if (hiOf && v >= V.lim[hiOf] && V.lim[hiOf] <= 3000) return;
+    const loOf = Object.keys(pairs).find(k => pairs[k] === key); if (loOf && v <= V.lim[loOf] && V.lim[loOf] > 0) return;
+  }
+  if ((scope === 'lim' ? V.lim[key] : V.set[key]) === v) return;
+  const keep = E && !(E.scope === scope && E.key === key) ? E : null;   /* the candidate's own edit in progress */
+  if (key === 'o2' && scope === 'ctrl' && V.o2Enrich > 0) V.o2Enrich = 0;
+  E = {scope, key, val:v}; confirmEdit(); E = keep; renderAll();
+}
+const REMOTE_MODES = Object.keys(MODE_CTRLS).filter(m => m !== 'CPR');
+function remoteCommand(c) {
+  const key = typeof c.key === 'string' ? c.key : '', val = Number(c.val);
+  const ctrlOk = k => { const mc = modeCtrls(modeKey(), V.psync); return k === 'height' || (mc && mc.basic.concat(mc.more).includes(k) && CTRL[k] && typeof V.set[k] === 'number'); };
+  REMOTE = true;
+  try {
+    switch (c.type) {
+      case 'power':
+        if (val > 0 && !V.power) powerOn();
+        else if (!(val > 0) && V.power) {
+          if (!V.standby) goStandby();
+          V.power = false; win = null; E = null; D = null; active.clear(); $('#dlg').hidden = true;
+          logEvent('Ventilator turned off', 'info'); renderAll();
+        }
+        break;
+      case 'start': if (V.power && V.selftest <= 0 && V.standby) { $('#dlg').hidden = true; startVentilation(); } break;
+      case 'standby': if (V.power && !V.standby) { $('#dlg').hidden = true; goStandby(); } break;
+      case 'mode':
+        if (V.power && REMOTE_MODES.includes(key) && (key !== V.mode || V.cpr)) { if (E) confirmEdit(); createDraft(key, false); applyDraft(); renderAll(); }
+        break;
+      case 'set': if (V.power && ctrlOk(key)) remoteEdit('ctrl', key, remoteValue('ctrl', key, val, 0)); break;
+      case 'setstep': if (V.power && ctrlOk(key)) remoteEdit('ctrl', key, remoteValue('ctrl', key, null, val > 0 ? 1 : -1)); break;
+      case 'lim': if (V.power && ALIM[key]) remoteEdit('lim', key, remoteValue('lim', key, val, 0)); break;
+      case 'limstep': if (V.power && ALIM[key]) remoteEdit('lim', key, remoteValue('lim', key, null, val > 0 ? 1 : -1)); break;
+      case 'silence': if (V.power) { V.audioPause = AUDIO_PAUSE_S; logEvent('Alarms silenced for 2 minutes', 'info'); renderAll(); } break;
+      case 'o2':   /* the A350 has no O2 enrichment key: the facilitator's button sets FG O2 to 100% */
+        if (V.power) remoteEdit('ctrl', 'o2', 100);
+        break;
+      case 'lock': if (V.power) { V.locked = val > 0; if (V.locked && E) { confirmEdit(); E = null; } logEvent(V.locked ? 'Screen locked' : 'Screen unlocked', 'info'); renderAll(); } break;
+      case 'fresh': deviceDefaults(); logEvent('Ventilator reset to a fresh, switched-off state', 'info'); break;
+    }
+  } catch (e) { console.error('Ventilator command failed:', e); }
+  finally { REMOTE = false; }
+  publishMirror();
+}
+function listenForCommands(code) {
+  const ref = fb.db.ref('sessions/' + code + '/ventCmd');
+  const seen = new Set();
+  const onChild = snap => {
+    if (seen.has(snap.key)) return;
+    seen.add(snap.key);
+    const c = snap.val();
+    if (!c || c.to !== fb.presenceId) return;
+    snap.ref.remove().catch(() => {});
+    remoteCommand(c);
+  };
+  /* commands already waiting when this page opened were for an earlier page: never replay them */
+  ref.once('value').then(s => { Object.keys(s.val() || {}).forEach(k => seen.add(k)); ref.limitToLast(30).on('child_added', onChild); }).catch(() => {});
+}
+/* Assessment mode: no alarm troubleshooting help on the screen */
+const assessStyle = document.createElement('style');
+assessStyle.textContent = 'body.assess .abuf .i{display:none}';
+document.head.appendChild(assessStyle);
+$('#screen').addEventListener('click', e => { if (document.body.classList.contains('assess') && e.target.closest('[data-help]')) e.stopPropagation(); }, true);
+
+/* ---------- sound: on unless the facilitator has muted the session ---------- */
+let soundWanted = true;
+function applySound() {
+  V.sound = soundWanted && !LIVE.muted;
+  $('#btnSound').setAttribute('aria-pressed', V.sound);
+}
+/* the device's own Alarm sound handler flips V.sound; this keeps that choice and the session mute together */
+$('#btnSound').addEventListener('click', () => { soundWanted = V.sound; applySound(); });
+/* browsers start audio only after a touch: wake it on the first one */
+document.addEventListener('pointerdown', () => {
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+  /* embedded in the room monitor: tell it, so it enables its own sound from this touch */
+  try { if (EMBEDDED && window.parent !== window) window.parent.postMessage({type:'wmebem-device-gesture'}, window.location.origin); } catch (e) {}
+}, {capture:true});
+
+/* ---------- main loop: real time, and it keeps ventilating when the tab is hidden ---------- */
+let acc250 = 0, acc1000 = 0, lastT = performance.now();
+function advance(dt) {
+  engineStep(dt);
+  gasTick(dt);
+  editTick(dt);
+  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }
+  if (V.o2Enrich > 0) V.o2Enrich = Math.max(0, V.o2Enrich - dt);
+  if (V.audioPause > 0) V.audioPause = Math.max(0, V.audioPause - dt);
+  if (V.startSuppress > 0) V.startSuppress = Math.max(0, V.startSuppress - dt);
+  if (V.neb > 0) V.neb = Math.max(0, V.neb - dt);
+  soundTick(dt);
+  acc250 += dt; acc1000 += dt;
+  if (acc250 >= 0.25) {
+    acc250 = 0; evalAlarms(); powerTick(0.25);
+    if (!E) { renderMMP(); renderAlarmBar(); renderBstat(); renderLEDs(); applyCursor(); }
+    else { renderAlarmBar(); renderBstat(); renderLEDs(); }
+  }
+  if (acc1000 >= 1) {
+    acc1000 = 0; patientTick(1);
+    $('#simClock').textContent = V.power && !V.standby ? 'In use ' + clockStr() : '';
+    publishMirror();
+    if (win && !E && ['alarms', 'tests'].includes(win) && cursor < 0 && !(win === 'system' && winTab === 'tests' && V.testRun === null && $('#tcMsg') && /✔|✖/.test($('#tcMsg').textContent))) renderWindow();
+  }
+}
+function frame() {
+  const t = performance.now();
+  let dt = Math.min(5, (t - lastT) / 1000); lastT = t;
+  if (!(dt > 0)) return;
+  while (dt > 0) { const s = Math.min(0.05, dt); advance(s); dt -= s; }
+}
+function rafLoop() { frame(); if (!document.hidden) drawWaves(); requestAnimationFrame(rafLoop); }
+/* a hidden tab or an iframe the monitor has put away gets few or no animation frames, and a tab
+   the browser has put in the background gets its timers slowed to as little as once a minute. A
+   worker's timer is not slowed that way, so it drives the clock; a plain timer if workers fail. */
+(function startTicker() {
+  try {
+    const w = new Worker(URL.createObjectURL(new Blob(['setInterval(function () { postMessage(0); }, 250);'], {type:'text/javascript'})));
+    w.onmessage = frame;
+    w.onerror = () => { w.terminate(); setInterval(frame, 250); };
+    return;
+  } catch (e) {}
+  setInterval(frame, 250);
+})();
+window.addEventListener('resize', fitDevice);
+
+/* ---------- start-up ---------- */
+makePatient(null);
+deviceDefaults();
+applySound();
+fitDevice();
+requestAnimationFrame(rafLoop);
+const urlSession = sessionFromUrl();
+if (urlSession) fbStart(urlSession);
+else setLinkState(false, 'No session was supplied. Enter the session code shown on the controller to link this ventilator.', 'never');
+window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};
+
+</script>
+</body>
+</html>

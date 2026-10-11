@@ -1,0 +1,143 @@
+// The Dräger Atlan A350 anaesthetic machine (vent/a350.html, generated from vent/c6.html by
+// scripts/make-a350.mjs): the Anaesthetics / ICU card's default machine, the machine check, the
+// breathing system (bag, APL valve, fresh gas) and the ventilator's modes.
+const { test } = require('@playwright/test');
+const { execFileSync } = require('child_process');
+const path = require('path');
+const { useFakeFirebase, trackErrors, openController, expandSection, live, expect } = require('./helpers');
+
+test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
+
+const logHas = (page, re) => page.evaluate((src) => window.__simEngine.state.log.some(l => new RegExp(src).test(l.msg)), re.source);
+const state = (dev) => dev.evaluate(() => window.__vent.ventStateNow());
+
+/* the Anaesthetics / ICU card on the A350 with one scenario, and a ventilator tablet linked to it */
+async function startOnA350(page, context, scenario) {
+  const code = await openController(page);
+  await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await expect(page.locator('[data-vent-device="a350"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('vent-setup')).toContainText('Dräger Atlan A350');
+  await page.locator(`[data-vent-scenario="${scenario}"]`).click();
+  await page.getByRole('button', { name: 'Start anaesthetic machine scenario' }).click();
+  await expect.poll(() => live(page, code, '/vent/model')).toBe('a350');
+  const dev = await context.newPage();
+  const devErrors = trackErrors(dev);
+  await dev.goto(`/vent/index.html?session=${code}`);
+  await expect(dev).toHaveURL(new RegExp(`/vent/a350\\.html\\?session=${code}$`), { timeout: 10000 });
+  await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  await expect(dev.locator('.title')).toHaveText('Atlan A350');
+  return { code, dev, devErrors };
+}
+async function switchOn(dev) {
+  await dev.locator('#kPower').click();
+  await expect(dev.locator('#sbpage')).toContainText('Standby', { timeout: 10000 });
+}
+async function squeezeBag(dev, ms) {
+  await dev.locator('#bag').dispatchEvent('pointerdown', { pointerId: 1 });
+  await dev.waitForTimeout(ms);
+  await dev.locator('#bag').dispatchEvent('pointerup', { pointerId: 1 });
+}
+
+test('vent/a350.html is up to date with the C6 page and scripts/a350/', () => {
+  execFileSync(process.execPath, [path.join(__dirname, '..', '..', 'scripts', 'make-a350.mjs'), '--check']);
+});
+
+test('the machine check: the leak test fails with the breathing system open and passes with the Y-piece sealed', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const { dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  await switchOn(dev);
+  await expect(dev.locator('.sb-ready')).toHaveClass(/yellow/);
+  await dev.locator('#sbpage').getByRole('button', { name: 'Tests...' }).click();
+  await dev.locator('[data-test="leak"]').click();
+  await expect(dev.locator('#tcMsg')).toContainText('breathing system is open', { timeout: 10000 });
+  await dev.locator('#ypiece').click();
+  await dev.locator('[data-test="leak"]').click();
+  await expect(dev.locator('#tcMsg')).toContainText('Leak test passed', { timeout: 30000 });
+  await expect.poll(() => state(dev).then(s => s.tests)).toBe('system not done, leak ok');
+  expect(await logHas(page, /Leak test failed/)).toBe(true);
+  expect(await logHas(page, /Leak test passed/)).toBe(true);
+  expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});
+
+test('Man/Spon: a squeeze of the bag ventilates, and a closed APL valve with a high flow fills the circuit', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const { code, dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  await switchOn(dev);
+  await dev.locator('#qsMan').click();
+  await expect.poll(() => state(dev).then(s => s.state)).toBe('ventilating');
+  expect((await state(dev)).mode).toBe('MAN');
+  await squeezeBag(dev, 1500);
+  await dev.waitForTimeout(2500);
+  const s = await state(dev);
+  expect(s.mon.vte).toBeGreaterThan(150);
+  expect(s.mon.ppeak).toBeGreaterThan(10);
+  await expandSection(page, 'vent');
+  await expect(page.getByTestId('vent-mirror')).toContainText('Atlan A350');
+  // the APL valve at 70 and 10 L/min of fresh gas: the bag fills and the pressure climbs
+  for (let i = 0; i < 8; i++) await dev.locator('#aplUp').click();
+  await dev.evaluate(() => window.__vent.remoteCommand({ type: 'set', key: 'fgf', val: 10 }));
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.circP), { timeout: 30000 }).toBeGreaterThan(30);
+  await expect.poll(() => state(dev).then(s => s.alarms), { timeout: 30000 }).toContain('Airway press. continuously high');
+  // opening the APL valve to Spont lets it out
+  for (let i = 0; i < 14; i++) await dev.locator('#aplDn').click();
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.circP), { timeout: 10000 }).toBeLessThan(2);
+  expect(await logHas(page, /APL valve: Spont/)).toBe(true);
+  await expect.poll(() => live(page, code, '/vent/model')).toBe('a350');
+  expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});
+
+test('settings: touch, turn and press the knob to confirm; an unconfirmed change resets after 15 s; a new mode waits for the knob', async ({ page, context }) => {
+  const { dev, devErrors } = await startOnA350(page, context, 'an-paw');
+  await switchOn(dev);
+  // in Standby a tab sets the mode straight away
+  await dev.locator('[data-tabmode="VC"]').click();
+  await dev.locator('#sbpage').getByRole('button', { name: 'Start...' }).click();
+  await dev.locator('#knob').click();
+  await expect.poll(() => state(dev).then(s => [s.state, s.mode])).toEqual(['ventilating', 'SCMV']);
+  // RR 12 -> 13, confirmed with the knob
+  await dev.locator('[data-scope="ctrl"][data-key="rate"]').click();
+  await expect(dev.locator('[data-scope="ctrl"][data-key="rate"]')).toHaveClass(/sel/);
+  await dev.locator('#kCW').click();
+  await dev.locator('#knob').click();
+  await expect.poll(() => dev.evaluate(() => window.__vent.V.set.rate)).toBe(13);
+  expect(await logHas(page, /Setting changed: RR 13/)).toBe(true);
+  // PEEP 3 -> 5, not confirmed: back to 3 after 15 s
+  await dev.locator('[data-scope="ctrl"][data-key="peep"]').click();
+  await dev.locator('#kCW').click(); await dev.locator('#kCW').click();
+  await expect(dev.locator('[data-scope="ctrl"][data-key="peep"] .v')).toHaveText('5');
+  await dev.waitForTimeout(16000);
+  await expect(dev.locator('[data-scope="ctrl"][data-key="peep"] .v')).toHaveText('3');
+  expect(await dev.evaluate(() => window.__vent.V.set.peep)).toBe(3);
+  // PC: shown in light green until the knob confirms it
+  await dev.locator('[data-tabmode="PC"]').click();
+  await expect(dev.locator('[data-scope="draft"][data-key="pinsp"]')).toHaveClass(/avail/);
+  expect((await state(dev)).mode).toBe('SCMV');
+  await dev.locator('#knob').click();
+  await expect.poll(() => state(dev).then(s => s.mode)).toBe('PCV+');
+  expect(await logHas(page, /Mode changed VC-CMV → PC-CMV/)).toBe(true);
+  await dev.waitForTimeout(8000);
+  // Pinsp is the total pressure on the A350 (15), not above PEEP
+  const s = await state(dev);
+  expect(s.mon.ppeak).toBeGreaterThan(12);
+  expect(s.mon.ppeak).toBeLessThan(18);
+  await dev.screenshot({ path: test.info().outputPath('a350.png') });
+  expect(devErrors).toEqual([]);
+});
+
+test('the gas: a sevoflurane dial and the fresh gas raise the end-tidal agent and show xMAC', async ({ page, context }) => {
+  const { dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  await switchOn(dev);
+  await dev.locator('[data-tabmode="VC"]').click();
+  await dev.locator('#sbpage').getByRole('button', { name: 'Start...' }).click();
+  await dev.locator('#sbStart').click();
+  await dev.evaluate(() => window.__vent.remoteCommand({ type: 'set', key: 'fgf', val: 6 }));
+  for (let i = 0; i < 10; i++) await dev.locator('#vapUp').click();
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.etag), { timeout: 60000 }).toBeGreaterThan(0.5);
+  await expect(dev.locator('#smp')).toContainText('xMAC');
+  await expect(dev.locator('#smp')).toContainText('Sev');
+  // FiO2 comes up towards 100% with O2 100% at 6 L/min
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.fio2), { timeout: 30000 }).toBeGreaterThan(40);
+  expect(devErrors).toEqual([]);
+});

@@ -24,6 +24,7 @@ test('Anaesthetics / ICU: a C6 scenario sets the model, and a ventilator tablet 
   const errors = trackErrors(page);
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await page.locator('[data-vent-device="c6"]').click();
   await expect(page.getByTestId('vent-setup')).toContainText('HAMILTON-C6');
   await page.locator('[data-vent-scenario="icu-vc"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
@@ -111,6 +112,7 @@ test('every anaesthetic emergency builds with its interventions, and the setup l
 test('desaturation after intubation: an endobronchial tube on the C6, fixed by pulling the tube back', async ({ page, context }) => {
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await page.locator('[data-vent-device="c6"]').click();
   await page.locator('[data-vent-scenario="an-hypoxia"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
   await expect.poll(() => live(page, code, '/vent')).toMatchObject({ model: 'c6', probs: 'endo' });
@@ -133,6 +135,7 @@ test('desaturation after intubation: an endobronchial tube on the C6, fixed by p
 test('malignant hyperthermia: CO2 production starts raised and dantrolene brings it back', async ({ page }) => {
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await page.locator('[data-vent-device="c6"]').click();
   await page.locator('[data-vent-scenario="an-mh"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
   await expect.poll(() => live(page, code, '/vent/lung')).toEqual({ m: 200 });
