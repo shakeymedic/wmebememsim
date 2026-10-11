@@ -82,6 +82,11 @@ test('the ventilator: its log lines, its mirror and the lungs the controller pub
   await assertSucceeds(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'start', to: 'k5rzc2xy', ts: Date.now() }));
   await assertFails(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'set', key: 'peep', val: 8, ts: Date.now() }));
   await assertFails(anon().ref(`sessions/${CODE}/ventCmd`).push({ type: 'set', to: 'k5rzc2xy', val: 'high', ts: Date.now() }));
+  // the HAMILTON-C6 (ICU ventilator): the controller names the model, the C6 page says which it is
+  await assertSucceeds(anon().ref(`sessions/${CODE}/live`).update({ vent: { profile: 'ards', model: 'c6' } }));
+  await assertFails(anon().ref(`sessions/${CODE}/live`).update({ vent: { profile: 'ards', model: 6 } }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set({ ...mirror, model: 'c6', mode: 'SCMV', label: '(S)CMV' }));
+  await assertFails(anon().ref(`sessions/${CODE}/ventState/k5rzc2xy`).set({ ...mirror, model: 'hamilton-c6-icu' }));
 });
 
 // ---- accounts and restricted content ------------------------------------------------------------

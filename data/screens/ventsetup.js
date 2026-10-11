@@ -3,19 +3,24 @@
 
     // =============================================================================================
     // VENTILATOR SIM: the start-screen tab. Pick a scenario and Education or Assessment. The
-    // candidate uses the HAMILTON-T1 on the room monitor tablet (shown there from the start) or on
+    // candidate uses the ventilator on the room monitor tablet (shown there from the start) or on
     // its own tablet (Screens -> Join by QR code -> Ventilator); the facilitator runs it from the controller's
     // Ventilator section. Everything else (engine, session, monitor, debrief) is shared.
+    // device: 't1' (the HAMILTON-T1, the Ventilator Sim card) or 'c6' (the HAMILTON-C6 ICU
+    // ventilator, the Anaesthetics / ICU card). Each shows the scenarios written for it.
     // =============================================================================================
-    const VentSimSetup = ({ onStart }) => {
+    const VentSimSetup = ({ onStart, device = 't1' }) => {
         const { Lucide } = window;
         const VS = window.VentSim;
         const VP = window.VENT_PROFILES;
         const [mode, setMode] = useState('education');
-        const [choice, setChoice] = useState(VS.SCENARIOS[0].id);
+        // On the C6 the anaesthetic emergencies (for novice anaesthetists) come first.
+        const list = VS.forDevice(device).slice().sort((a, b) => (b.group === 'Anaesthetic emergencies') - (a.group === 'Anaesthetic emergencies'));
+        const [choice, setChoice] = useState(list[0].id);
+        const devName = device === 'c6' ? 'HAMILTON-C6' : 'HAMILTON-T1';
 
         const groups = [];
-        VS.SCENARIOS.forEach(s => {
+        list.forEach(s => {
             let g = groups.find(x => x.name === s.group);
             if (!g) { g = { name: s.group, items: [] }; groups.push(g); }
             g.items.push(s);
@@ -27,8 +32,10 @@
         return (
             <div className="space-y-4 animate-fadeIn" data-testid="vent-setup">
                 <div className="bg-cyan-950/30 border border-cyan-700/50 rounded p-3 text-sm text-slate-300">
-                    <p className="font-bold text-cyan-300 mb-1 flex items-center gap-2"><Lucide icon="wind" className="w-4 h-4"/> Ventilator Sim: HAMILTON-T1 skills</p>
-                    <p className="text-xs text-slate-400">The candidate uses the ventilator on the room monitor tablet (it opens there; they can flip to the obs and back) or on its own tablet (<b>Screens</b> → <b>Join by QR code</b> → Ventilator). You run it from the controller's <b>Ventilator</b> section: problems, lungs, and full remote control of the device. The ventilator drives SpO2, CO2 and the breathing rate.</p>
+                    <p className="font-bold text-cyan-300 mb-1 flex items-center gap-2"><Lucide icon="wind" className="w-4 h-4"/> {device === 'c6' ? 'ICU ventilator: HAMILTON-C6 skills' : 'Ventilator Sim: HAMILTON-T1 skills'}</p>
+                    {device === 'c6' && <p className="text-xs text-slate-400 mb-1">A recreation of the HAMILTON-C6 intensive care ventilator: a widescreen touch display with the controls along the bottom, volume- and pressure-controlled modes, ASV and NIV. For training only; it is not Hamilton Medical software.</p>}
+                    {device === 'c6' && <p className="text-xs text-slate-400 mb-1">The <b>Anaesthetic emergencies</b> follow the Association of Anaesthetists' Quick Reference Handbook (QRH, June 2023 edition): the guideline number is in each name. The C6 stands in for the anaesthetic machine's ventilator until the Dräger machine is built. The scenario text, patients and effect sizes are the simulator's and should be checked by the facilitator.</p>}
+                    <p className="text-xs text-slate-400">The candidate uses the {devName} on the room monitor tablet (it opens there; they can flip to the obs and back) or on its own tablet (<b>Screens</b> → <b>Join by QR code</b> → Ventilator). You run it from the controller's <b>Ventilator</b> section: problems, lungs, and full remote control of the device. The ventilator drives SpO2, CO2 and the breathing rate.</p>
                 </div>
                 <div>
                     <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Mode</div>
@@ -67,8 +74,8 @@
                         {sel.problems.length > 0 && <div><b className="text-white">Problems to inject:</b> {sel.problems.map(label).join(', ')}.</div>}
                     </div>
                 )}
-                <button type="button" onClick={() => onStart({ scenario: choice, mode })}
-                        className="w-full py-4 text-lg font-bold rounded bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/20">Start Ventilator Sim</button>
+                <button type="button" onClick={() => onStart({ scenario: choice, mode, device })}
+                        className="w-full py-4 text-lg font-bold rounded bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/20">{device === 'c6' ? 'Start ICU ventilator scenario' : 'Start Ventilator Sim'}</button>
             </div>
         );
     };

@@ -116,6 +116,7 @@
             "lung": { "$adj": { ".validate": "newData.isNumber()" } },
             "probs": { ".validate": "newData.isString() && newData.val().length <= 200" },
             "assess": { ".validate": "newData.isBoolean()" },
+            "model": { ".validate": "newData.isString() && newData.val().length <= 8" },
             "$other": { ".validate": false }
           },
           "pacing": { ".validate": true },
@@ -195,6 +196,7 @@
             "ibw": { ".validate": "newData.isNumber()" },
             "tests": { ".validate": "newData.isString() && newData.val().length <= 40" },
             "embedded": { ".validate": "newData.isBoolean()" },
+            "model": { ".validate": "newData.isString() && newData.val().length <= 8" },
             "sv": { ".validate": "newData.isString() && newData.val().length <= 1500" },
             "lv": { ".validate": "newData.isString() && newData.val().length <= 1500" },
             "ts": { ".validate": "newData.isNumber()" },

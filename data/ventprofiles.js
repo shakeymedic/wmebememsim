@@ -72,11 +72,12 @@
         { id: 'ptx', label: 'Tension pneumothorax' },
         { id: 'battlow', label: 'Mains lost with the battery low' },
         { id: 'plug', label: 'Mucus plugging (lobar collapse)' },
-        { id: 'trap', label: 'Breath stacking (air trapping)' }
+        { id: 'trap', label: 'Breath stacking (air trapping)' },
+        { id: 'endo', label: 'Endobronchial tube (one lung)' }
     ];
     // The facilitator's problem buttons, grouped as a DOPES check would find them.
     var PROBLEM_GROUPS = [
-        ['Tube and circuit', ['tubeout', 'block', 'kink', 'disc']],
+        ['Tube and circuit', ['tubeout', 'endo', 'block', 'kink', 'disc']],
         ['Lungs', ['ptx', 'bronch', 'plug', 'trap']],
         ['Patient', ['cough', 'apnoea', 'det']],
         ['Equipment', ['o2fail', 'mains', 'battlow', 'circ', 'leakM', 'leakL']]
@@ -90,9 +91,11 @@
         ptx: 'Pressure limitation, low tidal volumes, SpO2 falls, HR up and BP down. Needle or finger decompression fixes it.',
         bronch: 'Higher pressures, lower tidal volumes and AutoPEEP.',
         plug: 'Pressure limitation, low tidal volumes, SpO2 in the high 80s that oxygen barely helps and PEEP only partly. Bronchoscopy fixes it.',
+        endo: 'Higher pressures and smaller breaths on one lung, SpO2 falls and more oxygen helps only a little. Pulling the tube back fixes it.',
         trap: 'AutoPEEP builds, Pplat rises and BP falls. Worse at a high rate; a lower rate and longer expiration help.'
     };
     var PLUG_SHUNT = 0.35;
+    var ONE_LUNG_SHUNT = 0.3;
     var PROBLEM_IDS = PROBLEMS.map(function (p) { return p.id; });
     function probList(v) {
         var a = Array.isArray(v) ? v : String(v || '').split(',');
@@ -102,6 +105,11 @@
     // The T1's modes, in the order of its Modes window (the device names).
     var MODES = [['APVcmv', '(S)CMV+'], ['APVsimv', 'SIMV+'], ['VS', 'VS'], ['PCV+', 'PCV+'], ['PSIMV+', 'PSIMV+'], ['SPONT', 'SPONT'],
         ['DuoPAP', 'DuoPAP'], ['APRV', 'APRV'], ['ASV', 'ASV'], ['NIV', 'NIV'], ['NIV-ST', 'NIV-ST'], ['HiFlowO2', 'HiFlowO2']];
+    // The HAMILTON-C6 (vent/c6.html): its own volume-controlled modes, its default APV names, no VS.
+    var MODES_C6 = [['SCMV', '(S)CMV'], ['SIMV', 'SIMV'], ['APVcmv', 'APVcmv'], ['APVsimv', 'APVsimv'], ['PCV+', 'PCV+'], ['PSIMV+', 'PSIMV+'],
+        ['SPONT', 'SPONT'], ['DuoPAP', 'DuoPAP'], ['APRV', 'APRV'], ['ASV', 'ASV'], ['NIV', 'NIV'], ['NIV-ST', 'NIV-ST'], ['HiFlowO2', 'HiFlowO2']];
+    // The two ventilators the facilitator can give the candidate.
+    var MODELS = { t1: 'HAMILTON-T1 (transport)', c6: 'HAMILTON-C6 (ICU)' };
 
     // The lung the breath engine uses: the profile, with breathing effort switched off when the
     // facilitator says the patient is not breathing for themselves (sedated and paralysed), the
@@ -136,9 +144,13 @@
         // Breath stacking: expiratory flow limitation, so the lungs take four times as long to empty.
         // Each breath starts before the last has gone out: intrinsic PEEP builds, worse at a high rate.
         if (probs.indexOf('trap') !== -1) out.trapX = 4;
+        // A tube too far down (usually the right main bronchus): one lung takes every breath (half
+        // the compliance, a narrower airway) while blood still flows past the other, unventilated
+        // lung. That true shunt (oneLung) is mixed in by engine-vent.js, like the mucus plug's.
+        if (probs.indexOf('endo') !== -1) { setC(out.C * 0.5); setR(Math.min(80, out.R + 4)); out.oneLung = ONE_LUNG_SHUNT; }
         return out;
     }
 
     window.VENT_PROFILES = { profiles: P, order: ORDER, profileForScenario: profileForScenario, lungFor: lungFor,
-        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, PROBLEM_GROUPS: PROBLEM_GROUPS, PROBLEM_SIGNS: PROBLEM_SIGNS, probList: probList, MODES: MODES };
+        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, PROBLEM_GROUPS: PROBLEM_GROUPS, PROBLEM_SIGNS: PROBLEM_SIGNS, probList: probList, MODES: MODES, MODES_C6: MODES_C6, MODELS: MODELS };
 })();

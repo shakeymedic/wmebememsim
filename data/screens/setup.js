@@ -628,6 +628,7 @@
             { id: 'random', label: 'Random scenario', icon: 'shuffle', text: 'Generate a case from a few filters.' },
             { id: 'quick', label: 'Quick Sim', icon: 'sliders', text: 'A blank patient. You set the obs and the rhythm as you go.' },
             { id: 'vent', label: 'Ventilator Sim', icon: 'wind', text: 'HAMILTON-T1 ventilator scenarios, in Education or Assessment mode.' },
+            { id: 'icu', label: 'Anaesthetics / ICU', icon: 'bed', text: 'Anaesthetic emergencies for novice anaesthetists and ICU ventilation, on the HAMILTON-C6. The Dräger anaesthetic machine is planned.' },
             { id: 'defib', label: 'Defib Sim', icon: 'zap', text: 'Defibrillator skills on a tablet defib.' },
             { id: 'custom', label: 'My scenarios', icon: 'folder', text: 'Scenarios you have built or imported, and the scenario builder.' }
         ];
@@ -739,6 +740,9 @@
                     {mode === 'vent' && (window.VentSimSetup && window.VentSim
                         ? <window.VentSimSetup onStart={(opts) => onVentSim ? onVentSim(opts) : alert('Ventilator Sim is unavailable in this build.')} />
                         : <div className="text-sm text-slate-400">Ventilator Sim is unavailable in this build.</div>)}
+                    {mode === 'icu' && (window.VentSimSetup && window.VentSim
+                        ? <window.VentSimSetup key="c6" device="c6" onStart={(opts) => onVentSim ? onVentSim(opts) : alert('The ICU ventilator is unavailable in this build.')} />
+                        : <div className="text-sm text-slate-400">The ICU ventilator is unavailable in this build.</div>)}
                     {mode === 'random' && (
                         <div className="space-y-4 animate-fadeIn">
                             <div className="grid grid-cols-2 gap-4">
