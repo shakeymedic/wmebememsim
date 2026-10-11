@@ -172,6 +172,9 @@
                     </div>
                 </div>
 
+                {/* The patient at a glance (data/screens/patientstatus.js), as on the full controller. */}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showVent={false} />}
+
                 {!state.isRunning && !state.isFinished && (
                     <div role="status" data-testid="defib-clock-stopped" className="flex items-center gap-2 px-3 py-2 rounded border border-amber-600 bg-amber-950/40 text-amber-200 text-xs">
                         <Lucide icon="clock" className="w-4 h-4 flex-none"/>

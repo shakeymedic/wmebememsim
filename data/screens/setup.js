@@ -904,6 +904,9 @@
         const { Button, Lucide, HumanFactorBadge } = window;
         const scenario = rawScenario || {};
         const brief = scenario.instructorBrief || {};
+        // Most scenarios start with nothing attached (the team puts the monitoring on). Tick this when the
+        // patient is already on a monitor: a ward or resus patient, a transfer, a handover.
+        const [monitored, setMonitored] = useState(false);
         return (
             <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
                 <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
@@ -953,7 +956,12 @@
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={onStart} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
+                <label className="flex items-start gap-3 bg-slate-800 border border-slate-700 rounded-lg p-3 cursor-pointer">
+                    <input type="checkbox" data-testid="start-monitored" checked={monitored} onChange={e => setMonitored(e.target.checked)} className="mt-1 w-5 h-5 accent-sky-500" />
+                    <span><span className="block text-sm font-bold text-white">The patient is already on the monitor</span>
+                        <span className="block text-xs text-slate-400">ECG, SpO2, NIBP and temperature attached from the start. Leave it unticked when putting the monitoring on is part of the team's task.</span></span>
+                </label>
+                <div className="flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={() => onStart({ monitored })} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
             </div>
         );
     };

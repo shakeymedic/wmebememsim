@@ -1057,6 +1057,10 @@
                     </div>
                 </div>
 
+                {/* THE PATIENT AT A GLANCE (data/screens/patientstatus.js): what is happening now, the obs out of
+                    range, a stick figure of everything attached, and the ventilator chooser. */}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} />}
+
                 {/* This row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
                     + md:col-span-7 lg:col-span-8). It is now a flex row so the left monitor/obs panel
                     can carry a dragged pixel width, with the right pane taking the remainder. Below
