@@ -39,8 +39,9 @@ The **Session ID** shown in the controller header is what pairs the screens. It 
 `sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
 characters (no 0/O, 1/I/L). The database rules accept only codes in this format. The controller replaces any older four-character code (from this browser
 or the address bar) with a new one when it loads, and **New code** on the setup screen starts a fresh
-one at any time. The controller's **Join** button shows QR codes for the room monitor and the defib, so a
-tablet can pair by scanning instead of typing.
+one at any time. **Screens ▾ → Join by QR code** on the controller (and the setup screen) shows QR codes
+for the room monitor, the defib and the ventilator, so a tablet can pair by scanning instead of typing.
+The Defib controller has its own **Join** button.
 
 The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code
 into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
@@ -65,10 +66,12 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
 
 ## The instructor screen
 
-- **Top bar:** Back, Finish, START/PAUSE, one connection badge (live sync plus which screens are
+- **Top bar:** Back (pauses the scenario; the setup screen then offers **Return to scenario**), Finish, START/PAUSE, one connection badge (live sync plus which screens are
   linked), the **Simple / Full** switch, and the clock. **Screens ▾** holds Join by QR code and an Open item for each patient
   screen in this device's set-up (each in its own window); **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
-  and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted.
+  and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted. The shortcuts
+  work with a button focused (only Space is left to the button); typing in a box or an open pop-up
+  blocks them.
 - **Left column, in expandable sections** that remember whether they are open on each device: Monitoring
   & access (closed, with a one-line summary and "Attach standard" on its header), the monitor strip
   with the core obs (HR, BP, SpO2, RR, Temp, ETCO2) and a smaller **More obs** row (GCS, glucose, pH,
@@ -87,7 +90,11 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   (no physiology). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
   rhythm) and log `timeSeconds` use it, and it is saved in the resume snapshot with the history. The
   chart (`data/screens/debrief.js`, `buildTimeline`) is small multiples with a rhythm lane and four
-  numbered event lanes, drawn dark on screen and light in the report from the same code.
+  numbered event lanes, drawn dark on screen and light in the report from the same code. The
+  ventilator changes the facilitator makes (problems, lungs, patient, link, remote settings) go in the
+  facilitator lane. The Defibrillation summary appears only when a shock was given; its "Counted
+  towards ROSC" figure leaves out shocks stacked within 5 s of the last. In print, the graph and log
+  cards may break across pages so the first page is never left empty.
 - **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
   actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
 - **Simple / Full view** (remembered on each device, Simple by default; every open screen on the
@@ -186,10 +193,11 @@ CT series) the credit says so.
 | --- | --- |
 | **Quick Sim** | A blank synthetic patient and nothing else. Editable obs, the full rhythm list, arrest/ROSC, the monitor and the defib toggle. No scenario, no drugs, no interventions. For ad-hoc teaching at the bedside. |
 | **Defib Sim** | Defibrillator skills on a ZOLL-style tablet defib, with its own Defib controller. Built-in defibrillation, cardioversion and pacing scenarios, free play, or a custom sequence of rhythms. Education or Assessment mode. |
+| **Ventilator Sim** | Ventilator skills on the HAMILTON-T1 (tablet or room monitor) with the full controller: nine scenarios (NIV, CPAP, ARDS, asthma, after RSI, DOPES, mucus plugging, transfer) in Education or Assessment mode. See [The ventilator](#the-ventilator-hamilton-t1) below. |
 | **Random** | Generates a patient from the scenario templates with randomised demographics and obs. |
 | **Premade** | Pick from the 254 built-in scenarios by category. |
 | **Restricted** | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
-| **Custom** | Paste or import a scenario JSON file. |
+| **Custom** | Paste or import a scenario JSON file. Saved scenarios can be edited, loaded or deleted (with a confirmation) from the Custom tab. |
 | **Builder** | Build a scenario field by field in the UI. |
 
 ### Quick Sim
@@ -292,7 +300,7 @@ patient.
 
 - **Where it runs.** On its own tablet (Screens > Join by QR code shows a Ventilator code, or type the
   session code on the page), or on the room monitor: the controller's **Ventilator** section has
-  "Show the ventilator on the room monitor". The defib and the ventilator share the monitor's screen,
+  "Show the ventilator on the patient screens". The defib and the ventilator share the monitor's screen,
   so opening one closes the other; the learner can flip to the obs and back without stopping it.
   Closed and reopened, it carries on with the same settings (kept in that browser for 12 hours).
 - **The lungs** are chosen on the controller (Ventilator section): normal, AECOPD, cardiogenic
@@ -336,15 +344,24 @@ patient.
     fresh ventilator. Set it up before the candidate arrives to hand over deliberate errors. Changes
     appear as a colleague's would and are logged as the facilitator's
     (`sessions/<CODE>/ventCmd`, consumed by the ventilator they are addressed to).
-- It runs in real time. A new scenario gives a fresh ventilator, switched off.
+- It runs in real time. A new scenario gives a fresh ventilator, switched off, and so does a re-run of
+  the same scenario: the ventilator keys its state (and its saved copy) on the scenario title, the
+  patient and the controller's run id (`live.defib.runId`, new on every scenario load, kept on resume).
 - **Ventilator Sim** (setup tab, `data/ventsim.js`, `data/screens/ventsetup.js`): nine scenarios
   (AECOPD NIV, CPO CPAP, OHS NIV, ARDS, severe asthma, after RSI, DOPES troubleshooting,
   mucus plugging for bronchoscopy teaching (starts with the plug in), interhospital transfer) in Education or Assessment. It loads the scenario's lungs, records the
   tube for intubated patients, puts the ventilator on the room monitor and opens the controller's
-  Ventilator section with the scenario brief. The debrief's **Ventilator feedback** (any session that
+  Ventilator section with the scenario brief. It uses the full controller (`quickSim: false`, as Defib
+  Sim does), so needle decompression, finger thoracostomy, bronchoscopy, sedation, nebulisers and the
+  rest of the treatment list are available, with scenario-specific `recommendedActions` and an
+  `instructorBrief`; the clock starts at START. It has no learning objectives (they are scored from
+  controller interventions; the ventilator feedback is its assessment), and its debrief is headed
+  with the scenario and mode. The debrief's **Ventilator feedback** (any session that
   used a ventilator) reads the log and `ventSamples` (what the ventilator measured, every 15 s):
   pre-use check, alarm limits, Vt per kg IBW, plateau and driving pressure, AutoPEEP, SpO2 time in
-  target and problem timings. The targets are teaching targets in `data/ventsim.js`, not a guideline.
+  target and problem timings (times as 00:00, durations as "2 min 10 s"). The targets are teaching
+  targets in `data/ventsim.js`, not a guideline; the troubleshooting scenarios accept up to 8.5 ml/kg
+  IBW, the T1's own starting tidal volume, since they are not about the tidal volume.
 
 ---
 
@@ -460,7 +477,7 @@ Paste this at `restrictedScenarios/RCUK_ALS_01` to check the wiring end to end:
   "pmh": ["Ischaemic heart disease", "Type 2 diabetes"],
   "dhx": ["Aspirin 75 mg OD", "Bisoprolol 5 mg OD"],
   "allergies": ["NKDA"],
-  "recommendedActions": ["CPR", "Defib", "Adrenaline", "Amiodarone", "IV Access", "Airway"],
+  "recommendedActions": ["CPR", "Defib", "Adrenaline", "Amiodarone", "IV Access", "i-gel"],
   "learningObjectives": [
     "Recognises a shockable rhythm and delivers the first shock without delay",
     "Minimises interruptions to chest compressions",

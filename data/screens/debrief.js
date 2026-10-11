@@ -41,6 +41,9 @@
         const m = String(l.msg || '');
         if (/^Rhythm: .*→/.test(m) || /^CARDIAC ARREST/.test(m) || /^ROSC achieved/.test(m) || /^Shock delivered/.test(m) || /recurred after ROSC/i.test(m)) return 'rhythm';
         if (/^(Obs changed|Obs trend started|Patient Improving|Patient Deteriorating|Patient condition|Preset|Patient: |Sound: |NIBP cycled|NIBP Manual|Audio Loop|Facilitator override)/.test(m)) return 'change';
+        // The facilitator's ventilator changes: problems injected/fixed, the lungs, the patient, the link and
+        // remote settings. (A problem fixed by the team's own decompression or bronchoscopy is not one.)
+        if (/^Ventilator \(facilitator\)|^Ventilator (link|patient)\b|^Ventilator (problem|problems|lungs)\b.*\(facilitator\)/.test(m)) return 'change';
         if (l.flagged || (l.deviation && Array.isArray(l.deviation.missing))) return 'flag';
         if (l.type === 'action' || l.type === 'success') return 'action';
         if (l.type === 'manual') return 'change';        // the facilitator's own log entries
@@ -254,7 +257,7 @@
             : '<div class="muted">No interventions or changes were logged.</div>';
         const rows = tableRows(tl.pts);
         const table = `<table class="compact"><thead><tr><th>Time</th><th>Rhythm</th><th>HR</th><th>BP</th><th>SpO2</th><th>RR</th><th>ETCO2</th><th>Temp</th><th>GCS</th></tr></thead><tbody>${rows.map(h => `<tr><td class="mono">${fmtClock(h.time)}</td><td>${escHtml(rhythmName(h.rhythm))}</td><td>${cell(h, 'hr')}</td><td>${bpCell(h)}</td><td>${cell(h, 'spo2')}</td><td>${cell(h, 'rr')}</td><td>${h.co2 === 1 ? cell(h, 'etco2', 1) : '—'}</td><td>${cell(h, 'temp', 1)}</td><td>${escHtml(h.gcs ?? '—')}</td></tr>`).join('')}</tbody></table>`;
-        return `<div class="card"><h3 style="margin-top:0;">Obs, interventions and changes</h3><p class="muted" style="margin-top:0;">The patient’s true obs every 5 seconds (what the team could see depended on what was attached). Red shading marks time without a pulse. The numbered markers match the list below.</p><div class="timeline">${tl.svg}</div><h4>What happened</h4>${eventList}<h4>Obs every 30 seconds</h4>${table}</div>`;
+        return `<div class="card breakable"><h3 style="margin-top:0;">Obs, interventions and changes</h3><p class="muted" style="margin-top:0;">The patient’s true obs every 5 seconds (what the team could see depended on what was attached). Red shading marks time without a pulse. The numbered markers match the list below.</p><div class="timeline">${tl.svg}</div><h4>What happened</h4>${eventList}<h4>Obs every 30 seconds</h4>${table}</div>`;
     };
     window.__debriefReportTrend = buildReportTrend;   // test handle
     window.__buildObsTimeline = buildTimeline;        // test handle
@@ -385,7 +388,8 @@
         // learning objectives to score and no score to show. Every scenario-dependent block below is
         // guarded, and `state.scenario` being null outright (an edge case that could previously
         // reach this screen via an aborted load) is handled by the `|| {}` above.
-        const isQuickSim = !!scenario.quickSim;
+        // A Ventilator Sim saved before it stopped being built on Quick Sim still carries quickSim: true.
+        const isQuickSim = !!scenario.quickSim && !scenario.ventSim;
         // Defib Sim: feedback in the standalone Defib-sim's style, and a printable certificate.
         const defibSim = scenario.defibSim && window.DefibSim && window.DefibSim.assess ? scenario.defibSim : null;
         const defibReview = defibSim ? window.DefibSim.assess(state) : null;
@@ -441,6 +445,12 @@
         const defibMetrics = state.defib || {};
         const shockEvents = state.log.filter(l => l.type === 'danger' && /shock delivered/i.test(l.msg || ''));
         const conversionEvents = state.log.filter(l => /^Rhythm:/.test(l.msg || '') && /\u2192/.test(l.msg || ''));
+        // The Defibrillation summary is shown only when a shock was given (any mode).
+        const shockTotal = Number(defibMetrics.shockCount) || shockEvents.length || 0;
+        const simMode = ventSim ? 'Ventilator Sim' : defibSim ? 'Defib Sim' : isQuickSim ? 'Quick Sim' : null;
+        const simModeDetail = ventSim ? `${ventSim.name} \u00b7 ${ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode`
+            : defibSim ? `${defibSim.name} \u00b7 ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode`
+            : isQuickSim ? 'No scenario \u2014 nothing to score' : '';
 
         // Sequence deviations: structured records written by the engine's permissive gating. Nothing
         // was blocked during the session; these are the teaching points that fell out of it.
@@ -505,24 +515,25 @@
             const shockRows = shockEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fca5a5;">${esc(l.msg)}</td></tr>`).join('');
             const convRows = conversionEvents.map(l => `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#fbbf24;">${esc(l.msg)}</td></tr>`).join('');
             // Defibrillation data reaches the downloadable debrief report too.
-            const defibCard = `<div class="card"><h3 style="color:#ef4444;margin-top:0;">Defibrillation &amp; Rhythm</h3><div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Shocks</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockCount || shockEvents.length || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Into shockable rhythm</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockableShocks || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Cumulative energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.totalEnergy || 0)} J</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Last energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.lastEnergy ?? '--')} J</div></div></div>${shockRows ? `<table><thead><tr><th>Time</th><th>Shock</th></tr></thead><tbody>${shockRows}</tbody></table>` : '<div style="color:#94a3b8;">No shocks delivered.</div>'}${convRows ? `<h4 style="color:#fbbf24;">Rhythm transitions</h4><table><thead><tr><th>Time</th><th>Transition</th></tr></thead><tbody>${convRows}</tbody></table>` : ''}</div>`;
+            // Omitted when no shock was given; rhythm transitions on their own still get a card.
+            const defibCard = !shockTotal ? (convRows ? `<div class="card"><h3 style="color:#fbbf24;margin-top:0;">Rhythm transitions</h3><table><thead><tr><th>Time</th><th>Transition</th></tr></thead><tbody>${convRows}</tbody></table></div>` : '') : `<div class="card"><h3 style="color:#ef4444;margin-top:0;">Defibrillation &amp; Rhythm</h3><div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px;"><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Shocks</div><div style="font-size:1.5rem;font-weight:bold;">${esc(shockTotal)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;" title="Shocks into a shockable rhythm, not counting a shock stacked within 5 s of the last">Counted towards ROSC</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.shockableShocks || 0)}</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Cumulative energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.totalEnergy || 0)} J</div></div><div><div style="font-size:.7rem;color:#64748b;text-transform:uppercase;">Last energy</div><div style="font-size:1.5rem;font-weight:bold;">${esc(defibMetrics.lastEnergy ?? '--')} J</div></div></div>${shockRows ? `<table><thead><tr><th>Time</th><th>Shock</th></tr></thead><tbody>${shockRows}</tbody></table>` : '<div style="color:#94a3b8;">No shocks delivered.</div>'}${convRows ? `<h4 style="color:#fbbf24;">Rhythm transitions</h4><table><thead><tr><th>Time</th><th>Transition</th></tr></thead><tbody>${convRows}</tbody></table>` : ''}</div>`;
             const devCard = `<div class="card"><h3 style="color:#fbbf24;margin-top:0;">Sequence Deviations</h3>${deviations.length ? `<table><thead><tr><th>Time</th><th>Action</th><th>Not in place</th></tr></thead><tbody>${devRows}</tbody></table>` : '<div style="color:#94a3b8;">No sequence deviations recorded.</div>'}</div>`;
             const safeTitle = esc(scenario.title || 'Simulation');
             // The objectives card and the score are omitted from the downloadable report when
             // there are no objectives, rather than printing "100% of 0".
             const scoreBlock = score === null
-                ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Mode</div><div style="font-size:1.5rem;font-weight:bold;">Quick Sim</div><div style="font-size:.7rem;color:#64748b;">No scenario \u2014 nothing to score</div></div>`
+                ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Mode</div><div style="font-size:1.5rem;font-weight:bold;">${esc(simMode || 'Scenario')}</div><div style="font-size:.7rem;color:#64748b;">${esc(simModeDetail || 'No learning objectives \u2014 nothing to score')}</div></div>`
                 : `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Score (fully met)</div><div class="score">${esc(score)}%</div></div><div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Objectives Met</div><div style="font-size:1.5rem;font-weight:bold;">${esc(objectivesMet)} / ${esc(objectivesTotal)}</div>${partialCount ? `<div style="font-size:.7rem;color:#fbbf24;">+ ${esc(partialCount)} partly done</div>` : ''}</div>${partialCount ? `<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">With partial credit</div><div style="font-size:1.5rem;font-weight:bold;color:#fbbf24;">${esc(partialScore)}%</div><div style="font-size:.7rem;color:#64748b;">components done / components expected</div></div>` : ''}`;
             const objCard = objectivesTotal === 0 ? '' : `<div class="card"><h3 style="color:#a78bfa;margin-top:0;">Learning Objectives</h3><p style="color:#94a3b8;font-size:.8rem;margin-top:0;">Objectives made of more than one component are only \u201cmet\u201d when every component was done. Anything started but incomplete is shown as partly done, with the missing component named \u2014 a low score here is a discussion point, not a verdict.</p><table><thead><tr><th>Objective</th><th>Status</th><th>Components</th></tr></thead><tbody>${objRows}</tbody></table></div>`;
             // Light, print-friendly theme (it used to be dark, which printed as solid black pages).
             // The inline colours inside the cards were written for a dark background, so the CSS
             // re-maps the light-on-dark ones to readable ink.
-            const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:28px;font-size:.85rem}.events li{margin:2px 0}.chip{display:inline-block;border-radius:9px;padding:0 6px;font-size:.7rem;font-weight:bold;margin-right:4px}.timeline{overflow:hidden;margin:8px 0}.timeline svg{width:100%;height:auto;display:block}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
+            const reportCss = `body{font-family:Arial,sans-serif;background:#fff;color:#0f172a;margin:0;padding:24px;max-width:1000px}h1{color:#0369a1;margin-bottom:4px}h2{color:#475569;font-size:1rem;font-weight:normal;margin-bottom:24px}h3{color:#0f172a!important}h4{margin:14px 0 6px;color:#334155}.card{background:#fff;border-radius:8px;padding:16px;margin-bottom:16px;border:1px solid #cbd5e1;break-inside:avoid}.card.breakable{break-inside:auto}.mini,.timeline,tr{break-inside:avoid}.score{font-size:3rem;font-weight:bold;color:#0369a1}table{width:100%;border-collapse:collapse}th{text-align:left;padding:8px 10px;color:#475569;font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #cbd5e1}td{color:#0f172a!important;border-bottom:1px solid #e2e8f0!important}.muted{color:#64748b;font-size:.85rem}.mono{font-family:monospace;color:#475569}.minis{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{margin:0;border:1px solid #e2e8f0;border-radius:6px;padding:4px}.mini svg{width:100%;height:auto;display:block}.events{margin:0;padding-left:28px;font-size:.85rem}.events li{margin:2px 0}.chip{display:inline-block;border-radius:9px;padding:0 6px;font-size:.7rem;font-weight:bold;margin-right:4px}.timeline{overflow:hidden;margin:8px 0}.timeline svg{width:100%;height:auto;display:block}table.compact td,table.compact th{padding:3px 8px;font-size:.8rem}@media (max-width:640px){.minis{grid-template-columns:1fr}}@media print{body{padding:0}.card{border-color:#94a3b8}a{color:inherit}}`;
             const trendCard = buildReportTrend(state.history, state.log);
             const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
             const li = (arr) => arr.map(g => `<li>${esc(g)}</li>`).join('');
             const ventFeedbackCard = ventReview ? `<div class="card"><h3 style="margin-top:0;">Ventilator feedback</h3>${ventSim ? `<p class="muted" style="margin-top:0;">${esc(ventSim.name)} &middot; ${ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>` : ''}${ventReview.stats.length ? `<ul>${li(ventReview.stats)}</ul>` : ''}${ventReview.good.length ? `<h4>Good practice</h4><ul>${li(ventReview.good)}</ul>` : ''}${ventReview.improve.length ? `<h4>Areas for improvement</h4><ul>${li(ventReview.improve)}</ul>` : ''}${ventReview.problems.length ? `<h4>Problems</h4><ul>${li(ventReview.problems.map(p => p.text))}</ul>` : ''}</div>` : '';
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -545,6 +556,7 @@
                         <p className="text-slate-400">
                             {scenario.title || 'Simulation'}
                             {isQuickSim && <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 border border-sky-700 bg-sky-950/40 rounded px-1.5 py-0.5">Quick Sim &middot; no scenario</span>}
+                            {ventSim && <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-cyan-300 border border-cyan-700 bg-cyan-950/40 rounded px-1.5 py-0.5" data-testid="vent-sim-badge">Ventilator Sim &middot; {ventSim.mode === 'assessment' ? 'Assessment' : 'Education'}</span>}
                             {' '}• Duration: {durationText}
                         </p>
                     </div>
@@ -615,7 +627,11 @@
                                 Showing "100%" against zero objectives would be actively misleading. */}
                             {score === null ? (
                                 <div className="mb-4 text-sm text-slate-400">
-                                    {isQuickSim
+                                    {ventSim
+                                        ? 'A Ventilator Sim is not scored against learning objectives: the ventilator feedback, the obs graph, the event log and your notes are the debrief.'
+                                        : defibSim
+                                        ? 'A Defib Sim is not scored against learning objectives: the Defib Sim feedback, the obs graph, the event log and your notes are the debrief.'
+                                        : isQuickSim
                                         ? 'Quick Sim has no scenario, so there are no learning objectives to score. The obs graph, the event log and your notes are the debrief.'
                                         : 'This session declared no learning objectives, so there is nothing to score.'}
                                 </div>
@@ -644,14 +660,15 @@
                             {/* Shock summary. Shock count, cumulative energy and the last energy
                                 used are teaching data (energy escalation, 4 J/kg in children,
                                 shocks-per-ROSC) and were previously unavailable after the session. */}
-                            <div className="mb-4 bg-slate-900 border border-red-900/60 rounded p-3">
+                            {shockTotal > 0 && (
+                            <div className="mb-4 bg-slate-900 border border-red-900/60 rounded p-3" data-testid="debrief-defib">
                                 <h4 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillation</h4>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                    {[['Shocks', defibMetrics.shockCount || shockEvents.length || 0, ''],
-                                      ['Into shockable', defibMetrics.shockableShocks || 0, ''],
+                                    {[['Shocks', shockTotal, '', ''],
+                                      ['Counted towards ROSC', defibMetrics.shockableShocks || 0, '', 'Shocks into a shockable rhythm, not counting a shock stacked within 5 s of the last'],
                                       ['Cumulative', defibMetrics.totalEnergy || 0, 'J'],
-                                      ['Last energy', defibMetrics.lastEnergy ?? '--', 'J']].map(([lbl, val, unit]) => (
-                                        <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700">
+                                      ['Last energy', defibMetrics.lastEnergy ?? '--', 'J']].map(([lbl, val, unit, tip]) => (
+                                        <div key={lbl} className="bg-slate-800 rounded p-2 text-center border border-slate-700" title={tip || undefined}>
                                             <div className="text-[10px] font-bold uppercase text-slate-400">{lbl}</div>
                                             <div className="text-lg font-mono font-bold text-white">{val}<span className="text-[9px] text-slate-400 ml-0.5">{unit}</span></div>
                                         </div>
@@ -672,6 +689,7 @@
                                     </div>
                                 )}
                             </div>
+                            )}
 
                             {/* Omitted entirely rather than rendered as an empty list. */}
                             {objectivesTotal > 0 && (

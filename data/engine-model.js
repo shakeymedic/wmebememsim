@@ -29,6 +29,9 @@
         prevVitals: {},
         trends: { active: false, targets: {}, duration: 0, elapsed: 0, startVitals: {} },
         hypoxiaTimer: 0,
+        // How far (SpO2 points) the apnoea/hypoventilation model has pulled the base saturation
+        // down. Oxygen recovers only this deficit; the oxygen envelope itself carries the rest.
+        hypoxiaDeficit: 0,
         // ---- WAVE 5 / ITEM 6: FACILITATOR SUPREMACY OVER RHYTHM-DERIVED RATES ------------------
         // A map of vital keys the facilitator has TYPED a value for (`{ hr: true }`). It exists for
         // one reason: a rhythm change used to overwrite a manually-set HR with the new rhythm's
@@ -664,26 +667,33 @@
     const drugOffsets = (activeDrugs, t) => {
         const perKey = {};
         const driven = drivenVitals(activeDrugs, t);
+        // Each entry contributes its OWN effect (a repeat dose can differ from the first: a
+        // weight-scaled child's dose, a rhythm-dependent HR response), summed per drug. The ceiling
+        // then scales the drug's summed contribution down so it never exceeds maxDoses full doses.
         (activeDrugs || []).forEach(d => {
             const f = pkFactor(d, t);
             if (!(f > 0)) return;
-            const bucket = perKey[d.key] || (perKey[d.key] = { f: 0, effect: d.effect || {}, maxDoses: d.maxDoses || PK_DEFAULT_MAX_DOSES });
-            bucket.f += f * (Number(d.dose) || 1);
+            const bucket = perKey[d.key] || (perKey[d.key] = { f: 0, sums: {}, maxDoses: d.maxDoses || PK_DEFAULT_MAX_DOSES });
+            const w = f * (Number(d.dose) || 1);
+            bucket.f += w;
+            const eff = d.effect || {};
+            Object.keys(eff).forEach(field => {
+                const amt = Number(eff[field]);
+                if (!Number.isFinite(amt) || !EFFECT_TARGETS[field]) return;
+                bucket.sums[field] = (bucket.sums[field] || 0) + amt * w;
+            });
         });
         const out = {};
         Object.keys(perKey).forEach(k => {
             const b = perKey[k];
-            const f = Math.min(b.f, b.maxDoses);
-            Object.keys(b.effect).forEach(field => {
+            const cap = b.f > b.maxDoses ? b.maxDoses / b.f : 1;
+            Object.keys(b.sums).forEach(field => {
                 const targets = EFFECT_TARGETS[field];
-                if (!targets) return;
-                const amt = Number(b.effect[field]);
-                if (!Number.isFinite(amt)) return;
                 targets.forEach(([vital, scale]) => {
                     // A rate-driven vital (warming/cooling temperature, insulin glucose/K+) is owned
                     // by applyDriveTick in base space. Adding the envelope too would double-count.
                     if (driven[vital]) return;
-                    out[vital] = (out[vital] || 0) + amt * f * scale;
+                    out[vital] = (out[vital] || 0) + b.sums[field] * cap * scale;
                 });
             });
         });
@@ -1173,10 +1183,10 @@
 
     // Bands the patient is allowed to recover INTO when the treatment factor is negative, so
     // successful treatment normalises rather than overshooting into hypertension/hyperoxia.
-    const RECOVERY_BAND = { hr: [58, 110], bpSys: [95, 135], spO2: [92, 98], rr: [12, 22], gcs: [3, 15], etco2: [4.0, 6.0], temp: [36.0, 37.5] };
+    const RECOVERY_BAND = { hr: [58, 110], bpSys: [95, 135], bpDia: [55, 90], spO2: [92, 98], rr: [12, 22], gcs: [3, 15], etco2: [4.0, 6.0], temp: [36.0, 37.5] };
     // Floors/ceilings autonomous deterioration alone may reach. Going all the way to zero is the
     // facilitator's call (ARREST), not a slow drift's.
-    const DETERIORATION_BOUND = { hr: [25, 220], bpSys: [35, 240], spO2: [40, 100], rr: [4, 55], gcs: [3, 15], etco2: [1.5, 10], bm: [1.0, 40], temp: [30, 42] };
+    const DETERIORATION_BOUND = { hr: [25, 220], bpSys: [35, 240], bpDia: [20, 150], spO2: [40, 100], rr: [4, 55], gcs: [3, 15], etco2: [1.5, 10], bm: [1.0, 40], temp: [30, 42] };
 
     const deteriorationDeltas = (type, base) => {
         const d = {};
@@ -1224,10 +1234,13 @@
         if (!deltas) return false;
         let moved = false;
         const recovering = factor < 0;
+        // The diastolic follows what the systolic ACTUALLY did this second, so once the systolic
+        // sits at a bound or band edge the diastolic stops too, instead of drifting on to 0 or 200.
+        let sysMoved = deltas.bpSys !== undefined ? 0 : null;
         Object.keys(deltas).forEach(k => {
             if (ownedByTrend && ownedByTrend[k]) return;      // a running trend owns this vital
             if (typeof base[k] !== 'number' || !Number.isFinite(base[k])) return;
-            const step = deltas[k] * rate * factor;
+            const step = (k === 'bpDia' && sysMoved !== null) ? sysMoved * 0.6 : deltas[k] * rate * factor;
             if (!Number.isFinite(step) || step === 0) return;
             let next = base[k] + step;
             const bound = DETERIORATION_BOUND[k];
@@ -1243,6 +1256,7 @@
                 }
             }
             next = clampVital(k, next);
+            if (k === 'bpSys') sysMoved = next - base[k];
             if (next !== base[k]) { base[k] = next; moved = true; }
         });
         return moved;

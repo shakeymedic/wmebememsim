@@ -184,7 +184,7 @@
                     <div className="flex flex-col gap-2 min-w-0">
                         <div className={card}>
                             <div className={h}><Lucide icon="user" className="w-3 h-3"/> Patient</div>
-                            <div className="text-sm text-white font-bold">{scenario.patientName} ({scenario.patientAge}y {scenario.sex}{weight ? `, ${weight} kg` : ''})</div>
+                            <div className="text-sm text-white font-bold">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex}{weight ? `, ${weight} kg` : ''})</div>
                             {ds.description && <p className="text-xs text-slate-300 mt-1">{ds.description}</p>}
                             <div className="flex flex-wrap gap-1 mt-2 text-[10px]">
                                 {ds.requiresSync && <span className="px-1.5 py-0.5 rounded border border-amber-600 text-amber-300">Needs SYNC</span>}

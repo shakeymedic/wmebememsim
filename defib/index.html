@@ -198,6 +198,7 @@
             const el = $('linkBanner');
             if (linked) { el.classList.add('hidden'); render(); return; }
             el.classList.remove('hidden');
+            const refocus = el.contains(document.activeElement) ? document.activeElement : null;
             const lost = kind === 'lost' || (kind === undefined && everLinked);
             const fallback = lost
                 ? 'The link to the controller has dropped. The numbers below are no longer live.'
@@ -206,20 +207,36 @@
             const b = document.createElement('b'); b.textContent = lost ? 'LOST CONTACT WITH THE CONTROLLER' : 'NOT LINKED TO SESSION';
             const span = document.createElement('span'); span.style.fontWeight = 'normal'; span.style.fontSize = '12px'; span.textContent = reason || fallback;
             el.append(b, document.createElement('br'), span);
-            if (!fb.code) {
-                const form = document.createElement('form'); form.id = 'joinForm';
-                const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters');
-                const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link';
-                form.append(input, btn); el.appendChild(form);
-                form.onsubmit = (ev) => {
-                    ev.preventDefault();
-                    const code = String(input.value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-                    if (!code) return;
-                    const u = new URL(window.location.href); u.searchParams.set('session', code);
-                    window.location.href = u.toString();
-                };
+            // No code: the join form, at once. A code that has not linked (mistyped, or an old
+            // session in the address): a "Change code" button that opens the same form. The form
+            // is built once and moved back in on every update, so a half-typed code survives.
+            if (!fb.code || joinOpen) el.appendChild(joinForm());
+            else {
+                const change = document.createElement('button'); change.type = 'button'; change.id = 'changeCodeBtn'; change.className = 'change-code';
+                change.textContent = 'Change code';
+                change.onclick = () => { joinOpen = true; el.removeChild(change); el.appendChild(joinForm()); $('joinCode').focus(); };
+                el.append(document.createElement('br'), change);
             }
+            if (refocus && document.body.contains(refocus)) refocus.focus();
             render();
+        }
+        let joinFormEl = null, joinOpen = false;
+        function joinForm() {
+            if (joinFormEl) return joinFormEl;
+            const form = document.createElement('form'); form.id = 'joinForm';
+            const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters');
+            if (fb.code) input.value = fb.code;
+            const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link';
+            form.append(input, btn);
+            form.onsubmit = (ev) => {
+                ev.preventDefault();
+                const code = String(input.value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                if (!code) return;
+                const u = new URL(window.location.href); u.searchParams.set('session', code);
+                window.location.href = u.toString();
+            };
+            joinFormEl = form;
+            return form;
         }
 
         // One mapper per source, both producing the same `patient` fields.
@@ -244,6 +261,8 @@
             // In Defib Sim this is the only device in the room, so it makes the pump noise; alongside
             // a room monitor the monitor makes it (one cuff, one noise).
             if (patient.nibp.inflating && !wasInflating && device.mode !== 'off' && patient.view.defibSim) sounds.cuff();
+            // The cuff has finished: the reading is on screen, so the "measuring" message goes.
+            if (wasInflating && !patient.nibp.inflating && device.message === 'NIBP MEASURING') setMessage('', '');
             patient.recommendedEnergy = Number(p.recommendedEnergy) || RG.ADULT_DEFAULT_ENERGY;
             if (Array.isArray(p.energyLevels) && p.energyLevels.length) {
                 patient.energyLevels = p.energyLevels.slice();
@@ -278,6 +297,10 @@
                 scenario: { patientName: v.patientName, ecg: v.investigations ? v.investigations.ecg : null, investigations: { ecg: v.investigations ? v.investigations.ecg : null } }
             };
         }
+        // What the controller believes the defib is doing (its mode and the pacer output).
+        function engineDefibOf(v) {
+            return { mode: (v.defib && v.defib.mode) || null, pacerOutput: Number(v.remotePacerState && v.remotePacerState.output) || 0 };
+        }
         function fromChannel(d) {
             return {
                 rhythm: d.rhythm, hr: d.hr, spo2: d.spO2, etco2: d.etco2, bpSys: d.bpSys, bpDia: d.bpDia,
@@ -293,7 +316,10 @@
         if (simChannel) simChannel.onmessage = (event) => {
             const data = event.data || {};
             // When linked through Firebase that is the source of truth; ignore a same-browser tab.
-            if (data.type === 'SYNC_VITALS' && !fb.linked && data.payload) applyPatient(fromChannel(data.payload));
+            if (data.type === 'SYNC_VITALS' && !fb.linked && data.payload) {
+                applyPatient(fromChannel(data.payload));
+                if (!staleChecked) { staleChecked = true; const pc = data.payload.pacing || {}; if (pc.electrical) clearStaleDevice({ mode: 'pacer', pacerOutput: 1 }); }
+            }
         };
 
         // Every press goes to the controller: sessions/<CODE>/deviceEvents when linked through
@@ -340,6 +366,11 @@
             $('sessionTag').textContent = 'SESSION ' + code;
             fb.db.ref('.info/connected').on('value', snap => {
                 fb.connected = !!snap.val();
+                // onDisconnect() is one-shot and not re-armed after a reconnect: arm it each time.
+                if (fb.connected) {
+                    fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+                    fb.db.ref('sessions/' + code + '/deviceState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
+                }
                 if (fb.linked && !fb.connected) setLinkState(false, 'The network connection has dropped. The numbers below are frozen and are NOT live until it returns.', 'lost');
                 if (fb.linked && fb.connected) setLinkState(true);
             });
@@ -351,15 +382,49 @@
                 }
                 fb.linked = true;
                 applyPatient(fromSession(v));
+                if (!staleChecked) { staleChecked = true; clearStaleDevice(engineDefibOf(v)); }
             }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
             const pres = fb.db.ref('sessions/' + code + '/presence/' + fb.presenceId);
             const write = () => pres.update({ role: EMBEDDED ? 'monitor-defib' : 'defib', display: 'defib', ua: (navigator.userAgent || '').slice(0, 120), ts: Date.now() }).catch(() => {});
-            pres.onDisconnect().remove().catch(() => {});
-            fb.db.ref('sessions/' + code + '/deviceState/' + fb.presenceId).onDisconnect().remove().catch(() => {});
             write();
             setInterval(write, 10000);
             publishMirror();
         }
+        // THIS TABLET STARTS OFF. If the controller still thinks a defib is pacing (or in a mode)
+        // from before this page loaded (a reload, or a tablet that was closed without switching off),
+        // it is told the device is off, otherwise pacing carried on with the dial showing OFF. Not
+        // when another live defib (a second tablet, the monitor's) is the one pacing.
+        let staleChecked = false;
+        function clearStaleDevice(eng) {
+            const stalePacing = eng.pacerOutput > 0;
+            const staleMode = eng.mode === 'pacer' || eng.mode === 'defib';
+            if (device.mode !== 'off' || (!stalePacing && !staleMode)) return;
+            const send0 = () => {
+                if (device.mode !== 'off') return;          // the learner has started using it meanwhile
+                if (staleMode) send('DEVICE_MODE', { mode: 'off' });
+                if (stalePacing) send('PACER_UPDATE', { output: 0, rate: device.pacerRate, demand: device.pacerDemand });
+            };
+            if (!fb.db || !fb.code) { send0(); return; }
+            fb.db.ref('sessions/' + fb.code).once('value').then(snap => {
+                const sess = snap.val() || {};
+                const pres = sess.presence || {}, states = sess.deviceState || {};
+                const now = Date.now();
+                const otherActive = Object.keys(states).some(id => {
+                    if (id === fb.presenceId) return false;
+                    const st = states[id] || {}, pr = pres[id];
+                    // A device counts only while its presence heartbeat (every 10 s) is fresh.
+                    return pr && (now - (Number(pr.ts) || 0)) < 25000 && st.mode && st.mode !== 'off';
+                });
+                if (!otherActive) send0();
+            }).catch(() => send0());
+        }
+        // Leaving the page (closed, reloaded, or the room monitor taking its defib away) switches
+        // this device off, as turning the dial would: the pacer stops and the controller knows.
+        window.addEventListener('pagehide', () => {
+            if (device.mode === 'off') return;
+            send('DEVICE_MODE', { mode: 'off' });
+            if (device.mode === 'pacer' && device.pacerOutput > 0) send('PACER_UPDATE', { output: 0, rate: device.pacerRate, demand: device.pacerDemand });
+        });
         function sessionFromUrl() {
             try {
                 const raw = new URLSearchParams(window.location.search).get('session');
@@ -428,7 +493,13 @@
         }
         let soundDismissed = false;
         $('soundBtn').addEventListener('click', () => { audio(); soundDismissed = true; updateSoundOverlay(); });
-        document.addEventListener('pointerdown', () => { audio(); requestWakeLock(); }, { capture: true });
+        document.addEventListener('pointerdown', () => { audio(); requestWakeLock(); tellHost(); }, { capture: true });
+        // Embedded in the room monitor: a tap here never reaches the monitor page, so it is told,
+        // and enables its own sound (the monitor's alarms and beeps) from this gesture.
+        function tellHost() {
+            if (!EMBEDDED) return;
+            try { if (window.parent && window.parent !== window) window.parent.postMessage({ type: 'wmebem-device-gesture' }, window.location.origin); } catch (e) {}
+        }
 
         // Keep the tablet's screen on for the whole scenario (the room monitor does the same). The
         // browser drops the lock whenever the page is hidden, so it is asked for again on return,
@@ -446,7 +517,7 @@
         }
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') requestWakeLock(); });
         requestWakeLock();
-        document.addEventListener('keydown', () => { audio(); }, { capture: true });
+        document.addEventListener('keydown', () => { audio(); tellHost(); }, { capture: true });
 
         // =====================================================================================
         // DISPLAY
@@ -457,13 +528,13 @@
             const m = $('messageBar'); m.textContent = text; m.className = 'message-bar ' + (type || '');
             publishMirror();
         }
-        // Rate the ECG is drawn at: the patient's rate, or a rhythm-appropriate intrinsic rate for
-        // pulseless organised activity (PEA and pulseless VT still have complexes).
-        const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
-        function drawRate() {
-            if (patient.hr > 0) return patient.hr;
-            return INTRINSIC[patient.rhythm] || 60;
-        }
+        // Rate the ECG's beat phase advances at: the patient's rate, or a rhythm-appropriate
+        // intrinsic rate for pulseless organised activity (PEA and pulseless VT still have
+        // complexes); Mobitz II's beat slots run faster because one in four is dropped. qrsRate()
+        // is the QRS count per minute the device shows, the same number the room monitor shows
+        // (both come from the shared registry).
+        function drawRate() { return RG.drawRate(patient.rhythm, patient.hr); }
+        function qrsRate() { const q = RG.displayRate(patient.rhythm, patient.hr); return q === null ? 0 : q; }
         const hasQrs = () => RG.rWavePhase(patient.rhythm, drawRate(), 1) !== null;
         function fmt(v, dp) { return Number.isFinite(v) ? (dp ? v.toFixed(dp) : String(Math.round(v))) : '--'; }
 
@@ -494,7 +565,7 @@
                 [hrEl, spEl].forEach(e => e.classList.remove('critical'));
             } else {
                 // The monitor counts QRS complexes: a rate in PEA or pulseless VT, none in VF or asystole
-                const hr = patient.pacing.electrical ? device.pacerRate : (hasQrs() ? Math.round(drawRate()) : null);
+                const hr = patient.pacing.electrical ? device.pacerRate : (hasQrs() ? Math.round(qrsRate()) : null);
                 hrEl.textContent = hr === null ? '---' : hr;
                 hrEl.classList.toggle('critical', hr === null || hr < 40 || hr > 150);
                 spEl.textContent = patient.spo2 > 0 ? Math.round(patient.spo2) : '---';
@@ -673,7 +744,7 @@
         let overlayReturnFocus = null;
         function show12Lead() {
             if (!patient.linked) { setMessage('NOT LINKED - NO PATIENT DATA', 'alert'); return; }
-            RG.render12Lead($('paperCanvas'), patient.rhythm, patient.scenario, Math.round(drawRate()));
+            RG.render12Lead($('paperCanvas'), patient.rhythm, patient.scenario, Math.round(qrsRate()));
             overlayReturnFocus = document.activeElement;
             $('paperOverlay').classList.remove('hidden');
             $('paperOverlay').focus();
@@ -722,6 +793,8 @@
             if (!patient.nibp.cuff) { setMessage('NIBP CUFF NOT CONNECTED', 'alert'); return; }
             if (!patient.nibp.inflating) send('NIBP_START', {});
             setMessage('NIBP MEASURING', 'ready');
+            // Belt and braces: never left up if the controller did not start the cuff.
+            later('nibpMsg', () => { if (device.message === 'NIBP MEASURING' && !patient.nibp.inflating) setMessage('', ''); }, 12000);
         });
         $('markerBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('MARKER_EVENT', { timestamp: Date.now() }); setMessage('EVENT MARKED', 'ready'); });
         $('alarmSuspendBtn').addEventListener('click', () => { if (device.mode === 'off') return; send('ALARM_SILENCE', { timestamp: Date.now() }); setMessage('ALARMS SUSPENDED', 'ready'); });
@@ -828,14 +901,18 @@
                 }
             }
             if (pendingSync && performance.now() > pendingSync.until) {
-                pendingSync = null; device.machine = 'IDLE';
-                setMessage('SYNC: NO R-WAVE DETECTED - SHOCK NOT DELIVERED', 'alert'); render();
+                // Not fired: the charge is kept (as when SHOCK finds no R wave at once), and dumped
+                // after the usual safety timeout if it is not used.
+                pendingSync = null; device.machine = 'READY';
+                setMessage('SYNC: NO R-WAVE DETECTED - SHOCK NOT DELIVERED', 'alert');
+                later('dump', () => { if (device.machine === 'READY') { device.machine = 'IDLE'; setMessage('CHARGE DUMPED', 'ready'); render(); } }, 60000);
+                render();
             }
 
             // Pacer spikes that are NOT capturing (the engine turns captured beats into the paced
             // rhythm itself). Demand mode is silent while the patient's own rate is faster.
             if (device.mode === 'pacer' && device.pacerOutput > 0 && !patient.pacing.electrical && patient.linked) {
-                const inhibited = device.pacerDemand && hasQrs() && drawRate() >= device.pacerRate;
+                const inhibited = device.pacerDemand && hasQrs() && qrsRate() >= device.pacerRate;
                 const prevP = pacerPhase;
                 pacerPhase += dt * device.pacerRate / 60;
                 if (!inhibited && Math.floor(pacerPhase) !== Math.floor(prevP)) {
@@ -923,7 +1000,9 @@
         const urlSession = sessionFromUrl();
         if (urlSession) fbStart(urlSession);
         else {
-            // Same-browser controller: ask for the patient, then declare "not linked" honestly.
+            // Same-browser controller: ask for the patient in the background, with the code entry
+            // on screen from the start (it used to appear only after ~14 s of probing).
+            setLinkState(false, 'No session has been supplied. Enter the session code shown on the controller to link this tablet.', 'never');
             let tries = 0;
             const probe = setInterval(() => {
                 if (lastSyncAt) { clearInterval(probe); return; }

@@ -358,33 +358,40 @@
     // Multiplier applied to the NEXT R-R interval for `rhythmId` at beat `beat`.
     // 1 = perfectly regular. Anything that is supposed to look regular on a real monitor returns
     // exactly 1 and therefore cannot drift.
+    var AF_MEAN = 0.70 + 0.30 + 0.12 * 0.35;           // 1.042
+    var FLUTTER_MEAN = 0.60 * 1 + 0.28 * 1.5 + 0.12 * 2; // 1.26
+    var AGONAL_MEAN = 0.55 + 0.95 / 2;                   // 1.025
     function beatIntervalFactor(rhythmId, beat) {
         var id = canonical(rhythmId);
         var b = Math.floor(beat) || 0;
+        // Each irregular pattern is divided by its own mean, so the AVERAGE interval is exactly
+        // the displayed rate's: the number of QRS complexes drawn per minute matches the HR shown
+        // (variable-block flutter averaged 1.26 and drew 120/min while the screen said 150).
         if (id === 'AF') {
             // Irregularly irregular: a broad spread of intervals PLUS the occasional longer pause,
             // which is what makes AF recognisable at the bedside. CV lands around 18-22%.
             var f = 0.70 + 0.60 * beatHash(b, 1);
             if (beatHash(b, 2) < 0.12) f += 0.35;
-            return f;
+            return f / AF_MEAN;
         }
         if (id === 'Atrial Flutter') {
             // Variable AV block: predominantly 2:1, with intermittent 3:1 and 4:1 beats. The
             // sawtooth underneath keeps running at 300/min regardless (REALTIME.flutter_baseline).
             var h = beatHash(b, 3);
-            if (h < 0.60) return 1;
-            if (h < 0.88) return 1.5;
-            return 2;
+            if (h < 0.60) return 1 / FLUTTER_MEAN;
+            if (h < 0.88) return 1.5 / FLUTTER_MEAN;
+            return 2 / FLUTTER_MEAN;
         }
         if (id === 'Agonal Rhythm') {
             // Dying heart: wide, slow and grossly irregular.
-            return 0.55 + 0.95 * beatHash(b, 4);
+            return (0.55 + 0.95 * beatHash(b, 4)) / AGONAL_MEAN;
         }
         // Everything else — sinus at any rate, SVT, VT, the bundle branch blocks, STEMI,
         // hyperkalaemia, junctional, paced, PEA and complete heart block (whose VENTRICULAR escape
         // is regular; its irregularity is P-QRS dissociation, added in real time) — is regular.
         // Mobitz II is regular between beats and irregular because QRS complexes are DROPPED
-        // (see `droppedBeat` below), which is the correct mechanism.
+        // (see `droppedBeat` below), which is the correct mechanism; drawRate() runs its beat
+        // slots faster so the QRS that remain match the displayed rate.
         return 1;
     }
 
@@ -395,6 +402,29 @@
     // other rate chopped the middle out of a complex.)
     function droppedBeat(rhythmId, beat) {
         return canonical(rhythmId) === '2nd Deg Heart Block' && (Math.floor(beat) % 4) === 3;
+    }
+
+    // THE RATE A RHYTHM IS DRAWN AT, shared by every renderer (room monitor, defib, 12-lead) so
+    // the complexes on screen and the number beside them agree.
+    //   displayRate: QRS complexes per minute, what a monitor counts and shows. The patient's HR,
+    //     or, for pulseless ORGANISED activity held at HR 0 (PEA, pulseless VT, agonal), a
+    //     rhythm-appropriate intrinsic rate, since those rhythms still draw complexes. null where
+    //     there is no QRS to count (VF, asystole).
+    //   drawRate: the rate the renderer advances its BEAT PHASE at (one beat slot = one P wave).
+    //     The same as displayRate, except Mobitz II, which drops one beat slot in four: its slots
+    //     run at 4/3 of the ventricular rate so the three QRS that remain give the HR shown.
+    var INTRINSIC_RATE = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
+    function displayRate(rhythmId, hr) {
+        var id = canonical(rhythmId);
+        if (BY_ID[id] && BY_ID[id].realtime) return null;
+        var h = Number(hr);
+        return h > 0 ? h : (INTRINSIC_RATE[id] || 60);
+    }
+    function drawRate(rhythmId, hr) {
+        var id = canonical(rhythmId);
+        var h = Number(hr);
+        var v = h > 0 ? h : (INTRINSIC_RATE[id] || 60);
+        return id === '2nd Deg Heart Block' ? v * 4 / 3 : v;
     }
 
     // -------------------------------------------------------------------------
@@ -942,8 +972,7 @@
             // Each lead is drawn from the registry's per-lead morphology (LEAD_PARTS / LEAD_GAIN),
             // so aVR is inverted, V1 is rS, and R waves progress across the chest leads.
             const rid = RG.canonical(rhythm);
-            const INTRINSIC = { 'PEA': 38, 'Agonal Rhythm': 14, 'pVT': 180, 'Paced': 70 };
-            const rateBpm = hr > 0 ? hr : (INTRINSIC[rid] || 60);
+            const rateBpm = RG.drawRate(rid, hr);
             const N = Math.round(w);                 // one sample per pixel across 10 s
             const phase = new Float64Array(N), beat = new Int32Array(N);
             let ph = 0; let beats = 0;
@@ -1029,6 +1058,8 @@
         // Shared by the React monitor AND the standalone defibrillator.
         beatIntervalFactor: beatIntervalFactor,
         droppedBeat: droppedBeat,
+        displayRate: displayRate,
+        drawRate: drawRate,
         beatHash: beatHash,
         capnogram: capnogram,
         // The capnogram shape family, exported so the obstruction severity that drives it
