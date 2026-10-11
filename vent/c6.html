@@ -1383,7 +1383,7 @@ function drawDynLung() {
     </g></svg>
     <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
     <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
-    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2(), 1)}</b><small>kPa</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
 }
 
 /* ======================= screen rendering ======================= */
@@ -1461,7 +1461,7 @@ function renderSMP() {
   const sb = V.standby, inv = isInvasive() && !sb && !P.disc;
   const rows = [['Pplateau', M.pplat, 0, 'cmH2O'], ['Pmean', M.pmean, 0, 'cmH2O'], ['AutoPEEP', isNIV() ? null : M.autopeep, 1, 'cmH2O'],
     ['Cstat', inv ? P.pr.C * 1000 : null, 1, 'ml/cmH2O'], ['Rinsp', inv ? P.pr.R : null, 0, 'cmH2O/(l/s)'], ['fSpont', M.fspont, 0, 'b/min'],
-    ['VTI', M.vti, 0, 'ml'], ['VLeak', M.vleak, 0, '%'], ['PetCO2', petco2(), 0, 'mmHg']];
+    ['VTI', M.vti, 0, 'ml'], ['VLeak', M.vleak, 0, '%'], ['PetCO2', petco2(), 1, 'kPa']];
   el.innerHTML = rows.map(r => `<div><span>${r[0]}<small>${r[3]}</small></span><b>${sb || r[1] === null || r[1] === undefined ? '--' : fmt(r[1], r[2])}</b></div>`).join('');
 }
 function renderModeName() {
@@ -1658,7 +1658,7 @@ function renderWindow() {
       rows2 = [['fTotal', M.ftot, 0, 'b/min'], ['fControl', M.fcontrol, 0, 'b/min'], ['fSpont', M.fspont, 0, 'b/min'], ['TI', M.ti, 2, 's'], ['TE', M.te, 2, 's'], ['I:E', M.ie, 1, '1:x'], ['Insp Flow', M.inspFlow, 0, 'l/min'], ['Oxygen', sb ? null : measuredO2(), 0, '%']];
       if (V.mode === 'ASV' || APV.includes(V.mode) || V.mode === 'VS') rows2.push(['ΔPinsp', V.mode === 'ASV' ? A.p : V.mode === 'VS' ? B.vsP : B.apvP, 0, 'cmH2O']);
     }
-    const rows3 = [['SpO2', V.spo2On ? P.spo2 : null, 0, '%'], ['Pulse', V.spo2On ? P.hr : null, 0, '1/min'], ['PetCO2', petco2(), 0, 'mmHg']];
+    const rows3 = [['SpO2', V.spo2On ? P.spo2 : null, 0, '%'], ['Pulse', V.spo2On ? P.hr : null, 0, '1/min'], ['PetCO2', petco2(), 1, 'kPa']];
     const rows = winTab === '1' ? rows1 : winTab === '2' ? rows2 : rows3;
     const note = isHFO() ? 'In HiFlowO2 only Oxygen and Flow are monitored (Pprox needs a flow sensor; not simulated).' : niv ? 'In noninvasive modes VTE is replaced by VTE NIV and ExpMinVol by MinVol NIV: leak-adjusted estimates. Use VLeak and MVLeak to judge mask fit. AutoPEEP is not reliable in NIV.' : 'AutoPEEP rises when expiration is too short for the lung to empty (watch it in APRV and at high rates). Simulated values.';
     h = X + tabs([['1', 'General 1'], ['2', 'General 2'], ['3', 'SpO2']]) + `<div class="wbody" style="top:48px"><div class="mon-cols">${rows.map(r => `<div><span>${r[0]}<small>${r[3]}</small></span><b>${sb ? '--' : fmt(r[1], r[2])}</b></div>`).join('')}</div>
@@ -2202,10 +2202,12 @@ function applyProblems(list) {
   P.mains = !mainsOff;
   probsNow = list.slice();
 }
-/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit.
+   Shown in kPa to one decimal place, like the room monitor, the defib and the A350 (UK practice;
+   1 kPa = 7.50062 mmHg). LIVE.etco2 is already kPa, so this is display rounding only. */
 function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
-  return Math.round(LIVE.etco2 * 7.50062);
+  return Math.round(LIVE.etco2 * 10) / 10;
 }
 function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
 /* real time: one second of the page is one second of the patient */

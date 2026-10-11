@@ -398,8 +398,10 @@
             var ec = hist.filter(function (h) { return h.time >= from + 180 && Number(h.etco2) > 0; });
             if (ec.length) {
                 var e = round1(ec[ec.length - 1].etco2);
-                if (e >= tg.etco2[0] && e <= tg.etco2[1]) good.push('ETCO2 ' + e + ' kPa at the end, within ' + tg.etco2[0] + '-' + tg.etco2[1]);
-                else improve.push('ETCO2 ' + e + ' kPa at the end: aim for ' + tg.etco2[0] + '-' + tg.etco2[1] + ' kPa');
+                // kPa to one decimal place, as on every screen (5.0, not 5)
+                var k1 = function (v) { return Number(v).toFixed(1); };
+                if (e >= tg.etco2[0] && e <= tg.etco2[1]) good.push('ETCO2 ' + k1(e) + ' kPa at the end, within ' + k1(tg.etco2[0]) + '-' + k1(tg.etco2[1]) + ' kPa');
+                else improve.push('ETCO2 ' + k1(e) + ' kPa at the end: aim for ' + k1(tg.etco2[0]) + '-' + k1(tg.etco2[1]) + ' kPa');
             }
         }
 

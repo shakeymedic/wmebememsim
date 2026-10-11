@@ -1541,7 +1541,7 @@ function drawDynLung() {
     </g></svg>
     <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
     <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
-    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2(), 1)}</b><small>kPa</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
 }
 
 /* ======================= screen rendering ======================= */
@@ -2498,10 +2498,12 @@ function applyProblems(list) {
   P.mains = !mainsOff;
   probsNow = list.slice();
 }
-/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit.
+   Shown in kPa to one decimal place, like the room monitor, the defib and the A350 (UK practice;
+   1 kPa = 7.50062 mmHg). LIVE.etco2 is already kPa, so this is display rounding only. */
 function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
-  return Math.round(LIVE.etco2 * 7.50062);
+  return Math.round(LIVE.etco2 * 10) / 10;
 }
 function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
 /* real time: one second of the page is one second of the patient */
