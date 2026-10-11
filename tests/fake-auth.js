@@ -28,8 +28,12 @@
     },
     sendPasswordResetEmail: function () { return Promise.resolve(); },
     signOut: function () { current = null; save(); emit(); return Promise.resolve(); },
-    signInWithPopup: function () { return Promise.reject({ code: 'auth/operation-not-allowed' }); }
+    // Google: fails as "provider not enabled" unless a test sets window.__fakeGoogleEmail.
+    signInWithPopup: function () {
+      if (!window.__fakeGoogleEmail) return Promise.reject({ code: 'auth/operation-not-allowed' });
+      current = userFor(window.__fakeGoogleEmail, 'Google User'); save(); emit(); return Promise.resolve({ user: current });
+    }
   };
   window.firebase.auth = function () { return auth; };
-  window.firebase.auth.GoogleAuthProvider = function () {};
+  window.firebase.auth.GoogleAuthProvider = function () { this.setCustomParameters = function () {}; };
 })();

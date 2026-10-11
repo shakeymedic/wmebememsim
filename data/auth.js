@@ -115,9 +115,12 @@
         'auth/invalid-login-credentials': 'Incorrect email or password.',
         'auth/too-many-requests': 'Too many attempts. Please wait a minute and try again.',
         'auth/network-request-failed': 'Could not reach Firebase. Check the network connection.',
-        'auth/popup-blocked': 'The sign-in popup was blocked by the browser.',
+        'auth/popup-blocked': 'The Google sign-in window was blocked. Allow pop-ups for this site and try again.',
         'auth/popup-closed-by-user': 'Sign-in was cancelled.',
-        'auth/unauthorized-domain': 'This domain is not in the Firebase authorised domains list.'
+        'auth/cancelled-popup-request': 'Sign-in was cancelled.',
+        'auth/account-exists-with-different-credential': 'There is already an account with this email. Sign in with your email and password instead.',
+        'auth/unauthorized-domain': 'Google sign-in is not allowed on this web address yet. The owner needs to add it under Firebase → Authentication → Settings → Authorised domains.',
+        'google/not-enabled': 'Google sign-in is not switched on for this project yet. The owner can turn it on under Firebase → Authentication → Sign-in method → Google.'
     };
     const describeAuthError = (e) => {
         if (!e) return null;
@@ -331,12 +334,17 @@
             run(auth => auth.sendPasswordResetEmail(String(email || '').trim()),
                 'Password reset email sent. Check your inbox (and spam).'), [run]);
 
-        // Optional and entirely non-load-bearing: if the Google provider is not enabled in the
-        // console this fails with a friendly message and nothing else changes.
+        // Signs in, or creates the account on first use (the profile is written by the
+        // onAuthStateChanged handler above, as for any sign-in). If the Google provider is not
+        // enabled in the console, or this web address is not an authorised domain, it fails with a
+        // message saying which, and nothing else changes.
         const signInWithGoogle = useCallback(() =>
-            run(auth => {
-                if (!window.firebase.auth.GoogleAuthProvider) throw { code: 'auth/operation-not-allowed' };
-                return auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
+            run(async (auth) => {
+                if (!window.firebase.auth.GoogleAuthProvider) throw { code: 'google/not-enabled' };
+                const provider = new window.firebase.auth.GoogleAuthProvider();
+                if (provider.setCustomParameters) provider.setCustomParameters({ prompt: 'select_account' });
+                try { await auth.signInWithPopup(provider); }
+                catch (e) { throw (e && e.code === 'auth/operation-not-allowed') ? { code: 'google/not-enabled' } : e; }
             }), [run]);
 
         const signOut = useCallback(() => run(async (auth) => { await auth.signOut(); setAuthFlag('0'); }), [run]);
@@ -579,6 +587,18 @@
                                 ))}
                             </div>
 
+                            {tab !== 'reset' && (
+                                <>
+                                    <button type="button" onClick={auth.signInWithGoogle} disabled={auth.busy}
+                                        className="w-full h-11 rounded border border-slate-500 bg-white text-slate-900 text-sm font-bold hover:bg-slate-100 flex items-center justify-center gap-2 disabled:opacity-60">
+                                        <span aria-hidden="true" className="font-black text-base text-sky-600">G</span>
+                                        {tab === 'signup' ? 'Create account with Google' : 'Continue with Google'}
+                                    </button>
+                                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-400" aria-hidden="true">
+                                        <span className="flex-1 border-t border-slate-700"></span>or use email<span className="flex-1 border-t border-slate-700"></span>
+                                    </div>
+                                </>
+                            )}
                             {tab === 'signup' && <Field label="Display name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Optional" autoComplete="name" />}
                             <Field label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
                             {tab !== 'reset' && <Field label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={tab === 'signup' ? 'new-password' : 'current-password'} required />}
@@ -589,12 +609,6 @@
                             <Button type="submit" variant="primary" disabled={auth.busy} className="w-full h-11 font-bold">
                                 {auth.busy ? 'Working…' : (tab === 'signin' ? 'Sign in' : tab === 'signup' ? 'Create account' : 'Send reset email')}
                             </Button>
-                            {tab === 'signin' && (
-                                <button type="button" onClick={auth.signInWithGoogle} disabled={auth.busy}
-                                    className="w-full h-9 rounded border border-slate-600 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-700">
-                                    Continue with Google (if enabled)
-                                </button>
-                            )}
                         </form>
                     )}
                     <Button onClick={onClose} variant="outline" className="w-full mt-4">Close</Button>

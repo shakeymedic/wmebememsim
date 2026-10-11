@@ -73,3 +73,21 @@ test('restricted scenarios: locked without the entitlement, listed with it', asy
   await page.evaluate(([u]) => window.__fakeRtdb.set(`users/${u}`, { email: 'a.learner@example.org', status: 'approved', entitlements: { rcuk: true } }), [uid]);
   await expect(page.getByText('Restricted Test Scenario')).toBeVisible({ timeout: 10000 });
 });
+
+test('Continue with Google: a clear message when it is not switched on, and it signs in when it is', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await page.getByRole('button', { name: /^Sign in$/ }).first().click();
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  await expect(page.getByText('Google sign-in is not switched on for this project yet.', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: 'Create account', exact: true }).first().click();
+  await expect(page.getByRole('button', { name: 'Create account with Google' })).toBeVisible();
+
+  await page.evaluate(() => { window.__fakeGoogleEmail = 'g.user@gmail.com'; });
+  await page.getByRole('button', { name: 'Create account with Google' }).click();
+  await page.getByRole('button', { name: 'Close account panel' }).click();
+  await expect(page.getByRole('button', { name: /Sign out/ })).toBeVisible();
+  // The profile is created on first sign-in, exactly as for an email account
+  await expect.poll(() => page.evaluate(() => window.__fakeRtdb.get('users/uid_g_user_gmail_com/email'))).toBe('g.user@gmail.com');
+  expect(errors).toEqual([]);
+});
