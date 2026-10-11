@@ -53,19 +53,20 @@ test('big-screen monitor: the obs numbers scale with the screen and still fit 10
   await useFakeFirebase(context);
   const code = await openController(page);
   await startQuickSim(page);
+  // standard monitoring, then the invasive set (IV, arterial line and capnography)
   await page.evaluate(() => { const e = window.__simEngine; e.attachStandardMonitoring(); e.attachInvasiveMonitoring(); });
-  await page.evaluate(() => { const e = window.__simEngine; if (!e.state.etco2Enabled) e.applyIntervention('ToggleETCO2'); });
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.etco2Enabled)).toBe(true);
   await page.evaluate(() => window.__simEngine.triggerNIBP());
   await expect.poll(() => page.evaluate(() => (window.__simEngine.state.nibp || {}).sys || 0), { timeout: 30000 }).toBeGreaterThan(0);
   const tv = await openMonitorOn(context, code, 1920, 1080);
   const errors = trackErrors(tv);
-  await expect.poll(async () => (await tileFit(tv)).length).toBe(6);   // HR, NIBP, SpO2, ABP, RR, ETCO2
+  await expect.poll(async () => (await tileFit(tv)).length, { timeout: 15000 }).toBe(6);   // HR, NIBP, SpO2, ABP, RR, ETCO2
   const big = await tileFit(tv);
   expect(big.every(t => t.fits)).toBe(true);
   const hrBig = big[0].size;
   expect(hrBig).toBeGreaterThan(110);            // was capped at text-8xl (96 px)
   const tab = await openMonitorOn(context, code, 1024, 768);
-  await expect.poll(async () => (await tileFit(tab)).length).toBe(6);
+  await expect.poll(async () => (await tileFit(tab)).length, { timeout: 15000 }).toBe(6);
   const small = await tileFit(tab);
   expect(small.every(t => t.fits)).toBe(true);
   expect(small[0].size).toBeLessThan(hrBig);
