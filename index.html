@@ -143,6 +143,7 @@
 
     <script type="text/babel" src="data/screens/defibsetup.js"></script>
     <script type="text/babel" src="data/screens/ventsetup.js"></script>
+    <script type="text/babel" src="data/screens/screenspanel.js"></script>
     <script type="text/babel" src="data/screens/setup.js"></script>
     <script type="text/babel" src="data/screens/monitor.js"></script>
     <script type="text/babel" src="data/screens/ventcontrol.js"></script>
@@ -216,8 +217,8 @@
             const initialSession = rawInitialSession ? (rawInitialSession.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') || null) : null;
 
             const [view, setView] = useState(initialMode);
-            // A patient screen's role (data/simscreens.js); it lives in the address, so a reload keeps it.
-            const [screen, setScreen] = useState(() => urlParams.get('screen') || 'all');
+            // Where a patient screen starts (an older link's ?screen=); the controller chooses from then on.
+            const [screen, setScreen] = useState(() => urlParams.get('screen') || null);
             // Controller code must survive reloads and back-navigation, otherwise any monitor already
             // paired with it is orphaned. Resolve URL -> localStorage -> mint new.
             // The CONTROLLER always runs on a current-format code (six characters, no look-alikes).
@@ -252,7 +253,7 @@
 
         const ControllerApp = ({ view, setView, sessionID, setSessionID, setScreen }) => {
             const { useState, useEffect } = React;
-            const { SetupScreen, JoinScreen, WelcomeScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth } = window;
+            const { SetupScreen, JoinScreen, WelcomeScreen, BriefingScreen, LiveSimContainer, useSimulation, ErrorBoundary, AccountButton, useAuth, useScreenLinkController, ScreenLinkContext } = window;
             const [generatedScenario, setGeneratedScenario] = useState(null);
 
             // Accounts are OPTIONAL and OFF THE CRITICAL PATH. useAuth() never
@@ -266,6 +267,8 @@
             const engine = useSimulation(generatedScenario, false, sessionID);
             // Console / test handle on the live controller engine (read it, don't build on it).
             useEffect(() => { window.__simEngine = engine; });
+            // The patient screens in this session: numbered here, and told what to show (Screens).
+            const screenLink = useScreenLinkController(sessionID, !['welcome', 'join'].includes(view));
 
             // --- HANDLERS ---
             const handleGenerate = (scenario, modifiers) => {
@@ -331,15 +334,12 @@
                 }
             };
 
-            // A patient screen joins: the monitor page for the monitor roles (the role goes into the
-            // address so a reload keeps it), the device pages for a defib or ventilator screen.
-            const handleJoin = (code, role) => {
+            // A patient screen joins with the code alone; the controller numbers it and chooses what
+            // it shows. The code goes into the address so a reload keeps it.
+            const handleJoin = (code) => {
                 const c = String(code || '').trim().toUpperCase();
-                const S = window.SimScreens;
-                const r = S.roleOf(role);
-                if (!S.MONITOR_PAGE_ROLES.includes(r)) { window.location.assign(S.urlFor(r, c)); return; }
-                try { window.history.replaceState({}, '', S.urlFor(r, c)); } catch (e) {}
-                setScreen(r);
+                try { window.history.replaceState({}, '', window.SimScreens.screenUrl(c)); } catch (e) {}
+                setScreen(null);
                 setSessionID(c);
                 setView('monitor');
             };
@@ -391,6 +391,7 @@
                 // PHONE LAYOUT: during a live sim the WHOLE page scrolls as one on narrow screens
                 // (header included), instead of a fixed top section with small scroll boxes inside
                 // it. Desktop/tablet (md+) keeps the fixed-height, panel-scrolling layout.
+                <ScreenLinkContext.Provider value={screenLink}>
                 <div className={`h-full flex flex-col ${view === 'livesim' ? 'max-md:overflow-y-auto' : ''}`}>
                     {/* Header */}
                     <header className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
@@ -484,6 +485,7 @@
                         <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>
                     </footer>
                 </div>
+                </ScreenLinkContext.Provider>
             );
         };
 

@@ -116,7 +116,7 @@ test('three tablets at once: room monitor, defib tablet and ventilator tablet, a
   await expect(defib.locator('#linkBanner')).toBeHidden();
   const { vent, errors: ventErrors } = await openVent(context, code);
 
-  await expect.poll(async () => Object.values(await session(page, code, '/presence') || {}).map(p => p.role).sort()).toEqual(['defib', 'monitor', 'vent']);
+  await expect.poll(async () => Object.values(await session(page, code, '/presence') || {}).map(p => p.role).sort()).toEqual(['defib', 'screen:all', 'vent']);
   await defib.click('.mode-label[data-mode="defib"]');
   await defib.click('#chargeBtn');
   await expect(defib.locator('#shockBtn')).toBeEnabled({ timeout: 5000 });

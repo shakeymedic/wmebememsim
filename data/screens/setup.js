@@ -7,103 +7,26 @@
     // normal first-load state, so nothing changes for a real user.
 
     // =========================================================================================
-    // HOW ARE YOU RUNNING IT? The first thing on the start screen. This computer is the controller;
-    // beside it there are one, two or three patient screens (window.SimScreens), either extra
-    // monitors on this computer (each screen its own browser window) or separate devices joined
-    // over the internet. The choice is remembered on this device, and the card then lists each
-    // screen with what it shows and how to open it.
+    // PATIENT SCREENS on the start screen. The session code, and (folded away until wanted) the
+    // Screens panel: every screen that joins is numbered, and this is where each one is told what
+    // to show (data/screens/screenspanel.js). It works the same at any time during a scenario.
     // =========================================================================================
-    const qrSvg = (url) => {
-        try { const q = window.qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" role="img" aria-label="QR code" '); }
-        catch (e) { return null; }
-    };
-
     const SessionSetupCard = ({ sessionID, onJoinClick, onNewSessionCode }) => {
-        const { Button, Lucide } = window;
-        const S = window.SimScreens;
-        const [saved, setSaved] = useState(S.readSetup);
-        const [editing, setEditing] = useState(() => S.readSetup() === null);
-        const [count, setCount] = useState(() => (S.readSetup() || {}).count || null);
-        const [where, setWhere] = useState(() => (S.readSetup() || {}).where || null);
-        const [blocked, setBlocked] = useState({});
+        const { Button, Lucide, ScreensPanel, ScreenLinkContext, screensSummary } = window;
+        const link = React.useContext(ScreenLinkContext);
         // Closed until wanted: screens can be connected now or at any time during a scenario.
         const [open, setOpen] = useState(false);
-        const pick = (c, w) => {
-            setCount(c); setWhere(w);
-            // The first choice closes the chooser; changing an existing set-up keeps it open until Done.
-            if (c && w) { const v = { count: c, where: w }; S.saveSetup(v); if (!saved) setEditing(false); setSaved(v); }
-        };
-        const base = window.location.origin + window.location.pathname;
-        const siteText = base.replace(/^https?:\/\//, '').replace(/index\.html$/, '').replace(/\/$/, '');
-
-        const tile = (on, onClick, testId, icon, title, text) => (
-            <button type="button" onClick={onClick} data-testid={testId} aria-pressed={on}
-                className={`text-left flex flex-col items-start justify-start rounded-lg border-2 p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 ${on ? 'border-sky-400 bg-sky-950/40' : 'border-slate-600 bg-slate-800 hover:border-slate-400'}`}>
-                <div className="flex items-center gap-1 mb-1 text-sky-300">{icon}</div>
-                <div className="font-bold text-white text-sm leading-tight">{title}</div>
-                <div className="text-xs text-slate-300 mt-1 leading-snug">{text}</div>
-            </button>
-        );
-        const screensIcon = (n) => <>{Array.from({ length: n }, (_, i) => <Lucide key={i} icon="monitor" className="w-5 h-5"/>)}</>;
-        const COUNT_TEXT = {
-            1: 'One screen shows the monitor, and switches to the defib or ventilator when they are needed.',
-            2: 'One screen is the monitor. The other is the defib and the ventilator, switching between them.',
-            3: 'The monitor, the defib and the ventilator each on their own screen.'
-        };
-        const codeBlock = (
-            <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest" data-testid="session-code">{sessionID}</div></div>
-        );
-        const sessionActions = (
-            <div className="flex flex-wrap gap-2">
-                <Button onClick={onJoinClick} variant="outline" className="h-9 text-xs whitespace-nowrap">Use this device as a patient screen</Button>
-                {onNewSessionCode && (
-                    <Button onClick={() => { if (window.confirm('Start a new session code? Every patient screen paired to ' + sessionID + ' will need to join the new code.')) onNewSessionCode(); }}
-                            variant="outline" className="h-9 text-xs whitespace-nowrap" title="Generate a new session code for a new group">New code</Button>
-                )}
-                {!editing && <Button onClick={() => setEditing(true)} variant="outline" className="h-9 text-xs whitespace-nowrap">Change set-up</Button>}
-            </div>
-        );
-
-        const roles = saved ? S.LAYOUTS[saved.count] : [];
-        const screenCard = (role, i) => {
-            const R = S.ROLES[role];
-            const url = S.urlFor(role, sessionID);
-            const label = roles.length > 1 ? `Screen ${i + 1}` : 'Patient screen';
-            return (
-                <div key={role} data-testid={`setup-screen-${role}`} className="bg-slate-800 border border-slate-600 rounded-lg p-3 flex flex-col gap-2">
-                    <div>
-                        <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">{label}</div>
-                        <div className="font-bold text-white flex items-center gap-1.5"><Lucide icon={R.icon} className="w-4 h-4 text-sky-300"/> {R.title}</div>
-                        <div className="text-xs text-slate-300 mt-0.5 leading-snug">{R.text}</div>
-                    </div>
-                    {saved.where === 'here' ? (
-                        <div className="mt-auto space-y-1">
-                            <Button variant="primary" className="w-full h-10 text-sm gap-2" ariaLabel={`Open ${label.toLowerCase()}: ${R.title.toLowerCase()}`}
-                                    onClick={() => { if (!S.openWindow(role, sessionID)) setBlocked(b => ({ ...b, [role]: true })); }}>
-                                <Lucide icon="external-link" className="w-4 h-4"/> Open {roles.length > 1 ? `screen ${i + 1}` : 'the patient screen'}
-                            </Button>
-                            {blocked[role] && (
-                                <p className="text-xs text-amber-300">The browser blocked the new window. <a href={url} target={`emsim-screen-${role}`} rel="noopener" className="underline">Open it in a new tab instead</a>, then drag the tab out into its own window.</p>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="mt-auto flex gap-3 items-end">
-                            {(() => { const svg = qrSvg(url); return svg ? <div className="bg-white p-1.5 rounded w-28 h-28 flex-none" data-testid={`setup-qr-${role}`} title={url} dangerouslySetInnerHTML={{ __html: svg }} /> : null; })()}
-                            <div className="text-[11px] text-slate-400 leading-snug">Scan with that device's camera, or go to <b className="font-mono text-slate-200 break-all">{siteText}</b>, choose <b>Patient screen</b>, type the code and pick <b>{R.short}</b>.</div>
-                        </div>
-                    )}
-                </div>
-            );
-        };
+        const summary = screensSummary(link);
+        const count = link ? link.screens.filter(s => s.connected && s.n).length : 0;
 
         return (
             <section className="bg-slate-900 border border-slate-700 p-4 rounded-lg space-y-4" aria-label="Patient screens" data-testid="setup-card">
                 <div className="flex flex-wrap items-center gap-3 justify-between">
                     <div className="flex items-center gap-4">
-                        {codeBlock}
-                        <div className="text-xs text-slate-400 max-w-xs leading-snug">
-                            {saved
-                                ? <>{saved.count} patient screen{saved.count > 1 ? 's' : ''}, {saved.where === 'here' ? 'plugged into this computer' : 'on separate devices'}.</>
+                        <div><div className="text-[10px] uppercase text-sky-400 font-bold">Session Code</div><div className="text-2xl font-mono font-bold text-white tracking-widest" data-testid="session-code">{sessionID}</div></div>
+                        <div className="text-xs text-slate-400 max-w-sm leading-snug" data-testid="setup-summary">
+                            {count
+                                ? <><b className="text-slate-200">{count} patient screen{count > 1 ? 's' : ''} connected.</b> {summary}</>
                                 : <>The candidates' screens join with this code. Connect them now, or later from <b>Screens</b> during a scenario.</>}
                         </div>
                     </div>
@@ -112,54 +35,18 @@
                         <Lucide icon="monitor" className="w-4 h-4"/> Connect patient screens <Lucide icon={open ? 'chevron-down' : 'chevron-right'} className="w-3 h-3"/>
                     </button>
                 </div>
-                {open && editing && (
-                    <div className="space-y-3">
-                        <div>
-                            <h2 id="setup-heading" className="text-lg font-bold text-white mb-1">How many patient screens, and where?</h2>
-                            <p className="text-xs text-slate-400">Pick how many screens the candidates will see, and where they are. This device remembers it; you can change it at any time.</p>
-                        </div>
-                        <div>
-                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Patient screens</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                                {[1, 2, 3].map(n => tile(count === n, () => pick(n, where), `setup-count-${n}`, screensIcon(n), `${n} screen${n > 1 ? 's' : ''}`, COUNT_TEXT[n]))}
-                            </div>
-                        </div>
-                        <div>
-                            <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Where are they?</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                {tile(where === 'here', () => pick(count, 'here'), 'setup-where-here', <><Lucide icon="laptop" className="w-5 h-5"/><span className="text-slate-500">+</span><Lucide icon="monitor" className="w-5 h-5"/></>,
-                                    'Plugged into this computer', 'Extra monitors, a TV or a projector. Each screen opens in its own window that you drag onto it.')}
-                                {tile(where === 'devices', () => pick(count, 'devices'), 'setup-where-devices', <><Lucide icon="tablet" className="w-5 h-5"/><Lucide icon="laptop" className="w-5 h-5"/></>,
-                                    'Separate devices', 'Tablets, laptops or a TV browser, linked over the internet by QR code or the session code.')}
-                            </div>
-                        </div>
-                        {saved && <Button onClick={() => setEditing(false)} variant="primary" className="h-10 px-6 text-sm">Done</Button>}
-                    </div>
-                )}
-
-                {open && !editing && saved && (
-                    <div className="space-y-3">
-                        <div>
-                            <h2 id="setup-heading" className="text-sm font-bold text-sky-300 uppercase tracking-wide flex items-center gap-2">
-                                <Lucide icon={saved.where === 'here' ? 'laptop' : 'tablet'} className="w-4 h-4"/>
-                                {saved.count} patient screen{saved.count > 1 ? 's' : ''}, {saved.where === 'here' ? 'plugged into this computer' : 'on separate devices'}
-                            </h2>
-                            {saved.where === 'here' ? (
-                                <p className="text-xs text-slate-300 mt-1">Set the extra screens to <b>extend</b>, not mirror (Windows: <kbd className="font-mono bg-slate-800 px-1 rounded">Windows key + P</kbd>, Extend; Mac: System Settings, Displays). Open each screen below, drag its window onto that screen and make it full screen (the button on the screen, or <kbd className="font-mono bg-slate-800 px-1 rounded">F11</kbd>). Keep each one in its own window, not as a tab in this one: the browser slows tabs that are not showing.</p>
-                            ) : (
-                                <p className="text-xs text-slate-300 mt-1">On each device, scan its QR code. Each screen waits for you and shows the patient as soon as you start a scenario here. Scan them again from <b>Screens</b>, <b>Join by QR code</b> during a scenario.</p>
+                {open && (
+                    <>
+                        <h2 id="setup-heading" className="text-lg font-bold text-white">Patient screens</h2>
+                        <ScreensPanel sessionID={sessionID} />
+                        <div className="flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3 justify-end">
+                            <Button onClick={onJoinClick} variant="outline" className="h-9 text-xs whitespace-nowrap">Use this device as a patient screen</Button>
+                            {onNewSessionCode && (
+                                <Button onClick={() => { if (window.confirm('Start a new session code? Every patient screen paired to ' + sessionID + ' will need to join the new code.')) onNewSessionCode(); }}
+                                        variant="outline" className="h-9 text-xs whitespace-nowrap" title="Generate a new session code for a new group">New code</Button>
                             )}
                         </div>
-                        <div className={`grid grid-cols-1 ${roles.length === 2 ? 'md:grid-cols-2' : roles.length === 3 ? 'md:grid-cols-3' : ''} gap-3`}>
-                            {roles.map(screenCard)}
-                        </div>
-                    </div>
-                )}
-
-                {open && (
-                    <div className="flex flex-wrap items-center gap-3 border-t border-slate-800 pt-3 justify-end">
-                        {sessionActions}
-                    </div>
+                    </>
                 )}
             </section>
         );
@@ -965,47 +852,32 @@
                         {card(onController, 'welcome-controller', <Lucide icon="sliders" className="w-8 h-8"/>, 'Controller',
                             'I am running the sim from here: choosing the patient, changing the obs and following what the team does.')}
                         {card(onPatientScreen, 'welcome-screen', <><Lucide icon="monitor" className="w-8 h-8"/><Lucide icon="zap" className="w-6 h-6"/><Lucide icon="wind" className="w-6 h-6"/></>, 'Patient screen',
-                            'This is what the candidates see: the monitor, the defib or the ventilator. You will type the code shown on the controller.')}
+                            'This is what the candidates see. Type the code shown on the controller; the controller then chooses whether this screen is the monitor, the defib or the ventilator.')}
                     </div>
                 </div>
             </div>
         );
     };
 
-    // A patient screen joining a session: the code, and what this screen shows.
+    // A patient screen joining a session: just the code. The controller numbers the screen and
+    // chooses what it shows.
     const JoinScreen = ({ onJoin, onBack }) => {
-        const { Button, Lucide } = window;
-        const S = window.SimScreens;
+        const { Button } = window;
         const [code, setCode] = useState("");
-        const [role, setRole] = useState('all');
         const ok = window.isCurrentSessionCode(code);
         return (
             <div className="flex flex-col items-center h-full bg-slate-900 text-white p-4 overflow-y-auto">
                 <div className="w-full max-w-xl space-y-5 text-center my-auto">
                     <div className="flex justify-center"><img src="images/emevidence-logo.png" alt="Logo" className="h-20 object-contain" /></div>
                     <h1 className="text-3xl font-bold text-sky-400">Patient screen</h1>
-                    <p className="text-xs text-slate-400">Quicker: on the controller, press <b>Connect patient screens</b> (or, during a scenario, <b>Screens</b>, <b>Join by QR code</b>) and scan this screen's QR code.</p>
                     <div>
-                        <label htmlFor="join-code" className="block text-slate-300 mb-2">Session code</label>
-                        <input id="join-code" type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && ok) onJoin(code, role); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/>
-                    </div>
-                    <div className="text-left">
-                        <div className="text-slate-300 mb-2 text-center">What does this screen show?</div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="What this screen shows">
-                            {['all', 'monitor', 'devices', 'defib', 'vent'].map(k => {
-                                const R = S.ROLES[k];
-                                return (
-                                    <button key={k} type="button" role="radio" aria-checked={role === k} data-join-role={k} onClick={() => setRole(k)}
-                                            className={`text-left p-3 rounded-lg border-2 ${role === k ? 'border-sky-400 bg-sky-950/40' : 'border-slate-600 bg-slate-800 hover:border-slate-400'} ${k === 'all' ? 'sm:col-span-2' : ''}`}>
-                                        <div className="font-bold text-sm flex items-center gap-1.5"><Lucide icon={R.icon} className="w-4 h-4 text-sky-300"/> {R.title}</div>
-                                        <div className="text-xs text-slate-400 leading-snug mt-0.5">{k === 'all' ? 'The only patient screen: the monitor, switching to the defib or ventilator when needed.' : R.text}</div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                        <label htmlFor="join-code" className="block text-slate-300 mb-2">Type the session code shown on the controller</label>
+                        <input id="join-code" type="text" value={code} onChange={e => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))} onKeyDown={e => { if (e.key === 'Enter' && ok) onJoin(code); }} placeholder="e.g. K7PQ3M" autoCapitalize="characters" autoComplete="off" className="w-full bg-slate-800 border-2 border-slate-600 rounded-lg p-4 text-center text-3xl font-mono tracking-widest uppercase text-white outline-none" maxLength={6}/>
                     </div>
                     {code.length > 0 && !ok && <p className="text-xs text-amber-300">The code is the six characters shown on the controller. It never uses O, 0, I, 1 or L.</p>}
-                    <Button onClick={() => onJoin(code, role)} disabled={!ok} className="w-full py-4 text-xl">Connect</Button>
+                    <Button onClick={() => onJoin(code)} disabled={!ok} className="w-full py-4 text-xl">Connect</Button>
+                    <p className="text-sm text-slate-400">This screen will show a big number. On the controller, under <b>Screens</b>, you then choose what each numbered screen shows: the monitor, the defib, the ventilator, or a mix. You can change it at any time.</p>
+                    <p className="text-xs text-slate-400">Quicker: scan the QR code under <b>Connect patient screens</b> (or <b>Screens</b> during a scenario) on the controller.</p>
                     {onBack && <button type="button" onClick={onBack} className="text-sm text-slate-400 underline hover:text-white">Back</button>}
                 </div>
             </div>

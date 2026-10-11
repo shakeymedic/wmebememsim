@@ -116,15 +116,17 @@
         } catch (e) {}
     };
 
-    // The second screen of a two-screen set-up: the defib and the ventilator, both ready, with the
-    // one the facilitator last brought in at the front.
-    const DeviceScreen = ({ sim, sessionID }) => {
+    // A screen without the monitor: its device(s), ready all the time, with the one the facilitator
+    // last brought in at the front when it has both.
+    const DeviceScreen = ({ sim, sessionID, parts, onShows }) => {
         const { Lucide } = window;
-        const { state, dispatch } = sim;
+        const { state } = sim;
         useWakeLock();
-        const opened = { defib: !!state.defibPanelOpen, vent: !!state.ventPanelOpen };
-        const [shown, setFront] = useFrontView(['defib', 'vent'], opened, opened.vent && !opened.defib ? 'vent' : 'defib');
-        useEffect(() => { dispatch({ type: 'SET_LOCAL_SCREEN', payload: { role: 'devices', shows: shown } }); }, [shown]);
+        const devices = ['defib', 'vent'].filter(k => (parts || ['defib', 'vent']).includes(k));
+        const opened = { defib: devices.includes('defib') && !!state.defibPanelOpen, vent: devices.includes('vent') && !!state.ventPanelOpen };
+        const fallback = devices.length > 1 ? (opened.vent && !opened.defib ? 'vent' : 'defib') : devices[0];
+        const [shown, setFront] = useFrontView(devices, opened, fallback);
+        useEffect(() => { if (onShows) onShows(shown); }, [shown]);
         if (state.isFinished) {
             return (
                 <div className="h-full w-full bg-black text-white flex items-center justify-center p-6" role="status" aria-live="polite">
@@ -137,31 +139,33 @@
             );
         }
         const fsSupported = !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen);
+        const fsButton = fsSupported && (
+            <button type="button" onClick={toggleFullscreenDoc} aria-label="Full screen" title="Full screen"
+                    className="min-h-[40px] px-2 rounded-lg text-slate-300 hover:bg-slate-700"><Lucide icon="maximize" className="w-4 h-4"/></button>
+        );
         return (
             <div className="h-full w-full relative bg-black overflow-hidden" data-testid="device-screen">
-                <DeviceLayer kind="defib" sessionID={sessionID} shown={shown === 'defib'} />
-                <DeviceLayer kind="vent" sessionID={sessionID} shown={shown === 'vent'} />
-                <ScreenSwitcher options={['defib', 'vent']} value={shown} onChange={setFront}
-                    extra={fsSupported && (
-                        <button type="button" onClick={toggleFullscreenDoc} aria-label="Full screen" title="Full screen"
-                                className="min-h-[40px] px-2 rounded-lg text-slate-300 hover:bg-slate-700"><Lucide icon="maximize" className="w-4 h-4"/></button>
-                    )} />
+                {devices.includes('defib') && <DeviceLayer kind="defib" sessionID={sessionID} shown={shown === 'defib'} />}
+                {devices.includes('vent') && <DeviceLayer kind="vent" sessionID={sessionID} shown={shown === 'vent'} />}
+                {devices.length > 1
+                    ? <ScreenSwitcher options={devices} value={shown} onChange={setFront} extra={fsButton} />
+                    : fsButton && <div className={`absolute left-2 ${shown === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] p-1 rounded-xl bg-slate-900/80 border border-slate-600`}>{fsButton}</div>}
             </div>
         );
     };
 
-    const MonitorScreen = ({ sim, sessionID, screen }) => {
+    const MonitorScreen = ({ sim, sessionID, parts, onShows }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
-        // 'all': this screen also shows the defib and the ventilator when the facilitator brings them
-        // in. 'monitor': they are on other screens, so this one never shows them.
-        const allInOne = !window.SimScreens || window.SimScreens.roleOf(screen) === 'all';
-        const defibHere = allInOne && !!defibPanelOpen;
-        const ventHere = allInOne && !!state.ventPanelOpen;
+        // This screen also shows the defib and/or the ventilator, when the facilitator brings them
+        // in, if the controller has given it them (window.SimScreens); otherwise they are elsewhere.
+        const partList = parts || ['monitor', 'defib', 'vent'];
+        const defibHere = partList.includes('defib') && !!defibPanelOpen;
+        const ventHere = partList.includes('vent') && !!state.ventPanelOpen;
         const [shownView, setFrontView] = useFrontView(['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []),
             { defib: defibHere, vent: ventHere }, 'monitor');
-        useEffect(() => { sim.dispatch({ type: 'SET_LOCAL_SCREEN', payload: { role: allInOne ? 'all' : 'monitor', shows: shownView } }); }, [allInOne, shownView]);
+        useEffect(() => { if (onShows) onShows(shownView); }, [shownView]);
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // Each sensor gates exactly its own value/trace. Derived from the shared
@@ -778,30 +782,66 @@
         </div>
     );
 
-    const MonitorContainer = ({ sessionID, screen }) => { 
-        const { Lucide } = window;
-        const sim = useSimulation(null, true, sessionID); 
+    // A patient screen. It joins with the session code only; the controller numbers it and chooses
+    // what it shows (data/screens/screenspanel.js), and can change that at any time. An older link's
+    // ?screen= is only where it starts.
+    const MonitorContainer = ({ sessionID, screen }) => {
+        const { Lucide, useMyScreen, ScreenNumberOverlay } = window;
+        const S = window.SimScreens;
+        const sim = useSimulation(null, true, sessionID);
         // Console / test handle on the monitor's engine (read it, don't build on it).
         useEffect(() => { window.__monitorEngine = sim; });
-        if (!sessionID) return null; 
+        const [screenId, setScreenId] = useState(null);
+        useEffect(() => S.claimScreenId(setScreenId), []);
+        const mine = useMyScreen(sessionID, screenId);
+        const role = mine.role || S.roleOf(screen);
+        const parts = S.partsOf(role);
+        const waiting = !sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0);
+        const [shows, setShows] = useState(null);
+        const showsNow = waiting || !parts.includes(shows) ? parts[0] : shows;
+        // What this screen is and shows, for its presence heartbeat (data/engine-sync.js).
+        useEffect(() => {
+            if (screenId) sim.dispatch({ type: 'SET_LOCAL_SCREEN', payload: { id: screenId, role, shows: showsNow } });
+        }, [screenId, role, showsNow]);
+        // The number comes up on its own for a few seconds when the screen is first numbered and
+        // whenever the controller changes what it shows, so the room sees which screen changed.
+        const [flashing, setFlashing] = useState(false);
+        useEffect(() => {
+            if (!mine.n) return;
+            setFlashing(true);
+            const t = setTimeout(() => setFlashing(false), 4000);
+            return () => clearTimeout(t);
+        }, [mine.n, mine.role]);
+        if (!sessionID) return null;
         const syncStatus = sim.state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
-        
-        if (!sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0)) {
+        const overlay = (mine.identify || flashing) && mine.n ? <ScreenNumberOverlay n={mine.n} role={role} /> : null;
+
+        if (waiting) {
             return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn">
-                    <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />
+                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn p-4 text-center" data-testid="screen-waiting">
+                    {mine.n
+                        ? <div className={`rounded-2xl px-8 font-black leading-none ${S.numberColour(mine.n)}`} style={{ fontSize: 'min(30vh, 30vw)' }} data-testid="waiting-screen-number">{mine.n}</div>
+                        : <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />}
+                    {mine.n && <div className="text-3xl font-bold text-white">Screen {mine.n}</div>}
                     <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
-                    {window.SimScreens && <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{window.SimScreens.ROLES[window.SimScreens.roleOf(screen)].title}</b></div>}
+                    <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{S.ROLES[role].title}</b>{mine.n ? '' : ' (until the controller numbers it)'}</div>
+                    <div className="text-xs text-slate-400 max-w-md">The controller chooses what this screen shows, in <b>Screens</b>. Nothing needs doing here.</div>
                     {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
                 </div>
-            ); 
+            );
         }
-        if (window.SimScreens && window.SimScreens.roleOf(screen) === 'devices') return <DeviceScreen sim={sim} sessionID={sessionID} />;
-        return <MonitorScreen sim={sim} sessionID={sessionID} screen={screen} />; 
+        return (
+            <div className="h-full w-full relative">
+                {parts.includes('monitor')
+                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} />
+                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} />}
+                {overlay}
+            </div>
+        );
     };
-    
+
     window.DeviceScreen = DeviceScreen;
     window.MonitorScreen = MonitorScreen;
     window.MonitorContainer = MonitorContainer;

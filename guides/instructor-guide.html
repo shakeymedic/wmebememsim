@@ -110,8 +110,8 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Screen</th><th>On the same laptop</th><th>On a separate device</th></tr></thead>
 <tbody>
-<tr><td>Patient screens</td><td>On the start screen press <strong>Connect patient screens</strong>, choose how many patient screens (1, 2 or 3) and <strong>Plugged into this computer</strong>, then press <strong>Open screen 1</strong>, <strong>Open screen 2</strong> and so on (or, once running, the same items under <strong>Screens</strong>). Each opens in its own window: drag it onto its screen and make it full screen. Keep them as windows, not tabs</td><td>Choose the number of screens and <strong>Separate devices</strong>, then scan each screen's QR code with that device; or, on the device, open the site, choose <strong>Patient screen</strong> when it asks what the device is for, type the code, pick what it shows and press <strong>Connect</strong></td></tr>
-<tr><td>What each screen shows</td><td colspan="2"><strong>1 screen:</strong> the monitor, switching to the defib or ventilator when you bring them in. <strong>2 screens:</strong> the monitor, and a screen with the defib and the ventilator. <strong>3 screens:</strong> the monitor, the defib and the ventilator. Your <strong>Defib</strong> and <strong>Ventilator</strong> buttons bring a device in; it comes to the front on the screen that shows it, and the candidate can switch with the buttons at its bottom left. A device stays running while it is switched away from</td></tr>
+<tr><td>Patient screens</td><td>On the start screen press <strong>Connect patient screens</strong> (or, once running, <strong>Screens</strong>), then <strong>Open a patient screen on this computer</strong> once for each extra screen. Each opens in its own window: drag it onto its screen and make it full screen. Keep them as windows, not tabs</td><td>Scan the QR code in <strong>Connect patient screens</strong> (or <strong>Screens</strong>) with the device; or, on the device, open the site, choose <strong>Patient screen</strong> when it asks what the device is for, type the code and press <strong>Connect</strong>. The device asks nothing else</td></tr>
+<tr><td>What each screen shows</td><td colspan="2">The controller numbers each screen as it joins, and while the Screens panel is open every screen shows its big number. For each numbered screen, tick <strong>Monitor</strong>, <strong>Defib</strong> and/or <strong>Ventilator</strong>, or press a <strong>Quick set-up</strong> (for example <strong>Monitor | Defib + ventilator</strong> for two screens, or <strong>Monitor | Defib | Ventilator</strong> for three). You can change it at any time, and the screen changes at once. A screen with the monitor switches to the defib or ventilator when you bring it in with your <strong>Defib</strong> and <strong>Ventilator</strong> buttons, and the candidate can switch back with the buttons at its bottom left; a screen without the monitor shows its device all the time. A device stays running while it is switched away from. A new screen starts with everything; a screen always shows at least one thing; and if you bring in a device that no screen shows, the controller warns you</td></tr>
 </tbody>
 </table></div>
 <p><strong>Checking the link:</strong> the badge in the instructor top bar shows the connection.</p>
@@ -169,7 +169,7 @@
 <tr><td><strong>Safety flags</strong></td><td>Appears when the team does something out of the usual order; opens the list</td></tr>
 <tr><td><strong>Muted</strong></td><td>Appears in red while alarms are muted; press to unmute</td></tr>
 <tr><td><strong>Simple / Full</strong></td><td>Hides or shows the advanced controls (below)</td></tr>
-<tr><td><strong>Screens ▾</strong></td><td><strong>Join by QR code</strong> (a QR code for each kind of screen: monitor, defib, ventilator), and <strong>Open screen 1: …</strong>, <strong>Open screen 2: …</strong> for each patient screen in your set-up, in a new window on this computer</td></tr>
+<tr><td><strong>Screens</strong></td><td>The patient screens: the QR code to join one, <strong>Open a patient screen on this computer</strong>, and every numbered screen with what it shows (Monitor, Defib, Ventilator), which you can change at any time. Every screen shows its number while this is open</td></tr>
 <tr><td><strong>Tools ▾</strong></td><td>Drug calculator, Timer alerts, Full simulation log, where sound plays, Mute alarms, Keyboard shortcuts</td></tr>
 </tbody>
 </table></div>
@@ -298,7 +298,7 @@
 <li><strong>Cardioversion succeeds at:</strong> the lowest energy at which cardioversion works.</li>
 </ul>
 <p>When a shock converts the rhythm, or fails to, a pop-up tells you on your screen only. The team never sees it.</p>
-<p><strong>Learner defib on a tablet.</strong> For defib skills with a real-looking device, use the defib tablet (see <a href="#defib-sim">Running a Defib Sim</a>). It works in a normal scenario too: scan the <strong>Defib</strong> QR code from <strong>Screens → Join by QR code</strong> on the tablet, or, if your set-up has a defib screen, open it with <strong>Screens → Open screen N</strong>.</p>
+<p><strong>Learner defib on a tablet.</strong> For defib skills with a real-looking device, use the defib tablet (see <a href="#defib-sim">Running a Defib Sim</a>). It works in a normal scenario too: join the tablet as a patient screen (the QR code in <strong>Screens</strong>), then tick only <strong>Defib</strong> for its number.</p>
 
 <h2 id="defib-sim">Running a Defib Sim</h2>
 <p>In a Defib Sim the learner works a ZOLL-style defibrillator on a tablet, and you run the patient from the <strong>Defib controller</strong>, which replaces the normal instructor screen.</p>
@@ -343,7 +343,7 @@
 <h3>Where the candidate uses it</h3>
 <ul>
 <li><strong>On the room monitor tablet.</strong> In the controller's <strong>Ventilator</strong> section, press <strong>Show the ventilator on the patient screens</strong> (Ventilator Sim does this for you; the same button then reads <strong>Take the ventilator off the patient screens</strong>). The candidate can flip between the ventilator and the obs without stopping it. The defib and the ventilator share that screen, so opening one closes the other.</li>
-<li><strong>On its own tablet.</strong> Scan the <strong>Ventilator</strong> QR code from <strong>Screens → Join by QR code</strong>, or, if your set-up has a ventilator screen, open it with <strong>Screens → Open screen N</strong>. Monitor, defib and ventilator tablets can all run at once, in sync.</li>
+<li><strong>On its own tablet.</strong> Join the tablet as a patient screen, then in <strong>Screens</strong> tick only <strong>Ventilator</strong> for its number. Monitor, defib and ventilator screens can all run at once, in sync.</li>
 </ul>
 <h3>Starting a Ventilator Sim</h3>
 <ol>
@@ -471,7 +471,7 @@
 <tr><td>No sound</td><td>Sound not enabled, muted, or playing on the other screen</td><td>Tap <strong>Tap to Enable Sound</strong> on the monitor; check for the red <strong>Muted</strong> button; check <strong>Tools → Sound plays on</strong>; check the device's volume</td></tr>
 <tr><td>Badge says Sync error</td><td>The internet connection has dropped</td><td>Check the connection on each device</td></tr>
 <tr><td>Room monitor or defib not following your changes</td><td>It is on a different session code, for example after <strong>New code</strong></td><td>Join it again with the current code</td></tr>
-<tr><td>Defib tablet asks for a code</td><td>It was opened without one</td><td>Type the session code, or scan the QR code from <strong>Screens → Join by QR code</strong></td></tr>
+<tr><td>Defib tablet asks for a code</td><td>It was opened without one</td><td>Type the session code. Or join the tablet as a patient screen instead (QR code in <strong>Screens</strong>) and tick <strong>Defib</strong> for it</td></tr>
 <tr><td>Defib Sim log times all 00:00</td><td>The clock has not started</td><td>Press <strong>START</strong>; it also starts at the learner's first press</td></tr>
 <tr><td>Space bar does nothing, or presses a button</td><td>A button you clicked is still selected (Space presses it), or you are typing in a box or a pop-up is open</td><td>Click an empty part of the screen and try again; the other shortcuts work with a button selected</td></tr>
 <tr><td>Instructor tab closed or crashed</td><td>—</td><td>Reopen the site and press <strong>Resume</strong> under "Resume Previous?"</td></tr>

@@ -51,6 +51,18 @@ test('Quick Sim controller and the room monitor', async ({ page, context }) => {
   await check(monitor, 'monitor');
 });
 
+test('the Screens panel with a numbered screen, and that screen showing its number', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  const screen = await context.newPage();
+  await screen.goto(`/index.html?mode=monitor&session=${code}`);
+  await page.getByRole('button', { name: /^Screens/ }).click();
+  await expect(page.getByTestId('screen-row-1')).toBeVisible();
+  await check(page, 'screens panel');
+  await expect(screen.getByTestId('screen-number')).toBeVisible();
+  await check(screen, 'screen number');
+});
+
 test('Defib controller and the defib tablet', async ({ page, context }) => {
   const code = await openController(page);
   await page.getByRole('button', { name: 'Defib Sim', exact: true }).click();

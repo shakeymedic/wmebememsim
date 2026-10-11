@@ -53,6 +53,22 @@ test('presence heartbeats are accepted; extra or oversized fields are not', asyn
   await assertSucceeds(anon().ref(`sessions/${CODE}/presence/abc123`).remove());
 });
 
+test('the controller numbers patient screens and chooses what they show', async () => {
+  const id = 'k5rzc2xyab12';
+  await assertSucceeds(anon().ref(`sessions/${CODE}/presence/${id}`).update({ role: 'screen:mondefib', display: 'patient monitor', ua: 'Mozilla/5.0', ts: Date.now() }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/screens/${id}`).set({ n: 1, role: 'all', ts: Date.now() }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/screens/${id}`).update({ role: 'devices' }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/screens/${id}`).update({ n: 2, ts: Date.now() }));
+  await assertFails(anon().ref(`sessions/${CODE}/screens/other1234`).set({ role: 'all', ts: Date.now() }));          // no number
+  await assertFails(anon().ref(`sessions/${CODE}/screens/other1234`).set({ n: 0, role: 'all', ts: Date.now() }));
+  await assertFails(anon().ref(`sessions/${CODE}/screens/other1234`).set({ n: 1, role: 'all', ts: Date.now(), x: 1 }));
+  await assertFails(anon().ref(`sessions/${CODE}/screens/BAD-ID!`).set({ n: 1, role: 'all', ts: Date.now() }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/screens/${id}`).remove());
+  await assertSucceeds(anon().ref(`sessions/${CODE}/screenIdentify`).set(true));
+  await assertFails(anon().ref(`sessions/${CODE}/screenIdentify`).set('yes'));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/screenIdentify`).remove());
+});
+
 test('defib presses, the defib mirror and monitor commands', async () => {
   await assertSucceeds(anon().ref(`sessions/${CODE}/deviceEvents`).push({ type: 'SHOCK_DELIVERED', payload: { energy: 150, sync: true }, ts: Date.now(), from: 'k5rzc2xy', device: 'standalone-defib' }));
   await assertFails(anon().ref(`sessions/${CODE}/deviceEvents`).push({ payload: {}, ts: Date.now() }));
