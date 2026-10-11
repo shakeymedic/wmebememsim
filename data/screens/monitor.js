@@ -118,7 +118,7 @@
 
     // A screen without the monitor: its device(s), ready all the time, with the one the facilitator
     // last brought in at the front when it has both.
-    const DeviceScreen = ({ sim, sessionID, parts, onShows }) => {
+    const DeviceScreen = ({ sim, sessionID, parts, onShows, onHost }) => {
         const { Lucide } = window;
         const { state } = sim;
         useWakeLock();
@@ -127,6 +127,8 @@
         const fallback = devices.length > 1 ? (opened.vent && !opened.defib ? 'vent' : 'defib') : devices[0];
         const [shown, setFront] = useFrontView(devices, opened, fallback);
         useEffect(() => { if (onShows) onShows(shown); }, [shown]);
+        const hosted = state.isFinished ? [] : devices;
+        useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
         if (state.isFinished) {
             return (
                 <div className="h-full w-full bg-black text-white flex items-center justify-center p-6" role="status" aria-live="polite">
@@ -145,8 +147,6 @@
         );
         return (
             <div className="h-full w-full relative bg-black overflow-hidden" data-testid="device-screen">
-                {devices.includes('defib') && <DeviceLayer kind="defib" sessionID={sessionID} shown={shown === 'defib'} />}
-                {devices.includes('vent') && <DeviceLayer kind="vent" sessionID={sessionID} shown={shown === 'vent'} />}
                 {devices.length > 1
                     ? <ScreenSwitcher options={devices} value={shown} onChange={setFront} extra={fsButton} />
                     : fsButton && <div className={`absolute left-2 ${shown === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] p-1 rounded-xl bg-slate-900/80 border border-slate-600`}>{fsButton}</div>}
@@ -154,7 +154,7 @@
         );
     };
 
-    const MonitorScreen = ({ sim, sessionID, parts, onShows }) => {
+    const MonitorScreen = ({ sim, sessionID, parts, onShows, onHost }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
@@ -166,6 +166,8 @@
         const [shownView, setFrontView] = useFrontView(['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []),
             { defib: defibHere, vent: ventHere }, 'monitor');
         useEffect(() => { if (onShows) onShows(shownView); }, [shownView]);
+        const hosted = [].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []);
+        useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // Each sensor gates exactly its own value/trace. Derived from the shared
@@ -571,8 +573,7 @@
                 {/* A1-A3: the assessor's Defib toggle (state.defibPanelOpen, synced over Firebase
                     exactly like arrestPanelOpen) opens a WORKING defibrillator here, with the obs
                     still visible alongside it. */}
-                {defibHere && <DeviceLayer kind="defib" sessionID={sessionID} shown={shownView === 'defib'} />}
-                {ventHere && <DeviceLayer kind="vent" sessionID={sessionID} shown={shownView === 'vent'} />}
+                {/* The defib and ventilator pages themselves are hosted by MonitorContainer. */}
                 {(defibHere || ventHere) && (
                     <ScreenSwitcher options={['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : [])} value={shownView} onChange={setFrontView} />
                 )}
@@ -798,6 +799,11 @@
         const parts = S.partsOf(role);
         const waiting = !sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0);
         const [shows, setShows] = useState(null);
+        // The embedded defib and ventilator pages live HERE, not inside MonitorScreen/DeviceScreen,
+        // so a role change that adds or removes the monitor (which swaps those two) does not reload
+        // a device that stays on this screen: a reload would stop pacing, drop a charge, and reset
+        // the ventilator. Each screen view reports which devices it holds (onHost).
+        const [host, setHost] = useState([]);
         const showsNow = waiting || !parts.includes(shows) ? parts[0] : shows;
         // What this screen is and shows, for its presence heartbeat (data/engine-sync.js).
         useEffect(() => {
@@ -835,8 +841,10 @@
         return (
             <div className="h-full w-full relative">
                 {parts.includes('monitor')
-                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} />
-                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} />}
+                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} />
+                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} />}
+                {['defib', 'vent'].map(k => host.includes(k) && parts.includes(k) && !sim.state.isFinished
+                    ? <DeviceLayer key={k} kind={k} sessionID={sessionID} shown={showsNow === k} /> : null)}
                 {overlay}
             </div>
         );
