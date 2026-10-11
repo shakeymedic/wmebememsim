@@ -24,7 +24,9 @@ test('controller, room monitor and defib tablet share a live session through the
   const monitorErrors = errorsOf(monitor);
   await monitor.goto(`/index.html?mode=monitor&session=${code}&${EMU}`);
   await expect.poll(() => monitor.evaluate(() => window.__monitorEngine && window.__monitorEngine.state.rhythm), { timeout: 15000 }).toBe('VF');
-  await expect.poll(async () => Object.values(await read(page, `sessions/${code}/presence`) || {}).map(p => p.role)).toContain('monitor');
+  await expect.poll(async () => Object.values(await read(page, `sessions/${code}/presence`) || {}).map(p => p.role)).toContain('screen:all');
+  // The controller numbers the screen, and the rules accept it
+  await expect.poll(async () => Object.values(await read(page, `sessions/${code}/screens`) || {}).map(s => `${s.n}:${s.role}`)).toEqual(['1:all']);
 
   // The defib tablet links, and its shock reaches the controller
   const defib = await context.newPage();
