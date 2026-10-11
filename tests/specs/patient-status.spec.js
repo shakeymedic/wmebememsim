@@ -120,11 +120,60 @@ test('the headline and the figure follow the patient: stable, distressed, apnoei
   await engine(page, `sim.applyIntervention('PacingPads'); sim.applyIntervention('IV Access');`);
   await expect.poll(() => parts(page)).toEqual(expect.arrayContaining(['pads', 'iv']));
 
-  // Hide and show keeps the headline in view.
-  await page.getByTestId('patient-status').getByRole('button', { name: 'Hide' }).click();
+  // Less and More: the compact strip keeps the headline, the flags and a one-line summary.
+  await page.getByTestId('patient-status').getByRole('button', { name: 'Less' }).click();
   await expect(page.getByTestId('patient-figure')).toBeHidden();
   await expect(headline).toContainText('In cardiac arrest');
-  await page.getByTestId('patient-status').getByRole('button', { name: 'Show' }).click();
+  await expect(page.getByTestId('patient-compact')).toContainText('No CPR running');
+  await expect(page.getByTestId('patient-compact')).toContainText('IV');
+  await page.getByTestId('patient-status').getByRole('button', { name: 'More' }).click();
   await expect(page.getByTestId('patient-figure')).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test('the headline does not call a patient ventilated when the machine is not breathing for them', async ({ page }) => {
+  await openController(page);
+  const headline = (st) => page.evaluate(st => {
+    const s = Object.assign({ rhythm: 'Sinus Rhythm', vitals: { hr: 90, rr: 16, spO2: 97, bpSys: 120, bpDia: 70, gcs: 15 } }, st);
+    s.activeInterventions = new Set(st.act || []);
+    const a = window.PatientStatus.assess(s);
+    return { headline: a.headline, tone: a.tone, ventilating: a.ventilating, flags: a.flags.map(f => f.text) };
+  }, st);
+  const mirror = (o) => ({ ventMirror: { d1: Object.assign({ state: 'ventilating', ts: 1, phys: { on: 1, conn: 1 } }, o) } });
+
+  // An awake asthmatic (a "sedated" lung profile) with a ventilator in standby is breathing, not apnoeic.
+  let r = await headline(Object.assign({ scenario: { title: 'Acute Severe Asthma', patientAge: 30 }, vitals: { hr: 120, rr: 30, spO2: 93, bpSys: 130, gcs: 15 } }, mirror({ state: 'standby' })));
+  expect(r.headline).not.toMatch(/Apnoeic/);
+  expect(r.flags).toContain('Distressed: RR 30');
+
+  // A350 in Man/Spon with a paralysed patient and no breaths being given: NOT ventilated, in red.
+  r = await headline(Object.assign({ isParalysed: true, act: ['RSI'], vent: { model: 'a350' } }, mirror({ model: 'a350', mode: 'MAN', label: 'Man/Spon', mon: { ftot: 0 } })));
+  expect(r.ventilating).toBe(false);
+  expect(r.headline).toMatch(/NOT being ventilated .*Man\/Spon with no breaths being given/);
+  expect(r.tone).toBe('red');
+  // ... and once the bag is being squeezed, ventilated.
+  r = await headline(Object.assign({ isParalysed: true, act: ['RSI'], vent: { model: 'a350' } }, mirror({ model: 'a350', mode: 'MAN', label: 'Man/Spon', mon: { ftot: 12 } })));
+  expect(r.ventilating).toBe(true);
+  expect(r.headline).toMatch(/ventilated on the Atlan A350/);
+  // An awake patient pre-oxygenating in Man/Spon is breathing for themselves.
+  r = await headline(Object.assign({ vent: { model: 'a350' } }, mirror({ model: 'a350', mode: 'MAN', mon: { ftot: 14 } })));
+  expect(r.headline).toMatch(/^Breathing for themselves on the Atlan A350 in Man\/Spon/);
+
+  // High-flow oxygen on the T1 is not ventilation.
+  r = await headline(mirror({ mode: 'HiFlowO2', label: 'HiFlowO2' }));
+  expect(r.ventilating).toBe(false);
+  expect(r.headline).toMatch(/^On high-flow oxygen on the/);
+
+  // The facilitator's link switched off, or the circuit disconnected: not ventilated.
+  r = await headline(Object.assign({ isParalysed: true, act: ['RSI'], ventLink: false }, mirror({ mode: 'PCV+' })));
+  expect(r.headline).toMatch(/NOT being ventilated .*not linked to the patient/);
+  r = await headline(Object.assign({ isParalysed: true, act: ['RSI'] }, mirror({ mode: 'PCV+', phys: { on: 0, conn: 0 } })));
+  expect(r.headline).toMatch(/NOT being ventilated .*disconnected/);
+  // Still ventilated with everything connected.
+  r = await headline(Object.assign({ isParalysed: true, act: ['RSI'] }, mirror({ mode: 'PCV+' })));
+  expect(r.headline).toMatch(/^Anaesthetised, intubated and ventilated/);
+
+  // A 13 year old uses the children's limits, not adult NEWS2.
+  expect(await page.evaluate(() => window.PatientStatus.limitsFor(13).hrHi)).toBe(140);
+  expect(await page.evaluate(() => window.PatientStatus.limitsFor(16).hrHi)).toBe(130);
 });

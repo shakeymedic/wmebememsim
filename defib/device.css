@@ -132,7 +132,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
    ANALYSE | CHARGE, ENERGY | MODE dial, the pacer underneath) and the ECG shrinks with the viewport
    height, so the screen, CHARGE, SHOCK, energy and the mode dial all fit without scrolling. */
 @media (min-width: 900px) and (max-width: 1100px) { .zoll-device { grid-template-columns: 1.1fr 0.9fr; } }
-@media (min-width: 900px) and (max-height: 960px) {
+@media (min-width: 900px) and (max-height: 1100px) {   /* 1100, so a 1920x1080 TV fits too */
     :root { --ecg-h: clamp(140px, calc(100vh - 420px), 300px); }
     body { padding: 8px; }
     .zoll-device { border-width: 10px; padding: 14px; gap: 14px; }
@@ -173,7 +173,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
    the controls start with SYNC | SHOCK, then ANALYSE, CHARGE and ENERGY, so the controls a shock
    needs are on screen without scrolling. */
 @media (min-width: 601px) and (max-width: 899px) {
-    :root { --ecg-h: clamp(150px, calc(100vh - 860px), 260px); }
+    :root { --ecg-h: clamp(140px, calc(100vh - 884px), 260px); }
     body { padding: 8px; }
     .zoll-device { border-width: 10px; padding: 12px; gap: 12px; }
     .zoll-top-link { top: 4px; right: 8px; } .zoll-top-logo { height: 28px; padding: 3px; }
@@ -184,7 +184,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
     .message-bar { padding: 10px; margin-top: 8px; }
     .softkeys { margin-top: 10px; }
     .device-controls-section { gap: 10px; align-content: start;
-        grid-template-areas: "sync shock" "analyse energy" "charge energy" "dial pacing" "side side" "brand brand"; }
+        grid-template-areas: "sync shock" "analyse energy" "charge energy" "dial pacing" "side side"; }
     .top-buttons, .action-buttons-group { display: contents; }
     .btn-sync { grid-area: sync; justify-self: center; align-self: center; }
     .btn-shock { grid-area: shock; justify-self: center; width: 100px; height: 100px; font-size: 18px; }
@@ -197,8 +197,13 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
     .mode-dial::before { height: 28px; top: 8px; width: 6px; }
     .mode-labels { gap: 6px; }
     .mode-label { padding: 10px 4px; }
-    .pacing-controls { grid-area: pacing; }
-    .zoll-branding { grid-area: brand; grid-column: auto; }
+    .pacing-controls { grid-area: pacing; padding: 6px 0 8px; gap: 6px; }
+    .pacer-dial { width: 56px; height: 56px; border-width: 4px; }
+    .pacer-dial::before { height: 20px; top: 6px; transform-origin: center 20px; }
+    .pacer-label { margin-top: 2px; } .pacer-value { margin-top: 0; font-size: 18px; }
+    .pacer-mode-btn { padding: 6px; }
+    /* the brand and the footer would push the device past a 1024 px portrait screen */
+    .zoll-branding, .app-footer { display: none; }
 }
 @media (max-width: 600px) {
     body { padding: 6px; }
@@ -220,11 +225,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 body.embedded { padding: 8px; padding-top: 44px; }
 body.embedded .zoll-top-link, body.embedded .app-footer { display: none; }
 body.embedded .zoll-device { border-width: 10px; padding: 16px; max-width: none; }
-@media (min-width: 900px) and (max-height: 960px) {
+@media (min-width: 900px) and (max-height: 1100px) {   /* 1100, so a 1920x1080 TV fits too */
     body.embedded .zoll-device { padding: 14px; }
     body.embedded { --ecg-h: clamp(140px, calc(100vh - 456px), 300px); }
 }
-@media (min-width: 601px) and (max-width: 899px) { body.embedded { --ecg-h: clamp(150px, calc(100vh - 896px), 260px); } }
+@media (min-width: 601px) and (max-width: 899px) { body.embedded { --ecg-h: clamp(130px, calc(100vh - 938px), 260px); } }
 
 /* Hover hints (data-tip): one bubble near the pointer, never in the way of a press. */
 .tip-bubble { position: fixed; left: 0; top: 0; z-index: 10000; max-width: 280px; padding: 8px 11px; border-radius: 8px; background: rgba(17,24,39,0.96); color: #f8fafc; font: 13px/1.4 Arial, sans-serif; box-shadow: 0 6px 18px rgba(0,0,0,0.45); pointer-events: none; visibility: hidden; opacity: 0; transition: opacity 0.12s ease; }

@@ -292,6 +292,10 @@
         // "Ventilator (facilitator): ...".
         var starts = find(/^Ventilator: (Ventilation started|Therapy started)/);
         var leak = find(/^Ventilator: Leak test passed/), flow = find(/^Ventilator: Flow sensor calibration passed/);
+        // The Atlan A350 logs "Therapy started" and has a system test instead of a flow sensor calibration.
+        var a350 = starts.some(function (l) { return /^Ventilator: Therapy started/.test(l.msg); });
+        if (a350) flow = find(/^Ventilator: System test passed/);
+        var checkNames = a350 ? 'system test and leak test' : 'leak test and flow sensor calibration';
         var limits = find(/^Ventilator: (Alarm limit changed|Alarm limits set with Auto)/);
         var settings = find(/^Ventilator: Setting changed/);
         var hiAlarms = find(/^Ventilator alarm \(high priority\)/);
@@ -300,8 +304,8 @@
         if (starts.length) {
             var how = /started \((.+?)\) \(/.exec(starts[0].msg + ' (') ;
             stats.push('Ventilation first started at ' + clock(t(starts[0])) + (how ? ' in ' + how[1] : ''));
-            if (leak.length && flow.length && t(leak[0]) <= t(starts[0]) && t(flow[0]) <= t(starts[0])) good.push('Pre-use check done before connecting: leak test and flow sensor calibration');
-            else improve.push('The leak test and flow sensor calibration were not both passed before ventilation started (System > Tests & calib)');
+            if (leak.length && flow.length && t(leak[0]) <= t(starts[0]) && t(flow[0]) <= t(starts[0])) good.push('Pre-use check done before connecting: ' + checkNames);
+            else improve.push('The ' + checkNames + ' were not both passed before ventilation started' + (a350 ? ' (Standby > Tests...)' : ' (System > Tests & calib)'));
         } else if (vs) {
             improve.push('The ventilator was never started by the candidate');
         }
@@ -314,14 +318,14 @@
         // NIV scenarios: an NIV mode, and a sensible inspiratory pressure
         var invStarts = starts.filter(function (l) { return /\((\(S\)CMV\+?|SIMV\+?|APVcmv|APVsimv|VS|PCV\+|PSIMV\+|SPONT|DuoPAP|APRV|ASV)/.test(l.msg); });
         // The mode the candidate chose: the mode ventilation started in, or a later mode change
-        var usedMode = function (re) { return log.some(function (l) { var m = /^Ventilator: (?:Ventilation started \((.+)\)|Mode changed .+ \u2192 (.+)) \([^()]*\)$/.exec(l.msg || ''); return !!m && re.test(m[1] || m[2]); }); };
+        var usedMode = function (re) { return log.some(function (l) { var m = /^Ventilator: (?:(?:Ventilation|Therapy) started \((.+)\)|Mode changed .+ \u2192 (.+)) \([^()]*\)$/.exec(l.msg || ''); return !!m && re.test(m[1] || m[2]); }); };
         if (tg.vc && starts.length) {
-            if (usedMode(/^(\(S\)CMV|SIMV)$/)) good.push('A volume-controlled mode was used, so Ppeak and Pplateau could be compared');
-            else improve.push('No volume-controlled mode ((S)CMV or SIMV) was used: in volume control a rise in Ppeak with a normal Pplateau points to resistance (tube, bronchospasm), and a rise in both to compliance (pneumothorax, stiff lungs)');
+            if (usedMode(/^(\(S\)CMV|SIMV|VC-CMV|VC-SIMV(\/PS)?)$/)) good.push('A volume-controlled mode was used, so Ppeak and Pplateau could be compared');
+            else improve.push('No volume-controlled mode ((S)CMV or SIMV; on the A350, VC-CMV or VC-SIMV) was used: in volume control a rise in Ppeak with a normal Pplateau points to resistance (tube, bronchospasm), and a rise in both to compliance (pneumothorax, stiff lungs)');
         }
         if (tg.spont && starts.length) {
-            if (usedMode(/^SPONT$/)) good.push('The trial was run on pressure support (SPONT)');
-            else improve.push('SPONT was never used: a spontaneous breathing trial is run on low pressure support (or a T-piece), not a controlled mode');
+            if (usedMode(/^(SPONT|CPAP\/PSV)$/)) good.push('The trial was run on pressure support (SPONT, or CPAP/PSV on the A350)');
+            else improve.push('Pressure support (SPONT, or CPAP/PSV on the A350) was never used: a spontaneous breathing trial is run on low pressure support (or a T-piece), not a controlled mode');
         }
         if (tg.niv && starts.length) {
             var nivStarts = starts.filter(function (l) { return /\((NIV|NIV-ST)\)/.test(l.msg); });
@@ -394,8 +398,10 @@
             var ec = hist.filter(function (h) { return h.time >= from + 180 && Number(h.etco2) > 0; });
             if (ec.length) {
                 var e = round1(ec[ec.length - 1].etco2);
-                if (e >= tg.etco2[0] && e <= tg.etco2[1]) good.push('ETCO2 ' + e + ' kPa at the end, within ' + tg.etco2[0] + '-' + tg.etco2[1]);
-                else improve.push('ETCO2 ' + e + ' kPa at the end: aim for ' + tg.etco2[0] + '-' + tg.etco2[1] + ' kPa');
+                // kPa to one decimal place, as on every screen (5.0, not 5)
+                var k1 = function (v) { return Number(v).toFixed(1); };
+                if (e >= tg.etco2[0] && e <= tg.etco2[1]) good.push('ETCO2 ' + k1(e) + ' kPa at the end, within ' + k1(tg.etco2[0]) + '-' + k1(tg.etco2[1]) + ' kPa');
+                else improve.push('ETCO2 ' + k1(e) + ' kPa at the end: aim for ' + k1(tg.etco2[0]) + '-' + k1(tg.etco2[1]) + ' kPa');
             }
         }
 

@@ -81,6 +81,25 @@
         .flash-yellow { animation: flashYellow 1s ease-out; }
         @keyframes flashYellow { 0%, 100% { box-shadow: inset 0 0 0 0 transparent; } 50% { box-shadow: inset 0 0 50px 20px rgba(245, 158, 11, 0.45); } }
         
+        /* Room monitor obs tiles (data/components.js VitalDisplay): the number takes the largest size
+           that fits its tile, so it grows on a TV and still fits a tablet or a half-width window.
+           Container units measure the tile itself; a browser without them uses the vh fallback.
+           Monospace digits are about 0.6em wide: 3 characters at 44cqw fill about 80% of the tile,
+           '120/75' at 23cqw about 83%. */
+        .obs-tile { container-type: size; }
+        .obs-num { font-size: clamp(2.5rem, 9vh, 9rem); line-height: 1; }
+        .obs-num.obs-v2 { font-size: clamp(1.5rem, 5vh, 5rem); }
+        .obs-num.obs-nibp { font-size: clamp(1.875rem, 6vh, 6rem); }
+        .obs-num.obs-nibp-dia { font-size: clamp(1.5rem, 4.8vh, 4.8rem); }
+        .obs-nibp-slash { font-size: clamp(1.25rem, 3vh, 3rem); line-height: 1; }
+        @supports (width: 1cqh) {
+            .obs-num { font-size: clamp(2rem, min(56cqh, 44cqw), 20rem); }
+            .obs-num.obs-v2 { font-size: clamp(1.25rem, min(34cqh, 23cqw), 12rem); }
+            .obs-num.obs-nibp { font-size: clamp(1.5rem, min(36cqh, 22cqw), 12rem); }
+            .obs-num.obs-nibp-dia { font-size: clamp(1.25rem, min(29cqh, 18cqw), 10rem); }
+            .obs-nibp-slash { font-size: clamp(1rem, min(14cqh, 8cqw), 5rem); }
+        }
+
         .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 
@@ -202,6 +221,8 @@
         // monitor mode exactly ONE useSimulation instance exists (MonitorContainer's). Previously both
         // this component and MonitorContainer created one: two AudioContexts (only one of which the
         // "Tap to Enable Sound" overlay ever resumed) and two RTDB listeners per student device.
+        // This tab, for the one-controller-tab-per-session check in App.
+        const CTRL_TAB = Math.random().toString(36).slice(2);
         const App = () => {
             const { useState, useEffect } = React;
             const { MonitorContainer, ErrorBoundary } = window;
@@ -231,8 +252,30 @@
                 if (initialSession && window.isCurrentSessionCode(initialSession)) return initialSession;
                 let stored = null;
                 try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
-                return (stored && window.isCurrentSessionCode(stored)) ? stored : window.newSessionCode();
+                // A second controller tab in this browser must not take over the first one's session
+                // (both would drive the same room monitor). If another open tab is using the
+                // remembered code, this tab gets a new one.
+                let busy = false;
+                try {
+                    const hb = stored && JSON.parse(localStorage.getItem('wmebem_ctrl_tab_' + stored) || 'null');
+                    busy = !!(hb && hb.tab !== CTRL_TAB && Date.now() - Number(hb.ts) < 6000);
+                } catch (e) {}
+                return (stored && !busy && window.isCurrentSessionCode(stored)) ? stored : window.newSessionCode();
             });
+
+            // This tab's claim on its code (see above), refreshed while it is open and released on leaving,
+            // so a reload or going back to the start still keeps the code.
+            useEffect(() => {
+                if (!sessionID || view === 'monitor') return;
+                const beat = () => { try { localStorage.setItem('wmebem_ctrl_tab_' + sessionID, JSON.stringify({ tab: CTRL_TAB, ts: Date.now() })); } catch (e) {} };
+                const release = () => {
+                    try { const k = 'wmebem_ctrl_tab_' + sessionID, hb = JSON.parse(localStorage.getItem(k) || 'null'); if (hb && hb.tab === CTRL_TAB) localStorage.removeItem(k); } catch (e) {}
+                };
+                beat();
+                const id = setInterval(beat, 2000);
+                window.addEventListener('pagehide', release);
+                return () => { clearInterval(id); window.removeEventListener('pagehide', release); release(); };
+            }, [sessionID, view]);
 
             useEffect(() => {
                 if (!sessionID || view === 'monitor') return;
@@ -290,9 +333,10 @@
             };
 
             // The briefing screen can start the patient already on the monitor (its tick box).
+            // It opens the live controller; it does not start the clock. Every launch mode waits
+            // for START on the controller, which says "Not started" until it is pressed.
             const handleStart = (opts) => {
                 if (opts && opts.monitored) startMonitored({});
-                engine.start();
                 setView('livesim');
             };
 
@@ -300,8 +344,8 @@
             // Deliberately the SAME path as handleGenerate (same engine, same LOAD_SCENARIO, same
             // Firebase session, same monitor) with exactly two differences: the scenario is the
             // synthetic blank patient from buildQuickSimScenario(), and the briefing screen is
-            // skipped because there is no brief to read. It does NOT auto-start — the facilitator
-            // still presses START, so the timer/start/pause/finish controls behave as usual.
+            // skipped because there is no brief to read. It does NOT auto-start: like every launch
+            // mode, the patient goes live when the facilitator presses START.
             const handleQuickSim = (opts) => {
                 try {
                     const scenario = window.buildQuickSimScenario(opts || {});
@@ -315,7 +359,8 @@
             };
 
             // ---- DEFIB SIM: the same path again (same engine, session and monitor), with the
-            // patient built by data/defibsim.js. No briefing screen; the facilitator presses START.
+            // patient built by data/defibsim.js. No briefing screen; the clock starts at START or at
+            // the learner's first press on the defib (data/engine-sync.js autoStartClock).
             const handleDefibSim = (opts) => {
                 try {
                     const scenario = window.DefibSim.buildScenario(opts || {});

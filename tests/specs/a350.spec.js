@@ -88,6 +88,40 @@ test('Man/Spon: a squeeze of the bag ventilates, and a closed APL valve with a h
   expect(devErrors).toEqual([]);
 });
 
+test('hands-free bagging keeps squeezing the bag at the set rate until it is stopped, and stops when a ventilator mode starts', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const { dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  // switched off it cannot run
+  await dev.locator('#abOn').click();
+  expect(await dev.evaluate(() => window.__vent.G.autoBag)).toBe(false);
+  await switchOn(dev);
+  await dev.locator('#qsMan').click();
+  await expect.poll(() => state(dev).then(s => s.state)).toBe('ventilating');
+  // 12/min -> 20/min, then on
+  for (let i = 0; i < 4; i++) await dev.locator('#abUp').click();
+  await expect(dev.locator('#abVal')).toHaveText('20');
+  await dev.locator('#abOn').click();
+  await expect(dev.locator('#abOn')).toHaveAttribute('aria-pressed', 'true');
+  const n0 = await dev.evaluate(() => window.__vent.B.nBreaths);
+  await dev.waitForTimeout(9200);
+  // no presses: about one breath every 3 s (the first straight away)
+  const n = (await dev.evaluate(() => window.__vent.B.nBreaths)) - n0;
+  expect(n).toBeGreaterThanOrEqual(3);
+  expect(n).toBeLessThanOrEqual(5);
+  const s = await state(dev);
+  expect(s.mon.vte).toBeGreaterThan(150);
+  expect(s.ctl).toContain('Hands-free bag 20/min');
+  expect(await logHas(page, /Hands-free bagging started: 20\/min/)).toBe(true);
+  // starting a ventilator mode stops it
+  await dev.locator('[data-tabmode="VC"]').click();
+  await dev.locator('#knob').click();
+  await expect.poll(() => state(dev).then(s => s.mode)).toBe('SCMV');
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.autoBag)).toBe(false);
+  expect(await logHas(page, /Hands-free bagging stopped \(a ventilator mode was started\)/)).toBe(true);
+  expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});
+
 test('settings: touch, turn and press the knob to confirm; an unconfirmed change resets after 15 s; a new mode waits for the knob', async ({ page, context }) => {
   const { dev, devErrors } = await startOnA350(page, context, 'an-paw');
   await switchOn(dev);
@@ -196,5 +230,98 @@ test('the new anaesthetic machine scenarios build and start on the A350', async 
   await switchOn(dev);
   await expect(dev.locator('#guideBody')).toContainText('Standby');
   expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});
+
+test('hand ventilation keeps working when the bag has filled up: a squeeze vents the excess through the APL valve', async ({ page, context }) => {
+  const { dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  await switchOn(dev);
+  await dev.locator('#qsMan').click();
+  await expect.poll(() => state(dev).then(s => s.state)).toBe('ventilating');
+  // the bag overfull at the APL pressure (what 2 L/min does to it over a minute between squeezes)
+  await dev.evaluate(() => { window.__vent.G.bag = 4.5; });
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.circP)).toBeGreaterThan(25);
+  for (let i = 0; i < 2; i++) { await squeezeBag(dev, 1200); await dev.waitForTimeout(2500); }
+  expect((await state(dev)).mon.vte).toBeGreaterThan(150);
+  expect(await dev.evaluate(() => window.__vent.G.circP)).toBeLessThan(5);
+  // Man/Spon is not reported as an invasive mode (a mask is fine), and the gas survives a reload
+  expect((await state(dev)).phys.inv).toBe(0);
+  await dev.evaluate(() => { window.__vent.G.fio2 = 87; window.__vent.G.etag = 1.9; });
+  await dev.waitForTimeout(3500);
+  await dev.reload();
+  await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  expect(await dev.evaluate(() => window.__vent.G.fio2)).toBeGreaterThan(80);
+  expect(await dev.evaluate(() => window.__vent.G.etag)).toBeGreaterThan(1.5);
+  expect(devErrors).toEqual([]);
+});
+
+test('the ventilator debrief understands the A350: its system test, its mode names and CPAP/PSV', async ({ page }) => {
+  await openController(page);
+  const out = await page.evaluate(() => {
+    const L = (s, msg) => ({ timeSeconds: s, msg });
+    const run = (tg, log) => window.VentSim.assess({ scenario: { ventSim: { targets: tg } }, log, ventSamples: [], history: [] });
+    const a = run({ vc: true }, [L(10, 'Ventilator: System test passed (tablet)'), L(20, 'Ventilator: Leak test passed (tablet)'),
+      L(30, 'Ventilator: Therapy started (VC-CMV) (tablet)')]);
+    const b = run({ spont: true }, [L(30, 'Ventilator: Therapy started (Man/Spon) (tablet)'), L(60, 'Ventilator: Mode changed Man/Spon → CPAP/PSV (tablet)')]);
+    return { a: a.good.concat(a.improve).join(' | '), b: b.good.concat(b.improve).join(' | ') };
+  });
+  expect(out.a).toContain('Pre-use check done before connecting: system test and leak test');
+  expect(out.a).toContain('A volume-controlled mode was used');
+  expect(out.b).toContain('The trial was run on pressure support');
+});
+
+test('on a tablet: the guide starts closed below 1280 px, touch targets are at least 44 px, and upright the machine is stacked to fill the screen', async ({ page, context }) => {
+  const { code, dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  const open = async (w, h) => {
+    const p = await context.newPage();
+    await p.setViewportSize({ width: w, height: h });
+    await p.goto(`/vent/a350.html?session=${code}`);
+    await expect(p.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+    return p;
+  };
+  await dev.close();
+  // 1024 x 768 (a landscape tablet): the guide is closed until asked for
+  const tab = await open(1024, 768);
+  await expect(tab.locator('#guide')).toHaveClass(/closed/);
+  await expect(tab.locator('#t1')).not.toHaveClass(/portrait/);
+  await switchOn(tab);
+  // every control answers a touch anywhere in a 44 x 44 px square centred on it (its drawing can be smaller);
+  // a mode tab's square sits on its bottom edge (its touch area reaches up, not down over the settings)
+  const hits = await tab.evaluate((sels) => sels.map(sel => {
+    const el = document.querySelector(sel), r = el.getBoundingClientRect(), cx = r.left + r.width / 2;
+    const cy = el.matches('.ttab') ? r.bottom - 22 : r.top + r.height / 2;
+    const pts = [[cx - 21, cy], [cx + 21, cy], [cx, cy - 21], [cx, cy + 21]];
+    return sel + ':' + pts.every(([x, y]) => { const at = document.elementFromPoint(x, y); return at && (at === el || el.contains(at)); });
+  }), ['#vapDn', '#vapUp', '#auxDn', '#auxUp', '#aplDn', '#aplUp', '#kPower', '#kAudio', '#kLight', '#kFlush', '#o2sw', '[data-tabmode="PC"]', '[data-open="alarms"].mm', '#guideToggle']);
+  expect(hits.filter(h => !h.endsWith(':true'))).toEqual([]);
+  // the + button still works from the edge of its touch area
+  const up = await tab.locator('#vapUp').boundingBox();
+  await tab.mouse.click(up.x + up.width / 2 + 20, up.y + up.height / 2);
+  await expect(tab.locator('#vapVal')).not.toHaveText('0');
+  // the guide opens when asked for
+  await tab.locator('#guideToggle').click();
+  await expect(tab.locator('#guide')).not.toHaveClass(/closed/);
+  await tab.locator('#guideToggle').click();   // (the choice is remembered: close it again for the next page)
+  await expect(tab.locator('#guide')).toHaveClass(/closed/);
+  await tab.close();
+
+  // 768 x 1024 (upright): stacked, the machine fills the width, the gas panel sits under the screen
+  const up2 = await open(768, 1024);
+  await expect(up2.locator('#t1')).toHaveClass(/portrait/);
+  const lay = await up2.evaluate(() => {
+    const d = document.querySelector('#device').getBoundingClientRect(), s = document.querySelector('#t1scaler').getBoundingClientRect();
+    const scr = document.querySelector('#screenbox').getBoundingClientRect(), hw = document.querySelector('.hw-vap').getBoundingClientRect();
+    return { fillW: s.width / d.width, fillH: s.height / d.height, hwBelow: hw.top > scr.bottom, screenW: scr.width };
+  });
+  expect(lay.fillW).toBeGreaterThan(0.9);
+  expect(lay.fillH).toBeGreaterThan(0.85);
+  expect(lay.hwBelow).toBe(true);
+  expect(lay.screenW).toBeGreaterThan(600);
+  await up2.close();
+
+  // 1366 x 768 (a laptop): the guide is open beside the machine
+  await page.evaluate(() => localStorage.removeItem('wmebem_a350_guide'));
+  const lap = await open(1366, 768);
+  await expect(lap.locator('#guide')).not.toHaveClass(/closed/);
   expect(devErrors).toEqual([]);
 });

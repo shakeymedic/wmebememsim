@@ -84,9 +84,19 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   reading) change it. The BP modal defaults to *Now* and offers **Change, don't send** or **Change and
   cycle cuff now**. WETFLAG on the room monitor starts hidden (`showWetflag` defaults to false) and is
   toggled from Rhythm & resus.
+- **When the patient goes live (every mode):** Quick Sim, library scenarios, a resumed session,
+  Defib Sim and Ventilator Sim all open *not started*; the controller shows "Not started: press START".
+  Until START nothing physiological moves (no trends, deterioration, drug effects, timed drug events
+  such as adenosine or sugammadex, auto NIBP or pacing capture). Drugs, interventions and shocks given
+  before START are recorded at once (log, `interventionCounts`, `activeInterventions`); their pk
+  envelopes are timed on `state.time`, which does not move, and their instant effects wait in
+  `pendingEffectsRef` (data/engine.js) and are applied when START is pressed. Defib Sim and Ventilator
+  Sim also start themselves at the learner's first press on the defib / when the ventilator first
+  breathes for the patient. The one exception is a ventilator already breathing for the patient
+  (`TICK_VENT`), which keeps doing so while the clock is stopped. A ramp set while *paused* still runs.
 - **Debrief obs graph (every mode):** `state.sessionTime` is the debrief timeline. It advances with
-  `time` (TICK_TIME), and in a live Quick Sim before START also via the record-only `TICK_RECORD`
-  (no physiology). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
+  `time` (TICK_TIME), so like everything else it waits for START (`TICK_RECORD` remains as a
+  record-only tick for tests). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
   rhythm) and log `timeSeconds` use it, and it is saved in the resume snapshot with the history. The
   chart (`data/screens/debrief.js`, `buildTimeline`) is small multiples with a rhythm lane and four
   numbered event lanes, drawn dark on screen and light in the report from the same code. The
@@ -202,8 +212,8 @@ the same panel from their **Screens** button. Like Windows' display settings:
   cycle cuff now**. WETFLAG on the room monitor starts hidden (`showWetflag` defaults to false) and is
   toggled from Rhythm & resus.
 - **Debrief obs graph (every mode):** `state.sessionTime` is the debrief timeline. It advances with
-  `time` (TICK_TIME), and in a live Quick Sim before START also via the record-only `TICK_RECORD`
-  (no physiology). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
+  `time` (TICK_TIME), so like everything else it waits for START (`TICK_RECORD` remains as a
+  record-only tick for tests). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
   rhythm) and log `timeSeconds` use it, and it is saved in the resume snapshot with the history. The
   chart (`data/screens/debrief.js`, `buildTimeline`) is small multiples with a rhythm lane and four
   numbered event lanes, drawn dark on screen and light in the report from the same code. The
@@ -339,9 +349,8 @@ flag. Consequences worth knowing:
   monitor and the controller strip at once (ECG/SpO2 lanes stay in place, labelled "leads off" /
   "no probe"). The exception is NIBP: removing the cuff keeps the last measured reading on screen (marked "cuff
   off") and no new reading can be taken until it is back on. The pulse beep and each alarm follow the
-  sensor that measures them, and in Quick Sim they sound before START too (like the trace), falling
-  silent only when you deliberately pause or finish. So do the facilitator's sound effects (charge,
-  shock, etc.), the patient's voice and the NIBP auto-cycle countdown.
+  sensor that measures them, and only while the clock runs (not before START, not while paused). The facilitator's sound
+  effects (charge, shock, etc.) and the patient's voice play whether or not it runs.
 - Deterioration is always **MANUAL** (the synthetic patient declares no rate, so AUTO could never do
   anything) and the AUTO/MANUAL toggle is hidden. Ramp obs with the trend control on any vitals tile.
 - **Presets** run a scripted sequence of rhythm and obs changes with one press (for example
@@ -438,7 +447,8 @@ patient.
   ventilator: state, mode, settings, measured values (with VTE per kg of ideal body weight), active
   alarms, tests and alarm limits (`sessions/<CODE>/ventState/<id>`, removed when it disconnects).
 - **What it shows of the patient.** SpO2 and pulse come from the controller when a probe is attached;
-  PetCO2 shows the controller's ETCO2 when capnography is on and the ventilator is ventilating.
+  PetCO2 shows the controller's ETCO2 (in kPa, one decimal place, like the monitor and the defib) when
+  capnography is on and the ventilator is ventilating.
 - **It breathes for the patient** (`data/engine-vent.js`). While a ventilator is ventilating, SpO2,
   RR and ETCO2 follow what it delivers: SpO2 from the oxygen and PEEP (the shunt that PEEP recruits),
   CO2 from the alveolar ventilation, settling over 3 to 5 minutes of real time; ETCO2 sits below

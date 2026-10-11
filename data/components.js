@@ -805,7 +805,10 @@
                             // and '4.5' fit a tablet-width tile.
                             dense = false,
                             // Room monitor NIBP: keep the bottom clear for the Cycle / Auto buttons.
-                            reserveBottom = false }) => {
+                            reserveBottom = false,
+                            // HR with no QRS to count (VF, asystole): '---' in red, as the defib shows it,
+                            // rather than a green 0.
+                            noCount = false }) => {
         if (!visible) return (
             <div className="h-full min-w-0 bg-slate-900 border border-slate-800 rounded flex items-center justify-center opacity-50">
                 <span className="text-slate-400 text-xs uppercase">{label} Off</span>
@@ -815,11 +818,15 @@
         let color = "text-green-500";
         if (label === 'SpO2') color = "text-blue-500";
         if (label === 'BP' || label === 'ABP' || label === 'NIBP') color = "text-red-500";
-        if (label === 'RR') color = "text-yellow-500";
+        if (label === 'RR' || label === 'Resp Rate') color = "text-yellow-500";
         if (label === 'ETCO2') color = "text-purple-500";
         if (label === 'Temp') color = "text-white";
         if (label === 'Glucose') color = "text-white";
         if (label === 'pH') color = "text-white";
+        if (noCount) color = "text-red-500";
+        // The room monitor's numbers grow with their tile (index.html .obs-tile / .obs-num: container
+        // units, so a TV, a tablet and a half-width window all get the largest number that fits).
+        const scaled = isMonitor && !compact && !medium;
 
         const trendIcon = trend?.active && Number.isFinite(trend.target) && Number.isFinite(value)
             ? (trend.target > value ? '↑' : trend.target < value ? '↓' : '') : '';
@@ -832,19 +839,20 @@
             // would render at full float precision on the tile.
             ? v : formatVitalValue(v, label === 'pH' ? 2 : (label === 'ETCO2' || label === 'Temp' || label === 'Glucose') ? 1 : undefined);
 
+        const shown = (v) => noCount ? '---' : show(v);
         const Tile = onClick ? 'button' : 'div';
         const tileProps = onClick ? { type: 'button', onClick, 'aria-label': `Adjust ${label}` } : {};
         if (isNIBP && isMonitor) {
             return (
-                <Tile {...tileProps} className={`relative h-full w-full min-w-0 overflow-hidden bg-slate-900 border-2 rounded p-2 ${reserveBottom ? 'pb-14' : ''} flex flex-col justify-between text-left ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
+                <Tile {...tileProps} className={`obs-tile relative h-full w-full min-w-0 overflow-hidden bg-slate-900 border-2 rounded p-2 ${reserveBottom ? 'pb-14' : ''} flex flex-col justify-between text-left ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
                      <div className="flex justify-between items-start gap-1 min-w-0">
                         <span className={`${dense ? 'text-[10px] lg:text-sm' : 'text-sm'} font-bold uppercase truncate ${color}`}>{label}</span>
                         <span className="text-xs text-slate-400 whitespace-nowrap">{unit}</span>
                      </div>
                      <div className="flex items-end justify-center gap-1 my-1 whitespace-nowrap min-w-0">
-                         <span className={`${dense ? 'text-3xl lg:text-4xl xl:text-5xl' : 'text-5xl md:text-6xl xl:text-7xl'} font-mono font-bold leading-none ${color}`}>{show(value)}</span>
-                         <span className={`${dense ? 'text-xl' : 'text-2xl'} text-slate-400 font-bold mb-1`}>/</span>
-                         <span className={`${dense ? 'text-2xl lg:text-3xl xl:text-4xl' : 'text-4xl md:text-5xl xl:text-6xl'} font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
+                         <span className={`obs-num obs-nibp font-mono font-bold leading-none ${color}`}>{show(value)}</span>
+                         <span className="obs-nibp-slash text-slate-400 font-bold mb-1">/</span>
+                         <span className={`obs-num obs-nibp obs-nibp-dia font-mono font-bold leading-none ${color}`}>{show(value2)}</span>
                      </div>
                      <div className="text-right text-[10px] text-slate-400 uppercase font-mono mt-auto whitespace-nowrap truncate">
                          {note && <span className="mr-2 px-1 rounded border border-slate-600 text-slate-300 font-bold tracking-wider">{note}</span>}
@@ -873,19 +881,20 @@
         }
 
         return (
-            <Tile {...tileProps} className={`relative min-w-0 bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
+            <Tile {...tileProps} className={`${scaled ? 'obs-tile ' : ''}relative min-w-0 bg-slate-900 border-2 rounded p-2 flex flex-col justify-between ${onClick ? 'cursor-pointer' : ''} transition-colors overflow-hidden ${alert ? 'border-red-500 bg-red-900/20 animate-pulse' : 'border-slate-800 hover:border-slate-600'}`}>
                 <div className="flex justify-between items-start gap-1 min-w-0">
                     <span className={`${dense ? 'text-[10px] lg:text-sm' : 'text-xs md:text-sm'} font-bold uppercase truncate ${color}`}>{label}</span>
                     <span className="text-[10px] md:text-xs text-slate-400 whitespace-nowrap">{unit}</span>
                 </div>
                 
-                <div className="flex items-baseline justify-center gap-1 h-full mt-2 min-w-0 whitespace-nowrap">
-                    <span className={`${medium
+                <div className={`flex ${scaled ? 'items-center' : 'items-baseline'} justify-center gap-1 h-full mt-2 min-w-0 whitespace-nowrap`}>
+                    <span data-testid={isMonitor ? `obs-${label.replace(/\W+/g, '-').toLowerCase()}` : undefined}
+                          className={`${scaled
+                            ? (hasValue2 ? 'obs-num obs-v2' : 'obs-num')
+                            : medium
                             ? (hasValue2 ? 'text-2xl md:text-3xl lg:text-4xl' : 'text-4xl md:text-5xl lg:text-6xl')
-                            : dense
-                            ? (hasValue2 ? 'text-2xl lg:text-3xl xl:text-5xl' : 'text-5xl lg:text-6xl xl:text-8xl')
                             : (hasValue2 ? 'text-3xl md:text-4xl lg:text-5xl' : 'text-5xl md:text-7xl lg:text-8xl')} font-mono font-bold tracking-tight ${color}`}>
-                        {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}
+                        {hasValue2 ? `${shown(value)}/${shown(value2)}` : shown(value)}
                     </span>
                     {trendIcon && <span className="text-xl md:text-3xl text-sky-400 absolute right-2 top-1/2 -translate-y-1/2">{trendIcon}</span>}
                 </div>

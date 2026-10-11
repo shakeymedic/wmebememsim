@@ -311,7 +311,8 @@ body.embedded .vbar .standalone-only{display:none}
 .link-banner form{display:flex;gap:6px;margin-top:8px}
 .link-banner input{flex:1;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #fca5a5;text-transform:uppercase;letter-spacing:.15em}
 .link-banner button{background:#fff;color:#7f1d1d;border:0;border-radius:6px;padding:6px 14px;font-weight:700}
-.ended{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1100;background:#334155;color:#fff;border-radius:8px;padding:6px 14px;font-weight:700;letter-spacing:.08em}
+/* the session is over: dim the whole machine (its alarms are silent too), as the defib does */
+.ended{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.82);color:#fff;font-size:2rem;font-weight:700;letter-spacing:.12em}
 .ended[hidden]{display:none}
 </style>
 </head>
@@ -447,13 +448,14 @@ const CTRL = {
   ets:   {label:'ETS', unit:'%', min:5, max:80, step:1},
   pramp: {label:'P-ramp', unit:'ms', min:0, max:200, step:v => v >= 200 ? 50 : 10},
   timax: {label:'TI max', unit:'s', min:0.5, max:3, step:0.1, dp:1},
-  height:{label:'Pat. height', unit:'cm', min:30, max:250, step:1}
+  /* the device takes 30-250 cm; the trainer is adult only (130 cm, the ASV adult lower bound in Table 15-16), as calcIBW is the adult formula */
+  height:{label:'Pat. height', unit:'cm', min:130, max:250, step:1}
 };
 /* mode-dependent ranges (Table 15-9): Rate minimum, P-ramp maximum, trigger Off */
 function ctrlDef(key, mk) {
   const d = CTRL[key];
   if (key === 'rate') {
-    const min = ['APVcmv', 'PCV+', 'CPR'].includes(mk) ? 4 : ['PSIMV+', 'NIV-ST'].includes(mk) ? 5 : mk === 'APVsimv' && V.backupOn ? 10 : 1;
+    const min = ['APVcmv', 'PCV+', 'CPR'].includes(mk) ? 4 : ['PSIMV+', 'NIV-ST'].includes(mk) ? 5 : 1;   /* 'APVsimv + Apnea Backup: 10-80' is the neonatal column only */
     return {...d, min};
   }
   if (key === 'pramp' && !['ASV', 'NIV', 'NIV-ST', 'SPONT'].includes(mk)) return {...d, max:2000};
@@ -479,7 +481,7 @@ const LIMIT_PAGES = {
   1: [['phigh','plow'], ['mvhigh','mvlow'], ['fhigh','flow'], ['vthigh','vtlow'], ['apnoea',null]],
   2: [['o2hi','o2lo']]
 };
-/* Controls per mode follow the Table 7-2 matrix and the "Ventilator controls" figures (pp. 135-152).
+/* Controls per mode follow the mode/control matrix (3.0.x manual p. 127, unnumbered) and the "Ventilator controls" figures (pp. 128-142).
    Which three controls sit on the main display, and which tab each control is on, are not listed in the manual: the trainer's choice.
    'sigh' and 'psync' are On/Off switches shown under the round controls. */
 const MODE_CTRLS = {
@@ -511,13 +513,13 @@ const MODE_GROUPS = [
   ['Intelligent ventilation', ['ASV']],
   ['Noninvasive', ['NIV', 'NIV-ST', 'HiFlowO2']]
 ];
-/* Configuration offers "(S)CMV+/SIMV+" or "APVcmv/APVsimv" names; (S)CMV+/SIMV+ is the default (manual p. 278) */
+/* Configuration offers "(S)CMV+/SIMV+" or "APVcmv/APVsimv" names; (S)CMV+/SIMV+ is the default (3.0.x manual 13.4.2, p. 260; Table 15-14) */
 const MODE_NAME = {APVcmv:'(S)CMV+', APVsimv:'SIMV+'};
 const mName = m => MODE_NAME[m] || m;
 const APV = ['APVcmv', 'APVsimv'];
 const NIVMODES = ['NIV', 'NIV-ST'];
 const INVASIVE = ['APVcmv', 'APVsimv', 'VS', 'PCV+', 'PSIMV+', 'DuoPAP', 'APRV', 'SPONT', 'ASV'];
-const BACKUP_MODES = ['APVsimv', 'SPONT', 'DuoPAP', 'APRV', 'NIV', 'VS'];   /* Apnea backup available (5.6.3); VS is not in that list or the Table 7-2 matrix, so including it is the trainer's assumption */
+const BACKUP_MODES = ['APVsimv', 'SPONT', 'DuoPAP', 'APRV', 'NIV', 'VS'];   /* Apnea backup available (5.6.2 in 3.0.x, 5.6.3 in 3.1.x); VS is not in that list or the mode matrix (p. 127), so including it is the trainer's assumption */
 const SIGH_MODES = ['APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT', 'ASV', 'NIV', 'NIV-ST'];
 const isNIV = m => NIVMODES.includes(m === undefined ? V.mode : m);
 const isHFO = m => (m === undefined ? V.mode : m) === 'HiFlowO2';
@@ -598,7 +600,7 @@ let bufIdx = 0, sampleAcc = 0, trigMark = 0;
 function baseP() { return V.mode === 'APRV' ? V.set.plo : V.set.peep; }
 /* default Rate by IBW (Table 15-9) */
 function rateByIBW() { const w = calcIBW(); return w >= 60 ? 12 : w >= 40 ? 15 : w >= 30 ? 17 : w >= 20 ? 20 : 25; }
-/* Apnea backup: NIV backs up with PCV+, the other modes with APVsimv (Table 7-2). With "Automatic" the device derives the
+/* Apnea backup: NIV backs up with PCV+, the other modes with APVsimv (mode matrix, p. 127). With "Automatic" the device derives the
    backup controls from IBW; the manual does not list the values, so these are the trainer's choice. */
 function backupSet() {
   const ibw = calcIBW(), rate = rateByIBW();
@@ -685,7 +687,7 @@ function recordStart(type, vol) {
   if (B.starts.length > 9) { B.starts.shift(); B.types.shift(); B.vols.shift(); }
   if (B.starts.length >= 2) {
     const n = B.starts.length, span = Math.max(0.5, B.starts[n - 1] - B.starts[0]);
-    M.ftot = clamp(60 * (n - 1) / span, 0, 99);
+    M.ftot = clamp(60 * (n - 1) / span, 0, 999);   /* display range 0-999 (Table 15-10) */
     M.fspont = M.ftot * (B.types.slice(1).filter(x => x === 'spont').length / (n - 1));
     M.fcontrol = M.ftot - M.fspont;
     const vv = B.vols.slice(1);
@@ -818,7 +820,7 @@ function endInsp() {
   if (br.limited || ((APV.includes(m) || m === 'VS') && B.apvLim)) raise('plimit'); else clear('plimit');
   if (M.ppeak < V.lim.plow) raise('plow'); else clear('plow');
   /* Disconnection on patient side: VTE < 1/8 of VTI with VTI > 50 ml, invasive modes only (suppressed in CPR) */
-  if (isInvasive(m) && !V.cpr && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');
+  if (isInvasive(m) && !V.cpr && V.o2Enrich <= 0 && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');   /* suppressed during O2 enrichment (10.4) */
   if (B.vlimit) raise('vlimit'); else clear('vlimit');
 }
 /* APV: pressure adjusted between breaths towards the target Vt, at least 5 cmH2O, never above Plimit (7.2).
@@ -842,7 +844,7 @@ function adaptVS(br) {
   B.vsP = clamp(np, 5, maxP);
 }
 /* ASV (Table 15-16): target minute volume = IBW x normal minute ventilation x %MinVol/100. Normal minute ventilation is only
-   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for adults is the trainer's reading. The target rate uses the
+   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for IBW of 30 kg or more (Figure 7-18). The target rate uses the
    Otis equation with VDaw = 2.2 ml/kg; the exact ASV 1.1 rule is not published in the manual, so targets are approximate. */
 function asvTargets() {
   const ibw = calcIBW(), s = V.set, pr = P.pr;
@@ -1021,7 +1023,8 @@ function beep(n, gap, freq) {
 const lowBeeped = new Set();
 function soundTick(dt) {
   soundT -= dt;
-  if (!V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
+  /* silent once the controller has finished the session (the room is in the debrief) */
+  if (LIVE.isFinished || !V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
   const list = topAlarms();
   if (!list.length) return;
   const top = list[0].p;
@@ -1143,7 +1146,7 @@ function evalAlarms() {
   /* Check Plimit: set total pressure above Plimit; not in the APV modes or ASV */
   const tp = totalP(m, s, V.psync);
   if (tp !== null && tp > L.phigh - 10) raise('chkplim'); else clear('chkplim');
-  /* IRV: set I:E above 1:1. Not in PSIMV+ PSync, SPONT, NIV, NIV-ST or HiFlowO2 (p. 218). The manual does not mention APRV, ASV or VS; the trainer leaves them out. */
+  /* IRV: set I:E above 1:1. Not in PSIMV+ PSync, SPONT, NIV, NIV-ST or HiFlowO2 (Table 9-2, p. 205). The manual does not mention APRV, ASV or VS; the trainer leaves them out. */
   const mt = mandTiming();
   const irvMode = ['APVcmv', 'APVsimv', 'PCV+', 'DuoPAP'].includes(m) || (m === 'PSIMV+' && !V.psync);
   if (irvMode && mt && !B.apnoeaVent && mt.ti > mt.cycle - mt.ti) raise('irv'); else clear('irv');
@@ -1335,7 +1338,7 @@ function drawDynLung() {
     </g></svg>
     <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
     <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
-    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2(), 1)}</b><small>kPa</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
 }
 
 /* ======================= screen rendering ======================= */
@@ -1347,7 +1350,12 @@ function valStr(scope, key, v) {
   if (scope === 'lim' && d.offMax && v > d.max) return 'Off';
   return fmt(v, d.dp || 0);
 }
-function defFor(scope, key) { return scope === 'lim' ? ALIM[key] : ctrlDef(key, scope === 'draft' && D ? (D.cpr ? 'CPR' : D.mode) : modeKey()); }
+/* ExpMinVol limits can be Off only in NIV and NIV-ST (Table 15-13, Adult/Ped) */
+const mvOffAllowed = () => isNIV() || !!V.cpr;
+function defFor(scope, key) {
+  if (scope === 'lim') { const d = ALIM[key]; return (key === 'mvhigh' || key === 'mvlow') && !mvOffAllowed() ? {...d, offMax:false, off0:false} : d; }
+  return ctrlDef(key, scope === 'draft' && D ? (D.cpr ? 'CPR' : D.mode) : modeKey());
+}
 function curVal(scope, key) {
   if (scope === 'lim') return V.lim[key];
   if (scope === 'draft') return D.set[key];
@@ -1477,7 +1485,7 @@ const X = '<button class="wx" data-kf id="wClose" aria-label="Close window">✕<
 function limCol(hiKey, loKey) {
   if (hiKey === 'o2hi') {
     const s = V.o2Enrich > 0 ? 100 : V.set.o2;
-    const hi = Math.min(103, s + O2_BAND), lo = Math.max(18, s - O2_BAND), cur = V.standby ? null : measuredO2();
+    const hi = Math.min(105, s + O2_BAND), lo = Math.max(18, s - O2_BAND), cur = V.standby ? null : measuredO2();
     return `<div class="lim"><div class="wctl ro hi"><span class="c">${hi}<small>%</small></span></div><div class="bar">${barMarks(cur, lo, hi, 0, 105, active.has('lowo2') ? 'hi' : '')}</div>${curLbl(cur, 0, 105)}<div class="wctl ro lo"><span class="c">${lo}<small>%</small></span></div><div class="nm">Oxygen<br><small>automatic: set ±${O2_BAND}</small></div></div>`;
   }
   const d = ALIM[hiKey];
@@ -1579,7 +1587,7 @@ function renderWindow() {
     h = X + tabs(tl);
     if (winTab === '1' || winTab === '2') {
       h += `<div class="wbody" style="top:48px"><div class="limits">${LIMIT_PAGES[winTab].map(([a, b]) => limCol(a, b)).join('')}</div></div>
-        <div class="wfoot" style="justify-content:space-between"><button class="wb" data-kf id="limAuto">Auto</button><span class="wnote" style="max-width:420px">NIV tip from the manual: set the low Pressure limit near the set pressure so that a disconnection or large leak alarms.</span></div>`;
+        <div class="wfoot" style="justify-content:space-between"><button class="wb" data-kf id="limAuto">Auto</button><span class="wnote" style="max-width:420px">The manual asks you to set the low Pressure limit appropriately in NIV and watch the pressure alarms. Tip: set it close to the set pressure so that a disconnection or large leak alarms.</span></div>`;
     } else {
       h += bufferHTML();
     }
@@ -1594,7 +1602,7 @@ function renderWindow() {
       rows2 = [['fTotal', M.ftot, 0, 'b/min'], ['fControl', M.fcontrol, 0, 'b/min'], ['fSpont', M.fspont, 0, 'b/min'], ['TI', M.ti, 2, 's'], ['TE', M.te, 2, 's'], ['I:E', M.ie, 1, '1:x'], ['Insp Flow', M.inspFlow, 0, 'l/min'], ['Oxygen', sb ? null : measuredO2(), 0, '%']];
       if (V.mode === 'ASV' || APV.includes(V.mode) || V.mode === 'VS') rows2.push(['ΔPinsp', V.mode === 'ASV' ? A.p : V.mode === 'VS' ? B.vsP : B.apvP, 0, 'cmH2O']);
     }
-    const rows3 = [['SpO2', V.spo2On ? P.spo2 : null, 0, '%'], ['Pulse', V.spo2On ? P.hr : null, 0, '1/min'], ['PetCO2', petco2(), 0, 'mmHg']];
+    const rows3 = [['SpO2', V.spo2On ? P.spo2 : null, 0, '%'], ['Pulse', V.spo2On ? P.hr : null, 0, '1/min'], ['PetCO2', petco2(), 1, 'kPa']];
     const rows = winTab === '1' ? rows1 : winTab === '2' ? rows2 : rows3;
     const note = isHFO() ? 'In HiFlowO2 only Oxygen and Flow are monitored (Pprox needs a flow sensor; not simulated).' : niv ? 'In noninvasive modes VTE is replaced by VTE NIV and ExpMinVol by MinVol NIV: leak-adjusted estimates. Use VLeak and MVLeak to judge mask fit. AutoPEEP is not reliable in NIV.' : 'AutoPEEP rises when expiration is too short for the lung to empty (watch it in APRV and at high rates). Simulated values.';
     h = X + tabs([['1', 'General 1'], ['2', 'General 2'], ['3', 'SpO2']]) + `<div class="wbody" style="top:48px"><div class="mon-cols">${rows.map(r => `<div><span>${r[0]}<small>${r[3]}</small></span><b>${sb ? '--' : fmt(r[1], r[2])}</b></div>`).join('')}</div>
@@ -1665,7 +1673,7 @@ function controlsNote(mode, mk, s, psync, tab, tp, plim, isDraft) {
   if (tp !== null) parts.push(`Total inspiratory pressure ${tp} cmH2O; Plimit ${plim} cmH2O (high Pressure alarm − 10).` + (tp > plim ? ' <b>Total pressure exceeds Plimit: delivered pressure will be limited.</b>' : ''));
   return parts.join(' ');
 }
-/* a draft for a new mode, shown in the Controls window until Confirm (5.4.1) */
+/* a draft for a new mode, shown in the Controls window until Confirm */
 function createDraft(mode, cpr) {
   const ibw = calcIBW();
   let set = V.cpr && !cpr ? {...V.cpr.prevSet} : {...V.set};
@@ -1688,7 +1696,7 @@ function applyDraft() {
   if (leaving) { V.lim = {...V.cpr.prevLim}; V.cpr = null; clear('cpron'); }
   if (entering) {
     V.cpr = {t0:B.now, prevLim:{...V.lim}, prevSet:{...V.set}};
-    Object.assign(V.lim, {mvhigh:99999, mvlow:0, fhigh:99, flow:0, vthigh:99999, vtlow:0});   /* 10.9.1: Apnea time is only changed (to 10 s) for neonates */
+    Object.assign(V.lim, {mvhigh:99999, mvlow:0, fhigh:99, flow:0, vthigh:99999, vtlow:0});   /* Apnea time: Tables 10-3 / 15-15 list 10 s for CPR, but 10.9.2 says neonates; it has no effect in APVcmv/PCV+ here */
   }
   const plimOld = V.lim.phigh - 10;
   V.set = {...D.set}; V.mode = D.mode; V.psync = D.psync; V.sigh = D.sigh;
@@ -1715,6 +1723,7 @@ function modeEntered(prev) {
   if (V.mode === 'ASV') asvInit();
   B.simvC0 = B.now; B.simvDue = true; B.lastMand = -1e9;
   if (V.gfx === 'asv' && V.mode !== 'ASV') V.gfx = 'wave';
+  if (!mvOffAllowed()) { if (V.lim.mvhigh > ALIM.mvhigh.max) V.lim.mvhigh = ALIM.mvhigh.max; if (V.lim.mvlow < ALIM.mvlow.min) V.lim.mvlow = ALIM.mvlow.min; }
   if (!isInvasive()) { clear('discpat'); clear('vlimit'); }
   if (isHFO()) { for (const k in M) M[k] = null; B.starts = []; B.types = []; B.vols = []; }
 }
@@ -1823,12 +1832,12 @@ function rotateKnob(dir) { knobAngle += dir * 15; $('#knobRot').style.transform 
 function checkSettingPrompts(key) {
   if (isHFO()) return;
   const tp = totalP(V.mode, V.set, V.psync), ipap = V.set.peep + setDP();
-  if (isNIV() && ipap > 30) addPrompt('IPAP ' + ipap + ' cmH2O: BTS/ICS advises IPAP should not exceed 30 (or EPAP 8) without expert review.');
+  if (isNIV() && ipap > 30) addPrompt('IPAP ' + ipap + ' cmH2O: BTS/ICS 2016 titrates IPAP to 20-30 cmH2O in COPD; pressures above 30 (and EPAP above 8) are mainly needed in obesity hypoventilation. Seek senior or expert review before going higher.');
   if (isNIV() && ipap > 33) addPrompt('Hamilton manual: peak pressures above 33 cmH2O may increase the risk of aspiration from gastric insufflation. Consider an invasive mode.');
   if (tp !== null && tp > V.lim.phigh - 10) addPrompt('Total inspiratory pressure is above Plimit (Pressure high − 10). Delivered pressure will be limited and the Pressure limitation alarm will appear. Adjust the pressure settings or raise the Pressure high limit if intended.');
   if (key === 'trig' && V.set.trig <= 1) addPrompt('Very sensitive trigger: watch for auto-triggering, especially with leak.');
   if (key === 'trig' && V.set.trig >= 10) addPrompt('Insensitive trigger: weak patients may fail to trigger (missed efforts).');
-  if (key === 'plow' && isNIV() && V.lim.plow < V.set.peep + setDP() - 6) addPrompt('Low Pressure limit is well below the set pressure. In NIV a disconnection may not alarm promptly. The manual advises setting it near the set pressure.');
+  if (key === 'plow' && isNIV() && V.lim.plow < V.set.peep + setDP() - 6) addPrompt('Low Pressure limit is well below the set pressure. In NIV a disconnection may not alarm promptly. The manual asks you to set the low Pressure limit appropriately so that a disconnection is detected.');
 }
 
 /* ---------- event wiring: screen ---------- */
@@ -1878,7 +1887,7 @@ function autoLimits() {
   if (V.standby || M.mv === null) { scrToast('Auto sets limits around the current monitored values: start ventilation first.'); return; }
   V.lim.phigh = clamp(Math.round(Math.max(M.ppeak + 10, 35)), 15, 70);
   V.lim.mvhigh = +clamp(M.mv * 1.5, 0.5, 50).toFixed(1);
-  V.lim.mvlow = +clamp(M.mv * 0.6, 0, V.lim.mvhigh - 0.1).toFixed(1);
+  V.lim.mvlow = +clamp(M.mv * 0.6, 0.1, V.lim.mvhigh - 0.1).toFixed(1);
   V.lim.fhigh = clamp(Math.round(M.ftot * 1.4 + 5), 2, 99);
   V.lim.flow = clamp(Math.round(M.ftot * 0.6), 0, V.lim.fhigh - 1);
   logEvent('Alarm limits set with Auto', 'info');
@@ -2076,8 +2085,13 @@ function switchModel(model) {
   if (switching || !MODEL_PAGES[model]) return;
   switching = true;
   saveDevice();
+  /* switched on before the session's first data arrived: the next machine starts switched on too */
+  if (LIVE.key === null && V.power) { try { sessionStorage.setItem('wmebem_vent_power', '1'); } catch (e) {} }
   try { if (fb.db && fb.code) { fb.db.ref('sessions/' + fb.code + '/presence/' + fb.presenceId).remove(); fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).remove(); } } catch (e) {}
   window.location.replace(MODEL_PAGES[model] + window.location.search);
+}
+function takePendingPower() {
+  try { const p = sessionStorage.getItem('wmebem_vent_power') === '1'; sessionStorage.removeItem('wmebem_vent_power'); return p; } catch (e) { return false; }
 }
 const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
 
@@ -2130,12 +2144,19 @@ function applyProblems(list) {
   P.mains = !mainsOff;
   probsNow = list.slice();
 }
-/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit.
+   Shown in kPa to one decimal place, like the room monitor, the defib and the A350 (UK practice;
+   1 kPa = 7.50062 mmHg). LIVE.etco2 is already kPa, so this is display rounding only. */
 function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
-  return Math.round(LIVE.etco2 * 7.50062);
+  return Math.round(LIVE.etco2 * 10) / 10;
 }
-function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+/* time on the ventilator as mm:ss, or h:mm:ss after an hour (hours:minutes alone looked frozen for the first minute) */
+function clockStr() {
+  const t = Math.floor((P ? P.onNivMin : 0) * 60), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = t % 60;
+  const p2 = n => String(n).padStart(2, '0');
+  return (h ? h + ':' : '') + p2(m) + ':' + p2(sec);
+}
 /* real time: one second of the page is one second of the patient */
 function patientTick(dt) {
   const pr = P.pr, dtMin = dt / 60;
@@ -2347,7 +2368,9 @@ function applyLive(v) {
      resume) tells a re-run of the same scenario apart; without one, fall back to the title and patient. */
   const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
   const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
-  if (LIVE.key === null) { LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); }
+  /* The first snapshot sets the device up; a power press made before it arrived (here, or on the page
+     that handed over to this one) is kept rather than undone. */
+  if (LIVE.key === null) { const pressed = V.power || takePendingPower(); LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); if (pressed && !V.power) powerOn(); }
   else if (key !== LIVE.key || (run && LIVE.run && run !== LIVE.run)) { LIVE.key = key; LIVE.run = run; deviceDefaults(); }
   else if (run) LIVE.run = run;
   applySound();

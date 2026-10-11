@@ -110,7 +110,7 @@ sub(`  if (peepM < base - 3) B.lowPeepBr = (B.lowPeepBr || 0) + 1; else B.lowPee
 /* a spontaneous breath taken on top of a pressure level`);
 sub("  M.ppeak = Math.max(br.maxP, br.peepM);", "  M.ppeak = Math.max(br.maxP, br.peepM);\n  if (M.ppeak >= V.lim.phigh - 0.01 && !(br.kind === 'manual' && V.mode === 'MAN')) { raise('phigh'); B.highPT = 3; }");
 sub("  if (M.ppeak < V.lim.plow) raise('plow'); else clear('plow');\n", '');
-sub("  if (isInvasive(m) && !V.cpr && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');\n", '');
+sub("  if (isInvasive(m) && !V.cpr && V.o2Enrich <= 0 && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');   /* suppressed during O2 enrichment (10.4) */\n", '');
 sub("  if (B.vlimit) raise('vlimit'); else clear('vlimit');\n", '');
 sub("  const triggered = !V.cpr && V.set.trig > 0 && effort >= V.set.trig;",
     "  /* Man/Spon: every breath the patient takes is their own; CMV modes are not patient-triggered on the A350 (simulator's reading of SIMV/CMV) */\n  const triggered = m === 'MAN' ? effort > 0 : !V.cpr && !CMV_MODES.includes(m) && V.set.trig > 0 && effort >= V.set.trig;");
@@ -130,6 +130,7 @@ between('/* ======================= alarms ======================= */', '/* ====
 
 // ---- scaling and waveforms (Paw, Flow, CO2) ----------------------------------------------------
 sub('const DEV_W = 1360, DEV_H = 1000;', 'const DEV_W = 1500, DEV_H = 900;');
+between('function fitDevice() {', 'new ResizeObserver(fitDevice)', read('fit.js'));   /* the stacked layout on a tall screen, and 44 px touch targets */
 sub('const GW = 860, GH = 178;', 'const GW = 760, GH = 176;');
 between('function waveOpts() {', '/* trend of one value per simulated minute', read('waves.js'));
 
@@ -155,6 +156,13 @@ sub("  P.base = pr; P.pr = {...pr};", "  P.base = pr; P.pr = G.ySealed ? sealedL
 sub("  LIVE.etco2 = v.etco2Enabled && Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;",
     "  LIVE.etco2 = Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;   /* the A350 measures CO2 itself */\n  LIVE.age = Number.isFinite(Number(v.patientAge)) ? Number(v.patientAge) : null;");
 between('function ventStateNow() {', 'let lastMirror = ', read('mirror.js'));
+/* Man/Spon is the bag and a face mask as often as a tube: not an "invasive mode with no airway" */
+sub("inv:isInvasive() ? 1 : 0};", "inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0};");
+/* the gas in the circle survives a reload (FiO2, the agent and the bag), so the patient is not suddenly on air */
+sub("v, onNivMin:P.onNivMin}));",
+    "v, onNivMin:P.onNivMin, gas:{fio2:G.fio2, fin2o:G.fin2o, etn2o:G.etn2o, fiag:G.fiag, etag:G.etag, bag:G.bag}}));");
+sub("  P.onNivMin = Number(s.onNivMin) || 0;\n",
+    "  P.onNivMin = Number(s.onNivMin) || 0;\n  if (s.gas) ['fio2', 'fin2o', 'etn2o', 'fiag', 'etag', 'bag'].forEach(k => { if (Number.isFinite(Number(s.gas[k]))) G[k] = Number(s.gas[k]); });\n");
 between('function deviceDefaults() {', '/* ---------- what the facilitator sees ---------- */', read('defaults.js'));
 sub(`      case 'o2':
         if (V.power && !P.o2fail) { if (V.o2Enrich > 0) { V.o2Enrich = 0; logEvent('O2 enrichment cancelled', 'info'); } else { V.o2Enrich = O2_ENRICH_S; logEvent('O2 enrichment started', 'info'); } renderAll(); }
@@ -162,7 +170,7 @@ sub(`      case 'o2':
         if (V.power) remoteEdit('ctrl', 'o2', 100);
         break;`);
 sub("  engineStep(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = 'standby'; logEvent('Self-test passed', 'info'); renderAll(); } }",
-    "  engineStep(dt);\n  gasTick(dt);\n  editTick(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }");
+    "  engineStep(dt);\n  gasTick(dt);\n  bagTick();\n  editTick(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }");
 sub("['monitoring', 'alarms', 'system', 'standby'].includes(win)", "['alarms', 'tests'].includes(win)");
 sub("    $('#simClock').textContent = V.power && !V.standby ? 'Ventilating ' + clockStr() : '';", "    $('#simClock').textContent = V.power && !V.standby ? 'In use ' + clockStr() : '';");
 sub("window.__vent = {V, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};", "window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};");

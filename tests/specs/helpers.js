@@ -42,6 +42,13 @@ async function startQuickSim(page) {
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
 }
 
+// Every launch mode waits for START (the controller says "Not started" until then). Press it, as
+// the facilitator does, when a test needs the patient live.
+async function pressStart(page) {
+  await page.getByRole('button', { name: 'START', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'PAUSE', exact: true })).toBeVisible();
+}
+
 // Open a collapsible section (data/components.js Section) if it is closed
 async function expandSection(page, id) {
   const head = page.locator(`[data-section="${id}"] > div > button[aria-expanded]`);
@@ -54,4 +61,4 @@ const session = (page, code, sub = '') => page.evaluate(([c, s]) => window.__fak
 // The live patient the controller publishes (sessions/<CODE>/live)
 const live = (page, code, sub = '') => session(page, code, '/live' + sub);
 
-module.exports = { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, expandSection, session, live, expect };
+module.exports = { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, pressStart, expandSection, session, live, expect };

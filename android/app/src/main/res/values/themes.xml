@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.EmSim" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/sim_dark</item>
+        <item name="android:statusBarColor">@color/sim_dark</item>
+        <item name="android:navigationBarColor">@color/sim_dark</item>
+        <item name="colorPrimary">@color/sim_accent</item>
+    </style>
+</resources>

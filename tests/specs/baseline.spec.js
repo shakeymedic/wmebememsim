@@ -1,5 +1,5 @@
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, pressStart, session, live, expect } = require('./helpers');
 
 // Existing behaviour that later changes must not break
 
@@ -33,6 +33,7 @@ test.describe('Controller, monitor and defib linked by session code', () => {
   test('the standalone defib links, and its shock reaches the controller', async ({ page, context }) => {
     const code = await openController(page);
     await startQuickSim(page);
+    await pressStart(page);   // a shock reaches the patient once the scenario is live
     await page.getByRole('button', { name: /^Coarse VF/ }).click();
     const defib = await context.newPage();
     const defibErrors = trackErrors(defib);
@@ -90,6 +91,7 @@ test('the facilitator\'s Defib toggle opens the full defibrillator on the room m
   await useFakeFirebase(context);
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   await page.getByRole('button', { name: /^Coarse VF/ }).click();
   const monitor = await context.newPage();
   const monitorErrors = trackErrors(monitor);

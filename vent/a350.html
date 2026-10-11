@@ -96,7 +96,7 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .hw-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px}
 .hw-row b{min-width:56px;text-align:center;font-size:26px;font-weight:600;color:#111;background:#f7f8f8;border:1px solid #9aa2a8;border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums}
 .hw-row .hu{font-size:12px;color:#3f474e;margin-left:-6px}
-.hb{width:50px;height:50px;border-radius:50%;border:2px solid #6c757d;background:linear-gradient(180deg,#f5f6f7,#c9ced2);font-size:26px;font-weight:700;color:#222;padding:0;cursor:pointer}
+.hb{position:relative;width:50px;height:50px;border-radius:50%;border:2px solid #6c757d;background:linear-gradient(180deg,#f5f6f7,#c9ced2);font-size:26px;font-weight:700;color:#222;padding:0;cursor:pointer}
 .hb:active{transform:translateY(1px)}
 .hw-sup{position:absolute;left:0;top:0;width:370px;height:66px;background:#2a2e33;border-radius:10px;display:flex;justify-content:space-around;align-items:center;color:#e8eef6;font-size:13px}
 .hw-sup span{text-align:center;line-height:1.15}
@@ -110,18 +110,25 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .flush sub{font-size:13px}
 .flush.lit{background:#7fe08a;box-shadow:0 0 14px rgba(127,224,138,.9)}
 .hw-o2 .hw-h{width:260px}
-.hsw{display:block;margin:4px 0 8px 40px;width:180px;height:40px;border-radius:20px;border:2px solid #3e8a52;background:#fff;font-size:15px;font-weight:700;color:#1e5a2e;cursor:pointer}
+.hsw{position:relative;display:block;margin:4px 0 8px 40px;width:180px;height:40px;border-radius:20px;border:2px solid #3e8a52;background:#fff;font-size:15px;font-weight:700;color:#1e5a2e;cursor:pointer}
 .hsw.add{background:#ffd400;border-color:#b38f00;color:#2b2100}
 .hw-o2 .hw-row{width:260px}
 .hw-apl{position:absolute;left:0;top:492px;width:370px;height:100px;background:#e9edf0;border:2px solid #7e878f;border-radius:12px;padding:8px 0}
 .hw-apl b{min-width:110px}
-.bag{position:absolute;left:24px;top:612px;width:180px;height:210px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;border:0;background:transparent;padding:0;cursor:pointer;touch-action:none}
+.bag{position:absolute;left:4px;top:612px;width:176px;height:210px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;border:0;background:transparent;padding:0;cursor:pointer;touch-action:none}
 .bag-in{position:absolute;left:50%;top:50%;width:170px;height:200px;margin:-100px 0 0 -85px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;background:radial-gradient(circle at 38% 32%,#5c6168,#2b2f34 70%);box-shadow:inset 0 -8px 16px rgba(0,0,0,.5),0 4px 10px rgba(0,0,0,.35);transition:transform .25s}
 .bag.sq .bag-in{transition:transform .15s}
 .bag-t{position:absolute;left:0;right:0;top:92px;text-align:center;color:#dfe5ea;font-weight:700;font-size:15px;pointer-events:none}
-.ypiece{position:absolute;left:226px;top:640px;width:134px;height:150px;border-radius:12px;border:2px solid #7e878f;background:#f7f8f8;font-size:13px;font-weight:700;color:#2b3238;cursor:pointer;padding:6px;line-height:1.25}
+.ypiece{position:absolute;left:192px;top:606px;width:178px;height:96px;border-radius:12px;border:2px solid #7e878f;background:#f7f8f8;font-size:13px;font-weight:700;color:#2b3238;cursor:pointer;padding:6px;line-height:1.25}
 .ypiece.sealed{background:#fff4c2;border-color:#b38f00}
-.ypiece svg{display:block;margin:0 auto 4px;width:60px;height:46px;stroke:#2b3238;fill:none;stroke-width:3;stroke-linecap:round}
+/* hands-free bagging: the simulator's aid beside the bag */
+.hw-ab{position:absolute;left:192px;top:712px;width:178px;height:112px;background:#e9edf0;border:2px solid #7e878f;border-radius:12px;padding:6px 0;box-sizing:border-box}
+.ab-on{display:block;margin:0 auto;width:160px;height:44px;border-radius:22px;border:2px solid #6c757d;background:#fff;font-size:15px;font-weight:600;color:#2b3238;cursor:pointer;padding:0}
+.ab-on.on{background:#7fe08a;border-color:#2f6e40;color:#123a1d;box-shadow:0 0 10px rgba(127,224,138,.7)}
+.hw-ab .hw-row{margin-top:4px;gap:6px}
+.hw-ab .hb{width:44px;height:44px;font-size:24px}
+.hw-ab .hw-row b{min-width:34px;text-align:center;font-size:20px}
+.ypiece svg{display:block;margin:0 auto 2px;width:44px;height:30px;stroke:#2b3238;fill:none;stroke-width:3;stroke-linecap:round}
 /* ===== the screen: designed at 1280 x 800 logical px, scaled into the screen box ===== */
 .screen{position:absolute;left:0;top:0;width:1280px;height:800px;transform-origin:0 0;background:#0b0f14;color:#fff;overflow:hidden;font-size:16px;line-height:1.15;transition:filter .3s}
 .screen.night{filter:brightness(.5)}
@@ -141,7 +148,7 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .bstat .clock{font-size:18px;color:#fff}
 /* main menu bar (right) */
 .mmenu{position:absolute;left:1160px;top:56px;width:120px;height:744px;background:#1c2630;display:flex;flex-direction:column;gap:4px;padding:6px}
-.mm{height:64px;border:0;border-radius:4px;background:#3c4b59;color:#fff;font-size:15px;font-weight:600;line-height:1.15;padding:0 4px;white-space:normal}
+.mm{position:relative;height:80px;border:0;border-radius:4px;background:#3c4b59;color:#fff;font-size:15px;font-weight:600;line-height:1.15;padding:0 4px;white-space:normal}
 .mm.open{background:#e9eef2;color:#000}
 .mm[aria-disabled="true"]{opacity:.45}
 .mmenu .sp{flex:1}
@@ -177,14 +184,14 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .sb-btns .wb{height:56px;font-size:19px;min-width:200px}
 .sb-note{font-size:14px;color:#93a3b3;margin-top:16px}
 /* therapy bar */
-.tbar{position:absolute;left:0;top:586px;width:1160px;height:214px;background:#1c2630;border-top:2px solid #0b0f14}
+.tbar{position:absolute;z-index:3;left:0;top:586px;width:1160px;height:214px;background:#1c2630;border-top:2px solid #0b0f14}
 .tbar[hidden]{display:none}
-.tb-mode{position:absolute;left:10px;top:6px;width:430px;height:40px;display:flex;flex-direction:column;justify-content:center;font-size:20px;color:#fff;line-height:1.1}
+.tb-mode{position:absolute;left:10px;top:6px;width:380px;height:40px;display:flex;flex-direction:column;justify-content:center;font-size:20px;color:#fff;line-height:1.1}
 .tb-mode .pend{font-size:12px;color:#b8f0b0;font-weight:400}
-.tb-tabs{position:absolute;left:440px;top:4px;right:6px;height:44px;display:flex;gap:4px;justify-content:flex-end}
-.ttab,.tsync,.tmore{height:44px;border:0;border-radius:4px 4px 0 0;font-size:16px;font-weight:600;padding:0 12px;min-width:84px}
-.tsync{border-radius:4px;min-width:64px}
-.tmore{border-radius:4px;background:#3c4b59;color:#fff;margin-left:8px}
+.tb-tabs{position:absolute;left:388px;top:4px;right:6px;height:44px;display:flex;gap:4px;justify-content:flex-end}
+.ttab,.tsync,.tmore{position:relative;height:44px;border:0;border-radius:4px 4px 0 0;font-size:16px;font-weight:600;padding:0 12px;min-width:84px}
+.tsync{border-radius:4px;min-width:82px}
+.tmore{border-radius:4px;background:#3c4b59;color:#fff;margin-left:8px;min-width:84px}
 .tmore[aria-pressed="true"]{background:#e9eef2;color:#000}
 .ttab.on,.tsync.on{background:#1f7a3a;color:#fff}
 .ttab.avail,.tsync.avail{background:#3c4b59;color:#fff}
@@ -286,9 +293,9 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .a-main>.t1-wrap{min-width:0}
 .guide{flex:0 0 320px;min-height:0;display:flex;flex-direction:column;background:#111a24;border-left:2px solid #2a3a4c;color:#dbe4ee;font-size:13px;line-height:1.4}
 .guide[hidden]{display:none}
-.guide.closed{flex-basis:36px}
-.g-toggle{flex:0 0 auto;margin:6px;background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:5px 8px;font-weight:700;font-size:.8rem}
-.guide.closed .g-toggle{writing-mode:vertical-rl;margin:6px 3px;padding:10px 4px}
+.guide.closed{flex-basis:46px}
+.g-toggle{flex:0 0 auto;min-height:44px;margin:6px;background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:5px 8px;font-weight:700;font-size:.8rem}
+.guide.closed .g-toggle{writing-mode:vertical-rl;margin:6px 1px;padding:10px 4px;min-width:44px;min-height:88px}
 .g-body{flex:1 1 auto;overflow:auto;padding:0 12px 12px}
 .guide.closed .g-body{display:none}
 .g-body h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#ffd24a;margin:12px 0 4px}
@@ -308,6 +315,31 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .g-task,.g-btn{text-align:left;background:#1c2b3a;color:#e8eef6;border:1px solid #2f4357;border-radius:6px;padding:5px 8px;font-size:13px}
 .g-task.on{background:#ffd24a;color:#1b1300;border-color:#ffd24a}
 .g-btn{margin-top:6px}
+/* ---- touch: every control at least 44 CSS px on the glass (a tablet at 1024 x 768 shows the machine at about
+   two-thirds size). fitDevice sets --hit (44 px in the machine's own pixels) and --shit (44 px in the screen's
+   pixels); an invisible ::after grows the hit area to that size around a control that is drawn smaller.
+   On the screen the menu keys and mode tabs sit close together, so their hit areas fill the gaps between them
+   and the mode tabs reach up over the bottom of the monitoring area rather than down over the settings. ---- */
+.hb:after,.t1 .k:after,.flush:after,.hsw:after,.win .wx:after{content:"";position:absolute;left:50%;top:50%;width:max(100%,var(--hit,44px));height:max(100%,var(--hit,44px));transform:translate(-50%,-50%);border-radius:50%}
+.hsw:after,.t1 .k.ap:after,.t1 .k:not(.pw):after{border-radius:12px}
+.win .wx:after{width:max(100%,var(--shit,44px));height:max(100%,var(--shit,44px))}
+.mm:after{content:"";position:absolute;left:-6px;right:-6px;top:-2px;bottom:-2px}
+.ttab:after,.tsync:after,.tmore:after{content:"";position:absolute;left:-2px;right:-2px;bottom:0;height:max(100%,min(var(--shit,44px),84px))}
+/* ---- a tall screen (a tablet held upright): the machine stacked, the screen on top and the gas and breathing
+   system underneath, so it fills the width (fitDevice adds .portrait; the arrangement is the simulator's) ---- */
+.t1.portrait{width:1100px;height:1330px}
+.t1.portrait .a-body{width:1100px;height:1312px}
+.t1.portrait .hw{left:30px;top:880px;width:1040px;height:430px}
+.t1.portrait .hw-sup{width:1040px}
+.t1.portrait .hw-vap{left:0;top:80px;width:330px}
+.t1.portrait .hw-o2{left:345px;top:80px;width:370px}
+.t1.portrait .hw-apl{left:730px;top:80px;width:310px}
+.t1.portrait .bag{left:735px;top:212px}
+.t1.portrait .ypiece{left:922px;top:222px;width:118px;height:180px}
+.t1.portrait .ypiece svg{width:60px;height:46px;margin-bottom:4px}
+.t1.portrait .hw-ab{left:0;top:292px;width:715px;height:110px;display:flex;align-items:center;justify-content:center;gap:24px}
+.t1.portrait .hw-ab .ab-on{margin:0;width:220px}
+.t1.portrait .hw-ab .hw-row{margin:0}
 @media (max-width:700px){.guide:not(.closed){position:fixed;right:0;top:36px;bottom:0;width:min(320px,90vw);z-index:1100}}
 /* below-device controls (big targets, used on phones) */
 .under{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin:10px 0 0}
@@ -346,7 +378,8 @@ body.embedded .vbar .standalone-only{display:none}
 .link-banner form{display:flex;gap:6px;margin-top:8px}
 .link-banner input{flex:1;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #fca5a5;text-transform:uppercase;letter-spacing:.15em}
 .link-banner button{background:#fff;color:#7f1d1d;border:0;border-radius:6px;padding:6px 14px;font-weight:700}
-.ended{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1100;background:#334155;color:#fff;border-radius:8px;padding:6px 14px;font-weight:700;letter-spacing:.08em}
+/* the session is over: dim the whole machine (its alarms are silent too), as the defib does */
+.ended{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.82);color:#fff;font-size:2rem;font-weight:700;letter-spacing:.12em}
 .ended[hidden]{display:none}
 </style>
 </head>
@@ -431,7 +464,11 @@ body.embedded .vbar .standalone-only{display:none}
                 <div class="hw-h">APL valve<small>Man / Spont</small></div>
                 <div class="hw-row"><button class="hb" id="aplDn" aria-label="APL valve down (towards Spont)">−</button><b id="aplVal">30</b><button class="hb" id="aplUp" aria-label="APL valve up">+</button></div>
               </div>
-              <button class="bag" id="bag" data-tip="Breathing bag: in Man/Spon press and hold to squeeze a breath in, let go to let the patient breathe out. Its size shows how full the breathing system is: an empty bag means too little fresh gas or a leak." aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <button class="bag" id="bag" data-tip="Breathing bag: in Man/Spon press and hold to squeeze a breath in, let go to let the patient breathe out (or use Hands-free to keep bagging without pressing). Its size shows how full the breathing system is: an empty bag means too little fresh gas or a leak." aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <div class="hw-ab" data-tip="Hands-free bagging (a simulator aid, not part of the real machine): in Man/Spon it squeezes the bag for about a second at the set rate until you stop it, so you do not have to keep pressing. The APL valve still sets the pressure. It stops if you start a ventilator mode, go to Standby or switch off.">
+                <button class="ab-on" id="abOn" aria-pressed="false">Hands-free <b>Off</b></button>
+                <div class="hw-row"><button class="hb" id="abDn" aria-label="Hands-free bagging rate down">−</button><b id="abVal">12</b><span class="hu">/min</span><button class="hb" id="abUp" aria-label="Hands-free bagging rate up">+</button></div>
+              </div>
               <button class="ypiece" id="ypiece" data-tip="Y-piece: where the breathing circuit meets the patient. For the system and leak tests it is sealed on the circuit plug; for the patient, connect it to the tube or mask." aria-label="Y-piece: seal it on the circuit plug for the tests, or connect it to the patient"></button>
             </div>
           </div>
@@ -603,7 +640,9 @@ const V = {
 };
 /* the gas in the machine and the circle (gasTick), and the hardware's moment-to-moment state */
 const G = {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null,
-  lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0};
+  lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0,
+  /* hands-free bagging (the simulator's, not Dräger's): squeezes the bag by itself at a set rate until it is stopped */
+  autoBag:false, bagRate:12, abSq:false, abLast:-1e9};
 let E = null;          // current edit {scope:'ctrl'|'lim'|'draft', key, val, t0}
 let D = null;          // a new mode, shown in the therapy bar until it is confirmed {mode, set}
 let win = null;        // open dialog: 'start' | 'alarms' | 'tests' | 'setup' | 'info'
@@ -651,11 +690,14 @@ function gasTick(dt) {
   const fg = freshGas(); G.fg = fg;
   const conn = !P.disc && !G.ySealed;
   const breathing = V.power && !V.standby && B.now - B.lastStart < 12;
-  const vo2 = conn && (breathing || !P.pr.sedated) ? VO2 : 0;
+  /* uptake from the circle only while the machine is in use: off or in Standby the mask is not on the face yet */
+  const vo2 = conn && V.power && !V.standby && (breathing || !P.pr.sedated) ? VO2 : 0;
   const tau = 60 * SYS_L / Math.max(fg.total, 0.3), k = 1 - Math.exp(-dt / Math.min(tau, 1200));
   /* oxygen: the patient's uptake lowers the inspired O2 at low flows, Fi = (FGF x FO2 - VO2) / (FGF - VO2) */
   if (fg.total > 0 || vo2 > 0) {
-    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : 10;
+    /* a flow below the uptake empties the bag (the "fresh gas low" alarm) but cannot make pure O2 hypoxic;
+       with no fresh gas at all, rebreathing uses the oxygen up */
+    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : fg.total > 0 ? fg.o2 : 10;
     o2T = clamp(o2T, 5, 100);
     G.fio2 += (o2T - G.fio2) * k;
     const n2oT = fg.total > vo2 + 0.05 ? Math.min(100 - o2T, fg.n2o * fg.total / (fg.total - vo2)) : G.fin2o;
@@ -675,6 +717,9 @@ function gasTick(dt) {
   const leak = (P.disc ? (V.mode === 'MAN' || V.standby ? fg.total + 2 : Math.max(fg.total, setMV)) : 0) + (P.circLeak ? 3 : 0)
     + (V.mode === 'MAN' && P.fit !== 'good' ? (P.fit === 'large' ? 15 : 5) : 0);
   G.bag = clamp(G.bag + (fg.total - vo2 - leak) * dt / 60, 0, BAG_L + 2);
+  /* a squeeze of the bag in Man/Spon pushes the excess out through the APL valve, so the bag cannot stay overfull
+     while someone is hand-ventilating */
+  if (G.squeeze !== null && V.mode === 'MAN' && V.power && !V.standby) G.bag = Math.min(G.bag, BAG_L);
   /* an over-full bag: the pressure rises (40 cmH2O per extra litre) until the APL valve (or the exhaust) vents it */
   const vent = aplActive() ? (V.apl <= 0 ? 0.5 : V.apl) : 0.5;
   let p = G.bag > BAG_L ? (G.bag - BAG_L) * 40 : 0;
@@ -828,7 +873,7 @@ function recordStart(type, vol) {
   if (B.starts.length > 9) { B.starts.shift(); B.types.shift(); B.vols.shift(); }
   if (B.starts.length >= 2) {
     const n = B.starts.length, span = Math.max(0.5, B.starts[n - 1] - B.starts[0]);
-    M.ftot = clamp(60 * (n - 1) / span, 0, 99);
+    M.ftot = clamp(60 * (n - 1) / span, 0, 999);   /* display range 0-999 (Table 15-10) */
     M.fspont = M.ftot * (B.types.slice(1).filter(x => x === 'spont').length / (n - 1));
     M.fcontrol = M.ftot - M.fspont;
     const vv = B.vols.slice(1);
@@ -1033,7 +1078,7 @@ function adaptVS(br) {
   B.vsP = clamp(np, 5, maxP);
 }
 /* ASV (Table 15-16): target minute volume = IBW x normal minute ventilation x %MinVol/100. Normal minute ventilation is only
-   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for adults is the trainer's reading. The target rate uses the
+   shown as a graph in the manual (Figure 7-18); 0.1 l/kg/min for IBW of 30 kg or more (Figure 7-18). The target rate uses the
    Otis equation with VDaw = 2.2 ml/kg; the exact ASV 1.1 rule is not published in the manual, so targets are approximate. */
 function asvTargets() {
   const ibw = calcIBW(), s = V.set, pr = P.pr;
@@ -1227,7 +1272,8 @@ function beep(n, gap, freq) {
 const lowBeeped = new Set();
 function soundTick(dt) {
   soundT -= dt;
-  if (!V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
+  /* silent once the controller has finished the session (the room is in the debrief) */
+  if (LIVE.isFinished || !V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
   const list = topAlarms();
   if (!list.length) return;
   const top = list[0].p;
@@ -1371,13 +1417,24 @@ function powerTick(dtReal) {
 
 /* ======================= screen: scaling ======================= */
 const DEV_W = 1500, DEV_H = 900;
+/* The A350's scaling (replaces the T1's fitDevice). The machine is drawn at 1500 x 900 and scaled to fit. On a tall screen (a tablet held upright) it is stacked
+   instead, at 1100 x 1330: the screen on top, the gas and breathing system underneath (.portrait, the
+   simulator's arrangement), so it fills the width rather than sitting small in the middle.
+   --hit and --shit are 44 CSS px in the machine's and the screen's own pixels: the touch targets use them. */
+const DEV_TALL_W = 1100, DEV_TALL_H = 1330;
 function fitDevice() {
   const wrap = $('#device'), sc = $('#t1scaler'), t1 = $('#t1');
-  const s = Math.max(0.2, Math.min(wrap.clientWidth / DEV_W, (wrap.clientHeight - 4) / DEV_H));
+  const W = wrap.clientWidth, H = wrap.clientHeight - 4;
+  const tall = H > W * 1.1;
+  t1.classList.toggle('portrait', tall);
+  const dw = tall ? DEV_TALL_W : DEV_W, dh = tall ? DEV_TALL_H : DEV_H;
+  const s = Math.max(0.2, Math.min(W / dw, H / dh));
   t1.style.transform = 'scale(' + s + ')'; t1.style.transformOrigin = '0 0';
-  sc.style.width = (DEV_W * s) + 'px'; sc.style.height = (DEV_H * s) + 'px';
-  const box = $('#screenbox');
-  $('#screen').style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
+  sc.style.width = (dw * s) + 'px'; sc.style.height = (dh * s) + 'px';
+  const box = $('#screenbox'), ss = box.clientWidth / 1280;
+  $('#screen').style.transform = 'scale(' + ss + ')';
+  t1.style.setProperty('--hit', (44 / s).toFixed(1) + 'px');
+  t1.style.setProperty('--shit', (44 / (s * ss)).toFixed(1) + 'px');
 }
 new ResizeObserver(fitDevice).observe($('#device'));
 
@@ -1533,7 +1590,7 @@ function drawDynLung() {
     </g></svg>
     <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
     <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
-    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2(), 1)}</b><small>kPa</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
 }
 
 /* ======================= screen rendering ======================= */
@@ -2117,16 +2174,28 @@ $('#aplUp').addEventListener('click', () => setAPL(V.apl <= 0 ? 5 : V.apl + 5));
 $('#aplDn').addEventListener('click', () => setAPL(V.apl - 5));
 /* the breathing bag: squeeze (hold) to give a breath in Man/Spon; letting go ends it */
 const bagEl = $('#bag');
-function squeeze(on) {
+/* why the bag cannot be squeezed now (and what to do), or '' when it can */
+function bagBlocked() {
+  if (!V.power) return 'The machine is switched off. Press the On / Standby key.';
+  if (V.selftest > 0) return 'The machine is still starting up.';
+  if (V.standby) return 'standby';
+  if (V.mode !== 'MAN') return 'The ventilator is breathing for the patient. Choose Man/Spon to ventilate by hand.';
+  return '';
+}
+function squeeze(on, auto) {
   if (on) {
-    if (!V.power) { toast('The machine is switched off. Press the On / Standby key.'); return; }
-    if (V.selftest > 0) return;
-    if (V.standby) { openWin('start'); return; }
-    if (V.mode !== 'MAN') { scrToast('The ventilator is breathing for the patient. Choose Man/Spon to ventilate by hand.'); return; }
-    G.squeeze = B.now; V.manualReq = true;
+    const why = bagBlocked();
+    if (why) {
+      if (auto) return;
+      if (why === 'standby') openWin('start'); else if (!V.power) toast(why); else if (V.selftest <= 0) scrToast(why);
+      return;
+    }
+    if (G.squeeze !== null) return;
+    G.squeeze = B.now; V.manualReq = true; G.abSq = !!auto;
+    if (G.autoBag) G.abLast = B.now;   /* a squeeze by hand counts as one of the hands-free breaths */
   } else {
     if (G.squeeze === null) return;
-    G.squeeze = null; V.manualReq = false;
+    G.squeeze = null; V.manualReq = false; G.abSq = false;
     const br = B.br;
     if (B.phase === 'insp' && br && br.kind === 'manual' && !br.vc && B.t < br.Ti) {
       /* let go early: the breath ends now, with the volume it had reached */
@@ -2138,9 +2207,39 @@ function squeeze(on) {
   renderHW();
 }
 bagEl.addEventListener('pointerdown', e => { e.preventDefault(); try { bagEl.setPointerCapture(e.pointerId); } catch (er) {} squeeze(true); });
-['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => bagEl.addEventListener(ev, () => squeeze(false)));
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => bagEl.addEventListener(ev, () => { if (!G.abSq) squeeze(false); }));
 bagEl.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); squeeze(true); } });
-bagEl.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') squeeze(false); });
+bagEl.addEventListener('keyup', e => { if ((e.key === ' ' || e.key === 'Enter') && !G.abSq) squeeze(false); });
+/* hands-free bagging (the simulator's own control, not part of the A350): squeezes the bag for about a second at the set
+   rate until it is stopped, so the learner does not have to keep pressing. The pressure each squeeze reaches is still set
+   by the APL valve. It stops by itself when the machine leaves Man/Spon, goes to Standby or is switched off. */
+const BAG_TI = 1.0;
+const setBagRate = v => { const was = G.bagRate; G.bagRate = clamp(v, 4, 30); if (G.autoBag && G.bagRate !== was) logEvent('Hands-free bagging: ' + G.bagRate + '/min', 'info'); renderHW(); };
+function setAutoBag(on, why) {
+  if (on === G.autoBag) return;
+  if (on) {
+    const b = bagBlocked();
+    if (b) { if (b === 'standby') openWin('start'); else if (!V.power) toast(b); else scrToast(b); return; }
+    G.autoBag = true; G.abLast = -1e9;
+    logEvent('Hands-free bagging started: ' + G.bagRate + '/min', 'info');
+  } else {
+    G.autoBag = false;
+    if (G.abSq) squeeze(false);
+    logEvent('Hands-free bagging stopped' + (why ? ' (' + why + ')' : ''), 'info');
+    if (why) scrToast('Hands-free bagging stopped: ' + why + '.');
+  }
+  renderHW();
+}
+function bagTick() {
+  if (!G.autoBag) return;
+  const b = bagBlocked();
+  if (b) { setAutoBag(false, !V.power ? 'machine switched off' : V.standby ? 'Standby' : 'a ventilator mode was started'); return; }
+  if (G.abSq && B.now - G.squeeze >= BAG_TI) squeeze(false);
+  else if (G.squeeze === null && B.now - G.abLast >= 60 / G.bagRate) squeeze(true, true);
+}
+$('#abOn').addEventListener('click', () => setAutoBag(!G.autoBag));
+$('#abUp').addEventListener('click', () => setBagRate(G.bagRate + 2));
+$('#abDn').addEventListener('click', () => setBagRate(G.bagRate - 2));
 /* the Y-piece: sealed on the circuit plug of the bag elbow (for the tests) or connected to the patient */
 function setYPiece(sealed) {
   if (G.ySealed === sealed) return;
@@ -2163,6 +2262,10 @@ function renderHW() {
   /* the bag: its size follows the volume in it; squeezed while a hand breath is going in */
   const full = clamp(G.bag / BAG_L, 0.15, 1.25), sq = G.squeeze !== null && B.phase === 'insp';
   bagEl.classList.toggle('sq', sq);
+  const ab = $('#abOn');
+  ab.classList.toggle('on', G.autoBag); ab.setAttribute('aria-pressed', G.autoBag);
+  ab.innerHTML = G.autoBag ? 'Hands-free <b>On</b>' : 'Hands-free <b>Off</b>';
+  $('#abVal').textContent = G.bagRate;
   $('#bagIn').style.transform = 'scale(' + (0.55 + 0.4 * full) * (sq ? 0.8 : 1) + ',' + (0.5 + 0.45 * full) * (sq ? 0.85 : 1) + ')';
   const y = $('#ypiece');
   y.classList.toggle('sealed', G.ySealed);
@@ -2188,8 +2291,9 @@ function noteTip(el) {
   const t = el && el.dataset.tip;
   if (t && (!lastTip || lastTip !== t)) { lastTip = t; renderGuide(); }
 }
+/* No hints in Assessment: some explain what a reading means (no CO2 = oesophageal tube...), which is the test. */
 document.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') return;
+  if (e.pointerType === 'touch' || isAssess()) { if (tipShown) hideTip(); return; }
   const el = e.target.closest && e.target.closest('[data-tip]');
   const text = el ? el.dataset.tip : '';
   if (!text) { hideTip(); return; }
@@ -2204,7 +2308,7 @@ window.addEventListener('scroll', hideTip, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 document.addEventListener('focusin', e => {
   const el = e.target.closest && e.target.closest('[data-tip]');
-  if (!el || !el.matches(':focus-visible')) return;
+  if (!el || !el.matches(':focus-visible') || isAssess()) return;
   const r = el.getBoundingClientRect();
   showTip(el.dataset.tip, r.left + r.width / 2, r.bottom);
   noteTip(el);
@@ -2214,7 +2318,10 @@ document.addEventListener('focusout', hideTip);
 /* ---------- the Education guide beside the machine ---------- */
 /* What the machine is doing, what the alarms mean, what the last thing hovered or touched is, and step-by-step
    help that points at the next control. Hidden in Assessment. All the simulator's text. */
-let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= 900 : v === '1'; } catch (e) { return window.innerWidth >= 900; } })();
+/* Open by default only where there is room for it beside a full-size machine (a laptop or a large
+   screen); on a tablet it starts closed and the Guide button opens it. A saved choice wins. */
+const GUIDE_OPEN_MIN = 1280;
+let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= GUIDE_OPEN_MIN : v === '1'; } catch (e) { return window.innerWidth >= GUIDE_OPEN_MIN; } })();
 let guideTask = null, lastGuide = '';
 $('#guideToggle').addEventListener('click', () => {
   guideOpen = !guideOpen;
@@ -2265,7 +2372,7 @@ function taskSteps(task) {
     case 'man':
       S.push([V.standby ? 'Touch Quick start Man/Spon on the Standby page.' : 'Touch the Man/Spon tab, then press the rotary knob.', on && !V.standby && V.mode === 'MAN', V.standby ? '#qsMan' : (D && D.mode === 'MAN' ? '#knob' : '[data-tabmode="MAN"]')]);
       S.push(['Set the APL valve to about 20 to 30 cmH2O, so a squeeze can inflate the lungs (Spont = fully open, no pressure).', V.apl >= 15, '#aplUp']);
-      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
+      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds, or turn on Hands-free beside the bag to keep bagging at the set rate.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
       S.push(['Watch the CO2 curve and VT: a square capnogram and a sensible VT mean the breaths are going in.', false, '#gfx']);
       return S;
     case 'preox':
@@ -2318,9 +2425,10 @@ function guideNow() {
     out.push(`<b>${esc(mName(V.mode))}.</b> ${esc(MODE_EXPLAIN[V.mode] || '')}`);
     const sinceBreath = B.now - B.lastStart;
     if (V.mode === 'MAN') {
+      if (G.autoBag) out.push(`Hands-free bagging is on: a squeeze every ${fmt(60 / G.bagRate, 1)} s (${G.bagRate}/min). Touch Hands-free to stop it.`);
       out.push(V.apl <= 0 ? 'The APL valve is at Spont (fully open): the patient can breathe freely, but squeezing the bag builds almost no pressure. Turn it up to hand-ventilate.'
         : `The APL valve is at ${V.apl} cmH2O: a squeeze of the bag can reach up to ${Math.min(V.apl, BAG_SQUEEZE)} cmH2O.`);
-      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, or start a ventilator mode.`);
+      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, turn on Hands-free beside the bag, or start a ventilator mode.`);
       if (G.circP > 10) out.push(`<span class="g-warn">The pressure in the breathing system is ${Math.round(G.circP)} cmH2O and the bag is overfull.</span> The fresh gas has nowhere to go: open the APL valve or turn the fresh-gas flow down.`);
     }
     if (G.bag < 0.6 && !V.standby) out.push('<span class="g-warn">The bag is nearly empty:</span> more gas is leaving the system than the fresh gas brings in. Look for a leak or a disconnection; turn the flow up or press O2+.');
@@ -2430,8 +2538,13 @@ function switchModel(model) {
   if (switching || !MODEL_PAGES[model]) return;
   switching = true;
   saveDevice();
+  /* switched on before the session's first data arrived: the next machine starts switched on too */
+  if (LIVE.key === null && V.power) { try { sessionStorage.setItem('wmebem_vent_power', '1'); } catch (e) {} }
   try { if (fb.db && fb.code) { fb.db.ref('sessions/' + fb.code + '/presence/' + fb.presenceId).remove(); fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).remove(); } } catch (e) {}
   window.location.replace(MODEL_PAGES[model] + window.location.search);
+}
+function takePendingPower() {
+  try { const p = sessionStorage.getItem('wmebem_vent_power') === '1'; sessionStorage.removeItem('wmebem_vent_power'); return p; } catch (e) { return false; }
 }
 const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
 
@@ -2484,12 +2597,19 @@ function applyProblems(list) {
   P.mains = !mainsOff;
   probsNow = list.slice();
 }
-/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit.
+   Shown in kPa to one decimal place, like the room monitor, the defib and the A350 (UK practice;
+   1 kPa = 7.50062 mmHg). LIVE.etco2 is already kPa, so this is display rounding only. */
 function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
-  return Math.round(LIVE.etco2 * 7.50062);
+  return Math.round(LIVE.etco2 * 10) / 10;
 }
-function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+/* time on the ventilator as mm:ss, or h:mm:ss after an hour (hours:minutes alone looked frozen for the first minute) */
+function clockStr() {
+  const t = Math.floor((P ? P.onNivMin : 0) * 60), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = t % 60;
+  const p2 = n => String(n).padStart(2, '0');
+  return (h ? h + ':' : '') + p2(m) + ':' + p2(sec);
+}
 /* real time: one second of the page is one second of the patient */
 function patientTick(dt) {
   const pr = P.pr, dtMin = dt / 60;
@@ -2518,7 +2638,7 @@ function deviceDefaults() {
   V.sex = LIVE.sex === 'Female' ? 'Female' : 'Male';
   V.set.height = V.sex === 'Female' ? 162 : 174;
   if (LIVE.age !== null && LIVE.age !== undefined) V.set.age = clamp(Math.round(LIVE.age), 1, 110);
-  Object.assign(G, {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null, lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0});
+  Object.assign(G, {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null, lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0, autoBag:false, abSq:false, abLast:-1e9});
   P.pr = {...P.base};
   E = null; D = null; active.clear(); inactive.clear(); history.length = 0; helpFor = null; cursor = -1;
   for (const k in M) M[k] = null;
@@ -2611,7 +2731,7 @@ function physNow() {
   const conn = ventOn && !P.disc && !G.ySealed;
   const rr = conn && !hfo && M.ftot !== null ? M.ftot : P.rr;
   const r3 = v => Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000;
-  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() ? 1 : 0};
+  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0};
 }
 const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
 /* the current mode's controls and the alarm limits, for the facilitator's remote control:
@@ -2629,7 +2749,7 @@ function ventStateNow() {
   const mk = modeKey(), c = modeCtrls(mk);
   const show = k => CTRL[k].label + ' ' + valStr('ctrl', k, V.set[k]) + (CTRL[k].unit ? ' ' + CTRL[k].unit : '');
   const ctl = c.vent.concat(FG).filter(k => V.set[k] !== undefined && CTRL[k]).map(show).join(' · ')
-    + (mk === 'MAN' ? ' · APL ' + (V.apl > 0 ? V.apl + ' cmH2O' : 'Spont') : '') + (V.vap > 0 ? ' · Sevo ' + fmt(V.vap, 1) + '%' : '');
+    + (mk === 'MAN' ? ' · APL ' + (V.apl > 0 ? V.apl + ' cmH2O' : 'Spont') + (G.autoBag ? ' · Hands-free bag ' + G.bagRate + '/min' : '') : '') + (V.vap > 0 ? ' · Sevo ' + fmt(V.vap, 1) + '%' : '');
   const limKeys = Object.keys(ALIM).filter(k => !ALIM[k].hidden && V.lim[k] !== undefined);
   const lim = limKeys.map(k => limLabel(k) + ' ' + valStr('lim', k, V.lim[k])).join(' · ');
   const mon = {};
@@ -2665,7 +2785,7 @@ const saveKey = () => 'wmebem_a350_' + fb.code;
 function saveDevice() {
   if (!fb.code || !LIVE.key) return;
   const v = {}; SAVE_KEYS.forEach(k => { v[k] = V[k]; });
-  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, run:LIVE.run, at:Date.now(), v, onNivMin:P.onNivMin})); } catch (e) {}
+  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, run:LIVE.run, at:Date.now(), v, onNivMin:P.onNivMin, gas:{fio2:G.fio2, fin2o:G.fin2o, etn2o:G.etn2o, fiag:G.fiag, etag:G.etag, bag:G.bag}})); } catch (e) {}
 }
 function restoreDevice() {
   let s = null;
@@ -2676,6 +2796,7 @@ function restoreDevice() {
   V.set = {...DEFAULT_SET, ...V.set}; V.lim = {...DEFAULT_LIM, ...V.lim};
   V.selftest = 0; V.testRun = null; V.cpr = null;
   P.onNivMin = Number(s.onNivMin) || 0;
+  if (s.gas) ['fio2', 'fin2o', 'etn2o', 'fiag', 'etag', 'bag'].forEach(k => { if (Number.isFinite(Number(s.gas[k]))) G[k] = Number(s.gas[k]); });
   if (V.power && !V.standby) {
     /* carry on ventilating, primed as startVentilation does, without logging a new start */
     B.lastStart = B.now; B.nextEffort = B.now + 0.6; B.starts = []; B.types = []; B.vols = [];
@@ -2714,7 +2835,9 @@ function applyLive(v) {
      resume) tells a re-run of the same scenario apart; without one, fall back to the title and patient. */
   const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
   const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
-  if (LIVE.key === null) { LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); }
+  /* The first snapshot sets the device up; a power press made before it arrived (here, or on the page
+     that handed over to this one) is kept rather than undone. */
+  if (LIVE.key === null) { const pressed = V.power || takePendingPower(); LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); if (pressed && !V.power) powerOn(); }
   else if (key !== LIVE.key || (run && LIVE.run && run !== LIVE.run)) { LIVE.key = key; LIVE.run = run; deviceDefaults(); }
   else if (run) LIVE.run = run;
   applySound();
@@ -2873,6 +2996,7 @@ let acc250 = 0, acc1000 = 0, lastT = performance.now();
 function advance(dt) {
   engineStep(dt);
   gasTick(dt);
+  bagTick();
   editTick(dt);
   if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }
   if (V.o2Enrich > 0) V.o2Enrich = Math.max(0, V.o2Enrich - dt);

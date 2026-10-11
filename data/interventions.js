@@ -102,6 +102,9 @@ window.INTERVENTIONS = {
     'Amiodarone': { label: 'Amiodarone (300 mg; child 5 mg/kg)', route: 'IV', effect: { BP: -10, changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Amiodarone administered.', type: 'bolus', duration: 60, pk: { onset: 30, peak: 600, offset: 7200, maxDoses: 2 }, expects: ['IV Access'] },
     'Atropine': { label: 'Atropine (500 mcg; child 20 mcg/kg)', route: 'IV', effect: { HR: 12 }, category: 'Circulation', log: 'IV Atropine administered.', type: 'bolus', duration: 10, pk: { onset: 30, peak: 180, offset: 3600, maxDoses: 6 }, expects: ['IV Access'], cumulative: { unit: 'mg', perDose: 0.5, max: 3, message: 'Maximum 3 mg cumulative atropine reached — full vagal blockade. Further doses are futile: pace (transcutaneous/transvenous) or start an isoprenaline/adrenaline infusion.' }, ceiling: { vital: 'hr', value: 115 } },
     // GENUINELY NEAR-INSTANT AND TRANSIENT — adenosine works in 10-20s and is over inside a minute.
+    // Vagal manoeuvre (RCUK 2025: first for stable narrow-complex tachycardia). A modified Valsalva converts about 4 in 10
+    // SVTs (REVERT, Lancet 2015); the chance is in RHYTHMS.DRUG_CONVERSION.
+    'VagalManoeuvre': { label: 'Vagal manoeuvre (modified Valsalva)', route: 'manual', effect: { changeRhythm: 'chance' }, category: 'Circulation', log: 'Vagal manoeuvre (modified Valsalva) performed.', type: 'bolus', duration: 15 },
     'Adenosine': { label: 'Adenosine (6/12/18 mg; child by weight)', route: 'IV (rapid push + flush)', effect: { HR: -60, changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Adenosine rapid bolus administered.', type: 'bolus', duration: 2, expects: ['IV Access'], pk: { onset: 5, peak: 10, plateau: 15, offset: 40, maxDoses: 3 }, cumulative: { unit: 'mg', perDose: 12, max: 36, message: 'Three escalating adenosine doses (adult 6/12/18 mg) completed without conversion — stop escalating: reconsider the diagnosis (is this AF/flutter/VT?) and move to rate control or synchronised cardioversion.' }, avBlock: { pause: 8, convertAt: 12, chanceByDose: [0.55, 0.75, 0.8] } },
     'Metaraminol': { label: 'Metaraminol', route: 'IV', effect: { BP: 15, HR: -3 }, category: 'Circulation', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10, pk: { onset: 45, peak: 120, offset: 1800, maxDoses: 4 }, expects: ['IV Access'] },
     // The theatre drugs of the Association of Anaesthetists' Quick Reference Handbook (2-4 Hypotension,
@@ -202,6 +205,12 @@ window.INTERVENTIONS = {
     'Thrombolysis': { label: 'Thrombolysis (Alteplase)', route: 'IV', effect: {}, category: 'Drugs', log: 'IV thrombolysis (alteplase) commenced.', type: 'bolus', duration: 60, expects: ['IV Access'] },
     'Nimodipine': { label: 'Nimodipine', route: 'PO', effect: { BP: -5 }, category: 'Drugs', log: 'Nimodipine administered.', type: 'bolus', duration: 10, pk: { onset: 600, peak: 1800, offset: 0, maxDoses: 2 } },
     'Pabrinex': { label: 'Pabrinex / Thiamine', route: 'IV', effect: {}, category: 'Drugs', log: 'IV Pabrinex (thiamine) administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
+    // Antidotes and specific treatments with no immediate effect on the obs: they exist so the learner can give the
+    // right drug and the debrief can score it (paracetamol overdose, severe malaria, HSV encephalitis, cyanide).
+    'Acetylcysteine': { label: 'Acetylcysteine (NAC)', route: 'IV infusion', effect: {}, category: 'Drugs', log: 'IV acetylcysteine (NAC) started.', type: 'bolus', duration: 30, expects: ['IV Access'] },
+    'Artesunate': { label: 'Artesunate', route: 'IV', effect: {}, category: 'Drugs', log: 'IV artesunate administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
+    'Aciclovir': { label: 'Aciclovir', route: 'IV', effect: {}, category: 'Drugs', log: 'IV aciclovir administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
+    'Hydroxocobalamin': { label: 'Hydroxocobalamin (Cyanokit)', route: 'IV', effect: {}, category: 'Drugs', log: 'IV hydroxocobalamin (Cyanokit) administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Antivenom': { label: 'Antivenom', route: 'IV', effect: {}, category: 'Drugs', log: 'Antivenom administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Oxytocin': { label: 'Oxytocin', route: 'IV', effect: { BP: -5 }, category: 'Drugs', log: 'IV Oxytocin administered.', type: 'bolus', duration: 10, pk: { onset: 60, peak: 180, offset: 1200, maxDoses: 3 }, expects: ['IV Access'] },
     'Ergometrine': { label: 'Ergometrine', route: 'IM/IV', effect: { BP: 10 }, category: 'Drugs', log: 'IV Ergometrine administered.', type: 'bolus', duration: 10, pk: { onset: 120, peak: 420, offset: 3600, maxDoses: 2 }, expects: ['IV Access'] },
@@ -263,6 +272,9 @@ window.INTERVENTIONS = {
     'AsciticTap': { label: 'Ascitic Tap', route: 'percutaneous', effect: {}, category: 'Procedures', log: 'Ascitic tap/paracentesis performed.', type: 'bolus', duration: 60 },
     'Hyperbaric': { label: 'Hyperbaric Referral', route: 'n/a', effect: {}, category: 'Procedures', log: 'Referral to hyperbaric unit made.', type: 'bolus', duration: 10 },
     'Surgery': { label: 'Emergency Surgery', route: 'n/a', effect: {}, category: 'Procedures', log: 'Patient transferred to theatre.', type: 'bolus', duration: 300 },
+    // Obstetric manoeuvres (McRoberts and suprapubic pressure, elevating the presenting part, breech manoeuvres, manual
+    // replacement of the uterus): one button, logged for the debrief. 'Manoeuvres' is the airway's head tilt / jaw thrust.
+    'ObstetricManoeuvres': { label: 'Obstetric manoeuvres', route: 'manual', effect: {}, category: 'Procedures', log: 'Obstetric manoeuvres performed.', type: 'bolus', duration: 30 },
     'Delivery': { label: 'Vaginal Delivery', route: 'n/a', effect: {}, category: 'Procedures', log: 'Baby delivered.', type: 'bolus', duration: 60 },
     'Hysterotomy': { label: 'Perimortem C-Section', route: 'surgical', effect: {}, category: 'Procedures', log: 'Perimortem C-Section performed.', type: 'bolus', duration: 60 },
     'NerveBlock': { label: 'Nerve Block (FIB)', route: 'perineural (LA)', effect: { HR: -5 }, category: 'Procedures', log: 'Fascia Iliaca Block performed.', type: 'bolus', duration: 120, pk: { onset: 600, peak: 1200, offset: 28800, maxDoses: 2 } },

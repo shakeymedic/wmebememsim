@@ -319,23 +319,25 @@
                 let content = "No findings recorded.";
 
                 const ct = monitorPopup.customText;
+                // The VBG as a grid of values, readable from across the room (it was text-xs).
+                const vbgGrid = (v) => (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-base xl:text-lg font-mono" data-testid="vbg-grid">
+                        <span>pH: <b className={v.pH < 7.35 || v.pH > 7.45 ? "text-red-400" : "text-emerald-400"}>{v.pH.toFixed(2)}</b></span>
+                        <span>pCO2: <b className={v.pCO2 > 6.0 || v.pCO2 < 4.5 ? "text-red-400" : "text-emerald-400"}>{v.pCO2.toFixed(1)}</b></span>
+                        <span>pO2: <b className={v.pO2 < 8.0 ? "text-red-400" : "text-emerald-400"}>{Number.isFinite(v.pO2) ? v.pO2.toFixed(1) : '--'}</b></span>
+                        <span>Lac: <b className={v.Lac > 2 ? "text-red-400" : "text-emerald-400"}>{v.Lac.toFixed(1)}</b></span>
+                        <span>K+: <b className={v.K > 5.5 ? "text-red-400" : "text-emerald-400"}>{v.K.toFixed(1)}</b></span>
+                        <span>Glu: <b className={v.Glu > 11 ? "text-red-400" : "text-emerald-400"}>{v.Glu.toFixed(1)}</b></span>
+                        <span>BE: <b>{v.BE.toFixed(1)}</b></span>
+                        <span>HCO3: <b>{v.HCO3.toFixed(1)}</b></span>
+                        {v.Na !== undefined && <span>Na+: <b className={v.Na < 135 || v.Na > 145 ? "text-red-400" : "text-emerald-400"}>{v.Na.toFixed(0)}</b></span>}
+                        {v.Ca !== undefined && <span>Ca²⁺: <b className={v.Ca > 2.6 ? "text-red-400" : "text-emerald-400"}>{v.Ca.toFixed(2)}</b></span>}
+                    </div>
+                );
                 // Structured VBG payload from revealInvestigation('VBG')
                 if (ct && typeof ct === 'object' && ct.__vbg) {
                     const v = ct;
-                    content = (
-                        <div className="grid grid-cols-4 gap-2 text-xs font-mono">
-                            <span>pH: <b className={v.pH < 7.35 || v.pH > 7.45 ? "text-red-400" : "text-emerald-400"}>{v.pH.toFixed(2)}</b></span>
-                            <span>pCO2: <b className={v.pCO2 > 6.0 || v.pCO2 < 4.5 ? "text-red-400" : "text-emerald-400"}>{v.pCO2.toFixed(1)}</b></span>
-                            <span>pO2: <b className={v.pO2 < 8.0 ? "text-red-400" : "text-emerald-400"}>{Number.isFinite(v.pO2) ? v.pO2.toFixed(1) : '--'}</b></span>
-                            <span>Lac: <b className={v.Lac > 2 ? "text-red-400" : "text-emerald-400"}>{v.Lac.toFixed(1)}</b></span>
-                            <span>K+: <b className={v.K > 5.5 ? "text-red-400" : "text-emerald-400"}>{v.K.toFixed(1)}</b></span>
-                            <span>Glu: <b className={v.Glu > 11 ? "text-red-400" : "text-emerald-400"}>{v.Glu.toFixed(1)}</b></span>
-                            <span>BE: <b>{v.BE.toFixed(1)}</b></span>
-                            <span>HCO3: <b>{v.HCO3.toFixed(1)}</b></span>
-                            {v.Na !== undefined && <span>Na+: <b className={v.Na < 135 || v.Na > 145 ? "text-red-400" : "text-emerald-400"}>{v.Na.toFixed(0)}</b></span>}
-                            {v.Ca !== undefined && <span>Ca²⁺: <b className={v.Ca > 2.6 ? "text-red-400" : "text-emerald-400"}>{v.Ca.toFixed(2)}</b></span>}
-                        </div>
-                    );
+                    content = vbgGrid(v);
                 } else if (ct) {
                     content = ct;
                 } else if (scenario) {
@@ -379,20 +381,7 @@
                     else if (type === 'POCUS') content = findings('pocus', "No free fluid seen.");
                     else if (type === 'VBG' && scenario.vbg) {
                         const v = scenario.vbg;
-                        content = (
-                            <div className="grid grid-cols-4 gap-2 text-xs font-mono">
-                                <span>pH: <b className={v.pH < 7.35 || v.pH > 7.45 ? "text-red-400" : "text-emerald-400"}>{v.pH.toFixed(2)}</b></span>
-                                <span>pCO2: <b className={v.pCO2 > 6.0 || v.pCO2 < 4.5 ? "text-red-400" : "text-emerald-400"}>{v.pCO2.toFixed(1)}</b></span>
-                                <span>pO2: <b className={v.pO2 < 8.0 ? "text-red-400" : "text-emerald-400"}>{Number.isFinite(v.pO2) ? v.pO2.toFixed(1) : '--'}</b></span>
-                                <span>Lac: <b className={v.Lac > 2 ? "text-red-400" : "text-emerald-400"}>{v.Lac.toFixed(1)}</b></span>
-                                <span>K+: <b className={v.K > 5.5 ? "text-red-400" : "text-emerald-400"}>{v.K.toFixed(1)}</b></span>
-                                <span>Glu: <b className={v.Glu > 11 ? "text-red-400" : "text-emerald-400"}>{v.Glu.toFixed(1)}</b></span>
-                                <span>BE: <b>{v.BE.toFixed(1)}</b></span>
-                                <span>HCO3: <b>{v.HCO3.toFixed(1)}</b></span>
-                                {v.Na !== undefined && <span>Na+: <b className={v.Na < 135 || v.Na > 145 ? "text-red-400" : "text-emerald-400"}>{v.Na.toFixed(0)}</b></span>}
-                                {v.Ca !== undefined && <span>Ca²⁺: <b className={v.Ca > 2.6 ? "text-red-400" : "text-emerald-400"}>{v.Ca.toFixed(2)}</b></span>}
-                            </div>
-                        );
+                        content = vbgGrid(v);
                     }
                 }
                 // The image: one the facilitator chose with the result, or (for the scenario's own
@@ -485,6 +474,12 @@
             const q = RG.displayRate(rhythm, vitals.hr);
             return q === null ? vitals.hr : q;
         })();
+        // VF and asystole have no QRS to count: the HR tile reads '---' in red, as the defib does
+        // (pulseless organised rhythms still show the rate that is drawn, above).
+        const hrNoCount = (() => {
+            const RG = window.RHYTHMS;
+            return !!(RG && RG.isPulseless(rhythm) && RG.displayRate(rhythm, vitals.hr) === null);
+        })();
         const getGridCols = () => {
             const count = tileCount;
             if (count === 4) return 'md:grid-cols-4';
@@ -500,15 +495,14 @@
                         {syncStatus.message && <span className="ml-2 font-normal text-red-200">{syncStatus.message}</span>}
                     </div>
                 )}
-                {/* Above everything on this page (the arrest view, the devices, the switcher). With the defib
-                    or ventilator in front it is a small button at the top instead of a full-screen
-                    card, so the learner's first press on the device is not swallowed; a press on the
-                    device enables the sound too (the device page posts its gesture here). */}
-                {!audioEnabled && shownView === 'monitor' && (<div className="absolute inset-0 z-[140] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
-                {!audioEnabled && shownView !== 'monitor' && (
+                {/* Above everything on this page (the arrest view, the devices, the switcher), and always a
+                    button at the top rather than a full-screen card: the obs stay readable before anyone taps
+                    (a TV may have no touch at all), and the learner's first press on a device is not swallowed.
+                    A press on the device enables the sound too (the device page posts its gesture here). */}
+                {!audioEnabled && (
                     <button type="button" onClick={handleEnableAudio} data-testid="enable-sound"
-                            className="absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[40px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white text-sm font-bold shadow-lg flex items-center gap-2">
-                        <Lucide icon="volume-2" className="w-4 h-4 text-sky-400"/> Tap to Enable Sound
+                            className={`absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[44px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white font-bold shadow-lg flex items-center gap-2 ${shownView === 'monitor' ? 'text-base' : 'text-sm'}`}>
+                        <Lucide icon="volume-2" className="w-5 h-5 text-sky-400"/> Tap to Enable Sound
                     </button>
                 )}
                 
@@ -520,10 +514,11 @@
                     const wide = !!img;
                     return (
                         <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
-                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? (img.modality === 'ECG' ? 'w-[760px]' : 'w-[520px]') : 'w-96'}`} data-testid="inv-result">
+                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? (img.modality === 'ECG' ? 'w-[760px]' : 'w-[520px]') : 'w-96 xl:w-[30rem] 2xl:w-[36rem]'}`} data-testid="inv-result">
                                 <div className="flex justify-between items-start mb-2">
-                                    <h3 className="text-purple-400 font-bold uppercase text-sm flex items-center gap-2"><Lucide icon="activity" className="w-4 h-4"/> {invToast?.title} Result</h3>
-                                    <button aria-label="Dismiss investigation result" onClick={()=>{ setInvToast(null); setViewImage(null); }} className="text-slate-400 hover:text-white pointer-events-auto"><Lucide icon="x" className="w-4 h-4"/></button>
+                                    <h3 className="text-purple-400 font-bold uppercase text-base md:text-lg flex items-center gap-2"><Lucide icon="activity" className="w-5 h-5"/> {invToast?.title} Result</h3>
+                                    {/* 44 px to touch; the negative margin keeps the card's layout as it was */}
+                                    <button aria-label="Dismiss investigation result" data-testid="inv-result-close" onClick={()=>{ setInvToast(null); setViewImage(null); }} className="-mt-3 -mr-3 min-w-[44px] min-h-[44px] flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700/60 pointer-events-auto"><Lucide icon="x" className="w-5 h-5"/></button>
                                 </div>
                                 {img && (
                                     <figure className="mb-2">
@@ -535,7 +530,7 @@
                                     </figure>
                                 )}
                                 {!(img && invToast.hideReport) && (
-                                    <div className="text-white text-sm font-medium leading-relaxed whitespace-pre-line">
+                                    <div className="text-white text-base md:text-lg font-medium leading-relaxed whitespace-pre-line">
                                         {invToast?.content}
                                     </div>
                                 )}
@@ -670,8 +665,8 @@
                         )}
                     </div>
 
-                    <div className={`flex-none grid grid-cols-2 ${getGridCols()} gap-2 h-[25vh] md:h-[28vh]`}>
-                        <VitalDisplay label="Heart Rate" value={hrShown} prev={prevVitals.hr} unit="bpm" alert={hrShown > thresholds.hr.high || hrShown < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} />
+                    <div className={`flex-none grid grid-cols-2 ${getGridCols()} auto-rows-fr gap-2 ${tileCount > 4 ? 'h-[34vh]' : 'h-[28vh]'} md:h-[28vh]`}>
+                        <VitalDisplay label="Heart Rate" value={hrShown} prev={prevVitals.hr} unit="bpm" alert={hrNoCount || hrShown > thresholds.hr.high || hrShown < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} noCount={hrNoCount} />
                         
                         <div className="relative h-full min-w-0">
                             {/* NIBP is the one sensor that does NOT blank when removed: like a real
@@ -716,8 +711,8 @@
                             const vbg = poc.vbg || null;
                             const cell = (label, value, unit, sub, alert) => (
                                 <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${alert ? 'border-amber-600' : 'border-slate-800'}`}>
-                                    <span className="text-[10px] md:text-xs uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[9px] text-slate-400 normal-case tracking-normal">{sub}</span> : null}</span>
-                                    <span className={`font-mono font-bold text-xl md:text-3xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[10px] md:text-xs text-slate-400 ml-1">{unit}</span> : null}</span>
+                                    <span className="text-[11px] md:text-xs lg:text-sm uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[10px] lg:text-xs text-slate-400 normal-case tracking-normal">{sub}</span> : null}</span>
+                                    <span className={`font-mono font-bold text-xl md:text-3xl 2xl:text-4xl ${value === null ? 'text-slate-700' : (alert ? 'text-amber-400' : 'text-sky-300')}`}>{value === null ? '--' : value}{value !== null && unit ? <span className="text-[11px] md:text-xs lg:text-sm text-slate-400 ml-1">{unit}</span> : null}</span>
                                 </div>
                             );
                             return (
@@ -797,7 +792,9 @@
         const mine = useMyScreen(sessionID, screenId);
         const role = mine.role || S.roleOf(screen);
         const parts = S.partsOf(role);
-        const waiting = !sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0);
+        // No controller on this code yet: it has neither sent the patient nor numbered this screen (the
+        // screen's own engine always has obs, so those cannot tell). A mistyped code stays here.
+        const waiting = !sim.state.liveSeen && !mine.n;
         const [shows, setShows] = useState(null);
         // The embedded defib and ventilator pages live HERE, not inside MonitorScreen/DeviceScreen,
         // so a role change that adds or removes the monitor (which swaps those two) does not reload

@@ -798,15 +798,15 @@
     // autonomous deterioration at all, so the learner was punished for correct non-IV practice.
     const DETERIORATION_TREATMENTS = {
         shock: ['Fluids', 'FluidInfusion', 'Blood', 'Noradrenaline', 'Metaraminol', 'AdrenalineIM', 'TXA', 'Antibiotics', 'Ceftriaxone', 'Tazocin', 'Gentamicin', 'PelvicBinder', 'Tourniquet', 'REBOA', 'Thoracotomy', 'Pericardiocentesis', 'Hydrocortisone', 'Terlipressin', 'Octaplex', 'Albumin', 'Surgery', 'CalciumChloride',
-            'AdrenalineInfusion', 'AdrenalinePush'],
+            'AdrenalineInfusion', 'AdrenalinePush', 'Hydroxocobalamin', 'Artesunate'],
         resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis',
             'NebsContinuous', 'SalbutamolIV', 'MagnesiumInfusion'],
         airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen',
             'AdrenalineInfusion'],
-        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
+        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'VagalManoeuvre', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
             'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
         neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
-            'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM'],
+            'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM', 'Aciclovir', 'Artesunate'],
         arrest: ['CPR', 'Lucas', 'AdrenalineIV', 'Defib', 'Amiodarone']
     };
 
@@ -1318,7 +1318,8 @@
         'MagSulph':           ['magnesium', 'asthma', 'torsade', 'eclampsia', 'pre-eclampsia'],
         'Amiodarone':         ['amiodarone', 'tachycardia algorithm', 'antiarrhythmic', 'refractory vf'],
         'Adenosine':          ['adenosine', 'svt', 'narrow complex'],
-        'Manoeuvres':         ['vagal', 'svt', 'manoeuvre'],
+        'VagalManoeuvre':     ['vagal', 'svt', 'valsalva'],
+        'ObstetricManoeuvres': ['mcroberts', 'dystocia', 'breech', 'presenting part', 'reinver'],
         'Cardioversion':      ['cardiovers', 'tachycardia algorithm', 'safe cardioversion'],
         'Pacing':             ['pacing', 'bradycardia algorithm', 'heart block'],
         'Thrombolysis':       ['thrombolysis', 'thrombolytic'],
@@ -1364,6 +1365,68 @@
     // The score is reported twice and labelled: a strict fully-met percentage, and a
     // component-weighted partial-credit percentage. Neither is inflated; both are explained.
     // =============================================================================================
+    // Interchangeable treatments: one component, met by any of them. Without this, two IM adrenaline
+    // doses were only "partial" until an infusion was also started, and a steroid objective needed
+    // both dexamethasone AND hydrocortisone.
+    const OBJECTIVE_ALTERNATIVES = [
+        ['AdrenalineIM', 'AdrenalineIV', 'AdrenalinePush', 'AdrenalineInfusion'],
+        ['Hydrocortisone', 'Dexamethasone'],
+        ['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain'],
+        ['Lorazepam', 'LorazepamIM', 'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamPR', 'DiazepamIV'],
+        ['Levetiracetam', 'Phenytoin'],
+        ['Naloxone', 'NaloxoneIM', 'NaloxoneIN'],
+        ['Antibiotics', 'Benzylpenicillin', 'BenzylpenicillinIM'],
+        ['Nebs', 'NebsContinuous'],
+        ['CPAP', 'NIV'],
+        ['GTN', 'GTNInfusion']
+    ];
+    // The component keys grouped into alternatives: [['AdrenalineIM', 'AdrenalineInfusion'], ['Fluids']].
+    const objectiveComponentGroups = (keys) => {
+        const groups = [];
+        keys.forEach(k => {
+            const fam = OBJECTIVE_ALTERNATIVES.find(f => f.indexOf(k) !== -1);
+            const g = fam && groups.find(x => fam.indexOf(x[0]) !== -1);
+            if (g) g.push(k); else groups.push([k]);
+        });
+        return groups;
+    };
+    // ---- AUTHORED COMPONENTS (preferred) ---------------------------------------------------------
+    // Keyword inference credits the wrong care: "Distinguish bradykinin angio-oedema from
+    // anaphylaxis" matched 'anaphyl', so hydrocortisone and chlorphenamine "met" it while the correct
+    // airway care scored nothing. Every built-in objective therefore has its components AUTHORED:
+    //
+    //   objectiveActions: { '<exact objective text>': [['AdrenalineIM', 'AdrenalineInfusion'], ['Fluids']] }
+    //
+    // Each inner array is an OR-group of intervention keys (any one meets it); every group must be
+    // met. `[]` means "not scorable from actions" (recognition, judgement, communication): it is
+    // scored only by the facilitator's tick in the debrief. A scenario may carry `objectiveActions`
+    // itself (custom and restricted scenarios); the built-in library's live in
+    // window.SCENARIO_OBJECTIVE_ACTIONS (data/scenarios.js), keyed by scenario id, so a resumed
+    // session or an older saved copy of a built-in scenario is scored the same way.
+    // Inference is kept ONLY as the fallback for an objective with no authored entry.
+    const authoredLookup = (map, objective) => {
+        if (!map || typeof map !== 'object') return undefined;
+        const has = (k) => Object.prototype.hasOwnProperty.call(map, k);
+        if (has(objective)) return map[objective];
+        const trimmed = String(objective).trim();
+        return has(trimmed) ? map[trimmed] : undefined;
+    };
+    // Firebase turns arrays into {0: .., 1: ..} objects and drops empty ones, so accept both shapes.
+    const asList = (v) => Array.isArray(v) ? v : (v && typeof v === 'object' ? Object.keys(v).sort((a, b) => a - b).map(k => v[k]) : []);
+    const authoredObjectiveGroups = (scenario, objective) => {
+        const scen = scenario || {};
+        let raw = authoredLookup(scen.objectiveActions, objective);
+        if (raw === undefined && scen.id) {
+            const library = (typeof window !== 'undefined' && window.SCENARIO_OBJECTIVE_ACTIONS) || {};
+            raw = authoredLookup(library[scen.id], objective);
+        }
+        if (raw === undefined || raw === null) return null;
+        return asList(raw)
+            .map(g => (typeof g === 'string' ? [g] : asList(g)).filter(k => typeof k === 'string' && k.length))
+            .filter(g => g.length > 0);
+    };
+    const hasAuthoredObjective = (scenario, objective) => authoredObjectiveGroups(scenario, objective) !== null;
+
     const objectiveComponentKeys = (scenario, objective) => {
         const objLower = String(objective == null ? '' : objective).toLowerCase();
         if (!objLower) return [];
@@ -1376,6 +1439,22 @@
             const triggers = OBJECTIVE_TRIGGERS[key];
             return !!triggers && triggers.some(kw => objLower.indexOf(kw) !== -1);
         });
+    };
+    // The objectives an intervention ticks by keyword as it is given (the engine's live credit).
+    // Authored objectives are excluded: they are scored from their components, or by the
+    // facilitator, never by a keyword in their wording.
+    const keywordObjectivesFor = (scenario, key) => {
+        const triggers = OBJECTIVE_TRIGGERS[key];
+        if (!triggers || !scenario) return [];
+        const list = (Array.isArray(scenario.learningObjectives) ? scenario.learningObjectives : [])
+            .concat(Array.isArray(scenario.instructorBrief && scenario.instructorBrief.learningObjectives) ? scenario.instructorBrief.learningObjectives : []);
+        const out = [];
+        list.forEach(obj => {
+            if (typeof obj !== 'string' || out.indexOf(obj) !== -1 || hasAuthoredObjective(scenario, obj)) return;
+            const objLower = obj.toLowerCase();
+            if (triggers.some(kw => objLower.includes(kw))) out.push(obj);
+        });
+        return out;
     };
 
     // The whole precedence decision in one pure, exported predicate, so "does a
@@ -1406,13 +1485,17 @@
         };
 
         const rows = objectives.map(objective => {
-            const keys = objectiveComponentKeys(scen, objective);
-            const components = keys.map(key => ({ key, label: labelOf(key), met: given(key) }));
+            const authored = authoredObjectiveGroups(scen, objective);
+            const groups = authored !== null ? authored : objectiveComponentGroups(objectiveComponentKeys(scen, objective));
+            const components = groups.map(g => ({ key: g[0], keys: g, label: g.map(labelOf).join(' or '), met: g.some(given) }));
             const metCount = components.filter(c => c.met).length;
-            const touched = completed.has(objective);
+            // An authored objective's tick can only be the facilitator's (the engine no longer
+            // keyword-ticks it), and only an objective with no components is scored by a tick.
+            const touched = completed.has(objective) && (authored === null || components.length === 0);
             let status, fraction;
             if (components.length === 0) {
-                // No derivable components: fall back to the legacy keyword credit, unchanged.
+                // Nothing to score from actions: the facilitator's tick (or, for an objective with
+                // no authored entry, the legacy keyword credit) decides it.
                 status = touched ? 'met' : 'none';
                 fraction = touched ? 1 : 0;
             } else if (metCount === components.length) {
@@ -1432,6 +1515,10 @@
                 metComponents: components.filter(c => c.met).map(c => c.label),
                 missingComponents: components.filter(c => !c.met).map(c => c.label),
                 multiComponent: components.length > 1,
+                // 'authored' (the scenario says what meets it) or 'inferred' (keyword fallback).
+                source: authored !== null ? 'authored' : 'inferred',
+                // Scored by the facilitator's tick rather than from what was given.
+                facilitatorJudged: components.length === 0,
                 touched,
                 status,
                 fraction
@@ -1461,6 +1548,8 @@
     window.computeObjectiveProgress = computeObjectiveProgress;
     window.__pkInternals = window.__pkInternals || {};
     window.__pkInternals.objectiveComponentKeys = objectiveComponentKeys;
+    window.__pkInternals.authoredObjectiveGroups = authoredObjectiveGroups;
+    window.authoredObjectiveGroups = authoredObjectiveGroups;
     window.__pkInternals.applyRhythmHrBand = applyRhythmHrBand;
 
     // ================= WAVE 6: ONE definition of "advance a ramp by one second" ===================
@@ -1510,15 +1599,16 @@
     //   * the student monitor NEVER runs physiology (it would fight the authoritative vitals
     //     arriving over Firebase);
     //   * a running session runs the full pipeline;
-    //   * a session that has not been started (or has been paused) still advances an ACTIVE RAMP,
+    //   * a session that has NOT BEEN STARTED runs nothing: every launch mode waits for START, and
+    //     a ramp set before then begins when START is pressed;
+    //   * a session the facilitator has PAUSED (pausedAt set) still advances an ACTIVE RAMP,
     //     because a ramp is an explicit facilitator instruction, not a property of scenario time.
-    //     This is what makes the vitals-modal ramp and Trend Better/Worse work in Quick Sim, where
-    //     the controller is reached without ever passing through the briefing screen's START.
     const tickActionFor = (state, isMonitorMode) => {
         if (isMonitorMode) return null;
         if (!state) return null;
         if (state.isRunning) return 'TICK_TIME';
-        if (state.trends && state.trends.active) return 'TICK_TRENDS';
+        const paused = state.pausedAt !== null && state.pausedAt !== undefined && !state.isFinished;
+        if (paused && state.trends && state.trends.active) return 'TICK_TRENDS';
         return null;
     };
     window.__pkInternals.tickActionFor = tickActionFor;
@@ -1532,7 +1622,7 @@
         deteriorationTreatmentFactor, drivenVitals, drugCeilings, drugOffsets, fluidResponsiveness,
         getObstruction, getSensors, getUnmetExpectations, hasHighO2Consumption, inferPotassium,
         initialCoreState, initialLogState, initialScenarioState, initialVitalsState, isCategoricalVital,
-        isDrugSpent, isVentilated, isVitalValueSafe, newRunId, normaliseDeteriorationType,
+        isDrugSpent, isVentilated, isVitalValueSafe, keywordObjectivesFor, newRunId, normaliseDeteriorationType,
         normalisePupils, isAnaphylaxisScenario, isNeonate, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, paralysisFromDrugs, paralysisPhase, pkFactor, pkPhase,
         pkRemaining, safeApnoeaSeconds, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     };

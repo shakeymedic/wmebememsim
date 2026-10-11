@@ -187,10 +187,10 @@
             setBuildId(s.id || `CUST_${Date.now()}`);
             setBuildTitle(s.title);
             setBuildName(s.patientName || "");
-            setBuildAge(s.patientAge || 40);
+            setBuildAge(s.patientAge ?? 40);   // a newborn is 0, not 40
             setBuildSex(s.sex || "Male");
             setBuildCat(s.category);
-            setBuildDesc(formatProfileTemplate(s.patientProfileTemplate || s.profile, s.patientAge || window.getPreviewAge(s), s.sex || 'Male'));
+            setBuildDesc(formatProfileTemplate(s.patientProfileTemplate || s.profile, s.patientAge ?? window.getPreviewAge(s), s.sex || 'Male'));
             setDescDirty(true);
             setBuildPMH(Array.isArray(s.pmh) ? s.pmh.join(", ") : (s.pmh || ""));
             setBuildDhx(Array.isArray(s.dhx) ? s.dhx.join(", ") : (s.dhx || "Nil"));
@@ -291,9 +291,9 @@
                 allergies: buildAllergies.split(',').map(s=>s.trim()),
                 difficulty: buildDifficulty,
                 customImages: { xray: buildCxrUrl || null, ct: buildCtUrl || null },
-                learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : ['Custom Objective'],
+                learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : [],
                 customActions: buildCustomActions.split(',').map(s=>s.trim()).filter(Boolean),
-                instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : ['Custom Objective'] },
+                instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : [] },
                 vbgClinicalState: "normal",
                 ecg: { type: buildVitals.rhythm || "Sinus Rhythm", findings: buildVitals.rhythm || "Normal" },
                 chestXray: { findings: "Unremarkable" },
@@ -961,7 +961,8 @@
                     <span><span className="block text-sm font-bold text-white">The patient is already on the monitor</span>
                         <span className="block text-xs text-slate-400">ECG, SpO2, NIBP and temperature attached from the start. Leave it unticked when putting the monitoring on is part of the team's task.</span></span>
                 </label>
-                <div className="flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={() => onStart({ monitored })} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
+                {/* Kept in view at the bottom: on a laptop the button was below the fold. */}
+                <div className="sticky bottom-0 z-10 -mx-1 px-1 py-2 bg-slate-900/95 backdrop-blur flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={() => onStart({ monitored })} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
             </div>
         );
     };

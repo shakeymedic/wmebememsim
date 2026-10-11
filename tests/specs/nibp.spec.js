@@ -2,7 +2,7 @@
 // the defib tablet show the last CUFF reading, which changes only when the cuff measures (the team's
 // press, the facilitator's, or the auto timer) — in a full scenario, Quick Sim and Defib Sim alike.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -78,13 +78,14 @@ test('BP defaults to an immediate change; other obs still default to 30 s', asyn
 test('a BP trend never pushes a reading: the cuff shows it only when it next measures', async ({ page }) => {
   await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   await page.evaluate(() => window.__simEngine.attachStandardMonitoring());
   await page.evaluate(() => window.__simEngine.startTrend({ bpSys: 150, bpDia: 95 }, 2));
   await expect.poll(() => engine(page, () => Math.round(window.__simEngine.state.vitals.bpSys)), { timeout: 10000 }).toBe(150);
   expect(await engine(page, () => window.__simEngine.state.nibp.sys)).toBeNull();
 });
 
-test('auto NIBP cycles in Quick Sim without START, and can be switched from the controller', async ({ page }) => {
+test('auto NIBP waits for START in Quick Sim, then cycles, and can be switched from the controller', async ({ page }) => {
   await openController(page);
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.attachStandardMonitoring());
@@ -93,6 +94,10 @@ test('auto NIBP cycles in Quick Sim without START, and can be switched from the 
   await expect(page.getByRole('button', { name: 'Auto NIBP: on' })).toBeVisible();
   const t0 = await engine(page, () => window.__simEngine.state.nibp.timer);
   expect(t0).toBe(180);
+  // Not started: the cuff interval does not count down (it used to in Quick Sim)
+  await page.waitForTimeout(2500);
+  expect(await engine(page, () => window.__simEngine.state.nibp.timer)).toBe(180);
+  await pressStart(page);
   await expect.poll(() => engine(page, () => window.__simEngine.state.nibp.timer), { timeout: 5000 }).toBeLessThanOrEqual(178);
   // Run the rest of the 3 minutes down: the cuff then measures by itself
   await page.evaluate(() => { for (let i = 0; i < 180; i++) window.__simEngine.dispatch({ type: 'TICK_RECORD' }); });

@@ -3,7 +3,7 @@ function ventStateNow() {
   const mk = modeKey(), c = modeCtrls(mk);
   const show = k => CTRL[k].label + ' ' + valStr('ctrl', k, V.set[k]) + (CTRL[k].unit ? ' ' + CTRL[k].unit : '');
   const ctl = c.vent.concat(FG).filter(k => V.set[k] !== undefined && CTRL[k]).map(show).join(' · ')
-    + (mk === 'MAN' ? ' · APL ' + (V.apl > 0 ? V.apl + ' cmH2O' : 'Spont') : '') + (V.vap > 0 ? ' · Sevo ' + fmt(V.vap, 1) + '%' : '');
+    + (mk === 'MAN' ? ' · APL ' + (V.apl > 0 ? V.apl + ' cmH2O' : 'Spont') + (G.autoBag ? ' · Hands-free bag ' + G.bagRate + '/min' : '') : '') + (V.vap > 0 ? ' · Sevo ' + fmt(V.vap, 1) + '%' : '');
   const limKeys = Object.keys(ALIM).filter(k => !ALIM[k].hidden && V.lim[k] !== undefined);
   const lim = limKeys.map(k => limLabel(k) + ' ' + valStr('lim', k, V.lim[k])).join(' · ');
   const mon = {};

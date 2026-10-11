@@ -101,6 +101,17 @@
         { name: 'Calcium Gluconate 10%', perKg: 0.5, unit: 'ml', max: 30, info: 'Hyperkalaemic arrhythmia: IV over 5-10 min (RCUK)' },
     ];
 
+    // "Not started" is a state of its own (every launch mode waits for START), so it is said in
+    // words next to START rather than left to a 00:00 clock.
+    const NotStartedBadge = ({ className = '', long = false }) => (
+        <span data-testid="not-started" role="status"
+              title="The patient is not live yet: no trends, deterioration or drug effects until you press START. Anything you give now is recorded and starts acting at START."
+              className={`h-8 px-2 inline-flex items-center justify-center gap-1 rounded border border-amber-400 bg-amber-950/70 text-amber-200 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap ${className}`}>
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
+            <span>Not started<span className={long ? '' : 'hidden xl:inline'}>: press START</span></span>
+        </span>
+    );
+
     // =============================================================================================
     // USER-RESIZABLE MONITOR / OBS PANEL ON THE CONTROLLER
     //
@@ -116,8 +127,11 @@
     // `separator`s with arrow-key / Home / End support, so the feature is keyboard-accessible.
     // =============================================================================================
     const PANEL_STORE_KEY = 'wmebem.controllerPanel.v1';
-    const PANEL_DEFAULTS = { width: null, stripHeight: 256 };   // width null = the classic ~34% column
-    const PANEL_BOUNDS = { minWidth: 280, minRight: 380, maxFraction: 0.72, minStrip: 140, maxStrip: 560 };
+    // The strip defaults SHORT (120 px): on a 1366x768 laptop the old 256 px preview pushed the obs
+    // tiles, ARREST, Defib and CPR below the fold. The team's real monitor is the room screen; this
+    // is a preview, and the grip makes it as tall as anyone wants.
+    const PANEL_DEFAULTS = { width: null, stripHeight: 120 };   // width null = the classic ~34% column
+    const PANEL_BOUNDS = { minWidth: 280, minRight: 380, maxFraction: 0.72, minStrip: 96, maxStrip: 560 };
 
     const readPanelPrefs = () => {
         try {
@@ -318,9 +332,12 @@
         // button, NIBP, the drug-dose calculator and the timer alerts — all facilitator tools that
         // are useful without a scenario.
         const quickSim = !!scenario.quickSim;
-        // Quick Sim's clock is the session timeline, which runs from launch (record only, no
-        // physiology) so the event log and the debrief have real times without pressing START.
+        // Quick Sim's clock is the session timeline (sessionTime). Like every launch mode it stays
+        // at 00:00 until START: the patient is not live before then.
         const clockSeconds = quickSim ? (Number(state.sessionTime) || 0) : time;
+        // Not started yet (as opposed to paused by the facilitator, or finished): the controller
+        // says so plainly until START is pressed.
+        const notStarted = !isRunning && !state.isFinished && (state.pausedAt === null || state.pausedAt === undefined);
         const etco2Shape = etco2Pathology || 'normal';
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
@@ -570,7 +587,7 @@
 
         // ======================= QUICK SIM PRESETS (scripted sequences) =======================
         // A preset steps through rhythm/obs changes on a timer, or waits for Next. Elapsed time only
-        // accrues while the session is not deliberately paused, so PAUSE freezes the script too.
+        // accrues while the clock runs, so a preset waits for START and PAUSE freezes it too.
         // Rhythms go through the same entry points as the menus: a pulseless target is an ARREST,
         // leaving a pulseless rhythm is a ROSC, anything else is an ordinary rhythm change.
         const QSP = window.QuickSimPresets;
@@ -644,8 +661,7 @@
                 if (!run) return;
                 const now = Date.now();
                 const st = liveStateRef.current;
-                const paused = (st.pausedAt !== null && st.pausedAt !== undefined) || st.isFinished;
-                if (!paused) run.accMs += now - run.lastTs;
+                if (st.isRunning && !st.isFinished) run.accMs += now - run.lastTs;
                 run.lastTs = now;
                 const next = run.preset.steps[run.idx];
                 if (next && !next.wait && run.accMs >= (Number(next.after) || 0) * 1000) firePresetStep();
@@ -882,6 +898,11 @@
         // large tiles size their numbers by SCREEN width, so in a narrow panel "120/75" was clipped.
         const panelPx = panel.prefs.width !== null ? panel.prefs.width : (window.innerWidth || 1280) * 0.34;
         const narrowPanel = panelPx < 420;
+        // A short screen (a 1366x768 or 1024x768 laptop) gets the compact tiles as well, and "More
+        // obs" starts closed (its summary still shows GCS and glucose), so the obs tiles and the
+        // Rhythm & resus controls are all on screen without scrolling.
+        const shortScreen = (window.innerHeight || 1000) < 900;
+        const compactTiles = narrowPanel || shortScreen;
         // The vital tiles. The core six (HR, BP, SpO2, RR, Temp, ETCO2) are the big tiles in the
         // desktop panel; GCS, glucose, pH and K+ sit in a smaller "More obs" row beneath them. The
         // phone view shows all ten, compact, core first.
@@ -937,7 +958,7 @@
 
         return (
             <div className={`h-full overflow-hidden max-md:h-auto max-md:overflow-visible flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className={`absolute top-20 max-md:fixed max-md:top-auto max-md:bottom-3 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
+                <div className={`fixed bottom-3 max-md:w-[92vw] md:max-w-2xl left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
                         <Lucide icon={notification?.type === 'danger' || notification?.type === 'warning' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'warning' ? 'text-amber-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
                         <span className="font-bold text-white">{notification?.msg}</span>
@@ -949,7 +970,7 @@
                     payload (unlike `notification`, which IS synced and IS rendered on the student
                     monitor). Nothing about a conversion can therefore reach the team's screen. */}
                 {rhythmEvent && (
-                    <div role="status" className={`absolute top-32 max-md:fixed max-md:top-auto max-md:bottom-20 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
+                    <div role="status" className={`fixed bottom-20 max-md:w-[92vw] md:max-w-2xl left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
                         <div className="flex items-center gap-3">
                             <Lucide icon="activity" className={`w-5 h-5 ${rhythmEvent.converted ? 'text-amber-400' : 'text-slate-400'}`} />
                             <div>
@@ -976,9 +997,10 @@
                         </div>
                         <div className="font-mono text-xl font-bold text-white">{formatTime(clockSeconds)}</div>
                         {!isRunning
-                            ? <Button variant="success" onClick={start} className="h-9 px-3 font-bold text-sm"><Lucide icon="play" className="w-4 h-4"/> START</Button>
+                            ? <Button variant="success" onClick={start} className={`h-9 px-3 font-bold text-sm ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play" className="w-4 h-4"/> START</Button>
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
                     </div>
+                    {notStarted && <NotStartedBadge long className="mb-1 w-full" />}
                     <div className="grid grid-cols-3 min-[400px]:grid-cols-4 gap-1">
                         {renderVitalTiles()}
                     </div>
@@ -991,7 +1013,11 @@
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
                         <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
                         {/* START/PAUSE lives beside the phone obs on small screens. */}
-                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold max-md:hidden"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
+                        {!isRunning ? ( <Button variant="success" onClick={start} className={`h-8 px-4 font-bold max-md:hidden ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
+                        {notStarted && <NotStartedBadge className="max-md:hidden" />}
+                        {!isRunning && !notStarted && !state.isFinished && (
+                            <span data-testid="paused-badge" role="status" className="max-md:hidden h-8 px-2 flex items-center rounded border border-slate-500 bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">Paused</span>
+                        )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -1053,7 +1079,9 @@
                                 { label: isMuted ? 'Unmute alarms' : 'Mute alarms', icon: isMuted ? 'volume-2' : 'volume-x', onClick: () => sim.dispatch({type: 'SET_MUTED', payload: !isMuted}) },
                                 { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) }
                             ]} />
-                        <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(clockSeconds)}</div>
+                        {/* Before START a narrower laptop shows "Not started" in place of a 00:00 clock,
+                            so the toolbar stays on one row. */}
+                        <div className={`font-mono text-2xl font-bold text-white ml-2 max-md:hidden ${notStarted ? 'max-xl:hidden' : ''}`}>{formatTime(clockSeconds)}</div>
                     </div>
                 </div>
 
@@ -1080,12 +1108,14 @@
                             {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
                          </div>
                          ) : (
-                         <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
-                            <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
-                            <div className="text-sm text-white font-bold">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex})</div>
-                            {scenario.title && <div className="text-xs text-emerald-400 font-bold uppercase mt-0.5">{scenario.title}</div>}
-                            {scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
-                            <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>
+                         <div className={`flex-none bg-slate-800 ${shortScreen ? 'p-2' : 'p-3'} rounded border-l-4 border-sky-500 shadow-md`}>
+                            {/* A short screen keeps this to the essentials (the full profile is a hover
+                                away) so the obs and resus controls fit beneath it. */}
+                            {!shortScreen && <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>}
+                            <div className="text-sm text-white font-bold" title={shortScreen ? formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex) : undefined}>{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex})</div>
+                            {scenario.title && <div className={`text-xs text-emerald-400 font-bold uppercase mt-0.5 ${shortScreen ? 'truncate' : ''}`} title={scenario.title}>{scenario.title}</div>}
+                            {!shortScreen && scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
+                            {!shortScreen && <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>}
                             <HumanFactorBadge hf={scenario.hf} className="mt-2" />
                          </div>
                          )}
@@ -1181,21 +1211,21 @@
                                      resizable panel below makes the panel narrower still. The cluster
                                      is therefore OUT of the trace area entirely, in its own toolbar
                                      row above the strip. Nothing overlaps the label at any width. */}
-                                 <div className="flex items-center gap-1 bg-slate-900/90 border-b border-slate-800 px-1 py-1">
-                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded font-bold uppercase tracking-wider`}>
+                                 <div className="flex items-center gap-1 bg-slate-900/90 border-b border-slate-800 px-1 py-0.5">
+                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-0.5 text-[10px] rounded font-bold uppercase tracking-wider`}>
                                          <Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{state.monitorTimer?.visible ? 'Hide Timer' : 'Show Timer'}
                                      </button>
                                      {state.monitorTimer?.visible && (
                                          <>
-                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
+                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-0.5 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
                                                  {state.monitorTimer?.active ? 'Pause' : 'Start'}
                                              </button>
-                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
+                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-0.5 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
                                                  Reset
                                              </button>
                                          </>
                                      )}
-                                     <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
+                                     <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-0.5 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
                                  </div>
                                  {/* The strip height is the facilitator's dragged value. ECGMonitor
                                      re-measures parentElement.clientWidth/clientHeight every frame and
@@ -1242,15 +1272,221 @@
 
                              {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
                                  very top of the page instead (see PHONE OBS below). */}
-                             <div className={`hidden md:grid ${narrowPanel ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
-                                 {coreTiles(narrowPanel)}
+                             <div className={`hidden md:grid ${compactTiles ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
+                                 {coreTiles(compactTiles)}
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={true} className="border-slate-800 bg-black">
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black">
                                      <div className={`grid ${narrowPanel || simple ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>{moreTiles()}</div>
                                  </Section>
                              </div>
                         </div>
+
+                        {/* ---- RHYTHM & RESUS, straight under the obs so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
+                             the rhythm and shock summary, and the defib controls when open. ---- */}
+                        <Section id="resus" title="Rhythm & resus" summary={resusSummary} defaultOpen={true}>
+                        <div className="flex flex-col gap-2">
+                        <div className="flex-none grid grid-cols-2 gap-2">
+                            <div className="relative" ref={arrestMenuRef}>
+                                {/* WAVE 5 (minor note, with ITEM 7): both of these OPEN A MENU — a bare
+                                    click was mistaken for an action that did nothing. The caret and the
+                                    aria-expanded state say so explicitly. */}
+                                <Button ariaLabel={`Choose an arrest rhythm (${showArrestMenu ? 'menu open' : 'menu closed'})`} variant="danger" onClick={()=>{ setShowArrestMenu(!showArrestMenu); setShowROSCMenu(false); }} className="w-full font-bold"><Lucide icon="activity" className="w-4 h-4"/> ARREST ▾</Button>
+                                {showArrestMenu && (
+                                    <div className="absolute top-full mt-1 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                        {ARREST_RHYTHMS.map(r => (
+                                            <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="relative" ref={roscMenuRef}>
+                                <Button ariaLabel={`Choose a ROSC rhythm (${showROSCMenu ? 'menu open' : 'menu closed'})`} variant="success" onClick={()=>{ setShowROSCMenu(!showROSCMenu); setShowArrestMenu(false); }} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC ▾</Button>
+                                {showROSCMenu && (
+                                    <div className="absolute top-full mt-1 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                        <div className="text-[9px] text-slate-400 px-2 py-1 border-b border-slate-700 uppercase tracking-wider font-bold">Pick the post-ROSC rhythm</div>
+                                        {ROSC_RHYTHMS.map(r => (
+                                            <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* A4 NAMING COLLISION FIX. This button has ALWAYS toggled arrestPanelOpen —
+                            the dual-trace LEAD II / PADS arrest layout on the student monitor — and
+                            has never opened a defibrillator. It is now called what it is. The button
+                            below it is the actual defibrillator (A1-A3). */}
+                        <div className="flex-none grid grid-cols-2 gap-2">
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full ${arrestPanelOpen ? 'bg-red-900/30 border-red-500 text-red-400' : ''}`}
+                                title="Dual-trace LEAD II / PADS arrest layout on the student monitor. Does not open the defibrillator.">
+                                 <Lucide icon="activity" className="w-4 h-4"/> {arrestPanelOpen ? "Close Arrest View" : "Arrest View"}
+                            </Button>
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_DEFIB_PANEL', payload: !defibPanelOpen})} className={`w-full ${defibPanelOpen ? 'bg-amber-900/30 border-amber-500 text-amber-300' : 'text-amber-400 border-amber-500/50'}`}
+                                title="Opens a working defibrillator ON the student monitor, with the obs still visible alongside it.">
+                                 <Lucide icon="zap" className="w-4 h-4"/> {defibPanelOpen ? "Close Defib" : "Defib"}
+                            </Button>
+                        </div>
+                        {/* Wraps onto two lines in a narrow panel rather than pushing past its edge
+                            (which put a horizontal scrollbar under the monitor panel). */}
+                        <div className="flex-none flex flex-wrap gap-2">
+                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
+                                    title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
+                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
+                            </Button>
+                            {/* The same AUTO switch the team has on the monitor's NIBP tile: the cuff
+                                measures every 3 minutes while it is on. */}
+                            <Button variant="outline" onClick={() => toggleNIBPMode && toggleNIBPMode()}
+                                    title="Auto NIBP: the cuff measures every 3 minutes (the same switch as AUTO on the room monitor)."
+                                    className={`flex-none px-3 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
+                                 {state.nibp && state.nibp.mode === 'auto' ? 'Auto NIBP: on' : 'Auto NIBP: off'}
+                            </Button>
+                            {/* A one-off displayed reading that does NOT change the patient (e.g. a
+                                spurious cuff reading). To change the actual BP, tap the BP tile. */}
+                            <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
+                                    title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
+                                    className="flex-1 min-w-[8rem] px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
+                                 Manual reading
+                            </Button>
+                        </div>
+
+                        {isPaeds && (
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} className={`w-full flex-none mt-1 ${!showWetflag ? 'text-slate-400 border-slate-600' : 'text-purple-400 border-purple-500/50 bg-purple-900/20'}`}>
+                                <Lucide icon="baby" className="w-4 h-4 mr-1"/> {showWetflag ? 'Hide WETFLAG on Monitor' : 'Show WETFLAG on Monitor'}
+                            </Button>
+                        )}
+
+                        {/* ================= B3 / B5: PERSISTENT RHYTHM + DEFIB STRIP =================
+                            Always visible while the sim runs, styled to match the CPR-timer row it
+                            sits above. The facilitator can read the current rhythm, the last
+                            conversion and the running shock tally without opening anything.
+                            ASSESSOR-LOCAL: lastConversion is never synced. */}
+                        <div className="flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2">
+                            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                                <div className="min-w-0">
+                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Current rhythm</div>
+                                    <div className={`font-bold text-sm ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>
+                                        {RG.labelFor(state.rhythm)}
+                                        {RG.isShockable(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-red-900/60 border border-red-500 text-red-200 text-[9px] uppercase font-bold tracking-wider">shockable</span>}
+                                        {RG.isSyncCardiovertible(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-900/50 border border-amber-500 text-amber-200 text-[9px] uppercase font-bold tracking-wider">sync cardiovert</span>}
+                                        {RG.isPulseless(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-500 text-slate-300 text-[9px] uppercase font-bold tracking-wider">pulseless</span>}
+                                    </div>
+                                </div>
+                                <div className="min-w-0 text-right">
+                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Last conversion</div>
+                                    <div className="text-xs font-bold text-amber-300 truncate">
+                                        {lastConversion
+                                            ? `${RG.labelFor(lastConversion.from)} \u2192 ${RG.labelFor(lastConversion.to)}`
+                                            : <span className="text-slate-400">none yet</span>}
+                                    </div>
+                                    {lastConversion && <div className="text-[10px] text-slate-400 truncate">{lastConversion.detail || lastConversion.cause}</div>}
+                                </div>
+                            </div>
+                            <div className="mt-1 grid grid-cols-4 gap-1 text-center bg-black/40 rounded p-1">
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Shocks</div><div className="font-mono font-bold text-white">{defib.shockCount || 0}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Total J</div><div className="font-mono font-bold text-white">{defib.totalEnergy || 0}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Last J</div><div className="font-mono font-bold text-white">{defib.lastEnergy ?? '\u2014'}</div></div>
+                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">CPR</div><div className={`font-mono font-bold ${cprInProgress ? 'text-red-400 animate-pulse' : 'text-slate-400'}`}>{cprInProgress ? 'ON' : 'off'}</div></div>
+                            </div>
+                        </div>
+
+                        {(arrestPanelOpen || defibPanelOpen) && (
+                             <div data-testid="defib-panel" className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
+                                 <div className="flex justify-between items-center mb-2">
+                                     <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator {defibPanelOpen ? '(on monitor)' : '(arrest view)'}</h3>
+                                     <button aria-label="Close defibrillator panel" onClick={() => { if (defibPanelOpen) sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); else sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
+                                 </div>
+
+                                 {/* Weight-based energy ladder. 4 J/kg is highlighted as recommended;
+                                     anything else is permitted and flagged, never blocked. */}
+                                 <div className="mb-2">
+                                     <div className="flex items-center justify-between mb-1">
+                                        <span className="text-slate-400 text-[10px] uppercase font-bold">Energy</span>
+                                        <span className="text-[10px] text-slate-400">Recommended <b className="text-emerald-400">{recommendedEnergy}J</b>{isPaeds && scenario.wetflag?.weight ? ` (4 J/kg, ${scenario.wetflag.weight}kg)` : ''}</span>
+                                     </div>
+                                     <div className="flex flex-wrap gap-1">
+                                        {energySteps.map(j => (
+                                            <button key={j} onClick={() => sim.setDefibEnergy(j)} className={`px-2 py-1 rounded border text-[11px] font-mono font-bold ${shockEnergy === j ? 'bg-amber-600 border-amber-400 text-white' : (j === recommendedEnergy ? 'bg-emerald-950/50 border-emerald-600 text-emerald-300' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700')}`}>{j}J</button>
+                                        ))}
+                                     </div>
+                                 </div>
+
+                                 <div className="grid grid-cols-2 gap-2">
+                                     <Button onClick={() => { initCharge(shockEnergy); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">{defib.charged ? `CHARGED ${defib.chargeEnergy}J` : `Charge ${shockEnergy}J`}</Button>
+                                     <Button onClick={() => { deliverShock(shockEnergy, 'facilitator'); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">{defib.syncMode ? 'SYNC SHOCK' : 'SHOCK'} {shockEnergy}J</Button>
+                                 </div>
+
+                                 <div className="grid grid-cols-3 gap-2 mt-2">
+                                     <Button onClick={() => sim.toggleDefibSync()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${defib.syncMode ? 'bg-amber-900/40 border-amber-500 text-amber-300' : ''}`}>
+                                        SYNC {defib.syncMode ? 'ON' : 'OFF'}
+                                     </Button>
+                                     <Button onClick={() => sim.toggleCPR()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${cprInProgress ? 'bg-red-900/40 border-red-500 text-red-300' : ''}`}>
+                                        CPR {cprInProgress ? 'stop' : 'start'}
+                                     </Button>
+                                     <Button onClick={() => nextCycle && nextCycle()} variant="outline" className="min-h-9 h-auto py-1 leading-tight text-[10px] uppercase font-bold">Rhythm check +2m</Button>
+                                 </div>
+
+                                 {/* Simple view: the shock outcome settings below are hidden; one line says
+                                     what is set and opens them. */}
+                                 {simple && (
+                                     <button type="button" data-testid="shock-settings-simple" onClick={() => setViewMode('full')}
+                                             className="mt-2 w-full text-left bg-black/50 p-2 rounded text-[10px] text-slate-300 hover:text-white">
+                                         <span className="text-slate-400 uppercase font-bold">Shock response</span>{' '}
+                                         {(() => {
+                                             const ds = state.defibSettings || {};
+                                             const r = ds.shockResponse || 'model';
+                                             const conv = r === 'model' ? 'realistic model' : r === 'auto' ? 'auto' : r === 'never' ? 'never converts' : `converts on shock ${r}`;
+                                             return `${conv}${ds.cvEnergy && ds.cvEnergy !== 'default' ? ` \u00b7 cardioversion at ${ds.cvEnergy} J` : ''}${state.queuedRhythm ? ` \u00b7 next shock \u2192 ${RG.shortFor(state.queuedRhythm)}` : ''}`;
+                                         })()}
+                                         <span className="text-sky-400 underline ml-1">change (Full view)</span>
+                                     </button>
+                                 )}
+
+                                 {/* C7 FACILITATOR OVERRIDE. This drives the previously unreachable
+                                     queuedRhythm / SET_QUEUED_RHYTHM code: the next shock converts to
+                                     exactly what the facilitator chose, instead of rolling the model. */}
+                                 {!simple && <>
+                                 <div className="mt-2 bg-black/50 p-2 rounded">
+                                     <div className="flex items-center justify-between mb-1">
+                                        <span className="text-slate-400 text-[10px] uppercase font-bold">Next shock converts to</span>
+                                        {state.queuedRhythm && <button onClick={() => sim.setQueuedRhythm(null)} className="text-[10px] text-sky-400 hover:text-sky-200 underline">clear</button>}
+                                     </div>
+                                     <div className="flex flex-wrap gap-1">
+                                        {RG.SELECTABLE.filter(r => RG.isRoscEligible(r) || RG.inArrest(r)).map(r => (
+                                            <button key={r} onClick={() => sim.setQueuedRhythm(r)} className={`px-2 py-1 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>{RG.shortFor(r)}</button>
+                                        ))}
+                                     </div>
+                                     <div className="text-[9px] text-slate-400 mt-1">Leave unset to let the outcome model decide (energy, rhythm, CPR and drugs all count).</div>
+                                 </div>
+
+                                 {/* How shocks and rhythm checks resolve (engine: state.defibSettings). */}
+                                 <div className="mt-2 bg-black/50 p-2 rounded space-y-1">
+                                     <div className="text-slate-400 text-[10px] uppercase font-bold">Shock response</div>
+                                     {[
+                                         ['shockResponse', 'Converts', [['model', 'Realistic model (energy, CPR, drugs)'], ['auto', 'Auto (arrest: 3rd adequate shock, cardioversion: 1st)'], ['1', '1st adequate shock'], ['2', '2nd adequate shock'], ['3', '3rd adequate shock'], ['4', '4th adequate shock'], ['5', '5th adequate shock'], ['never', 'Never (refractory)']]],
+                                         ['rOnT', 'Unsync shock with a pulse', [['never', 'No effect (flagged)'], ['sometimes', 'Sometimes causes VF (1 in 3)'], ['always', 'Always causes VF']]],
+                                         ['refib', 'After ROSC', [['model', 'Realistic model'], ['once', 'VF recurs once (30-90 s)'], ['off', 'Stays in ROSC']]],
+                                         ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (70 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
+                                     ].map(([k, label, opts]) => (
+                                         <label key={k} className="flex items-center justify-between gap-2 text-[10px] text-slate-300">
+                                             <span className="whitespace-nowrap">{label}</span>
+                                             <select value={(state.defibSettings || {})[k] || (k === 'cvEnergy' ? 'default' : '')} onChange={e => sim.setDefibSettings({ [k]: e.target.value })}
+                                                     className="min-w-0 max-w-[14rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[10px] text-white">
+                                                 {opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                                             </select>
+                                         </label>
+                                     ))}
+                                 </div>
+                                 </>}
+
+                                 <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
+                                     <span className="text-slate-400 text-[10px] uppercase">CPR / cycle timer</span>
+                                     <span className={`font-mono text-xl font-bold ${cprInProgress ? 'text-red-300' : 'text-white'}`}>{formatTime(state.cycleTimer)}</span>
+                                 </div>
+                             </div>
+                        )}
+                        </div>
+                        </Section>
 
                         {/* ---- DRUGS ON BOARD. One list (it used to be two panels showing the same
                              drugs): the phase, how strong the effect is now and when it is gone, what it
@@ -1341,212 +1577,6 @@
                             </div>
                         </Section>
                         )}
-
-                        {/* ---- RHYTHM & RESUS: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
-                             the rhythm and shock summary, and the defib controls when open. ---- */}
-                        <Section id="resus" title="Rhythm & resus" summary={resusSummary} defaultOpen={true}>
-                        <div className="flex flex-col gap-2">
-                        <div className="flex-none grid grid-cols-2 gap-2">
-                            <div className="relative" ref={arrestMenuRef}>
-                                {/* WAVE 5 (minor note, with ITEM 7): both of these OPEN A MENU — a bare
-                                    click was mistaken for an action that did nothing. The caret and the
-                                    aria-expanded state say so explicitly. */}
-                                <Button ariaLabel={`Choose an arrest rhythm (${showArrestMenu ? 'menu open' : 'menu closed'})`} variant="danger" onClick={()=>{ setShowArrestMenu(!showArrestMenu); setShowROSCMenu(false); }} className="w-full font-bold"><Lucide icon="activity" className="w-4 h-4"/> ARREST ▾</Button>
-                                {showArrestMenu && (
-                                    <div className="absolute bottom-12 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
-                                        {ARREST_RHYTHMS.map(r => (
-                                            <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="relative" ref={roscMenuRef}>
-                                <Button ariaLabel={`Choose a ROSC rhythm (${showROSCMenu ? 'menu open' : 'menu closed'})`} variant="success" onClick={()=>{ setShowROSCMenu(!showROSCMenu); setShowArrestMenu(false); }} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC ▾</Button>
-                                {showROSCMenu && (
-                                    <div className="absolute bottom-12 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
-                                        <div className="text-[9px] text-slate-400 px-2 py-1 border-b border-slate-700 uppercase tracking-wider font-bold">Pick the post-ROSC rhythm</div>
-                                        {ROSC_RHYTHMS.map(r => (
-                                            <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                        
-                        {/* A4 NAMING COLLISION FIX. This button has ALWAYS toggled arrestPanelOpen —
-                            the dual-trace LEAD II / PADS arrest layout on the student monitor — and
-                            has never opened a defibrillator. It is now called what it is. The button
-                            below it is the actual defibrillator (A1-A3). */}
-                        <div className="flex-none grid grid-cols-2 gap-2">
-                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_ARREST_PANEL', payload: !arrestPanelOpen})} className={`w-full ${arrestPanelOpen ? 'bg-red-900/30 border-red-500 text-red-400' : ''}`}
-                                title="Dual-trace LEAD II / PADS arrest layout on the student monitor. Does not open the defibrillator.">
-                                 <Lucide icon="activity" className="w-4 h-4"/> {arrestPanelOpen ? "Close Arrest View" : "Arrest View"}
-                            </Button>
-                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_DEFIB_PANEL', payload: !defibPanelOpen})} className={`w-full ${defibPanelOpen ? 'bg-amber-900/30 border-amber-500 text-amber-300' : 'text-amber-400 border-amber-500/50'}`}
-                                title="Opens a working defibrillator ON the student monitor, with the obs still visible alongside it.">
-                                 <Lucide icon="zap" className="w-4 h-4"/> {defibPanelOpen ? "Close Defib" : "Defib"}
-                            </Button>
-                        </div>
-                        {/* Wraps onto two lines in a narrow panel rather than pushing past its edge
-                            (which put a horizontal scrollbar under the monitor panel). */}
-                        <div className="flex-none flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
-                                    title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
-                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
-                            </Button>
-                            {/* The same AUTO switch the team has on the monitor's NIBP tile: the cuff
-                                measures every 3 minutes while it is on. */}
-                            <Button variant="outline" onClick={() => toggleNIBPMode && toggleNIBPMode()}
-                                    title="Auto NIBP: the cuff measures every 3 minutes (the same switch as AUTO on the room monitor)."
-                                    className={`flex-none px-3 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
-                                 {state.nibp && state.nibp.mode === 'auto' ? 'Auto NIBP: on' : 'Auto NIBP: off'}
-                            </Button>
-                            {/* A one-off displayed reading that does NOT change the patient (e.g. a
-                                spurious cuff reading). To change the actual BP, tap the BP tile. */}
-                            <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
-                                    title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
-                                    className="flex-1 min-w-[8rem] px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
-                                 Manual reading
-                            </Button>
-                        </div>
-
-                        {isPaeds && (
-                            <Button variant="outline" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} className={`w-full flex-none mt-1 ${!showWetflag ? 'text-slate-400 border-slate-600' : 'text-purple-400 border-purple-500/50 bg-purple-900/20'}`}>
-                                <Lucide icon="baby" className="w-4 h-4 mr-1"/> {showWetflag ? 'Hide WETFLAG on Monitor' : 'Show WETFLAG on Monitor'}
-                            </Button>
-                        )}
-
-                        {/* ================= B3 / B5: PERSISTENT RHYTHM + DEFIB STRIP =================
-                            Always visible while the sim runs, styled to match the CPR-timer row it
-                            sits above. The facilitator can read the current rhythm, the last
-                            conversion and the running shock tally without opening anything.
-                            ASSESSOR-LOCAL: lastConversion is never synced. */}
-                        <div className="flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2">
-                            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                                <div className="min-w-0">
-                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Current rhythm</div>
-                                    <div className={`font-bold text-sm ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>
-                                        {RG.labelFor(state.rhythm)}
-                                        {RG.isShockable(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-red-900/60 border border-red-500 text-red-200 text-[9px] uppercase font-bold tracking-wider">shockable</span>}
-                                        {RG.isSyncCardiovertible(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-900/50 border border-amber-500 text-amber-200 text-[9px] uppercase font-bold tracking-wider">sync cardiovert</span>}
-                                        {RG.isPulseless(state.rhythm) && <span className="ml-2 px-1.5 py-0.5 rounded bg-slate-900 border border-slate-500 text-slate-300 text-[9px] uppercase font-bold tracking-wider">pulseless</span>}
-                                    </div>
-                                </div>
-                                <div className="min-w-0 text-right">
-                                    <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Last conversion</div>
-                                    <div className="text-xs font-bold text-amber-300 truncate">
-                                        {lastConversion
-                                            ? `${RG.labelFor(lastConversion.from)} \u2192 ${RG.labelFor(lastConversion.to)}`
-                                            : <span className="text-slate-400">none yet</span>}
-                                    </div>
-                                    {lastConversion && <div className="text-[10px] text-slate-400 truncate">{lastConversion.detail || lastConversion.cause}</div>}
-                                </div>
-                            </div>
-                            <div className="mt-1 grid grid-cols-4 gap-1 text-center bg-black/40 rounded p-1">
-                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Shocks</div><div className="font-mono font-bold text-white">{defib.shockCount || 0}</div></div>
-                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Total J</div><div className="font-mono font-bold text-white">{defib.totalEnergy || 0}</div></div>
-                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">Last J</div><div className="font-mono font-bold text-white">{defib.lastEnergy ?? '\u2014'}</div></div>
-                                <div><div className="text-[9px] uppercase text-slate-400 font-bold">CPR</div><div className={`font-mono font-bold ${cprInProgress ? 'text-red-400 animate-pulse' : 'text-slate-400'}`}>{cprInProgress ? 'ON' : 'off'}</div></div>
-                            </div>
-                        </div>
-
-                        {(arrestPanelOpen || defibPanelOpen) && (
-                             <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
-                                 <div className="flex justify-between items-center mb-2">
-                                     <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator {defibPanelOpen ? '(on monitor)' : '(arrest view)'}</h3>
-                                     <button aria-label="Close defibrillator panel" onClick={() => { if (defibPanelOpen) sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); else sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
-                                 </div>
-
-                                 {/* Weight-based energy ladder. 4 J/kg is highlighted as recommended;
-                                     anything else is permitted and flagged, never blocked. */}
-                                 <div className="mb-2">
-                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-slate-400 text-[10px] uppercase font-bold">Energy</span>
-                                        <span className="text-[10px] text-slate-400">Recommended <b className="text-emerald-400">{recommendedEnergy}J</b>{isPaeds && scenario.wetflag?.weight ? ` (4 J/kg, ${scenario.wetflag.weight}kg)` : ''}</span>
-                                     </div>
-                                     <div className="flex flex-wrap gap-1">
-                                        {energySteps.map(j => (
-                                            <button key={j} onClick={() => sim.setDefibEnergy(j)} className={`px-2 py-1 rounded border text-[11px] font-mono font-bold ${shockEnergy === j ? 'bg-amber-600 border-amber-400 text-white' : (j === recommendedEnergy ? 'bg-emerald-950/50 border-emerald-600 text-emerald-300' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700')}`}>{j}J</button>
-                                        ))}
-                                     </div>
-                                 </div>
-
-                                 <div className="grid grid-cols-2 gap-2">
-                                     <Button onClick={() => { initCharge(shockEnergy); sim.playSound('charge'); }} variant="warning" className="h-10 text-xs">{defib.charged ? `CHARGED ${defib.chargeEnergy}J` : `Charge ${shockEnergy}J`}</Button>
-                                     <Button onClick={() => { deliverShock(shockEnergy, 'facilitator'); sim.playSound('shock'); }} variant="danger" className="h-10 text-xs font-bold">{defib.syncMode ? 'SYNC SHOCK' : 'SHOCK'} {shockEnergy}J</Button>
-                                 </div>
-
-                                 <div className="grid grid-cols-3 gap-2 mt-2">
-                                     <Button onClick={() => sim.toggleDefibSync()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${defib.syncMode ? 'bg-amber-900/40 border-amber-500 text-amber-300' : ''}`}>
-                                        SYNC {defib.syncMode ? 'ON' : 'OFF'}
-                                     </Button>
-                                     <Button onClick={() => sim.toggleCPR()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${cprInProgress ? 'bg-red-900/40 border-red-500 text-red-300' : ''}`}>
-                                        CPR {cprInProgress ? 'stop' : 'start'}
-                                     </Button>
-                                     <Button onClick={() => nextCycle && nextCycle()} variant="outline" className="h-9 text-[10px] uppercase font-bold">Rhythm check +2m</Button>
-                                 </div>
-
-                                 {/* Simple view: the shock outcome settings below are hidden; one line says
-                                     what is set and opens them. */}
-                                 {simple && (
-                                     <button type="button" data-testid="shock-settings-simple" onClick={() => setViewMode('full')}
-                                             className="mt-2 w-full text-left bg-black/50 p-2 rounded text-[10px] text-slate-300 hover:text-white">
-                                         <span className="text-slate-400 uppercase font-bold">Shock response</span>{' '}
-                                         {(() => {
-                                             const ds = state.defibSettings || {};
-                                             const r = ds.shockResponse || 'model';
-                                             const conv = r === 'model' ? 'realistic model' : r === 'auto' ? 'auto' : r === 'never' ? 'never converts' : `converts on shock ${r}`;
-                                             return `${conv}${ds.cvEnergy && ds.cvEnergy !== 'default' ? ` \u00b7 cardioversion at ${ds.cvEnergy} J` : ''}${state.queuedRhythm ? ` \u00b7 next shock \u2192 ${RG.shortFor(state.queuedRhythm)}` : ''}`;
-                                         })()}
-                                         <span className="text-sky-400 underline ml-1">change (Full view)</span>
-                                     </button>
-                                 )}
-
-                                 {/* C7 FACILITATOR OVERRIDE. This drives the previously unreachable
-                                     queuedRhythm / SET_QUEUED_RHYTHM code: the next shock converts to
-                                     exactly what the facilitator chose, instead of rolling the model. */}
-                                 {!simple && <>
-                                 <div className="mt-2 bg-black/50 p-2 rounded">
-                                     <div className="flex items-center justify-between mb-1">
-                                        <span className="text-slate-400 text-[10px] uppercase font-bold">Next shock converts to</span>
-                                        {state.queuedRhythm && <button onClick={() => sim.setQueuedRhythm(null)} className="text-[10px] text-sky-400 hover:text-sky-200 underline">clear</button>}
-                                     </div>
-                                     <div className="flex flex-wrap gap-1">
-                                        {RG.SELECTABLE.filter(r => RG.isRoscEligible(r) || RG.inArrest(r)).map(r => (
-                                            <button key={r} onClick={() => sim.setQueuedRhythm(r)} className={`px-2 py-1 rounded border text-[10px] font-bold ${state.queuedRhythm === r ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'}`}>{RG.shortFor(r)}</button>
-                                        ))}
-                                     </div>
-                                     <div className="text-[9px] text-slate-400 mt-1">Leave unset to let the outcome model decide (energy, rhythm, CPR and drugs all count).</div>
-                                 </div>
-
-                                 {/* How shocks and rhythm checks resolve (engine: state.defibSettings). */}
-                                 <div className="mt-2 bg-black/50 p-2 rounded space-y-1">
-                                     <div className="text-slate-400 text-[10px] uppercase font-bold">Shock response</div>
-                                     {[
-                                         ['shockResponse', 'Converts', [['model', 'Realistic model (energy, CPR, drugs)'], ['auto', 'Auto (arrest: 3rd adequate shock, cardioversion: 1st)'], ['1', '1st adequate shock'], ['2', '2nd adequate shock'], ['3', '3rd adequate shock'], ['4', '4th adequate shock'], ['5', '5th adequate shock'], ['never', 'Never (refractory)']]],
-                                         ['rOnT', 'Unsync shock with a pulse', [['never', 'No effect (flagged)'], ['sometimes', 'Sometimes causes VF (1 in 3)'], ['always', 'Always causes VF']]],
-                                         ['refib', 'After ROSC', [['model', 'Realistic model'], ['once', 'VF recurs once (30-90 s)'], ['off', 'Stays in ROSC']]],
-                                         ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (70 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
-                                     ].map(([k, label, opts]) => (
-                                         <label key={k} className="flex items-center justify-between gap-2 text-[10px] text-slate-300">
-                                             <span className="whitespace-nowrap">{label}</span>
-                                             <select value={(state.defibSettings || {})[k] || (k === 'cvEnergy' ? 'default' : '')} onChange={e => sim.setDefibSettings({ [k]: e.target.value })}
-                                                     className="min-w-0 max-w-[14rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[10px] text-white">
-                                                 {opts.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                                             </select>
-                                         </label>
-                                     ))}
-                                 </div>
-                                 </>}
-
-                                 <div className="mt-2 flex items-center justify-between bg-black/50 p-2 rounded">
-                                     <span className="text-slate-400 text-[10px] uppercase">CPR / cycle timer</span>
-                                     <span className={`font-mono text-xl font-bold ${cprInProgress ? 'text-red-300' : 'text-white'}`}>{formatTime(state.cycleTimer)}</span>
-                                 </div>
-                             </div>
-                        )}
-                        </div>
-                        </Section>
 
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}

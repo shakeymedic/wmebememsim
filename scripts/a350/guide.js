@@ -18,8 +18,9 @@ function noteTip(el) {
   const t = el && el.dataset.tip;
   if (t && (!lastTip || lastTip !== t)) { lastTip = t; renderGuide(); }
 }
+/* No hints in Assessment: some explain what a reading means (no CO2 = oesophageal tube...), which is the test. */
 document.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') return;
+  if (e.pointerType === 'touch' || isAssess()) { if (tipShown) hideTip(); return; }
   const el = e.target.closest && e.target.closest('[data-tip]');
   const text = el ? el.dataset.tip : '';
   if (!text) { hideTip(); return; }
@@ -34,7 +35,7 @@ window.addEventListener('scroll', hideTip, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 document.addEventListener('focusin', e => {
   const el = e.target.closest && e.target.closest('[data-tip]');
-  if (!el || !el.matches(':focus-visible')) return;
+  if (!el || !el.matches(':focus-visible') || isAssess()) return;
   const r = el.getBoundingClientRect();
   showTip(el.dataset.tip, r.left + r.width / 2, r.bottom);
   noteTip(el);
@@ -44,7 +45,10 @@ document.addEventListener('focusout', hideTip);
 /* ---------- the Education guide beside the machine ---------- */
 /* What the machine is doing, what the alarms mean, what the last thing hovered or touched is, and step-by-step
    help that points at the next control. Hidden in Assessment. All the simulator's text. */
-let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= 900 : v === '1'; } catch (e) { return window.innerWidth >= 900; } })();
+/* Open by default only where there is room for it beside a full-size machine (a laptop or a large
+   screen); on a tablet it starts closed and the Guide button opens it. A saved choice wins. */
+const GUIDE_OPEN_MIN = 1280;
+let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= GUIDE_OPEN_MIN : v === '1'; } catch (e) { return window.innerWidth >= GUIDE_OPEN_MIN; } })();
 let guideTask = null, lastGuide = '';
 $('#guideToggle').addEventListener('click', () => {
   guideOpen = !guideOpen;
@@ -95,7 +99,7 @@ function taskSteps(task) {
     case 'man':
       S.push([V.standby ? 'Touch Quick start Man/Spon on the Standby page.' : 'Touch the Man/Spon tab, then press the rotary knob.', on && !V.standby && V.mode === 'MAN', V.standby ? '#qsMan' : (D && D.mode === 'MAN' ? '#knob' : '[data-tabmode="MAN"]')]);
       S.push(['Set the APL valve to about 20 to 30 cmH2O, so a squeeze can inflate the lungs (Spont = fully open, no pressure).', V.apl >= 15, '#aplUp']);
-      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
+      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds, or turn on Hands-free beside the bag to keep bagging at the set rate.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
       S.push(['Watch the CO2 curve and VT: a square capnogram and a sensible VT mean the breaths are going in.', false, '#gfx']);
       return S;
     case 'preox':
@@ -148,9 +152,10 @@ function guideNow() {
     out.push(`<b>${esc(mName(V.mode))}.</b> ${esc(MODE_EXPLAIN[V.mode] || '')}`);
     const sinceBreath = B.now - B.lastStart;
     if (V.mode === 'MAN') {
+      if (G.autoBag) out.push(`Hands-free bagging is on: a squeeze every ${fmt(60 / G.bagRate, 1)} s (${G.bagRate}/min). Touch Hands-free to stop it.`);
       out.push(V.apl <= 0 ? 'The APL valve is at Spont (fully open): the patient can breathe freely, but squeezing the bag builds almost no pressure. Turn it up to hand-ventilate.'
         : `The APL valve is at ${V.apl} cmH2O: a squeeze of the bag can reach up to ${Math.min(V.apl, BAG_SQUEEZE)} cmH2O.`);
-      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, or start a ventilator mode.`);
+      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, turn on Hands-free beside the bag, or start a ventilator mode.`);
       if (G.circP > 10) out.push(`<span class="g-warn">The pressure in the breathing system is ${Math.round(G.circP)} cmH2O and the bag is overfull.</span> The fresh gas has nowhere to go: open the APL valve or turn the fresh-gas flow down.`);
     }
     if (G.bag < 0.6 && !V.standby) out.push('<span class="g-warn">The bag is nearly empty:</span> more gas is leaving the system than the fresh gas brings in. Look for a leak or a disconnection; turn the flow up or press O2+.');

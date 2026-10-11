@@ -2,7 +2,7 @@
 // the session like the defib tablet. Phase 1: it joins, reports to the log, mirrors to the
 // controller and takes its lungs from the controller.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -106,6 +106,7 @@ test('three tablets at once: room monitor, defib tablet and ventilator tablet, a
   const errors = trackErrors(page);
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   await page.getByRole('button', { name: /^Coarse VF/ }).click();
   const monitor = await context.newPage();
   const monitorErrors = trackErrors(monitor);
@@ -347,6 +348,7 @@ test('injected problems reach the ventilator, the lungs can be adjusted, and Ass
 test('a displaced tube takes the CO2 away, and a tension pneumothorax drops the BP until it is decompressed', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);   // the decompression acts on a live patient
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator lungs').selectOption('ards');
   const { vent } = await openVent(context, code);
@@ -365,6 +367,45 @@ test('a displaced tube takes the CO2 away, and a tension pneumothorax drops the 
   await E(() => window.__simEngine.applyIntervention('Needle'));
   await expect.poll(() => E(() => (window.__simEngine.state.vent.probs || []).includes('ptx'))).toBe(false);
   expect(await logHas(page, /^Ventilator problem fixed: tension pneumothorax decompressed/)).toBe(true);
+});
+
+test('PetCO2 is in kPa to one decimal place on the T1 (Monitoring window and Dynamic Lung) and on the C6', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await page.evaluate(() => { const e = window.__simEngine; e.attachStandardMonitoring(); if (!e.state.etco2Enabled) e.applyIntervention('ToggleETCO2'); });
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.etco2Enabled)).toBe(true);
+  const { vent, errors } = await openVent(context, code);
+  await startVentilating(vent);
+  await expect.poll(() => vent.evaluate(() => window.__vent.LIVE.etco2), { timeout: 15000 }).toBeGreaterThan(1);
+
+  // Monitoring > SpO2 tab
+  await vent.evaluate(() => window.openWin('monitoring', '3'));
+  const row = vent.locator('.mon-cols > div').filter({ hasText: 'PetCO2' });
+  await expect(row.locator('small')).toHaveText('kPa');
+  await expect(row.locator('b')).toHaveText(/^\d{1,2}\.\d$/);
+  const kpa = Number(await row.locator('b').textContent());
+  expect(Math.abs(kpa - await vent.evaluate(() => window.__vent.LIVE.etco2))).toBeLessThan(0.11);
+  expect(kpa).toBeLessThan(15);                       // not mmHg
+  await expect(vent.locator('#win')).not.toContainText('mmHg');
+
+  // Dynamic Lung panel
+  await vent.evaluate(() => { window.closeWin(); window.__vent.V.gfx = 'lung'; window.renderAll(); });
+  const dl = vent.locator('#dynlung .dl-row > span').filter({ hasText: 'PetCO2' });
+  await expect(dl.locator('small')).toHaveText('kPa');
+  await expect(dl.locator('b')).toHaveText(/^\d{1,2}\.\d$/);
+  await expect(vent.locator('#dynlung')).not.toContainText('mmHg');
+
+  // The C6 (generated from the T1): the right-hand monitoring column
+  await expandSection(page, 'vent');
+  await page.getByLabel('Ventilator model').selectOption('c6');
+  await expect(vent).toHaveURL(/\/vent\/c6\.html\?session=/, { timeout: 10000 });
+  await expect(vent.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  await startVentilating(vent);
+  const smp = vent.locator('#smp > div').filter({ hasText: 'PetCO2' });
+  await expect(smp.locator('small')).toHaveText('kPa', { timeout: 15000 });
+  await expect(smp.locator('b')).toHaveText(/^\d{1,2}\.\d$/, { timeout: 15000 });
+  await expect(vent.locator('body')).not.toContainText('mmHg');
+  expect(errors).toEqual([]);
 });
 
 // ---- Phase 4: Ventilator Sim ----
@@ -438,6 +479,7 @@ test('every Ventilator Sim scenario starts with its lungs, airway and patient', 
 test('mucus plugging: low sats that oxygen barely helps, low tidal volumes, cleared by bronchoscopy', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);   // the bronchoscopy acts on a live patient
   await expandSection(page, 'vent');
   await page.getByLabel("Patient's own breathing").selectOption('no');
   const { vent, errors } = await openVent(context, code);
