@@ -414,25 +414,34 @@
         const presenceIdRef = useRef(null);
         if (!presenceIdRef.current) presenceIdRef.current = Math.random().toString(36).slice(2, 10);
 
-        // --- monitor side: announce ourselves and what we are showing.
+        // --- monitor side: announce ourselves and what we are showing. A patient screen reports under
+        // its own screen id (kept across reloads, data/simscreens.js) as "screen:<role>", which is how
+        // the controller numbers it and lists it in Screens; it says nothing until it has that id.
         const SHOWS = { defib: 'defib', vent: 'ventilator' };
         const localScreen = state.localScreen || null;
-        const presenceRole = localScreen && localScreen.role === 'devices' ? 'devices' : 'monitor';
+        const presenceKey = isMonitorMode && localScreen && localScreen.id ? localScreen.id : null;
+        const presenceRole = 'screen:' + ((localScreen && localScreen.role) || 'all');
         const presenceDisplay = isMonitorMode
             ? (localScreen && SHOWS[localScreen.shows]) || (state.arrestPanelOpen ? 'arrest view' : 'patient monitor')
             : null;
+        // What it shows is read through a ref, so a change is one update, not a remove and re-add
+        // (which made the screen blink out of the controller's list).
+        const presenceNowRef = useRef(null);
+        presenceNowRef.current = { role: presenceRole, display: presenceDisplay };
+        const presenceWriteRef = useRef(null);
         useEffect(() => {
             const db = window.db;
-            if (!db || !sessionID || !isMonitorMode) return;
-            const ref = db.ref(`sessions/${sessionID}/presence/${presenceIdRef.current}`);
+            if (!db || !sessionID || !isMonitorMode || !presenceKey) return;
+            const ref = db.ref(`sessions/${sessionID}/presence/${presenceKey}`);
             const write = () => {
                 ref.update({
-                    role: presenceRole,
-                    display: presenceDisplay,
+                    role: presenceNowRef.current.role,
+                    display: presenceNowRef.current.display,
                     ua: (navigator.userAgent || '').slice(0, 120),
                     ts: Date.now()
                 }).catch(e => console.warn('Presence write failed', e));
             };
+            presenceWriteRef.current = write;
             // onDisconnect() is what makes a closed tab / dead tablet disappear promptly; the
             // heartbeat is what makes a WIFI dropout (where onDisconnect never fires) detectable.
             // onDisconnect() is one-shot and the SDK does not re-arm it after a reconnect.
@@ -441,8 +450,9 @@
             connRef.on('value', onConn);
             write();
             const hb = setInterval(write, 10000);
-            return () => { clearInterval(hb); connRef.off('value', onConn); ref.remove().catch(() => {}); };
-        }, [isMonitorMode, sessionID, presenceDisplay, presenceRole]);
+            return () => { presenceWriteRef.current = null; clearInterval(hb); connRef.off('value', onConn); ref.remove().catch(() => {}); };
+        }, [isMonitorMode, sessionID, presenceKey]);
+        useEffect(() => { if (presenceWriteRef.current) presenceWriteRef.current(); }, [presenceDisplay, presenceRole]);
 
         // --- controller side: reduce the presence children, expiring stale heartbeats.
         useEffect(() => {

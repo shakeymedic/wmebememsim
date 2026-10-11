@@ -17,7 +17,7 @@ test('first visit asks what the device is for; the controller sees the start opt
   await expect(card.getByTestId('session-code')).toHaveText(/^[A-Z0-9]{6}$/);
   // the screen set-up is not asked up front
   await expect(card.getByTestId('setup-toggle')).toHaveAttribute('aria-expanded', 'false');
-  await expect(card.getByTestId('setup-count-1')).toHaveCount(0);
+  await expect(card.getByTestId('screens-panel')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 

@@ -63,6 +63,7 @@
         const adultDrugs = adult && !(Number(scenario.patientAge) < 18);
         const education = ds.mode !== 'assessment';
         const [showJoin, setShowJoin] = useState(false);
+        const [showScreens, setShowScreens] = useState(false);
         const [showAllRhythms, setShowAllRhythms] = useState(false);
         const [note, setNote] = useState('');
 
@@ -164,6 +165,7 @@
                              title={defibClients.length ? 'A defib tablet is linked to this session.' : 'No defib tablet is linked over the network yet (a defib in another tab of this browser links without appearing here).'}>
                             <Lucide icon="zap" className="w-3 h-3" /> {defibClients.length ? (defibClients.length === 1 ? 'Defib linked' : `${defibClients.length} defibs`) : 'No defib tablet'}
                         </div>
+                        <Button ariaLabel="Screens: add patient screens and choose what each one shows" variant="outline" onClick={() => setShowScreens(true)} className="h-8 px-2 text-sky-300 border-sky-500/50"><Lucide icon="monitor" className="w-4 h-4 mr-1"/> Screens</Button>
                         <Button ariaLabel="Show the QR code to open the defib" variant="outline" onClick={() => setShowJoin(true)} className="h-8 px-2 text-sky-300 border-sky-500/50"><Lucide icon="qr-code" className="w-4 h-4 mr-1"/> Join</Button>
                         <Button variant="outline" onClick={() => { if (!window.SimScreens.openWindow('defib', sessionID)) window.open(`defib/index.html?session=${sessionID}`, '_blank'); }} className="h-8 px-2 text-amber-400 border-amber-500/50"><Lucide icon="external-link" className="w-4 h-4 mr-1"/> Open defib</Button>
                         <div className="font-mono text-2xl font-bold text-white ml-1">{fmt(state.time)}</div>
@@ -395,6 +397,18 @@
                     </div>
                 </div>
 
+                {showScreens && window.ScreensPanel && (
+                    <Modal label="Patient screens" onClose={() => setShowScreens(false)}>
+                        <div className="bg-slate-800 p-5 rounded-lg border border-slate-600 w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="text-lg font-bold text-white uppercase tracking-wider">Patient screens</h3>
+                                <button aria-label="Close screens" onClick={() => setShowScreens(false)} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
+                            </div>
+                            <window.ScreensPanel sessionID={sessionID} />
+                            <Button onClick={() => setShowScreens(false)} variant="outline" className="w-full mt-4">Done</Button>
+                        </div>
+                    </Modal>
+                )}
                 {showJoin && (() => {
                     let svg = null;
                     try { const q = window.qrcode(0, 'M'); q.addData(defibUrl); q.make(); svg = q.createSvgTag({ cellSize: 5, margin: 2, scalable: true }).replace('<svg ', '<svg style="width:100%;height:100%;display:block" '); } catch (e) { svg = null; }

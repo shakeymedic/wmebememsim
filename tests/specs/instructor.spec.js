@@ -138,19 +138,19 @@ test('the event log is always on screen: notes, flags, and the full log', async 
   expect(errors).toEqual([]);
 });
 
-test('Screens and Tools menus hold the tools that used to crowd the top bar', async ({ page, context }) => {
+test('Screens and the Tools menu hold the tools that used to crowd the top bar', async ({ page, context }) => {
   const errors = trackErrors(page);
   const code = await openController(page);
   await startScenario(page, 'Adult Medical', 'Anaphylaxis (Adult)');
   await page.getByRole('button', { name: /^Screens/ }).click();
-  await expect(page.getByRole('menuitem', { name: 'Join by QR code' })).toBeVisible();
-  // One patient screen by default: it opens in its own window
-  const [win] = await Promise.all([context.waitForEvent('page'), page.getByRole('menuitem', { name: /^Open the patient screen/ }).click()]);
+  await expect(page.getByTestId('screens-qr')).toBeVisible();
+  // A patient screen opens in its own window
+  const [win] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'Open a patient screen on this computer' }).click()]);
   await win.waitForLoadState();
   expect(win.url()).toMatch(new RegExp(`\\?mode=monitor&session=${code}$`));
   await page.bringToFront();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('menu')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('screens-panel')).toHaveCount(0);
   await page.getByRole('button', { name: /^Tools/ }).click();
   await page.getByRole('menuitem', { name: 'Mute alarms' }).click();
   await expect(page.getByRole('button', { name: 'Unmute alarms' })).toBeVisible();   // muted stays visible

@@ -389,14 +389,19 @@
     const LEGACY_KEY = 'wmebem_custom_scenarios';
     const MAX_USER_SCENARIOS = 200;
     // Firebase keys cannot contain . # $ [ ] / and the rules cap the length.
-    const safeKey = (id) => typeof id === 'string' && id.length > 0 && id.length <= 100 && !/[.#$\[\]\/]/.test(id);
+    const safeKey = (id) => typeof id === 'string' && id.length > 0 && id.length <= 100 && !/[.#$\[\]\/\u0000-\u001f\u007f]/.test(id);
     const isScenario = (s) => !!s && typeof s === 'object' && !Array.isArray(s)
         && typeof s.id === 'string' && s.id.length > 0 && typeof s.title === 'string' && s.title.length > 0;
     // Through JSON: drops undefined and functions, which Firebase refuses to store.
     const forStorage = (s) => { const c = JSON.parse(JSON.stringify(s)); c.title = String(c.title).slice(0, 200); return c; };
-    // A scenario whose id cannot be a database key gets a fresh CUST_ id rather than being refused.
-    let _idSeq = 0;
-    const withSafeId = (s) => safeKey(s.id) ? s : { ...s, id: `CUST_${Date.now()}_${++_idSeq}` };
+    // A scenario whose id cannot be a database key gets a CUST_ id made from the old one rather than
+    // being refused. The same old id always gives the same new id, so importing a file twice (or
+    // adding this device's scenarios twice) skips the ones already there instead of copying them.
+    const hashId = (str) => { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0; return h.toString(36); };
+    const withSafeId = (s) => safeKey(s.id) ? s : { ...s, id: `CUST_${hashId(String(s.id))}` };
+    // set() and update() THROW (rather than reject) on a key Firebase forbids anywhere inside the
+    // scenario; make that a rejection so the caller's message is shown.
+    const write = (fn) => { try { return Promise.resolve(fn()); } catch (e) { return Promise.reject(e); } };
     const listFrom = (raw) => {
         if (!raw || typeof raw !== 'object') return [];
         return Object.keys(raw).map(k => raw[k]).filter(isScenario)
@@ -423,7 +428,7 @@
             if (!isScenario(scenario)) return Promise.reject(new Error('A scenario needs an id and a title.'));
             const s = withSafeId(forStorage(scenario));
             s.savedAt = Date.now();
-            return window.db.ref(`userScenarios/${uid}/${s.id}`).set(s).then(() => s);
+            return write(() => window.db.ref(`userScenarios/${uid}/${s.id}`).set(s)).then(() => s);
         },
         // Several at once (file import, moving this device's scenarios in). Ids already in the
         // account are skipped, never overwritten. Resolves to the number added.
@@ -443,7 +448,7 @@
                 n++;
             });
             if (!n) return Promise.resolve(0);
-            return window.db.ref(`userScenarios/${uid}`).update(updates).then(() => n);
+            return write(() => window.db.ref(`userScenarios/${uid}`).update(updates)).then(() => n);
         },
         remove(uid, id) {
             if (!uid || !window.db || !safeKey(id)) return Promise.reject(new Error('Sign in to delete scenarios.'));

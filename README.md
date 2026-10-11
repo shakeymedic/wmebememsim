@@ -39,8 +39,8 @@ The **Session ID** shown in the controller header is what pairs the screens. It 
 `sessions/<CODE>` in the Realtime Database. New codes are six characters with no look-alike
 characters (no 0/O, 1/I/L). The database rules accept only codes in this format. The controller replaces any older four-character code (from this browser
 or the address bar) with a new one when it loads, and **New code** (under **Connect patient screens** on the start screen) starts a fresh
-one at any time. **Screens ▾ → Join by QR code** on the controller (and the setup screen) shows QR codes
-for the room monitor, the defib and the ventilator, so a tablet can pair by scanning instead of typing.
+one at any time. **Screens** on the controller (and **Connect patient screens** on the setup screen) shows
+the QR code a patient screen joins with, so a tablet can pair by scanning instead of typing.
 The Defib controller has its own **Join** button.
 
 The standalone defibrillator links over the same Firebase session (`?session=CODE`, or type the code
@@ -67,8 +67,124 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
 ## The instructor screen
 
 - **Top bar:** Back (pauses the scenario; the setup screen then offers **Return to scenario**), Finish, START/PAUSE, one connection badge (live sync plus which screens are
-  linked), the **Simple / Full** switch, and the clock. **Screens ▾** holds Join by QR code and an Open item for each patient
-  screen in this device's set-up (each in its own window); **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
+  linked), the **Simple / Full** switch, and the clock. **Screens** opens the Screens panel (above); **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
+  and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted. The shortcuts
+  work with a button focused (only Space is left to the button); typing in a box or an open pop-up
+  blocks them.
+- **Left column, in expandable sections** that remember whether they are open on each device: Monitoring
+  & access (closed, with a one-line summary and "Attach standard" on its header), the monitor strip
+  with the core obs (HR, BP, SpO2, RR, Temp, ETCO2) and a smaller **More obs** row (GCS, glucose, pH,
+  K+), **Drugs on board** (one list: phase, effect, time left, titration), **Patient condition**
+  (closed; AUTO/MANUAL deterioration, with Trend Better/Worse on its header) and **Rhythm & resus**
+  (arrest, ROSC, arrest view, defib, NIBP and the shock tally). The section titles and summaries are
+  the same Section component everywhere (`data/components.js`).
+- **NIBP rule (every mode, including the defib tablet):** the team's screens show `state.nibp`, the last
+  cuff reading, never the live BP. Only `COMMIT_NIBP` (a cuff cycle: the team's press, the facilitator's,
+  the defib's NIBP key via the `NIBP_START` device event, or the auto timer) and `SET_NIBP` (Manual
+  reading) change it. The BP modal defaults to *Now* and offers **Change, don't send** or **Change and
+  cycle cuff now**. WETFLAG on the room monitor starts hidden (`showWetflag` defaults to false) and is
+  toggled from Rhythm & resus.
+- **Debrief obs graph (every mode):** `state.sessionTime` is the debrief timeline. It advances with
+  `time` (TICK_TIME), and in a live Quick Sim before START also via the record-only `TICK_RECORD`
+  (no physiology). History samples (every 5 s: obs, `bpDia`, ETCO2 with a capnography flag, and the
+  rhythm) and log `timeSeconds` use it, and it is saved in the resume snapshot with the history. The
+  chart (`data/screens/debrief.js`, `buildTimeline`) is small multiples with a rhythm lane and four
+  numbered event lanes, drawn dark on screen and light in the report from the same code. The
+  ventilator changes the facilitator makes (problems, lungs, patient, link, remote settings) go in the
+  facilitator lane. The Defibrillation summary appears only when a shock was given; its "Counted
+  towards ROSC" figure leaves out shocks stacked within 5 s of the last. In print, the graph and log
+  cards may break across pages so the first page is never left empty.
+- **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
+  actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
+- **Simple / Full view** (remembered on each device, Simple by default; every open screen on the
+  device follows a change). Simple hides the advanced extras: the drug-timing detail lines in Drugs on
+  board, the "+ Invasive" bulk button (the individual chips stay), the pH and K+ tiles (GCS and
+  glucose stay), the shock-response settings and "Next shock converts to" in the defib panel (one
+  line says what is set, and opens Full view), and the Quick Sim preset list (a running preset stays
+  on screen so it can be stopped). Nothing is removed in either view.
+- **Defib Sim controller:** Shock response, Pacing & artefacts and Drugs start closed, each with a
+  one-line summary (e.g. "Never converts · cardioversion at 200 J", "Threshold 70 mA · no
+  artefacts", "Adrenaline 1 · Amiodarone 0"). The RCUK drug prompts sit above Drugs so they show
+  while it is closed. Rhythm, Arrest and the event log are always open.
+
+## Instructor guides
+
+`guides/` holds two static pages for instructors, a **Quick Start Guide** and a **Full Instructor
+Guide**, plus a landing page (`guides/index.html`) and an A4 PDF of each. A small highlighted
+"Instructor guides" link group sits at the left of the footer on every instructor screen (setup,
+live scenario, debrief); it never appears on the room monitor or the defib. The pages are plain HTML
+with `guides/guides.css`, which also holds the print layout.
+
+After editing a guide page, rebuild its PDF so the download matches, then commit both:
+
+```bash
+cd tests && npm ci && cd .. && node scripts/build-guides.mjs
+```
+
+`tests/specs/guides.spec.js` checks the links from the app, every link on the pages (the PDFs
+included) and accessibility. The service worker stores the guide pages for offline use but not the
+PDFs.
+
+## Capnography
+
+One capnogram for every screen: `RHYTHMS.capnogram(phase, etco2, pattern, severity, rate)` in
+`data/rhythms.js`, timed in real seconds from the start of inspiration (the same breath clock as the
+chest-impedance trace). Inspiration is a third of the breath up to 1.7 s, so a slow rate gives a wide,
+long-plateau wave and a fast rate a narrow one; the upstroke and downstroke take about 0.25 s at any
+rate. Shapes: normal, obstructive shark fin (scaled by the bronchospasm model), rebreathing, curare
+cleft, no waveform when nothing ventilates the patient, and low with compression ripples at 10
+breaths/min during CPR. The room monitor and controller draw it at half the ECG speed (16 s against
+8 s, i.e. 12.5 against 25 mm/s), the arrest view adds a CO2 lane when capnography is attached, and
+the defib tablet draws it under its ECG. `tests/specs/capnography.spec.js` checks the shapes and timing.
+
+## Start screen
+
+The app first asks **What is this device for?** (`WelcomeScreen` in `data/screens/setup.js`):
+**Controller** or **Patient screen**. The controller choice is kept for that tab
+(`sessionStorage` key `wmebem_device_role`), so a reload skips the question; `?mode=monitor` links
+skip it too. A patient screen goes to the code entry (`JoinScreen`).
+
+The controller then sees **What do you want to run?**, one card per launch mode (below); a card opens
+that mode's panel and **All options** goes back. Nothing about the screens has to be chosen first.
+
+### Patient screens
+
+Below the cards, the session code and **Connect patient screens** (`SessionSetupCard`) open the
+**Screens panel** (`ScreensPanel`, `data/screens/screenspanel.js`); the live sim and the Defib Sim open
+the same panel from their **Screens** button. Like Windows' display settings:
+
+- A patient screen joins with the **code alone** (`?mode=monitor&session=CODE`, the QR code, or
+  **Patient screen** then the code). It asks nothing else.
+- The **controller numbers** each screen as it joins (lowest free number) and is the only writer of
+  `sessions/<CODE>/screens/<screenId> = { n, role, ts }`. A new screen starts as `all` (or as an older
+  link's `?screen=` says).
+- While a Screens panel is open, `sessions/<CODE>/screenIdentify` is `true` (removed on close, and on
+  disconnect) and **every screen shows its big, coloured number**. A screen also shows it for 4 s when
+  it is first numbered and whenever its role changes.
+- For each screen the facilitator ticks **Monitor**, **Defib** and/or **Ventilator** (a screen must
+  keep at least one), or presses a **Quick set-up** (`Monitor | Defib + ventilator`,
+  `Monitor | Defib | Ventilator`, `Everything on every screen`). Changes apply at once and survive a
+  reload of the screen.
+- Roles (`data/simscreens.js`): `all`, `monitor`, `mondefib`, `monvent`, `devices`, `defib`, `vent`.
+  A role with the monitor shows the monitor and switches to the defib or ventilator when the
+  facilitator brings it in (**Defib** / **Ventilator** on the controller), with the switcher at the
+  bottom left; a role without the monitor shows its device(s) all the time. A device stays loaded while
+  hidden (the ventilator keeps ventilating).
+- The panel shows which screens carry the monitor, the defib and the ventilator, and the live sim shows
+  a warning chip when a device has been brought in that no connected screen shows.
+- A screen's id lives in `sessionStorage` (`wmebem_screen_id`), so a reload keeps its number and role
+  and two windows on one computer are two screens. A duplicated tab (same id) notices over a
+  BroadcastChannel and takes a new id.
+- **Open a patient screen on this computer** opens a new window each press, for extra monitors or a
+  projector. Windows, not tabs: the browser slows hidden tabs.
+- Presence: a patient screen reports `role: "screen:<role>"` under its screen id; the defib and
+  ventilator inside it report `monitor-defib` / `monitor-vent`, so the badge counts screens, not
+  pages. Standalone `defib/` and `vent/` pages are listed as "also linked" but are not numbered.
+
+## The instructor screen
+
+- **Top bar:** Back (pauses the scenario; the setup screen then offers **Return to scenario**), Finish, START/PAUSE, one connection badge (live sync plus which screens are
+  linked), the **Simple / Full** switch, and the clock. **Screens** opens the Screens panel (above); **Tools ▾** holds the drug calculator, timer alerts, the full log, where sound plays, mute
   and the keyboard shortcuts. Muted alarms show as a red "Muted" button until unmuted. The shortcuts
   work with a button focused (only Space is left to the button); typing in a box or an open pop-up
   blocks them.
@@ -308,8 +424,8 @@ tool), copied in as a simulation device. It joins a session the way the defib ta
 mix of tablets works at once: the room monitor, a defib tablet and a ventilator tablet, all on one
 patient.
 
-- **Where it runs.** On its own tablet (Screens > Join by QR code shows a Ventilator code, or type the
-  session code on the page), or on the room monitor: the controller's **Ventilator** section has
+- **Where it runs.** On a patient screen given **Ventilator** in the Screens panel (alone, or with the
+  monitor), on its own `vent/` page (type the session code on the page), or on the room monitor: the controller's **Ventilator** section has
   "Show the ventilator on the patient screens". The defib and the ventilator share the monitor's screen,
   so opening one closes the other; the learner can flip to the obs and back without stopping it.
   Closed and reopened, it carries on with the same settings (kept in that browser for 12 hours).

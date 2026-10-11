@@ -337,7 +337,7 @@
                     }
                 }
 
-                if (scen && scen.deterioration && normaliseDeteriorationType(scen.deterioration.type) === 'neuro' && isRunning) {
+                if (scen && scen.deterioration && normaliseDeteriorationType(scen.deterioration.type) === 'neuro' && isRunning && !inArrest) {
                     if (icp > 25) { base.bpSys = Math.min(220, base.bpSys + 0.2); base.bpDia = Math.min(180, base.bpDia + 0.12); base.hr = Math.max(30, base.hr - 0.1); vitalsChanged = true; }
                 }
 

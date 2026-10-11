@@ -153,6 +153,19 @@
             "$other": { ".validate": false }
           }
         },
+        // What each patient screen shows, chosen on the controller (Screens): its number and its
+        // role (monitor, defib, ventilator or a mix). Keyed by the screen's own id.
+        "screens": {
+          "$screen": {
+            ".validate": "newData.hasChildren(['n', 'role', 'ts']) && $screen.matches(/^[a-z0-9]{8,16}$/)",
+            "n": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 99" },
+            "role": { ".validate": "newData.isString() && newData.val().length <= 20" },
+            "ts": { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          }
+        },
+        // True while the controller's Screens panel is open: every patient screen shows its number.
+        "screenIdentify": { ".validate": "newData.isBoolean()" },
         // Presses on a learner's defib and the ventilator's log lines, consumed by the controller.
         "deviceEvents": {
           "$event": {

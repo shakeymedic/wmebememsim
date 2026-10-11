@@ -24,11 +24,13 @@ function payloadKeys() {
 }
 
 // ---- a tiny evaluator for the validators these rules use -------------------------------------
-function check(expr, v) {
+function check(expr, v, key) {
   if (expr === true || expr === 'true') return true;
   if (expr === false || expr === 'false') return false;
   return String(expr).split('&&').map(t => t.trim()).every(t => {
     let m;
+    if ((m = t.match(/^newData\.val\(\) (>=|<=) (-?[\d.]+)$/))) return typeof v === 'number' && (m[1] === '>=' ? v >= Number(m[2]) : v <= Number(m[2]));
+    if ((m = t.match(/^\$\w+\.matches\(\/(.*)\/\)$/))) return new RegExp(m[1]).test(String(key));
     if (t === 'newData.isString()') return typeof v === 'string';
     if (t === 'newData.isNumber()') return typeof v === 'number';
     if (t === 'newData.isBoolean()') return typeof v === 'boolean';
@@ -46,7 +48,8 @@ const childRule = (rule, key) => {
 };
 function validate(rule, value, where, problems) {
   if (value === null || value === undefined || !rule) return;
-  if (rule['.validate'] !== undefined && !check(rule['.validate'], value)) problems.push(`${where}: fails ${JSON.stringify(rule['.validate'])} with ${JSON.stringify(value).slice(0, 80)}`);
+  const key = String(where).split('/').pop();
+  if (rule['.validate'] !== undefined && !check(rule['.validate'], value, key)) problems.push(`${where}: fails ${JSON.stringify(rule['.validate'])} with ${JSON.stringify(value).slice(0, 80)}`);
   if (value && typeof value === 'object') Object.keys(value).forEach(k => validate(childRule(rule, k), value[k], `${where}/${k}`, problems));
 }
 const ruleAt = (segs) => segs.reduce((r, s) => childRule(r, s), RULES.sessions);
@@ -77,6 +80,11 @@ test('everything a controller, room monitor, defib tablet and ventilator write p
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
   await monitor.evaluate(() => { window.__monitorEngine.triggerNIBP(); window.__monitorEngine.sendDeviceEvent('CHECK_PULSE', { timestamp: Date.now() }); });
+  // The controller numbers the screen and changes what it shows; the panel shows the numbers
+  await page.getByRole('button', { name: /^Screens/ }).click();
+  await page.getByTestId('screen-row-1').locator('[data-part="vent"]').click();
+  await expect(monitor.getByTestId('screen-number')).toBeVisible();
+  await page.getByRole('button', { name: 'Done' }).click();
 
   const defib = await context.newPage();
   await defib.goto(`/defib/index.html?session=${code}`);
