@@ -1,8 +1,8 @@
-// The debrief's obs graph: in every mode (full scenario, Quick Sim without START, Defib Sim) the
+// The debrief's obs graph: in every mode (full scenario, Quick Sim, Defib Sim) the
 // debrief shows the patient's obs over time with the rhythm, what the team did and what the
 // facilitator changed, and the printed report carries the same chart.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -11,17 +11,21 @@ const E = (page, fn, arg) => page.evaluate(fn, arg);
 const ticks = async (page, type, n) => { for (let i = 0; i < n; i++) await E(page, (t) => window.__simEngine.dispatch({ type: t }), type); };
 const finish = async (page) => { await page.getByRole('button', { name: 'Finish' }).first().click(); await expect(page.getByText('Simulation Complete')).toBeVisible(); };
 
-test('Quick Sim records the obs and real log times without pressing START', async ({ page }) => {
+test('Quick Sim waits for START, then records the obs and real log times', async ({ page }) => {
   const errors = trackErrors(page);
   await openController(page);
   await startQuickSim(page);
   await E(page, () => window.__simEngine.attachStandardMonitoring());
-  // The record-only clock runs by itself...
+  // Before START the session clock does not run and nothing is recorded (it used to run from launch)
+  await page.waitForTimeout(2500);
+  const before = await E(page, () => ({ running: window.__simEngine.state.isRunning, time: window.__simEngine.state.time, sessionTime: window.__simEngine.state.sessionTime, history: window.__simEngine.state.history.length }));
+  expect(before).toEqual({ running: false, time: 0, sessionTime: 0, history: 0 });
+  await pressStart(page);
   await expect.poll(() => E(page, () => window.__simEngine.state.history.length), { timeout: 12000 }).toBeGreaterThanOrEqual(2);
   const s = await E(page, () => ({ running: window.__simEngine.state.isRunning, time: window.__simEngine.state.time, sessionTime: window.__simEngine.state.sessionTime }));
-  expect(s.running).toBe(false);
-  expect(s.time).toBe(0);                                // ...without starting the physiology clock
+  expect(s.running).toBe(true);
   expect(s.sessionTime).toBeGreaterThanOrEqual(5);
+  expect(s.time).toBe(s.sessionTime);                    // one clock once the patient is live
   await E(page, () => window.__simEngine.manualUpdateVitals({ hr: 140 }));
   const last = await E(page, () => window.__simEngine.state.log.slice(-1)[0]);
   expect(last.msg).toMatch(/^Obs changed: HR \d+ → 140$/);

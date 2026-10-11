@@ -1535,15 +1535,16 @@
     //   * the student monitor NEVER runs physiology (it would fight the authoritative vitals
     //     arriving over Firebase);
     //   * a running session runs the full pipeline;
-    //   * a session that has not been started (or has been paused) still advances an ACTIVE RAMP,
+    //   * a session that has NOT BEEN STARTED runs nothing: every launch mode waits for START, and
+    //     a ramp set before then begins when START is pressed;
+    //   * a session the facilitator has PAUSED (pausedAt set) still advances an ACTIVE RAMP,
     //     because a ramp is an explicit facilitator instruction, not a property of scenario time.
-    //     This is what makes the vitals-modal ramp and Trend Better/Worse work in Quick Sim, where
-    //     the controller is reached without ever passing through the briefing screen's START.
     const tickActionFor = (state, isMonitorMode) => {
         if (isMonitorMode) return null;
         if (!state) return null;
         if (state.isRunning) return 'TICK_TIME';
-        if (state.trends && state.trends.active) return 'TICK_TRENDS';
+        const paused = state.pausedAt !== null && state.pausedAt !== undefined && !state.isFinished;
+        if (paused && state.trends && state.trends.active) return 'TICK_TRENDS';
         return null;
     };
     window.__pkInternals.tickActionFor = tickActionFor;

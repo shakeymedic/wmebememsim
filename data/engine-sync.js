@@ -39,7 +39,8 @@
         // ONE handler for every press on a learner's defibrillator, however it arrived: over the
         // live session (a tablet anywhere) or the same-browser channel (a defib in another tab).
         // Presses are acted on whether or not the clock is running, so a forgotten START never
-        // silently drops a learner's shock.
+        // silently drops a learner's shock (outside Defib Sim, a shock before START is recorded and
+        // reaches the patient when START is pressed).
         const handleDeviceEvent = (type, p, where) => {
             const cur = stateRef.current;
             p = p || {};
@@ -530,7 +531,7 @@
         }, [isMonitorMode, sessionID]);
 
         // THE VENTILATOR BREATHING FOR THE PATIENT (phase 2). While the clock runs, TICK_TIME does
-        // the ventilator's second; while it is stopped (Quick Sim, a pause) this does, because a
+        // the ventilator's second; while it is stopped (before START, a pause) this does, because a
         // ventilated patient's oxygen and CO2 do not wait for START. The log says when the
         // ventilator takes over the obs and when it lets go.
         const ventDriving = !isMonitorMode && !!(window.VENT_ENGINE && window.VENT_ENGINE.driverFor(state));

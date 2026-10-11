@@ -101,6 +101,17 @@
         { name: 'Calcium Gluconate 10%', perKg: 0.5, unit: 'ml', max: 30, info: 'Hyperkalaemic arrhythmia: IV over 5-10 min (RCUK)' },
     ];
 
+    // "Not started" is a state of its own (every launch mode waits for START), so it is said in
+    // words next to START rather than left to a 00:00 clock.
+    const NotStartedBadge = ({ className = '', long = false }) => (
+        <span data-testid="not-started" role="status"
+              title="The patient is not live yet: no trends, deterioration or drug effects until you press START. Anything you give now is recorded and starts acting at START."
+              className={`h-8 px-2 inline-flex items-center justify-center gap-1 rounded border border-amber-400 bg-amber-950/70 text-amber-200 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap ${className}`}>
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
+            <span>Not started<span className={long ? '' : 'hidden xl:inline'}>: press START</span></span>
+        </span>
+    );
+
     // =============================================================================================
     // USER-RESIZABLE MONITOR / OBS PANEL ON THE CONTROLLER
     //
@@ -116,8 +127,11 @@
     // `separator`s with arrow-key / Home / End support, so the feature is keyboard-accessible.
     // =============================================================================================
     const PANEL_STORE_KEY = 'wmebem.controllerPanel.v1';
-    const PANEL_DEFAULTS = { width: null, stripHeight: 256 };   // width null = the classic ~34% column
-    const PANEL_BOUNDS = { minWidth: 280, minRight: 380, maxFraction: 0.72, minStrip: 140, maxStrip: 560 };
+    // The strip defaults SHORT (120 px): on a 1366x768 laptop the old 256 px preview pushed the obs
+    // tiles, ARREST, Defib and CPR below the fold. The team's real monitor is the room screen; this
+    // is a preview, and the grip makes it as tall as anyone wants.
+    const PANEL_DEFAULTS = { width: null, stripHeight: 120 };   // width null = the classic ~34% column
+    const PANEL_BOUNDS = { minWidth: 280, minRight: 380, maxFraction: 0.72, minStrip: 96, maxStrip: 560 };
 
     const readPanelPrefs = () => {
         try {
@@ -318,9 +332,12 @@
         // button, NIBP, the drug-dose calculator and the timer alerts — all facilitator tools that
         // are useful without a scenario.
         const quickSim = !!scenario.quickSim;
-        // Quick Sim's clock is the session timeline, which runs from launch (record only, no
-        // physiology) so the event log and the debrief have real times without pressing START.
+        // Quick Sim's clock is the session timeline (sessionTime). Like every launch mode it stays
+        // at 00:00 until START: the patient is not live before then.
         const clockSeconds = quickSim ? (Number(state.sessionTime) || 0) : time;
+        // Not started yet (as opposed to paused by the facilitator, or finished): the controller
+        // says so plainly until START is pressed.
+        const notStarted = !isRunning && !state.isFinished && (state.pausedAt === null || state.pausedAt === undefined);
         const etco2Shape = etco2Pathology || 'normal';
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
@@ -570,7 +587,7 @@
 
         // ======================= QUICK SIM PRESETS (scripted sequences) =======================
         // A preset steps through rhythm/obs changes on a timer, or waits for Next. Elapsed time only
-        // accrues while the session is not deliberately paused, so PAUSE freezes the script too.
+        // accrues while the clock runs, so a preset waits for START and PAUSE freezes it too.
         // Rhythms go through the same entry points as the menus: a pulseless target is an ARREST,
         // leaving a pulseless rhythm is a ROSC, anything else is an ordinary rhythm change.
         const QSP = window.QuickSimPresets;
@@ -644,8 +661,7 @@
                 if (!run) return;
                 const now = Date.now();
                 const st = liveStateRef.current;
-                const paused = (st.pausedAt !== null && st.pausedAt !== undefined) || st.isFinished;
-                if (!paused) run.accMs += now - run.lastTs;
+                if (st.isRunning && !st.isFinished) run.accMs += now - run.lastTs;
                 run.lastTs = now;
                 const next = run.preset.steps[run.idx];
                 if (next && !next.wait && run.accMs >= (Number(next.after) || 0) * 1000) firePresetStep();
@@ -882,6 +898,11 @@
         // large tiles size their numbers by SCREEN width, so in a narrow panel "120/75" was clipped.
         const panelPx = panel.prefs.width !== null ? panel.prefs.width : (window.innerWidth || 1280) * 0.34;
         const narrowPanel = panelPx < 420;
+        // A short screen (a 1366x768 or 1024x768 laptop) gets the compact tiles as well, and "More
+        // obs" starts closed (its summary still shows GCS and glucose), so the obs tiles and the
+        // Rhythm & resus controls are all on screen without scrolling.
+        const shortScreen = (window.innerHeight || 1000) < 900;
+        const compactTiles = narrowPanel || shortScreen;
         // The vital tiles. The core six (HR, BP, SpO2, RR, Temp, ETCO2) are the big tiles in the
         // desktop panel; GCS, glucose, pH and K+ sit in a smaller "More obs" row beneath them. The
         // phone view shows all ten, compact, core first.
@@ -976,9 +997,10 @@
                         </div>
                         <div className="font-mono text-xl font-bold text-white">{formatTime(clockSeconds)}</div>
                         {!isRunning
-                            ? <Button variant="success" onClick={start} className="h-9 px-3 font-bold text-sm"><Lucide icon="play" className="w-4 h-4"/> START</Button>
+                            ? <Button variant="success" onClick={start} className={`h-9 px-3 font-bold text-sm ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play" className="w-4 h-4"/> START</Button>
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
                     </div>
+                    {notStarted && <NotStartedBadge long className="mb-1 w-full" />}
                     <div className="grid grid-cols-3 min-[400px]:grid-cols-4 gap-1">
                         {renderVitalTiles()}
                     </div>
@@ -991,7 +1013,11 @@
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
                         <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
                         {/* START/PAUSE lives beside the phone obs on small screens. */}
-                        {!isRunning ? ( <Button variant="success" onClick={start} className="h-8 px-4 font-bold max-md:hidden"><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
+                        {!isRunning ? ( <Button variant="success" onClick={start} className={`h-8 px-4 font-bold max-md:hidden ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
+                        {notStarted && <NotStartedBadge className="max-md:hidden" />}
+                        {!isRunning && !notStarted && !state.isFinished && (
+                            <span data-testid="paused-badge" role="status" className="max-md:hidden h-8 px-2 flex items-center rounded border border-slate-500 bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">Paused</span>
+                        )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -1053,7 +1079,9 @@
                                 { label: isMuted ? 'Unmute alarms' : 'Mute alarms', icon: isMuted ? 'volume-2' : 'volume-x', onClick: () => sim.dispatch({type: 'SET_MUTED', payload: !isMuted}) },
                                 { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) }
                             ]} />
-                        <div className="font-mono text-2xl font-bold text-white ml-2 max-md:hidden">{formatTime(clockSeconds)}</div>
+                        {/* Before START a narrower laptop shows "Not started" in place of a 00:00 clock,
+                            so the toolbar stays on one row. */}
+                        <div className={`font-mono text-2xl font-bold text-white ml-2 max-md:hidden ${notStarted ? 'max-xl:hidden' : ''}`}>{formatTime(clockSeconds)}</div>
                     </div>
                 </div>
 
@@ -1080,12 +1108,14 @@
                             {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
                          </div>
                          ) : (
-                         <div className="flex-none bg-slate-800 p-3 rounded border-l-4 border-sky-500 shadow-md">
-                            <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>
-                            <div className="text-sm text-white font-bold">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex})</div>
-                            {scenario.title && <div className="text-xs text-emerald-400 font-bold uppercase mt-0.5">{scenario.title}</div>}
-                            {scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
-                            <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>
+                         <div className={`flex-none bg-slate-800 ${shortScreen ? 'p-2' : 'p-3'} rounded border-l-4 border-sky-500 shadow-md`}>
+                            {/* A short screen keeps this to the essentials (the full profile is a hover
+                                away) so the obs and resus controls fit beneath it. */}
+                            {!shortScreen && <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>}
+                            <div className="text-sm text-white font-bold" title={shortScreen ? formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex) : undefined}>{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex})</div>
+                            {scenario.title && <div className={`text-xs text-emerald-400 font-bold uppercase mt-0.5 ${shortScreen ? 'truncate' : ''}`} title={scenario.title}>{scenario.title}</div>}
+                            {!shortScreen && scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
+                            {!shortScreen && <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>}
                             <HumanFactorBadge hf={scenario.hf} className="mt-2" />
                          </div>
                          )}
@@ -1181,21 +1211,21 @@
                                      resizable panel below makes the panel narrower still. The cluster
                                      is therefore OUT of the trace area entirely, in its own toolbar
                                      row above the strip. Nothing overlaps the label at any width. */}
-                                 <div className="flex items-center gap-1 bg-slate-900/90 border-b border-slate-800 px-1 py-1">
-                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-1 text-[10px] rounded font-bold uppercase tracking-wider`}>
+                                 <div className="flex items-center gap-1 bg-slate-900/90 border-b border-slate-800 px-1 py-0.5">
+                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-0.5 text-[10px] rounded font-bold uppercase tracking-wider`}>
                                          <Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{state.monitorTimer?.visible ? 'Hide Timer' : 'Show Timer'}
                                      </button>
                                      {state.monitorTimer?.visible && (
                                          <>
-                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
+                                             <button onClick={() => sim.dispatch({type: state.monitorTimer?.active ? 'PAUSE_MONITOR_TIMER' : 'START_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-0.5 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
                                                  {state.monitorTimer?.active ? 'Pause' : 'Start'}
                                              </button>
-                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-1 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
+                                             <button onClick={() => sim.dispatch({type: 'RESET_MONITOR_TIMER'})} className="bg-slate-800 border border-slate-600 px-2 py-0.5 text-[10px] rounded text-white font-bold uppercase hover:bg-slate-700">
                                                  Reset
                                              </button>
                                          </>
                                      )}
-                                     <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-1 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
+                                     <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-0.5 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
                                  </div>
                                  {/* The strip height is the facilitator's dragged value. ECGMonitor
                                      re-measures parentElement.clientWidth/clientHeight every frame and
@@ -1242,107 +1272,17 @@
 
                              {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
                                  very top of the page instead (see PHONE OBS below). */}
-                             <div className={`hidden md:grid ${narrowPanel ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
-                                 {coreTiles(narrowPanel)}
+                             <div className={`hidden md:grid ${compactTiles ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
+                                 {coreTiles(compactTiles)}
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={true} className="border-slate-800 bg-black">
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black">
                                      <div className={`grid ${narrowPanel || simple ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>{moreTiles()}</div>
                                  </Section>
                              </div>
                         </div>
 
-                        {/* ---- DRUGS ON BOARD. One list (it used to be two panels showing the same
-                             drugs): the phase, how strong the effect is now and when it is gone, what it
-                             will do and when, and +/- to titrate a running infusion. The route is shown
-                             so IM, IV and buccal are told apart at a glance. ---- */}
-                        {!quickSim && activeDrugRows.length > 0 && (
-                            <Section id="drugs" tone="violet" title={`Drugs on board (${activeDrugRows.length})`} summary={drugSummary} defaultOpen={true}>
-                                <div className="flex flex-col gap-1" title="Effects are added on top of the underlying physiology and wear off on their own. A drug in ONSET has not started acting yet; the countdown says when it will.">
-                                    {activeDrugRows.map(d => {
-                                        const style = PHASE_STYLE[d.phase] || { cls: 'text-slate-300 border-slate-600 bg-slate-900', label: String(d.phase).toUpperCase() };
-                                        const route = INTERVENTIONS[d.key] && INTERVENTIONS[d.key].route;
-                                        // TITRATION: a running infusion can be turned up or down while it runs.
-                                        const infusion = (state.activeDrugs || []).filter(x => x.key === d.key && x.sustained && x.stopTime < 0).pop();
-                                        return (
-                                            <div key={d.key} className="border-b border-slate-700/40 last:border-0 pb-1 last:pb-0">
-                                                <div className="flex items-center gap-2 text-[11px]">
-                                                    <span className="text-white font-bold truncate flex-1 min-w-0">{d.label}{d.doses > 1 ? ` x${d.doses}` : ''}{route && route !== 'n/a' ? <span className="text-slate-400 font-normal"> &middot; {route}</span> : null}</span>
-                                                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider flex-none ${style.cls}`}>{style.label}</span>
-                                                    <span className="font-mono text-slate-400 w-10 text-right flex-none">{d.intensity}%</span>
-                                                    <span className="font-mono text-slate-400 w-16 text-right flex-none" title={d.sustained && !d.stopped ? 'Runs until you stop it' : 'Time until the effect is gone'}>{d.sustained && !d.stopped ? 'running' : fmtRemaining(d.remaining)}</span>
-                                                </div>
-                                                {infusion && (
-                                                    <div className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-400">
-                                                        Rate
-                                                        <button title="Turn the infusion DOWN" aria-label={`Turn ${d.label} down`} onClick={() => sim.dispatch({ type: 'SET_DRUG_DOSE', payload: { key: d.key, dose: (Number(infusion.dose) || 1) - 0.25 } })} className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 leading-none font-bold">-</button>
-                                                        <span className="font-mono text-sky-300 w-10 text-center">x{(Number(infusion.dose) || 1).toFixed(2)}</span>
-                                                        <button title="Turn the infusion UP" aria-label={`Turn ${d.label} up`} onClick={() => sim.dispatch({ type: 'SET_DRUG_DOSE', payload: { key: d.key, dose: (Number(infusion.dose) || 1) + 0.25 } })} className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 leading-none font-bold">+</button>
-                                                    </div>
-                                                )}
-                                                {/* What it will do, and when: a correctly modelled long-onset drug
-                                                    (IV paracetamol) does nothing inside a short segment, so the pending
-                                                    effect and its countdown are stated rather than looking inert. */}
-                                                {!simple && (d.expected || d.onsetIn > 0) && (
-                                                    <div className="text-[9px] text-slate-400 flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
-                                                        {d.expected && <span className="text-slate-300">{d.expected}</span>}
-                                                        {d.onsetIn > 0
-                                                            ? <span className="text-sky-300 font-bold">starts in {fmtRemaining(d.onsetIn)} (onset ~{Math.round(d.onsetSeconds / 60) >= 1 ? Math.round(d.onsetSeconds / 60) + ' min' : d.onsetSeconds + 's'})</span>
-                                                            : (d.peakIn > 0 && <span className="text-amber-300">peaks in {fmtRemaining(d.peakIn)}</span>)}
-                                                    </div>
-                                                )}
-                                                {/* A rate-driven intervention reports its live value, rate and ETA. */}
-                                                {!simple && (d.drives || []).map(dr => (
-                                                    <div key={dr.vital} className="text-[9px] text-cyan-300 mt-0.5 font-mono">
-                                                        {dr.vital === 'temp' ? 'temp' : dr.vital} {dr.current !== null ? dr.current.toFixed(2) : '--'}
-                                                        {' \u2192 '}{dr.target}{' at '}{dr.ratePerHour > 0 ? '+' : '\u2212'}{Math.abs(dr.ratePerHour)}{dr.vital === 'temp' ? ' \u00b0C/h' : '/h'}
-                                                        {dr.active ? (dr.etaSeconds !== null ? ` \u00b7 ETA ${fmtRemaining(dr.etaSeconds)}` : '') : ' \u00b7 not started yet'}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </Section>
-                        )}
-
-                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons.
-                             Closed by default; the mode is spelled out in the summary and Trend
-                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
-                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
-                             buttons). ---- */}
-                        {!quickSim && (
-                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
-                            right={(
-                                <span className="flex gap-1 flex-none">
-                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
-                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
-                                </span>
-                            )}>
-                            <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
-                                        {deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs only change when you change them'}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5">
-                                        {detInfo.declared
-                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
-                                            : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}
-                                    </div>
-                                </div>
-                                <Button
-                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
-                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
-                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
-                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
-                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
-                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
-                                </Button>
-                            </div>
-                        </Section>
-                        )}
-
-                        {/* ---- RHYTHM & RESUS: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
+                        {/* ---- RHYTHM & RESUS, straight under the obs so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
                              the rhythm and shock summary, and the defib controls when open. ---- */}
                         <Section id="resus" title="Rhythm & resus" summary={resusSummary} defaultOpen={true}>
                         <div className="flex flex-col gap-2">
@@ -1451,7 +1391,7 @@
                         </div>
 
                         {(arrestPanelOpen || defibPanelOpen) && (
-                             <div className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
+                             <div data-testid="defib-panel" className="flex-none bg-red-900/20 border-2 border-red-500 p-2 rounded-lg animate-fadeIn shadow-2xl shadow-red-900/50">
                                  <div className="flex justify-between items-center mb-2">
                                      <h3 className="text-red-400 font-bold uppercase text-xs flex items-center gap-1"><Lucide icon="zap" className="w-3 h-3"/> Defibrillator {defibPanelOpen ? '(on monitor)' : '(arrest view)'}</h3>
                                      <button aria-label="Close defibrillator panel" onClick={() => { if (defibPanelOpen) sim.dispatch({type: 'SET_DEFIB_PANEL', payload: false}); else sim.dispatch({type: 'SET_ARREST_PANEL', payload: false}); }} className="text-red-400 hover:text-white"><Lucide icon="x" className="w-4 h-4"/></button>
@@ -1547,6 +1487,96 @@
                         )}
                         </div>
                         </Section>
+
+                        {/* ---- DRUGS ON BOARD. One list (it used to be two panels showing the same
+                             drugs): the phase, how strong the effect is now and when it is gone, what it
+                             will do and when, and +/- to titrate a running infusion. The route is shown
+                             so IM, IV and buccal are told apart at a glance. ---- */}
+                        {!quickSim && activeDrugRows.length > 0 && (
+                            <Section id="drugs" tone="violet" title={`Drugs on board (${activeDrugRows.length})`} summary={drugSummary} defaultOpen={true}>
+                                <div className="flex flex-col gap-1" title="Effects are added on top of the underlying physiology and wear off on their own. A drug in ONSET has not started acting yet; the countdown says when it will.">
+                                    {activeDrugRows.map(d => {
+                                        const style = PHASE_STYLE[d.phase] || { cls: 'text-slate-300 border-slate-600 bg-slate-900', label: String(d.phase).toUpperCase() };
+                                        const route = INTERVENTIONS[d.key] && INTERVENTIONS[d.key].route;
+                                        // TITRATION: a running infusion can be turned up or down while it runs.
+                                        const infusion = (state.activeDrugs || []).filter(x => x.key === d.key && x.sustained && x.stopTime < 0).pop();
+                                        return (
+                                            <div key={d.key} className="border-b border-slate-700/40 last:border-0 pb-1 last:pb-0">
+                                                <div className="flex items-center gap-2 text-[11px]">
+                                                    <span className="text-white font-bold truncate flex-1 min-w-0">{d.label}{d.doses > 1 ? ` x${d.doses}` : ''}{route && route !== 'n/a' ? <span className="text-slate-400 font-normal"> &middot; {route}</span> : null}</span>
+                                                    <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider flex-none ${style.cls}`}>{style.label}</span>
+                                                    <span className="font-mono text-slate-400 w-10 text-right flex-none">{d.intensity}%</span>
+                                                    <span className="font-mono text-slate-400 w-16 text-right flex-none" title={d.sustained && !d.stopped ? 'Runs until you stop it' : 'Time until the effect is gone'}>{d.sustained && !d.stopped ? 'running' : fmtRemaining(d.remaining)}</span>
+                                                </div>
+                                                {infusion && (
+                                                    <div className="flex items-center gap-1 mt-0.5 text-[10px] text-slate-400">
+                                                        Rate
+                                                        <button title="Turn the infusion DOWN" aria-label={`Turn ${d.label} down`} onClick={() => sim.dispatch({ type: 'SET_DRUG_DOSE', payload: { key: d.key, dose: (Number(infusion.dose) || 1) - 0.25 } })} className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 leading-none font-bold">-</button>
+                                                        <span className="font-mono text-sky-300 w-10 text-center">x{(Number(infusion.dose) || 1).toFixed(2)}</span>
+                                                        <button title="Turn the infusion UP" aria-label={`Turn ${d.label} up`} onClick={() => sim.dispatch({ type: 'SET_DRUG_DOSE', payload: { key: d.key, dose: (Number(infusion.dose) || 1) + 0.25 } })} className="w-5 h-5 rounded bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-200 leading-none font-bold">+</button>
+                                                    </div>
+                                                )}
+                                                {/* What it will do, and when: a correctly modelled long-onset drug
+                                                    (IV paracetamol) does nothing inside a short segment, so the pending
+                                                    effect and its countdown are stated rather than looking inert. */}
+                                                {!simple && (d.expected || d.onsetIn > 0) && (
+                                                    <div className="text-[9px] text-slate-400 flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                                                        {d.expected && <span className="text-slate-300">{d.expected}</span>}
+                                                        {d.onsetIn > 0
+                                                            ? <span className="text-sky-300 font-bold">starts in {fmtRemaining(d.onsetIn)} (onset ~{Math.round(d.onsetSeconds / 60) >= 1 ? Math.round(d.onsetSeconds / 60) + ' min' : d.onsetSeconds + 's'})</span>
+                                                            : (d.peakIn > 0 && <span className="text-amber-300">peaks in {fmtRemaining(d.peakIn)}</span>)}
+                                                    </div>
+                                                )}
+                                                {/* A rate-driven intervention reports its live value, rate and ETA. */}
+                                                {!simple && (d.drives || []).map(dr => (
+                                                    <div key={dr.vital} className="text-[9px] text-cyan-300 mt-0.5 font-mono">
+                                                        {dr.vital === 'temp' ? 'temp' : dr.vital} {dr.current !== null ? dr.current.toFixed(2) : '--'}
+                                                        {' \u2192 '}{dr.target}{' at '}{dr.ratePerHour > 0 ? '+' : '\u2212'}{Math.abs(dr.ratePerHour)}{dr.vital === 'temp' ? ' \u00b0C/h' : '/h'}
+                                                        {dr.active ? (dr.etaSeconds !== null ? ` \u00b7 ETA ${fmtRemaining(dr.etaSeconds)}` : '') : ' \u00b7 not started yet'}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </Section>
+                        )}
+
+                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons.
+                             Closed by default; the mode is spelled out in the summary and Trend
+                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
+                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
+                             buttons). ---- */}
+                        {!quickSim && (
+                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
+                            right={(
+                                <span className="flex gap-1 flex-none">
+                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                                </span>
+                            )}>
+                            <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
+                                        {deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs only change when you change them'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {detInfo.declared
+                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
+                                            : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}
+                                    </div>
+                                </div>
+                                <Button
+                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
+                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
+                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
+                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
+                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
+                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
+                                </Button>
+                            </div>
+                        </Section>
+                        )}
 
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
