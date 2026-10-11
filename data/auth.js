@@ -4,7 +4,8 @@
     // ---------------------------------------------------------------------------------------------
     // THE ONE RULE THIS FILE MUST NEVER BREAK (requirement B4):
     //   The app is fully usable with NO account. Nothing here may block, prompt, redirect, throw,
-    //   or log noise. Sign-in gates RESTRICTED CONTENT ONLY. Every existing feature — all 254
+    //   or log noise. Sign-in gates RESTRICTED CONTENT and SAVING YOUR OWN SCENARIOS (My scenarios)
+    //   only. Every other feature — all 254
     //   scenarios, Quick Sim, the monitor, the defibrillator, the debrief — works signed out, and
     //   works identically whether or not Firebase Authentication has even been enabled in the
     //   console. Requirement C4: until auth is enabled, the restricted section must simply read as
@@ -114,9 +115,12 @@
         'auth/invalid-login-credentials': 'Incorrect email or password.',
         'auth/too-many-requests': 'Too many attempts. Please wait a minute and try again.',
         'auth/network-request-failed': 'Could not reach Firebase. Check the network connection.',
-        'auth/popup-blocked': 'The sign-in popup was blocked by the browser.',
+        'auth/popup-blocked': 'The Google sign-in window was blocked. Allow pop-ups for this site and try again.',
         'auth/popup-closed-by-user': 'Sign-in was cancelled.',
-        'auth/unauthorized-domain': 'This domain is not in the Firebase authorised domains list.'
+        'auth/cancelled-popup-request': 'Sign-in was cancelled.',
+        'auth/account-exists-with-different-credential': 'There is already an account with this email. Sign in with your email and password instead.',
+        'auth/unauthorized-domain': 'Google sign-in is not allowed on this web address yet. The owner needs to add it under Firebase → Authentication → Settings → Authorised domains.',
+        'google/not-enabled': 'Google sign-in is not switched on for this project yet. The owner can turn it on under Firebase → Authentication → Sign-in method → Google.'
     };
     const describeAuthError = (e) => {
         if (!e) return null;
@@ -330,12 +334,17 @@
             run(auth => auth.sendPasswordResetEmail(String(email || '').trim()),
                 'Password reset email sent. Check your inbox (and spam).'), [run]);
 
-        // Optional and entirely non-load-bearing: if the Google provider is not enabled in the
-        // console this fails with a friendly message and nothing else changes.
+        // Signs in, or creates the account on first use (the profile is written by the
+        // onAuthStateChanged handler above, as for any sign-in). If the Google provider is not
+        // enabled in the console, or this web address is not an authorised domain, it fails with a
+        // message saying which, and nothing else changes.
         const signInWithGoogle = useCallback(() =>
-            run(auth => {
-                if (!window.firebase.auth.GoogleAuthProvider) throw { code: 'auth/operation-not-allowed' };
-                return auth.signInWithPopup(new window.firebase.auth.GoogleAuthProvider());
+            run(async (auth) => {
+                if (!window.firebase.auth.GoogleAuthProvider) throw { code: 'google/not-enabled' };
+                const provider = new window.firebase.auth.GoogleAuthProvider();
+                if (provider.setCustomParameters) provider.setCustomParameters({ prompt: 'select_account' });
+                try { await auth.signInWithPopup(provider); }
+                catch (e) { throw (e && e.code === 'auth/operation-not-allowed') ? { code: 'google/not-enabled' } : e; }
             }), [run]);
 
         const signOut = useCallback(() => run(async (auth) => { await auth.signOut(); setAuthFlag('0'); }), [run]);
@@ -366,6 +375,94 @@
         };
     };
     window.useAuth = useAuth;
+
+    // =============================================================================================
+    // MY SCENARIOS — custom scenarios saved to the signed-in account
+    // ---------------------------------------------------------------------------------------------
+    // Scenarios built in the Builder or imported from a file live at userScenarios/{uid}/{id}, and
+    // the rules let only that account read or write them. Saving needs an account; running a
+    // built-in scenario, or running a Builder scenario without saving it, does not.
+    // Before accounts held them they lived in this browser's localStorage (LEGACY_KEY). Those are
+    // still listed on this device and can be added to the account once signed in; a different web
+    // address (the custom domain) cannot see them at all, which is why the account is the home now.
+    // =============================================================================================
+    const LEGACY_KEY = 'wmebem_custom_scenarios';
+    const MAX_USER_SCENARIOS = 200;
+    // Firebase keys cannot contain . # $ [ ] / and the rules cap the length.
+    const safeKey = (id) => typeof id === 'string' && id.length > 0 && id.length <= 100 && !/[.#$\[\]\/]/.test(id);
+    const isScenario = (s) => !!s && typeof s === 'object' && !Array.isArray(s)
+        && typeof s.id === 'string' && s.id.length > 0 && typeof s.title === 'string' && s.title.length > 0;
+    // Through JSON: drops undefined and functions, which Firebase refuses to store.
+    const forStorage = (s) => { const c = JSON.parse(JSON.stringify(s)); c.title = String(c.title).slice(0, 200); return c; };
+    // A scenario whose id cannot be a database key gets a fresh CUST_ id rather than being refused.
+    let _idSeq = 0;
+    const withSafeId = (s) => safeKey(s.id) ? s : { ...s, id: `CUST_${Date.now()}_${++_idSeq}` };
+    const listFrom = (raw) => {
+        if (!raw || typeof raw !== 'object') return [];
+        return Object.keys(raw).map(k => raw[k]).filter(isScenario)
+            .sort((a, b) => (Number(a.savedAt) || 0) - (Number(b.savedAt) || 0) || a.title.localeCompare(b.title));
+    };
+
+    const UserScenarios = {
+        LEGACY_KEY, MAX: MAX_USER_SCENARIOS, isScenario, safeKey,
+        // Live list for one account. onList gets an array; onError gets 'denied' or 'unavailable'.
+        subscribe(uid, onList, onError) {
+            if (!uid || !window.db) { if (onError) onError('unavailable'); return () => {}; }
+            const ref = window.db.ref(`userScenarios/${uid}`);
+            const handler = ref.on('value', snap => {
+                const list = listFrom(snap.val());
+                UserScenarios.cache = list;
+                onList(list);
+            }, (e) => {
+                if (onError) onError(/permission|denied/i.test(String((e && e.message) || '')) ? 'denied' : 'unavailable');
+            });
+            return () => { try { ref.off('value', handler); } catch (e) {} };
+        },
+        save(uid, scenario) {
+            if (!uid || !window.db) return Promise.reject(new Error('Sign in to save scenarios.'));
+            if (!isScenario(scenario)) return Promise.reject(new Error('A scenario needs an id and a title.'));
+            const s = withSafeId(forStorage(scenario));
+            s.savedAt = Date.now();
+            return window.db.ref(`userScenarios/${uid}/${s.id}`).set(s).then(() => s);
+        },
+        // Several at once (file import, moving this device's scenarios in). Ids already in the
+        // account are skipped, never overwritten. Resolves to the number added.
+        saveMany(uid, list, existing) {
+            if (!uid || !window.db) return Promise.reject(new Error('Sign in to save scenarios.'));
+            const have = new Set((existing || []).map(s => s.id));
+            const room = Math.max(0, MAX_USER_SCENARIOS - have.size);
+            const updates = {};
+            let n = 0;
+            (list || []).filter(isScenario).forEach(raw => {
+                if (n >= room || have.has(raw.id)) return;
+                const s = withSafeId(forStorage(raw));
+                if (have.has(s.id)) return;
+                s.savedAt = Date.now() + n;
+                updates[s.id] = s;
+                have.add(s.id);
+                n++;
+            });
+            if (!n) return Promise.resolve(0);
+            return window.db.ref(`userScenarios/${uid}`).update(updates).then(() => n);
+        },
+        remove(uid, id) {
+            if (!uid || !window.db || !safeKey(id)) return Promise.reject(new Error('Sign in to delete scenarios.'));
+            return window.db.ref(`userScenarios/${uid}/${id}`).remove();
+        },
+        // Scenarios saved in this browser before accounts held them.
+        readLegacy() {
+            try {
+                const raw = localStorage.getItem(LEGACY_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return (Array.isArray(parsed) ? parsed : [parsed]).filter(isScenario);
+            } catch (e) { return []; }
+        },
+        clearLegacy() { try { localStorage.removeItem(LEGACY_KEY); } catch (e) {} },
+        // The signed-in account's list as last loaded, so a resumed run can find its scenario.
+        cache: []
+    };
+    window.UserScenarios = UserScenarios;
 
     // =============================================================================================
     // RESTRICTED SCENARIO LOADER (requirement C2 / C5)
@@ -467,7 +564,7 @@
                         <div>
                             <h3 className="text-lg font-bold text-white uppercase tracking-wider">Account</h3>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                                An account is only needed for restricted content. Everything else in the app works without one.
+                                An account saves your own scenarios and unlocks restricted content. Everything else in the app works without one.
                             </p>
                         </div>
                         <button aria-label="Close account panel" onClick={onClose} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>
@@ -490,6 +587,18 @@
                                 ))}
                             </div>
 
+                            {tab !== 'reset' && (
+                                <>
+                                    <button type="button" onClick={auth.signInWithGoogle} disabled={auth.busy}
+                                        className="w-full h-11 rounded border border-slate-500 bg-white text-slate-900 text-sm font-bold hover:bg-slate-100 flex items-center justify-center gap-2 disabled:opacity-60">
+                                        <span aria-hidden="true" className="font-black text-base text-sky-600">G</span>
+                                        {tab === 'signup' ? 'Create account with Google' : 'Continue with Google'}
+                                    </button>
+                                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-400" aria-hidden="true">
+                                        <span className="flex-1 border-t border-slate-700"></span>or use email<span className="flex-1 border-t border-slate-700"></span>
+                                    </div>
+                                </>
+                            )}
                             {tab === 'signup' && <Field label="Display name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Optional" autoComplete="name" />}
                             <Field label="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
                             {tab !== 'reset' && <Field label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={tab === 'signup' ? 'new-password' : 'current-password'} required />}
@@ -500,12 +609,6 @@
                             <Button type="submit" variant="primary" disabled={auth.busy} className="w-full h-11 font-bold">
                                 {auth.busy ? 'Working…' : (tab === 'signin' ? 'Sign in' : tab === 'signup' ? 'Create account' : 'Send reset email')}
                             </Button>
-                            {tab === 'signin' && (
-                                <button type="button" onClick={auth.signInWithGoogle} disabled={auth.busy}
-                                    className="w-full h-9 rounded border border-slate-600 bg-slate-900 text-slate-300 text-xs font-bold hover:bg-slate-700">
-                                    Continue with Google (if enabled)
-                                </button>
-                            )}
                         </form>
                     )}
                     <Button onClick={onClose} variant="outline" className="w-full mt-4">Close</Button>

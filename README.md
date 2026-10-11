@@ -207,8 +207,8 @@ CT series) the credit says so.
 | **Random scenario** | Generates a patient from the scenario templates with randomised demographics and obs. |
 | **Scenario library** | Pick from the 254 built-in scenarios by category. |
 | **Restricted** (a Scenario library category) | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
-| **My scenarios: Saved** | Paste or import a scenario JSON file. Saved scenarios can be edited, loaded or deleted (with a confirmation). |
-| **My scenarios: Builder** | Build a scenario field by field in the UI. |
+| **My scenarios: Saved** | Scenarios saved to the signed-in account (`userScenarios/<uid>` in the database; only that account can read or write them). Import a scenario JSON file, or edit, load or delete saved ones (with a confirmation). Signing in is required to save, import or list them. Scenarios saved in this browser before accounts held them (`localStorage` key `wmebem_custom_scenarios`) are listed as "saved on this device only" and can be added to the account once signed in. |
+| **My scenarios: Builder** | Build a scenario field by field in the UI. Signed in: Save, or Save and run. Signed out: Run without saving. |
 
 ### Quick Sim
 

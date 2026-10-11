@@ -175,7 +175,14 @@
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
         const [premadeCategory, setPremadeCategory] = useState(initialPremadeCategory || null);
+        // My scenarios: the signed-in account's saved scenarios (userScenarios/{uid}, see
+        // data/auth.js UserScenarios), plus any still saved only in this browser from before.
         const [customScenarios, setCustomScenarios] = useState([]);
+        const [myStatus, setMyStatus] = useState('idle');      // idle | loading | ready | denied | unavailable
+        const [legacyScenarios, setLegacyScenarios] = useState(() => (window.UserScenarios ? window.UserScenarios.readLegacy() : []));
+        const [myNotice, setMyNotice] = useState(null);
+        const [myAuthOpen, setMyAuthOpen] = useState(false);
+        const [saving, setSaving] = useState(false);
         const [showWetflag, setShowWetflag] = useState(false);
 
         // ---- WAVE 4b / PART A: QUICK SIM launch options -------------------------------------
@@ -252,25 +259,39 @@
             return list.filter(isValidScenarioShape);
         };
 
-        // localStorage itself throws in sandboxed/embedded frames and in some private modes, so every
-        // access goes through these guards — a blocked store must never blank the app.
-        const storeGet = (k) => { try { return localStorage.getItem(k); } catch (e) { console.warn('Storage unavailable', e); return null; } };
-        const storeSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { console.warn('Storage write blocked', e); } };
-        const storeDel = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+        // Saving needs an account. Signed out, the Builder still runs a scenario, it just is not kept.
+        const US = window.UserScenarios || null;
+        const accountsOn = !!(US && auth && auth.available);
+        const uid = (accountsOn && auth.phase === 'signedIn' && auth.user && auth.user.uid) || null;
+        const canSave = !!uid && myStatus === 'ready';
+        const AuthModalComponent = window.AuthModal || null;
 
         useEffect(() => {
-            const saved = storeGet('wmebem_custom_scenarios');
-            if (!saved) return;
-            try {
-                const clean = sanitiseScenarioList(JSON.parse(saved));
-                setCustomScenarios(clean);
-                // Rewrite so a partially-corrupt store isn't re-filtered on every load.
-                storeSet('wmebem_custom_scenarios', JSON.stringify(clean));
-            } catch (e) {
-                console.error("Failed to load custom scenarios", e);
-                storeDel('wmebem_custom_scenarios');
+            if (!uid || !US) { setCustomScenarios([]); setMyStatus('idle'); if (US) US.cache = []; return; }
+            setMyStatus('loading');
+            const stop = US.subscribe(uid, list => { setCustomScenarios(list); setMyStatus('ready'); }, reason => setMyStatus(reason));
+            return () => { stop(); US.cache = []; };
+        }, [uid]);
+        useEffect(() => { if (uid) setMyAuthOpen(false); }, [uid]);
+
+        const saveFailed = (e) => alert('Could not save to your account: ' + ((e && e.message) || 'the database refused it') + '.');
+        const addLegacyToAccount = () => {
+            if (!canSave || !legacyScenarios.length) return;
+            if (customScenarios.length + legacyScenarios.length > US.MAX) {
+                alert(`Your account holds up to ${US.MAX} scenarios. Delete some first, then add these.`);
+                return;
             }
-        }, []);
+            US.saveMany(uid, legacyScenarios, customScenarios).then(n => {
+                US.clearLegacy();
+                setLegacyScenarios([]);
+                setMyNotice(n ? `Added ${n} scenario(s) from this device to your account.` : 'Those scenarios were already in your account.');
+            }).catch(saveFailed);
+        };
+        const discardLegacy = () => {
+            if (!window.confirm(`Remove ${legacyScenarios.length} scenario(s) saved on this device? They are not in your account, so this cannot be undone.`)) return;
+            US.clearLegacy();
+            setLegacyScenarios([]);
+        };
 
         const loadIntoBuilder = (s) => {
             setBuildId(s.id || `CUST_${Date.now()}`);
@@ -304,14 +325,16 @@
         };
 
         const exportCustomScenarios = () => {
-            if (!customScenarios.length) return alert("No custom scenarios to export.");
-            const blob = new Blob([JSON.stringify(customScenarios, null, 2)], { type: 'application/json' });
+            const list = uid ? customScenarios : legacyScenarios;
+            if (!list.length) return alert("No custom scenarios to export.");
+            const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a'); a.href = url; a.download = `em_evidence_scenarios_${Date.now()}.json`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
         };
 
         const importCustomScenariosFile = (e) => {
             const file = e.target.files[0]; if (!file) return;
+            if (!canSave) { e.target.value = ''; alert('Sign in to import scenarios into your account.'); return; }
             const reader = new FileReader();
             reader.onerror = () => { alert('Could not read the selected scenario file. Please try another JSON export.'); e.target.value = ''; };
             reader.onload = (ev) => {
@@ -321,12 +344,11 @@
                     const list = sanitiseScenarioList(parsed);
                     const rejected = rawCount - list.length;
                     if (list.length === 0) { alert('Import failed: no valid scenarios found (each needs an id and a title).'); return; }
-                    const merged = [...customScenarios];
-                    let added = 0;
-                    list.forEach(s => { if (!merged.find(c => c.id === s.id)) { merged.push(s); added++; } });
-                    setCustomScenarios(merged);
-                    storeSet('wmebem_custom_scenarios', JSON.stringify(merged));
-                    alert(`Imported ${added} new scenario(s).` + (rejected > 0 ? ` ${rejected} skipped (invalid shape).` : ''));
+                    US.saveMany(uid, list, customScenarios).then(added => {
+                        const full = list.length > added && customScenarios.length + added >= US.MAX;
+                        alert(`Imported ${added} new scenario(s) into your account.` + (rejected > 0 ? ` ${rejected} skipped (invalid shape).` : '')
+                            + (full ? ` Your account holds up to ${US.MAX}, so some were not added.` : ''));
+                    }).catch(saveFailed);
                 } catch (err) { alert('Import failed: ' + err.message); }
             };
             reader.readAsText(file);
@@ -336,7 +358,8 @@
         const DIFF_COLOURS = { Beginner: 'bg-emerald-900/50 text-emerald-400 border-emerald-800', Intermediate: 'bg-amber-900/50 text-amber-400 border-amber-800', Advanced: 'bg-red-900/50 text-red-400 border-red-800' };
         const DiffBadge = ({ d }) => d ? <span className={`text-[9px] px-1 rounded border ${DIFF_COLOURS[d] || DIFF_COLOURS.Intermediate}`}>{d.toUpperCase()}</span> : null;
 
-        const saveCustomScenario = () => {
+        // run: start it straight away. Signed out it only runs; signed in it is saved first.
+        const saveCustomScenario = (run = true) => {
             if(!buildTitle) return alert("Please add a title");
             // Reject rather than clamp: a silently corrected age used to reclassify the scenario as
             // paediatric and produce WETFLAG doses for a patient the facilitator never described.
@@ -390,20 +413,22 @@
                 hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0]
             };
 
-            if(newScen.id.startsWith('CUST_')) {
-                const existingIdx = customScenarios.findIndex(c => c.id === newScen.id);
-                let updated;
-                if(existingIdx >= 0) {
-                     updated = [...customScenarios];
-                     updated[existingIdx] = newScen;
-                } else {
-                     updated = [...customScenarios, newScen];
-                }
-                setCustomScenarios(updated);
-                storeSet('wmebem_custom_scenarios', JSON.stringify(updated));
+            if (!canSave) { if (run) handleGenerate(newScen); return; }
+            if (!customScenarios.some(c => c.id === newScen.id) && customScenarios.length >= US.MAX) {
+                alert(`Your account holds up to ${US.MAX} scenarios. Delete one to save another.` + (run ? ' This one will run without being saved.' : ''));
+                if (run) handleGenerate(newScen);
+                return;
             }
-            
-            handleGenerate(newScen);
+            setBuildId(newScen.id);
+            if (run) {
+                // The write is queued by Firebase, so the run need not wait for it.
+                US.save(uid, newScen).catch(saveFailed);
+                handleGenerate(newScen);
+                return;
+            }
+            setSaving(true);
+            US.save(uid, newScen).then(() => { setMyNotice(`Saved "${newScen.title}" to your account.`); setMode('custom'); })
+                .catch(saveFailed).finally(() => setSaving(false));
         };
 
         const handleGenerate = (base) => {
@@ -525,7 +550,7 @@
                                         </Button>
                                         <p className="text-slate-400">The account button in the header does the same thing.</p>
                                         {AuthModalComponent && restrictedAuthOpen && (
-                                            <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setRestrictedAuthOpen(false); }} context="restricted" />
+                                            <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setRestrictedAuthOpen(false); }} context="Sign in, then request access to the restricted scenarios." />
                                         )}
                                     </div>
                                 ) : (
@@ -762,30 +787,76 @@
                         </div>
                     )}
                     {mode === 'custom' && (
-                        <div className="space-y-2 animate-fadeIn">
-                             <div className="flex gap-2 pb-2 border-b border-slate-700">
-                                 <Button onClick={exportCustomScenarios} variant="secondary" className="h-8 text-xs flex items-center gap-1"><Lucide icon="download" className="w-3 h-3"/> Export JSON</Button>
-                                 <label className="cursor-pointer flex items-center">
-                                     <span className="inline-flex items-center gap-1 px-3 h-8 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded text-xs text-slate-200 font-bold"><Lucide icon="upload" className="w-3 h-3"/> Import JSON</span>
-                                     <input type="file" accept=".json" onChange={importCustomScenariosFile} className="hidden"/>
-                                 </label>
-                             </div>
-                             {customScenarios.length === 0 && <p className="text-slate-400 text-sm italic text-center py-4">No saved scenarios yet. Use <b>Builder</b> (top right) to make one, or import a file.</p>}
-                             {customScenarios.map((s, i) => (
-                                 <div key={i} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
+                        <div className="space-y-2 animate-fadeIn" data-testid="my-scenarios">
+                             {myNotice && <div role="status" className="text-xs bg-emerald-950/50 border border-emerald-700 rounded p-2 text-emerald-200">{myNotice}</div>}
+                             {!accountsOn ? (
+                                 <p className="text-xs text-slate-400 bg-slate-900 border border-slate-700 rounded p-3">Accounts are not available right now, so scenarios cannot be saved. You can still write one in <b>Builder</b> and run it without saving.</p>
+                             ) : !uid ? (
+                                 <div className="bg-slate-900 border border-sky-800/60 rounded p-3 text-sm text-slate-300 space-y-2">
+                                     <p>{auth.phase === 'checking' ? 'Checking your account…' : 'Sign in to save your own scenarios to your account and use them on any device.'}</p>
+                                     {auth.phase !== 'checking' && (
+                                         <Button onClick={() => setMyAuthOpen(true)} variant="outline" className="h-8 px-3 text-xs text-sky-300 border-sky-500/60">
+                                             <Lucide icon="log-in" className="w-3 h-3 mr-1"/> Sign in or create an account
+                                         </Button>
+                                     )}
+                                     <p className="text-xs text-slate-400">Without an account you can still write a scenario in <b>Builder</b> and run it, but it is not kept.</p>
+                                 </div>
+                             ) : (
+                                 <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-slate-700">
+                                     <span className="text-xs text-slate-400 mr-auto">Saved to <span className="text-slate-200 font-bold">{auth.user.email || 'your account'}</span></span>
+                                     <Button onClick={exportCustomScenarios} variant="secondary" className="h-8 text-xs flex items-center gap-1"><Lucide icon="download" className="w-3 h-3"/> Export JSON</Button>
+                                     <label className="cursor-pointer flex items-center">
+                                         <span className="inline-flex items-center gap-1 px-3 h-8 bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded text-xs text-slate-200 font-bold"><Lucide icon="upload" className="w-3 h-3"/> Import JSON</span>
+                                         <input type="file" accept=".json" onChange={importCustomScenariosFile} className="hidden" aria-label="Import scenarios from a JSON file" disabled={!canSave}/>
+                                     </label>
+                                 </div>
+                             )}
+
+                             {uid && myStatus === 'loading' && <p className="text-slate-400 text-sm text-center py-4">Loading your scenarios…</p>}
+                             {uid && (myStatus === 'denied' || myStatus === 'unavailable') && (
+                                 <p className="text-xs text-red-300 bg-red-950/40 border border-red-700 rounded p-3">Your saved scenarios could not be loaded{myStatus === 'denied' ? ' (the database refused access)' : ''}. Check the connection and reload. Scenarios cannot be saved until this works.</p>
+                             )}
+                             {canSave && customScenarios.length === 0 && <p className="text-slate-400 text-sm italic text-center py-4">No saved scenarios yet. Use <b>Builder</b> (top right) to make one, or import a file.</p>}
+                             {canSave && customScenarios.map(s => (
+                                 <div key={s.id} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
                                      <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{getScenarioPreviewText(s)}</div></div>
                                      <div className="flex gap-2">
                                         <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs">Edit</Button>
                                         <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
                                         <Button onClick={() => {
-                                            if (!window.confirm(`Delete "${s.title}" from this device? This cannot be undone.`)) return;
-                                            const updated = customScenarios.filter((_, j) => j !== i);
-                                            setCustomScenarios(updated);
-                                            storeSet('wmebem_custom_scenarios', JSON.stringify(updated));
-                                        }} variant="danger" className="h-8 text-xs" aria-label={`Delete ${s.title}`}>Delete</Button>
+                                            if (!window.confirm(`Delete "${s.title}" from your account? This cannot be undone.`)) return;
+                                            US.remove(uid, s.id).catch(e => alert('Could not delete it: ' + ((e && e.message) || 'the database refused it') + '.'));
+                                        }} variant="danger" className="h-8 text-xs" ariaLabel={`Delete ${s.title}`}>Delete</Button>
                                      </div>
                                  </div>
                              ))}
+
+                             {legacyScenarios.length > 0 && (
+                                 <div className="mt-3 bg-amber-950/30 border border-amber-700/60 rounded p-3 space-y-2" data-testid="device-scenarios">
+                                     <p className="text-sm text-amber-200 font-bold">{legacyScenarios.length} scenario(s) saved on this device only</p>
+                                     <p className="text-xs text-slate-300">
+                                         {canSave
+                                             ? 'These were saved in this browser before scenarios were kept in accounts. Add them to your account to keep them and use them on other devices.'
+                                             : 'These were saved in this browser before scenarios were kept in accounts. Sign in to add them to your account; until then you can still run them here.'}
+                                     </p>
+                                     {canSave ? (
+                                         <div className="flex flex-wrap gap-2">
+                                             <Button onClick={addLegacyToAccount} variant="primary" className="h-8 text-xs">Add to my account</Button>
+                                             <Button onClick={discardLegacy} variant="outline" className="h-8 text-xs">Remove from this device</Button>
+                                         </div>
+                                     ) : (
+                                         <div className="space-y-1">
+                                             {legacyScenarios.map(s => (
+                                                 <div key={s.id} className="flex justify-between items-center gap-2 bg-slate-800/60 p-2 rounded border border-slate-700">
+                                                     <div className="text-sm text-white font-bold">{s.title}</div>
+                                                     <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
+                                                 </div>
+                                             ))}
+                                             <Button onClick={exportCustomScenarios} variant="secondary" className="h-8 text-xs flex items-center gap-1 mt-1"><Lucide icon="download" className="w-3 h-3"/> Export them as a file</Button>
+                                         </div>
+                                     )}
+                                 </div>
+                             )}
                         </div>
                     )}
                     {mode === 'builder' && (
@@ -839,11 +910,28 @@
                                 <label className="text-[10px] text-slate-400 uppercase">Human Factors</label>
                                 <select aria-label="Human Factors" value={hf} onChange={e=>setHf(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white">{HUMAN_FACTOR_CHALLENGES.map(h=><option key={h.id} value={h.id}>{h.type}</option>)}</select>
                             </div>
-                            <Button onClick={saveCustomScenario} variant="primary" disabled={builderInvalid} className="w-full text-lg h-12">Run Scenario</Button>
+                            {canSave ? (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <Button onClick={() => saveCustomScenario(false)} variant="secondary" disabled={builderInvalid || saving} className="w-full text-lg h-12">{saving ? 'Saving…' : 'Save'}</Button>
+                                    <Button onClick={() => saveCustomScenario(true)} variant="primary" disabled={builderInvalid || saving} className="w-full text-lg h-12">Save and run</Button>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <Button onClick={() => saveCustomScenario(true)} variant="primary" disabled={builderInvalid} className="w-full text-lg h-12">Run without saving</Button>
+                                    <p className="text-xs text-slate-400 text-center" data-testid="builder-save-note">
+                                        {!accountsOn ? 'Saving needs an account, and accounts are not available right now.'
+                                            : uid ? 'Your saved scenarios have not loaded, so this cannot be saved yet.'
+                                            : <>Saving needs an account. <button type="button" onClick={() => setMyAuthOpen(true)} className="underline font-bold text-sky-300">Sign in</button> to save this scenario; what you have typed stays here.</>}
+                                    </p>
+                                </div>
+                            )}
                             {builderInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields above to run this scenario.</p>}
                         </div>
                     )}
                     {wetflagOption}
+                    {AuthModalComponent && myAuthOpen && !uid && (
+                        <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setMyAuthOpen(false); }} context="Sign in to save your scenarios to your account." />
+                    )}
                 </div>
                 )}
 
