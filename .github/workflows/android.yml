@@ -21,7 +21,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # The runner image has the Android SDK; add the platform this app compiles against
+      - name: Android SDK platform 36
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0"
       - name: Build the debug APK and the release bundle
         working-directory: android
         run: ./gradlew --no-daemon assembleDebug bundleRelease assembleRelease
