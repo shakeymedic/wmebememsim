@@ -2209,7 +2209,12 @@ function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
   return Math.round(LIVE.etco2 * 10) / 10;
 }
-function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+/* time on the ventilator as mm:ss, or h:mm:ss after an hour (hours:minutes alone looked frozen for the first minute) */
+function clockStr() {
+  const t = Math.floor((P ? P.onNivMin : 0) * 60), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, sec = t % 60;
+  const p2 = n => String(n).padStart(2, '0');
+  return (h ? h + ':' : '') + p2(m) + ':' + p2(sec);
+}
 /* real time: one second of the page is one second of the patient */
 function patientTick(dt) {
   const pr = P.pr, dtMin = dt / 60;

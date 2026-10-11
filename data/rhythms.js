@@ -869,6 +869,9 @@
             'VT':      { chance: 0.35, to: 'Sinus Rhythm' },
             'AF':      { chance: 0.20, to: 'Sinus Rhythm' }
         },
+        VagalManoeuvre: {
+            'SVT':     { chance: 0.4, to: 'Sinus Rhythm' }
+        },
         Adenosine: {
             'SVT':     { chance: 0.65, to: 'Sinus Rhythm' },
             'Atrial Flutter': { chance: 0.05, to: 'Atrial Flutter' }

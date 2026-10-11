@@ -798,15 +798,15 @@
     // autonomous deterioration at all, so the learner was punished for correct non-IV practice.
     const DETERIORATION_TREATMENTS = {
         shock: ['Fluids', 'FluidInfusion', 'Blood', 'Noradrenaline', 'Metaraminol', 'AdrenalineIM', 'TXA', 'Antibiotics', 'Ceftriaxone', 'Tazocin', 'Gentamicin', 'PelvicBinder', 'Tourniquet', 'REBOA', 'Thoracotomy', 'Pericardiocentesis', 'Hydrocortisone', 'Terlipressin', 'Octaplex', 'Albumin', 'Surgery', 'CalciumChloride',
-            'AdrenalineInfusion', 'AdrenalinePush'],
+            'AdrenalineInfusion', 'AdrenalinePush', 'Hydroxocobalamin', 'Artesunate'],
         resp: ['Oxygen', 'Nebs', 'NebAdrenaline', 'CPAP', 'NIV', 'Bagging', 'MagSulph', 'Hydrocortisone', 'Dexamethasone', 'i-gel', 'RSI', 'Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain', 'ChestSeal', 'Furosemide', 'GTNInfusion', 'Antibiotics', 'Thrombolysis',
             'NebsContinuous', 'SalbutamolIV', 'MagnesiumInfusion'],
         airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen',
             'AdrenalineInfusion'],
-        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
+        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'VagalManoeuvre', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
             'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
         neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
-            'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM'],
+            'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM', 'Aciclovir', 'Artesunate'],
         arrest: ['CPR', 'Lucas', 'AdrenalineIV', 'Defib', 'Amiodarone']
     };
 
@@ -1318,7 +1318,8 @@
         'MagSulph':           ['magnesium', 'asthma', 'torsade', 'eclampsia', 'pre-eclampsia'],
         'Amiodarone':         ['amiodarone', 'tachycardia algorithm', 'antiarrhythmic', 'refractory vf'],
         'Adenosine':          ['adenosine', 'svt', 'narrow complex'],
-        'Manoeuvres':         ['vagal', 'svt', 'manoeuvre'],
+        'VagalManoeuvre':     ['vagal', 'svt', 'valsalva'],
+        'ObstetricManoeuvres': ['mcroberts', 'dystocia', 'breech', 'presenting part', 'reinver'],
         'Cardioversion':      ['cardiovers', 'tachycardia algorithm', 'safe cardioversion'],
         'Pacing':             ['pacing', 'bradycardia algorithm', 'heart block'],
         'Thrombolysis':       ['thrombolysis', 'thrombolytic'],

@@ -31,7 +31,7 @@ const OUT = path.join(ROOT, 'dist');
 const Babel = require(path.join(ROOT, 'node_modules', '@babel', 'standalone'));
 
 const EXCLUDE = new Set(['node_modules', 'dist', '.git', 'scripts', 'package.json', 'package-lock.json',
-    'netlify.toml', 'tailwind.config.js', '.gitignore', 'README.md', 'tests', '.github', 'database.rules.json']);
+    'netlify.toml', 'tailwind.config.js', '.gitignore', 'README.md', 'tests', '.github', 'database.rules.json', 'android']);
 
 const log = (...a) => console.log('[build]', ...a);
 const fail = (msg) => { console.error('[build] FAILED: ' + msg); process.exit(1); };
@@ -48,7 +48,7 @@ fs.rmSync(OUT, { recursive: true, force: true });
 const copyTree = (src, dst) => {
     for (const name of fs.readdirSync(src)) {
         if (src === ROOT && EXCLUDE.has(name)) continue;
-        if (name.startsWith('.')) continue;                      // .gitignore and friends are not site files
+        if (name.startsWith('.') && !(src === ROOT && name === '.well-known')) continue;   // .gitignore and friends are not site files; .well-known holds the Android app's assetlinks.json
         const s = path.join(src, name), d = path.join(dst, name);
         if (fs.statSync(s).isDirectory()) { fs.mkdirSync(d, { recursive: true }); copyTree(s, d); }
         else { fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(s, d); }
