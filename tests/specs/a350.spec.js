@@ -88,6 +88,40 @@ test('Man/Spon: a squeeze of the bag ventilates, and a closed APL valve with a h
   expect(devErrors).toEqual([]);
 });
 
+test('hands-free bagging keeps squeezing the bag at the set rate until it is stopped, and stops when a ventilator mode starts', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const { dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  // switched off it cannot run
+  await dev.locator('#abOn').click();
+  expect(await dev.evaluate(() => window.__vent.G.autoBag)).toBe(false);
+  await switchOn(dev);
+  await dev.locator('#qsMan').click();
+  await expect.poll(() => state(dev).then(s => s.state)).toBe('ventilating');
+  // 12/min -> 20/min, then on
+  for (let i = 0; i < 4; i++) await dev.locator('#abUp').click();
+  await expect(dev.locator('#abVal')).toHaveText('20');
+  await dev.locator('#abOn').click();
+  await expect(dev.locator('#abOn')).toHaveAttribute('aria-pressed', 'true');
+  const n0 = await dev.evaluate(() => window.__vent.B.nBreaths);
+  await dev.waitForTimeout(9200);
+  // no presses: about one breath every 3 s (the first straight away)
+  const n = (await dev.evaluate(() => window.__vent.B.nBreaths)) - n0;
+  expect(n).toBeGreaterThanOrEqual(3);
+  expect(n).toBeLessThanOrEqual(5);
+  const s = await state(dev);
+  expect(s.mon.vte).toBeGreaterThan(150);
+  expect(s.ctl).toContain('Hands-free bag 20/min');
+  expect(await logHas(page, /Hands-free bagging started: 20\/min/)).toBe(true);
+  // starting a ventilator mode stops it
+  await dev.locator('[data-tabmode="VC"]').click();
+  await dev.locator('#knob').click();
+  await expect.poll(() => state(dev).then(s => s.mode)).toBe('SCMV');
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.autoBag)).toBe(false);
+  expect(await logHas(page, /Hands-free bagging stopped \(a ventilator mode was started\)/)).toBe(true);
+  expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});
+
 test('settings: touch, turn and press the knob to confirm; an unconfirmed change resets after 15 s; a new mode waits for the knob', async ({ page, context }) => {
   const { dev, devErrors } = await startOnA350(page, context, 'an-paw');
   await switchOn(dev);

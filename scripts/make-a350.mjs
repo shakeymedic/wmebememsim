@@ -170,7 +170,7 @@ sub(`      case 'o2':
         if (V.power) remoteEdit('ctrl', 'o2', 100);
         break;`);
 sub("  engineStep(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = 'standby'; logEvent('Self-test passed', 'info'); renderAll(); } }",
-    "  engineStep(dt);\n  gasTick(dt);\n  editTick(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }");
+    "  engineStep(dt);\n  gasTick(dt);\n  bagTick();\n  editTick(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }");
 sub("['monitoring', 'alarms', 'system', 'standby'].includes(win)", "['alarms', 'tests'].includes(win)");
 sub("    $('#simClock').textContent = V.power && !V.standby ? 'Ventilating ' + clockStr() : '';", "    $('#simClock').textContent = V.power && !V.standby ? 'In use ' + clockStr() : '';");
 sub("window.__vent = {V, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};", "window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};");

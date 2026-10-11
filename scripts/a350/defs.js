@@ -133,7 +133,9 @@ const V = {
 };
 /* the gas in the machine and the circle (gasTick), and the hardware's moment-to-moment state */
 const G = {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null,
-  lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0};
+  lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0,
+  /* hands-free bagging (the simulator's, not Dräger's): squeezes the bag by itself at a set rate until it is stopped */
+  autoBag:false, bagRate:12, abSq:false, abLast:-1e9};
 let E = null;          // current edit {scope:'ctrl'|'lim'|'draft', key, val, t0}
 let D = null;          // a new mode, shown in the therapy bar until it is confirmed {mode, set}
 let win = null;        // open dialog: 'start' | 'alarms' | 'tests' | 'setup' | 'info'

@@ -61,16 +61,28 @@ $('#aplUp').addEventListener('click', () => setAPL(V.apl <= 0 ? 5 : V.apl + 5));
 $('#aplDn').addEventListener('click', () => setAPL(V.apl - 5));
 /* the breathing bag: squeeze (hold) to give a breath in Man/Spon; letting go ends it */
 const bagEl = $('#bag');
-function squeeze(on) {
+/* why the bag cannot be squeezed now (and what to do), or '' when it can */
+function bagBlocked() {
+  if (!V.power) return 'The machine is switched off. Press the On / Standby key.';
+  if (V.selftest > 0) return 'The machine is still starting up.';
+  if (V.standby) return 'standby';
+  if (V.mode !== 'MAN') return 'The ventilator is breathing for the patient. Choose Man/Spon to ventilate by hand.';
+  return '';
+}
+function squeeze(on, auto) {
   if (on) {
-    if (!V.power) { toast('The machine is switched off. Press the On / Standby key.'); return; }
-    if (V.selftest > 0) return;
-    if (V.standby) { openWin('start'); return; }
-    if (V.mode !== 'MAN') { scrToast('The ventilator is breathing for the patient. Choose Man/Spon to ventilate by hand.'); return; }
-    G.squeeze = B.now; V.manualReq = true;
+    const why = bagBlocked();
+    if (why) {
+      if (auto) return;
+      if (why === 'standby') openWin('start'); else if (!V.power) toast(why); else if (V.selftest <= 0) scrToast(why);
+      return;
+    }
+    if (G.squeeze !== null) return;
+    G.squeeze = B.now; V.manualReq = true; G.abSq = !!auto;
+    if (G.autoBag) G.abLast = B.now;   /* a squeeze by hand counts as one of the hands-free breaths */
   } else {
     if (G.squeeze === null) return;
-    G.squeeze = null; V.manualReq = false;
+    G.squeeze = null; V.manualReq = false; G.abSq = false;
     const br = B.br;
     if (B.phase === 'insp' && br && br.kind === 'manual' && !br.vc && B.t < br.Ti) {
       /* let go early: the breath ends now, with the volume it had reached */
@@ -82,9 +94,39 @@ function squeeze(on) {
   renderHW();
 }
 bagEl.addEventListener('pointerdown', e => { e.preventDefault(); try { bagEl.setPointerCapture(e.pointerId); } catch (er) {} squeeze(true); });
-['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => bagEl.addEventListener(ev, () => squeeze(false)));
+['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => bagEl.addEventListener(ev, () => { if (!G.abSq) squeeze(false); }));
 bagEl.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); squeeze(true); } });
-bagEl.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') squeeze(false); });
+bagEl.addEventListener('keyup', e => { if ((e.key === ' ' || e.key === 'Enter') && !G.abSq) squeeze(false); });
+/* hands-free bagging (the simulator's own control, not part of the A350): squeezes the bag for about a second at the set
+   rate until it is stopped, so the learner does not have to keep pressing. The pressure each squeeze reaches is still set
+   by the APL valve. It stops by itself when the machine leaves Man/Spon, goes to Standby or is switched off. */
+const BAG_TI = 1.0;
+const setBagRate = v => { const was = G.bagRate; G.bagRate = clamp(v, 4, 30); if (G.autoBag && G.bagRate !== was) logEvent('Hands-free bagging: ' + G.bagRate + '/min', 'info'); renderHW(); };
+function setAutoBag(on, why) {
+  if (on === G.autoBag) return;
+  if (on) {
+    const b = bagBlocked();
+    if (b) { if (b === 'standby') openWin('start'); else if (!V.power) toast(b); else scrToast(b); return; }
+    G.autoBag = true; G.abLast = -1e9;
+    logEvent('Hands-free bagging started: ' + G.bagRate + '/min', 'info');
+  } else {
+    G.autoBag = false;
+    if (G.abSq) squeeze(false);
+    logEvent('Hands-free bagging stopped' + (why ? ' (' + why + ')' : ''), 'info');
+    if (why) scrToast('Hands-free bagging stopped: ' + why + '.');
+  }
+  renderHW();
+}
+function bagTick() {
+  if (!G.autoBag) return;
+  const b = bagBlocked();
+  if (b) { setAutoBag(false, !V.power ? 'machine switched off' : V.standby ? 'Standby' : 'a ventilator mode was started'); return; }
+  if (G.abSq && B.now - G.squeeze >= BAG_TI) squeeze(false);
+  else if (G.squeeze === null && B.now - G.abLast >= 60 / G.bagRate) squeeze(true, true);
+}
+$('#abOn').addEventListener('click', () => setAutoBag(!G.autoBag));
+$('#abUp').addEventListener('click', () => setBagRate(G.bagRate + 2));
+$('#abDn').addEventListener('click', () => setBagRate(G.bagRate - 2));
 /* the Y-piece: sealed on the circuit plug of the bag elbow (for the tests) or connected to the patient */
 function setYPiece(sealed) {
   if (G.ySealed === sealed) return;
@@ -107,6 +149,10 @@ function renderHW() {
   /* the bag: its size follows the volume in it; squeezed while a hand breath is going in */
   const full = clamp(G.bag / BAG_L, 0.15, 1.25), sq = G.squeeze !== null && B.phase === 'insp';
   bagEl.classList.toggle('sq', sq);
+  const ab = $('#abOn');
+  ab.classList.toggle('on', G.autoBag); ab.setAttribute('aria-pressed', G.autoBag);
+  ab.innerHTML = G.autoBag ? 'Hands-free <b>On</b>' : 'Hands-free <b>Off</b>';
+  $('#abVal').textContent = G.bagRate;
   $('#bagIn').style.transform = 'scale(' + (0.55 + 0.4 * full) * (sq ? 0.8 : 1) + ',' + (0.5 + 0.45 * full) * (sq ? 0.85 : 1) + ')';
   const y = $('#ypiece');
   y.classList.toggle('sealed', G.ySealed);

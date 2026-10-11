@@ -5,7 +5,7 @@ function deviceDefaults() {
   V.sex = LIVE.sex === 'Female' ? 'Female' : 'Male';
   V.set.height = V.sex === 'Female' ? 162 : 174;
   if (LIVE.age !== null && LIVE.age !== undefined) V.set.age = clamp(Math.round(LIVE.age), 1, 110);
-  Object.assign(G, {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null, lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0});
+  Object.assign(G, {fio2:21, fin2o:0, etn2o:0, fiag:0, etag:0, bag:2.0, circP:0, flush:false, squeeze:null, ySealed:false, fg:null, lastCO2:0, fgLowT:0, pcontT:0, plowT:0, apneaT:0, autoBag:false, abSq:false, abLast:-1e9});
   P.pr = {...P.base};
   E = null; D = null; active.clear(); inactive.clear(); history.length = 0; helpFor = null; cursor = -1;
   for (const k in M) M[k] = null;

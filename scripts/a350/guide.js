@@ -99,7 +99,7 @@ function taskSteps(task) {
     case 'man':
       S.push([V.standby ? 'Touch Quick start Man/Spon on the Standby page.' : 'Touch the Man/Spon tab, then press the rotary knob.', on && !V.standby && V.mode === 'MAN', V.standby ? '#qsMan' : (D && D.mode === 'MAN' ? '#knob' : '[data-tabmode="MAN"]')]);
       S.push(['Set the APL valve to about 20 to 30 cmH2O, so a squeeze can inflate the lungs (Spont = fully open, no pressure).', V.apl >= 15, '#aplUp']);
-      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
+      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds, or turn on Hands-free beside the bag to keep bagging at the set rate.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
       S.push(['Watch the CO2 curve and VT: a square capnogram and a sensible VT mean the breaths are going in.', false, '#gfx']);
       return S;
     case 'preox':
@@ -152,9 +152,10 @@ function guideNow() {
     out.push(`<b>${esc(mName(V.mode))}.</b> ${esc(MODE_EXPLAIN[V.mode] || '')}`);
     const sinceBreath = B.now - B.lastStart;
     if (V.mode === 'MAN') {
+      if (G.autoBag) out.push(`Hands-free bagging is on: a squeeze every ${fmt(60 / G.bagRate, 1)} s (${G.bagRate}/min). Touch Hands-free to stop it.`);
       out.push(V.apl <= 0 ? 'The APL valve is at Spont (fully open): the patient can breathe freely, but squeezing the bag builds almost no pressure. Turn it up to hand-ventilate.'
         : `The APL valve is at ${V.apl} cmH2O: a squeeze of the bag can reach up to ${Math.min(V.apl, BAG_SQUEEZE)} cmH2O.`);
-      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, or start a ventilator mode.`);
+      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, turn on Hands-free beside the bag, or start a ventilator mode.`);
       if (G.circP > 10) out.push(`<span class="g-warn">The pressure in the breathing system is ${Math.round(G.circP)} cmH2O and the bag is overfull.</span> The fresh gas has nowhere to go: open the APL valve or turn the fresh-gas flow down.`);
     }
     if (G.bag < 0.6 && !V.standby) out.push('<span class="g-warn">The bag is nearly empty:</span> more gas is leaving the system than the fresh gas brings in. Look for a leak or a disconnection; turn the flow up or press O2+.');

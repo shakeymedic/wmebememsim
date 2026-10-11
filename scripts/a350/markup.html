@@ -67,7 +67,11 @@
                 <div class="hw-h">APL valve<small>Man / Spont</small></div>
                 <div class="hw-row"><button class="hb" id="aplDn" aria-label="APL valve down (towards Spont)">−</button><b id="aplVal">30</b><button class="hb" id="aplUp" aria-label="APL valve up">+</button></div>
               </div>
-              <button class="bag" id="bag" data-tip="Breathing bag: in Man/Spon press and hold to squeeze a breath in, let go to let the patient breathe out. Its size shows how full the breathing system is: an empty bag means too little fresh gas or a leak." aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <button class="bag" id="bag" data-tip="Breathing bag: in Man/Spon press and hold to squeeze a breath in, let go to let the patient breathe out (or use Hands-free to keep bagging without pressing). Its size shows how full the breathing system is: an empty bag means too little fresh gas or a leak." aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <div class="hw-ab" data-tip="Hands-free bagging (a simulator aid, not part of the real machine): in Man/Spon it squeezes the bag for about a second at the set rate until you stop it, so you do not have to keep pressing. The APL valve still sets the pressure. It stops if you start a ventilator mode, go to Standby or switch off.">
+                <button class="ab-on" id="abOn" aria-pressed="false">Hands-free <b>Off</b></button>
+                <div class="hw-row"><button class="hb" id="abDn" aria-label="Hands-free bagging rate down">−</button><b id="abVal">12</b><span class="hu">/min</span><button class="hb" id="abUp" aria-label="Hands-free bagging rate up">+</button></div>
+              </div>
               <button class="ypiece" id="ypiece" data-tip="Y-piece: where the breathing circuit meets the patient. For the system and leak tests it is sealed on the circuit plug; for the patient, connect it to the tube or mask." aria-label="Y-piece: seal it on the circuit plug for the tests, or connect it to the patient"></button>
             </div>
           </div>

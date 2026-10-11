@@ -70,13 +70,20 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .hw-o2 .hw-row{width:260px}
 .hw-apl{position:absolute;left:0;top:492px;width:370px;height:100px;background:#e9edf0;border:2px solid #7e878f;border-radius:12px;padding:8px 0}
 .hw-apl b{min-width:110px}
-.bag{position:absolute;left:24px;top:612px;width:180px;height:210px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;border:0;background:transparent;padding:0;cursor:pointer;touch-action:none}
+.bag{position:absolute;left:4px;top:612px;width:176px;height:210px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;border:0;background:transparent;padding:0;cursor:pointer;touch-action:none}
 .bag-in{position:absolute;left:50%;top:50%;width:170px;height:200px;margin:-100px 0 0 -85px;border-radius:46% 46% 50% 50%/40% 40% 60% 60%;background:radial-gradient(circle at 38% 32%,#5c6168,#2b2f34 70%);box-shadow:inset 0 -8px 16px rgba(0,0,0,.5),0 4px 10px rgba(0,0,0,.35);transition:transform .25s}
 .bag.sq .bag-in{transition:transform .15s}
 .bag-t{position:absolute;left:0;right:0;top:92px;text-align:center;color:#dfe5ea;font-weight:700;font-size:15px;pointer-events:none}
-.ypiece{position:absolute;left:226px;top:640px;width:134px;height:150px;border-radius:12px;border:2px solid #7e878f;background:#f7f8f8;font-size:13px;font-weight:700;color:#2b3238;cursor:pointer;padding:6px;line-height:1.25}
+.ypiece{position:absolute;left:192px;top:606px;width:178px;height:96px;border-radius:12px;border:2px solid #7e878f;background:#f7f8f8;font-size:13px;font-weight:700;color:#2b3238;cursor:pointer;padding:6px;line-height:1.25}
 .ypiece.sealed{background:#fff4c2;border-color:#b38f00}
-.ypiece svg{display:block;margin:0 auto 4px;width:60px;height:46px;stroke:#2b3238;fill:none;stroke-width:3;stroke-linecap:round}
+/* hands-free bagging: the simulator's aid beside the bag */
+.hw-ab{position:absolute;left:192px;top:712px;width:178px;height:112px;background:#e9edf0;border:2px solid #7e878f;border-radius:12px;padding:6px 0;box-sizing:border-box}
+.ab-on{display:block;margin:0 auto;width:160px;height:44px;border-radius:22px;border:2px solid #6c757d;background:#fff;font-size:15px;font-weight:600;color:#2b3238;cursor:pointer;padding:0}
+.ab-on.on{background:#7fe08a;border-color:#2f6e40;color:#123a1d;box-shadow:0 0 10px rgba(127,224,138,.7)}
+.hw-ab .hw-row{margin-top:4px;gap:6px}
+.hw-ab .hb{width:44px;height:44px;font-size:24px}
+.hw-ab .hw-row b{min-width:34px;text-align:center;font-size:20px}
+.ypiece svg{display:block;margin:0 auto 2px;width:44px;height:30px;stroke:#2b3238;fill:none;stroke-width:3;stroke-linecap:round}
 /* ===== the screen: designed at 1280 x 800 logical px, scaled into the screen box ===== */
 .screen{position:absolute;left:0;top:0;width:1280px;height:800px;transform-origin:0 0;background:#0b0f14;color:#fff;overflow:hidden;font-size:16px;line-height:1.15;transition:filter .3s}
 .screen.night{filter:brightness(.5)}
@@ -284,4 +291,8 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .t1.portrait .hw-apl{left:730px;top:80px;width:310px}
 .t1.portrait .bag{left:735px;top:212px}
 .t1.portrait .ypiece{left:922px;top:222px;width:118px;height:180px}
+.t1.portrait .ypiece svg{width:60px;height:46px;margin-bottom:4px}
+.t1.portrait .hw-ab{left:0;top:292px;width:715px;height:110px;display:flex;align-items:center;justify-content:center;gap:24px}
+.t1.portrait .hw-ab .ab-on{margin:0;width:220px}
+.t1.portrait .hw-ab .hw-row{margin:0}
 @media (max-width:700px){.guide:not(.closed){position:fixed;right:0;top:36px;bottom:0;width:min(320px,90vw);z-index:1100}}
