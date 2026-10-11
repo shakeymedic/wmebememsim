@@ -21,8 +21,9 @@
     // rather than marking a candidate down for a setting they were handed; ARDS and post-RSI keep the strict 8.
     // problems: the problems this scenario is written around (the facilitator injects them).
     // startProblems: problems already present when the scenario starts.
-    // devices: which ventilators the scenario is written for: 't1' (HAMILTON-T1, the Ventilator Sim
-    // card) and/or 'c6' (HAMILTON-C6, the Anaesthetics / ICU card). Missing means the T1 only.
+    // devices: which machines the scenario is written for: 't1' (HAMILTON-T1, the Ventilator Sim
+    // card), 'c6' (HAMILTON-C6) and/or 'a350' (Dräger Atlan A350 anaesthetic machine), both on the
+    // Anaesthetics / ICU card. Missing means the T1 only.
     // targets.vc: a volume-controlled mode ((S)CMV or SIMV) is expected; targets.spont: a spontaneous
     // breathing trial on pressure support (SPONT) is expected.
     var SCENARIOS = [
@@ -93,43 +94,43 @@
           vitals: { hr: 88, bpSys: 132, bpDia: 76, rr: 18, spO2: 96, etco2: 5.0, gcs: 11, temp: 37.2 },
           targets: { spo2: [92, 98], spont: true },
           problems: ['det', 'leakM'] },
-        // ---- anaesthetic emergencies for novice anaesthetists, on the HAMILTON-C6 ----
+        // ---- anaesthetic emergencies for novice anaesthetists, on the Atlan A350 or the HAMILTON-C6 ----
         // Each follows a guideline of the Association of Anaesthetists' Quick Reference Handbook (QRH,
         // June 2023 edition); the number is in the name. The patient is anaesthetised, intubated and
-        // ventilated in theatre (the C6 stands in for the anaesthetic machine's ventilator until the
-        // Dräger machine is built). rhythm / deterioration / stabilisers / recommended / lung are optional:
+        // ventilated in theatre, on the Dräger Atlan A350 anaesthetic machine (or the HAMILTON-C6 as an
+        // ICU ventilator). rhythm / deterioration / stabilisers / recommended / lung are optional:
         // the starting rhythm, the controller's autonomous deterioration (off until the facilitator
         // switches it to Auto), the interventions that turn it round, extra interventions to list
         // first, and the starting lung adjustments (live.vent.lung, e.g. CO2 production).
-        { id: 'an-arrest', devices: ['c6'], name: 'Cardiac arrest under anaesthesia (QRH 2-1)', group: 'Anaesthetic emergencies',
+        { id: 'an-arrest', devices: ['a350', 'c6'], name: 'Cardiac arrest under anaesthesia (QRH 2-1)', group: 'Anaesthetic emergencies',
           description: '67-year-old having a laparotomy under general anaesthesia: intubated, paralysed, on the ventilator. Stable so far. The facilitator changes the rhythm (PEA after a sudden fall in ETCO2, or VF). Declare the arrest, start compressions, give 100% oxygen, turn the anaesthetic off, check the airway and capnography, and work through the causes.',
           profile: 'normal', breathing: false, airway: 'tube', age: 67, sex: 'Male',
           vitals: { hr: 78, bpSys: 112, bpDia: 64, rr: 12, spO2: 98, etco2: 4.6, gcs: 3, temp: 36.4 },
           targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5 },
           recommended: ['CPR', 'Defib', 'AdrenalineIV', 'Amiodarone', 'Fluids', 'Atropine'],
           problems: ['tubeout', 'disc', 'ptx'] },
-        { id: 'an-hypoxia', devices: ['c6'], name: 'Desaturation after intubation (QRH 2-2)', group: 'Anaesthetic emergencies',
+        { id: 'an-hypoxia', devices: ['a350', 'c6'], name: 'Desaturation after intubation (QRH 2-2)', group: 'Anaesthetic emergencies',
           description: '34-year-old for a laparoscopic appendicectomy, just intubated and connected to the ventilator. The SpO2 is drifting down and the airway pressures are higher than expected. Give 100% oxygen and work through the hypoxia drill: equipment, airway (tube position and length), breathing, circulation, depth. The tube has gone too far; other causes can follow.',
           profile: 'normal', breathing: false, airway: 'tube', age: 34, sex: 'Female',
           vitals: { hr: 96, bpSys: 118, bpDia: 70, rr: 12, spO2: 93, etco2: 4.9, gcs: 3, temp: 36.6 },
           targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5, pplatMax: 30 },
           recommended: ['TubeWithdraw', 'Suction', 'Bronchoscopy'],
           problems: ['endo', 'tubeout', 'disc', 'o2fail', 'plug'], startProblems: ['endo'] },
-        { id: 'an-paw', devices: ['c6'], name: 'High airway pressure (QRH 2-3)', group: 'Anaesthetic emergencies',
+        { id: 'an-paw', devices: ['a350', 'c6'], name: 'High airway pressure (QRH 2-3)', group: 'Anaesthetic emergencies',
           description: '58-year-old under general anaesthesia for a hip replacement, intubated and ventilated in volume control. Part way through, the airway pressure alarm goes off. Confirm the high pressure, isolate the patient from the circuit, and work along the tube to the lungs. The facilitator gives one cause at a time: kinked circuit, blocked tube, endobronchial tube, bronchospasm, light anaesthesia (coughing), pneumothorax.',
           profile: 'normal', breathing: false, airway: 'tube', age: 58, sex: 'Female',
           vitals: { hr: 84, bpSys: 124, bpDia: 72, rr: 12, spO2: 98, etco2: 4.8, gcs: 3, temp: 36.5 },
           targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5, pplatMax: 30, vc: true },
           recommended: ['Suction', 'TubeWithdraw', 'Nebs', 'Propofol', 'Roc', 'Needle'],
           problems: ['kink', 'block', 'endo', 'bronch', 'cough', 'ptx'] },
-        { id: 'an-bronch', devices: ['c6'], name: 'Bronchospasm after intubation (QRH 3-4)', group: 'Anaesthetic emergencies',
+        { id: 'an-bronch', devices: ['a350', 'c6'], name: 'Bronchospasm after intubation (QRH 3-4)', group: 'Anaesthetic emergencies',
           description: '29-year-old with asthma, just intubated for an emergency laparoscopy. High inflation pressures, small tidal volumes, an upsloping capnograph and a rising CO2. Give 100% oxygen, stop stimulation, deepen anaesthesia, exclude tube problems, then treat (salbutamol first; magnesium, ketamine or adrenaline next). Lengthen expiration and watch for breath stacking. The facilitator removes the bronchospasm once it is treated.',
           profile: 'normal', breathing: false, airway: 'tube', age: 29, sex: 'Female',
           vitals: { hr: 112, bpSys: 128, bpDia: 76, rr: 12, spO2: 92, etco2: 6.2, gcs: 3, temp: 36.7 },
           targets: { spo2: [92, 100], pplatMax: 30, autopeepMax: 5 },
           recommended: ['Nebs', 'MagSulph', 'Ketamine', 'AdrenalineIVSmall', 'Hydrocortisone'],
           problems: ['bronch', 'trap', 'endo'], startProblems: ['bronch'] },
-        { id: 'an-anaph', devices: ['c6'], name: 'Anaphylaxis at induction (QRH 3-1)', group: 'Anaesthetic emergencies',
+        { id: 'an-anaph', devices: ['a350', 'c6'], name: 'Anaphylaxis at induction (QRH 3-1)', group: 'Anaesthetic emergencies',
           description: '45-year-old given co-amoxiclav and rocuronium at induction, now intubated and ventilated. Within minutes: BP 68/38, HR 132, high airway pressures and falling SpO2. Call for help, stop the trigger, 100% oxygen, legs up, IV adrenaline 50 micrograms repeated, fast IV fluid; CPR if the systolic falls below 50. Set Patient condition to Auto for a patient who worsens until adrenaline is given. The facilitator removes the bronchospasm as it responds.',
           profile: 'normal', breathing: false, airway: 'tube', age: 45, sex: 'Male',
           vitals: { hr: 132, bpSys: 68, bpDia: 38, rr: 12, spO2: 91, etco2: 3.6, gcs: 3, temp: 36.6 },
@@ -137,7 +138,7 @@
           deterioration: { active: true, rate: 0.15, type: 'shock' }, stabilisers: ['AdrenalineIVSmall', 'Noradrenaline'],
           recommended: ['AdrenalineIVSmall', 'Fluids', 'CPR', 'Nebs', 'Hydrocortisone', 'Chlorphenamine', 'Metaraminol', 'Glucagon'],
           problems: ['bronch'], startProblems: ['bronch'] },
-        { id: 'an-hypo', devices: ['c6'], name: 'Hypotension and bradycardia after induction (QRH 2-4, 2-6)', group: 'Anaesthetic emergencies',
+        { id: 'an-hypo', devices: ['a350', 'c6'], name: 'Hypotension and bradycardia after induction (QRH 2-4, 2-6)', group: 'Anaesthetic emergencies',
           description: '78-year-old on a beta-blocker, intubated after a propofol induction for a laparotomy, now on the ventilator. BP 74/40 and HR 46. Check oxygen delivery, airway and breathing first, then treat: an anticholinergic for the slow heart rate, a vasopressor (ephedrine, metaraminol), a fluid bolus and the depth of anaesthesia. Set Patient condition to Auto to make it worse until treated.',
           profile: 'normal', breathing: false, airway: 'tube', age: 78, sex: 'Female',
           vitals: { hr: 46, bpSys: 74, bpDia: 40, rr: 12, spO2: 97, etco2: 4.2, gcs: 3, temp: 36.2 },
@@ -145,7 +146,7 @@
           rhythm: 'Sinus Bradycardia', deterioration: { active: true, rate: 0.05, type: 'shock' }, stabilisers: ['Ephedrine', 'Metaraminol', 'Glycopyrronium', 'Atropine'],
           recommended: ['Glycopyrronium', 'Atropine', 'Ephedrine', 'Metaraminol', 'Fluids'],
           problems: [] },
-        { id: 'an-mh', devices: ['c6'], name: 'Malignant hyperthermia crisis (QRH 3-8)', group: 'Anaesthetic emergencies',
+        { id: 'an-mh', devices: ['a350', 'c6'], name: 'Malignant hyperthermia crisis (QRH 3-8)', group: 'Anaesthetic emergencies',
           description: '22-year-old having a knee arthroscopy under sevoflurane, intubated and ventilated. ETCO2 rising despite more ventilation, tachycardia, then a rising temperature. Call for help and the MH kit, turn off the vapour, maximum oxygen flow, hyperventilate (2-3 times the minute volume), give dantrolene and start active cooling. CO2 production starts at twice normal; dantrolene brings it back. The facilitator raises the temperature by hand.',
           profile: 'normal', breathing: false, airway: 'tube', age: 22, sex: 'Male',
           vitals: { hr: 128, bpSys: 136, bpDia: 78, rr: 12, spO2: 96, etco2: 7.4, gcs: 3, temp: 38.4 },
@@ -153,23 +154,61 @@
           lung: { m: 200 }, stabilisers: ['Dantrolene'],
           recommended: ['Dantrolene', 'Cooling', 'CheckVBG', 'SodiumBicarb', 'InsulinDextrose', 'CalciumChloride'],
           problems: [] },
-        { id: 'an-equip', devices: ['c6'], name: 'Oxygen and power failure in theatre (QRH 4-1, 4-2)', group: 'Anaesthetic emergencies',
+        { id: 'an-equip', devices: ['a350', 'c6'], name: 'Oxygen and power failure in theatre (QRH 4-1, 4-2)', group: 'Anaesthetic emergencies',
           description: '50-year-old under general anaesthesia, intubated and ventilated. The facilitator fails the oxygen supply, the mains power, or disconnects the circuit. Recognise it from the alarms, check the patient, switch to a cylinder or hand ventilation with a self-inflating bag, and keep the patient anaesthetised (intravenous anaesthesia if the vapour stops).',
           profile: 'normal', breathing: false, airway: 'tube', age: 50, sex: 'Male',
           vitals: { hr: 76, bpSys: 122, bpDia: 70, rr: 12, spO2: 99, etco2: 4.7, gcs: 3, temp: 36.6 },
           targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5 },
           recommended: ['Bagging', 'Propofol'],
-          problems: ['o2fail', 'mains', 'battlow', 'disc'] }
+          problems: ['o2fail', 'mains', 'battlow', 'disc'] },
+        { id: 'an-oeso', devices: ['a350', 'c6'], name: 'No capnography trace after intubation (oesophageal tube)', group: 'Anaesthetic emergencies',
+          description: '41-year-old having a rapid sequence induction for an emergency laparotomy. The tube is in and connected, but there is no CO2 trace and the SpO2 starts to fall. No trace, wrong place: assume the tube is in the oesophagus. Call for help, give 100% oxygen, take the tube out and oxygenate by face mask (Man/Spon with the bag) before trying again. The facilitator removes the problem when the tube is re-sited.',
+          profile: 'normal', breathing: false, airway: 'tube', age: 41, sex: 'Male',
+          vitals: { hr: 104, bpSys: 132, bpDia: 78, rr: 12, spO2: 96, etco2: 4.8, gcs: 3, temp: 36.6 },
+          targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5 },
+          recommended: ['Bagging', 'RSI', 'Suction'],
+          problems: ['tubeout', 'disc', 'o2fail'], startProblems: ['tubeout'] },
+        { id: 'an-disc', devices: ['a350', 'c6'], name: 'Leak or disconnection during the case', group: 'Anaesthetic emergencies',
+          description: '62-year-old under general anaesthesia for a bowel resection, intubated, ventilated and stable. The facilitator disconnects the circuit, cracks it, or adds a large leak. Recognise it (low minute volume, airway pressure not achieved, an emptying bag, a lost CO2 trace), hand-ventilate if needed, and work along the circuit from the machine to the patient to find it.',
+          profile: 'normal', breathing: false, airway: 'tube', age: 62, sex: 'Male',
+          vitals: { hr: 72, bpSys: 126, bpDia: 74, rr: 12, spO2: 99, etco2: 4.7, gcs: 3, temp: 36.4 },
+          targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5 },
+          recommended: ['Bagging'],
+          problems: ['disc', 'circ', 'leakL', 'kink'] },
+        // ---- the anaesthetic machine itself, for novices: the check, induction, maintenance, emergence ----
+        { id: 'an-check', devices: ['a350'], name: 'Machine check, pre-oxygenation and induction', group: 'Anaesthetic machine skills',
+          description: '55-year-old for an elective hernia repair, awake on the trolley and breathing on their own. The machine is switched off. Switch it on and run the system test and leak test (the facilitator may crack the circuit so the leak test fails). Pre-oxygenate by face mask in Man/Spon with the APL valve open and a high oxygen flow, aiming for an end-tidal O2 above 90%. After the induction drugs the facilitator stops the breathing: hand-ventilate with the bag, then intubate and start volume control.',
+          profile: 'normal', breathing: null, airway: 'none', age: 55, sex: 'Male',
+          vitals: { hr: 78, bpSys: 138, bpDia: 82, rr: 14, spO2: 97, etco2: 5.0, gcs: 15, temp: 36.7 },
+          targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5 },
+          recommended: ['Propofol', 'Fentanyl', 'Roc', 'Bagging', 'RSI'],
+          problems: ['circ', 'leakM', 'apnoea'] },
+        { id: 'an-lowflow', devices: ['a350'], name: 'Maintenance with sevoflurane at low flow', group: 'Anaesthetic machine skills',
+          description: '38-year-old just intubated and ventilated in volume control, no vapour on yet. Start sevoflurane and bring the end-tidal to about 1 xMAC, then turn the fresh-gas flow down to 1 L/min and watch how slowly the inspired and end-tidal values now change. Try N2O as the carrier gas and watch the inspired oxygen at a low flow. The gas model is a teaching approximation, not a pharmacokinetic model.',
+          profile: 'normal', breathing: false, airway: 'tube', age: 38, sex: 'Female',
+          vitals: { hr: 82, bpSys: 118, bpDia: 70, rr: 12, spO2: 99, etco2: 4.8, gcs: 3, temp: 36.6 },
+          targets: { spo2: [94, 100], vtMin: 6, vtMax: 8.5 },
+          recommended: ['Propofol', 'Fentanyl'],
+          problems: ['o2fail', 'circ'] },
+        { id: 'an-emergence', devices: ['a350'], name: 'Emergence: from volume control to spontaneous breathing', group: 'Anaesthetic machine skills',
+          description: '47-year-old at the end of a laparoscopic cholecystectomy, intubated and ventilated in volume control. The neuromuscular blockade has been reversed and the patient is starting to breathe against the ventilator. Change to a mode that supports their breathing (PC-SIMV with pressure support, then CPAP/PSV), turn the vapour off, raise the fresh-gas flow and oxygen, and judge when they are ready to wake up. The facilitator can stop the breathing again or make them cough.',
+          profile: 'normal', breathing: true, airway: 'tube', age: 47, sex: 'Female',
+          vitals: { hr: 88, bpSys: 134, bpDia: 80, rr: 14, spO2: 99, etco2: 5.4, gcs: 3, temp: 36.4 },
+          targets: { spo2: [94, 100], spont: true },
+          recommended: ['Sugammadex', 'Antiemetic', 'Suction'],
+          problems: ['cough', 'apnoea', 'leakM'] }
     ];
     function byId(id) { for (var i = 0; i < SCENARIOS.length; i++) if (SCENARIOS[i].id === id) return SCENARIOS[i]; return null; }
-    // The scenarios written for one ventilator ('t1' or 'c6').
-    function forDevice(device) { var d = device === 'c6' ? 'c6' : 't1'; return SCENARIOS.filter(function (s) { return (s.devices || ['t1']).indexOf(d) !== -1; }); }
+    // The machines a scenario can be written for, and the scenarios written for one of them.
+    var DEVICES = ['t1', 'c6', 'a350'];
+    var deviceOf = function (d) { return DEVICES.indexOf(d) !== -1 ? d : 't1'; };
+    function forDevice(device) { var d = deviceOf(device); return SCENARIOS.filter(function (s) { return (s.devices || ['t1']).indexOf(d) !== -1; }); }
 
     function buildScenario(opts) {
         opts = opts || {};
         var sc = byId(opts.scenario);
         if (!sc) throw new Error('Unknown ventilator scenario.');
-        var device = opts.device === 'c6' ? 'c6' : 't1';
+        var device = deviceOf(opts.device);
         if ((sc.devices || ['t1']).indexOf(device) === -1) throw new Error('That scenario is not written for this ventilator.');
         var RG = window.RHYTHMS;
         var rhythm = sc.rhythm && RG && RG.isKnown(sc.rhythm) ? sc.rhythm : sc.vitals.hr > 100 && RG && RG.isKnown('Sinus Tachycardia') ? 'Sinus Tachycardia' : 'Sinus Rhythm';
@@ -193,7 +232,7 @@
             // The full controller (interventions, drugs, investigations), as Defib Sim has: needle
             // decompression, bronchoscopy, sedation and nebulisers are part of these scenarios.
             quickSim: false,
-            title: (sc.group === 'Anaesthetic emergencies' ? 'Anaesthetic emergency: ' : device === 'c6' ? 'ICU ventilator: ' : 'Ventilator Sim: ') + sc.name,
+            title: (sc.group === 'Anaesthetic emergencies' ? 'Anaesthetic emergency: ' : device === 'a350' ? 'Anaesthetic machine: ' : device === 'c6' ? 'ICU ventilator: ' : 'Ventilator Sim: ') + sc.name,
             category: 'Ventilator Sim',
             acuity: 'Resus',
             presentingComplaint: sc.description,

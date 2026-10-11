@@ -24,6 +24,7 @@ test('Anaesthetics / ICU: a C6 scenario sets the model, and a ventilator tablet 
   const errors = trackErrors(page);
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await page.locator('[data-vent-device="c6"]').click();
   await expect(page.getByTestId('vent-setup')).toContainText('HAMILTON-C6');
   await page.locator('[data-vent-scenario="icu-vc"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
@@ -102,8 +103,8 @@ test('every anaesthetic emergency builds with its interventions, and the setup l
     const missing = (s.recommended || []).concat(s.stabilisers || []).filter(k => !window.INTERVENTIONS[k]);
     return { id: s.id, title: b.title, missing, probsOk: s.problems.every(p => window.VENT_PROFILES.PROBLEMS.some(x => x.id === p)) };
   }));
-  expect(r.map(x => x.id)).toEqual(['an-arrest', 'an-hypoxia', 'an-paw', 'an-bronch', 'an-anaph', 'an-hypo', 'an-mh', 'an-equip']);
-  for (const x of r) { expect(x.missing, x.id).toEqual([]); expect(x.probsOk, x.id).toBe(true); expect(x.title).toMatch(/^Anaesthetic emergency: .+\(QRH /); }
+  expect(r.map(x => x.id)).toEqual(['an-arrest', 'an-hypoxia', 'an-paw', 'an-bronch', 'an-anaph', 'an-hypo', 'an-mh', 'an-equip', 'an-oeso', 'an-disc']);
+  for (const x of r) { expect(x.missing, x.id).toEqual([]); expect(x.probsOk, x.id).toBe(true); expect(x.title).toMatch(/^Anaesthetic emergency: /); if (!['an-oeso', 'an-disc'].includes(x.id)) expect(x.title).toMatch(/\(QRH /); }
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
   await expect(page.locator('[data-vent-scenario]').first()).toHaveAttribute('data-vent-scenario', 'an-arrest');
 });
@@ -111,6 +112,7 @@ test('every anaesthetic emergency builds with its interventions, and the setup l
 test('desaturation after intubation: an endobronchial tube on the C6, fixed by pulling the tube back', async ({ page, context }) => {
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await page.locator('[data-vent-device="c6"]').click();
   await page.locator('[data-vent-scenario="an-hypoxia"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
   await expect.poll(() => live(page, code, '/vent')).toMatchObject({ model: 'c6', probs: 'endo' });
@@ -133,6 +135,7 @@ test('desaturation after intubation: an endobronchial tube on the C6, fixed by p
 test('malignant hyperthermia: CO2 production starts raised and dantrolene brings it back', async ({ page }) => {
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
+  await page.locator('[data-vent-device="c6"]').click();
   await page.locator('[data-vent-scenario="an-mh"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
   await expect.poll(() => live(page, code, '/vent/lung')).toEqual({ m: 200 });

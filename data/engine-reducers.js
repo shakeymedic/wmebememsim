@@ -485,7 +485,7 @@
                         vent: { profile: window.VENT_PROFILES.profiles[action.payload.ventSim.profile] ? action.payload.ventSim.profile : 'normal',
                             breathing: action.payload.ventSim.breathing === true || action.payload.ventSim.breathing === false ? action.payload.ventSim.breathing : null,
                             lung: ventSimLung(action.payload.ventSim.lung), probs: window.VENT_PROFILES.probList(action.payload.ventSim.startProblems || []), assess: action.payload.ventSim.mode === 'assessment',
-                            model: action.payload.ventSim.device === 'c6' ? 'c6' : 't1' },
+                            model: window.VENT_PROFILES.modelOf(action.payload.ventSim.device) },
                         ventPanelOpen: true
                     } : {}),
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
@@ -523,7 +523,7 @@
                     vent: (p.vent && typeof p.vent === 'object' && window.VENT_PROFILES && window.VENT_PROFILES.profiles[p.vent.profile])
                         ? { profile: p.vent.profile, breathing: p.vent.breathing === true || p.vent.breathing === false ? p.vent.breathing : null,
                             lung: (p.vent.lung && typeof p.vent.lung === 'object') ? { ...p.vent.lung } : {},
-                            probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true, model: p.vent.model === 'c6' ? 'c6' : 't1' } : null,
+                            probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true, model: window.VENT_PROFILES.modelOf(p.vent.model) } : null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
                     // Point-of-care results and compressions in progress, when the snapshot carries them.
@@ -679,8 +679,9 @@
                 if (p.profile !== undefined && p.profile !== cur.profile && p.lung === undefined) lung = {};
                 const probs = p.probs !== undefined ? (VP ? VP.probList(p.probs) : []) : (cur.probs || []);
                 const assess = p.assess !== undefined ? p.assess === true : !!cur.assess;
-                // Which ventilator the candidate has: the HAMILTON-T1 (transport) or the HAMILTON-C6 (ICU).
-                const model = (p.model !== undefined ? p.model : cur.model) === 'c6' ? 'c6' : 't1';
+                // Which machine the candidate has: the HAMILTON-T1 (transport), the HAMILTON-C6 (ICU) or the
+                // Dräger Atlan A350 (anaesthetic machine).
+                const model = VP ? VP.modelOf(p.model !== undefined ? p.model : cur.model) : 't1';
                 return { ...state, vent: {
                     profile: VP && VP.profiles[profile] ? profile : 'normal',
                     breathing: breathing === true || breathing === false ? breathing : null,

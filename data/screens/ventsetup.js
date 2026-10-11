@@ -6,18 +6,28 @@
     // candidate uses the ventilator on the room monitor tablet (shown there from the start) or on
     // its own tablet (Screens -> Join by QR code -> Ventilator); the facilitator runs it from the controller's
     // Ventilator section. Everything else (engine, session, monitor, debrief) is shared.
-    // device: 't1' (the HAMILTON-T1, the Ventilator Sim card) or 'c6' (the HAMILTON-C6 ICU
-    // ventilator, the Anaesthetics / ICU card). Each shows the scenarios written for it.
+    // devices: the machines this card offers, the first being the default: ['t1'] (the HAMILTON-T1,
+    // the Ventilator Sim card) or ['a350', 'c6'] (the Dräger Atlan A350 anaesthetic machine and the
+    // HAMILTON-C6 ICU ventilator, the Anaesthetics / ICU card). Each shows the scenarios written for it.
     // =============================================================================================
-    const VentSimSetup = ({ onStart, device = 't1' }) => {
+    const VentSimSetup = ({ onStart, devices = ['t1'] }) => {
         const { Lucide } = window;
         const VS = window.VentSim;
         const VP = window.VENT_PROFILES;
         const [mode, setMode] = useState('education');
-        // On the C6 the anaesthetic emergencies (for novice anaesthetists) come first.
-        const list = VS.forDevice(device).slice().sort((a, b) => (b.group === 'Anaesthetic emergencies') - (a.group === 'Anaesthetic emergencies'));
+        const [device, setDevice] = useState(devices[0]);
+        // The anaesthetic emergencies (for novice anaesthetists) come first.
+        const listFor = (d) => VS.forDevice(d).slice().sort((a, b) => (b.group === 'Anaesthetic emergencies') - (a.group === 'Anaesthetic emergencies'));
+        const list = listFor(device);
         const [choice, setChoice] = useState(list[0].id);
-        const devName = device === 'c6' ? 'HAMILTON-C6' : 'HAMILTON-T1';
+        // A scenario written for both machines stays chosen when the machine changes.
+        const pickDevice = (d) => { setDevice(d); const l = listFor(d); if (!l.some(s => s.id === choice)) setChoice(l[0].id); };
+        const devName = VP.MODEL_SHORT[device];
+        const DEV_TEXT = {
+            t1: 'Ventilator Sim: HAMILTON-T1 skills',
+            c6: 'ICU ventilator: HAMILTON-C6 skills',
+            a350: 'Anaesthetic machine: Dräger Atlan A350 skills'
+        };
 
         const groups = [];
         list.forEach(s => {
@@ -32,11 +42,24 @@
         return (
             <div className="space-y-4 animate-fadeIn" data-testid="vent-setup">
                 <div className="bg-cyan-950/30 border border-cyan-700/50 rounded p-3 text-sm text-slate-300">
-                    <p className="font-bold text-cyan-300 mb-1 flex items-center gap-2"><Lucide icon="wind" className="w-4 h-4"/> {device === 'c6' ? 'ICU ventilator: HAMILTON-C6 skills' : 'Ventilator Sim: HAMILTON-T1 skills'}</p>
+                    <p className="font-bold text-cyan-300 mb-1 flex items-center gap-2"><Lucide icon="wind" className="w-4 h-4"/> {DEV_TEXT[device]}</p>
+                    {device === 'a350' && <p className="text-xs text-slate-400 mb-1">A recreation of a Dräger Atlan A350 anaesthetic machine: the machine check, the breathing system with the bag and APL valve, fresh gas and a sevoflurane vaporiser, and its ventilator (Man/Spon, volume, pressure and pressure support modes). Built from Dräger's published instructions for use and product information, but the screen layout, colours and some wording, alarm delays and the gas model are the simulator's approximations. For training only; it is not Dräger software.</p>}
                     {device === 'c6' && <p className="text-xs text-slate-400 mb-1">A recreation of the HAMILTON-C6 intensive care ventilator: a widescreen touch display with the controls along the bottom, volume- and pressure-controlled modes, ASV and NIV. For training only; it is not Hamilton Medical software.</p>}
-                    {device === 'c6' && <p className="text-xs text-slate-400 mb-1">The <b>Anaesthetic emergencies</b> follow the Association of Anaesthetists' Quick Reference Handbook (QRH, June 2023 edition): the guideline number is in each name. The C6 stands in for the anaesthetic machine's ventilator until the Dräger machine is built. The scenario text, patients and effect sizes are the simulator's and should be checked by the facilitator.</p>}
+                    {device !== 't1' && <p className="text-xs text-slate-400 mb-1">The <b>Anaesthetic emergencies</b> follow the Association of Anaesthetists' Quick Reference Handbook (QRH, June 2023 edition): the guideline number is in each name. The scenario text, patients and effect sizes are the simulator's and should be checked by the facilitator.</p>}
                     <p className="text-xs text-slate-400">The candidate uses the {devName} on the room monitor tablet (it opens there; they can flip to the obs and back) or on its own tablet (<b>Screens</b> → <b>Join by QR code</b> → Ventilator). You run it from the controller's <b>Ventilator</b> section: problems, lungs, and full remote control of the device. The ventilator drives SpO2, CO2 and the breathing rate.</p>
                 </div>
+                {devices.length > 1 && (
+                    <div>
+                        <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Machine</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {devices.map(d => (
+                                <button key={d} type="button" data-vent-device={d} onClick={() => pickDevice(d)} className={optionClass(device === d)} aria-pressed={device === d}>
+                                    <div className="font-bold">{VP.MODELS[d]}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 <div>
                     <div className="text-[10px] text-slate-400 uppercase font-bold mb-1">Mode</div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -75,7 +98,7 @@
                     </div>
                 )}
                 <button type="button" onClick={() => onStart({ scenario: choice, mode, device })}
-                        className="w-full py-4 text-lg font-bold rounded bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/20">{device === 'c6' ? 'Start ICU ventilator scenario' : 'Start Ventilator Sim'}</button>
+                        className="w-full py-4 text-lg font-bold rounded bg-sky-600 hover:bg-sky-500 text-white shadow-lg shadow-sky-900/20">{device === 'a350' ? 'Start anaesthetic machine scenario' : device === 'c6' ? 'Start ICU ventilator scenario' : 'Start Ventilator Sim'}</button>
             </div>
         );
     };

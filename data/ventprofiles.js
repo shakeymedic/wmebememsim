@@ -108,8 +108,17 @@
     // The HAMILTON-C6 (vent/c6.html): its own volume-controlled modes, its default APV names, no VS.
     var MODES_C6 = [['SCMV', '(S)CMV'], ['SIMV', 'SIMV'], ['APVcmv', 'APVcmv'], ['APVsimv', 'APVsimv'], ['PCV+', 'PCV+'], ['PSIMV+', 'PSIMV+'],
         ['SPONT', 'SPONT'], ['DuoPAP', 'DuoPAP'], ['APRV', 'APRV'], ['ASV', 'ASV'], ['NIV', 'NIV'], ['NIV-ST', 'NIV-ST'], ['HiFlowO2', 'HiFlowO2']];
-    // The two ventilators the facilitator can give the candidate.
-    var MODELS = { t1: 'HAMILTON-T1 (transport)', c6: 'HAMILTON-C6 (ICU)' };
+    // The Dräger Atlan A350 anaesthetic machine (vent/a350.html): its ventilator's modes, with the
+    // names in Dräger's instructions for use (the keys are the shared breath engine's).
+    var MODES_A350 = [['MAN', 'Man/Spon'], ['APVcmv', 'VC-CMV/AutoFlow'], ['APVsimv', 'VC-SIMV/AutoFlow'], ['SCMV', 'VC-CMV'], ['SIMV', 'VC-SIMV'],
+        ['PCV+', 'PC-CMV'], ['PSIMV+', 'PC-SIMV'], ['SPONT', 'CPAP/PSV']];
+    // The machines the facilitator can give the candidate.
+    var MODELS = { t1: 'HAMILTON-T1 (transport)', c6: 'HAMILTON-C6 (ICU)', a350: 'Dräger Atlan A350 (anaesthetic machine)' };
+    // A model key as stored, from anything (unknown means the T1, as before the C6 existed).
+    function modelOf(m) { return Object.prototype.hasOwnProperty.call(MODELS, m) ? m : 't1'; }
+    // The name on the device, for the controller's mirror.
+    var MODEL_SHORT = { t1: 'HAMILTON-T1', c6: 'HAMILTON-C6', a350: 'Atlan A350' };
+    function modesFor(m) { return m === 'c6' ? MODES_C6 : m === 'a350' ? MODES_A350 : MODES; }
 
     // The lung the breath engine uses: the profile, with breathing effort switched off when the
     // facilitator says the patient is not breathing for themselves (sedated and paralysed), the
@@ -152,5 +161,6 @@
     }
 
     window.VENT_PROFILES = { profiles: P, order: ORDER, profileForScenario: profileForScenario, lungFor: lungFor,
-        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, PROBLEM_GROUPS: PROBLEM_GROUPS, PROBLEM_SIGNS: PROBLEM_SIGNS, probList: probList, MODES: MODES, MODES_C6: MODES_C6, MODELS: MODELS };
+        LUNG_ADJ: LUNG_ADJ, LUNG_ORDER: LUNG_ORDER, PROBLEMS: PROBLEMS, PROBLEM_GROUPS: PROBLEM_GROUPS, PROBLEM_SIGNS: PROBLEM_SIGNS, probList: probList, MODES: MODES, MODES_C6: MODES_C6, MODES_A350: MODES_A350, MODELS: MODELS,
+        MODEL_SHORT: MODEL_SHORT, modelOf: modelOf, modesFor: modesFor };
 })();

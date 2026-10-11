@@ -42,9 +42,9 @@
         var probs = VP ? VP.probList(v.probs) : [];
         if (probs.length) out.probs = probs.join(',');
         if (v.assess === true) out.assess = true;
-        // The HAMILTON-C6 (vent/c6.html) instead of the HAMILTON-T1. Only sent for the C6, so a
-        // T1 session writes exactly what it did before.
-        if (v.model === 'c6') out.model = 'c6';
+        // The HAMILTON-C6 (vent/c6.html) or the Dräger Atlan A350 (vent/a350.html) instead of the
+        // HAMILTON-T1. Only sent for those, so a T1 session writes exactly what it did before.
+        if (VP && VP.modelOf(v.model) !== 't1') out.model = VP.modelOf(v.model);
         return out;
     }
     var hasProb = function (cfg, id) { return VP ? VP.probList(cfg.probs).indexOf(id) !== -1 : false; };

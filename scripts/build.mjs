@@ -36,9 +36,12 @@ const EXCLUDE = new Set(['node_modules', 'dist', '.git', 'scripts', 'package.jso
 const log = (...a) => console.log('[build]', ...a);
 const fail = (msg) => { console.error('[build] FAILED: ' + msg); process.exit(1); };
 
-// ---- 0. the HAMILTON-C6 page is generated from the T1 page: refuse to ship a stale copy ------
+// ---- 0. the HAMILTON-C6 and Atlan A350 pages are generated from the T1 page: refuse to ship a stale copy ------
 try { execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'make-c6.mjs'), '--check'], { stdio: 'inherit' }); }
 catch (e) { fail('vent/c6.html does not match vent/index.html: run node scripts/make-c6.mjs'); }
+// ... and the Dräger Atlan A350 page from the C6 page
+try { execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'make-a350.mjs'), '--check'], { stdio: 'inherit' }); }
+catch (e) { fail('vent/a350.html does not match vent/c6.html and scripts/a350/: run node scripts/make-a350.mjs'); }
 
 // ---- 1. copy the site ------------------------------------------------------------------------
 fs.rmSync(OUT, { recursive: true, force: true });
@@ -121,8 +124,8 @@ html = html.replace(/<script crossorigin src="vendor\//g, '<script src="vendor/'
 fs.writeFileSync(indexPath, html);
 
 // The two device pages (the defib tablet and the ventilator) load the Firebase SDK from ../vendor/.
-// The HAMILTON-C6 page (vent/c6.html) is the ventilator's second page and loads the same files.
-for (const rel of ['defib/index.html', 'vent/index.html', 'vent/c6.html']) {
+// The HAMILTON-C6 and Atlan A350 pages (vent/c6.html, vent/a350.html) are the ventilator's other pages and load the same files.
+for (const rel of ['defib/index.html', 'vent/index.html', 'vent/c6.html', 'vent/a350.html']) {
     const devPath = path.join(OUT, rel);
     fs.writeFileSync(devPath, localise(fs.readFileSync(devPath, 'utf8'), '../'));
 }
@@ -167,7 +170,7 @@ for (const rel of [V.fbApp, V.fbDb, V.fbAuth]) {
 // es2017 would add global helper functions (see minifyFile). Tablets older than iOS 11.3 / Chrome 60
 // cannot run it; the defib and the app are unchanged.
 const inlineRe = /<script>([\s\S]*?)<\/script>/g;
-const INLINE_TARGET = { 'index.html': 'es2017', 'defib/index.html': 'es2017', 'vent/index.html': 'es2018', 'vent/c6.html': 'es2018' };
+const INLINE_TARGET = { 'index.html': 'es2017', 'defib/index.html': 'es2017', 'vent/index.html': 'es2018', 'vent/c6.html': 'es2018', 'vent/a350.html': 'es2018' };
 for (const rel of Object.keys(INLINE_TARGET)) {
     const f = path.join(OUT, rel);
     const html = fs.readFileSync(f, 'utf8').replace(inlineRe, (all, code) => {
@@ -216,7 +219,7 @@ log(`service workers stamped ${VERSION} (app ${appFiles.length + 1} files, defib
 
 // ---- 6. refuse to ship a half-converted site -------------------------------------------------
 const problems = [];
-for (const rel of ['index.html', 'defib/index.html', 'defib/sw.js', 'vent/index.html', 'vent/c6.html', 'vent/sw.js']) {
+for (const rel of ['index.html', 'defib/index.html', 'defib/sw.js', 'vent/index.html', 'vent/c6.html', 'vent/a350.html', 'vent/sw.js']) {
     const t = fs.readFileSync(path.join(OUT, rel), 'utf8');
     if (/type="text\/babel"/.test(t)) problems.push(`${rel} still contains text/babel`);
     for (const host of ['unpkg.com', 'cdn.tailwindcss.com', 'gstatic.com/firebasejs']) if (t.includes(host)) problems.push(`${rel} still references ${host}`);

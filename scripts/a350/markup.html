@@ -1,0 +1,81 @@
+        <div class="a-main">
+        <div class="t1-wrap" id="device">
+          <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
+          <div class="t1-scaler" id="t1scaler">
+          <!-- the machine: the screen on its arm, the hardware beside it. The arrangement is the simulator's, not a drawing of the A350. -->
+          <div class="t1 a350" id="t1">
+            <div class="a-body" aria-hidden="true"></div>
+            <div class="t1-lamp" id="lamp" role="img" aria-label="Alarm lamp"></div>
+            <div class="t1-screenbox" id="screenbox">
+              <div class="screen" id="screen">
+                <div class="hdr-pat" id="hdrPat"></div>
+                <button class="scr-msg" id="msgbar" data-tip="Alarm messages, highest priority first: !!! red is high, !! yellow is medium, ! cyan is low. Touch to see all the alarms and what to check." data-open="alarms" data-tab="current" aria-live="polite" aria-label="Alarm messages. Touch to open the alarms"></button>
+                <div class="bstat" id="bstat" data-tip="Power source (mains or battery), silenced alarms and the time."></div>
+                <button class="gfx" id="gfx" data-tip="Curves: airway pressure (yellow, with the Paw high limit as a red line), flow (blue: up is breathing in, down is breathing out) and CO2 (grey: the capnogram)." tabindex="-1" aria-label="Curves: airway pressure, flow and CO2">
+                  <canvas id="cv1" style="top:0;height:176px"></canvas>
+                  <canvas id="cv2" style="top:177px;height:176px"></canvas>
+                  <canvas id="cv3" style="top:354px;height:176px"></canvas>
+                </button>
+                <div class="mmps" id="mmps" aria-label="Parameter fields"></div>
+                <div class="smp" id="smp" aria-label="Gas measurement"></div>
+                <div class="sbpage" id="sbpage" hidden></div>
+                <div class="mmenu" id="mmenu" aria-label="Main menu"></div>
+                <div class="tbar" id="tbar" aria-label="Therapy bar">
+                  <div class="tb-mode" id="modeName"></div>
+                  <div class="tb-tabs" id="tabs"></div>
+                  <div class="tb-ctls" id="rcol"></div>
+                  <div class="tb-fg" id="fgctl"></div>
+                  <div class="tb-note" id="tbNote"></div>
+                </div>
+                <div class="win" id="win" hidden role="dialog" aria-modal="false" aria-label="Window"></div>
+                <div class="dlg" id="dlg" hidden role="dialog" aria-label="Standby">
+                  <button class="wx" id="dlgX" aria-label="Close">✕</button>
+                  <h5>Standby</h5>
+                  <p>Stop the therapy? Ventilation and the fresh-gas flow stop in Standby.</p>
+                  <button class="wb green wide" id="dlgGo">Standby</button>
+                </div>
+                <div class="scr-toast" id="scrToast" hidden></div>
+                <div class="scr-off" id="scrOff" hidden><span id="scrOffTxt"></span></div>
+              </div>
+            </div>
+            <div class="t1-name">Atlan A350<small>EMEVIDENCE · ANAESTHETIC MACHINE TRAINING SIMULATOR</small></div>
+            <!-- keys under the screen (the simulator's arrangement) -->
+            <button class="k ap" id="kAudio" data-tip="Alarm silence: mutes the alarm tones for 2 minutes. The alarm messages stay on the screen." style="left:60px" aria-label="Alarm silence key, 2 minutes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg><span class="min">2 min</span></button>
+            <span class="klbl" aria-hidden="true" style="left:64px">Alarm silence</span>
+            <button class="k" id="kLight" data-tip="Work light: lights the work surface." style="left:210px" aria-label="Work light key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/></svg></button>
+            <span class="klbl" aria-hidden="true" style="left:199px">Work light</span>
+            <button class="k pw" id="kPower" data-tip="On / Standby: press to switch the machine on. During therapy, press it to go to Standby (you confirm on the screen). In Standby, hold it for 3 seconds to switch off." style="left:340px" aria-label="Power key: press to switch on or to go to Standby; hold in Standby to switch off"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
+            <span class="klbl" aria-hidden="true" style="left:321px">On / Standby</span>
+            <button class="t1-knob" id="knob" data-tip="Rotary knob: turn it to change the selected (yellow) setting, then press it to confirm. Pressing it also starts a new mode and starts the therapy from the Start dialog. Turning it with nothing selected moves a cursor round the screen." aria-label="Rotary knob. Arrow keys turn it, Enter or Space presses it to confirm"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
+            <span class="klbl" aria-hidden="true" style="left:930px">Rotary knob</span>
+            <!-- the gas supply, the vaporiser, O2+ and the emergency O2, the APL valve, the bag and the Y-piece -->
+            <div class="hw" aria-label="Machine hardware">
+              <div class="hw-sup" id="supply" data-tip="Gas supply: the pipeline pressures of O2, Air and N2O, and the total fresh-gas flow leaving the machine." aria-label="Gas supply pressures"></div>
+              <div class="hw-vap" data-tip="Vaporiser (sevoflurane): the dial sets the percentage of agent added to the fresh gas. How fast it reaches the patient depends on the fresh-gas flow; watch the end-tidal value and xMAC on the screen.">
+                <div class="hw-h">Vaporiser<small>Sevoflurane</small></div>
+                <div class="vdial" aria-hidden="true"><span id="vapNeedle"></span></div>
+                <div class="hw-row"><button class="hb" id="vapDn" aria-label="Vaporiser down">−</button><b id="vapVal" aria-live="polite">0</b><span class="hu">%</span><button class="hb" id="vapUp" aria-label="Vaporiser up">+</button></div>
+              </div>
+              <div class="hw-o2">
+                <button class="flush" id="kFlush" data-tip="O2+ (oxygen flush): hold it to send pure oxygen straight into the breathing system, bypassing the vaporiser. Refills an empty bag fast; in Man/Spon it can push the pressure up to the APL setting." aria-label="O2+ flush: hold to flush oxygen">O<sub>2</sub>+</button>
+                <div class="hw-h">O2 switch</div>
+                <button class="hsw" id="o2sw" data-tip="O2 switch: Aux. O2 sends the emergency oxygen flow to the outlet for a face mask or nasal cannula; Add. O2 sends it into the breathing system (for example if the electronic mixer fails)." aria-label="O2 switch: Aux. O2 or Add. O2"></button>
+                <div class="hw-h" data-tip="Emergency O2 flow (litres per minute), to the Aux. O2 outlet or, with Add. O2, into the breathing system.">Flow</div>
+                <div class="hw-row"><button class="hb" id="auxDn" aria-label="Emergency O2 flow down">−</button><b id="auxVal">0</b><span class="hu">L/min</span><button class="hb" id="auxUp" aria-label="Emergency O2 flow up">+</button></div>
+              </div>
+              <div class="hw-apl" data-tip="APL valve: in Man/Spon it limits the pressure in the breathing system and the bag. Spont is fully open, for spontaneous breathing; 5 to 70 cmH2O for hand ventilation. It does not affect the ventilator's breaths.">
+                <div class="hw-h">APL valve<small>Man / Spont</small></div>
+                <div class="hw-row"><button class="hb" id="aplDn" aria-label="APL valve down (towards Spont)">−</button><b id="aplVal">30</b><button class="hb" id="aplUp" aria-label="APL valve up">+</button></div>
+              </div>
+              <button class="bag" id="bag" data-tip="Breathing bag: in Man/Spon press and hold to squeeze a breath in, let go to let the patient breathe out. Its size shows how full the breathing system is: an empty bag means too little fresh gas or a leak." aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <button class="ypiece" id="ypiece" data-tip="Y-piece: where the breathing circuit meets the patient. For the system and leak tests it is sealed on the circuit plug; for the patient, connect it to the tube or mask." aria-label="Y-piece: seal it on the circuit plug for the tests, or connect it to the patient"></button>
+            </div>
+          </div>
+          </div>
+        </div>
+        <!-- Education mode: the guide beside the machine (hidden in Assessment) -->
+        <aside class="guide" id="guide" aria-label="Guide">
+          <button class="g-toggle" id="guideToggle" aria-expanded="true" data-tip="Show or hide the guide: what the machine is doing, what the alarms mean and how to do things. It is not shown in Assessment.">Guide</button>
+          <div class="g-body" id="guideBody" aria-live="off"></div>
+        </aside>
+        </div>

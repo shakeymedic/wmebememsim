@@ -156,6 +156,7 @@
         const send = (type, key, val) => sim.sendVentCommand(m.id, type, key, val);
         const on = m.state !== 'off';
         const ready = m.state === 'standby' || m.state === 'ambient';
+        const a350 = VP.modelOf(m.model) === 'a350';   /* the anaesthetic machine: no O2 enrichment key or screen lock */
         const sv = parseRows(m.sv), lv = parseRows(m.lv);
         const btn = 'px-2 py-0.5 rounded bg-slate-700 text-white text-[10px] font-bold disabled:opacity-30';
         return (
@@ -166,11 +167,11 @@
                         <button type="button" className={btn} onClick={() => send('power', null, on ? 0 : 1)}>{on ? 'Switch off' : 'Switch on'}</button>
                         {m.state === 'ventilating'
                             ? <button type="button" className={btn} onClick={() => send('standby')}>Standby</button>
-                            : <button type="button" className={btn} disabled={!ready} onClick={() => send('start')}>Start ventilation</button>}
+                            : <button type="button" className={btn} disabled={!ready} onClick={() => send('start')}>{a350 ? 'Start therapy' : 'Start ventilation'}</button>}
                         <button type="button" className={btn} disabled={!on} onClick={() => send('silence')}>Silence alarms</button>
-                        <button type="button" className={btn} disabled={!on} onClick={() => send('o2')}>O2 enrichment</button>
-                        <button type="button" className={btn} disabled={!on} onClick={() => send('lock', null, m.locked ? 0 : 1)}>{m.locked ? 'Unlock screen' : 'Lock screen'}</button>
-                        <button type="button" className={btn} onClick={() => send('fresh')}>Fresh ventilator</button>
+                        <button type="button" className={btn} disabled={!on} onClick={() => send('o2')}>{a350 ? 'FG O2 100%' : 'O2 enrichment'}</button>
+                        {!a350 && <button type="button" className={btn} disabled={!on} onClick={() => send('lock', null, m.locked ? 0 : 1)}>{m.locked ? 'Unlock screen' : 'Lock screen'}</button>}
+                        <button type="button" className={btn} onClick={() => send('fresh')}>{a350 ? 'Fresh machine' : 'Fresh ventilator'}</button>
                     </div>
                     {on && (
                         <label className="flex items-center justify-between gap-2">
@@ -178,7 +179,7 @@
                             <select aria-label="Ventilator mode" value={m.mode === 'CPR' ? '' : m.mode} onChange={e => { if (e.target.value) send('mode', e.target.value); }}
                                     className="min-w-0 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
                                 {m.mode === 'CPR' && <option value="">CPR</option>}
-                                {(m.model === 'c6' ? VP.MODES_C6 : VP.MODES).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
+                                {VP.modesFor(m.model).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
                             </select>
                         </label>
                     )}

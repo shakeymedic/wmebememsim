@@ -2132,10 +2132,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelE
 const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
 if (EMBEDDED) document.body.classList.add('embedded');
 const VP = window.VENT_PROFILES;
-/* Which ventilator this page is. Both pages share this link layer; the session's live.vent.model says
-   which one the facilitator wants, and the other page hands over to it (keeping the address's query). */
+/* Which machine this page is. The pages share this link layer; the session's live.vent.model says
+   which one the facilitator wants, and the others hand over to it (keeping the address's query). */
 const DEVICE_MODEL = 'c6';
-const MODEL_PAGES = {t1:'index.html', c6:'c6.html'};
+const MODEL_PAGES = {t1:'index.html', c6:'c6.html', a350:'a350.html'};
 let switching = false;
 function switchModel(model) {
   if (switching || !MODEL_PAGES[model]) return;
@@ -2402,8 +2402,8 @@ function applyLive(v) {
   LIVE.muted = !!v.isMuted;
   LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
   $('#endedBanner').hidden = !LIVE.isFinished;
-  /* The facilitator chose the other ventilator (HAMILTON-T1 or HAMILTON-C6): open its page, same session */
-  const model = v.vent && v.vent.model === 'c6' ? 'c6' : 't1';
+  /* The facilitator chose another machine (HAMILTON-T1, HAMILTON-C6 or Atlan A350): open its page, same session */
+  const model = v.vent && Object.prototype.hasOwnProperty.call(MODEL_PAGES, v.vent.model) ? v.vent.model : 't1';
   if (model !== DEVICE_MODEL) { switchModel(model); return; }
   applyConfig(v.vent || null);
   document.body.classList.toggle('assess', !!(v.vent && v.vent.assess));

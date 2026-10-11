@@ -455,7 +455,7 @@ sub("const saveKey = () => 'wmebem_vent_' + fb.code;", "const saveKey = () => 'w
 sub("    embedded:EMBEDDED, phys:physNow(), sv:settingsJSON(mk, c), lv:limitsJSON(), ts:Date.now()", "    embedded:EMBEDDED, model:'c6', phys:physNow(), sv:settingsJSON(mk, c), lv:limitsJSON(), ts:Date.now()");
 sub('/* Assessment mode: no alarm troubleshooting help on the screen (as on a real T1) */', '/* Assessment mode: no alarm troubleshooting help on the screen */');
 
-if (/HAMILTON-T1/.test(html.replace(/standalone HAMILTON-T1 trainer|HAMILTON-T1 page|HAMILTON-T1 \(transport\)|HAMILTON-T1 or HAMILTON-C6|HAMILTON-T1 \(github|the HAMILTON-T1 device|HAMILTON-T1's breath engine|HAMILTON-T1 page's breath engine/g, '')))
+if (/HAMILTON-T1/.test(html.replace(/standalone HAMILTON-T1 trainer|HAMILTON-T1 page|HAMILTON-T1 \(transport\)|HAMILTON-T1 or HAMILTON-C6|HAMILTON-T1, HAMILTON-C6 or Atlan A350|HAMILTON-T1 \(github|the HAMILTON-T1 device|HAMILTON-T1's breath engine|HAMILTON-T1 page's breath engine/g, '')))
     fail('a HAMILTON-T1 label survived: ' + (html.match(/.{0,60}HAMILTON-T1.{0,60}/) || [''])[0]);
 if (process.argv.includes('--check')) {
     const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
