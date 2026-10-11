@@ -267,3 +267,43 @@ test('Defib Sim has the Screens panel too, and Open defib still opens the defib 
   await expect(page.getByTestId('screens-others')).toContainText('a defib page');
   await expect(row(page, 2)).toHaveCount(0);
 });
+
+test('a device stays loaded when the controller adds or removes the monitor on its screen (pacing is not stopped)', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  const { screen, errors } = await joinAsScreen(context, code);
+  await expect.poll(() => assigned(page, code)).toEqual(['1:all']);
+  await page.evaluate(() => { window.__simEngine.dispatch({ type: 'SET_DEFIB_PANEL', payload: true }); window.__simEngine.dispatch({ type: 'SET_VENT_PANEL', payload: true }); });
+  await expect(screen.getByTestId('monitor-defib')).toBeAttached();
+  await expect(screen.getByTestId('monitor-vent')).toBeAttached();
+  const mark = () => screen.evaluate(() => [...document.querySelectorAll('iframe')].forEach(f => { f.contentWindow.__mark = 1; }));
+  const marks = () => screen.evaluate(() => [...document.querySelectorAll('iframe')].map(f => f.title + ':' + (f.contentWindow && f.contentWindow.__mark === 1)).sort());
+  await expect.poll(() => screen.evaluate(() => [...document.querySelectorAll('iframe')].every(f => f.contentDocument && f.contentDocument.readyState === 'complete'))).toBe(true);
+  await mark();
+  await openScreens(page);
+  await part(page, 1, 'monitor').click();                                     // all -> defib + ventilator
+  await expect.poll(() => assigned(page, code)).toEqual(['1:devices']);
+  await expect(screen.getByTestId('device-screen')).toBeVisible();
+  expect(await marks()).toEqual(['Defibrillator:true', 'Ventilator:true']);
+  await part(page, 1, 'monitor').click();                                     // and back
+  await expect.poll(() => assigned(page, code)).toEqual(['1:all']);
+  await expect(screen.getByTestId('device-screen')).toHaveCount(0);
+  expect(await marks()).toEqual(['Defibrillator:true', 'Ventilator:true']);
+  await part(page, 1, 'vent').click();                                        // the ventilator leaves this screen
+  await expect.poll(() => assigned(page, code)).toEqual(['1:mondefib']);
+  await expect(screen.getByTestId('monitor-vent')).toHaveCount(0);
+  expect(await marks()).toEqual(['Defibrillator:true']);
+  expect(errors).toEqual([]);
+});
+
+test('a leftover presence row with an old heartbeat is not numbered as a connected screen', async ({ page }) => {
+  const code = await openController(page);
+  await page.evaluate((c) => window.db.ref(`sessions/${c}/presence/oldtab123456`).set({ role: 'screen:all', display: 'patient monitor', ts: Date.now() - 3600000 }), code);
+  await page.getByTestId('setup-toggle').click();
+  await expect(page.getByTestId('screens-empty')).toBeVisible();
+  await page.waitForTimeout(1500);
+  expect(await assigned(page, code)).toEqual([]);
+  // If it is really alive, its next heartbeat makes it a screen
+  await page.evaluate((c) => window.db.ref(`sessions/${c}/presence/oldtab123456`).update({ ts: Date.now() }), code);
+  await expect.poll(() => assigned(page, code)).toEqual(['1:all']);
+});

@@ -161,3 +161,21 @@ test('importing a file adds its scenarios to the account and skips ones already 
   expect(stored.CUST_1.title).toBe('Already mine');
   expect(errors).toEqual([]);
 });
+
+test('importing the same file twice does not copy a scenario whose id had to be changed', async ({ page }) => {
+  await openController(page);
+  await signIn(page);
+  await openMyScenarios(page);
+  const dialogs = [];
+  page.on('dialog', d => { dialogs.push(d.message()); d.accept().catch(() => {}); });
+  const file = { name: 'odd.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify([{ id: 'case.one/v2', title: 'Odd id case' }])) };
+  await page.getByLabel('Import scenarios from a JSON file').setInputFiles(file);
+  await expect.poll(() => dialogs.length).toBe(1);
+  await expect(page.getByText('Odd id case')).toBeVisible();
+  await page.getByLabel('Import scenarios from a JSON file').setInputFiles(file);
+  await expect.poll(() => dialogs.length).toBe(2);
+  expect(dialogs[1]).toContain('Imported 0 new scenario(s)');
+  const stored = await mine(page);
+  expect(Object.keys(stored).length).toBe(1);
+  expect(Object.keys(stored)[0]).toMatch(/^CUST_[0-9a-z]+$/);
+});

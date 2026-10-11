@@ -71,7 +71,11 @@
         }
         const postToChannel = (msg) => { if (simChannel.current) { try { simChannel.current.postMessage(msg); } catch (e) { console.warn('Channel post failed', e); } } };
 
-        useEffect(() => { stateRef.current = state; }, [state]);
+        // Only when nothing was dispatched since this render: a dispatch landing between React's
+        // commit and this effect has already moved stateRef on (applyShadow), and overwriting it
+        // with the rendered state would roll that dispatch back for the engine (an arrest that the
+        // next drug did not see, so the drug put a BP back on a pulseless patient).
+        useEffect(() => { if (!shadowRef.current) stateRef.current = state; }, [state]);
 
         // ---- SIM-CLOCK TIMERS ------------------------------------------------------------------------
         // Delayed consequences (sugammadex reversal, VF recurring after ROSC, a drug's rhythm effect)

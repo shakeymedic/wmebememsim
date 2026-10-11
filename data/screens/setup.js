@@ -1,5 +1,5 @@
 (() => {
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     // `initialMode` / `initialPremadeCategory` are OPTIONAL. They exist so a particular panel can be
     // opened directly — used by the Node verification harness to render the locked Restricted section
@@ -162,17 +162,20 @@
         useEffect(() => { if (uid) { setMyAuthOpen(false); setRestrictedAuthOpen(false); } }, [uid]);
 
         const saveFailed = (e) => alert('Could not save to your account: ' + ((e && e.message) || 'the database refused it') + '.');
+        const addingLegacy = useRef(false);   // a second click while the first is saving does nothing
         const addLegacyToAccount = () => {
-            if (!canSave || !legacyScenarios.length) return;
-            if (customScenarios.length + legacyScenarios.length > US.MAX) {
+            if (!canSave || !legacyScenarios.length || addingLegacy.current) return;
+            const inAccount = new Set(customScenarios.map(c => c.id));
+            if (customScenarios.length + legacyScenarios.filter(l => !inAccount.has(l.id)).length > US.MAX) {
                 alert(`Your account holds up to ${US.MAX} scenarios. Delete some first, then add these.`);
                 return;
             }
+            addingLegacy.current = true;
             US.saveMany(uid, legacyScenarios, customScenarios).then(n => {
                 US.clearLegacy();
                 setLegacyScenarios([]);
                 setMyNotice(n ? `Added ${n} scenario(s) from this device to your account.` : 'Those scenarios were already in your account.');
-            }).catch(saveFailed);
+            }).catch(saveFailed).finally(() => { addingLegacy.current = false; });
         };
         const discardLegacy = () => {
             if (!window.confirm(`Remove ${legacyScenarios.length} scenario(s) saved on this device? They are not in your account, so this cannot be undone.`)) return;
@@ -314,8 +317,16 @@
                 return;
             }
             setSaving(true);
+            // Firebase only confirms a save once the server has it. Offline, it waits for the
+            // connection, so say so rather than leaving "Saving…" up with the buttons disabled.
+            let done = false;
+            const slow = setTimeout(() => {
+                if (done) return;
+                setSaving(false);
+                setMyNotice(`Not connected: "${newScen.title}" will save to your account when the connection comes back. Keep this page open until then.`);
+            }, 10000);
             US.save(uid, newScen).then(() => { setMyNotice(`Saved "${newScen.title}" to your account.`); setMode('custom'); })
-                .catch(saveFailed).finally(() => setSaving(false));
+                .catch(saveFailed).finally(() => { done = true; clearTimeout(slow); setSaving(false); });
         };
 
         const handleGenerate = (base) => {
@@ -819,6 +830,7 @@
                                 </div>
                             )}
                             {builderInvalid && <p className="text-xs text-red-400 text-center">Fix the highlighted fields above to run this scenario.</p>}
+                            {myNotice && /^Not connected/.test(myNotice) && <div role="status" className="text-xs bg-amber-950/50 border border-amber-700 rounded p-2 text-amber-200" data-testid="builder-offline-note">{myNotice}</div>}
                         </div>
                     )}
                     {wetflagOption}

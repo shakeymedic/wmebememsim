@@ -28,6 +28,7 @@
         const firstSeen = useRef({});     // id -> when this controller first saw it connected
         const lastSeen = useRef({});      // id -> when this controller last saw it connected
         const pending = useRef({});       // numbering writes not yet echoed back
+        const identifyRef = useRef(false);   // a Screens panel is open (numbers wanted on the screens)
         const codeRef = useRef(sessionID);
         codeRef.current = sessionID;
         const db = window.db;
@@ -43,7 +44,12 @@
                 Object.keys(v).forEach(id => {
                     const ts = Number((v[id] || {}).ts) || 0;
                     const b = beats.current[id];
-                    if (!b || b.ts !== ts) beats.current[id] = { ts, at: now };
+                    // A row seen for the first time counts as live only if its heartbeat is recent
+                    // (2 minutes allows for a tablet's clock being a little out). A leftover row from
+                    // a tab that froze or never ran its onDisconnect must not be numbered as a
+                    // connected screen; if it is really alive, its next heartbeat makes it live.
+                    if (!b) beats.current[id] = { ts, at: Math.abs(now - ts) < 120000 ? now : 0 };
+                    else if (b.ts !== ts) beats.current[id] = { ts, at: now };
                 });
                 setPresence(v);
             };
@@ -52,8 +58,13 @@
             pRef.on('value', onP, onErr);
             sRef.on('value', onS, onErr);
             const t = setInterval(() => setTick(x => x + 1), 5000);
+            // onDisconnect() is one-shot: after a network blip on the controller the server has
+            // already removed screenIdentify, so put it back (and re-arm) while a panel is open.
+            const connRef = db.ref('.info/connected');
+            const onConn = (snap) => { if (snap.val() === true && identifyRef.current) showNumbers(true); };
+            connRef.on('value', onConn);
             return () => {
-                pRef.off('value', onP); sRef.off('value', onS); clearInterval(t);
+                pRef.off('value', onP); sRef.off('value', onS); clearInterval(t); connRef.off('value', onConn);
                 beats.current = {}; firstSeen.current = {}; lastSeen.current = {}; pending.current = {};
                 setPresence({}); setAssigns({}); setAssignsLoaded(false);
                 try { db.ref(`sessions/${sessionID}/screenIdentify`).remove().catch(() => {}); } catch (e) {}
@@ -124,6 +135,7 @@
         };
         const showNumbers = (show) => {
             if (!window.db || !codeRef.current) return;
+            identifyRef.current = !!show;
             const r = window.db.ref(`sessions/${codeRef.current}/screenIdentify`);
             if (show) { r.set(true).catch(() => {}); try { r.onDisconnect().remove().catch(() => {}); } catch (e) {} }
             else r.remove().catch(() => {});
@@ -347,14 +359,19 @@
         if (!live.length) return null;
         const cover = coverage(link.screens);
         const lost = [];
-        if (state.defibPanelOpen && !cover.defib.length) lost.push('defib');
-        if (state.ventPanelOpen && !cover.vent.length) lost.push('ventilator');
+        // A defib or ventilator tablet linked on its own (link.others) counts as showing that device.
+        const tablet = (kind) => link.others.some(o => o.kind === kind);
+        if (state.defibPanelOpen && !cover.defib.length && !tablet('defib')) lost.push('defib');
+        if (state.ventPanelOpen && !cover.vent.length && !tablet('vent')) lost.push('ventilator');
         if (!lost.length) return null;
+        // role="alert" on the button itself would hide that it is a button from screen readers.
         return (
-            <button type="button" onClick={onOpen} data-testid="screens-warning" role="alert"
-                    className="h-8 px-2 flex items-center gap-1 rounded border border-amber-500 bg-amber-950/60 text-amber-200 text-[10px] uppercase font-bold whitespace-nowrap">
-                <Lucide icon="alert-triangle" className="w-3 h-3"/> {lost.join(' and ')} on no screen
-            </button>
+            <span role="status" className="contents">
+                <button type="button" onClick={onOpen} data-testid="screens-warning"
+                        className="h-8 px-2 flex items-center gap-1 rounded border border-amber-500 bg-amber-950/60 text-amber-200 text-[10px] uppercase font-bold whitespace-nowrap">
+                    <Lucide icon="alert-triangle" className="w-3 h-3"/> {lost.join(' and ')} on no screen
+                </button>
+            </span>
         );
     };
 
