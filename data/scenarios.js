@@ -296,6 +296,560 @@ window.RAW_SCENARIOS = [
   { id: 'PS010', title: 'Section 136 and Capacity Assessment', category: 'Psychiatric', ageRange: 'Adult', acuity: 'Majors', ageGenerator: () => getRandomInt(20, 50), patientProfileTemplate: "A {age}-year-old {sex} brought in under Section 136 from a bridge. Now calm, articulate, and demanding to leave immediately.", presentingComplaint: 'Mental Health Crisis', instructorBrief: { progression: "The legal and ethical challenge is the scenario. Section 136 permits detention in a place of safety but does not authorise treatment. Assess capacity formally and know when common law or the Mental Capacity Act applies.", interventions: ["Capacity assessment", "Liaise with AMHP and police", "Place of safety", "Document reasoning"], learningObjectives: ["Understand the scope and limits of Section 136", "Perform and document a capacity assessment", "Distinguish the Mental Health Act from the Mental Capacity Act"] }, vitalsMod: { hr: 88, bpSys: 126, spO2: 98, rr: 16, gcs: 15 }, deterioration: { active: false, rate: 0.01, type: 'neuro' }, ecg: { type: "Sinus Rhythm", findings: "Normal sinus rhythm" }, recommendedActions: ['Obs', 'IV Access', 'Lorazepam', 'Dextrose'] },
 ];
 
+// =================================================================================================
+// LEARNING-OBJECTIVE COMPONENTS (authored, per scenario)
+// -------------------------------------------------------------------------------------------------
+// What has to be GIVEN or DONE for each learning objective to count as met in the debrief. The
+// debrief used to infer this by keyword-matching the objective's wording against the scenario's
+// recommended actions, which credited the wrong care (antihistamine and hydrocortisone "met"
+// "Distinguish bradykinin angio-oedema from anaphylaxis"; dexamethasone and NIV "met" "Oxygen
+// targets in COPD"). Every built-in objective is now authored here, by scenario id:
+//
+//   'Objective text, exactly as in the scenario': [['KeyA', 'KeyB'], ['KeyC']]
+//
+//   * each inner array is an OR-group of intervention keys (window.INTERVENTIONS): any one meets it;
+//   * every group must be met for the objective to be met (fewer = "partly done");
+//   * [] = not scorable from actions (recognition, judgement, communication, knowledge): the
+//     facilitator ticks it in the debrief.
+//
+// Choices follow current UK guidance (RCUK ALS/PLS/NLS 2021, RCUK anaphylaxis 2021, APLS, NICE,
+// BTS/SIGN, JBDS, RCEM, RCOG, DAS). Treatments that are wrong for the condition are never credited
+// (e.g. antihistamine or steroid for bradykinin angio-oedema, high-flow oxygen for COPD targets,
+// insulin for hypoglycaemia). A component that depends on how the scenario unfolds (amiodarone
+// after the third shock; a hysterotomy only without ROSC) is not required, because the format cannot
+// express "only if"; the facilitator judges those. scripts/check-objectives.mjs fails the build's
+// test run if a built-in objective has no entry here or names an unknown intervention key.
+// Custom (Builder) scenarios may carry their own `objectiveActions` in the same shape; an objective
+// with no authored entry anywhere falls back to keyword inference.
+// =================================================================================================
+(() => {
+    // Interchangeable treatments, named once so every scenario uses the same group.
+    const CPR_ADULT = ['CPR', 'Lucas'];
+    const ANAPHYLAXIS_ADRENALINE = ['AdrenalineIM', 'AdrenalineIVSmall', 'AdrenalinePush', 'AdrenalineInfusion'];
+    const SEIZURE_BENZO = ['Lorazepam', 'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'Midazolam', 'DiazepamIV', 'DiazepamPR'];
+    const SECOND_LINE_ANTISEIZURE = ['Levetiracetam', 'Phenytoin'];
+    const SEPSIS_ANTIBIOTIC = ['Antibiotics', 'Tazocin', 'Ceftriaxone', 'Gentamicin'];
+    const MENINGOCOCCAL_ANTIBIOTIC = ['Ceftriaxone', 'Benzylpenicillin', 'BenzylpenicillinIM'];
+    const ABDOMINAL_ANTIBIOTIC = ['Tazocin', 'Antibiotics'];
+    const NEBULISED_BRONCHODILATOR = ['Nebs', 'NebsContinuous'];
+    const ASTHMA_STEROID = ['Hydrocortisone', 'Dexamethasone'];
+    const CALCIUM = ['Calcium', 'CalciumChloride'];
+    const POTASSIUM_SHIFT = ['InsulinDextrose'];
+    const OPIOID = ['Analgesia', 'Fentanyl', 'MorphineIM', 'MorphineOral'];
+    const PROCEDURAL_SEDATION = ['Propofol', 'Midazolam', 'Ketamine', 'Etomidate'];
+    const AGITATION_SEDATION = ['Midazolam', 'MidazolamIM', 'Lorazepam', 'LorazepamIM', 'DiazepamIV', 'KetamineIM'];
+    const VENTILATE = ['Bagging', 'i-gel', 'RSI'];
+    const BP_LOWERING = ['Labetalol', 'LabetalolInfusion'];
+    const MAGNESIUM_ECLAMPSIA = ['MagSulph', 'MagnesiumInfusion'];
+    const VASOPRESSOR = ['Noradrenaline', 'Metaraminol'];
+    const TENSION_DECOMPRESSION = ['Needle', 'FingerThoracostomy'];
+    const CHEST_DRAIN = ['SeldingerDrain', 'SurgicalDrain'];
+    const FLUIDS_ANY = ['Fluids', 'FluidInfusion'];
+    const WARFARIN_REVERSAL = [['Octaplex'], ['VitaminK']];
+    const HYPERKALAEMIA = [CALCIUM, POTASSIUM_SHIFT];
+
+    window.SCENARIO_OBJECTIVE_ACTIONS = {
+        // ---- ADULT MEDICAL ----------------------------------------------------------------------
+        AM001: { // STEMI: aspirin, a P2Y12 inhibitor and reperfusion (PPCI, or lysis if PPCI is not timely)
+            'Identify STEMI': [],
+            'Manage ACS': [['Aspirin'], ['Ticagrelor', 'Clopidogrel'], ['PPCI', 'Thrombolysis']]
+        },
+        AM002: { // Septic shock, SpO2 88%: Sepsis Six actions that are buttons here
+            'Sepsis 6': [['Oxygen'], SEPSIS_ANTIBIOTIC, ['Fluids']],
+            'Fluid Resus': [['Fluids']]
+        },
+        AM003: { // Life-threatening asthma (BTS/SIGN): O2, nebulised bronchodilator, steroid, IV magnesium
+            'Asthma Management': [['Oxygen'], NEBULISED_BRONCHODILATOR, ASTHMA_STEROID, ['MagSulph']]
+        },
+        AM004: {
+            'Hyperkalaemia treatment': HYPERKALAEMIA
+        },
+        AM011: { // Hypertensive pulmonary oedema: nitrate + loop diuretic; CPAP for hypoxia
+            'Manage acute heart failure': [['GTN', 'GTNInfusion'], ['Furosemide']],
+            'CPAP Indications': [['CPAP', 'NIV']]
+        },
+        AM012: { // Controlled O2 (88-92%) is a judgement; "High Flow O2" is the WRONG button
+            'Oxygen targets in COPD': [],
+            'NIV indications': [['NIV']]
+        },
+        AM013: { // JBDS: fluids + fixed-rate IV insulin (not the hyperkalaemia insulin/dextrose bolus)
+            'DKA Protocol': [FLUIDS_ANY, ['InsulinInfusion']],
+            'Fluid management': [FLUIDS_ANY]
+        },
+        AM014: { 'HHS vs DKA': [], 'Osmolality': [] },
+        AM015: { 'Massive PE recognition': [], 'Thrombolysis indications': [['Thrombolysis']] },
+        AM016: { // Terlipressin + prophylactic antibiotics; TXA is not credited (HALT-IT)
+            'Major Haemorrhage Protocol': [['Blood']],
+            'Variceal bleed management': [['Terlipressin'], ['Antibiotics', 'Ceftriaxone', 'Tazocin']]
+        },
+        AM017: { 'Meningitis recognition': [], 'Lumbar Puncture contraindications': [] },
+        AM018: { // Society for Endocrinology: hydrocortisone 100 mg + saline; glucose for the BM of 3.2
+            'Adrenal crisis management': [['Hydrocortisone'], ['Fluids'], ['Dextrose']],
+            'Steroid sick days': []
+        },
+        AM019: { 'Thyroid storm recognition': [], 'Burch-Wartofsky score': [] },
+        AM020: { 'SAH presentation': [], "Cushing's Triad": [] },
+        AM021: { // Onset 1 h ago: a thrombolysis candidate once CT excludes a bleed
+            'FAST positive': [],
+            'Thrombolysis window': [['Thrombolysis']]
+        },
+        AM022: { // Refractory convulsive status, SpO2 88%: oxygen, benzodiazepine, then second-line drug
+            'Status epilepticus algorithm': [['Oxygen', 'Bagging', 'RSI'], SEIZURE_BENZO, SECOND_LINE_ANTISEIZURE]
+        },
+        AM023: { // RCUK bradycardia: atropine, then interim measures (pacing, isoprenaline, adrenaline)
+            'Bradycardia algorithm': [['Atropine'], ['Pacing', 'Isoprenaline', 'AdrenalineInfusion']],
+            'Pacing indications': [['Pacing']]
+        },
+        AM024: { // Unstable VT: synchronised DC shock (amiodarone follows a failed third shock)
+            'Tachycardia algorithm': [['Cardioversion']],
+            'Safe cardioversion': [['Cardioversion'], PROCEDURAL_SEDATION]
+        },
+        AM025: { 'Adenosine administration': [['Adenosine']], 'ECG recognition': [] },
+        AM026: { // RCUK 2021: adrenaline (IM first) and a fluid bolus for shock; no antihistamine/steroid credit
+            'Anaphylaxis algorithm': [ANAPHYLAXIS_ADRENALINE, ['Fluids']]
+        },
+        AM027: { // Anti-impulse therapy: beta-blockade first
+            'Dissection recognition': [],
+            'BP targets': [BP_LOWERING]
+        },
+        AM028: { // Symptomatic severe hyponatraemia: 3% saline bolus
+            'Hyponatraemia correction': [['HypertonicSaline']],
+            'Seizure management': []
+        },
+        AM029: { 'Sepsis Source': [], "Charcot's Triad": [] },
+        AM030: { 'CURB-65': [], 'Oxygen therapy': [['Oxygen']] },
+        AM031: { 'Needle Thoracocentesis location': [TENSION_DECOMPRESSION], 'Obstructive Shock signs': [] },
+        AM032: { // Passive rewarming: the "Active Warming" button is the caution, not the answer
+            'Myxoedema recognition': [],
+            'Warming caution': []
+        },
+        AM033: {
+            'Hypercalcaemia management': [['Fluids'], ['Bisphosphonate']],
+            'Fluid targets': [FLUIDS_ANY]
+        },
+        AM034: { 'Oesophageal rupture signs': [], "Mackler's Triad": [] },
+        AM035: { 'CO half-life': [], 'SpO2 limitations': [] },
+        AM036: { 'Serotonin toxicity criteria': [], 'Cooling methods': [['Cooling']] },
+        AM037: { 'SLUDGE mnemonic': [], 'Atropine dosing': [['Atropine']] },
+        AM038: { 'GBS recognition': [], 'Respiratory monitoring': [] },
+        AM005: { // Sodium channel blockade: bicarbonate
+            'TCA Toxicity': [['SodiumBicarb']],
+            'ECG changes': []
+        },
+        AM006: { 'Opioid Toxidrome': [], 'Naloxone dosing': [['Naloxone', 'NaloxoneIM', 'NaloxoneIN']] },
+        AM007: { // There is no acetylcysteine button, so NAC cannot be scored from actions
+            'Paracetamol nomogram': [],
+            'NAC indications': []
+        },
+        AM008: { 'CIWA scoring': [], 'Safe sedation': [['Lorazepam', 'DiazepamIV']] },
+        AM009: { // NICE NG10 rapid tranquillisation (IM lorazepam; no haloperidol button)
+            'Rapid Tranq guidelines': [['LorazepamIM', 'Lorazepam', 'MidazolamIM']],
+            'Mental Capacity Act': []
+        },
+
+        // ---- ADULT TRAUMA -----------------------------------------------------------------------
+        AT001: { 'Major Trauma Call': [], 'Permissive Hypotension': [] },
+        AT002: { 'Chest decompression': [['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain']] },
+        AT003: { // GCS 8, blown pupil, Cushing response: definitive airway + osmotherapy
+            'Raised ICP management': [['RSI'], ['HypertonicSaline']],
+            "Cushing's Triad": []
+        },
+        AT004: { 'Burn airway assessment': [], 'Fluid calculation': [FLUIDS_ANY] },
+        AT005: { // Neurogenic shock: a pressor with beta activity suits the bradycardia
+            'Neurogenic vs Spinal shock': [],
+            'Vasopressor choice': [['Noradrenaline', 'Metaraminol', 'AdrenalineInfusion', 'Ephedrine']]
+        },
+        AT006: { 'Flail chest mechanics': [], 'Pain management importance': [['Analgesia', 'Fentanyl', 'NerveBlock', 'Ketamine']] },
+        AT007: { 'Neck trauma zones': [], 'Hard vs Soft signs': [] },
+        AT008: { 'Crush syndrome physiology': [], 'Hyperkalaemia management': HYPERKALAEMIA },
+
+        // ---- ELDERLY ----------------------------------------------------------------------------
+        EL001: { // NICE CG124 / AAGBI: nerve block plus systemic analgesia
+            'NOF management': [['NerveBlock'], ['Analgesia', 'Fentanyl', 'Paracetamol', 'ParacetamolOral', 'MorphineIM', 'MorphineOral']],
+            'Frailty assessment': []
+        },
+        EL002: { 'Sepsis in elderly': [SEPSIS_ANTIBIOTIC, ['Fluids']], 'Delirium': [] },
+        EL003: { 'Head injury in elderly': [], 'Anticoagulation reversal': WARFARIN_REVERSAL },
+        EL004: { 'AAA presentation': [], 'Hypotension targets': [] },
+        EL005: { 'Swiss staging': [], 'Resus modification': [] },
+
+        // ---- PAEDIATRIC MEDICAL -----------------------------------------------------------------
+        PA001: { // Meningococcal sepsis: ceftriaxone (benzylpenicillin pre-hospital), fluid bolus; IV/IO access
+            'Paeds Sepsis': [MENINGOCOCCAL_ANTIBIOTIC, ['Fluids']],
+            'IO Access': [['IV Access']]
+        },
+        PA002: { 'Croup scoring': [], 'Neb Adrenaline indications': [['NebAdrenaline']] },
+        PA003: { // APLS: airway/oxygen, benzodiazepine (second-line only if it continues)
+            'APLS Seizure Algorithm': [['Oxygen', 'Bagging', 'RSI'], SEIZURE_BENZO]
+        },
+        PA004: { 'Paeds Anaphylaxis': [ANAPHYLAXIS_ADRENALINE, ['Fluids']] },
+        PA005: { 'Bronchiolitis escalation': [['CPAP', 'NIV']] },
+        PA006: { 'Paeds DKA Fluids': [FLUIDS_ANY], 'Cerebral Oedema': [] },
+        PA007: { // There is no vagal-manoeuvre button ('Manoeuvres' is head tilt / jaw thrust)
+            'Paeds SVT management': [['Adenosine', 'Cardioversion']]
+        },
+        PA008: { 'Intussusception diagnosis': [], 'Fluid resus': [['Fluids']] },
+        PA009: { 'Button battery time-criticality': [], 'Fistula risk': [] },
+        PA010: { 'Neonatal collapse diff dx': [], 'Prostin use': [['Prostin']] },
+        PT001: { 'Recognising NAI': [], 'Safeguarding': [] },
+        PT002: { 'PECARN Rules': [], 'Paeds Head Injury': [] },
+
+        // ---- CARDIAC ARREST (legacy pair) -------------------------------------------------------
+        CA001: { 'ALS Algorithm': [CPR_ADULT, ['Defib']] },
+        CA002: { // Non-shockable: CPR with ventilation and adrenaline as soon as possible
+            'APLS Arrest': [['CPR'], VENTILATE, ['AdrenalineIV']],
+            '4Hs 4Ts': []
+        },
+
+        // ---- OBSTETRICS -------------------------------------------------------------------------
+        OB001: { // No button for elevating the presenting part ('Manoeuvres' is head tilt / jaw thrust)
+            'Cord prolapse management': [['Surgery', 'Delivery']]
+        },
+        OB002: { 'HELPERR Mnemonic': [] }, // no button for McRoberts / suprapubic pressure
+        OB003: { 'Ectopic recognition': [], 'Haemorrhage management': [['Blood'], ['Surgery']] },
+        OB004: { // NICE NG133: airway/O2, magnesium, treat severe hypertension
+            'Eclampsia management': [['Oxygen', 'Bagging', 'RSI'], MAGNESIUM_ECLAMPSIA, BP_LOWERING],
+            'Mag Sulph dosing': [['MagSulph'], ['MagnesiumInfusion']]
+        },
+        OB005: { 'AFE recognition': [], 'Maternal arrest modification': [] },
+
+        // ---- MORE ADULT MEDICAL -----------------------------------------------------------------
+        AM039: { "Beck's Triad": [], 'Electrical Alternans': [] },
+        AM040: { 'Wellens ECG signs': [], 'Do not exercise test': [] },
+        AM041: { 'Bronchial artery anatomy': [], 'Positioning': [] },
+        AM042: { 'Brugada ECG types': [], 'Sodium channel blockers': [] },
+        AM043: { 'FVC monitoring': [], 'Cholinergic vs Myasthenic': [] },
+        AM044: { 'Dissection risk factors': [], 'Cerebellar signs': [] },
+        AM045: { 'Alpha before Beta rule': [['Phentolamine']], 'Catecholamine surge': [] },
+        AM046: { 'Pituitary anatomy': [], 'Steroid replacement': [['Hydrocortisone']] },
+        AM047: { 'Airway assessment': [], 'FONA anticipation': [] },
+        AM048: { 'Travel history': [], 'Parasitaemia': [] },
+        AM049: { 'LRINEC Score': [], 'Pain out of proportion': [] },
+
+        // ---- TOXICOLOGY -------------------------------------------------------------------------
+        TX001: { // High-dose insulin euglycaemia (the insulin/dextrose button) and glucagon
+            'HDI protocol': [['InsulinDextrose']],
+            'Glucagon dosing': [['Glucagon']]
+        },
+        TX002: { 'Digoxin ECG effects': [], 'Salvador Dali moustache': [] },
+        TX003: { 'Iron toxicity stages': [], 'Opaque pills on X-ray': [] },
+        TX004: { // AAGBI LAST: 100% oxygen / airway, lipid emulsion
+            'LAST protocol': [['Oxygen', 'Bagging', 'RSI'], ['Lipid']],
+            'Lipid dosing': [['Lipid']]
+        },
+        TX005: { 'Osmolar gap': [], "Wood's lamp urine": [] },
+
+        // ---- MORE ADULT TRAUMA ------------------------------------------------------------------
+        AT009: { 'Tourniquet application': [['Tourniquet']], 'Amputated part care': [] },
+        AT010: { '6 Ps of ischaemia': [], 'Pain on passive stretch': [] },
+        AT011: { 'AC vs DC injury': [], 'Fluid targets in burns': [FLUIDS_ANY] },
+        AT012: { 'Suspension syncope': [], 'Rescue death': [] },
+        AT013: { 'Occlusive dressing logic': [['ChestSeal']], 'Drain insertion': [CHEST_DRAIN] },
+
+        // ---- MORE PAEDIATRIC --------------------------------------------------------------------
+        PA011: { 'CRASH and Burn criteria': [], 'Aspirin in paeds': [['Aspirin']] },
+        PA012: { 'Acute Chest recognition': [], 'Analgesia ladder': [OPIOID] },
+        PA013: { // Complete obstruction progressing to arrest: laryngoscopy and Magill forceps
+            'Choking algorithm': [['Magills']],
+            'Unilateral wheeze': []
+        },
+        PA014: { 'Time to theatre (<6hrs)': [['Surgery']], 'Do not wait for Ultrasound': [] },
+        PA015: { "Kocher's Criteria": [], 'Transient synovitis diff dx': [] },
+
+        // ---- MORE OBSTETRICS / ELDERLY / ADULT MEDICAL ------------------------------------------
+        OB006: { '4 Ts of PPH': [], 'Bimanual compression': [] },
+        OB007: { 'Ultrasound utility': [], 'Torsion risk factors': [] },
+        OB008: { 'PPCM diagnosis': [], 'Fluid management in failure': [['Furosemide']] },
+        EL006: { 'Pain out of proportion': [], 'Lactate significance': [] },
+        EL007: { // BSR: high-dose glucocorticoid now (no prednisolone/methylprednisolone button; either steroid here)
+            'GCA symptoms': [],
+            'Steroid urgency': [['Hydrocortisone', 'Dexamethasone']]
+        },
+        AM050: { 'Glasgow Score for Pancreatitis': [], 'Fluid sequestration': [FLUIDS_ANY] },
+        AM051: { 'Ammonia levels': [], 'West Haven Criteria': [] },
+        AM052: { 'SBP diagnosis (Neutrophils >250)': [['AsciticTap']], 'Albumin indications': [['Albumin']] },
+        AM053: { 'Duke Criteria': [], 'Embolic phenomena': [] },
+        AM054: { 'Fixed output state': [], 'Medications to avoid': [] },
+        AM055: { 'Hypertrophic Cardiomyopathy': [], 'Screening family': [] },
+        AM056: { 'FBI (Fast Broad Irregular)': [], 'Contraindicated drugs': [] },
+        AM057: { // RCOphth: IV acetazolamide plus topical pressure-lowering drops
+            'Fixed mid-dilated pupil': [],
+            'IOP reduction': [['Acetazolamide'], ['TopicalEyeDrops']]
+        },
+        AM058: { 'Cherry red spot': [], 'Embolic source': [] },
+        AM059: { 'Never examine throat': [], 'Airway strategy': [] },
+        AM060: { 'Quinsy vs Tonsillitis': [], 'Drainage technique': [] },
+        AM061: { 'PJP presentation': [], 'Exercise desaturation': [] },
+        AM062: { 'Electrolyte disturbances': [], 'Rasburicase indications': [['Rasburicase']] },
+        AM063: { 'CK levels': [], 'Myoglobinuria': [] },
+        AM064: { 'Rate of BP reduction (Max 25% first hour)': [['Labetalol', 'LabetalolInfusion', 'GTNInfusion']] },
+        AT014: { 'Blast wave physics': [], 'Blast lung management': [['Oxygen']] },
+        AT015: { // Exsanguinating (BP 90): permissive hypotension, so no antihypertensive is credited
+            'Widened mediastinum': [],
+            'BP targets': []
+        },
+        AT016: { 'CXR interpretation': [], 'NGT path': [] },
+        AT017: { 'Canthotomy technique': [['Canthotomy']], 'Orbital compartment syndrome': [] },
+        AT018: { 'Vascular check pre/post reduction': [], 'Hard signs of ischaemia': [] },
+        AT019: { 'Skin threat urgency': [['Reduction']], 'Sedation reduction': [['Reduction'], ['Ketamine', 'Propofol', 'Midazolam']] },
+        AT020: { 'Urethral injury signs': [], 'Retrograde urethrogram': [] },
+        AT021: { 'Alkali vs Acid': [], 'Morgan lens': [['Irrigation']] },
+        AT022: { // Suction plus an airway that suits a mid-face fracture (no NPA)
+            'Le Fort fractures': [],
+            'Airway adjuncts': [['Suction'], ['OPA', 'RSI', 'FONA']]
+        },
+        AT023: { 'Impaled object management': [['Surgery']] },
+        PA016: { 'VBG interpretation': [], 'Olive mass': [] },
+        PA017: { 'Bilious vomiting is red flag': [], 'Upper GI Contrast': [] },
+        PA018: { 'CAH pathophysiology': [], 'Hyperkalaemia in neonate': [] },
+        PA019: { 'Apnoea management': [['Bagging']], 'Vaccination history': [] },
+        PA020: { 'Koplik spots': [], 'Isolation protocols': [] },
+        PA021: { 'Ammonia measurement': [], 'Sepsis mimic': [] },
+        PA022: { 'Gartland classification': [], 'Pulse check': [] },
+        PA023: { 'Bilirubin nomogram': [], 'Kernicterus signs': [] },
+        PA024: { 'Lund and Browder': [], 'Cooling limits': [] },
+        PA025: { 'Simple vs Complex': [], 'Meningitis exclusion': [] },
+        OB009: { 'Do not pull cord': [], 'Reinvert immediately': [] },
+        OB010: { 'Concealed abruption': [], 'Pain disproportionate to bleed': [] },
+        OB011: { 'Painless bleed = Praevia': [], 'Digital exam contraindication': [] },
+        OB012: { "Wernicke's prevention": [['Pabrinex']], 'PUQE score': [] },
+        OB013: { 'Breech manoeuvres': [], 'Hands off breech': [] },
+        TX006: { 'Hyperglycaemia in CCB OD': [], 'Insulin euglycaemia': [['InsulinDextrose']] },
+        TX007: { 'Uncoupling oxidative phosphorylation': [], 'pH trapping': [['SodiumBicarb']] },
+        TX008: { 'Serotonin syndrome features': [], 'Cooling urgency': [['Cooling']] },
+        TX009: { 'Unopposed alpha stimulation': [], 'Benzo utility': [['Midazolam', 'MidazolamIM', 'Lorazepam', 'LorazepamIM', 'DiazepamIV']] },
+        TX010: { // Swelling beyond the wrist from a hand bite is an antivenom indication (TOXBASE)
+            'UK Adder management': [['Splinting'], ['Antivenom']],
+            'Antivenom indications': [['Antivenom']]
+        },
+        TX011: { 'Non-cardiogenic pulmonary oedema': [], 'C-spine in drowning': [] },
+        TX012: { 'Heat stroke vs exhaustion': [], 'Cooling methods': [['Cooling']] },
+        PS001: { 'NMS vs Serotonin Syndrome': [], 'Lead pipe rigidity': [] },
+        PS002: { 'Chronic vs Acute toxicity': [], 'Dialysis indications': [] },
+        PS003: { 'Benzodiazepine response': [['Lorazepam', 'LorazepamIM']], 'Waxy flexibility': [] },
+
+        // ---- CARDIAC ARRESTS --------------------------------------------------------------------
+        // Shockable: CPR and defibrillation. Adrenaline and amiodarone are due only after the third
+        // shock, which a run with early ROSC never reaches, so they are left to the facilitator.
+        CA_A01: { 'ALS Algorithm': [CPR_ADULT, ['Defib']] },
+        CA_A02: { 'Shockable rhythms': [['Defib']] },
+        CA_A03: { 'Reversible causes': [] },
+        CA_A04: { 'Confirmation of death': [] },
+        CA_A05: { // RCUK traumatic arrest, penetrating chest: resuscitative thoracotomy and blood
+            'Traumatic cardiac arrest algorithm': [['Thoracotomy'], ['Blood']]
+        },
+        CA_P01: { 'Paeds Defib Dosing': [['Defib']] },
+        CA_P02: { 'HOCM presentation': [] },
+        CA_P03: { ' hypoxia as cause': [VENTILATE] },
+        CA_P04: { 'SIDS management': [] },
+        CA_P05: { // APLS traumatic arrest: oxygenate/ventilate, volume (blood), decompress the chest
+            'Paeds trauma arrest': [VENTILATE, ['Blood', 'Fluids'], TENSION_DECOMPRESSION]
+        },
+        CA_E01: { 'ALS in elderly': [CPR_ADULT, ['Defib']] },
+        CA_E02: { 'ICD management': [] },
+        CA_E03: { 'DNACPR decisions': [] },
+        CA_E04: { 'Recognition of life extinct': [] },
+        CA_E05: { 'Futility in elderly trauma arrest': [] },
+        // Maternal arrest: no button for manual uterine displacement; resuscitative hysterotomy by 5 min.
+        CA_O01: { 'Maternal Resus': [['CPR'], ['Defib'], ['Hysterotomy']] },
+        CA_O02: { 'Defib safety in pregnancy': [['Defib']] },
+        CA_O03: { 'AFE management': [['CPR'], ['AdrenalineIV'], ['Hysterotomy']] },
+        CA_O04: { 'Eclampsia arrest': [['CPR'], ['AdrenalineIV'], ['Hysterotomy']] },
+        CA_O05: { 'Trauma in pregnancy': [['Blood'], ['Hysterotomy']] },
+
+        // ---- ADULT MEDICAL: CARDIOLOGY / VASCULAR ----------------------------------------------
+        AM065: { 'Differentiate NSTEMI from STEMI': [], 'Understand why thrombolysis is not indicated': [], 'Apply GRACE risk stratification': [] },
+        AM066: { 'Recognise cardiogenic versus hypovolaemic shock': [], 'Avoid harmful fluid loading': [], 'Escalate for mechanical support': [] },
+        AM067: {
+            'Identify adverse features in tachyarrhythmia': [],
+            'Perform synchronised cardioversion safely': [['Cardioversion'], PROCEDURAL_SEDATION],
+            'Understand sync versus unsynchronised shocks': []
+        },
+        AM068: { 'Recognise the six Ps of acute limb ischaemia': [], 'Understand Rutherford categories': [], 'Appreciate the revascularisation time window': [] },
+        AM069: { // Stridor developing, SpO2 91%: oxygen and dexamethasone while stenting is arranged
+            'Recognise SVC obstruction': [],
+            'Manage the threatened airway': [['Oxygen'], ['Dexamethasone']],
+            'Escalate an oncological emergency': []
+        },
+        // ---- GASTROINTESTINAL / SURGICAL -------------------------------------------------------
+        AM070: { 'Differentiate variceal from non-variceal bleeding': [], 'Apply the Glasgow-Blatchford score': [], 'Activate major haemorrhage appropriately': [['Blood']] },
+        AM071: { 'Resuscitate massive GI haemorrhage': [['Blood']], 'Consider upper GI source in fresh PR bleeding': [], 'Understand the role of CT angiography': [] },
+        AM072: { 'Recognise peritonism': [], 'Resuscitate the surgical abdomen': [['Fluids'], ABDOMINAL_ANTIBIOTIC], 'Expedite theatre for perforation': [['Surgery']] },
+        AM073: { // SpO2 95%: oxygen not needed; decompression is the source control
+            'Recognise infected obstructed system as a urological emergency': [],
+            'Understand source control principles': [],
+            'Apply the sepsis six': [SEPSIS_ANTIBIOTIC, ['Fluids']]
+        },
+        // ---- ONCOLOGY / HAEMATOLOGY / IMMUNOLOGY -----------------------------------------------
+        AM074: { // NICE CG151: piperacillin with tazobactam
+            'Recognise neutropenic sepsis in any recent chemotherapy patient': [],
+            'Deliver door-to-needle antibiotics within 60 minutes': [['Tazocin']],
+            'Avoid delaying treatment for investigations': []
+        },
+        AM075: { 'Elicit red flag back pain features': [], 'Give high dose dexamethasone promptly': [['Dexamethasone']], 'Arrange urgent whole spine MRI': [] },
+        AM076: { 'Recognise acute chest syndrome': [], 'Deliver timely opiate analgesia in sickle crisis': [OPIOID], 'Escalate for exchange transfusion': [['ExchangeTransfusion']] },
+        AM077: { // Stop the transfusion (no button), keep the line open with saline; antihistamine/steroid are for allergic reactions
+            'Distinguish haemolytic reaction from febrile or allergic reactions': [],
+            'Follow immediate transfusion reaction steps': [['Fluids']],
+            'Understand incident reporting duties': []
+        },
+        AM078: { // Bradykinin angio-oedema: antihistamine and steroid do not work and are never credited.
+            // There is no icatibant / C1-esterase inhibitor button; the scorable care is the airway.
+            'Distinguish bradykinin angio-oedema from anaphylaxis': [],
+            'Recognise limits of adrenaline in this condition': [],
+            'Plan a difficult airway with a surgical backup': [['RSI', 'FONA']]
+        },
+        AM079: {
+            'Manage anaphylaxis away from the resus room': [['AdrenalineIM']],
+            'Prioritise IM adrenaline and fluids': [['AdrenalineIM'], ['Fluids']],
+            'Arrange tryptase sampling and allergy follow-up': []
+        },
+        // ---- NEUROLOGY / ENDOCRINE / ENT --------------------------------------------------------
+        AM080: { // Reduced consciousness: IV glucose (IM glucagon without access), not oral
+            'Always check glucose in reduced consciousness': [['CheckGlucose']],
+            'Choose the right route for glucose replacement': [['Dextrose', 'Glucagon']],
+            'Plan safe discharge after sulfonylurea or long-acting insulin': []
+        },
+        AM081: { // Aciclovir has no button, so empirical treatment cannot be scored from actions
+            'Distinguish encephalitis from meningitis': [],
+            'Treat empirically before confirmatory tests': [],
+            'Sequence CT and lumbar puncture safely': []
+        },
+        AM082: { 'Risk stratify TIA': [], 'Start secondary prevention immediately': [['Aspirin']], 'Recognise indications for admission versus clinic': [] },
+        AM083: { 'Escalate epistaxis management stepwise': [], 'Recognise the airway risk of posterior bleeding': [], 'Manage bleeding on direct oral anticoagulants': [['TXA']] },
+        AM084: { // Symptomatic: needle aspiration (the 'Needle' button) or an ambulatory/Seldinger drain
+            'Differentiate primary and secondary pneumothorax': [],
+            'Apply symptom-based BTS management': [['Needle', 'SeldingerDrain']],
+            'Recognise when a pneumothorax is under tension': []
+        },
+        // ---- ENVIRONMENTAL / ASPHYXIAL ----------------------------------------------------------
+        AM085: {
+            'Apply the drowning-modified resuscitation sequence': [],
+            'Prioritise oxygenation over circulation': [['Oxygen', 'CPAP', 'NIV', 'Bagging', 'RSI']],
+            'Manage associated hypothermia': [['Warming']]
+        },
+        AM086: { 'Anticipate delayed airway obstruction after strangulation': [], 'Screen for vascular and cervical spine injury': [], 'Integrate psychiatric risk assessment into physical care': [] },
+        AM087: { // Hydroxocobalamin has no button, so the antidote cannot be scored from actions
+            'Recognise cyanide toxicity in fire victims': [],
+            'Interpret a raised lactate with normal SpO2': [],
+            'Treat empirically without waiting for levels': []
+        },
+        AM088: { 'Recognise neurological decompression illness': [], 'Understand the role of 100% oxygen': [['Oxygen']], 'Arrange safe transfer for recompression': [['Hyperbaric']] },
+        // ---- GERIATRIC MEDICAL ------------------------------------------------------------------
+        EL008: { 'Recognise aspiration risk in frail patients': [], 'Balance escalation against frailty': [], 'Communicate treatment goals with relatives': [] },
+        EL009: { 'Recognise closed loop obstruction risk': [], 'Correct large third space fluid deficits': [FLUIDS_ANY], 'Expedite imaging and surgical review': [] },
+        EL010: { 'Recognise posterior circulation stroke presentations': [], 'Understand limitations of stroke scales': [], 'Anticipate cerebellar swelling and hydrocephalus': [] },
+        EL011: {
+            'Make and document treatment escalation decisions': [],
+            'Communicate ceilings of care compassionately': [],
+            'Deliver active symptom control alongside limits': [['Analgesia', 'Fentanyl', 'MorphineIM', 'MorphineOral', 'Midazolam', 'MidazolamIM', 'Paracetamol', 'ParacetamolOral', 'Antiemetic', 'Cyclizine', 'Metoclopramide']]
+        },
+        EL012: { // Transfuse slowly with diuretic cover (TACO prevention)
+            'Recognise anaemia causing demand ischaemia': [],
+            'Transfuse safely in chronic anaemia': [['Blood']],
+            'Prevent transfusion associated circulatory overload': [['Furosemide']]
+        },
+        EL013: { // K+ 6.4 with tented T waves: calcium and insulin/dextrose
+            'Identify post-renal AKI': [],
+            'Manage hyperkalaemia urgently': HYPERKALAEMIA,
+            'Anticipate post-obstructive diuresis and decompression haematuria': []
+        },
+        // ---- PAEDIATRIC MEDICAL -----------------------------------------------------------------
+        PA026: { // BTS/SIGN: oxygen, burst nebs, steroid, then IV magnesium
+            'Grade paediatric asthma severity': [],
+            'Escalate treatment in the correct order': [['Oxygen'], NEBULISED_BRONCHODILATOR, ASTHMA_STEROID, ['MagSulph']],
+            'Recognise the exhausted child and the silent chest': []
+        },
+        PA027: { 'Distinguish tracheitis from croup and epiglottitis': [], 'Avoid distressing the child with a critical airway': [], 'Mobilise the difficult paediatric airway team': [] },
+        PA028: { 'Assess paediatric dehydration clinically': [], 'Use weight-based fluid resuscitation': [['Fluids']], 'Correct sodium abnormalities safely': [] },
+        PA029: { // NICE NG195 early-onset sepsis: benzylpenicillin with gentamicin
+            'Recognise subtle signs of neonatal sepsis': [],
+            'Apply neonatal weight-based dosing': [['Benzylpenicillin'], ['Gentamicin']],
+            'Escalate to the neonatal team early': []
+        },
+        PA030: { 'Apply NICE traffic light and febrile infant pathways': [], 'Justify a full septic screen under three months': [], 'Obtain reliable urine samples in infants': [] },
+        PA031: { 'Apply BRUE risk stratification': [], 'Recognise mimics including NAI and pertussis': [], 'Counsel anxious parents appropriately': [] },
+        PA032: { 'Recognise shunt malfunction': [], 'Identify the Cushing reflex': [], 'Institute neuroprotective measures': [['HypertonicSaline']] },
+        PA033: { 'Treat paediatric febrile neutropenia within the golden hour': [['Tazocin']], 'Sample central and peripheral cultures': [], 'Recognise rapid decompensation in immunocompromised children': [] },
+        PA034: { 'Recognise perforated appendicitis in children': [], 'Provide adequate paediatric analgesia': [OPIOID], 'Resuscitate before theatre': [['Fluids'], ABDOMINAL_ANTIBIOTIC] },
+        PA035: { 'Distinguish cardiac syncope from seizure': [], 'Calculate and interpret QTc in children': [], 'Arrange family screening for inherited arrhythmia': [] },
+        PA036: { // NLS 2021: thermal care and lung aeration; compressions only if HR < 60 after ventilation
+            'Follow the Newborn Life Support algorithm': [['Warming'], ['Bagging']],
+            'Prioritise lung aeration over compressions': [['Bagging']],
+            'Prevent neonatal heat loss': [['Warming']]
+        },
+        PA037: { 'Use correct paediatric adrenaline doses': [['AdrenalineIM']], 'Recognise and document iatrogenic drug reactions': [], 'Plan observation for biphasic reactions': [] },
+        // ---- ADULT TRAUMA -----------------------------------------------------------------------
+        AT024: { // No button for manual uterine displacement / tilt
+            'Resuscitate the mother to save the fetus': [['Oxygen'], ['Blood']],
+            'Relieve aortocaval compression': [],
+            'Recognise concealed placental abruption after trauma': []
+        },
+        AT025: { 'Classify transient versus non-responders': [], 'Use FAST appropriately': [], 'Decide between angioembolisation and laparotomy': [] },
+        AT026: { 'Manage eviscerated bowel correctly': [['ClingFilm']], 'Identify absolute indications for laparotomy': [], 'Avoid imaging delays in penetrating trauma': [] },
+        AT027: { 'Use tourniquets correctly and document timing': [['Tourniquet']], 'Resuscitate catastrophic external haemorrhage': [['Tourniquet'], ['Blood'], ['TXA']], 'Consider forensic and police liaison duties': [] },
+        AT028: { 'Identify inhalation injury features': [], 'Intubate early rather than late': [['RSI']], 'Calculate burns fluid resuscitation': [FLUIDS_ANY] },
+        AT029: { 'Recognise incomplete cord syndromes': [], 'Understand why CT alone may miss cord injury': [], 'Maintain spinal cord perfusion pressure': [['Fluids', 'Metaraminol', 'Noradrenaline']] },
+        AT030: { 'Recognise open globe injury': [], 'Avoid manoeuvres that raise intraocular pressure': [['Antiemetic', 'Cyclizine', 'Metoclopramide']], 'Arrange emergency ophthalmic referral': [] },
+        AT031: { 'Apply reverse triage in lightning strike': [], 'Recognise keraunoparalysis as transient': [], 'Monitor for arrhythmia and rhabdomyolysis': [] },
+        AT032: { 'Recognise the severity of injection injuries': [], 'Avoid falsely reassuring discharge': [], 'Refer urgently to hand surgery': [['Surgery']] },
+        // ---- PAEDIATRIC TRAUMA ------------------------------------------------------------------
+        PT003: { 'Apply paediatric trauma resuscitation by weight': [['Blood'], ['TXA']], 'Recognise the Waddell triad': [], 'Prevent hypothermia in injured children': [['Warming']] },
+        PT004: { 'Apply the paediatric drowning algorithm': [VENTILATE, ['CPR']], 'Justify prolonged resuscitation in hypothermia': [], 'Consider safeguarding in childhood drowning': [] },
+        PT005: { 'Appreciate the limits of FAST in children': [], 'Recognise the handlebar injury pattern': [], 'Consider NAI where the mechanism does not fit': [] },
+        PT006: { 'Resuscitate penetrating trauma in adolescents': [['Blood'], ['TXA']], 'Preserve forensic evidence': [], 'Fulfil safeguarding duties in youth violence': [] },
+        PT007: { 'Estimate paediatric burn area accurately': [], 'Calculate paediatric burns fluids including maintenance': [FLUIDS_ANY], 'Anticipate airway compromise and hypothermia': [] },
+        // ---- GERIATRIC TRAUMA -------------------------------------------------------------------
+        ET001: { 'Recognise under-triage of silver trauma': [], 'Interpret vitals in beta-blocked hypertensive patients': [], 'Lower the threshold for whole body CT': [] },
+        ET002: { 'Recognise rib fractures as a high mortality injury in the elderly': [], 'Deliver regional analgesia in chest trauma': [['NerveBlock']], 'Prevent secondary pneumonia': [] },
+        ET003: { 'Apply NICE head injury imaging rules for anticoagulated patients': [], 'Reverse warfarin rapidly and correctly': WARFARIN_REVERSAL, 'Deliver neuroprotective care while awaiting transfer': [] },
+        // ---- OBSTETRICS & GYNAECOLOGY -----------------------------------------------------------
+        OB014: { 'Recognise severe features of pre-eclampsia': [], 'Use magnesium for seizure prophylaxis': [MAGNESIUM_ECLAMPSIA], 'Avoid fluid overload in pre-eclampsia': [] },
+        OB015: { 'Recognise HELLP without marked hypertension': [], 'Anticipate DIC and hepatic rupture': [], 'Coordinate urgent multidisciplinary delivery': [] },
+        OB016: { 'Recognise sepsis masked by maternal physiology': [], 'Prioritise antibiotics and source control': [SEPSIS_ANTIBIOTIC, ['Delivery', 'Surgery']], 'Use the maternal early warning score': [] },
+        OB017: { 'Recognise and treat cervical shock': [], 'Resuscitate early pregnancy haemorrhage': [['Fluids', 'Blood']], 'Deliver compassionate care in pregnancy loss': [] },
+        OB018: { 'Recognise severe OHSS': [], 'Understand intravascular depletion with oedema': [], 'Prevent thromboembolism in OHSS': [['Heparin']] },
+        OB019: { 'Recognise complicated PID': [], 'Arrange source control for pelvic abscess': [['Surgery']], 'Address sexual health and safeguarding sensitively': [] },
+        OB020: { 'Conduct a normal delivery in the ED': [['Delivery']], 'Prepare simultaneously for two patients': [], 'Anticipate and prevent postpartum haemorrhage': [['Oxytocin']] },
+        OB021: { 'Recognise why standard PE rules fail in pregnancy': [], 'Anticoagulate empirically when suspicion is high': [['Heparin']], 'Counsel on imaging radiation risk': [] },
+        // ---- TOXICOLOGY -------------------------------------------------------------------------
+        TX013: { // GCS 8, RR 8, ETCO2 7.5: open the airway and support ventilation
+            'Manage sedative overdose supportively': [['Manoeuvres', 'OPA', 'NPA', 'i-gel', 'RSI'], VENTILATE],
+            'Understand the hazards of flumazenil': [],
+            'Screen for co-ingestants': []
+        },
+        TX014: { 'Recognise the GHB coma and agitation cycle': [], 'Avoid unnecessary intubation where recovery is rapid': [], 'Consider drink spiking and sexual assault': [] },
+        TX015: { 'Measure and interpret QTc after overdose': [], 'Prevent and treat torsades de pointes': [['MagSulph']], 'Determine safe monitoring duration': [] },
+        TX016: { 'Recognise metformin associated lactic acidosis': [], 'Understand sick day rules for metformin': [], 'Escalate for extracorporeal removal': [] },
+        TX017: { // Glucose (octreotide has no button); glucagon is not credited in sulfonylurea toxicity
+            'Recognise one-pill-can-kill toxins in children': [],
+            'Treat recurrent sulfonylurea hypoglycaemia': [['Dextrose', 'GlucoseOral']],
+            'Explore accidental ingestion and safeguarding': []
+        },
+        TX018: { 'Manage caustic ingestion correctly': [], 'Recognise contraindicated decontamination steps': [], 'Anticipate airway oedema and later stricture': [] },
+        TX019: { // Glycogen-depleted: glucose, not glucagon
+            'Recognise alcohol-induced hypoglycaemia in children': [['CheckGlucose'], ['Dextrose', 'GlucoseOral']],
+            'Avoid anchoring on intoxication': [],
+            'Fulfil safeguarding duties for intoxicated minors': []
+        },
+        TX020: { // PCC only if the bleed is major, which is the facilitator's call here
+            'Grade bleeding severity to guide reversal': [],
+            'Choose PCC over FFP for warfarin reversal': [],
+            'Recognise common warfarin drug interactions': []
+        },
+        TX021: { 'Manage acute agitation safely': [AGITATION_SEDATION], 'Recognise risks of prolonged restraint': [], 'Treat hyperthermia and rhabdomyolysis': [['Cooling'], FLUIDS_ANY] },
+        TX022: { 'Calculate and interpret the osmolar gap': [], 'Treat toxic alcohol ingestion promptly': [['Fomepizole'], ['SodiumBicarb']], 'Recognise reversible visual loss': [] },
+        // ---- PSYCHIATRIC / MENTAL HEALTH --------------------------------------------------------
+        PS004: { 'Assess suicide risk in adolescents': [], 'Apply Gillick competence and confidentiality limits': [], 'Arrange mandatory CAMHS assessment': [] },
+        PS005: { 'Apply MEED risk criteria': [], 'Recognise and prevent refeeding syndrome': [['Pabrinex']], 'Balance capacity, consent and compulsory treatment': [] },
+        PS006: { 'Recognise acute behavioural disturbance as a medical emergency': [], 'Sedate safely and monitor afterwards': [['Midazolam', 'MidazolamIM', 'Ketamine', 'KetamineIM', 'Lorazepam', 'LorazepamIM']], 'Avoid prone restraint asphyxia': [] },
+        PS007: { 'Exclude organic causes of new psychosis': [], 'Take a structured collateral history': [], 'Refer to early intervention services': [] },
+        PS008: { 'Perform a structured suicide risk assessment': [], 'Apply capacity and Mental Health Act frameworks': [], 'Arrange safe observation in the ED': [] },
+        PS009: { 'Distinguish delirium from dementia': [], 'Systematically search for precipitants': [], 'Use non-pharmacological management first': [] },
+        PS010: { 'Understand the scope and limits of Section 136': [], 'Perform and document a capacity assessment': [], 'Distinguish the Mental Health Act from the Mental Capacity Act': [] }
+    };
+})();
+
 // Enriches a single raw scenario with equipment, guideline links, investigations and evolution
 // trends. Exposed separately from processScenarios so that Builder/Custom scenarios — which are
 // created at runtime and never pass through RAW_SCENARIOS — reach the live observations screen
