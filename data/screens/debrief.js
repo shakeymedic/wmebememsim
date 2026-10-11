@@ -43,7 +43,7 @@
         if (/^(Obs changed|Obs trend started|Patient Improving|Patient Deteriorating|Patient condition|Preset|Patient: |Sound: |NIBP cycled|NIBP Manual|Audio Loop|Facilitator override)/.test(m)) return 'change';
         // The facilitator's ventilator changes: problems injected/fixed, the lungs, the patient, the link and
         // remote settings. (A problem fixed by the team's own decompression or bronchoscopy is not one.)
-        if (/^Ventilator \(facilitator\)|^Ventilator (link|patient)\b|^Ventilator (problem|problems|lungs)\b.*\(facilitator\)/.test(m)) return 'change';
+        if (/^Ventilator \(facilitator\)|^Ventilator (link|patient)\b|^Ventilator (changed|shown|taken)\b.*\(facilitator\)|^Ventilator (problem|problems|lungs)\b.*\(facilitator\)/.test(m)) return 'change';
         if (l.flagged || (l.deviation && Array.isArray(l.deviation.missing))) return 'flag';
         if (l.type === 'action' || l.type === 'success') return 'action';
         if (l.type === 'manual') return 'change';        // the facilitator's own log entries

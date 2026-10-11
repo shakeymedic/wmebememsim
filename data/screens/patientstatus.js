@@ -23,7 +23,8 @@
         const a = num(age);
         if (a !== null && a < 1) return { rrHi: 60, rrLo: 20, hrHi: 180, hrLo: 100, sbpLo: 70 };
         if (a !== null && a < 5) return { rrHi: 40, rrLo: 15, hrHi: 160, hrLo: 80, sbpLo: 75 };
-        if (a !== null && a < 12) return { rrHi: 30, rrLo: 12, hrHi: 140, hrLo: 60, sbpLo: 80 };
+        // NEWS2 is not validated under 16, so 12 to 15 year olds keep the older children's limits.
+        if (a !== null && a < 16) return { rrHi: 30, rrLo: 12, hrHi: 140, hrLo: 60, sbpLo: 80 };
         return { rrHi: 24, rrLo: 9, hrHi: 130, hrLo: 41, sbpLo: 91 };
     }
 
@@ -52,7 +53,20 @@
         const mirrors = Object.keys(s.ventMirror || {}).map(k => s.ventMirror[k]).filter(Boolean)
             .sort((a, b) => Number(b.ts) - Number(a.ts));
         const vent = mirrors[0] || null;
-        const ventilating = !!(vent && vent.state === 'ventilating');
+        // Counted as ventilating only when it reaches the patient: switched on, the facilitator's link
+        // to the obs not turned off, and the circuit connected. Man/Spon on the A350 ventilates only
+        // when breaths are being given (the bag squeezed or the patient breathing), and high-flow
+        // oxygen on the T1 or C6 gives oxygen, not breaths.
+        const ventMode = vent ? String(vent.mode || '') : '';
+        const manual = ventMode === 'MAN', highFlow = ventMode === 'HiFlowO2';
+        const unplugged = !!(vent && vent.phys && Number(vent.phys.conn) === 0);
+        const reaches = !!(vent && vent.state === 'ventilating' && s.ventLink !== false && !unplugged);
+        const manBreaths = !!(vent && vent.mon && Number(vent.mon.ftot) > 0);
+        const ventilating = reaches && !highFlow && (!manual || manBreaths);
+        const ventWhy = !vent ? '' : vent.state === 'standby' ? 'in standby' : vent.state === 'off' ? 'off'
+            : vent.state !== 'ventilating' ? 'not ventilating' : s.ventLink === false ? 'not linked to the patient'
+            : unplugged ? 'disconnected from the patient' : highFlow ? 'on high-flow oxygen'
+            : manual ? 'in Man/Spon with no breaths being given' : 'not ventilating';
         const model = VP ? VP.modelOf(s.vent && s.vent.model) : 't1';
         const modelName = VP ? VP.MODEL_SHORT[model] : 'ventilator';
 
@@ -60,11 +74,13 @@
         const rr = num(v.rr), spo2 = num(v.spO2), hr = num(v.hr), sbp = num(v.bpSys), dbp = num(v.bpDia);
         const gcs = num(v.gcs), temp = num(v.temp), bm = num(v.bm);
         const supported = ventilating || bagging || !!niv;
+        const ventName = vent && VP ? VP.MODEL_SHORT[VP.modelOf(vent.model)] : modelName;
         // Can they breathe for themselves? Not in arrest, not paralysed, and not set (or, by the lung
-        // profile, assumed) to be sedated and not breathing on the ventilator.
+        // profile, assumed) to be sedated and not breathing on the ventilator. The profile alone only
+        // counts with a tube in or in a ventilator scenario: an awake asthmatic is not sedated.
         const cfg = VE ? VE.configFor(s) : { breathing: null, profile: 'normal' };
         const sedatedLungs = !!(VP && VP.profiles[cfg.profile] && VP.profiles[cfg.profile].sedated);
-        const cannotBreathe = arrest || paralysed || cfg.breathing === false || (cfg.breathing === null && sedatedLungs && (!!tube || !!vent));
+        const cannotBreathe = arrest || paralysed || cfg.breathing === false || (cfg.breathing === null && sedatedLungs && (!!tube || !!(s.scenario && s.scenario.ventSim)));
         // With a tube in, the obs RR is the ventilation rate, so it says nothing about their own breathing.
         const apnoeic = cannotBreathe || (!supported && !tube && rr !== null && rr <= 0);
 
@@ -75,26 +91,36 @@
             headline = `In cardiac arrest: ${RG.labelFor(rhythm)}`;
             tone = 'red';
         } else if (tube && !supported && vent && apnoeic) {
-            headline = `${airwayWord} but NOT being ventilated (the ${modelName} is ${vent.state === 'standby' ? 'in standby' : vent.state === 'off' ? 'off' : 'not ventilating'})`;
+            headline = `${airwayWord} but NOT being ventilated (the ${ventName} is ${ventWhy})`;
             tone = 'red';
         } else if (tube && !supported && vent) {
-            headline = `${airwayWord}, breathing for themselves (the ${modelName} is ${vent.state === 'standby' ? 'in standby' : vent.state === 'off' ? 'off' : 'not ventilating'})`;
+            headline = `${airwayWord}, breathing for themselves (the ${ventName} is ${ventWhy})`;
             tone = 'amber';
         } else if (tube && !supported) {
             headline = `${airwayWord}: ventilation assumed (no ventilator linked)`;
             tone = 'cyan';
         } else if (apnoeic && !supported) {
-            headline = paralysed ? 'Paralysed and apnoeic: NOT being ventilated' : 'Apnoeic: NOT being ventilated';
+            headline = (paralysed ? 'Paralysed and apnoeic: NOT being ventilated' : 'Apnoeic: NOT being ventilated')
+                + (vent && (manual || highFlow) && reaches ? ` (the ${ventName} is ${ventWhy})` : '');
             tone = 'red';
+        } else if (ventilating && manual && !apnoeic) {
+            headline = `${tube ? airwayWord + ', b' : 'B'}reathing for themselves on the ${ventName} in Man/Spon`;
+            tone = 'cyan';
         } else if (ventilating) {
             const how = tube === 'sga' ? 'on a supraglottic airway' : tube === 'fona' ? 'with a front-of-neck airway' : tube ? 'intubated' : 'on a mask';
-            headline = `${apnoeic ? 'Anaesthetised, ' + how : how.charAt(0).toUpperCase() + how.slice(1)} and ventilated on the ${VP ? VP.MODEL_SHORT[VP.modelOf(vent.model)] : 'ventilator'}${vent.label ? ` (${vent.label})` : ''}`;
+            headline = `${apnoeic ? 'Anaesthetised, ' + how : how.charAt(0).toUpperCase() + how.slice(1)} and ventilated on the ${ventName}${vent.label ? ` (${vent.label})` : ''}`;
             tone = 'cyan';
         } else if (bagging) {
             headline = `Being ventilated by bag and ${tube ? (tube === 'sga' ? 'supraglottic airway' : 'tube') : 'mask'}`;
             tone = 'amber';
         } else if (niv) {
             headline = `On ${niv}`;
+            tone = 'cyan';
+        } else if (highFlow && reaches) {
+            headline = `On high-flow oxygen on the ${ventName}`;
+            tone = 'cyan';
+        } else if (manual && reaches) {
+            headline = `On the ${ventName} in Man/Spon, breathing for themselves`;
             tone = 'cyan';
         } else {
             headline = null;   // filled from the flags below
@@ -157,7 +183,7 @@
 
         return {
             arrest, apnoeic, paralysed, headline, tone, flags, sensors, tube, bagging, niv, oxygen, adjunct,
-            vent, ventilating, model, modelName, monitors, access, airway, other,
+            vent, ventilating, ventWhy, manual, highFlow, model, modelName, monitors, access, airway, other,
             cpr: !!s.cprInProgress, lucas: has(act, 'Lucas'), pads: has(act, 'PacingPads'), catheter: has(act, 'Catheter'),
             drain: ['SeldingerDrain', 'SurgicalDrain', 'FingerThoracostomy'].some(k => has(act, k)),
             iv: has(act, 'IV Access') || has(act, 'IO Access'), cvc: has(act, 'CVC'),
@@ -262,7 +288,7 @@
                     <rect x="150" y="6" width="66" height="44" rx="5" fill="#0b1220" stroke={ventCol} strokeWidth="1.8" />
                     <rect x="155" y="11" width="56" height="22" rx="2" fill="#020617" />
                     {a.ventilating && <path d="M157 28 l4 -12 h10 l3 12 h4 l4 -12 h10 l3 12 h4 l4 -12 h4" stroke={ventCol} strokeWidth="1" fill="none" />}
-                    {!a.ventilating && <text x="183" y="25" fontSize="7" textAnchor="middle" fill={ventCol} fontWeight="bold">{a.vent.state}</text>}
+                    {!a.ventilating && <text x="183" y="25" fontSize="7" textAnchor="middle" fill={ventCol} fontWeight="bold">{a.vent.state === 'ventilating' ? (a.highFlow ? 'HFO' : a.manual ? 'MAN' : 'no link') : a.vent.state}</text>}
                     <text x="183" y="44" fontSize="7.5" textAnchor="middle" fill={ventCol} fontWeight="bold">{a.model === 'a350' ? 'ATLAN A350' : a.model === 'c6' ? 'HAMILTON C6' : 'HAMILTON T1'}</text>
                 </g>}
                 {a.pads && <g data-part="defib">
@@ -378,6 +404,8 @@
         const ventShown = !!state.ventPanelOpen;
         const setModel = (m) => {
             if (!VP || m === model) return;
+            // A different machine starts switched off, so ask before taking the patient off a working one.
+            if (a.vent && a.vent.state === 'ventilating' && !window.confirm(`Change to the ${VP.MODELS[m]}? The tablet reloads on the new machine switched off, so the patient stops being ventilated.`)) return;
             sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { model: m } });
             log(`Ventilator changed to the ${VP.MODELS[m]} (facilitator)`, 'system');
         };
@@ -429,7 +457,7 @@
                                         </button>
                                     ))}
                                 </div>
-                                <span className="text-[10px] text-slate-400">{a.vent ? `${a.modelName}: ${a.ventilating ? 'ventilating' : a.vent.state}` : 'Not connected'}</span>
+                                <span className="text-[10px] text-slate-400">{a.vent ? `${a.modelName}: ${a.ventilating ? 'ventilating' : a.vent.state === 'ventilating' ? a.ventWhy : a.vent.state}` : 'Not connected'}</span>
                                 <button type="button" onClick={toggleVentShown}
                                         className={`px-2 py-1 rounded border text-[10px] font-bold ${ventShown ? 'bg-cyan-900/40 border-cyan-500 text-cyan-200' : 'bg-slate-900 border-cyan-600/60 text-cyan-300'}`}>
                                     {ventShown ? 'Take off the patient screens' : 'Show on the patient screens'}
