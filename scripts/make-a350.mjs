@@ -130,6 +130,7 @@ between('/* ======================= alarms ======================= */', '/* ====
 
 // ---- scaling and waveforms (Paw, Flow, CO2) ----------------------------------------------------
 sub('const DEV_W = 1360, DEV_H = 1000;', 'const DEV_W = 1500, DEV_H = 900;');
+between('function fitDevice() {', 'new ResizeObserver(fitDevice)', read('fit.js'));   /* the stacked layout on a tall screen, and 44 px touch targets */
 sub('const GW = 860, GH = 178;', 'const GW = 760, GH = 176;');
 between('function waveOpts() {', '/* trend of one value per simulated minute', read('waves.js'));
 

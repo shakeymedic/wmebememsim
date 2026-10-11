@@ -45,7 +45,10 @@ document.addEventListener('focusout', hideTip);
 /* ---------- the Education guide beside the machine ---------- */
 /* What the machine is doing, what the alarms mean, what the last thing hovered or touched is, and step-by-step
    help that points at the next control. Hidden in Assessment. All the simulator's text. */
-let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= 900 : v === '1'; } catch (e) { return window.innerWidth >= 900; } })();
+/* Open by default only where there is room for it beside a full-size machine (a laptop or a large
+   screen); on a tablet it starts closed and the Guide button opens it. A saved choice wins. */
+const GUIDE_OPEN_MIN = 1280;
+let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= GUIDE_OPEN_MIN : v === '1'; } catch (e) { return window.innerWidth >= GUIDE_OPEN_MIN; } })();
 let guideTask = null, lastGuide = '';
 $('#guideToggle').addEventListener('click', () => {
   guideOpen = !guideOpen;
