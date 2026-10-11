@@ -155,6 +155,13 @@ sub("  P.base = pr; P.pr = {...pr};", "  P.base = pr; P.pr = G.ySealed ? sealedL
 sub("  LIVE.etco2 = v.etco2Enabled && Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;",
     "  LIVE.etco2 = Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;   /* the A350 measures CO2 itself */\n  LIVE.age = Number.isFinite(Number(v.patientAge)) ? Number(v.patientAge) : null;");
 between('function ventStateNow() {', 'let lastMirror = ', read('mirror.js'));
+/* Man/Spon is the bag and a face mask as often as a tube: not an "invasive mode with no airway" */
+sub("inv:isInvasive() ? 1 : 0};", "inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0};");
+/* the gas in the circle survives a reload (FiO2, the agent and the bag), so the patient is not suddenly on air */
+sub("v, onNivMin:P.onNivMin}));",
+    "v, onNivMin:P.onNivMin, gas:{fio2:G.fio2, fin2o:G.fin2o, etn2o:G.etn2o, fiag:G.fiag, etag:G.etag, bag:G.bag}}));");
+sub("  P.onNivMin = Number(s.onNivMin) || 0;\n",
+    "  P.onNivMin = Number(s.onNivMin) || 0;\n  if (s.gas) ['fio2', 'fin2o', 'etn2o', 'fiag', 'etag', 'bag'].forEach(k => { if (Number.isFinite(Number(s.gas[k]))) G[k] = Number(s.gas[k]); });\n");
 between('function deviceDefaults() {', '/* ---------- what the facilitator sees ---------- */', read('defaults.js'));
 sub(`      case 'o2':
         if (V.power && !P.o2fail) { if (V.o2Enrich > 0) { V.o2Enrich = 0; logEvent('O2 enrichment cancelled', 'info'); } else { V.o2Enrich = O2_ENRICH_S; logEvent('O2 enrichment started', 'info'); } renderAll(); }

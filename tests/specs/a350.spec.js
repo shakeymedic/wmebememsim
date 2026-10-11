@@ -198,3 +198,40 @@ test('the new anaesthetic machine scenarios build and start on the A350', async 
   expect(errors).toEqual([]);
   expect(devErrors).toEqual([]);
 });
+
+test('hand ventilation keeps working when the bag has filled up: a squeeze vents the excess through the APL valve', async ({ page, context }) => {
+  const { dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  await switchOn(dev);
+  await dev.locator('#qsMan').click();
+  await expect.poll(() => state(dev).then(s => s.state)).toBe('ventilating');
+  // the bag overfull at the APL pressure (what 2 L/min does to it over a minute between squeezes)
+  await dev.evaluate(() => { window.__vent.G.bag = 4.5; });
+  await expect.poll(() => dev.evaluate(() => window.__vent.G.circP)).toBeGreaterThan(25);
+  for (let i = 0; i < 2; i++) { await squeezeBag(dev, 1200); await dev.waitForTimeout(2500); }
+  expect((await state(dev)).mon.vte).toBeGreaterThan(150);
+  expect(await dev.evaluate(() => window.__vent.G.circP)).toBeLessThan(5);
+  // Man/Spon is not reported as an invasive mode (a mask is fine), and the gas survives a reload
+  expect((await state(dev)).phys.inv).toBe(0);
+  await dev.evaluate(() => { window.__vent.G.fio2 = 87; window.__vent.G.etag = 1.9; });
+  await dev.waitForTimeout(3500);
+  await dev.reload();
+  await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+  expect(await dev.evaluate(() => window.__vent.G.fio2)).toBeGreaterThan(80);
+  expect(await dev.evaluate(() => window.__vent.G.etag)).toBeGreaterThan(1.5);
+  expect(devErrors).toEqual([]);
+});
+
+test('the ventilator debrief understands the A350: its system test, its mode names and CPAP/PSV', async ({ page }) => {
+  await openController(page);
+  const out = await page.evaluate(() => {
+    const L = (s, msg) => ({ timeSeconds: s, msg });
+    const run = (tg, log) => window.VentSim.assess({ scenario: { ventSim: { targets: tg } }, log, ventSamples: [], history: [] });
+    const a = run({ vc: true }, [L(10, 'Ventilator: System test passed (tablet)'), L(20, 'Ventilator: Leak test passed (tablet)'),
+      L(30, 'Ventilator: Therapy started (VC-CMV) (tablet)')]);
+    const b = run({ spont: true }, [L(30, 'Ventilator: Therapy started (Man/Spon) (tablet)'), L(60, 'Ventilator: Mode changed Man/Spon → CPAP/PSV (tablet)')]);
+    return { a: a.good.concat(a.improve).join(' | '), b: b.good.concat(b.improve).join(' | ') };
+  });
+  expect(out.a).toContain('Pre-use check done before connecting: system test and leak test');
+  expect(out.a).toContain('A volume-controlled mode was used');
+  expect(out.b).toContain('The trial was run on pressure support');
+});

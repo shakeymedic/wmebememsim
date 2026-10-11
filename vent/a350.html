@@ -651,11 +651,14 @@ function gasTick(dt) {
   const fg = freshGas(); G.fg = fg;
   const conn = !P.disc && !G.ySealed;
   const breathing = V.power && !V.standby && B.now - B.lastStart < 12;
-  const vo2 = conn && (breathing || !P.pr.sedated) ? VO2 : 0;
+  /* uptake from the circle only while the machine is in use: off or in Standby the mask is not on the face yet */
+  const vo2 = conn && V.power && !V.standby && (breathing || !P.pr.sedated) ? VO2 : 0;
   const tau = 60 * SYS_L / Math.max(fg.total, 0.3), k = 1 - Math.exp(-dt / Math.min(tau, 1200));
   /* oxygen: the patient's uptake lowers the inspired O2 at low flows, Fi = (FGF x FO2 - VO2) / (FGF - VO2) */
   if (fg.total > 0 || vo2 > 0) {
-    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : 10;
+    /* a flow below the uptake empties the bag (the "fresh gas low" alarm) but cannot make pure O2 hypoxic;
+       with no fresh gas at all, rebreathing uses the oxygen up */
+    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : fg.total > 0 ? fg.o2 : 10;
     o2T = clamp(o2T, 5, 100);
     G.fio2 += (o2T - G.fio2) * k;
     const n2oT = fg.total > vo2 + 0.05 ? Math.min(100 - o2T, fg.n2o * fg.total / (fg.total - vo2)) : G.fin2o;
@@ -675,6 +678,9 @@ function gasTick(dt) {
   const leak = (P.disc ? (V.mode === 'MAN' || V.standby ? fg.total + 2 : Math.max(fg.total, setMV)) : 0) + (P.circLeak ? 3 : 0)
     + (V.mode === 'MAN' && P.fit !== 'good' ? (P.fit === 'large' ? 15 : 5) : 0);
   G.bag = clamp(G.bag + (fg.total - vo2 - leak) * dt / 60, 0, BAG_L + 2);
+  /* a squeeze of the bag in Man/Spon pushes the excess out through the APL valve, so the bag cannot stay overfull
+     while someone is hand-ventilating */
+  if (G.squeeze !== null && V.mode === 'MAN' && V.power && !V.standby) G.bag = Math.min(G.bag, BAG_L);
   /* an over-full bag: the pressure rises (40 cmH2O per extra litre) until the APL valve (or the exhaust) vents it */
   const vent = aplActive() ? (V.apl <= 0 ? 0.5 : V.apl) : 0.5;
   let p = G.bag > BAG_L ? (G.bag - BAG_L) * 40 : 0;
@@ -2188,8 +2194,9 @@ function noteTip(el) {
   const t = el && el.dataset.tip;
   if (t && (!lastTip || lastTip !== t)) { lastTip = t; renderGuide(); }
 }
+/* No hints in Assessment: some explain what a reading means (no CO2 = oesophageal tube...), which is the test. */
 document.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') return;
+  if (e.pointerType === 'touch' || isAssess()) { if (tipShown) hideTip(); return; }
   const el = e.target.closest && e.target.closest('[data-tip]');
   const text = el ? el.dataset.tip : '';
   if (!text) { hideTip(); return; }
@@ -2204,7 +2211,7 @@ window.addEventListener('scroll', hideTip, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 document.addEventListener('focusin', e => {
   const el = e.target.closest && e.target.closest('[data-tip]');
-  if (!el || !el.matches(':focus-visible')) return;
+  if (!el || !el.matches(':focus-visible') || isAssess()) return;
   const r = el.getBoundingClientRect();
   showTip(el.dataset.tip, r.left + r.width / 2, r.bottom);
   noteTip(el);
@@ -2611,7 +2618,7 @@ function physNow() {
   const conn = ventOn && !P.disc && !G.ySealed;
   const rr = conn && !hfo && M.ftot !== null ? M.ftot : P.rr;
   const r3 = v => Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000;
-  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() ? 1 : 0};
+  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0};
 }
 const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
 /* the current mode's controls and the alarm limits, for the facilitator's remote control:
@@ -2665,7 +2672,7 @@ const saveKey = () => 'wmebem_a350_' + fb.code;
 function saveDevice() {
   if (!fb.code || !LIVE.key) return;
   const v = {}; SAVE_KEYS.forEach(k => { v[k] = V[k]; });
-  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, run:LIVE.run, at:Date.now(), v, onNivMin:P.onNivMin})); } catch (e) {}
+  try { localStorage.setItem(saveKey(), JSON.stringify({key:LIVE.key, run:LIVE.run, at:Date.now(), v, onNivMin:P.onNivMin, gas:{fio2:G.fio2, fin2o:G.fin2o, etn2o:G.etn2o, fiag:G.fiag, etag:G.etag, bag:G.bag}})); } catch (e) {}
 }
 function restoreDevice() {
   let s = null;
@@ -2676,6 +2683,7 @@ function restoreDevice() {
   V.set = {...DEFAULT_SET, ...V.set}; V.lim = {...DEFAULT_LIM, ...V.lim};
   V.selftest = 0; V.testRun = null; V.cpr = null;
   P.onNivMin = Number(s.onNivMin) || 0;
+  if (s.gas) ['fio2', 'fin2o', 'etn2o', 'fiag', 'etag', 'bag'].forEach(k => { if (Number.isFinite(Number(s.gas[k]))) G[k] = Number(s.gas[k]); });
   if (V.power && !V.standby) {
     /* carry on ventilating, primed as startVentilation does, without logging a new start */
     B.lastStart = B.now; B.nextEffort = B.now + 0.6; B.starts = []; B.types = []; B.vols = [];

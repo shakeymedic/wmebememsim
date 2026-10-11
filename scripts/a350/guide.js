@@ -18,8 +18,9 @@ function noteTip(el) {
   const t = el && el.dataset.tip;
   if (t && (!lastTip || lastTip !== t)) { lastTip = t; renderGuide(); }
 }
+/* No hints in Assessment: some explain what a reading means (no CO2 = oesophageal tube...), which is the test. */
 document.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') return;
+  if (e.pointerType === 'touch' || isAssess()) { if (tipShown) hideTip(); return; }
   const el = e.target.closest && e.target.closest('[data-tip]');
   const text = el ? el.dataset.tip : '';
   if (!text) { hideTip(); return; }
@@ -34,7 +35,7 @@ window.addEventListener('scroll', hideTip, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
 document.addEventListener('focusin', e => {
   const el = e.target.closest && e.target.closest('[data-tip]');
-  if (!el || !el.matches(':focus-visible')) return;
+  if (!el || !el.matches(':focus-visible') || isAssess()) return;
   const r = el.getBoundingClientRect();
   showTip(el.dataset.tip, r.left + r.width / 2, r.bottom);
   noteTip(el);

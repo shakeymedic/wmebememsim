@@ -181,11 +181,14 @@ function gasTick(dt) {
   const fg = freshGas(); G.fg = fg;
   const conn = !P.disc && !G.ySealed;
   const breathing = V.power && !V.standby && B.now - B.lastStart < 12;
-  const vo2 = conn && (breathing || !P.pr.sedated) ? VO2 : 0;
+  /* uptake from the circle only while the machine is in use: off or in Standby the mask is not on the face yet */
+  const vo2 = conn && V.power && !V.standby && (breathing || !P.pr.sedated) ? VO2 : 0;
   const tau = 60 * SYS_L / Math.max(fg.total, 0.3), k = 1 - Math.exp(-dt / Math.min(tau, 1200));
   /* oxygen: the patient's uptake lowers the inspired O2 at low flows, Fi = (FGF x FO2 - VO2) / (FGF - VO2) */
   if (fg.total > 0 || vo2 > 0) {
-    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : 10;
+    /* a flow below the uptake empties the bag (the "fresh gas low" alarm) but cannot make pure O2 hypoxic;
+       with no fresh gas at all, rebreathing uses the oxygen up */
+    let o2T = fg.total > vo2 + 0.05 ? (fg.total * fg.o2 / 100 - vo2) / (fg.total - vo2) * 100 : fg.total > 0 ? fg.o2 : 10;
     o2T = clamp(o2T, 5, 100);
     G.fio2 += (o2T - G.fio2) * k;
     const n2oT = fg.total > vo2 + 0.05 ? Math.min(100 - o2T, fg.n2o * fg.total / (fg.total - vo2)) : G.fin2o;
@@ -205,6 +208,9 @@ function gasTick(dt) {
   const leak = (P.disc ? (V.mode === 'MAN' || V.standby ? fg.total + 2 : Math.max(fg.total, setMV)) : 0) + (P.circLeak ? 3 : 0)
     + (V.mode === 'MAN' && P.fit !== 'good' ? (P.fit === 'large' ? 15 : 5) : 0);
   G.bag = clamp(G.bag + (fg.total - vo2 - leak) * dt / 60, 0, BAG_L + 2);
+  /* a squeeze of the bag in Man/Spon pushes the excess out through the APL valve, so the bag cannot stay overfull
+     while someone is hand-ventilating */
+  if (G.squeeze !== null && V.mode === 'MAN' && V.power && !V.standby) G.bag = Math.min(G.bag, BAG_L);
   /* an over-full bag: the pressure rises (40 cmH2O per extra litre) until the APL valve (or the exhaust) vents it */
   const vent = aplActive() ? (V.apl <= 0 ? 0.5 : V.apl) : 0.5;
   let p = G.bag > BAG_L ? (G.bag - BAG_L) * 40 : 0;
