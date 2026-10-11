@@ -236,7 +236,7 @@
 <li><strong>Change and cycle cuff now</strong>: the BP changes and the cuff starts measuring straight away. The cuff noise plays and the new reading appears after about 5 seconds.</li>
 </ul>
 <p>If you pick 30 s, 2 min or 5 min instead, the BP drifts to the new value and the team sees wherever it has got to at the next cuff cycle.</p>
-<p><strong>Auto NIBP: on/off</strong>, next to Cycle NIBP Now, is the same switch as <strong>Auto</strong> on the room monitor: the cuff measures every 3 minutes. It also counts down in Quick Sim, where you never press START. An arterial line, once attached, shows the BP continuously. <strong>Manual Reading</strong> shows a one-off cuff reading on the room monitor without changing the patient (for example a spurious reading).</p>
+<p><strong>Auto NIBP: on/off</strong>, next to Cycle NIBP Now, is the same switch as <strong>Auto</strong> on the room monitor: the cuff measures every 3 minutes. Like everything else it waits until you press START. An arterial line, once attached, shows the BP continuously. <strong>Manual Reading</strong> shows a one-off cuff reading on the room monitor without changing the patient (for example a spurious reading).</p>
 <h3 id="capnography">Capnography</h3>
 <p>Once capnography is attached, the room monitor draws the capnogram at half the speed of the ECG, as the ZOLL R Series does. Several breaths fit on screen, and each one is wide enough to read its shape. The height of the plateau always matches the ETCO2 number.</p>
 <div class="table-wrap"><table>
@@ -437,7 +437,7 @@
 <li>Move the pointer over the graph, or click it and use the arrow keys, to read every value at that moment.</li>
 <li><strong>Show the obs as a table</strong> lists the values every 30 seconds.</li>
 </ul>
-<p>The graph records while the scenario clock runs. In Quick Sim it records from the moment the Quick Sim starts, without pressing START. Pressing START in Quick Sim still switches on the physiology clock, such as SpO2 falling when the patient is not breathing. In Defib Sim the clock starts at the learner's first action on the defib. In a full scenario, press START at the beginning or there will be no graph. The graph is kept if you reload the page and resume, and it is in the printed and downloaded report.</p>
+<p>The graph records while the scenario clock runs. Every mode opens <strong>not started</strong> (the controller says "Not started: press START"): nothing about the patient changes until you press START, and anything given before then is recorded and starts acting when you press it. In Defib Sim the clock also starts at the learner's first action on the defib, and in Ventilator Sim when the ventilator first breathes for the patient. Press START at the beginning or there will be no graph. The graph is kept if you reload the page and resume, and it is in the printed and downloaded report.</p>
 <h3>Keeping a copy</h3>
 <ul>
 <li><strong>Download Report</strong> saves the debrief as a web page you can open on any computer, including the log and your instructor notes. Write your notes before you download.</li>

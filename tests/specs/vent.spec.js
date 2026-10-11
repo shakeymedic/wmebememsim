@@ -2,7 +2,7 @@
 // the session like the defib tablet. Phase 1: it joins, reports to the log, mirrors to the
 // controller and takes its lungs from the controller.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -106,6 +106,7 @@ test('three tablets at once: room monitor, defib tablet and ventilator tablet, a
   const errors = trackErrors(page);
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   await page.getByRole('button', { name: /^Coarse VF/ }).click();
   const monitor = await context.newPage();
   const monitorErrors = trackErrors(monitor);
@@ -347,6 +348,7 @@ test('injected problems reach the ventilator, the lungs can be adjusted, and Ass
 test('a displaced tube takes the CO2 away, and a tension pneumothorax drops the BP until it is decompressed', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);   // the decompression acts on a live patient
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator lungs').selectOption('ards');
   const { vent } = await openVent(context, code);
@@ -438,6 +440,7 @@ test('every Ventilator Sim scenario starts with its lungs, airway and patient', 
 test('mucus plugging: low sats that oxygen barely helps, low tidal volumes, cleared by bronchoscopy', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);   // the bronchoscopy acts on a live patient
   await expandSection(page, 'vent');
   await page.getByLabel("Patient's own breathing").selectOption('no');
   const { vent, errors } = await openVent(context, code);

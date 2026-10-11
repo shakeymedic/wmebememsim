@@ -176,8 +176,8 @@
                 keys.forEach(k => { delete hold[k]; });
                 return { ...state, manualHold: hold };
             }
-            // The ventilator's second while the session clock is stopped (Quick Sim never presses
-            // START): breathing for the patient is not a property of scenario time.
+            // The ventilator's second while the session clock is stopped (before START, or paused):
+            // breathing for the patient is not a property of scenario time.
             case 'TICK_VENT': {
                 const base = { ...state.baseVitals };
                 const t = cs ? cs.time : 0;

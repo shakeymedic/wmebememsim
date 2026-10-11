@@ -398,11 +398,12 @@
         const a = assess(state);
         const VP = window.VENT_PROFILES;
         // Compact (headline, flags and a one-line summary) or full (with the figure). With no saved choice,
-        // a short screen starts compact so the controls below keep their room.
+        // a short screen (or a narrow one, such as a portrait tablet) starts compact so the obs and resus
+        // controls below keep their room.
         const [collapsed, setCollapsed] = useState(() => {
             let saved = null;
             try { saved = localStorage.getItem('wmebem_status_collapsed'); } catch (e) {}
-            return saved === '1' || saved === '0' ? saved === '1' : (window.innerHeight || 1000) < 900;
+            return saved === '1' || saved === '0' ? saved === '1' : ((window.innerHeight || 1000) < 900 || (window.innerWidth || 1440) < 1024);
         });
         // The ventilator chooser only where a ventilator is in play: a ventilator or anaesthetic scenario,
         // one chosen in the Ventilator section, or a ventilator tablet already linked.
@@ -422,6 +423,43 @@
             sim.dispatch({ type: 'SET_VENT_PANEL', payload: !ventShown });
             log(ventShown ? 'Ventilator taken off the patient screens (facilitator)' : 'Ventilator shown on the patient screens (facilitator)', 'system');
         };
+        // ONE-TAP RESUS during a pulseless rhythm, beside the CPR flag: the same actions as the
+        // CPR button on the controller's defib panel (sim.toggleCPR, which logs "CPR started
+        // (facilitator)") and its Defib button (SET_DEFIB_PANEL), so they log identically.
+        const cprOn = !!state.cprInProgress;
+        const defibOpen = !!state.defibPanelOpen;
+        const toggleDefib = () => {
+            sim.dispatch({ type: 'SET_DEFIB_PANEL', payload: !defibOpen });
+            // Bring the controller's own defib controls (charge, shock) into view as well.
+            if (!defibOpen) setTimeout(() => { try { const el = document.querySelector('[data-testid="defib-panel"]'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) {} }, 80);
+        };
+        const resusButtons = a.arrest ? (
+            <span className="inline-flex gap-1 flex-none" data-testid="status-resus">
+                <button type="button" data-testid="status-cpr" onClick={() => sim.toggleCPR && sim.toggleCPR()} aria-pressed={cprOn}
+                        title={cprOn ? 'Stop chest compressions (logged)' : 'Start chest compressions (logged)'}
+                        className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${cprOn ? 'bg-slate-900 border-red-400 text-red-200 hover:bg-red-950' : 'bg-red-600 border-red-300 text-white hover:bg-red-500'}`}>
+                    {cprOn ? 'Stop CPR' : 'Start CPR'}
+                </button>
+                <button type="button" data-testid="status-defib" onClick={toggleDefib} aria-pressed={defibOpen}
+                        title="Opens the defibrillator on the student monitor and the controller (the same as the Defib button under Rhythm & resus)."
+                        className={`px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wide ${defibOpen ? 'bg-amber-900/60 border-amber-400 text-amber-200' : 'bg-amber-500 border-amber-300 text-black hover:bg-amber-400'}`}>
+                    {defibOpen ? 'Close Defib' : 'Defib'}
+                </button>
+            </span>
+        ) : null;
+        // The flags, with the resus buttons straight after the CPR flag ("No CPR running").
+        const cprAt = a.flags.findIndex(f => /CPR/.test(f.text));
+        const flagChips = (
+            <>
+                {a.flags.map((f, i) => (
+                    <React.Fragment key={i}>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CHIP[f.level] || CHIP.slate}`}>{f.text}</span>
+                        {i === cprAt && resusButtons}
+                    </React.Fragment>
+                ))}
+                {cprAt === -1 && resusButtons}
+            </>
+        );
         const row = (label, items, empty) => (
             <div className="flex gap-1.5 items-baseline min-w-0">
                 <span className="text-[9px] uppercase font-bold text-slate-400 w-[4.6rem] flex-none">{label}</span>
@@ -443,7 +481,7 @@
                 </div>
                 {collapsed && (
                     <div className="flex flex-wrap items-center gap-1 px-2 pb-1" data-testid="patient-compact">
-                        {a.flags.map((f, i) => <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CHIP[f.level] || CHIP.slate}`}>{f.text}</span>)}
+                        {flagChips}
                         <span className="text-[11px] text-slate-300 truncate min-w-0">
                             {[a.monitors.length ? a.monitors.join(' · ') : 'Nothing attached', a.access.length ? a.access.join(' · ') : 'No access', a.airway || 'Own airway'].join('  |  ')}
                         </span>
@@ -453,9 +491,9 @@
                     <div className="flex flex-wrap md:flex-nowrap gap-3 px-2 pb-2 items-start">
                         <PatientFigure a={a} className="w-44 h-40 md:w-52 md:h-48 flex-none bg-slate-950/70 rounded-lg" />
                         <div className="min-w-0 flex-1 flex flex-col gap-1">
-                            {a.flags.length > 0 && (
-                                <div className="flex flex-wrap gap-1" data-testid="patient-flags">
-                                    {a.flags.map((f, i) => <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CHIP[f.level] || CHIP.slate}`}>{f.text}</span>)}
+                            {(a.flags.length > 0 || resusButtons) && (
+                                <div className="flex flex-wrap items-center gap-1" data-testid="patient-flags">
+                                    {flagChips}
                                 </div>
                             )}
                             {row('Monitoring', a.monitors, 'Nothing attached')}

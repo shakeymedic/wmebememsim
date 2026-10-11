@@ -77,12 +77,25 @@
         // next drug did not see, so the drug put a BP back on a pulseless patient).
         useEffect(() => { if (!shadowRef.current) stateRef.current = state; }, [state]);
 
+        // ---- ONE RULE FOR WHEN THE PATIENT GOES LIVE ------------------------------------------------
+        // Every launch mode (Quick Sim, a library scenario, Defib Sim, Ventilator Sim, a resumed
+        // session) waits for START. Until then nothing physiological moves: no trends, no
+        // deterioration, no drug effects and no timed drug events. Drugs and interventions given
+        // before START are still recorded (log, interventionCounts, activeInterventions); their
+        // pk entries cannot act because the sim clock (state.time) does not move, and their instant
+        // effects wait in pendingEffectsRef and are applied when START is pressed. "Not started" is
+        // told apart from a deliberate pause by pausedAt, which only PAUSE_SIM sets.
+        const notStarted = (s) => !!s && !s.isRunning && !s.isFinished && (s.pausedAt === null || s.pausedAt === undefined);
+        const pendingEffectsRef = useRef([]);   // [{ key, label (null: nothing to announce), fn(now) }]
+        const deferUntilStart = (key, label, fn) => { pendingEffectsRef.current.push({ key, label, fn }); };
+        const dropPendingEffects = (key) => { pendingEffectsRef.current = pendingEffectsRef.current.filter(p => p.key !== key); };
+
         // ---- SIM-CLOCK TIMERS ------------------------------------------------------------------------
         // Delayed consequences (sugammadex reversal, VF recurring after ROSC, a drug's rhythm effect)
         // used to be wall-clock setTimeouts: they kept counting while the scenario was paused and
         // fired into whatever scenario had been loaded since. These count down only while the
-        // session is live (running, or a live Quick Sim, which never presses START), and die with the
-        // run that scheduled them (runId) or when the session finishes.
+        // clock runs (not before START, not while paused), and die with the run that scheduled
+        // them (runId) or when the session finishes.
         // The instant (no-pk) change each running continuous intervention made to the base vitals
         // ({ [key]: { runId, arrest, deltas } }), so removing BVM, pacing, CPR, the LUCAS or an
         // airway adjunct takes its effect off again instead of leaving it in the base for good.
@@ -97,8 +110,7 @@
             const id = setInterval(() => {
                 const now = stateRef.current;
                 if (!now || now.runId !== runId || now.isFinished) { clearSimTimer(id); return; }
-                const live = now.isRunning || (!!(now.scenario && now.scenario.quickSim) && (now.pausedAt === null || now.pausedAt === undefined));
-                if (!live) return;
+                if (!now.isRunning) return;
                 left -= 1;
                 if (left > 0) return;
                 clearSimTimer(id);
@@ -113,7 +125,7 @@
             // A new run's id is decided here, once, so the shadow copy and React agree on it.
             if ((action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION') && !action.runId) action = { ...action, runId: newRunId() };
             // Nothing scheduled by the previous run may fire into the new one.
-            if (action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION' || action.type === 'CLEAR_SESSION') clearSimTimers();
+            if (action.type === 'LOAD_SCENARIO' || action.type === 'RESTORE_SESSION' || action.type === 'CLEAR_SESSION') { clearSimTimers(); pendingEffectsRef.current = []; }
             let enhancedAction = { ...action, currentState: stateRef.current };
 
             // A pulseless patient has no BP or saturation to trend: Better/Worse (or a stabilising
@@ -314,16 +326,13 @@
         };
 
         // Is this device the one that should be making noise right now?
-        // Should the pulse tone and physiological alarms sound at all? Normally only while the clock
-        // runs. Quick Sim is different: it is driven without ever pressing START (the trace already
-        // runs before START), so there the monitor is audible until the facilitator deliberately
-        // PAUSES or finishes — the same rule the waveform strip uses. The team monitor cannot see
-        // `pausedAt`, so the controller publishes the answer as `audioLive`.
+        // Should the pulse tone and physiological alarms sound at all? Only while the clock runs, in
+        // every launch mode: before START the patient is not live yet (Quick Sim used to be audible
+        // from launch because it never pressed START). The controller publishes the answer as
+        // `audioLive` for the team monitor.
         const isAudioLive = (current) => {
             if (isMonitorMode && current.audioLive !== undefined) return !!current.audioLive;
-            if (current.isRunning) return true;
-            const paused = current.pausedAt !== null && current.pausedAt !== undefined;
-            return !!(current.scenario && current.scenario.quickSim && !paused && !current.isFinished);
+            return !!current.isRunning;
         };
         const isAudioRouted = (current) => (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both'))
             || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
@@ -427,21 +436,11 @@
         }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions, state.audioLive, state.pausedAt]);
         
         // Auto mode only measures while a cuff is actually on (it resumes when the cuff goes back on).
-        // The countdown normally rides the sim clock (TICK_TIME). Quick Sim is driven without ever
-        // pressing START, so there the controller counts the cuff interval down itself until the
-        // facilitator pauses or finishes — the same rule the monitor's sound follows.
-        const quickSimLive = !isMonitorMode && !state.isRunning && !!(state.scenario && state.scenario.quickSim)
-            && (state.pausedAt === null || state.pausedAt === undefined) && !state.isFinished;
+        // The countdown rides the sim clock (TICK_TIME), so it waits for START like everything else;
+        // a reading can still be taken by hand before then.
         useEffect(() => {
-            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && (state.isRunning || quickSimLive) && !state.nibp.inflating && getSensors(state).nibp) { dispatch({ type: 'START_NIBP' }); }
-        }, [state.nibp.timer, state.nibp.mode, state.isRunning, quickSimLive, state.nibp.inflating, state.activeInterventions]);
-        // The same live Quick Sim also runs the record-only clock (TICK_RECORD): the debrief
-        // timeline, the obs graph samples and the auto-NIBP countdown, with no physiology.
-        useEffect(() => {
-            if (!quickSimLive) return;
-            const id = setInterval(() => dispatch({ type: 'TICK_RECORD' }), 1000);
-            return () => clearInterval(id);
-        }, [quickSimLive]);
+            if (state.nibp.mode === 'auto' && state.nibp.timer <= 0 && state.isRunning && !state.nibp.inflating && getSensors(state).nibp) { dispatch({ type: 'START_NIBP' }); }
+        }, [state.nibp.timer, state.nibp.mode, state.isRunning, state.nibp.inflating, state.activeInterventions]);
         // The measurement itself: ~5 s of inflation, then the reading is committed. This is its OWN
         // effect, keyed only on `inflating`. It used to share the auto-trigger effect above, whose
         // dependencies include the auto-mode countdown — which changes every second while the sim
@@ -455,9 +454,8 @@
             return () => clearTimeout(timeout);
         }, [state.nibp.inflating]);
         
-        // Facilitator sounds and the patient's voice play whether or not the clock is running:
-        // Quick Sim never presses START, and gating them on isRunning silenced charge, shock and
-        // speech there. The only thing to avoid is replaying a stale one when a screen first loads
+        // Facilitator sounds and the patient's voice play whether or not the clock is running
+        // (gating them on isRunning once silenced charge, shock and speech before START). The only thing to avoid is replaying a stale one when a screen first loads
         // the session (the first value it sees may be minutes old); after that, every new one
         // plays, whatever the two devices' clocks say.
         const seenSoundRef = useRef(false);
@@ -565,6 +563,8 @@
                  else dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
                  // Stopping compressions clears the flag as well as starting the drug's offset tail.
                  if (action.effect && action.effect.cpr === true && cur.cprInProgress) dispatch({ type: 'TOGGLE_CPR', payload: false });
+                 // Taken off before START: its effect never reaches the patient.
+                 dropPendingEffects(key);
                  addLogEntry(`${action.label} removed.`, 'action');
                  dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `${action.label} STOPPED (second press toggles off)`, type: 'info', id: Date.now() } });
                  return;
@@ -598,7 +598,15 @@
             }
             // Instant (no-pk) effects are applied to the BASE physiology, exactly as before. Anything
             // carrying a `pk` envelope is instead pushed onto activeDrugs and composed every tick.
-            const newVitals = { ...cur.baseVitals };
+            // BEFORE START (see notStarted): the intervention is recorded exactly as usual, but every
+            // effect on the patient goes through fx(), which holds it until START and then runs it on
+            // the state as it is then. While the clock runs (or is paused) fx() runs it at once, on
+            // the same `cur` as before, so nothing changes for a running scenario. A pk drug needs no
+            // holding: its envelope is timed on state.time, which does not move before START.
+            const defer = notStarted(cur);
+            let announce = false;
+            const heldEffects = [];
+            const fx = (fn) => { if (defer) heldEffects.push(fn); else fn(cur); };
             let newActive = new Set(cur.activeInterventions);
             let newCounts = { ...cur.interventionCounts };
             const count = (newCounts[key] || 0) + 1;
@@ -703,7 +711,7 @@
             // in its wording ("...from anaphylaxis") can no longer tick it for the wrong drug.
             keywordObjectivesFor(scenario, key).forEach(obj => dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj }));
 
-            if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
+            if (scenario.stabilisers && scenario.stabilisers.includes(key)) { announce = true; fx(() => { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }); }
             // ---- E10: THE DEAD KEY. This test used to be `key === 'Adrenaline' && count >= 2`, and
             // there is NO intervention called 'Adrenaline' in INTERVENTIONS — the key is
             // 'AdrenalineIM' (or AdrenalineIV/AdrenalinePush/AdrenalineInfusion). Anaphylaxis
@@ -715,8 +723,11 @@
             if (looksAnaphylactic && ANAPHYLAXIS_ADRENALINE.indexOf(key) !== -1) {
                 // RCUK: improvement after the FIRST correct dose of IM adrenaline is the expected
                 // clinical course, and the 5-minute repeat is the next step if it does not come.
-                dispatch({ type: 'TRIGGER_IMPROVE' });
-                addLogEntry(`${action.label} in anaphylaxis — patient condition IMPROVING. Reassess at 5 minutes and repeat IM adrenaline if the improvement is incomplete.`, 'success');
+                announce = true;
+                fx(() => {
+                    dispatch({ type: 'TRIGGER_IMPROVE' });
+                    addLogEntry(`${action.label} in anaphylaxis — patient condition IMPROVING. Reassess at 5 minutes and repeat IM adrenaline if the improvement is incomplete.`, 'success');
+                });
                 if (key === 'AdrenalineIM' && count === 1) addLogEntry('After initial treatment (RCUK 2021): mast cell tryptase, first sample as soon as feasible without delaying treatment, second 1-2 h (no later than 4 h) after onset. Observation: fast-track discharge after 2 h only if one dose worked within 5-10 min, symptoms fully resolved and the patient has auto-injectors and supervision; at least 6 h after resolution if 2 doses were needed; at least 12 h for more than 2 doses, severe asthma or respiratory compromise, or a previous biphasic reaction.', 'info');
                 if (key === 'AdrenalineInfusion') addLogEntry('RCUK peripheral low-dose adrenaline infusion (refractory anaphylaxis): 1 mg in 100 ml 0.9% sodium chloride via a dedicated line, start at 0.5-1 ml/kg/h and titrate to response; continuous ECG and SpO2, BP at least every 5 min. Not on the same side as a BP cuff.', 'info');
             }
@@ -737,7 +748,7 @@
             // the UI/sync before the next tick recomputes it from activeDrugs.
             if (action.paralysis || action.effect.paralysed) {
                 const pz = action.paralysis || { onset: (action.pk && action.pk.onset) || 60, duration: ((action.pk && action.pk.offset) || 2760) - ((action.pk && action.pk.onset) || 60) };
-                dispatch({ type: 'SET_PARALYSIS', payload: { active: true, agent: key, startTime: cur.time, onset: pz.onset, duration: pz.duration } });
+                fx((now) => dispatch({ type: 'SET_PARALYSIS', payload: { active: true, agent: key, startTime: now.time, onset: pz.onset, duration: pz.duration } }));
                 if (key === 'Sux') addLogEntry('Fasciculations observed after suxamethonium.', 'info');
                 const ventilated = isVentilated(cur.activeInterventions);
                 addLogEntry(`${action.label}: paralysis in ~${pz.onset}s, lasting ~${Math.round(pz.duration / 60)} min.${ventilated ? '' : ' Patient is NOT being ventilated — expect apnoea and desaturation.'}`, ventilated ? 'info' : 'warning', !ventilated);
@@ -788,6 +799,7 @@
             // The facilitator keeps full control of the outcome: a successful RSI secures the airway
             // (RSI counts as ventilation), while FailedIntubation/CICO hand the airway back and let the
             // existing hypoxia model desaturate the paralysed patient. Nothing here is random.
+            let rsiDesaturates = false;
             if (key === 'RSI') {
                 const preoxKeys = ['Preoxygenation', 'ApnoeicOxygenation', 'Oxygen', 'Bagging', 'NIV', 'CPAP'];
                 const preoxed = preoxKeys.some(k => cur.activeInterventions.has(k));
@@ -796,7 +808,7 @@
                 } else {
                     // No reservoir: desaturation starts immediately. The tick-level hypoxia model carries
                     // it on from here if the airway is not secured promptly.
-                    newVitals.spO2 = clamp(newVitals.spO2 - 6, 0, 100);
+                    rsiDesaturates = true;
                     // Flagged only: the permissive gating above has already recorded the missing
                     // pre-oxygenation as this RSI's one sequence deviation.
                     addLogEntry('Apnoeic period begins with NO pre-oxygenation — desaturating.', 'warning', true);
@@ -864,157 +876,171 @@
                 }, Math.max(1, Number(ab.convertAt) || 12));
             }
 
-            // All three changeRhythm modes are handled now. 'sync' and 'chance' were silently
-            // ignored before Wave 3, which is why the Cardioversion intervention did nothing and
-            // Adrenaline IV / Amiodarone changed no rhythm in any scenario.
-            if (action.avBlock) {
-                // handled above as a timed sequence — do NOT convert on the administering tick.
-            } else if (action.effect.changeRhythm === 'defib') {
-                applyShockOutcome(cur, { energy: (cur.defib && cur.defib.energy) || undefined, sync: false, source: 'facilitator' });
-            } else if (action.effect.changeRhythm === 'sync') {
-                applyCardioversion(cur, { energy: (cur.defib && cur.defib.energy) || undefined, source: 'facilitator' });
-            } else if (action.effect.changeRhythm === 'chance') {
-                // A drug cannot change the rhythm before it has reached the heart: the roll (and any
-                // shock bonus) happens at the drug's onset on the sim clock, and only if the rhythm
-                // it was given for is still the rhythm then.
-                const onsetS = drugEntry && Number(drugEntry.onset) > 0 ? Number(drugEntry.onset) : 0;
-                if (onsetS > 0) {
-                    const givenIn = RG.canonical(cur.rhythm);
-                    simTimeout(() => {
-                        const now = stateRef.current;
-                        if (!now || now.isFinished || RG.canonical(now.rhythm) !== givenIn) return;
-                        applyDrugConversion(now, key, action.label || key);
-                    }, onsetS);
-                } else applyDrugConversion(cur, key, action.label || key);
-            } else if (typeof action.effect.changeRhythm === 'string' && RG.isKnown(action.effect.changeRhythm)) {
-                // A scenario/intervention may name a specific target rhythm outright.
-                changeRhythm(action.effect.changeRhythm, 'intervention', { agent: action.label || key });
-            }
-
-            // ARREST PHYSIOLOGY. During a pulseless rhythm there is no cardiac output, so drugs cannot
-            // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
-            // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
-            // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
-            if (isArrest) {
-                const e = action.effect || {};
-                const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
-                if (suppressed.length) {
-                    addLogEntry(`${action.label} given during arrest (${cur.rhythm}) — ${suppressed.join('/')} unchanged: a pulseless patient has no perfusion to measure. ETCO2 is the marker to watch.`, 'warning');
+            // Everything below changes the patient, so before START it waits for START (fx).
+            // `now` is the state it runs on: `cur` while the clock runs, the state at START otherwise.
+            fx((now) => {
+                const isArrest = RG.inArrest(now.rhythm);
+                const newVitals = { ...now.baseVitals };
+                if (rsiDesaturates) newVitals.spO2 = clamp(newVitals.spO2 - 6, 0, 100);
+                // All three changeRhythm modes are handled now. 'sync' and 'chance' were silently
+                // ignored before Wave 3, which is why the Cardioversion intervention did nothing and
+                // Adrenaline IV / Amiodarone changed no rhythm in any scenario.
+                if (action.avBlock) {
+                    // handled above as a timed sequence — do NOT convert on the administering tick.
+                } else if (action.effect.changeRhythm === 'defib') {
+                    applyShockOutcome(now, { energy: (now.defib && now.defib.energy) || undefined, sync: false, source: 'facilitator' });
+                } else if (action.effect.changeRhythm === 'sync') {
+                    applyCardioversion(now, { energy: (now.defib && now.defib.energy) || undefined, source: 'facilitator' });
+                } else if (action.effect.changeRhythm === 'chance') {
+                    // A drug cannot change the rhythm before it has reached the heart: the roll (and any
+                    // shock bonus) happens at the drug's onset on the sim clock, and only if the rhythm
+                    // it was given for is still the rhythm then.
+                    const onsetS = drugEntry && Number(drugEntry.onset) > 0 ? Number(drugEntry.onset) : 0;
+                    if (onsetS > 0) {
+                        const givenIn = RG.canonical(now.rhythm);
+                        simTimeout(() => {
+                            const now = stateRef.current;
+                            if (!now || now.isFinished || RG.canonical(now.rhythm) !== givenIn) return;
+                            applyDrugConversion(now, key, action.label || key);
+                        }, onsetS);
+                    } else applyDrugConversion(now, key, action.label || key);
+                } else if (typeof action.effect.changeRhythm === 'string' && RG.isKnown(action.effect.changeRhythm)) {
+                    // A scenario/intervention may name a specific target rhythm outright.
+                    changeRhythm(action.effect.changeRhythm, 'intervention', { agent: action.label || key });
                 }
-            }
-            // Any numeric field the pk envelope owns is deliberately NOT applied here — otherwise the
-            // drug would land twice (once instantly, once through the envelope). `pkOwned` is what
-            // preserves today's instant behaviour for everything WITHOUT a pk block.
-            const pkOwned = (field) => !!(drugEntry && drugEntry.effect && drugEntry.effect[field] !== undefined);
-            let paceCaptured = false;
-            if (!isArrest) {
-                if (action.effect.HR) {
-                    // 'reset' is retained for backwards compatibility with saved/custom interventions.
-                    // Adenosine no longer uses it: an instant jump to HR 80 in one tick was exactly
-                    // the behaviour that hid the pause-then-conversion teaching point (see the
-                    // adenosine sequence below).
-                    if (action.effect.HR === 'reset') newVitals.hr = 80;
-                    else if (action.effect.HR === 'pace') {
-                        // Pacing only captures if output exceeds threshold
-                        const pacer = cur.remotePacerState || { rate: 0, output: 0 };
-                        if (pacer.output >= cur.pacingThreshold && pacer.rate > 0) {
-                            newVitals.hr = pacer.rate;
-                            paceCaptured = true;
-                            // Electrical capture without mechanical capture is worthless, and a
-                            // rate number alone taught trainees not to feel for a pulse.
-                            addLogEntry(`Pacing: ELECTRICAL capture at ${pacer.output}mA, rate ${pacer.rate}. Now CONFIRM MECHANICAL CAPTURE — feel a central pulse / check the SpO2 trace. Give analgesia and sedation: pacing hurts.`, 'success');
-                        } else {
-                            addLogEntry(`Pacing: no capture (output ${pacer.output}mA < threshold ${cur.pacingThreshold}mA) — increase the output until every pacing spike is followed by a QRS AND a pulse.`, 'warning');
-                        }
+
+                // ARREST PHYSIOLOGY. During a pulseless rhythm there is no cardiac output, so drugs cannot
+                // drive HR/BP — and, critically, SpO2 must NOT imply perfusion that does not exist (BVM in
+                // asystole used to display SpO2 25%). Previously HR/BP/RR were silently discarded while
+                // SpO2/GCS were still applied; now the suppression is total and it is LOGGED.
+                if (isArrest) {
+                    const e = action.effect || {};
+                    const suppressed = ['HR', 'BP', 'RR', 'SpO2'].filter(f => e[f] !== undefined && e[f] !== null);
+                    if (suppressed.length) {
+                        addLogEntry(`${action.label} given during arrest (${now.rhythm}) — ${suppressed.join('/')} unchanged: a pulseless patient has no perfusion to measure. ETCO2 is the marker to watch.`, 'warning');
                     }
-                    else if (!pkOwned('HR')) newVitals.hr = clampVital('hr', newVitals.hr + action.effect.HR);
                 }
-                // Perfusion only improves if the pacer actually captured.
-                if (key === 'Pacing' && !paceCaptured) { /* no haemodynamic benefit without capture */ }
-                else if (action.effect.BP && !pkOwned('BP')) {
-                    newVitals.bpSys = clampVital('bpSys', newVitals.bpSys + action.effect.BP);
-                    newVitals.bpDia = clampVital('bpDia', newVitals.bpDia + action.effect.BP * 0.6);
+                // Any numeric field the pk envelope owns is deliberately NOT applied here — otherwise the
+                // drug would land twice (once instantly, once through the envelope). `pkOwned` is what
+                // preserves today's instant behaviour for everything WITHOUT a pk block.
+                const pkOwned = (field) => !!(drugEntry && drugEntry.effect && drugEntry.effect[field] !== undefined);
+                let paceCaptured = false;
+                if (!isArrest) {
+                    if (action.effect.HR) {
+                        // 'reset' is retained for backwards compatibility with saved/custom interventions.
+                        // Adenosine no longer uses it: an instant jump to HR 80 in one tick was exactly
+                        // the behaviour that hid the pause-then-conversion teaching point (see the
+                        // adenosine sequence below).
+                        if (action.effect.HR === 'reset') newVitals.hr = 80;
+                        else if (action.effect.HR === 'pace') {
+                            // Pacing only captures if output exceeds threshold
+                            const pacer = now.remotePacerState || { rate: 0, output: 0 };
+                            if (pacer.output >= now.pacingThreshold && pacer.rate > 0) {
+                                newVitals.hr = pacer.rate;
+                                paceCaptured = true;
+                                // Electrical capture without mechanical capture is worthless, and a
+                                // rate number alone taught trainees not to feel for a pulse.
+                                addLogEntry(`Pacing: ELECTRICAL capture at ${pacer.output}mA, rate ${pacer.rate}. Now CONFIRM MECHANICAL CAPTURE — feel a central pulse / check the SpO2 trace. Give analgesia and sedation: pacing hurts.`, 'success');
+                            } else {
+                                addLogEntry(`Pacing: no capture (output ${pacer.output}mA < threshold ${now.pacingThreshold}mA) — increase the output until every pacing spike is followed by a QRS AND a pulse.`, 'warning');
+                            }
+                        }
+                        else if (!pkOwned('HR')) newVitals.hr = clampVital('hr', newVitals.hr + action.effect.HR);
+                    }
+                    // Perfusion only improves if the pacer actually captured.
+                    if (key === 'Pacing' && !paceCaptured) { /* no haemodynamic benefit without capture */ }
+                    else if (action.effect.BP && !pkOwned('BP')) {
+                        newVitals.bpSys = clampVital('bpSys', newVitals.bpSys + action.effect.BP);
+                        newVitals.bpDia = clampVital('bpDia', newVitals.bpDia + action.effect.BP * 0.6);
+                    }
+                    if (action.effect.RR) {
+                        if (action.effect.RR === 'vent') { newVitals.rr = VENTILATOR_RATE; }
+                        else if (typeof action.effect.RR === 'number' && !pkOwned('RR')) { newVitals.rr = clampVital('rr', newVitals.rr + action.effect.RR); }
+                    }
                 }
-                if (action.effect.RR) {
-                    if (action.effect.RR === 'vent') { newVitals.rr = VENTILATOR_RATE; }
-                    else if (typeof action.effect.RR === 'number' && !pkOwned('RR')) { newVitals.rr = clampVital('rr', newVitals.rr + action.effect.RR); }
-                }
-            }
-            // SpO2 is inside the arrest guard too: a pulse oximeter cannot read a saturation without
-            // a pulse, so BVM in asystole must not display 25%.
-            if (!isArrest && action.effect.SpO2 && !pkOwned('SpO2')) newVitals.spO2 = clampVital('spO2', newVitals.spO2 + action.effect.SpO2);
+                // SpO2 is inside the arrest guard too: a pulse oximeter cannot read a saturation without
+                // a pulse, so BVM in asystole must not display 25%.
+                if (!isArrest && action.effect.SpO2 && !pkOwned('SpO2')) newVitals.spO2 = clampVital('spO2', newVitals.spO2 + action.effect.SpO2);
 
-            if (action.effect.gcs) {
-                if (typeof action.effect.gcs === 'string') { if (action.effect.gcs === 'sedated') newVitals.gcs = 3; }
-                else if (!pkOwned('gcs')) { newVitals.gcs = clampVital('gcs', newVitals.gcs + action.effect.gcs); }
-            }
-
-            // --- GROUP B: BM / Temp / pH were authored on 12 interventions and read by NOTHING, so
-            // Dextrose could not change the glucose reading, Warming/Cooling could not change the
-            // temperature and SodiumBicarb's pH was dropped on the floor. They are now first-class
-            // modelled vitals. Anything with a pk block ramps through the envelope; anything without
-            // one still lands instantly, which keeps the schema backwards compatible.
-            if (action.effect.BM !== undefined && action.effect.BM !== null && !pkOwned('BM')) newVitals.bm = clampVital('bm', newVitals.bm + Number(action.effect.BM));
-            if (action.effect.Temp !== undefined && action.effect.Temp !== null && !pkOwned('Temp')) newVitals.temp = clampVital('temp', newVitals.temp + Number(action.effect.Temp));
-            if (action.effect.pH !== undefined && action.effect.pH !== null && !pkOwned('pH')) newVitals.ph = clampVital('ph', (Number.isFinite(newVitals.ph) ? newVitals.ph : 7.4) + Number(action.effect.pH));
-
-            const updatedScenario = { ...scenario }; let updateNeeded = false;
-            // A new object, never an edit: chestXray is shared with the scenario library, so editing it in
-            // place would start the next run of this scenario with the lung already re-expanded. The
-            // report and image can be on the scenario or in its generated investigations, so clear both.
-            if (key === 'Needle' || key === 'FingerThoracostomy') {
-                const inv = updatedScenario.investigations || {};
-                const ptx = (c) => !!(c && /pneumothorax/i.test(String(c.findings || '')) && !/\bno (evidence of )?pneumothorax/i.test(String(c.findings || '')));
-                if (ptx(updatedScenario.chestXray) || ptx(inv.chestXray)) {
-                    const clear = { findings: 'Lung re-expanded after decompression.', image: null, findingId: null };
-                    updatedScenario.chestXray = { ...(updatedScenario.chestXray || {}), ...clear };
-                    if (inv.chestXray) updatedScenario.investigations = { ...inv, chestXray: { ...inv.chestXray, ...clear } };
-                    updateNeeded = true;
+                if (action.effect.gcs) {
+                    if (typeof action.effect.gcs === 'string') { if (action.effect.gcs === 'sedated') newVitals.gcs = 3; }
+                    else if (!pkOwned('gcs')) { newVitals.gcs = clampVital('gcs', newVitals.gcs + action.effect.gcs); }
                 }
-            }
-            if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
-            // Decompressing the chest fixes the ventilator's injected tension pneumothorax.
-            if (['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain'].indexOf(key) !== -1 && cur.vent && (cur.vent.probs || []).indexOf('ptx') !== -1) {
-                dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'ptx') } });
-                addLogEntry('Ventilator problem fixed: tension pneumothorax decompressed.', 'system');
-            }
-            // Bronchoscopy clears the ventilator's injected mucus plug.
-            if (key === 'Bronchoscopy' && cur.vent && (cur.vent.probs || []).indexOf('plug') !== -1) {
-                dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'plug') } });
-                addLogEntry('Ventilator problem fixed: mucus plug cleared by bronchoscopy.', 'system');
-            }
-            // Pulling the tube back corrects the ventilator's injected endobronchial tube.
-            if (key === 'TubeWithdraw' && cur.vent && (cur.vent.probs || []).indexOf('endo') !== -1) {
-                dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'endo') } });
-                addLogEntry('Ventilator problem fixed: endobronchial tube pulled back.', 'system');
-            }
-            // Dantrolene in a malignant hyperthermia crisis (CO2 production raised on the ventilator's
-            // lungs): CO2 production returns to normal, so the ETCO2 falls over the next few minutes.
-            if (key === 'Dantrolene' && cur.vent && cur.vent.lung && Number(cur.vent.lung.m) > 100) {
-                dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { m: null } } });
-                addLogEntry('Ventilator lungs: CO2 production back to normal after dantrolene.', 'system');
-            }
-            // WAVE 9 / ROOT FIX (same class): send only the fields this intervention actually
-            // CHANGED. The payload is merged onto the LIVE baseVitals by the reducer, so a whole
-            // snapshot-derived object here meant two instant-effect interventions in one tick
-            // overwrote each other's vitals. A field-level diff composes instead.
-            const vitalsDelta = {};
-            Object.keys(newVitals).forEach(f => { if (newVitals[f] !== cur.baseVitals[f]) vitalsDelta[f] = newVitals[f]; });
-            // Still dispatched unconditionally (an empty delta simply recomposes the displayed
-            // vitals from the live base + the drug envelope, exactly as before).
-            dispatch({ type: 'UPDATE_VITALS', payload: vitalsDelta });
-            if (action.type === 'continuous' && REVERSIBLE_INSTANT.indexOf(key) !== -1) {
-                const deltas = {};
-                Object.keys(vitalsDelta).forEach(f => {
-                    const d = Number(vitalsDelta[f]) - Number(cur.baseVitals[f]);
-                    if (Number.isFinite(d) && d !== 0) deltas[f] = d;
-                });
-                // `held`: vitals already typed by hand BEFORE this intervention went on (its effect
-                // overrode them, so removal may take it off); a value typed afterwards is left alone.
-                const held = {};
-                Object.keys(deltas).forEach(f => { if (cur.manualHold && cur.manualHold[f]) held[f] = true; });
-                instantDeltasRef.current[key] = { runId: cur.runId, arrest: isArrest, deltas, held };
-            }
+
+                // --- GROUP B: BM / Temp / pH were authored on 12 interventions and read by NOTHING, so
+                // Dextrose could not change the glucose reading, Warming/Cooling could not change the
+                // temperature and SodiumBicarb's pH was dropped on the floor. They are now first-class
+                // modelled vitals. Anything with a pk block ramps through the envelope; anything without
+                // one still lands instantly, which keeps the schema backwards compatible.
+                if (action.effect.BM !== undefined && action.effect.BM !== null && !pkOwned('BM')) newVitals.bm = clampVital('bm', newVitals.bm + Number(action.effect.BM));
+                if (action.effect.Temp !== undefined && action.effect.Temp !== null && !pkOwned('Temp')) newVitals.temp = clampVital('temp', newVitals.temp + Number(action.effect.Temp));
+                if (action.effect.pH !== undefined && action.effect.pH !== null && !pkOwned('pH')) newVitals.ph = clampVital('ph', (Number.isFinite(newVitals.ph) ? newVitals.ph : 7.4) + Number(action.effect.pH));
+
+                const updatedScenario = { ...now.scenario }; let updateNeeded = false;
+                // A new object, never an edit: chestXray is shared with the scenario library, so editing it in
+                // place would start the next run of this scenario with the lung already re-expanded. The
+                // report and image can be on the scenario or in its generated investigations, so clear both.
+                if (key === 'Needle' || key === 'FingerThoracostomy') {
+                    const inv = updatedScenario.investigations || {};
+                    const ptx = (c) => !!(c && /pneumothorax/i.test(String(c.findings || '')) && !/\bno (evidence of )?pneumothorax/i.test(String(c.findings || '')));
+                    if (ptx(updatedScenario.chestXray) || ptx(inv.chestXray)) {
+                        const clear = { findings: 'Lung re-expanded after decompression.', image: null, findingId: null };
+                        updatedScenario.chestXray = { ...(updatedScenario.chestXray || {}), ...clear };
+                        if (inv.chestXray) updatedScenario.investigations = { ...inv, chestXray: { ...inv.chestXray, ...clear } };
+                        updateNeeded = true;
+                    }
+                }
+                if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
+                // Decompressing the chest fixes the ventilator's injected tension pneumothorax.
+                if (['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain'].indexOf(key) !== -1 && now.vent && (now.vent.probs || []).indexOf('ptx') !== -1) {
+                    dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: now.vent.probs.filter(id => id !== 'ptx') } });
+                    addLogEntry('Ventilator problem fixed: tension pneumothorax decompressed.', 'system');
+                }
+                // Bronchoscopy clears the ventilator's injected mucus plug.
+                if (key === 'Bronchoscopy' && now.vent && (now.vent.probs || []).indexOf('plug') !== -1) {
+                    dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: now.vent.probs.filter(id => id !== 'plug') } });
+                    addLogEntry('Ventilator problem fixed: mucus plug cleared by bronchoscopy.', 'system');
+                }
+                // Pulling the tube back corrects the ventilator's injected endobronchial tube.
+                if (key === 'TubeWithdraw' && now.vent && (now.vent.probs || []).indexOf('endo') !== -1) {
+                    dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: now.vent.probs.filter(id => id !== 'endo') } });
+                    addLogEntry('Ventilator problem fixed: endobronchial tube pulled back.', 'system');
+                }
+                // Dantrolene in a malignant hyperthermia crisis (CO2 production raised on the ventilator's
+                // lungs): CO2 production returns to normal, so the ETCO2 falls over the next few minutes.
+                if (key === 'Dantrolene' && now.vent && now.vent.lung && Number(now.vent.lung.m) > 100) {
+                    dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { m: null } } });
+                    addLogEntry('Ventilator lungs: CO2 production back to normal after dantrolene.', 'system');
+                }
+                // WAVE 9 / ROOT FIX (same class): send only the fields this intervention actually
+                // CHANGED. The payload is merged onto the LIVE baseVitals by the reducer, so a whole
+                // snapshot-derived object here meant two instant-effect interventions in one tick
+                // overwrote each other's vitals. A field-level diff composes instead.
+                const vitalsDelta = {};
+                Object.keys(newVitals).forEach(f => { if (newVitals[f] !== now.baseVitals[f]) vitalsDelta[f] = newVitals[f]; });
+                // Still dispatched unconditionally (an empty delta simply recomposes the displayed
+                // vitals from the live base + the drug envelope, exactly as before).
+                dispatch({ type: 'UPDATE_VITALS', payload: vitalsDelta });
+                if (action.type === 'continuous' && REVERSIBLE_INSTANT.indexOf(key) !== -1) {
+                    const deltas = {};
+                    Object.keys(vitalsDelta).forEach(f => {
+                        const d = Number(vitalsDelta[f]) - Number(now.baseVitals[f]);
+                        if (Number.isFinite(d) && d !== 0) deltas[f] = d;
+                    });
+                    // `held`: vitals already typed by hand BEFORE this intervention went on (its effect
+                    // overrode them, so removal may take it off); a value typed afterwards is left alone.
+                    const held = {};
+                    Object.keys(deltas).forEach(f => { if (now.manualHold && now.manualHold[f]) held[f] = true; });
+                    instantDeltasRef.current[key] = { runId: now.runId, arrest: isArrest, deltas, held };
+                }
+            });
+            if (!defer) return;
+            // Held until START, in order. Said so once, when it would have changed the patient
+            // (attaching a monitor or recording IV access has nothing to wait for).
+            const e0 = action.effect || {};
+            const acts = announce || !!drugEntry || rsiDesaturates || Object.keys(e0).some(k => k !== 'cpr' && e0[k] !== undefined && e0[k] !== null && e0[k] !== 0 && e0[k] !== false);
+            deferUntilStart(key, acts ? (action.label || key) : null, (now) => heldEffects.forEach(fn => fn(now)));
+            if (acts) addLogEntry(`${action.label} recorded before START: the patient is not live yet, so it starts acting when START is pressed.`, 'info');
         };
 
         const applyInterventionRef = useRef(applyIntervention);
@@ -1206,8 +1232,8 @@
             setDefibEnergy, setDefibMode, setQueuedRhythm, shockPolicy, stepsRunning, toggleCPR,
             toggleDefibSync
         } = window.__EngineDefib.useDefib({
-            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, clearSimTimer, dispatch, isMonitorMode,
-            simTimeout, state, stateRef, triggerArrest, triggerROSC
+            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, clearSimTimer, deferUntilStart, dispatch, isMonitorMode,
+            notStarted, simTimeout, state, stateRef, triggerArrest, triggerROSC
         });
 
         // `opts.image` is an image key from data/investigations.js; `opts.hideReport` shows the image
@@ -1550,6 +1576,16 @@
                 ? `Deterioration mode: AUTO (scenario declares ${d.type}, rate ${d.rate}) — the patient will deteriorate on their own unless treated. Switch to MANUAL for full manual control.`
                 : 'Deterioration mode: MANUAL — the obs will only change when you change them, or when a drug/trend you start changes them.', 'system');
             dispatch({ type: 'START_SIM' });
+            // The patient goes live now: whatever was given before START starts acting from this
+            // moment (pk drugs because state.time starts moving; instant effects and shocks here).
+            // Only ever queued while not started, so a resume after a pause finds the queue empty.
+            const pending = pendingEffectsRef.current;
+            pendingEffectsRef.current = [];
+            if (pending.length) {
+                const labels = pending.map(p => p.label).filter((l, i, a) => l && a.indexOf(l) === i);
+                if (labels.length) addLogEntry(`Given before START, acting from now: ${labels.join(', ')}.`, 'system');
+                pending.forEach(p => { try { p.fn(stateRef.current); } catch (e) { console.error(`Deferred effect of ${p.key} failed:`, e); } });
+            }
         };
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
@@ -1574,10 +1610,8 @@
             // Physiology is owned by the controller. isRunning is now synced so the monitor can make
             // sound, but the monitor must NOT run its own 1 Hz physiology tick or it would fight the
             // authoritative vitals arriving over Firebase.
-            // The decision of WHAT to tick is tickActionFor's, not this effect's. A stopped
-            // clock with an active ramp still ticks — trend-only — so a facilitator's "take the HR to
-            // 130 over 2 minutes" works the moment it is set, including in Quick Sim where START is
-            // never pressed.
+            // The decision of WHAT to tick is tickActionFor's, not this effect's: nothing before
+            // START, the full pipeline while running, and a ramp alone while paused.
             const action = tickActionFor(state, isMonitorMode);
             if (action) {
                 timerRef.current = setInterval(() => {
@@ -1588,7 +1622,7 @@
                 if (timerRef.current) clearInterval(timerRef.current);
             }
             return () => { if (timerRef.current) clearInterval(timerRef.current); };
-        }, [state.isRunning, isMonitorMode, !!(state.trends && state.trends.active)]);
+        }, [state.isRunning, isMonitorMode, !!(state.trends && state.trends.active), state.pausedAt, state.isFinished]);
 
         // =====================================================================================
         // EVERY MONITORING CHIP IS A TRUE TWO-WAY TOGGLE.
@@ -1704,7 +1738,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, notStarted: () => notStarted(stateRef.current), applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,

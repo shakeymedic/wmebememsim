@@ -2,7 +2,7 @@
 // obs beats a running trend, objective scoring accepts interchangeable treatments, decompression updates
 // the chest X-ray, and a second controller tab does not take over the first one's session.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -55,6 +55,7 @@ test('needle decompression re-expands the lung on the chest X-ray, and the next 
   await page.getByRole('button', { name: 'Adult Medical', exact: true }).click();
   await page.locator('div.justify-between', { hasText: 'Tension Pneumothorax' }).first().getByRole('button', { name: 'Load' }).click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();
+  await pressStart(page);   // decompression acts once the patient is live
   const cxr = () => st(page, () => { const s = window.__simEngine.state.scenario; const c = s.chestXray || {}, g = (s.investigations || {}).chestXray || {}; return [c.findings || '', c.image || null, g.findings || '', g.image || null]; });
   expect((await cxr()).join(' ')).toMatch(/pneumothorax/i);
   await st(page, () => { window.__simEngine.applyIntervention('IV Access'); window.__simEngine.applyIntervention('Needle'); });

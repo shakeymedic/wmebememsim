@@ -12,8 +12,8 @@
 
     const useDefib = (ctx) => {
         const {
-            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, clearSimTimer, dispatch, isMonitorMode,
-            simTimeout, state, stateRef, triggerArrest, triggerROSC
+            RESET_HOLD_KEYS, addLogEntry, arrestVitals, changeRhythm, clearSimTimer, deferUntilStart, dispatch, isMonitorMode,
+            notStarted, simTimeout, state, stateRef, triggerArrest, triggerROSC
         } = ctx;
 
         // =====================================================================================
@@ -390,9 +390,19 @@
             addLogEntry(`Shock delivered ${j}J${sync ? ' (SYNC)' : ''} (${source})`, 'danger', true);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: `Shock Delivered ${j}J`, type: 'danger', id: Date.now() } });
             setTimeout(() => dispatch({ type: 'SET_FLASH', payload: null }), 500);
-            if (stepsRunning(cur)) { customStepShock(cur, j, sync); return; }
-            if (sync) applyCardioversion(cur, { energy: j, source });
-            else applyShockOutcome(cur, { energy: j, sync: false, source });
+            // Before START the patient is not live: the shock is recorded now and reaches the
+            // patient (rhythm outcome, shock tally) when START is pressed, like a drug given early.
+            const outcome = (now) => {
+                if (stepsRunning(now)) { customStepShock(now, j, sync); return; }
+                if (sync) applyCardioversion(now, { energy: j, source });
+                else applyShockOutcome(now, { energy: j, sync: false, source });
+            };
+            if (notStarted && notStarted(cur)) {
+                deferUntilStart(sync ? 'Cardioversion' : 'Defib', `${sync ? 'synchronised shock' : 'shock'} ${j}J`, outcome);
+                addLogEntry(`Shock ${j}J recorded before START: the patient is not live yet, so its effect is applied when START is pressed.`, 'info');
+                return;
+            }
+            outcome(cur);
         }
 
         // Assessor-facing defib device controls, shared by the controller panel and by student
@@ -523,6 +533,8 @@
         useEffect(() => {
             if (isMonitorMode) return;
             const cur = stateRef.current;
+            // Capture waits for START like every other effect on the patient (re-evaluated then).
+            if (notStarted && notStarted(cur)) return;
             const pacing = cur.pacing || {};
             const mode = cur.defib && cur.defib.mode;
             const pacer = cur.remotePacerState || {};
@@ -588,7 +600,7 @@
                 addLogEntry(`Pacing: mechanical capture lost at ${output}mA — electrical capture only, no pulse at the paced rate.`, 'warning', true);
             }
             if (Object.keys(updates).length) dispatch({ type: 'UPDATE_VITALS', payload: updates });
-        }, [isMonitorMode, state.defib && state.defib.mode, state.remotePacerState, state.pacingThreshold, state.rhythm, state.pacing]);
+        }, [isMonitorMode, state.defib && state.defib.mode, state.remotePacerState, state.pacingThreshold, state.rhythm, state.pacing, state.isRunning]);
 
         return {
             analyseRhythm, applyCardioversion, applyDrugConversion, applyShockOutcome, defibWeight,

@@ -4,7 +4,7 @@
 const { test } = require('@playwright/test');
 const { execFileSync } = require('child_process');
 const path = require('path');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -115,6 +115,7 @@ test('desaturation after intubation: an endobronchial tube on the C6, fixed by p
   await page.locator('[data-vent-device="c6"]').click();
   await page.locator('[data-vent-scenario="an-hypoxia"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
+  await pressStart(page);   // pulling the tube back acts once the patient is live
   await expect.poll(() => live(page, code, '/vent')).toMatchObject({ model: 'c6', probs: 'endo' });
   const dev = await context.newPage();
   const devErrors = trackErrors(dev);
@@ -138,6 +139,7 @@ test('malignant hyperthermia: CO2 production starts raised and dantrolene brings
   await page.locator('[data-vent-device="c6"]').click();
   await page.locator('[data-vent-scenario="an-mh"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
+  await pressStart(page);   // dantrolene acts once the patient is live
   await expect.poll(() => live(page, code, '/vent/lung')).toEqual({ m: 200 });
   expect(await page.evaluate(() => window.__simEngine.state.scenario.stabilisers)).toEqual(['Dantrolene']);
   await page.evaluate(() => window.__simEngine.applyIntervention('Dantrolene'));

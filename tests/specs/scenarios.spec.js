@@ -1,6 +1,6 @@
 // The scenario library: every built-in scenario runs cleanly, and specific clinical content rules
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, session, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, session, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -88,6 +88,7 @@ test('adrenaline improves anaphylaxis but not ACE-inhibitor (bradykinin) angio-o
   trackErrors(page);   // accepts the Finish confirmation
   await openController(page);
   await startPremade(page, 'Adult Medical', 'Anaphylaxis (Adult)');
+  await pressStart(page);
   await engine(page, 'sim.applyIntervention("AdrenalineIM")');
   await expect.poll(() => engine(page, 'return !!(sim.state.trends && sim.state.trends.active)')).toBe(true);
 

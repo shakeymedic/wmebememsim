@@ -314,9 +314,10 @@
             };
 
             // The briefing screen can start the patient already on the monitor (its tick box).
+            // It opens the live controller; it does not start the clock. Every launch mode waits
+            // for START on the controller, which says "Not started" until it is pressed.
             const handleStart = (opts) => {
                 if (opts && opts.monitored) startMonitored({});
-                engine.start();
                 setView('livesim');
             };
 
@@ -324,8 +325,8 @@
             // Deliberately the SAME path as handleGenerate (same engine, same LOAD_SCENARIO, same
             // Firebase session, same monitor) with exactly two differences: the scenario is the
             // synthetic blank patient from buildQuickSimScenario(), and the briefing screen is
-            // skipped because there is no brief to read. It does NOT auto-start — the facilitator
-            // still presses START, so the timer/start/pause/finish controls behave as usual.
+            // skipped because there is no brief to read. It does NOT auto-start: like every launch
+            // mode, the patient goes live when the facilitator presses START.
             const handleQuickSim = (opts) => {
                 try {
                     const scenario = window.buildQuickSimScenario(opts || {});
@@ -339,7 +340,8 @@
             };
 
             // ---- DEFIB SIM: the same path again (same engine, session and monitor), with the
-            // patient built by data/defibsim.js. No briefing screen; the facilitator presses START.
+            // patient built by data/defibsim.js. No briefing screen; the clock starts at START or at
+            // the learner's first press on the defib (data/engine-sync.js autoStartClock).
             const handleDefibSim = (opts) => {
                 try {
                     const scenario = window.DefibSim.buildScenario(opts || {});

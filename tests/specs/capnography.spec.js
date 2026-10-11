@@ -2,7 +2,7 @@
 // shows capnography draws it: the room monitor (normal and arrest views), the controller strip and
 // the defib tablet.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, live, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, live, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -114,7 +114,8 @@ test('defib tablet: capnogram and ETCO2 appear only while capnography is attache
   await expect(defib.locator('#co2Container')).toBeHidden();
   await expect(defib.locator('#etco2Display')).toHaveText('--');
 
-  await page.getByRole('button', { name: 'Start CPR' }).click();
+  // The Defib Sim panel's own CPR button (the "Patient now" strip has a one-tap copy of it).
+  await page.getByRole('button', { name: 'Start CPR', exact: true }).and(page.locator(':not([data-testid="status-cpr"])')).click();
   await page.getByTestId('defib-capno').click();
   await expect(page.getByTestId('defib-capno')).toHaveAttribute('aria-pressed', 'true');
   await expect(defib.locator('#co2Container')).toBeVisible();
