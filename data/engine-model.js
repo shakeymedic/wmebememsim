@@ -1364,6 +1364,31 @@
     // The score is reported twice and labelled: a strict fully-met percentage, and a
     // component-weighted partial-credit percentage. Neither is inflated; both are explained.
     // =============================================================================================
+    // Interchangeable treatments: one component, met by any of them. Without this, two IM adrenaline
+    // doses were only "partial" until an infusion was also started, and a steroid objective needed
+    // both dexamethasone AND hydrocortisone.
+    const OBJECTIVE_ALTERNATIVES = [
+        ['AdrenalineIM', 'AdrenalineIV', 'AdrenalinePush', 'AdrenalineInfusion'],
+        ['Hydrocortisone', 'Dexamethasone'],
+        ['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain'],
+        ['Lorazepam', 'LorazepamIM', 'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamPR', 'DiazepamIV'],
+        ['Levetiracetam', 'Phenytoin'],
+        ['Naloxone', 'NaloxoneIM', 'NaloxoneIN'],
+        ['Antibiotics', 'Benzylpenicillin', 'BenzylpenicillinIM'],
+        ['Nebs', 'NebsContinuous'],
+        ['CPAP', 'NIV'],
+        ['GTN', 'GTNInfusion']
+    ];
+    // The component keys grouped into alternatives: [['AdrenalineIM', 'AdrenalineInfusion'], ['Fluids']].
+    const objectiveComponentGroups = (keys) => {
+        const groups = [];
+        keys.forEach(k => {
+            const fam = OBJECTIVE_ALTERNATIVES.find(f => f.indexOf(k) !== -1);
+            const g = fam && groups.find(x => fam.indexOf(x[0]) !== -1);
+            if (g) g.push(k); else groups.push([k]);
+        });
+        return groups;
+    };
     const objectiveComponentKeys = (scenario, objective) => {
         const objLower = String(objective == null ? '' : objective).toLowerCase();
         if (!objLower) return [];
@@ -1407,7 +1432,7 @@
 
         const rows = objectives.map(objective => {
             const keys = objectiveComponentKeys(scen, objective);
-            const components = keys.map(key => ({ key, label: labelOf(key), met: given(key) }));
+            const components = objectiveComponentGroups(keys).map(g => ({ key: g[0], keys: g, label: g.map(labelOf).join(' or '), met: g.some(given) }));
             const metCount = components.filter(c => c.met).length;
             const touched = completed.has(objective);
             let status, fraction;

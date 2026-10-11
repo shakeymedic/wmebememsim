@@ -120,11 +120,13 @@ test('the headline and the figure follow the patient: stable, distressed, apnoei
   await engine(page, `sim.applyIntervention('PacingPads'); sim.applyIntervention('IV Access');`);
   await expect.poll(() => parts(page)).toEqual(expect.arrayContaining(['pads', 'iv']));
 
-  // Hide and show keeps the headline in view.
-  await page.getByTestId('patient-status').getByRole('button', { name: 'Hide' }).click();
+  // Less and More: the compact strip keeps the headline, the flags and a one-line summary.
+  await page.getByTestId('patient-status').getByRole('button', { name: 'Less' }).click();
   await expect(page.getByTestId('patient-figure')).toBeHidden();
   await expect(headline).toContainText('In cardiac arrest');
-  await page.getByTestId('patient-status').getByRole('button', { name: 'Show' }).click();
+  await expect(page.getByTestId('patient-compact')).toContainText('No CPR running');
+  await expect(page.getByTestId('patient-compact')).toContainText('IV');
+  await page.getByTestId('patient-status').getByRole('button', { name: 'More' }).click();
   await expect(page.getByTestId('patient-figure')).toBeVisible();
   expect(errors).toEqual([]);
 });

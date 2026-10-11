@@ -815,7 +815,7 @@
         let color = "text-green-500";
         if (label === 'SpO2') color = "text-blue-500";
         if (label === 'BP' || label === 'ABP' || label === 'NIBP') color = "text-red-500";
-        if (label === 'RR') color = "text-yellow-500";
+        if (label === 'RR' || label === 'Resp Rate') color = "text-yellow-500";
         if (label === 'ETCO2') color = "text-purple-500";
         if (label === 'Temp') color = "text-white";
         if (label === 'Glucose') color = "text-white";

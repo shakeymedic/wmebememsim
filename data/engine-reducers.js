@@ -138,10 +138,18 @@
                     baseValue = clampVital(key, baseForDisplayed(key, value, off, ceils[key]));
                 }
                 const base = { ...state.baseVitals, [key]: baseValue };
+                // A typed value wins over a running trend (Better, Worse, a drug's stabilising trend):
+                // the trend stops steering this obs, and stops altogether if nothing else is left.
+                let trends = state.trends;
+                if (trends && trends.active && trends.targets && Object.prototype.hasOwnProperty.call(trends.targets, key)) {
+                    const targets = { ...trends.targets }; delete targets[key];
+                    const startVitals = { ...(trends.startVitals || {}) }; delete startVitals[key];
+                    trends = Object.keys(targets).length ? { ...trends, targets, startVitals } : { ...trends, active: false, targets: {}, startVitals: {} };
+                }
                 // Record that the facilitator typed this one. See `manualHold`.
                 // A typed SpO2 is the new baseline: any earlier apnoea deficit no longer applies.
                 return { ...state, baseVitals: base, vitals: composeVitals(base, drugs, t, inArrest), prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true },
-                    hypoxiaDeficit: key === 'spO2' ? 0 : state.hypoxiaDeficit };
+                    trends, hypoxiaDeficit: key === 'spO2' ? 0 : state.hypoxiaDeficit };
             }
             case 'START_TREND': {
                 const safeTargets = {};
@@ -530,6 +538,15 @@
                     pocReadings: (p.pocReadings && typeof p.pocReadings === 'object') ? { ...p.pocReadings } : {},
                     ventSamples: Array.isArray(p.ventSamples) ? p.ventSamples.slice(-480) : [],
                     cprInProgress: p.cprInProgress === undefined ? state.cprInProgress : !!p.cprInProgress,
+                    // The room monitor's devices, capnography shape and sound (older snapshots lack them).
+                    ventPanelOpen: p.ventPanelOpen === undefined ? state.ventPanelOpen : !!p.ventPanelOpen,
+                    defibPanelOpen: p.defibPanelOpen === undefined ? state.defibPanelOpen : !!p.defibPanelOpen,
+                    etco2Pathology: typeof p.etco2Pathology === 'string' ? p.etco2Pathology : state.etco2Pathology,
+                    audioOutput: typeof p.audioOutput === 'string' ? p.audioOutput : state.audioOutput,
+                    isMuted: p.isMuted === undefined ? state.isMuted : !!p.isMuted,
+                    waveformGain: Number.isFinite(p.waveformGain) && p.waveformGain > 0 ? p.waveformGain : state.waveformGain,
+                    noise: (p.noise && typeof p.noise === 'object') ? { ...state.noise, ...p.noise } : state.noise,
+                    metronomeOn: p.metronomeOn === undefined ? state.metronomeOn : !!p.metronomeOn,
                     // A resumed session is NOT a paused session. Its clock is
                     // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
                     // therefore froze the controller's waveform strip until START was pressed. The
@@ -719,7 +736,7 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
-            case 'SYNC_FROM_MASTER': return { ...state,
+            case 'SYNC_FROM_MASTER': return { ...state, liveSeen: true,
                 // isRunning / isMuted / activeLoops are what make the STUDENT MONITOR audible: every
                 // audio path in this file is gated on isRunning, which the monitor can only learn
                 // about over the wire because it never calls start() itself.

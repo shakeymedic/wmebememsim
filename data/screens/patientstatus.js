@@ -397,7 +397,16 @@
         const state = sim.state;
         const a = assess(state);
         const VP = window.VENT_PROFILES;
-        const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('wmebem_status_collapsed') === '1'; } catch (e) { return false; } });
+        // Compact (headline, flags and a one-line summary) or full (with the figure). With no saved choice,
+        // a short screen starts compact so the controls below keep their room.
+        const [collapsed, setCollapsed] = useState(() => {
+            let saved = null;
+            try { saved = localStorage.getItem('wmebem_status_collapsed'); } catch (e) {}
+            return saved === '1' || saved === '0' ? saved === '1' : (window.innerHeight || 1000) < 900;
+        });
+        // The ventilator chooser only where a ventilator is in play: a ventilator or anaesthetic scenario,
+        // one chosen in the Ventilator section, or a ventilator tablet already linked.
+        const ventInPlay = !!(state.vent || (state.scenario && state.scenario.ventSim) || Object.keys(state.ventMirror || {}).length);
         const toggle = () => { const n = !collapsed; setCollapsed(n); try { localStorage.setItem('wmebem_status_collapsed', n ? '1' : '0'); } catch (e) {} };
         const log = addLogEntry || sim.addLogEntry;
         const model = a.model;
@@ -428,10 +437,18 @@
                         <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400 mr-2">Patient now</span>
                         <span data-testid="patient-headline" className="text-sm md:text-base font-bold">{a.headline}</span>
                     </div>
-                    <button type="button" onClick={toggle} aria-expanded={!collapsed} className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">
-                        {collapsed ? 'Show' : 'Hide'}
+                    <button type="button" onClick={toggle} aria-expanded={!collapsed} title={collapsed ? 'Show the patient figure and details' : 'Make this strip one line'} className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">
+                        {collapsed ? 'More' : 'Less'}
                     </button>
                 </div>
+                {collapsed && (
+                    <div className="flex flex-wrap items-center gap-1 px-2 pb-1" data-testid="patient-compact">
+                        {a.flags.map((f, i) => <span key={i} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CHIP[f.level] || CHIP.slate}`}>{f.text}</span>)}
+                        <span className="text-[11px] text-slate-300 truncate min-w-0">
+                            {[a.monitors.length ? a.monitors.join(' · ') : 'Nothing attached', a.access.length ? a.access.join(' · ') : 'No access', a.airway || 'Own airway'].join('  |  ')}
+                        </span>
+                    </div>
+                )}
                 {!collapsed && (
                     <div className="flex flex-wrap md:flex-nowrap gap-3 px-2 pb-2 items-start">
                         <PatientFigure a={a} className="w-44 h-40 md:w-52 md:h-48 flex-none bg-slate-950/70 rounded-lg" />
@@ -446,7 +463,7 @@
                             {row('Airway', a.airway ? [a.airway] : [], 'Own airway')}
                             {a.other.length > 0 && row('Also', a.other, '')}
                         </div>
-                        {VP && showVent && (
+                        {VP && showVent && ventInPlay && (
                             <div className="flex-none flex flex-col gap-1 w-full sm:w-auto sm:min-w-[11rem]" data-testid="status-vent">
                                 <span className="text-[9px] uppercase font-bold text-slate-400">Ventilator</span>
                                 <div className="flex gap-1" role="group" aria-label="Choose the ventilator">

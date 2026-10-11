@@ -536,16 +536,18 @@
         const ventDriving = !isMonitorMode && !!(window.VENT_ENGINE && window.VENT_ENGINE.driverFor(state));
         const ventActive = ventDriving || !!(state.ventPhys && state.ventPhys.active);
         useEffect(() => {
-            if (isMonitorMode || state.isRunning || !ventActive) return;
+            // Not after Finish: the debrief's obs and ventilator record are frozen at the end.
+            if (isMonitorMode || state.isRunning || state.isFinished || !ventActive) return;
             const id = setInterval(() => dispatch({ type: 'TICK_VENT' }), 1000);
             return () => clearInterval(id);
-        }, [isMonitorMode, state.isRunning, ventActive]);
+        }, [isMonitorMode, state.isRunning, state.isFinished, ventActive]);
         // The debrief's ventilator record: what the ventilator breathing for the patient measured and
         // was set to, every 15 s of real time (data/ventsim.js reads it).
         useEffect(() => {
-            if (isMonitorMode || !ventDriving) return;
+            if (isMonitorMode || !ventDriving || state.isFinished) return;
             const take = () => {
                 const cur = stateRef.current;
+                if (cur.isFinished) return;
                 const d = window.VENT_ENGINE && window.VENT_ENGINE.driverFor(cur);
                 if (!d) return;
                 const mon = d.mon || {};
@@ -565,7 +567,7 @@
             take();
             const id = setInterval(take, 15000);
             return () => clearInterval(id);
-        }, [isMonitorMode, ventDriving]);
+        }, [isMonitorMode, ventDriving, state.isFinished]);
         const ventDrivingRef = useRef(false);
         useEffect(() => {
             if (isMonitorMode || ventDrivingRef.current === ventDriving) return;
@@ -673,7 +675,13 @@
                         // Shock count / cumulative energy must survive a resume.
                         defib: cur.defib, lastConversion: cur.lastConversion, defibSettings: cur.defibSettings,
                         arrest: cur.arrest, defibStep: cur.defibStep,
-                        vent: cur.vent || null
+                        vent: cur.vent || null,
+                        // What the room monitor shows and sounds like: without these, a resumed session
+                        // took the ventilator and defib off the monitor and reset the capnography shape.
+                        ventPanelOpen: !!cur.ventPanelOpen, defibPanelOpen: !!cur.defibPanelOpen,
+                        etco2Pathology: cur.etco2Pathology || 'normal', audioOutput: cur.audioOutput, isMuted: !!cur.isMuted,
+                        waveformGain: cur.waveformGain, noise: cur.noise, metronomeOn: !!cur.metronomeOn,
+                        hypoxiaDeficit: cur.hypoxiaDeficit || 0, investigationsRevealed: cur.investigationsRevealed || {}
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
                 } catch (e) {

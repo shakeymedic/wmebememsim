@@ -202,6 +202,8 @@
         // monitor mode exactly ONE useSimulation instance exists (MonitorContainer's). Previously both
         // this component and MonitorContainer created one: two AudioContexts (only one of which the
         // "Tap to Enable Sound" overlay ever resumed) and two RTDB listeners per student device.
+        // This tab, for the one-controller-tab-per-session check in App.
+        const CTRL_TAB = Math.random().toString(36).slice(2);
         const App = () => {
             const { useState, useEffect } = React;
             const { MonitorContainer, ErrorBoundary } = window;
@@ -231,8 +233,30 @@
                 if (initialSession && window.isCurrentSessionCode(initialSession)) return initialSession;
                 let stored = null;
                 try { stored = localStorage.getItem('wmebem_session_id'); } catch (e) {}
-                return (stored && window.isCurrentSessionCode(stored)) ? stored : window.newSessionCode();
+                // A second controller tab in this browser must not take over the first one's session
+                // (both would drive the same room monitor). If another open tab is using the
+                // remembered code, this tab gets a new one.
+                let busy = false;
+                try {
+                    const hb = stored && JSON.parse(localStorage.getItem('wmebem_ctrl_tab_' + stored) || 'null');
+                    busy = !!(hb && hb.tab !== CTRL_TAB && Date.now() - Number(hb.ts) < 6000);
+                } catch (e) {}
+                return (stored && !busy && window.isCurrentSessionCode(stored)) ? stored : window.newSessionCode();
             });
+
+            // This tab's claim on its code (see above), refreshed while it is open and released on leaving,
+            // so a reload or going back to the start still keeps the code.
+            useEffect(() => {
+                if (!sessionID || view === 'monitor') return;
+                const beat = () => { try { localStorage.setItem('wmebem_ctrl_tab_' + sessionID, JSON.stringify({ tab: CTRL_TAB, ts: Date.now() })); } catch (e) {} };
+                const release = () => {
+                    try { const k = 'wmebem_ctrl_tab_' + sessionID, hb = JSON.parse(localStorage.getItem(k) || 'null'); if (hb && hb.tab === CTRL_TAB) localStorage.removeItem(k); } catch (e) {}
+                };
+                beat();
+                const id = setInterval(beat, 2000);
+                window.addEventListener('pagehide', release);
+                return () => { clearInterval(id); window.removeEventListener('pagehide', release); release(); };
+            }, [sessionID, view]);
 
             useEffect(() => {
                 if (!sessionID || view === 'monitor') return;

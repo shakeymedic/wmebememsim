@@ -500,15 +500,14 @@
                         {syncStatus.message && <span className="ml-2 font-normal text-red-200">{syncStatus.message}</span>}
                     </div>
                 )}
-                {/* Above everything on this page (the arrest view, the devices, the switcher). With the defib
-                    or ventilator in front it is a small button at the top instead of a full-screen
-                    card, so the learner's first press on the device is not swallowed; a press on the
-                    device enables the sound too (the device page posts its gesture here). */}
-                {!audioEnabled && shownView === 'monitor' && (<div className="absolute inset-0 z-[140] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={handleEnableAudio}><div className="bg-slate-800 border border-sky-500 p-6 rounded-lg shadow-2xl animate-bounce cursor-pointer text-center"><Lucide icon="volume-2" className="w-12 h-12 text-sky-400 mx-auto mb-2"/><h2 className="text-xl font-bold text-white">Tap to Enable Sound</h2></div></div>)}
-                {!audioEnabled && shownView !== 'monitor' && (
+                {/* Above everything on this page (the arrest view, the devices, the switcher), and always a
+                    button at the top rather than a full-screen card: the obs stay readable before anyone taps
+                    (a TV may have no touch at all), and the learner's first press on a device is not swallowed.
+                    A press on the device enables the sound too (the device page posts its gesture here). */}
+                {!audioEnabled && (
                     <button type="button" onClick={handleEnableAudio} data-testid="enable-sound"
-                            className="absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[40px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white text-sm font-bold shadow-lg flex items-center gap-2">
-                        <Lucide icon="volume-2" className="w-4 h-4 text-sky-400"/> Tap to Enable Sound
+                            className={`absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[44px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white font-bold shadow-lg flex items-center gap-2 ${shownView === 'monitor' ? 'text-base' : 'text-sm'}`}>
+                        <Lucide icon="volume-2" className="w-5 h-5 text-sky-400"/> Tap to Enable Sound
                     </button>
                 )}
                 
@@ -797,7 +796,9 @@
         const mine = useMyScreen(sessionID, screenId);
         const role = mine.role || S.roleOf(screen);
         const parts = S.partsOf(role);
-        const waiting = !sim.state.vitals || (!sim.state.vitals.hr && sim.state.vitals.hr !== 0);
+        // No controller on this code yet: it has neither sent the patient nor numbered this screen (the
+        // screen's own engine always has obs, so those cannot tell). A mistyped code stays here.
+        const waiting = !sim.state.liveSeen && !mine.n;
         const [shows, setShows] = useState(null);
         // The embedded defib and ventilator pages live HERE, not inside MonitorScreen/DeviceScreen,
         // so a role change that adds or removes the monitor (which swaps those two) does not reload

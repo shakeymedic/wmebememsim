@@ -132,7 +132,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
    ANALYSE | CHARGE, ENERGY | MODE dial, the pacer underneath) and the ECG shrinks with the viewport
    height, so the screen, CHARGE, SHOCK, energy and the mode dial all fit without scrolling. */
 @media (min-width: 900px) and (max-width: 1100px) { .zoll-device { grid-template-columns: 1.1fr 0.9fr; } }
-@media (min-width: 900px) and (max-height: 960px) {
+@media (min-width: 900px) and (max-height: 1100px) {   /* 1100, so a 1920x1080 TV fits too */
     :root { --ecg-h: clamp(140px, calc(100vh - 420px), 300px); }
     body { padding: 8px; }
     .zoll-device { border-width: 10px; padding: 14px; gap: 14px; }
@@ -220,7 +220,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 body.embedded { padding: 8px; padding-top: 44px; }
 body.embedded .zoll-top-link, body.embedded .app-footer { display: none; }
 body.embedded .zoll-device { border-width: 10px; padding: 16px; max-width: none; }
-@media (min-width: 900px) and (max-height: 960px) {
+@media (min-width: 900px) and (max-height: 1100px) {   /* 1100, so a 1920x1080 TV fits too */
     body.embedded .zoll-device { padding: 14px; }
     body.embedded { --ecg-h: clamp(140px, calc(100vh - 456px), 300px); }
 }

@@ -497,7 +497,11 @@
             return row || { objective: obj, status: completed.has(obj) ? 'met' : 'none', components: [], metComponents: [], missingComponents: [], multiComponent: false };
         };
 
+        // Leaving the debrief loses it, so ask first unless the report has been saved or printed.
+        const savedRef = useRef(false);
+        const exitDebrief = () => { if (savedRef.current || window.confirm('Leave the debrief? It cannot be reopened. Download or print the report first if you want to keep it.')) onExit(); };
         const generateReport = (mode) => {
+            savedRef.current = true;
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
             // The report shows the same three-state status and names the components
             // that were and were not done, so a partial objective is never printed as a bare failure.
@@ -564,7 +568,7 @@
                         {defibSim && <Button onClick={printCertificate} variant="secondary" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
                         <Button onClick={() => generateReport('print')} variant="secondary" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
                         <Button onClick={() => generateReport('download')} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
-                        <Button onClick={onExit} variant="danger">Exit to Menu</Button>
+                        <Button onClick={exitDebrief} variant="secondary">Exit to Menu</Button>
                     </div>
                 </div>
 

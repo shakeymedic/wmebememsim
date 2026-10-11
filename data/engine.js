@@ -969,7 +969,19 @@
             if (action.effect.pH !== undefined && action.effect.pH !== null && !pkOwned('pH')) newVitals.ph = clampVital('ph', (Number.isFinite(newVitals.ph) ? newVitals.ph : 7.4) + Number(action.effect.pH));
 
             const updatedScenario = { ...scenario }; let updateNeeded = false;
-            if ((key === 'Needle' || key === 'FingerThoracostomy') && updatedScenario.chestXray && updatedScenario.chestXray.findings && updatedScenario.chestXray.findings.includes('Pneumothorax')) { updatedScenario.chestXray.findings = "Lung re-expanded."; updateNeeded = true; }
+            // A new object, never an edit: chestXray is shared with the scenario library, so editing it in
+            // place would start the next run of this scenario with the lung already re-expanded. The
+            // report and image can be on the scenario or in its generated investigations, so clear both.
+            if (key === 'Needle' || key === 'FingerThoracostomy') {
+                const inv = updatedScenario.investigations || {};
+                const ptx = (c) => !!(c && /pneumothorax/i.test(String(c.findings || '')) && !/\bno (evidence of )?pneumothorax/i.test(String(c.findings || '')));
+                if (ptx(updatedScenario.chestXray) || ptx(inv.chestXray)) {
+                    const clear = { findings: 'Lung re-expanded after decompression.', image: null, findingId: null };
+                    updatedScenario.chestXray = { ...(updatedScenario.chestXray || {}), ...clear };
+                    if (inv.chestXray) updatedScenario.investigations = { ...inv, chestXray: { ...inv.chestXray, ...clear } };
+                    updateNeeded = true;
+                }
+            }
             if (updateNeeded) dispatch({ type: 'UPDATE_SCENARIO', payload: updatedScenario });
             // Decompressing the chest fixes the ventilator's injected tension pneumothorax.
             if (['Needle', 'FingerThoracostomy', 'SeldingerDrain', 'SurgicalDrain'].indexOf(key) !== -1 && cur.vent && (cur.vent.probs || []).indexOf('ptx') !== -1) {

@@ -296,7 +296,8 @@ body.embedded .vbar .standalone-only{display:none}
 .link-banner form{display:flex;gap:6px;margin-top:8px}
 .link-banner input{flex:1;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #fca5a5;text-transform:uppercase;letter-spacing:.15em}
 .link-banner button{background:#fff;color:#7f1d1d;border:0;border-radius:6px;padding:6px 14px;font-weight:700}
-.ended{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1100;background:#334155;color:#fff;border-radius:8px;padding:6px 14px;font-weight:700;letter-spacing:.08em}
+/* the session is over: dim the whole machine (its alarms are silent too), as the defib does */
+.ended{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.82);color:#fff;font-size:2rem;font-weight:700;letter-spacing:.12em}
 .ended[hidden]{display:none}
 </style>
 </head>
@@ -1067,7 +1068,8 @@ function beep(n, gap, freq) {
 const lowBeeped = new Set();
 function soundTick(dt) {
   soundT -= dt;
-  if (!V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
+  /* silent once the controller has finished the session (the room is in the debrief) */
+  if (LIVE.isFinished || !V.power || V.audioPause > 0 || V.startSuppress > 0 || V.standby) return;
   const list = topAlarms();
   if (!list.length) return;
   const top = list[0].p;
@@ -2141,8 +2143,13 @@ function switchModel(model) {
   if (switching || !MODEL_PAGES[model]) return;
   switching = true;
   saveDevice();
+  /* switched on before the session's first data arrived: the next machine starts switched on too */
+  if (LIVE.key === null && V.power) { try { sessionStorage.setItem('wmebem_vent_power', '1'); } catch (e) {} }
   try { if (fb.db && fb.code) { fb.db.ref('sessions/' + fb.code + '/presence/' + fb.presenceId).remove(); fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).remove(); } } catch (e) {}
   window.location.replace(MODEL_PAGES[model] + window.location.search);
+}
+function takePendingPower() {
+  try { const p = sessionStorage.getItem('wmebem_vent_power') === '1'; sessionStorage.removeItem('wmebem_vent_power'); return p; } catch (e) { return false; }
 }
 const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
 
@@ -2412,7 +2419,9 @@ function applyLive(v) {
      resume) tells a re-run of the same scenario apart; without one, fall back to the title and patient. */
   const key = String(v.scenarioTitle || '') + '|' + String(v.patientName || '');
   const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
-  if (LIVE.key === null) { LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); }
+  /* The first snapshot sets the device up; a power press made before it arrived (here, or on the page
+     that handed over to this one) is kept rather than undone. */
+  if (LIVE.key === null) { const pressed = V.power || takePendingPower(); LIVE.key = key; LIVE.run = run; if (!restoreDevice()) deviceDefaults(); if (pressed && !V.power) powerOn(); }
   else if (key !== LIVE.key || (run && LIVE.run && run !== LIVE.run)) { LIVE.key = key; LIVE.run = run; deviceDefaults(); }
   else if (run) LIVE.run = run;
   applySound();

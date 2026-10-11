@@ -224,7 +224,7 @@
                     changeRhythm(q, 'defibrillation (facilitator override)', { energy: joules });
                 } else {
                     triggerROSC(q, 'defibrillation (facilitator override)', { energy: joules });
-                    scheduleRefibrillation(cur.rhythm);
+                    afterShockRosc(cur, cur.rhythm, q);   // honours "After ROSC" like every other shock
                 }
                 return;
             }

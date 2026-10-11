@@ -937,7 +937,7 @@
 
         return (
             <div className={`h-full overflow-hidden max-md:h-auto max-md:overflow-visible flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
-                <div className={`absolute top-20 max-md:fixed max-md:top-auto max-md:bottom-3 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : '-translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
+                <div className={`fixed bottom-3 max-md:w-[92vw] md:max-w-2xl left-1/2 -translate-x-1/2 z-50 bg-slate-800 border-l-4 rounded shadow-2xl px-6 py-3 transition-all duration-300 ${showToast ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'} ${notification?.type === 'danger' ? 'border-red-500' : notification?.type === 'success' ? 'border-emerald-500' : notification?.type === 'warning' ? 'border-amber-500' : 'border-sky-500'}`}>
                     <div className="flex items-center gap-3">
                         <Lucide icon={notification?.type === 'danger' || notification?.type === 'warning' ? 'alert-triangle' : notification?.type === 'success' ? 'check-circle' : 'info'} className={`w-5 h-5 ${notification?.type === 'danger' ? 'text-red-500' : notification?.type === 'warning' ? 'text-amber-500' : notification?.type === 'success' ? 'text-emerald-500' : 'text-sky-500'}`} />
                         <span className="font-bold text-white">{notification?.msg}</span>
@@ -949,7 +949,7 @@
                     payload (unlike `notification`, which IS synced and IS rendered on the student
                     monitor). Nothing about a conversion can therefore reach the team's screen. */}
                 {rhythmEvent && (
-                    <div role="status" className={`absolute top-32 max-md:fixed max-md:top-auto max-md:bottom-20 max-md:w-[92vw] left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
+                    <div role="status" className={`fixed bottom-20 max-md:w-[92vw] md:max-w-2xl left-1/2 -translate-x-1/2 z-50 rounded shadow-2xl px-6 py-3 border-l-4 animate-fadeIn ${rhythmEvent.converted ? 'bg-slate-800 border-amber-400' : 'bg-slate-800/90 border-slate-500'}`}>
                         <div className="flex items-center gap-3">
                             <Lucide icon="activity" className={`w-5 h-5 ${rhythmEvent.converted ? 'text-amber-400' : 'text-slate-400'}`} />
                             <div>
@@ -1353,7 +1353,7 @@
                                     aria-expanded state say so explicitly. */}
                                 <Button ariaLabel={`Choose an arrest rhythm (${showArrestMenu ? 'menu open' : 'menu closed'})`} variant="danger" onClick={()=>{ setShowArrestMenu(!showArrestMenu); setShowROSCMenu(false); }} className="w-full font-bold"><Lucide icon="activity" className="w-4 h-4"/> ARREST ▾</Button>
                                 {showArrestMenu && (
-                                    <div className="absolute bottom-12 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                    <div className="absolute top-full mt-1 left-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         {ARREST_RHYTHMS.map(r => (
                                             <button key={r} onClick={() => { triggerArrest(r); setShowArrestMenu(false); }} className="text-left px-3 py-2 text-sm text-red-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
                                         ))}
@@ -1363,7 +1363,7 @@
                             <div className="relative" ref={roscMenuRef}>
                                 <Button ariaLabel={`Choose a ROSC rhythm (${showROSCMenu ? 'menu open' : 'menu closed'})`} variant="success" onClick={()=>{ setShowROSCMenu(!showROSCMenu); setShowArrestMenu(false); }} className="w-full font-bold"><Lucide icon="heart" className="w-4 h-4"/> ROSC ▾</Button>
                                 {showROSCMenu && (
-                                    <div className="absolute bottom-12 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
+                                    <div className="absolute top-full mt-1 right-0 bg-slate-800 border border-slate-600 rounded shadow-xl w-full flex flex-col p-1 z-50">
                                         <div className="text-[9px] text-slate-400 px-2 py-1 border-b border-slate-700 uppercase tracking-wider font-bold">Pick the post-ROSC rhythm</div>
                                         {ROSC_RHYTHMS.map(r => (
                                             <button key={r} onClick={() => { triggerROSC(r); setShowROSCMenu(false); }} className="text-left px-3 py-2 text-sm text-emerald-300 hover:bg-slate-700 hover:text-white rounded">{RG.labelFor(r)}</button>
@@ -1483,7 +1483,7 @@
                                      <Button onClick={() => sim.toggleCPR()} variant="outline" className={`h-9 text-[10px] uppercase font-bold ${cprInProgress ? 'bg-red-900/40 border-red-500 text-red-300' : ''}`}>
                                         CPR {cprInProgress ? 'stop' : 'start'}
                                      </Button>
-                                     <Button onClick={() => nextCycle && nextCycle()} variant="outline" className="h-9 text-[10px] uppercase font-bold">Rhythm check +2m</Button>
+                                     <Button onClick={() => nextCycle && nextCycle()} variant="outline" className="min-h-9 h-auto py-1 leading-tight text-[10px] uppercase font-bold">Rhythm check +2m</Button>
                                  </div>
 
                                  {/* Simple view: the shock outcome settings below are hidden; one line says
