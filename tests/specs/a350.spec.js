@@ -141,3 +141,60 @@ test('the gas: a sevoflurane dial and the fresh gas raise the end-tidal agent an
   await expect.poll(() => dev.evaluate(() => window.__vent.G.fio2), { timeout: 30000 }).toBeGreaterThan(40);
   expect(devErrors).toEqual([]);
 });
+
+test('hints and the Education guide: hover shows what a control is, "Change mode to PC-SIMV" points at each step, and Assessment hides the guide', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const { dev, devErrors } = await startOnA350(page, context, 'an-paw');
+  await dev.setViewportSize({ width: 1400, height: 900 });
+  // hover: a bubble says what the key is
+  await dev.locator('#kPower').hover();
+  await expect(dev.locator('.a-tip')).toBeVisible();
+  await expect(dev.locator('.a-tip')).toContainText('On / Standby');
+  await dev.mouse.move(2, 2);
+  await expect(dev.locator('.a-tip')).toBeHidden();
+  // the guide is open beside the machine in Education
+  await expect(dev.locator('#guide')).toBeVisible();
+  await expect(dev.locator('#guideBody')).toContainText('switched off');
+  await switchOn(dev);
+  await dev.locator('[data-tabmode="VC"]').click();
+  await dev.locator('#sbpage').getByRole('button', { name: 'Start...' }).click();
+  await dev.locator('#knob').click();
+  await expect.poll(() => state(dev).then(s => s.mode)).toBe('SCMV');
+  // How do I… change mode to PC-SIMV: the tab, then SIMV, then the knob
+  await dev.locator('[data-task="mode:PSIMV+"]').click();
+  await expect(dev.locator('[data-tabmode="PC"]')).toHaveClass(/g-hl/);
+  await dev.locator('[data-tabmode="PC"]').click();
+  await expect(dev.locator('[data-sync="simv"]')).toHaveClass(/g-hl/);
+  await dev.locator('[data-sync="simv"]').click();
+  await expect(dev.locator('#knob')).toHaveClass(/g-hl/);
+  await expect(dev.locator('#knob')).toHaveClass(/confirm/);
+  expect((await state(dev)).mode).toBe('SCMV');
+  await dev.locator('#knob').click();
+  await expect.poll(() => state(dev).then(s => s.mode)).toBe('PSIMV+');
+  await expect(dev.locator('.g-hl')).toHaveCount(0);
+  await dev.screenshot({ path: test.info().outputPath('a350-guide.png') });
+  // Assessment: no guide
+  await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_VENT_CONFIG', payload: { assess: true } }));
+  await expect.poll(() => dev.evaluate(() => document.body.classList.contains('assess'))).toBe(true);
+  await expect(dev.locator('#guide')).toBeHidden();
+  expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});
+
+test('the new anaesthetic machine scenarios build and start on the A350', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  const r = await page.evaluate(() => ['an-oeso', 'an-disc', 'an-check', 'an-lowflow', 'an-emergence'].map(id => {
+    const s = window.VentSim.forDevice('a350').find(x => x.id === id);
+    const b = window.VentSim.buildScenario({ scenario: id, device: 'a350' });
+    const missing = (s.recommended || []).concat(s.stabilisers || []).filter(k => !window.INTERVENTIONS[k]);
+    return { id, title: b.title, missing, probsOk: s.problems.concat(s.startProblems || []).every(p => window.VENT_PROFILES.PROBLEMS.some(x => x.id === p)) };
+  }));
+  for (const x of r) { expect(x.missing, x.id).toEqual([]); expect(x.probsOk, x.id).toBe(true); }
+  expect(r.find(x => x.id === 'an-check').title).toBe('Anaesthetic machine: Machine check, pre-oxygenation and induction');
+  const { dev, devErrors } = await startOnA350(page, context, 'an-lowflow');
+  await switchOn(dev);
+  await expect(dev.locator('#guideBody')).toContainText('Standby');
+  expect(errors).toEqual([]);
+  expect(devErrors).toEqual([]);
+});

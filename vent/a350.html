@@ -274,6 +274,41 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .lockic{display:none}
 .scr-toast{position:absolute;left:300px;top:70px;width:560px;background:rgba(20,20,20,.94);color:#fff;font-size:16px;padding:10px 14px;border-radius:4px;z-index:10;border:1px solid #555;pointer-events:none}
 .scr-toast[hidden]{display:none}
+/* ---- hover hints, the knob prompt and the Education guide (the simulator's own) ---- */
+.a-tip{position:fixed;z-index:3000;max-width:300px;background:#0f1b2d;color:#f2f5f9;border:1px solid #3d6aa3;border-radius:8px;padding:8px 10px;font-size:13px;line-height:1.35;box-shadow:0 8px 20px rgba(0,0,0,.45);pointer-events:none}
+.a-tip[hidden]{display:none}
+.t1-knob.confirm .ring{animation:kpulse 1.1s ease-in-out infinite}
+@keyframes kpulse{50%{box-shadow:0 0 0 5px #2a2e32,0 0 0 9px #ffd400,0 0 18px 10px rgba(255,212,0,.55)}}
+.tbar.pending .tb-mode .pend{display:block;margin-top:2px;background:#ffd400;color:#000;font-weight:700;font-size:13px;padding:2px 6px;border-radius:3px}
+.g-hl{outline:4px solid #ff8a00 !important;outline-offset:3px;animation:ghl 1s ease-in-out infinite}
+@keyframes ghl{50%{outline-color:#ffe08a}}
+.a-main{flex:1 1 auto;min-height:0;display:flex}
+.a-main>.t1-wrap{min-width:0}
+.guide{flex:0 0 320px;min-height:0;display:flex;flex-direction:column;background:#111a24;border-left:2px solid #2a3a4c;color:#dbe4ee;font-size:13px;line-height:1.4}
+.guide[hidden]{display:none}
+.guide.closed{flex-basis:36px}
+.g-toggle{flex:0 0 auto;margin:6px;background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:5px 8px;font-weight:700;font-size:.8rem}
+.guide.closed .g-toggle{writing-mode:vertical-rl;margin:6px 3px;padding:10px 4px}
+.g-body{flex:1 1 auto;overflow:auto;padding:0 12px 12px}
+.guide.closed .g-body{display:none}
+.g-body h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#ffd24a;margin:12px 0 4px}
+.g-body ul,.g-body ol{margin:0;padding-left:18px}
+.g-body li{margin:3px 0}
+.g-now{list-style:none;padding-left:0 !important}
+.g-now li{background:#18242f;border-radius:6px;padding:6px 8px}
+.g-warn{color:#ffb74a;font-weight:700}
+.g-al{margin-top:6px;padding:3px 8px;border-radius:4px;font-weight:700}
+.g-al.hi{background:#e30613;color:#fff}.g-al.med{background:#ffd400;color:#000}.g-al.low{background:#33d6e8;color:#000}
+.g-steps li.done{color:#7fe08a;text-decoration:line-through}
+.g-steps li.next{color:#fff;font-weight:700}
+.g-ok{color:#7fe08a;font-weight:700;margin:4px 0}
+.g-small{font-size:12px;color:#93a3b3;margin:4px 0}
+.g-tip{margin:0;background:#18242f;border-radius:6px;padding:6px 8px;min-height:34px}
+.g-tasks{display:flex;flex-direction:column;gap:4px}
+.g-task,.g-btn{text-align:left;background:#1c2b3a;color:#e8eef6;border:1px solid #2f4357;border-radius:6px;padding:5px 8px;font-size:13px}
+.g-task.on{background:#ffd24a;color:#1b1300;border-color:#ffd24a}
+.g-btn{margin-top:6px}
+@media (max-width:700px){.guide:not(.closed){position:fixed;right:0;top:36px;bottom:0;width:min(320px,90vw);z-index:1100}}
 /* below-device controls (big targets, used on phones) */
 .under{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin:10px 0 0}
 .under button{background:#1f2a37;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-weight:700;font-size:.95rem;min-width:52px}
@@ -327,6 +362,7 @@ body.embedded .vbar .standalone-only{display:none}
 </header>
 <div class="link-banner" id="linkBanner" role="alert"><b>NOT LINKED TO SESSION</b><span id="linkReason">Looking for the session&hellip;</span></div>
 <div class="ended" id="endedBanner" hidden>SESSION ENDED</div>
+        <div class="a-main">
         <div class="t1-wrap" id="device">
           <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
           <div class="t1-scaler" id="t1scaler">
@@ -337,9 +373,9 @@ body.embedded .vbar .standalone-only{display:none}
             <div class="t1-screenbox" id="screenbox">
               <div class="screen" id="screen">
                 <div class="hdr-pat" id="hdrPat"></div>
-                <button class="scr-msg" id="msgbar" data-open="alarms" data-tab="current" aria-live="polite" aria-label="Alarm messages. Touch to open the alarms"></button>
-                <div class="bstat" id="bstat"></div>
-                <button class="gfx" id="gfx" tabindex="-1" aria-label="Curves: airway pressure, flow and CO2">
+                <button class="scr-msg" id="msgbar" data-tip="Alarm messages, highest priority first: !!! red is high, !! yellow is medium, ! cyan is low. Touch to see all the alarms and what to check." data-open="alarms" data-tab="current" aria-live="polite" aria-label="Alarm messages. Touch to open the alarms"></button>
+                <div class="bstat" id="bstat" data-tip="Power source (mains or battery), silenced alarms and the time."></div>
+                <button class="gfx" id="gfx" data-tip="Curves: airway pressure (yellow, with the Paw high limit as a red line), flow (blue: up is breathing in, down is breathing out) and CO2 (grey: the capnogram)." tabindex="-1" aria-label="Curves: airway pressure, flow and CO2">
                   <canvas id="cv1" style="top:0;height:176px"></canvas>
                   <canvas id="cv2" style="top:177px;height:176px"></canvas>
                   <canvas id="cv3" style="top:354px;height:176px"></canvas>
@@ -368,38 +404,44 @@ body.embedded .vbar .standalone-only{display:none}
             </div>
             <div class="t1-name">Atlan A350<small>EMEVIDENCE · ANAESTHETIC MACHINE TRAINING SIMULATOR</small></div>
             <!-- keys under the screen (the simulator's arrangement) -->
-            <button class="k ap" id="kAudio" style="left:60px" aria-label="Alarm silence key, 2 minutes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg><span class="min">2 min</span></button>
+            <button class="k ap" id="kAudio" data-tip="Alarm silence: mutes the alarm tones for 2 minutes. The alarm messages stay on the screen." style="left:60px" aria-label="Alarm silence key, 2 minutes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg><span class="min">2 min</span></button>
             <span class="klbl" aria-hidden="true" style="left:64px">Alarm silence</span>
-            <button class="k" id="kLight" style="left:210px" aria-label="Work light key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/></svg></button>
+            <button class="k" id="kLight" data-tip="Work light: lights the work surface." style="left:210px" aria-label="Work light key"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/></svg></button>
             <span class="klbl" aria-hidden="true" style="left:199px">Work light</span>
-            <button class="k pw" id="kPower" style="left:340px" aria-label="Power key: press to switch on or to go to Standby; hold in Standby to switch off"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
+            <button class="k pw" id="kPower" data-tip="On / Standby: press to switch the machine on. During therapy, press it to go to Standby (you confirm on the screen). In Standby, hold it for 3 seconds to switch off." style="left:340px" aria-label="Power key: press to switch on or to go to Standby; hold in Standby to switch off"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
             <span class="klbl" aria-hidden="true" style="left:321px">On / Standby</span>
-            <button class="t1-knob" id="knob" aria-label="Rotary knob. Arrow keys turn it, Enter or Space presses it to confirm"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
+            <button class="t1-knob" id="knob" data-tip="Rotary knob: turn it to change the selected (yellow) setting, then press it to confirm. Pressing it also starts a new mode and starts the therapy from the Start dialog. Turning it with nothing selected moves a cursor round the screen." aria-label="Rotary knob. Arrow keys turn it, Enter or Space presses it to confirm"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
             <span class="klbl" aria-hidden="true" style="left:930px">Rotary knob</span>
             <!-- the gas supply, the vaporiser, O2+ and the emergency O2, the APL valve, the bag and the Y-piece -->
             <div class="hw" aria-label="Machine hardware">
-              <div class="hw-sup" id="supply" aria-label="Gas supply pressures"></div>
-              <div class="hw-vap">
+              <div class="hw-sup" id="supply" data-tip="Gas supply: the pipeline pressures of O2, Air and N2O, and the total fresh-gas flow leaving the machine." aria-label="Gas supply pressures"></div>
+              <div class="hw-vap" data-tip="Vaporiser (sevoflurane): the dial sets the percentage of agent added to the fresh gas. How fast it reaches the patient depends on the fresh-gas flow; watch the end-tidal value and xMAC on the screen.">
                 <div class="hw-h">Vaporiser<small>Sevoflurane</small></div>
                 <div class="vdial" aria-hidden="true"><span id="vapNeedle"></span></div>
                 <div class="hw-row"><button class="hb" id="vapDn" aria-label="Vaporiser down">−</button><b id="vapVal" aria-live="polite">0</b><span class="hu">%</span><button class="hb" id="vapUp" aria-label="Vaporiser up">+</button></div>
               </div>
               <div class="hw-o2">
-                <button class="flush" id="kFlush" aria-label="O2+ flush: hold to flush oxygen">O<sub>2</sub>+</button>
+                <button class="flush" id="kFlush" data-tip="O2+ (oxygen flush): hold it to send pure oxygen straight into the breathing system, bypassing the vaporiser. Refills an empty bag fast; in Man/Spon it can push the pressure up to the APL setting." aria-label="O2+ flush: hold to flush oxygen">O<sub>2</sub>+</button>
                 <div class="hw-h">O2 switch</div>
-                <button class="hsw" id="o2sw" aria-label="O2 switch: Aux. O2 or Add. O2"></button>
-                <div class="hw-h">Flow</div>
+                <button class="hsw" id="o2sw" data-tip="O2 switch: Aux. O2 sends the emergency oxygen flow to the outlet for a face mask or nasal cannula; Add. O2 sends it into the breathing system (for example if the electronic mixer fails)." aria-label="O2 switch: Aux. O2 or Add. O2"></button>
+                <div class="hw-h" data-tip="Emergency O2 flow (litres per minute), to the Aux. O2 outlet or, with Add. O2, into the breathing system.">Flow</div>
                 <div class="hw-row"><button class="hb" id="auxDn" aria-label="Emergency O2 flow down">−</button><b id="auxVal">0</b><span class="hu">L/min</span><button class="hb" id="auxUp" aria-label="Emergency O2 flow up">+</button></div>
               </div>
-              <div class="hw-apl">
+              <div class="hw-apl" data-tip="APL valve: in Man/Spon it limits the pressure in the breathing system and the bag. Spont is fully open, for spontaneous breathing; 5 to 70 cmH2O for hand ventilation. It does not affect the ventilator's breaths.">
                 <div class="hw-h">APL valve<small>Man / Spont</small></div>
                 <div class="hw-row"><button class="hb" id="aplDn" aria-label="APL valve down (towards Spont)">−</button><b id="aplVal">30</b><button class="hb" id="aplUp" aria-label="APL valve up">+</button></div>
               </div>
-              <button class="bag" id="bag" aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
-              <button class="ypiece" id="ypiece" aria-label="Y-piece: seal it on the circuit plug for the tests, or connect it to the patient"></button>
+              <button class="bag" id="bag" data-tip="Breathing bag: in Man/Spon press and hold to squeeze a breath in, let go to let the patient breathe out. Its size shows how full the breathing system is: an empty bag means too little fresh gas or a leak." aria-label="Breathing bag: press and hold to squeeze, let go to release"><span class="bag-in" id="bagIn"></span><span class="bag-t">Bag</span></button>
+              <button class="ypiece" id="ypiece" data-tip="Y-piece: where the breathing circuit meets the patient. For the system and leak tests it is sealed on the circuit plug; for the patient, connect it to the tube or mask." aria-label="Y-piece: seal it on the circuit plug for the tests, or connect it to the patient"></button>
             </div>
           </div>
           </div>
+        </div>
+        <!-- Education mode: the guide beside the machine (hidden in Assessment) -->
+        <aside class="guide" id="guide" aria-label="Guide">
+          <button class="g-toggle" id="guideToggle" aria-expanded="true" data-tip="Show or hide the guide: what the machine is doing, what the alarms mean and how to do things. It is not shown in Assessment.">Guide</button>
+          <div class="g-body" id="guideBody" aria-live="off"></div>
+        </aside>
         </div>
         <div class="under" aria-label="Knob controls">
           <button id="kCCW" aria-label="Turn knob anticlockwise">⟲ Turn −</button>
@@ -435,23 +477,23 @@ function scrToast(msg) { const t = $('#scrToast'); t.textContent = msg; t.hidden
 const IE_LIST = [1/9, 1/8, 1/7, 1/6, 1/5, 1/4, 1/3.5, 1/3, 1/2.5, 1/2, 1/1.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
 const ieStr = r => { const t = v => String(+v.toFixed(1)); return r >= 1 ? t(r) + ':1' : '1:' + t(1 / r); };
 const CTRL = {
-  vt:    {label:'VT', unit:'mL', min:10, max:1500, step:v => v >= 100 ? 10 : 5},
-  rate:  {label:'RR', unit:'/min', min:3, max:100, step:1},
-  ti:    {label:'Tinsp', unit:'s', min:0.2, max:10, step:0.1, dp:1},
-  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1},
-  pmax:  {label:'Pmax', unit:'cmH2O', min:10, max:80, step:1},
-  peep:  {label:'PEEP', unit:'cmH2O', min:2, max:35, step:1, off0:true},
-  ps:    {label:'ΔPsupp', unit:'cmH2O', min:3, max:80, step:1, off0:true},
-  trig:  {label:'Trigger', unit:'L/min', min:0.3, max:15, step:v => v >= 1 ? 0.5 : 0.1, dp:1},
-  ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5},
-  pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1},
-  pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5},
-  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true},
-  o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1},
-  fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true},
-  carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O']},
-  height:{label:'Height', unit:'cm', min:30, max:250, step:1},
-  age:   {label:'Age', unit:'years', min:1, max:110, step:1}
+  vt:    {label:'VT', unit:'mL', min:10, max:1500, step:v => v >= 100 ? 10 : 5, tip:'The tidal volume each mandatory breath delivers in the volume modes (VC and VC - AF).'},
+  rate:  {label:'RR', unit:'/min', min:3, max:100, step:1, tip:'The number of mandatory breaths per minute.'},
+  ti:    {label:'Tinsp', unit:'s', min:0.2, max:10, step:0.1, dp:1, tip:'How long each mandatory breath lasts. With RR it sets the I:E ratio, shown under the controls.'},
+  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1, tip:'The airway pressure each pressure-controlled breath reaches. On the Atlan this is the total pressure, not the pressure above PEEP.'},
+  pmax:  {label:'Pmax', unit:'cmH2O', min:10, max:80, step:1, tip:'The highest pressure a volume-controlled breath may reach. If the set volume needs more, the breath is limited at Pmax and "Tidal volume not achieved" can appear.'},
+  peep:  {label:'PEEP', unit:'cmH2O', min:2, max:35, step:1, off0:true, tip:'The pressure kept in the lungs at the end of breathing out. In PSV it is labelled CPAP.'},
+  ps:    {label:'ΔPsupp', unit:'cmH2O', min:3, max:80, step:1, off0:true, tip:'Pressure support above PEEP for the breaths the patient triggers (in SIMV and PSV). Off means no support.'},
+  trig:  {label:'Trigger', unit:'L/min', min:0.3, max:15, step:v => v >= 1 ? 0.5 : 0.1, dp:1, tip:'How much inspiratory flow the patient has to make to trigger a breath. A lower number is more sensitive.'},
+  ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5, tip:'A supported breath ends when the inspiratory flow has fallen to this percentage of its peak.'},
+  pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1, tip:'How quickly the pressure rises at the start of a pressure breath, in seconds.'},
+  pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5, tip:'The part of each volume-controlled breath held as a plateau with no flow, so the plateau pressure (Pplat) can be read.'},
+  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true, tip:'The minimum breathing rate in PSV. If the patient breathes more slowly, the machine gives pressure-controlled breaths at this rate (Apnea Ventilation).'},
+  o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1, tip:'The oxygen concentration of the fresh gas from the mixer. With N2O as the carrier gas it cannot be set below 25%.'},
+  fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true, tip:'The total fresh-gas flow into the breathing system. At low flows the patient rebreathes their own gas, so the inspired oxygen and agent change slowly.'},
+  carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O'], tip:'The gas mixed with the oxygen in the fresh gas: Air or nitrous oxide (N2O).'},
+  height:{label:'Height', unit:'cm', min:30, max:250, step:1, tip:"The patient's height, used for the ideal body weight."},
+  age:   {label:'Age', unit:'years', min:1, max:110, step:1, tip:"The patient's age, used to age-correct the MAC values (xMAC)."}
 };
 /* ranges that depend on other settings ([IFU1] p. 270: Pinsp PEEP+5 to 80, Pmax PEEP+10 to 80, ΔPsupp up to
    80 - PEEP; [PI]: FG O2 at least 25% with N2O) */
@@ -469,13 +511,13 @@ function ctrlDef(key, mk, src) {
 const mvStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 10 ? 1 : (dir > 0 ? v : v - 0.001) >= 1 ? 0.5 : 0.1;
 const vtStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 500 ? 50 : (dir > 0 ? v : v - 0.001) >= 100 ? 10 : 5;
 const ALIM = {
-  phigh:    {label:'Paw', unit:'cmH2O', min:5, max:99, step:1},
-  mvhigh:   {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, offMax:true},
-  mvlow:    {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, off0:true},
-  o2high:   {label:'FiO2', unit:'%', min:19, max:99, step:1, offMax:true},
-  o2low:    {label:'FiO2', unit:'%', min:18, max:98, step:1},
-  etco2high:{label:'etCO2', unit:'kPa', min:0.1, max:9.8, step:0.1, dp:1, offMax:true},
-  etco2low: {label:'etCO2', unit:'kPa', min:0.1, max:9.7, step:0.1, dp:1, off0:true},
+  phigh:    {label:'Paw', unit:'cmH2O', min:5, max:99, step:1, tip:'Upper airway pressure alarm limit. A ventilator breath that reaches it is cut short and "Airway pressure high" sounds.'},
+  mvhigh:   {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, offMax:true, tip:'Upper minute volume alarm limit (Off at the start of a case).'},
+  mvlow:    {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, off0:true, tip:'Lower minute volume alarm limit, set from VT x RR - 40% when ventilation starts. Not active in the first 45 s after starting or changing mode.'},
+  o2high:   {label:'FiO2', unit:'%', min:19, max:99, step:1, offMax:true, tip:'Upper inspired oxygen alarm limit.'},
+  o2low:    {label:'FiO2', unit:'%', min:18, max:98, step:1, tip:'Lower inspired oxygen alarm limit (factory setting 20%).'},
+  etco2high:{label:'etCO2', unit:'kPa', min:0.1, max:9.8, step:0.1, dp:1, offMax:true, tip:'Upper end-tidal CO2 alarm limit.'},
+  etco2low: {label:'etCO2', unit:'kPa', min:0.1, max:9.7, step:0.1, dp:1, off0:true, tip:'Lower end-tidal CO2 alarm limit.'},
   /* not shown on the A350: the shared engine reads them (unset, so they never alarm) */
   vthigh:   {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, offMax:true, hidden:true},
   vtlow:    {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, off0:true, hidden:true}
@@ -507,6 +549,20 @@ const TAB_MODES = {MAN:{cmv:'MAN'}, AF:{cmv:'APVcmv', simv:'APVsimv'}, VC:{cmv:'
 const tabOf = m => Object.keys(TAB_MODES).find(t => TAB_MODES[t].cmv === m || TAB_MODES[t].simv === m) || 'MAN';
 const syncOf = m => ['APVsimv', 'SIMV', 'PSIMV+'].includes(m) ? 'simv' : 'cmv';
 const MODE_GROUPS = [];
+/* what each tab, SIMV/CMV and More do, for the hover hints and the Education guide (the simulator's summaries) */
+const TAB_TIP = {
+  MAN:'Man/Spon: no ventilator breaths. Ventilate by squeezing the bag (the APL valve sets the pressure limit), or let the patient breathe spontaneously with the APL valve at Spont.',
+  AF:'VC - AF, volume control with AutoFlow: the set VT every breath, delivered with the lowest pressure that achieves it (a decelerating flow).',
+  VC:'VC, volume control: the set VT every breath with a constant flow and a plateau. The pressure depends on the lungs; Pmax limits it.',
+  PC:'PC, pressure control: every breath rises to Pinsp for Tinsp. The volume depends on the lungs, so watch VT.',
+  PSV:'PSV, pressure support: the patient triggers every breath and gets ΔPsupp above PEEP (CPAP when ΔPsupp is Off). RRmin gives backup breaths if they breathe too slowly.'
+};
+const SYNC_TIP = {
+  simv:'SIMV: mandatory breaths at the set RR, timed with the patient\'s own efforts. Breaths the patient takes in between get the pressure support (ΔPsupp, under More).',
+  cmv:'CMV: every breath is a mandatory breath at the set RR. In this simulator the patient cannot trigger extra breaths in CMV.'
+};
+const MODE_EXPLAIN = {MAN:TAB_TIP.MAN, APVcmv:TAB_TIP.AF, APVsimv:TAB_TIP.AF + ' ' + SYNC_TIP.simv, SCMV:TAB_TIP.VC, SIMV:TAB_TIP.VC + ' ' + SYNC_TIP.simv,
+  'PCV+':TAB_TIP.PC, 'PSIMV+':TAB_TIP.PC + ' ' + SYNC_TIP.simv, SPONT:TAB_TIP.PSV};
 /* the full mode names ([IFU1] pp. 298-301; [PI] p. 11) */
 const MODE_NAME = {MAN:'Man/Spon', APVcmv:'VC-CMV/AutoFlow', APVsimv:'VC-SIMV/AutoFlow', SCMV:'VC-CMV', SIMV:'VC-SIMV', 'PCV+':'PC-CMV', 'PSIMV+':'PC-SIMV', SPONT:'CPAP/PSV'};
 const VCM = ['SCMV', 'SIMV'];
@@ -1182,30 +1238,31 @@ function soundTick(dt) {
 }
 
 /* ======================= alarms ======================= */
-/* Priorities: high !!! red, medium !! yellow, low ! cyan ([IFU2] p. 197). The texts are the IFU's ([IFU1]
-   pp. 202-218) except those marked "simulator's wording", which the IFU text available here did not give.
-   Thresholds and delays the IFU does not give are the simulator's. */
+/* Priorities: high !!! red, medium !! yellow, low ! cyan ([IFU2] p. 197). The texts and priorities are the IFU's
+   "Alarm - Cause - Remedy" table ([IFU1] pp. 201-218) except those marked "simulator's wording". Where the IFU
+   lists two priorities for one alarm (it is downgraded by ALARM RESET), the first is used. Thresholds and delays
+   the IFU does not give are the simulator's. */
 const ALARMS = {
   phigh:    {t:'Airway pressure high', p:'hi', f:'pip'},
   pcont:    {t:'Airway press. continuously high', p:'hi', f:'peep'},
   plow:     {t:'Airway pressure not achieved', p:'med', f:'pip'},
-  plimit:   {t:'Pressure limited', p:'low', f:'pip'},                 /* simulator's wording */
+  plimit:   {t:'Tidal volume not achieved', p:'med', f:'vt'},
   apnea:    {t:'Apnea', p:'med'},
   apnea2:   {t:'Apnea', p:'hi'},                                      /* the IFU: !! escalating to !!! */
-  apvent:   {t:'Apnea ventilation', p:'low'},                         /* simulator's wording (RRmin backup in PSV) */
+  apvent:   {t:'Apnea Ventilation', p:'med'},                         /* RRmin backup breaths in PSV */
   mvlow:    {t:'Minute volume low', p:'med', f:'mv'},
   mvhigh:   {t:'Minute volume high', p:'med', f:'mv'},
   o2low:    {t:'FiO2 low', p:'hi', f:'o2'},
   o2high:   {t:'FiO2 high', p:'med', f:'o2'},
   etco2high:{t:'etCO2 high', p:'med', f:'co2'},
   etco2low: {t:'etCO2 low', p:'med', f:'co2'},
-  fglow:    {t:'Fresh gas low or leakage', p:'med'},
+  fglow:    {t:'Fresh gas low or leakage', p:'hi'},
   nofg:     {t:'No fresh-gas flow', p:'hi'},
-  o2fail:   {t:'O2 supply low', p:'hi'},
-  addo2:    {t:'Add. O2 activated', p:'med'},
-  mains:    {t:'Mains power failure', p:'med'},                       /* simulator's wording */
-  battmed:  {t:'Battery low', p:'med'},                               /* simulator's wording */
-  batthi:   {t:'Battery low', p:'hi'},                                /* simulator's wording */
+  o2fail:   {t:'Central O2 supply low', p:'hi'},
+  addo2:    {t:'"Add. O2" activated', p:'med'},
+  mains:    {t:'Power failure', p:'low'},
+  battmed:  {t:'Battery charge low', p:'low'},
+  batthi:   {t:'Battery charge very low', p:'med'},
   battdead: {t:'Battery empty', p:'hi'},                              /* simulator's wording */
   /* raised by the shared engine for other machines; never by the A350 */
   discpat:  {t:'Disconnection', p:'hi'}, vlimit:{t:'Volume limited', p:'low'}, chkplim:{t:'Check Pmax', p:'low'}, plimchg:{t:'Pressure limit changed', p:'low'},
@@ -1213,28 +1270,30 @@ const ALARMS = {
   vtlow:{t:'VT low', p:'med'}, vthigh:{t:'VT high', p:'med'}, fhigh:{t:'RR high', p:'med'}, flow:{t:'RR low', p:'med'},
   lowo2:{t:'FiO2 low', p:'hi'}, higho2:{t:'FiO2 high', p:'med'}, irv:{t:'IRV', p:'low'}, maxleak:{t:'Leakage', p:'low'}, asvtarget:{t:'Target not met', p:'low'}, cpron:{t:'CPR', p:'low'}
 };
-/* troubleshooting help (Education mode): the simulator's summary of what to check, not Dräger's text */
+/* what each alarm means and what to check: the simulator's summary, written from the causes and remedies in the IFU's
+   "Alarm - Cause - Remedy" table, not Dräger's own text */
 const HELP = {
-  phigh:'<ul><li>The airway pressure reached the Paw high limit: inspiration ends there.</li><li>Look at the patient (coughing, light anaesthesia, bronchospasm) and along the circuit and tube (kinked, blocked, endobronchial).</li><li>Hand-ventilate to feel the lungs if in doubt.</li></ul>',
-  pcont:'<ul><li>The pressure in the breathing system is staying high between breaths.</li><li>In Man/Spon: is the APL valve closed down with the bag filling? Open the APL valve (Spont) or squeeze the excess out.</li><li>Check the expiratory limb and the scavenging.</li></ul>',
-  plow:'<ul><li>The set pressure is not being reached: gas is escaping.</li><li>Check for a disconnection, a leak at the tube cuff or the circuit, and the fresh-gas flow.</li></ul>',
-  plimit:'<ul><li>The breath was limited at Pmax: the set VT may not be delivered.</li><li>Find out why the pressure is high before raising Pmax.</li></ul>',
-  apnea:'<ul><li>No breath (no CO2) has been detected.</li><li>In Man/Spon: is the patient breathing? Ventilate by hand or start a ventilator mode.</li><li>Ventilating and still no CO2: think disconnection, oesophageal intubation, or no cardiac output.</li></ul>',
-  apnea2:'<ul><li>No breath (no CO2) for some time.</li><li>Ventilate the patient now. Ventilating and still no CO2: disconnection, oesophageal intubation or cardiac arrest.</li></ul>',
-  mvlow:'<ul><li>Less gas is going in and out than the limit.</li><li>Check the patient, a leak or disconnection, and the settings.</li></ul>',
-  mvhigh:'<ul><li>The minute volume is above the limit. Check the settings and the patient.</li></ul>',
-  o2low:'<ul><li>The inspired O2 is below the limit.</li><li>Raise FG O2 and the fresh-gas flow. With N2O, the O2 in the circle falls at low flows.</li><li>Check the O2 supply.</li></ul>',
-  o2high:'<ul><li>The inspired O2 is above the limit.</li></ul>',
-  etco2high:'<ul><li>The end-tidal CO2 is above the limit.</li><li>Ventilate more. Think of rebreathing (exhausted soda lime), malignant hyperthermia, sepsis or a CO2 load.</li></ul>',
-  etco2low:'<ul><li>The end-tidal CO2 is below the limit.</li><li>Think of over-ventilation, a leak, a falling cardiac output or an embolus.</li></ul>',
-  fglow:'<ul><li>The breathing bag is running empty: there is not enough fresh gas for what is being lost.</li><li>Look for a leak or a disconnection. Raise the fresh-gas flow; O2+ refills the bag.</li></ul>',
-  nofg:'<ul><li>No fresh gas is flowing. Set a FG flow.</li><li>If the mixer has failed, use Add. O2 and keep the patient asleep (TIVA if the vapour has stopped).</li></ul>',
-  o2fail:'<ul><li>The O2 supply pressure is low (pipeline or cylinder).</li><li>Open the O2 cylinder, check the patient\'s SpO2, call for help (QRH 4-1).</li><li>Have a self-inflating bag and an O2 cylinder ready.</li></ul>',
-  addo2:'<ul><li>The O2 switch is set to Add. O2: emergency O2 goes straight into the breathing system.</li><li>Set the switch back to Aux. O2 when it is no longer needed.</li></ul>',
-  mains:'<ul><li>The machine is running on its battery. Check the mains plug and supply (QRH 4-2).</li></ul>',
-  battmed:'<ul><li>The battery is low. Restore mains power.</li></ul>',
-  batthi:'<ul><li>The battery is nearly empty. Restore mains power and prepare to ventilate by hand with a self-inflating bag and TIVA.</li></ul>',
-  battdead:'<ul><li>The battery is empty: the ventilator has stopped. Ventilate by hand (Man/Spon still works with Add. O2) or with a self-inflating bag.</li></ul>'
+  phigh:'<ul><li>The airway pressure reached the Paw high limit, so the breath was cut short.</li><li>Check the patient (coughing, light anaesthesia, bronchospasm), the tube and the hoses (kinked or blocked), the settings and the alarm limit.</li><li>If in doubt, hand-ventilate in Man/Spon to feel the lungs.</li></ul>',
+  pcont:'<ul><li>The pressure in the breathing system has stayed high between breaths.</li><li>In Man/Spon: is the APL valve closed with the bag overfilling? Open it (Spont) or lower the fresh-gas flow.</li><li>Check the settings, the breathing circuit and the tube, and whether the patient is breathing against the machine.</li></ul>',
+  plow:'<ul><li>The set pressure is not being reached: gas is escaping or not enough is coming in.</li><li>Check the fresh-gas settings and the bag, then look for a leak or a disconnection along the circuit and at the tube.</li></ul>',
+  plimit:'<ul><li>The volume breath was limited at Pmax, so less than the set VT went in.</li><li>Check the settings and Pmax, the patient\'s compliance (stiff lungs, bronchospasm, a blocked or endobronchial tube) and whether they are breathing against the machine.</li></ul>',
+  apnea:'<ul><li>No breathing or ventilation has been detected. Start hand ventilation now.</li><li>Check the ventilation settings and whether the patient can breathe on their own.</li><li>Ventilating and still no CO2: think disconnection, oesophageal intubation or no cardiac output.</li></ul>',
+  apnea2:'<ul><li>Still no breathing or ventilation. Ventilate by hand now.</li><li>Ventilating and still no CO2: disconnection, oesophageal intubation or cardiac arrest.</li></ul>',
+  apvent:'<ul><li>In PSV the patient did not trigger a breath, so the machine is giving backup breaths at RRmin.</li><li>Check whether the patient can breathe on their own and the Trigger setting, or change to a pressure- or volume-controlled mode.</li></ul>',
+  mvlow:'<ul><li>Less gas is going in and out each minute than the lower limit.</li><li>Check the patient, the settings, the tube or mask (a leak or a disconnection) and the alarm limit.</li></ul>',
+  mvhigh:'<ul><li>The minute volume is above the upper limit. Check the settings, the patient and the alarm limit.</li></ul>',
+  o2low:'<ul><li>The inspired oxygen has fallen below the limit.</li><li>Check FG O2 and the fresh-gas flow (with N2O at a low flow the oxygen in the circle falls), a large leak in the breathing system, and the O2 supply.</li></ul>',
+  o2high:'<ul><li>The inspired oxygen is above the upper limit. Check FG O2 and the fresh-gas settings.</li></ul>',
+  etco2high:'<ul><li>The end-tidal CO2 is above the limit. Check the ventilation (rate and volume).</li><li>Think of rebreathing, malignant hyperthermia, sepsis or a CO2 load.</li></ul>',
+  etco2low:'<ul><li>The end-tidal CO2 is below the limit. Check the ventilation.</li><li>Think of over-ventilation, a leak, a falling cardiac output or an embolus.</li></ul>',
+  fglow:'<ul><li>The fresh-gas flow is not enough to keep the breathing system full: the bag is emptying.</li><li>Refill the system now, for example with O2+. Then check the fresh-gas settings, and look for a leak or a disconnection at the circuit, the tube or the mask.</li></ul>',
+  nofg:'<ul><li>No fresh gas is flowing. Set a FG flow.</li><li>If the mixer has failed, use the O2 switch on Add. O2, and keep the patient anaesthetised (intravenously if the vapour has stopped).</li></ul>',
+  o2fail:'<ul><li>The central (pipeline) O2 supply pressure is low.</li><li>Open the O2 cylinder or check the pipeline, check the patient\'s SpO2 and call for help (QRH 4-1).</li><li>Have a self-inflating bag and an oxygen cylinder ready.</li></ul>',
+  addo2:'<ul><li>The O2 switch is on Add. O2: the emergency O2 flow goes straight into the breathing system.</li><li>When it is no longer needed, turn the flow down and set the switch back to Aux. O2.</li></ul>',
+  mains:'<ul><li>Mains power is not available: the machine is running on its battery. Restore the mains supply (QRH 4-2).</li></ul>',
+  battmed:'<ul><li>The battery charge is low and there is no mains power. Restore the mains supply.</li></ul>',
+  batthi:'<ul><li>The battery is nearly empty and the machine will shut down soon. Restore mains power and get ready to ventilate by hand (self-inflating bag) with intravenous anaesthesia.</li></ul>',
+  battdead:'<ul><li>The battery is empty: the ventilator has stopped. Ventilate by hand with a self-inflating bag and keep the patient anaesthetised intravenously.</li></ul>'
 };
 const PRI_ORDER = {hi:3, med:2, low:1};
 const PRI_MARK = {hi:'!!!', med:'!!', low:'!'};
@@ -1511,7 +1570,8 @@ function ctlHTML(key, scope, val, mode) {
   const lb = scope === 'lim' ? limLabel(key) : labelFor(key, mode);
   const st = act ? 'sel' : scope === 'draft' ? 'avail' : 'on';
   const left = act && E.t0 !== undefined ? Math.max(0, EDIT_TIMEOUT_S - (B.now - E.t0)) : null;
-  return `<button class="tctl ${st}${left !== null && left <= 5 ? ' warn' : ''}" data-kf data-scope="${scope}" data-key="${key}" aria-pressed="${act}" aria-label="${esc(lb)} ${esc(valStr(scope, key, v))} ${esc(d.unit)}">`
+  const tip = lb + ': ' + (d.tip || '') + (scope === 'draft' ? ' (Light green: part of the new mode, not active until you press the rotary knob.)' : ' Touch it, turn the rotary knob, then press the knob to confirm.');
+  return `<button class="tctl ${st}${left !== null && left <= 5 ? ' warn' : ''}" data-kf data-scope="${scope}" data-key="${key}" data-tip="${esc(tip)}" aria-pressed="${act}" aria-label="${esc(lb)} ${esc(valStr(scope, key, v))} ${esc(d.unit)}">`
     + `<span class="lb">${esc(lb)}</span><span class="v">${esc(valStr(scope, key, v))}</span><span class="u">${esc(d.unit)}</span>`
     + (act ? `<span class="rng">${esc(rangeStr(d))}</span>` : '') + '</button>';
 }
@@ -1522,19 +1582,22 @@ function renderRcol() {
   tb.hidden = false;
   const mode = D ? D.mode : V.mode, src = D ? D.set : V.set, scope = D ? 'draft' : 'ctrl';
   const tabNow = tabOf(V.mode), tabSel = tabOf(mode);
-  $('#modeName').innerHTML = `<b>${esc(V.standby ? 'Standby' : mName(V.mode))}</b>` + (D ? `<span class="pend">New: ${esc(mName(D.mode, D.set))}. Press the rotary knob to confirm.</span>` : '');
+  $('#modeName').innerHTML = `<b>${esc(V.standby ? 'Standby' : mName(V.mode))}</b>` + (D ? `<span class="pend">New: ${esc(mName(D.mode, D.set))}. Press the rotary knob to start it.</span>` : '');
+  $('#modeName').dataset.tip = D ? 'A new mode is selected but not running yet. Check its settings (light green), then press the rotary knob to start it. Touching the active (dark green) tab cancels it.'
+    : 'The active ventilation mode. To change it: touch a mode tab, choose SIMV or CMV where shown, check the light-green settings, then press the rotary knob.';
+  $('#tbar').classList.toggle('pending', !!D);
   $('#tabs').innerHTML = TABS.map(([t, n]) => {
     const st = t === tabSel && D && t !== tabNow ? 'sel' : t === tabNow ? 'on' : 'avail';
-    return `<button class="ttab ${st}" data-kf data-tabmode="${t}" aria-pressed="${t === tabNow}">${esc(n)}</button>`;
+    return `<button class="ttab ${st}" data-kf data-tabmode="${t}" data-tip="${esc(TAB_TIP[t] + (t === tabNow ? ' (Active.)' : V.standby ? ' Touch to choose it.' : ' Touch to select it, then press the rotary knob to start it.'))}" aria-pressed="${t === tabNow}">${esc(n)}</button>`;
   }).join('') + (TAB_MODES[tabSel].simv ? ['simv', 'cmv'].map(sy => {
     const cur = syncOf(V.mode) === sy && tabSel === tabNow, sel = D && syncOf(D.mode) === sy && !cur;
-    return `<button class="tsync ${sel ? 'sel' : cur ? 'on' : 'avail'}" data-kf data-sync="${sy}">${sy.toUpperCase()}</button>`;
-  }).join('') : '') + (MODE_CTRLS[mode].more.length ? `<button class="tmore" data-kf id="tMore" aria-pressed="${V.more}">${V.more ? 'Less' : 'More'}</button>` : '');
+    return `<button class="tsync ${sel ? 'sel' : cur ? 'on' : 'avail'}" data-kf data-sync="${sy}" data-tip="${esc(SYNC_TIP[sy])}">${sy.toUpperCase()}</button>`;
+  }).join('') : '') + (MODE_CTRLS[mode].more.length ? `<button class="tmore" data-kf id="tMore" data-tip="More / Less: shows or hides the extra settings for this mode (pressure support, trigger, slope and others)." aria-pressed="${V.more}">${V.more ? 'Less' : 'More'}</button>` : '');
   const c = MODE_CTRLS[mode];
   const keys = c.basic.concat(V.more ? c.more : []);
   $('#rcol').innerHTML = keys.length ? keys.map(k => ctlHTML(k, scope, src[k], mode)).join('')
     : `<div class="tinfo"><b>Man/Spon</b><span>Ventilate with the bag. The APL valve sets the pressure limit: turn it fully anticlockwise to Spont (open) for spontaneous breathing.</span><span class="apl">APL ${V.apl > 0 ? V.apl + ' cmH2O' : 'Spont (open)'}</span></div>`;
-  $('#fgctl').innerHTML = `<div class="fgh">Fresh gas</div>` + FG.map(k => ctlHTML(k, 'ctrl', V.set[k], mode)).join('');
+  $('#fgctl').innerHTML = `<div class="fgh" data-tip="Fresh gas: the gas mixture the machine delivers into the breathing system (carrier gas, its oxygen concentration and the total flow). The vaporiser adds agent to it.">Fresh gas</div>` + FG.map(k => ctlHTML(k, 'ctrl', V.set[k], mode)).join('');
   $('#tbNote').innerHTML = therapyNote(mode, src);
 }
 /* the extra-information field: derived timing, and what the mode does (the simulator's text) */
@@ -1551,12 +1614,12 @@ function therapyNote(mode, s) {
 }
 /* ---------- the monitoring area: parameter fields and the gas field ---------- */
 const PARAMS = [
-  {id:'pip', n:'PIP', u:'cmH2O', dp:0, v:() => M.ppeak, lim:() => 'high ' + V.lim.phigh},
-  {id:'pplat', n:'Pplat', u:'cmH2O', dp:0, v:() => M.pplat},
-  {id:'peep', n:'PEEP', u:'cmH2O', dp:0, v:() => V.mode === 'MAN' ? Math.max(G.circP, M.peep || 0) : M.peep},
-  {id:'mv', n:'MV', u:'L/min', dp:1, v:() => M.mv, lim:() => (V.lim.mvhigh <= ALIM.mvhigh.max ? fmt(V.lim.mvhigh, 1) : 'Off') + ' / ' + (V.lim.mvlow > 0 ? fmt(V.lim.mvlow, 1) : 'Off')},
-  {id:'vt', n:'VT', u:'mL', dp:0, v:() => M.vte},
-  {id:'rr', n:'RR', u:'/min', dp:0, v:() => M.ftot}
+  {id:'pip', n:'PIP', u:'cmH2O', dp:0, v:() => M.ppeak, lim:() => 'high ' + V.lim.phigh, tip:'Peak airway pressure of the last breath. The small number is the Paw high alarm limit.'},
+  {id:'pplat', n:'Pplat', u:'cmH2O', dp:0, v:() => M.pplat, tip:'Plateau pressure at the end of inspiration, when the flow has stopped: the pressure the alveoli see. A high PIP with a normal Pplat points to the airway or tube; both high points to the lungs or chest wall.'},
+  {id:'peep', n:'PEEP', u:'cmH2O', dp:0, v:() => V.mode === 'MAN' ? Math.max(G.circP, M.peep || 0) : M.peep, tip:'Pressure at the end of expiration. In Man/Spon it is the pressure held in the breathing system by the bag and APL valve.'},
+  {id:'mv', n:'MV', u:'L/min', dp:1, v:() => M.mv, lim:() => (V.lim.mvhigh <= ALIM.mvhigh.max ? fmt(V.lim.mvhigh, 1) : 'Off') + ' / ' + (V.lim.mvlow > 0 ? fmt(V.lim.mvlow, 1) : 'Off'), tip:'Expired minute volume (litres per minute). The small numbers are the high and low alarm limits.'},
+  {id:'vt', n:'VT', u:'mL', dp:0, v:() => M.vte, tip:'Expired tidal volume of the last breath. Lung-protective ventilation aims at about 6 to 8 mL/kg of ideal body weight.'},
+  {id:'rr', n:'RR', u:'/min', dp:0, v:() => M.ftot, tip:'Measured breathing rate: machine and patient breaths together.'}
 ];
 function renderMMP() {
   const el = $('#mmps');
@@ -1565,7 +1628,7 @@ function renderMMP() {
   topAlarms().forEach(a => { if (a.f && !pri[a.f]) pri[a.f] = a.p; });
   el.innerHTML = PARAMS.map(p => {
     const v = V.standby ? null : p.v();
-    return `<button class="pf ${pri[p.id] ? 'al ' + pri[p.id] : ''}" data-kf data-open="alarms" data-tab="limits" aria-label="${p.n} ${fmt(v, p.dp)} ${p.u}"><span class="n">${p.n}</span><span class="u">${p.u}</span>`
+    return `<button class="pf ${pri[p.id] ? 'al ' + pri[p.id] : ''}" data-kf data-open="alarms" data-tab="limits" data-tip="${esc(p.n + ': ' + p.tip + ' Touch to open the alarm limits.')}" aria-label="${p.n} ${fmt(v, p.dp)} ${p.u}"><span class="n">${p.n}</span><span class="u">${p.u}</span>`
       + `<span class="v">${v === null || v === undefined ? '--' : fmt(v, p.dp)}</span>${p.lim ? `<span class="lm">${esc(p.lim())}</span>` : ''}</button>`;
   }).join('');
   renderSMP(pri);
@@ -1575,18 +1638,19 @@ function renderSMP(pri) {
   const el = $('#smp');
   if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
   const sb = V.standby, et = etco2kPa(), moving = !sb && B.now - B.lastStart < 12 && !G.ySealed && !P.disc;
-  const rows = [['O2', '%', G.fio2, moving ? Math.max(0, G.fio2 - 4.5) : null, 0, 'o2']];
-  rows.push(['CO2', 'kPa', et === null ? null : 0, et === null || !moving ? null : et, 1, 'co2']);
-  if (G.fin2o > 0.5 || G.etn2o > 0.5) rows.push(['N2O', '%', G.fin2o, moving ? G.etn2o : null, 0, '']);
-  if (G.fiag > 0.04 || G.etag > 0.04) rows.push(['Sev', '%', G.fiag, moving ? G.etag : null, 1, 'ag']);
+  const rows = [['O2', '%', G.fio2, moving ? Math.max(0, G.fio2 - 4.5) : null, 0, 'o2', 'Oxygen: inspired (in) and end-tidal (et). The end-tidal oxygen shows how well the lungs are filled with oxygen, for example after pre-oxygenation.']];
+  rows.push(['CO2', 'kPa', et === null ? null : 0, et === null || !moving ? null : et, 1, 'co2', 'Carbon dioxide: inspired (in, normally 0) and end-tidal (et). No CO2 while ventilating means no gas exchange: disconnection, oesophageal tube or no cardiac output.']);
+  if (G.fin2o > 0.5 || G.etn2o > 0.5) rows.push(['N2O', '%', G.fin2o, moving ? G.etn2o : null, 0, '', 'Nitrous oxide, inspired and end-tidal.']);
+  if (G.fiag > 0.04 || G.etag > 0.04) rows.push(['Sev', '%', G.fiag, moving ? G.etag : null, 1, 'ag', 'Sevoflurane, inspired and end-tidal. The end-tidal value is what the patient\'s brain follows.']);
   const mac = xMAC();
-  el.innerHTML = `<div class="gh"><span></span><span>in</span><span>et</span></div>` + rows.map(r => `<div class="gr ${r[5]} ${pri && pri[r[5]] ? 'al ' + pri[r[5]] : ''}"><span class="n">${r[0]}<small>${r[1]}</small></span><b>${sb || r[2] === null ? '--' : fmt(r[2], r[4])}</b><b>${sb || r[3] === null ? '--' : fmt(r[3], r[4])}</b></div>`).join('')
-    + (mac > 0.05 ? `<div class="gr mac"><span class="n">xMAC<small>age ${patientAge()}</small></span><b></b><b>${sb ? '--' : fmt(mac, 1)}</b></div>` : '');
+  el.innerHTML = `<div class="gh"><span></span><span>in</span><span>et</span></div>` + rows.map(r => `<div class="gr ${r[5]} ${pri && pri[r[5]] ? 'al ' + pri[r[5]] : ''}" data-tip="${esc(r[6])}"><span class="n">${r[0]}<small>${r[1]}</small></span><b>${sb || r[2] === null ? '--' : fmt(r[2], r[4])}</b><b>${sb || r[3] === null ? '--' : fmt(r[3], r[4])}</b></div>`).join('')
+    + (mac > 0.05 ? `<div class="gr mac" data-tip="xMAC: the end-tidal agents added together as multiples of their age-corrected MAC. 1 MAC is the end-tidal concentration at which half of patients do not move to a surgical incision."><span class="n">xMAC<small>age ${patientAge()}</small></span><b></b><b>${sb ? '--' : fmt(mac, 1)}</b></div>` : '');
 }
 /* the header bar: patient category and data (left) */
 function renderModeName() {
   const on = V.power && V.selftest <= 0;
   $('#hdrPat').style.visibility = on ? '' : 'hidden';
+  $('#hdrPat').dataset.tip = 'Patient category, age and height, from the Start dialog. Age is used for xMAC.';
   $('#hdrPat').innerHTML = `<b>Adult</b><span>${patientAge()} y · ${V.set.height} cm</span>`;
 }
 function wallClock() { const d = new Date(); return d.toTimeString().slice(0, 5); }
@@ -1603,14 +1667,26 @@ function renderAlarmBar() {
   const bar = $('#msgbar');
   if (!V.power || V.selftest > 0) { bar.innerHTML = ''; return; }
   const list = topAlarms();
-  bar.innerHTML = list.slice(0, 3).map(a => `<span class="af ${a.p}">${PRI_MARK[a.p]} ${esc(a.t)}</span>`).join('') + (list.length > 3 ? `<span class="af more">+${list.length - 3}</span>` : '');
+  const edu = !document.body.classList.contains('assess');
+  bar.innerHTML = list.slice(0, 3).map(a => `<span class="af ${a.p}"${edu && HELP[a.id] ? ` data-tip="${esc(a.t + ': ' + tipPlain(HELP[a.id]))}"` : ''}>${PRI_MARK[a.p]} ${esc(a.t)}</span>`).join('') + (list.length > 3 ? `<span class="af more">+${list.length - 3}</span>` : '');
   $('#lamp').className = 't1-lamp' + (list.length ? ' ' + list[0].p : '');
 }
 /* the main menu bar ([IFU2] pp. 350-353; the simulated ones work, the others say so) */
+const MENU_TIP = {
+  mAlarms:'Alarms: the alarm limits, the current alarms (with what to check) and the log.',
+  mAuto:'Autoset limits: sets the minute volume and Paw high limits around the values measured now.',
+  mViews:'Views: other screen layouts. Not simulated here.', mTrends:'Trends and data. Not simulated here.', mProc:'Procedures (for example a lung recruitment). Not simulated here.',
+  mSetup:'System setup: alarm volume and the colour scheme.',
+  mTests:'Tests: the system test and leak test before the first patient. Only in Standby.',
+  mStart:'Start: choose the patient, then start the therapy with the rotary knob.',
+  mStandby:'Standby: stop the ventilation and the fresh gas (you confirm first).'
+};
+/* a help text without its markup, for a hover hint */
+const tipPlain = h => h.replace(/<li>/g, ' • ').replace(/<[^>]+>/g, '').trim();
 function renderMenu() {
   const el = $('#mmenu');
   if (!V.power || V.selftest > 0) { el.innerHTML = ''; return; }
-  const b = (id, label, opts = {}) => `<button class="mm ${win === opts.open ? 'open' : ''}" data-kf ${opts.open ? `data-open="${opts.open}"` : `id="${id}"`} ${opts.dis ? 'aria-disabled="true"' : ''}>${label}</button>`;
+  const b = (id, label, opts = {}) => `<button class="mm ${win === opts.open ? 'open' : ''}" data-kf ${opts.open ? `data-open="${opts.open}"` : `id="${id}"`} ${opts.dis ? 'aria-disabled="true"' : ''} data-tip="${esc(MENU_TIP[id] || '')}">${label}</button>`;
   el.innerHTML = b('mAlarms', 'Alarms...', {open:'alarms'}) + b('mAuto', 'Autoset limits') + b('mViews', 'Views...', {dis:true}) + b('mTrends', 'Trends/ Data...', {dis:true})
     + b('mProc', 'Proce- dures...', {dis:true}) + b('mSetup', 'System setup...', {open:'setup'}) + (V.standby ? b('mTests', 'Tests...', {open:'tests'}) : '')
     + '<span class="sp"></span>' + (V.standby ? b('mStart', 'Start...', {open:'start'}) : b('mStandby', 'Standby...'));
@@ -1625,9 +1701,9 @@ function renderStandbyPage() {
   const txt = {green:'Fully operational', yellow:'Operational with restrictions: the tests have not all been done today', red:'Not operational: a test failed. Repeat it.'}[ready];
   const at = k => t[k] === 'ok' ? 'passed ' + (t[k + 'At'] || '') : t[k] === 'fail' ? 'failed ' + (t[k + 'At'] || '') : 'not done';
   el.innerHTML = `<div class="sb-h">Standby</div>
-    <div class="sb-ready ${ready}"><span class="dot"></span><span>${txt}</span></div>
+    <div class="sb-ready ${ready}" data-tip="Readiness: green when the system test and leak test have both passed today, yellow when they have not been done, red when one failed."><span class="dot"></span><span>${txt}</span></div>
     <div class="sb-tests">System test: ${at('sys')}<br>Leak test: ${at('leak')}</div>
-    <div class="sb-btns"><button class="wb green" data-kf data-open="start">Start...</button><button class="wb" data-kf id="qsMan">Quick start Man/Spon</button><button class="wb" data-kf data-open="tests">Tests...</button></div>
+    <div class="sb-btns"><button class="wb green" data-kf data-open="start" data-tip="Start: check the patient data and the mode, then press the rotary knob to start the therapy.">Start...</button><button class="wb" data-kf id="qsMan" data-tip="Quick start Man/Spon: starts hand ventilation straight away (bag and APL valve), for example to pre-oxygenate.">Quick start Man/Spon</button><button class="wb" data-kf data-open="tests" data-tip="Tests: the system test and the leak test. Seal the Y-piece on the circuit plug first.">Tests...</button></div>
     <p class="sb-note">Fresh gas and ventilation are off in Standby. Squeezing the breathing bag also opens the Start dialog.</p>`;
 }
 function renderLEDs() {
@@ -1640,13 +1716,16 @@ function renderLEDs() {
   off.hidden = V.power && V.selftest <= 0;
   $('#scrOffTxt').innerHTML = V.power ? 'Atlan A350<small>Starting up…</small>' : '';
   $('#t1').classList.toggle('off', !V.power);
+  $('#knob').classList.toggle('confirm', V.power && V.selftest <= 0 && !!(E || D || win === 'start'));
   renderHW();
+  renderGuide();
 }
 function renderAll() {
   V.backupOn = V.mode === 'SPONT' && V.set.rrmin > 0;
   renderModeName(); renderRcol(); renderMMP(); renderAlarmBar(); renderBstat(); renderMenu(); renderStandbyPage(); renderLEDs();
   if (win) renderWindow(); else $('#win').hidden = true;
   applyCursor();
+  guideHighlight();
 }
 
 /* ---------- dialogs ---------- */
@@ -1662,7 +1741,7 @@ function closeWin() {
   if (E && E.scope === 'lim') E = null;
   win = null; cursor = -1; renderAll();
 }
-const X = '<button class="wx" data-kf id="wClose" aria-label="Close">✕</button>';
+const X = '<button class="wx" data-kf id="wClose" aria-label="Close" data-tip="Close this window.">✕</button>';
 function tabs(list) {
   return `<div class="htabs" role="tablist">${list.map(([id, nm]) => `<button role="tab" data-kf data-tab="${id}" aria-selected="${winTab === id}">${nm}</button>`).join('')}</div>`;
 }
@@ -1673,14 +1752,14 @@ function renderWindow() {
   let h = '';
   if (win === 'start') {
     h = X + `<div class="wtitle">Start</div><div class="wbody">
-      <div class="wrow"><button class="wb green" data-kf id="stNew">New adult</button><button class="wb" disabled title="Not simulated">New pediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont">Continue case</button></div>
+      <div class="wrow"><button class="wb green" data-kf id="stNew" data-tip="New adult: resets the settings and alarm limits to the factory start values.">New adult</button><button class="wb" disabled title="Not simulated">New pediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont" data-tip="Continue case: keeps the last settings.">Continue case</button></div>
       <div class="wgrp">Patient data</div>
       <div class="wrow">${ctlHTML('age', 'ctrl', V.set.age)}${ctlHTML('height', 'ctrl', V.set.height)}
         <button class="wb ${V.sex === 'Male' ? 'green' : ''}" data-kf data-sex="Male">Male</button><button class="wb ${V.sex === 'Female' ? 'green' : ''}" data-kf data-sex="Female">Female</button></div>
       <div class="wgrp">Therapy</div>
       <p class="wnote">Mode: <b>${esc(mName(V.mode))}</b> · ${esc(valStr('ctrl', 'carrier', V.set.carrier))} · FG O2 ${V.set.o2}% · FG flow ${valStr('ctrl', 'fgf', V.set.fgf)} L/min. Choose the mode with the tabs and set the fresh gas in the therapy bar below.</p>
       <p class="wnote">Age is used for xMAC. Press the rotary knob to start therapy.</p></div>
-      <div class="wfoot"><button class="wb" data-kf id="wCancel">Cancel</button><button class="wb green wide" data-kf id="sbStart">Start therapy</button></div>`;
+      <div class="wfoot"><button class="wb" data-kf id="wCancel">Cancel</button><button class="wb green wide" data-kf id="sbStart" data-tip="Starts the chosen mode (the same as pressing the rotary knob).">Start therapy</button></div>`;
   } else if (win === 'alarms') {
     h = X + tabs([['limits', 'Limits'], ['current', 'Current alarms'], ['log', 'Log']]);
     if (winTab === 'limits') {
@@ -1697,8 +1776,8 @@ function renderWindow() {
   } else if (win === 'tests') {
     const r = V.testRun;
     h = X + `<div class="wtitle">Tests</div><div class="wbody">
-      <div class="tc"><button data-kf data-test="sys" ${r ? 'disabled' : ''}>System test<span class="st ${V.tests.sys || ''}">${testMark(V.tests.sys)}</span><small>${V.tests.sysAt || 'not done'}</small></button>
-      <button data-kf data-test="leak" ${r ? 'disabled' : ''}>Leak test<span class="st ${V.tests.leak || ''}">${testMark(V.tests.leak)}</span><small>${V.tests.leakAt || 'not done'}</small></button></div>
+      <div class="tc"><button data-kf data-test="sys" ${r ? 'disabled' : ''} data-tip="System test: checks the gas supply, the mixer, the ventilator, the sensors and the breathing system. Needs the Y-piece sealed and the APL valve not at Spont.">System test<span class="st ${V.tests.sys || ''}">${testMark(V.tests.sys)}</span><small>${V.tests.sysAt || 'not done'}</small></button>
+      <button data-kf data-test="leak" ${r ? 'disabled' : ''} data-tip="Leak test: pressurises the breathing system to check for leaks. Needs the Y-piece sealed.">Leak test<span class="st ${V.tests.leak || ''}">${testMark(V.tests.leak)}</span><small>${V.tests.leakAt || 'not done'}</small></button></div>
       ${r ? `<div class="prog"><i style="width:${Math.round(100 * r.t / r.dur)}%"></i></div>` : ''}
       <div class="tc-msg" id="tcMsg">${r ? r.msg : (V.testMsg || 'Before the system test: seal the Y-piece on the circuit plug of the bag elbow, set the APL valve to 30, vaporiser dial at 0, O2 switch to Aux. O2. Then start the test.')}</div>
       <p class="wnote">On the machine the system test takes about 8 minutes and the leak test about 2. Here they are shortened, and the checks inside them are summarised, not Dräger's own sequence.</p></div>`;
@@ -2088,6 +2167,201 @@ function renderHW() {
   const y = $('#ypiece');
   y.classList.toggle('sealed', G.ySealed);
   y.innerHTML = `<svg viewBox="0 0 60 46" aria-hidden="true"><path d="M8 4l22 22 22-22M30 26v18"/></svg>${G.ySealed ? 'Y-piece on the circuit plug<br><small>(touch to connect the patient)</small>' : 'Y-piece on the patient<br><small>(touch to seal it on the plug)</small>'}`;
+}
+/* ---------- hover hints: what each part of the machine is (the simulator's own text) ---------- */
+/* A mouse or pen resting on anything with data-tip shows a bubble; keyboard focus shows it too. On a touch
+   screen nothing pops up (a tap must stay a tap): the Education guide shows the last thing touched instead. */
+const tipEl = document.createElement('div');
+tipEl.className = 'a-tip'; tipEl.hidden = true; tipEl.setAttribute('role', 'tooltip');
+document.body.appendChild(tipEl);
+let tipTimer = null, tipShown = '', tipAt = null, lastTip = null;
+function placeTip(x, y) {
+  const w = tipEl.offsetWidth, h = tipEl.offsetHeight, vw = window.innerWidth, vh = window.innerHeight;
+  let l = x + 14, t = y + 18;
+  if (l + w > vw - 8) l = Math.max(8, x - w - 14);
+  if (t + h > vh - 8) t = Math.max(8, y - h - 14);
+  tipEl.style.left = l + 'px'; tipEl.style.top = t + 'px';
+}
+function showTip(text, x, y) { tipEl.textContent = text; tipEl.hidden = false; tipShown = text; placeTip(x, y); }
+function hideTip() { clearTimeout(tipTimer); tipTimer = null; tipEl.hidden = true; tipShown = ''; tipAt = null; }
+function noteTip(el) {
+  const t = el && el.dataset.tip;
+  if (t && (!lastTip || lastTip !== t)) { lastTip = t; renderGuide(); }
+}
+document.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') return;
+  const el = e.target.closest && e.target.closest('[data-tip]');
+  const text = el ? el.dataset.tip : '';
+  if (!text) { hideTip(); return; }
+  if (text === tipShown) { placeTip(e.clientX, e.clientY); return; }
+  if (tipAt === text) return;
+  hideTip(); tipAt = text;
+  tipTimer = setTimeout(() => { showTip(text, e.clientX, e.clientY); noteTip(el); }, 400);
+}, {passive:true});
+document.addEventListener('pointerdown', e => { hideTip(); const el = e.target.closest && e.target.closest('[data-tip]'); if (el) noteTip(el); }, true);
+document.addEventListener('pointerleave', hideTip);
+window.addEventListener('scroll', hideTip, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideTip(); });
+document.addEventListener('focusin', e => {
+  const el = e.target.closest && e.target.closest('[data-tip]');
+  if (!el || !el.matches(':focus-visible')) return;
+  const r = el.getBoundingClientRect();
+  showTip(el.dataset.tip, r.left + r.width / 2, r.bottom);
+  noteTip(el);
+});
+document.addEventListener('focusout', hideTip);
+
+/* ---------- the Education guide beside the machine ---------- */
+/* What the machine is doing, what the alarms mean, what the last thing hovered or touched is, and step-by-step
+   help that points at the next control. Hidden in Assessment. All the simulator's text. */
+let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= 900 : v === '1'; } catch (e) { return window.innerWidth >= 900; } })();
+let guideTask = null, lastGuide = '';
+$('#guideToggle').addEventListener('click', () => {
+  guideOpen = !guideOpen;
+  try { localStorage.setItem('wmebem_a350_guide', guideOpen ? '1' : '0'); } catch (e) {}
+  lastGuide = ''; renderGuide(); fitDevice();
+});
+$('#guideBody').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.task) { guideTask = guideTask === b.dataset.task ? null : b.dataset.task; renderGuide(); guideHighlight(); }
+  if (b.id === 'gDone') { guideTask = null; renderGuide(); guideHighlight(); }
+});
+const isAssess = () => document.body.classList.contains('assess');
+const TASKS = [
+  ['on', 'Switch on and check the machine'],
+  ['man', 'Ventilate by hand (Man/Spon)'],
+  ['preox', 'Pre-oxygenate, or raise the oxygen fast'],
+  ['setting', 'Change a setting'],
+  ['vap', 'Give sevoflurane'],
+  ['silence', 'Silence an alarm'],
+  ['mode:APVcmv', 'Change mode to VC-CMV/AutoFlow'], ['mode:SCMV', 'Change mode to VC-CMV'], ['mode:SIMV', 'Change mode to VC-SIMV'],
+  ['mode:PCV+', 'Change mode to PC-CMV'], ['mode:PSIMV+', 'Change mode to PC-SIMV'], ['mode:SPONT', 'Change mode to CPAP/PSV'],
+  ['standby', 'Stop ventilating (Standby)']
+];
+/* each step: [text, done?, the element to point at] */
+function taskSteps(task) {
+  const on = V.power && V.selftest <= 0;
+  const S = [['Switch the machine on: press the round On / Standby key under the screen.', on, '#kPower']];
+  if (task.startsWith('mode:')) {
+    const m = task.slice(5), t = tabOf(m), sync = TAB_MODES[t].simv ? syncOf(m) : null, cur = D ? D.mode : V.mode;
+    const tabName = TABS.find(x => x[0] === t)[1];
+    S.push([`Touch the ${tabName} tab in the therapy bar (bottom of the screen).`, on && tabOf(cur) === t, `[data-tabmode="${t}"]`]);
+    if (sync) S.push([`Touch ${sync.toUpperCase()} (next to the tabs).`, on && cur === m, `[data-sync="${sync}"]`]);
+    S.push(['Check the settings: the light-green ones belong to the new mode. Touch one to change it (turn and press the knob).', on && cur === m, null]);
+    if (V.standby) {
+      S.push(['Touch Start... (Standby page or menu).', win === 'start', '[data-open="start"]']);
+      S.push(['Press the rotary knob to start the therapy.', !V.standby && V.mode === m, '#knob']);
+    } else S.push(['Press the rotary knob to start the new mode.', V.mode === m && !D, '#knob']);
+    return S;
+  }
+  switch (task) {
+    case 'on':
+      S.push(['Seal the Y-piece on the circuit plug (touch the Y-piece beside the bag).', G.ySealed || (V.tests.sys === 'ok' && V.tests.leak === 'ok'), '#ypiece']);
+      S.push(['Set the APL valve to 30 (the + and − beside APL valve).', V.apl >= 5 || (V.tests.sys === 'ok' && V.tests.leak === 'ok'), '#aplUp']);
+      S.push(['Open Tests... and run the System test.', V.tests.sys === 'ok', V.standby && win === 'tests' ? '[data-test="sys"]' : '[data-open="tests"]']);
+      S.push(['Run the Leak test.', V.tests.leak === 'ok', V.standby && win === 'tests' ? '[data-test="leak"]' : '[data-open="tests"]']);
+      S.push(['Connect the Y-piece to the patient again (touch the Y-piece).', !G.ySealed && V.tests.sys === 'ok' && V.tests.leak === 'ok', '#ypiece']);
+      return S;
+    case 'man':
+      S.push([V.standby ? 'Touch Quick start Man/Spon on the Standby page.' : 'Touch the Man/Spon tab, then press the rotary knob.', on && !V.standby && V.mode === 'MAN', V.standby ? '#qsMan' : (D && D.mode === 'MAN' ? '#knob' : '[data-tabmode="MAN"]')]);
+      S.push(['Set the APL valve to about 20 to 30 cmH2O, so a squeeze can inflate the lungs (Spont = fully open, no pressure).', V.apl >= 15, '#aplUp']);
+      S.push(['Squeeze the bag: press and hold until the chest rises (about 1 second), then let go. Repeat every 5 to 6 seconds.', !V.standby && V.mode === 'MAN' && B.now - B.lastStart < 8, '#bag']);
+      S.push(['Watch the CO2 curve and VT: a square capnogram and a sensible VT mean the breaths are going in.', false, '#gfx']);
+      return S;
+    case 'preox':
+      S.push(['Touch FG O2 in the therapy bar, turn the knob to 100, press the knob.', V.set.o2 >= 100, '[data-key="o2"]']);
+      S.push(['Touch FG flow, turn it up to 8 to 10 L/min, press the knob. The circle fills with oxygen in a minute or two.', V.set.fgf >= 8, '[data-key="fgf"]']);
+      S.push(['Or hold O2+ for a few seconds to fill the system with oxygen at once (it bypasses the vaporiser).', G.fio2 > 90, '#kFlush']);
+      S.push(['Watch the O2 in and et values in the gas field: aim for an end-tidal O2 above 90%.', G.fio2 > 94, '#smp']);
+      return S;
+    case 'setting':
+      S.push(['Touch the setting you want to change. It turns yellow.', !!E, '.tctl']);
+      S.push(['Turn the rotary knob to the new value.', false, '#knob']);
+      S.push(['Press the rotary knob to confirm. If you do not within 15 seconds, the change is dropped.', false, '#knob']);
+      return S;
+    case 'vap':
+      S.push(['Turn the vaporiser up with its + (the pink panel).', V.vap > 0, '#vapUp']);
+      S.push(['Make sure fresh gas is flowing: the agent only reaches the patient with the fresh gas.', (V.set.fgf || 0) > 0, '[data-key="fgf"]']);
+      S.push(['Watch Sev in and et, and xMAC, in the gas field.', G.etag > 0.3, '#smp']);
+      return S;
+    case 'silence':
+      S.push(['Read the alarm in the message bar and deal with its cause.', false, '#msgbar']);
+      S.push(['Press the Alarm silence key under the screen: the tones stop for 2 minutes.', V.audioPause > 0, '#kAudio']);
+      return S;
+    case 'standby':
+      S.push(['Press the On / Standby key.', !$('#dlg').hidden || V.standby, '#kPower']);
+      S.push(['Confirm Standby on the screen (or press the knob).', V.standby, '#dlgGo']);
+      return S;
+  }
+  return S;
+}
+function guideHighlight() {
+  $$('.g-hl').forEach(el => el.classList.remove('g-hl'));
+  if (!guideTask || !guideOpen || isAssess()) return;
+  const next = taskSteps(guideTask).find(s => !s[1]);
+  if (!next || !next[2]) return;
+  const el = $(next[2]);
+  if (el && el.offsetParent !== null) el.classList.add('g-hl');
+}
+const r0 = v => v === null || v === undefined ? '--' : Math.round(v);
+/* what the machine is doing now, in plain words */
+function guideNow() {
+  if (!V.power) return ['The machine is switched off. Press the round On / Standby key under the screen to switch it on.'];
+  if (V.selftest > 0) return ['The machine is starting up.'];
+  const out = [];
+  if (V.standby) {
+    if (V.testRun) out.push('<b>' + TEST_NAME[V.testRun.kind] + ' running.</b> Keep the Y-piece sealed on the circuit plug until it finishes.');
+    else if (V.tests.sys !== 'ok' || V.tests.leak !== 'ok') out.push('<b>Standby.</b> No ventilation and no fresh gas. Before the first patient, run the system test and leak test (Tests...): seal the Y-piece on the circuit plug first.');
+    else out.push('<b>Standby, tests passed.</b> Connect the Y-piece to the patient, then Start... (choose the mode, press the knob) or Quick start Man/Spon.');
+    if (G.ySealed && !V.testRun) out.push('The Y-piece is sealed on the circuit plug: connect it to the patient before you start.');
+  } else {
+    out.push(`<b>${esc(mName(V.mode))}.</b> ${esc(MODE_EXPLAIN[V.mode] || '')}`);
+    const sinceBreath = B.now - B.lastStart;
+    if (V.mode === 'MAN') {
+      out.push(V.apl <= 0 ? 'The APL valve is at Spont (fully open): the patient can breathe freely, but squeezing the bag builds almost no pressure. Turn it up to hand-ventilate.'
+        : `The APL valve is at ${V.apl} cmH2O: a squeeze of the bag can reach up to ${Math.min(V.apl, BAG_SQUEEZE)} cmH2O.`);
+      if (sinceBreath > 8) out.push(`<span class="g-warn">No breath for ${Math.round(sinceBreath)} s.</span> If the patient is not breathing, squeeze the bag (press and hold, then let go) every 5 to 6 seconds, or start a ventilator mode.`);
+      if (G.circP > 10) out.push(`<span class="g-warn">The pressure in the breathing system is ${Math.round(G.circP)} cmH2O and the bag is overfull.</span> The fresh gas has nowhere to go: open the APL valve or turn the fresh-gas flow down.`);
+    }
+    if (G.bag < 0.6 && !V.standby) out.push('<span class="g-warn">The bag is nearly empty:</span> more gas is leaving the system than the fresh gas brings in. Look for a leak or a disconnection; turn the flow up or press O2+.');
+    const fg = G.fg || freshGas();
+    if (!(fg.total > 0)) out.push('<span class="g-warn">No fresh gas is flowing.</span> Set FG flow.');
+    else if (G.fio2 < V.set.o2 - 10 && V.o2sw !== 'add') out.push(`The inspired O2 (${r0(G.fio2)}%) is still below the fresh-gas O2 (${V.set.o2}%): at ${fmt(fg.total, 1)} L/min the breathing system fills slowly. Turn FG flow up (8 to 10 L/min) or press O2+ to raise it quickly.`);
+    if (V.set.carrier === 1 && (V.set.fgf || 0) < 1) out.push('N2O at a low flow: the oxygen in the circle can fall well below the fresh-gas O2. Watch FiO2.');
+    if (V.vap > 0 || G.etag > 0.05) out.push(`Sevoflurane: ${fmt(V.vap, 1)}% on the dial, end-tidal ${fmt(G.etag, 1)}% (xMAC ${fmt(xMAC(), 1)}, age ${patientAge()}). At low flows it takes several minutes to change.`);
+    if (D) out.push(`<span class="g-warn">New mode selected: ${esc(mName(D.mode, D.set))}.</span> Check its settings (light green), then press the rotary knob to start it. Touch the dark-green tab to cancel.`);
+    if (E) out.push(`<span class="g-warn">Changing ${esc(E.scope === 'lim' ? limLabel(E.key) : CTRL[E.key].label)}:</span> turn the knob, then press it to confirm (${Math.max(0, Math.ceil(EDIT_TIMEOUT_S - (B.now - E.t0)))} s left).`);
+    if (M.vte !== null && M.vte !== undefined && V.mode !== 'MAN') {
+      const ibw = calcIBW(), perKg = M.vte / ibw;
+      let line = `Measured: VT ${r0(M.vte)} mL (${fmt(perKg, 1)} mL/kg of ideal body weight, ${ibw} kg), RR ${r0(M.ftot)}/min, MV ${fmt(M.mv, 1)} L/min, PIP ${r0(M.ppeak)}` + (M.pplat !== null && M.pplat !== undefined ? `, Pplat ${r0(M.pplat)}` : '') + ' cmH2O.';
+      if (perKg > 8.5) line += ' <span class="g-warn">VT is above 8 mL/kg.</span>';
+      else if (perKg < 5 && M.vte > 0) line += ' <span class="g-warn">VT is small.</span>';
+      if (M.pplat > 30) line += ' <span class="g-warn">Pplat is above 30.</span>';
+      out.push(line);
+    }
+    if (active.has('plimit')) out.push('The volume breaths are being limited at Pmax, so the set VT is not going in. Find out why the pressure is high before raising Pmax.');
+  }
+  return out;
+}
+function renderGuide() {
+  const aside = $('#guide'); if (!aside) return;
+  const assess = isAssess();
+  aside.hidden = assess;
+  aside.classList.toggle('closed', !guideOpen);
+  $('#guideToggle').setAttribute('aria-expanded', guideOpen);
+  if (assess || !guideOpen) { if (lastGuide) { $('#guideBody').innerHTML = ''; lastGuide = ''; } return; }
+  let h = '<h3>What is happening</h3><ul class="g-now">' + guideNow().map(t => `<li>${t}</li>`).join('') + '</ul>';
+  const al = topAlarms();
+  if (al.length) h += '<h3>Alarms</h3>' + al.map(a => `<div class="g-al ${a.p}">${PRI_MARK[a.p]} ${esc(a.t)}</div>${HELP[a.id] || ''}`).join('');
+  if (guideTask) {
+    const steps = taskSteps(guideTask), next = steps.findIndex(s => !s[1]);
+    const name = TASKS.find(t => t[0] === guideTask)[1];
+    h += `<h3>How to: ${esc(name)}</h3><ol class="g-steps">` + steps.map((s, i) => `<li class="${s[1] ? 'done' : i === next ? 'next' : ''}">${esc(s[0])}</li>`).join('') + '</ol>'
+      + (next < 0 ? '<p class="g-ok">Done.</p>' : '<p class="g-small">The control for the next step is outlined on the machine.</p>') + '<button class="g-btn" id="gDone">Close these steps</button>';
+  }
+  h += '<h3>What\'s this?</h3><p class="g-tip">' + (lastTip ? esc(lastTip) : 'Rest the mouse on any part of the machine (or touch it) to see what it is.') + '</p>';
+  h += '<h3>How do I…</h3><div class="g-tasks">' + TASKS.map(([k, n]) => `<button class="g-task ${guideTask === k ? 'on' : ''}" data-task="${k}">${esc(n)}</button>`).join('') + '</div>';
+  if (h !== lastGuide) { $('#guideBody').innerHTML = h; lastGuide = h; }
 }
 /* full screen: CSS takes the device over the whole window; the Fullscreen API also hides the browser bars where it is supported (not on iPhone) */
 function setFull(on) {

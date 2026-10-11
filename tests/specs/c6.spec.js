@@ -103,8 +103,8 @@ test('every anaesthetic emergency builds with its interventions, and the setup l
     const missing = (s.recommended || []).concat(s.stabilisers || []).filter(k => !window.INTERVENTIONS[k]);
     return { id: s.id, title: b.title, missing, probsOk: s.problems.every(p => window.VENT_PROFILES.PROBLEMS.some(x => x.id === p)) };
   }));
-  expect(r.map(x => x.id)).toEqual(['an-arrest', 'an-hypoxia', 'an-paw', 'an-bronch', 'an-anaph', 'an-hypo', 'an-mh', 'an-equip']);
-  for (const x of r) { expect(x.missing, x.id).toEqual([]); expect(x.probsOk, x.id).toBe(true); expect(x.title).toMatch(/^Anaesthetic emergency: .+\(QRH /); }
+  expect(r.map(x => x.id)).toEqual(['an-arrest', 'an-hypoxia', 'an-paw', 'an-bronch', 'an-anaph', 'an-hypo', 'an-mh', 'an-equip', 'an-oeso', 'an-disc']);
+  for (const x of r) { expect(x.missing, x.id).toEqual([]); expect(x.probsOk, x.id).toBe(true); expect(x.title).toMatch(/^Anaesthetic emergency: /); if (!['an-oeso', 'an-disc'].includes(x.id)) expect(x.title).toMatch(/\(QRH /); }
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
   await expect(page.locator('[data-vent-scenario]').first()).toHaveAttribute('data-vent-scenario', 'an-arrest');
 });

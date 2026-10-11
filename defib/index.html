@@ -28,102 +28,102 @@
 </head>
 <body>
     <div class="zoll-device" id="zollDevice">
-        <a class="zoll-top-link" href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
+        <a class="zoll-top-link" data-tip="The EM Evidence website (opens in a new tab)." href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
         <div class="device-screen-section">
-            <div class="screen screen-off" id="screen">
+            <div class="screen screen-off" id="screen" data-tip="The monitor screen. It shows the ECG, numbers and messages once the mode selector is turned away from OFF.">
                 <!-- The never-linked state is the DEFAULT markup, shown on first paint. A defib that
                      cannot reach the controller must say so, not show a confident normal patient. -->
                 <div id="linkBanner" class="link-banner"><b>NOT LINKED TO SESSION</b><br><span style="font-weight:normal;font-size:12px;">No session has been supplied to this page, so there is no patient. Looking for a controller in another tab of this browser&hellip;</span></div>
                 <div id="endedBanner" class="ended-banner hidden">SESSION ENDED</div>
                 <div class="screen-header">
-                    <div class="screen-info" id="leadInfo">LEAD: II x1</div>
-                    <div class="screen-info" id="sessionTag"></div>
-                    <div class="screen-info" id="syncIndicator"></div>
-                    <div class="screen-info" id="wakeInfo" title="This browser cannot keep the screen awake: set the tablet's auto-lock to Never for the session."></div>
-                    <div class="screen-info" id="modeInfo">MODE: OFF</div>
-                    <div class="screen-info" id="timeInfo">00:00:00</div>
+                    <div class="screen-info" id="leadInfo" data-tip="The ECG lead on show and the trace size. Change them with the LEAD and SIZE buttons.">LEAD: II x1</div>
+                    <div class="screen-info" id="sessionTag" data-tip="The session code this tablet is linked to."></div>
+                    <div class="screen-info" id="syncIndicator" data-tip="Shows SYNC while synchronised mode is on."></div>
+                    <div class="screen-info" id="wakeInfo" data-tip="This browser cannot keep the screen awake: set the tablet's auto-lock to Never for the session."></div>
+                    <div class="screen-info" id="modeInfo" data-tip="The mode the device is in, as set by the mode selector.">MODE: OFF</div>
+                    <div class="screen-info" id="timeInfo" data-tip="The time of day, from this tablet's clock.">00:00:00</div>
                 </div>
                 <div class="ecg-canvas-container">
-                    <canvas id="ecgCanvas" role="img" aria-label="ECG trace"></canvas>
-                    <div class="trace-warning" id="traceWarning"></div>
+                    <canvas id="ecgCanvas" role="img" aria-label="ECG trace" data-tip="The ECG trace from the selected lead, showing the rhythm the facilitator has set."></canvas>
+                    <div class="trace-warning" id="traceWarning" data-tip="Trace warnings, such as CHECK LEADS when the facilitator has simulated a lead coming off."></div>
                 </div>
                 <!-- Capnogram, shown only while capnography is attached (the R Series shows no CO2
                      display without its sensor). -->
                 <div class="co2-canvas-container hidden" id="co2Container">
-                    <canvas id="co2Canvas" role="img" aria-label="Capnogram"></canvas>
+                    <canvas id="co2Canvas" role="img" aria-label="Capnogram" data-tip="The capnography trace (exhaled CO₂). It appears only while capnography is attached in the scenario."></canvas>
                 </div>
                 <div class="vitals-display">
-                    <div class="vital-item"><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
-                    <div class="vital-item"><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
-                    <div class="vital-item"><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
-                    <div class="vital-item"><div class="vital-label" id="bpLabel">NIBP</div><div class="vital-value" id="bpDisplay">--/--</div><div class="vital-unit">mmHg</div></div>
+                    <div class="vital-item" data-tip="Heart rate, counted from the QRS complexes on the ECG. Shows --- when there are none to count."><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
+                    <div class="vital-item" data-tip="Oxygen saturation from the pulse oximeter. Shows --- when there is no reading."><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
+                    <div class="vital-item" data-tip="End-tidal CO₂ in kPa. Shows -- unless capnography is attached in the scenario."><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
+                    <div class="vital-item" data-tip="The last blood pressure taken with the cuff. It does not update on its own: press NIBP for a new reading."><div class="vital-label" id="bpLabel">NIBP</div><div class="vital-value" id="bpDisplay">--/--</div><div class="vital-unit">mmHg</div></div>
                 </div>
-                <div class="message-bar" id="messageBar" role="status" aria-live="polite"></div>
+                <div class="message-bar" id="messageBar" data-tip="Device messages: prompts, warnings and the result of what you last pressed." role="status" aria-live="polite"></div>
             </div>
             <div class="softkeys">
-                <button class="softkey" id="checkPulseBtn">Check Pulse</button>
-                <button class="softkey" id="nibpBtn" title="Take a blood pressure with the cuff (about 5 seconds)">NIBP</button>
-                <button class="softkey" id="markerBtn">Marker</button>
-                <button class="softkey" id="alarmSuspendBtn">Alarm Suspend</button>
+                <button class="softkey" id="checkPulseBtn" data-tip="Logs a pulse check with the controller. In education mode the screen then says what the team would feel. Keyboard: P.">Check Pulse</button>
+                <button class="softkey" id="nibpBtn" data-tip="Takes a blood pressure with the cuff (about 5 seconds). The cuff must be connected in the scenario.">NIBP</button>
+                <button class="softkey" id="markerBtn" data-tip="Adds a time-stamped event marker to the session log, for the debrief.">Marker</button>
+                <button class="softkey" id="alarmSuspendBtn" data-tip="Silences the alarms and logs that they were suspended.">Alarm Suspend</button>
             </div>
         </div>
         <div class="device-controls-section">
             <div class="top-buttons">
-                <button class="btn-sync" id="syncBtn">SYNC</button>
-                <button class="btn-shock" id="shockBtn" disabled><span>SHOCK</span><span class="number">3</span></button>
+                <button class="btn-sync" id="syncBtn" data-tip="Turns synchronised mode on or off. When on, a shock is delivered on the next detected R wave, or not at all if none is found.">SYNC</button>
+                <button class="btn-shock" id="shockBtn" disabled data-tip="Delivers the shock. It lights up only once the device is charged and ready. Keyboard: S."><span>SHOCK</span><span class="number">3</span></button>
             </div>
             <div class="side-buttons">
-                <button class="side-btn" id="leadBtn" title="Change monitoring lead">LEAD</button>
-                <button class="side-btn" id="sizeBtn" title="Change ECG size">SIZE</button>
-                <button class="side-btn" id="recorderBtn" title="Print a 12-lead / strip">RECORDER</button>
-                <button class="side-btn" id="hintsBtn" title="RCUK guideline hints" hidden>HINTS</button>
+                <button class="side-btn" id="leadBtn" data-tip="Changes the ECG lead on show: PADS, I, II, then III.">LEAD</button>
+                <button class="side-btn" id="sizeBtn" data-tip="Changes the size of the ECG trace: x0.5, x1, x2, then x4.">SIZE</button>
+                <button class="side-btn" id="recorderBtn" data-tip="Prints a 12-lead ECG of the current rhythm. Tap the printout to close it.">RECORDER</button>
+                <button class="side-btn" id="hintsBtn" data-tip="Shows the RCUK guideline hint cards." hidden>HINTS</button>
             </div>
             <div class="action-buttons-group">
-                <button class="btn-analyze" id="analyseBtn"><span>ANALYSE</span><span class="btn-number">2</span></button>
-                <button class="btn-charge" id="chargeBtn"><span>CHARGE</span><span class="btn-number">2</span></button>
+                <button class="btn-analyze" id="analyseBtn" data-tip="Analyses the rhythm for a few seconds, then shows SHOCK ADVISED or NO SHOCK ADVISED. Keyboard: A."><span>ANALYSE</span><span class="btn-number">2</span></button>
+                <button class="btn-charge" id="chargeBtn" data-tip="Charges to the selected energy (about 2 seconds). Works in DEFIB mode only; an unused charge is dumped after a minute. Keyboard: C."><span>CHARGE</span><span class="btn-number">2</span></button>
                 <div class="energy-selector">
                     <div style="font-size:11px;">ENERGY SELECT</div>
-                    <div class="energy-display" id="energyDisplay">150</div>
+                    <div class="energy-display" id="energyDisplay" data-tip="The selected shock energy, in joules. Set it with the arrows below.">150</div>
                     <div style="font-size:12px;">JOULES</div>
-                    <div class="energy-rec" id="energyRec"></div>
+                    <div class="energy-rec" id="energyRec" data-tip="The energy the scenario recommends for this patient's weight, when a weight has been given."></div>
                     <div class="energy-arrows">
-                        <button class="energy-arrow" data-energy-dir="-1" aria-label="Decrease energy">▼</button>
-                        <button class="energy-arrow" data-energy-dir="1" aria-label="Increase energy">▲</button>
+                        <button class="energy-arrow" data-energy-dir="-1" aria-label="Decrease energy" data-tip="Lowers the energy by one step. Changing it cancels a charge. Keyboard: down arrow (DEFIB mode).">▼</button>
+                        <button class="energy-arrow" data-energy-dir="1" aria-label="Increase energy" data-tip="Raises the energy by one step. Changing it cancels a charge. Keyboard: up arrow (DEFIB mode).">▲</button>
                     </div>
                 </div>
             </div>
             <div class="mode-dial-container">
-                <div class="mode-dial" id="modeDial" style="--dial-rotation: 270deg;"></div>
+                <div class="mode-dial" id="modeDial" data-tip="The mode selector. Its pointer shows the mode chosen with the buttons below." style="--dial-rotation: 270deg;"></div>
                 <div class="mode-labels">
-                    <button type="button" class="mode-label" data-mode="monitor">MONITOR</button>
-                    <button type="button" class="mode-label" data-mode="defib">DEFIB</button>
-                    <button type="button" class="mode-label" data-mode="pacer">PACER</button>
-                    <button type="button" class="mode-label active" data-mode="off">OFF</button>
+                    <button type="button" class="mode-label" data-mode="monitor" data-tip="Monitor mode: shows the ECG and vital signs without charging or pacing.">MONITOR</button>
+                    <button type="button" class="mode-label" data-mode="defib" data-tip="Manual defibrillation mode: needed to charge and shock.">DEFIB</button>
+                    <button type="button" class="mode-label" data-mode="pacer" data-tip="Pacing mode: opens the pacing controls below.">PACER</button>
+                    <button type="button" class="mode-label active" data-mode="off" data-tip="Switches the device off. Any charge is cancelled and pacing stops.">OFF</button>
                 </div>
             </div>
             <div class="pacing-controls">
-                <div class="pacing-cover" id="pacingCover"><div>PACING DISABLED</div><div style="font-size:9px;font-weight:normal;margin-top:5px;">Select PACER mode to open</div></div>
+                <div class="pacing-cover" id="pacingCover" data-tip="The pacing controls stay covered until PACER mode is selected."><div>PACING DISABLED</div><div style="font-size:9px;font-weight:normal;margin-top:5px;">Select PACER mode to open</div></div>
                 <div>
                     <div class="pacer-label">OUTPUT</div>
-                    <div class="pacer-dial" id="outputDial"></div>
-                    <div class="pacer-value" id="outputDisplay">0</div>
+                    <div class="pacer-dial" id="outputDial" data-tip="Pacing output: the current of each pacing pulse, in mA."></div>
+                    <div class="pacer-value" id="outputDisplay" data-tip="Pacing output: the current of each pacing pulse, in mA.">0</div>
                     <div class="pacer-label">mA</div>
                     <div class="pacer-controls-btn">
-                        <button class="pacer-btn" data-pacer-param="output" data-pacer-dir="-5" aria-label="Decrease pacing output">-</button>
-                        <button class="pacer-btn" data-pacer-param="output" data-pacer-dir="5" aria-label="Increase pacing output">+</button>
+                        <button class="pacer-btn" data-pacer-param="output" data-pacer-dir="-5" aria-label="Decrease pacing output" data-tip="Lowers the pacing output by 5 mA (down to 0).">-</button>
+                        <button class="pacer-btn" data-pacer-param="output" data-pacer-dir="5" aria-label="Increase pacing output" data-tip="Raises the pacing output by 5 mA (up to 140).">+</button>
                     </div>
                 </div>
                 <div>
                     <div class="pacer-label">RATE</div>
-                    <div class="pacer-dial" id="rateDial"></div>
-                    <div class="pacer-value" id="rateDisplay">60</div>
+                    <div class="pacer-dial" id="rateDial" data-tip="Pacing rate: pacing pulses per minute (ppm)."></div>
+                    <div class="pacer-value" id="rateDisplay" data-tip="Pacing rate: pacing pulses per minute (ppm).">60</div>
                     <div class="pacer-label">ppm</div>
                     <div class="pacer-controls-btn">
-                        <button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="-5" aria-label="Decrease pacing rate">-</button>
-                        <button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="5" aria-label="Increase pacing rate">+</button>
+                        <button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="-5" aria-label="Decrease pacing rate" data-tip="Lowers the pacing rate by 5 ppm (down to 30).">-</button>
+                        <button class="pacer-btn" data-pacer-param="rate" data-pacer-dir="5" aria-label="Increase pacing rate" data-tip="Raises the pacing rate by 5 ppm (up to 180).">+</button>
                     </div>
                 </div>
-                <button class="pacer-mode-btn" id="pacerModeBtn" title="Demand or asynchronous (fixed-rate) pacing">MODE: DEMAND</button>
+                <button class="pacer-mode-btn" id="pacerModeBtn" data-tip="Switches between demand pacing and asynchronous (fixed-rate) pacing.">MODE: DEMAND</button>
             </div>
             <div class="zoll-branding"><div class="zoll-logo-text">ZOLL</div></div>
         </div>
@@ -132,10 +132,10 @@
     <!-- Education mode only: the RCUK hint cards the standalone Defib-sim offered. -->
     <div class="hints hidden" id="hintsRow"></div>
     <div id="hintOverlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="hintTitle">
-        <div class="hint-content"><button class="hint-close" id="hintClose" aria-label="Close">×</button><h2 id="hintTitle"></h2><div id="hintBody"></div></div>
+        <div class="hint-content"><button class="hint-close" id="hintClose" aria-label="Close" data-tip="Closes the guideline card. Keyboard: Escape.">×</button><h2 id="hintTitle"></h2><div id="hintBody"></div></div>
     </div>
     <div id="paperOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="12-lead recording" tabindex="-1"><div style="color:white;font-family:monospace;margin-bottom:10px;font-size:20px;">12-LEAD RECORDING</div><canvas id="paperCanvas" width="1000" height="640"></canvas><div style="color:#aaa;font-size:12px;margin-top:10px;">TAP TO CLOSE</div></div>
-    <div class="sound-overlay hidden" id="soundOverlay"><button id="soundBtn">Tap to enable sound</button></div>
+    <div class="sound-overlay hidden" id="soundOverlay"><button id="soundBtn" data-tip="Turns on the device sounds. Browsers play no sound until the page has been tapped or clicked.">Tap to enable sound</button></div>
     <div class="app-footer">EM Evidence Sim — defibrillator</div>
 
     <script>
@@ -213,7 +213,7 @@
             if (!fb.code || joinOpen) el.appendChild(joinForm());
             else {
                 const change = document.createElement('button'); change.type = 'button'; change.id = 'changeCodeBtn'; change.className = 'change-code';
-                change.textContent = 'Change code';
+                change.textContent = 'Change code'; setTip(change, 'Enter a different session code for this tablet.');
                 change.onclick = () => { joinOpen = true; el.removeChild(change); el.appendChild(joinForm()); $('joinCode').focus(); };
                 el.append(document.createElement('br'), change);
             }
@@ -224,9 +224,9 @@
         function joinForm() {
             if (joinFormEl) return joinFormEl;
             const form = document.createElement('form'); form.id = 'joinForm';
-            const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters');
+            const input = document.createElement('input'); input.id = 'joinCode'; input.setAttribute('aria-label', 'Session code'); input.placeholder = 'SESSION CODE'; input.autocomplete = 'off'; input.setAttribute('autocapitalize', 'characters'); setTip(input, 'Type the session code shown on the controller.');
             if (fb.code) input.value = fb.code;
-            const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link';
+            const btn = document.createElement('button'); btn.type = 'submit'; btn.textContent = 'Link'; setTip(btn, 'Links this tablet to the session code typed here.');
             form.append(input, btn);
             form.onsubmit = (ev) => {
                 ev.preventDefault();
@@ -756,6 +756,7 @@
         const HINTS = [['shockable', 'Shockable arrest'], ['nonshockable', 'Non-shockable arrest'], ['tachy', 'Tachycardia'], ['brady', 'Bradycardia'], ['postrosc', 'Post-ROSC']];
         HINTS.forEach(([key, label]) => {
             const b = document.createElement('button'); b.className = 'hint-btn'; b.textContent = 'RCUK: ' + label; b.dataset.hint = key;
+            setTip(b, 'Opens the RCUK guideline card for ' + label.toLowerCase() + '.');
             b.addEventListener('click', () => openHint(key));
             $('hintsRow').appendChild(b);
         });
@@ -812,6 +813,59 @@
             else if (device.mode === 'defib' && e.key === 'ArrowUp') { e.preventDefault(); adjustEnergy(1); }
             else if (device.mode === 'defib' && e.key === 'ArrowDown') { e.preventDefault(); adjustEnergy(-1); }
         });
+
+        // ---- Hover hints: every control and display says what it is. The text lives in each
+        // element's data-tip (read at show time, so a re-labelled button keeps its hint) and is
+        // copied to aria-description for screen readers. Mouse and pen only, after a short pause,
+        // or on keyboard focus; touch is left alone so a tap still just presses.
+        function setTip(el, text) { el.dataset.tip = text; el.setAttribute('aria-description', text); }
+        document.querySelectorAll('[data-tip]').forEach(el => el.setAttribute('aria-description', el.dataset.tip));
+        const tipEl = document.createElement('div'); tipEl.className = 'tip-bubble'; tipEl.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(tipEl);
+        let tipTimer = null, tipFor = null, tipX = 0, tipY = 0;
+        function placeTip(x, y, below) {
+            const w = tipEl.offsetWidth, h = tipEl.offsetHeight, vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+            let left = x + 12, top = y + (below || 18);
+            if (left + w > vw - 8) left = Math.max(8, vw - 8 - w);
+            if (top + h > vh - 8) top = Math.max(8, y - h - 12);
+            tipEl.style.left = left + 'px'; tipEl.style.top = top + 'px';
+        }
+        function showTip(el, x, y, below) {
+            if (!el.dataset.tip) return;
+            tipEl.textContent = el.dataset.tip; tipEl.classList.add('show');
+            placeTip(x, y, below);
+        }
+        function hideTip() { clearTimeout(tipTimer); tipTimer = null; tipFor = null; tipEl.classList.remove('show'); }
+        document.addEventListener('pointerover', (e) => {
+            if (e.pointerType === 'touch') return;
+            const el = e.target.closest && e.target.closest('[data-tip]');
+            if (el === tipFor) return;
+            hideTip();
+            if (!el) return;
+            tipFor = el; tipX = e.clientX; tipY = e.clientY;
+            tipTimer = setTimeout(() => { if (tipFor === el) showTip(el, tipX, tipY); }, 400);
+        });
+        document.addEventListener('pointermove', (e) => {
+            if (e.pointerType === 'touch' || !tipFor) return;
+            tipX = e.clientX; tipY = e.clientY;
+            if (tipEl.classList.contains('show')) placeTip(tipX, tipY);
+        });
+        document.addEventListener('pointerout', (e) => {
+            if (tipFor && !(e.relatedTarget && tipFor.contains(e.relatedTarget))) hideTip();
+        });
+        document.addEventListener('pointerdown', hideTip, { capture: true });
+        window.addEventListener('scroll', hideTip, { capture: true, passive: true });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTip(); });
+        document.addEventListener('focusin', (e) => {
+            const el = e.target.closest && e.target.closest('[data-tip]');
+            let kb = false; try { kb = e.target.matches(':focus-visible'); } catch (err) {}
+            if (!el || !kb) return;
+            hideTip(); tipFor = el;
+            const r = el.getBoundingClientRect();
+            showTip(el, r.left, r.bottom, 8);
+        });
+        document.addEventListener('focusout', () => { if (tipFor && !tipFor.matches(':hover')) hideTip(); });
+
         setInterval(() => { $('timeInfo').textContent = new Date().toTimeString().split(' ')[0]; }, 1000);
 
         // =====================================================================================

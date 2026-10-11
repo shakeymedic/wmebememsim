@@ -7,23 +7,23 @@
 const IE_LIST = [1/9, 1/8, 1/7, 1/6, 1/5, 1/4, 1/3.5, 1/3, 1/2.5, 1/2, 1/1.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
 const ieStr = r => { const t = v => String(+v.toFixed(1)); return r >= 1 ? t(r) + ':1' : '1:' + t(1 / r); };
 const CTRL = {
-  vt:    {label:'VT', unit:'mL', min:10, max:1500, step:v => v >= 100 ? 10 : 5},
-  rate:  {label:'RR', unit:'/min', min:3, max:100, step:1},
-  ti:    {label:'Tinsp', unit:'s', min:0.2, max:10, step:0.1, dp:1},
-  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1},
-  pmax:  {label:'Pmax', unit:'cmH2O', min:10, max:80, step:1},
-  peep:  {label:'PEEP', unit:'cmH2O', min:2, max:35, step:1, off0:true},
-  ps:    {label:'ΔPsupp', unit:'cmH2O', min:3, max:80, step:1, off0:true},
-  trig:  {label:'Trigger', unit:'L/min', min:0.3, max:15, step:v => v >= 1 ? 0.5 : 0.1, dp:1},
-  ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5},
-  pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1},
-  pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5},
-  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true},
-  o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1},
-  fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true},
-  carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O']},
-  height:{label:'Height', unit:'cm', min:30, max:250, step:1},
-  age:   {label:'Age', unit:'years', min:1, max:110, step:1}
+  vt:    {label:'VT', unit:'mL', min:10, max:1500, step:v => v >= 100 ? 10 : 5, tip:'The tidal volume each mandatory breath delivers in the volume modes (VC and VC - AF).'},
+  rate:  {label:'RR', unit:'/min', min:3, max:100, step:1, tip:'The number of mandatory breaths per minute.'},
+  ti:    {label:'Tinsp', unit:'s', min:0.2, max:10, step:0.1, dp:1, tip:'How long each mandatory breath lasts. With RR it sets the I:E ratio, shown under the controls.'},
+  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1, tip:'The airway pressure each pressure-controlled breath reaches. On the Atlan this is the total pressure, not the pressure above PEEP.'},
+  pmax:  {label:'Pmax', unit:'cmH2O', min:10, max:80, step:1, tip:'The highest pressure a volume-controlled breath may reach. If the set volume needs more, the breath is limited at Pmax and "Tidal volume not achieved" can appear.'},
+  peep:  {label:'PEEP', unit:'cmH2O', min:2, max:35, step:1, off0:true, tip:'The pressure kept in the lungs at the end of breathing out. In PSV it is labelled CPAP.'},
+  ps:    {label:'ΔPsupp', unit:'cmH2O', min:3, max:80, step:1, off0:true, tip:'Pressure support above PEEP for the breaths the patient triggers (in SIMV and PSV). Off means no support.'},
+  trig:  {label:'Trigger', unit:'L/min', min:0.3, max:15, step:v => v >= 1 ? 0.5 : 0.1, dp:1, tip:'How much inspiratory flow the patient has to make to trigger a breath. A lower number is more sensitive.'},
+  ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5, tip:'A supported breath ends when the inspiratory flow has fallen to this percentage of its peak.'},
+  pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1, tip:'How quickly the pressure rises at the start of a pressure breath, in seconds.'},
+  pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5, tip:'The part of each volume-controlled breath held as a plateau with no flow, so the plateau pressure (Pplat) can be read.'},
+  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true, tip:'The minimum breathing rate in PSV. If the patient breathes more slowly, the machine gives pressure-controlled breaths at this rate (Apnea Ventilation).'},
+  o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1, tip:'The oxygen concentration of the fresh gas from the mixer. With N2O as the carrier gas it cannot be set below 25%.'},
+  fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true, tip:'The total fresh-gas flow into the breathing system. At low flows the patient rebreathes their own gas, so the inspired oxygen and agent change slowly.'},
+  carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O'], tip:'The gas mixed with the oxygen in the fresh gas: Air or nitrous oxide (N2O).'},
+  height:{label:'Height', unit:'cm', min:30, max:250, step:1, tip:"The patient's height, used for the ideal body weight."},
+  age:   {label:'Age', unit:'years', min:1, max:110, step:1, tip:"The patient's age, used to age-correct the MAC values (xMAC)."}
 };
 /* ranges that depend on other settings ([IFU1] p. 270: Pinsp PEEP+5 to 80, Pmax PEEP+10 to 80, ΔPsupp up to
    80 - PEEP; [PI]: FG O2 at least 25% with N2O) */
@@ -41,13 +41,13 @@ function ctrlDef(key, mk, src) {
 const mvStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 10 ? 1 : (dir > 0 ? v : v - 0.001) >= 1 ? 0.5 : 0.1;
 const vtStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 500 ? 50 : (dir > 0 ? v : v - 0.001) >= 100 ? 10 : 5;
 const ALIM = {
-  phigh:    {label:'Paw', unit:'cmH2O', min:5, max:99, step:1},
-  mvhigh:   {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, offMax:true},
-  mvlow:    {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, off0:true},
-  o2high:   {label:'FiO2', unit:'%', min:19, max:99, step:1, offMax:true},
-  o2low:    {label:'FiO2', unit:'%', min:18, max:98, step:1},
-  etco2high:{label:'etCO2', unit:'kPa', min:0.1, max:9.8, step:0.1, dp:1, offMax:true},
-  etco2low: {label:'etCO2', unit:'kPa', min:0.1, max:9.7, step:0.1, dp:1, off0:true},
+  phigh:    {label:'Paw', unit:'cmH2O', min:5, max:99, step:1, tip:'Upper airway pressure alarm limit. A ventilator breath that reaches it is cut short and "Airway pressure high" sounds.'},
+  mvhigh:   {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, offMax:true, tip:'Upper minute volume alarm limit (Off at the start of a case).'},
+  mvlow:    {label:'MV', unit:'L/min', min:0.1, max:40, step:mvStep, dp:1, off0:true, tip:'Lower minute volume alarm limit, set from VT x RR - 40% when ventilation starts. Not active in the first 45 s after starting or changing mode.'},
+  o2high:   {label:'FiO2', unit:'%', min:19, max:99, step:1, offMax:true, tip:'Upper inspired oxygen alarm limit.'},
+  o2low:    {label:'FiO2', unit:'%', min:18, max:98, step:1, tip:'Lower inspired oxygen alarm limit (factory setting 20%).'},
+  etco2high:{label:'etCO2', unit:'kPa', min:0.1, max:9.8, step:0.1, dp:1, offMax:true, tip:'Upper end-tidal CO2 alarm limit.'},
+  etco2low: {label:'etCO2', unit:'kPa', min:0.1, max:9.7, step:0.1, dp:1, off0:true, tip:'Lower end-tidal CO2 alarm limit.'},
   /* not shown on the A350: the shared engine reads them (unset, so they never alarm) */
   vthigh:   {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, offMax:true, hidden:true},
   vtlow:    {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, off0:true, hidden:true}
@@ -79,6 +79,20 @@ const TAB_MODES = {MAN:{cmv:'MAN'}, AF:{cmv:'APVcmv', simv:'APVsimv'}, VC:{cmv:'
 const tabOf = m => Object.keys(TAB_MODES).find(t => TAB_MODES[t].cmv === m || TAB_MODES[t].simv === m) || 'MAN';
 const syncOf = m => ['APVsimv', 'SIMV', 'PSIMV+'].includes(m) ? 'simv' : 'cmv';
 const MODE_GROUPS = [];
+/* what each tab, SIMV/CMV and More do, for the hover hints and the Education guide (the simulator's summaries) */
+const TAB_TIP = {
+  MAN:'Man/Spon: no ventilator breaths. Ventilate by squeezing the bag (the APL valve sets the pressure limit), or let the patient breathe spontaneously with the APL valve at Spont.',
+  AF:'VC - AF, volume control with AutoFlow: the set VT every breath, delivered with the lowest pressure that achieves it (a decelerating flow).',
+  VC:'VC, volume control: the set VT every breath with a constant flow and a plateau. The pressure depends on the lungs; Pmax limits it.',
+  PC:'PC, pressure control: every breath rises to Pinsp for Tinsp. The volume depends on the lungs, so watch VT.',
+  PSV:'PSV, pressure support: the patient triggers every breath and gets ΔPsupp above PEEP (CPAP when ΔPsupp is Off). RRmin gives backup breaths if they breathe too slowly.'
+};
+const SYNC_TIP = {
+  simv:'SIMV: mandatory breaths at the set RR, timed with the patient\'s own efforts. Breaths the patient takes in between get the pressure support (ΔPsupp, under More).',
+  cmv:'CMV: every breath is a mandatory breath at the set RR. In this simulator the patient cannot trigger extra breaths in CMV.'
+};
+const MODE_EXPLAIN = {MAN:TAB_TIP.MAN, APVcmv:TAB_TIP.AF, APVsimv:TAB_TIP.AF + ' ' + SYNC_TIP.simv, SCMV:TAB_TIP.VC, SIMV:TAB_TIP.VC + ' ' + SYNC_TIP.simv,
+  'PCV+':TAB_TIP.PC, 'PSIMV+':TAB_TIP.PC + ' ' + SYNC_TIP.simv, SPONT:TAB_TIP.PSV};
 /* the full mode names ([IFU1] pp. 298-301; [PI] p. 11) */
 const MODE_NAME = {MAN:'Man/Spon', APVcmv:'VC-CMV/AutoFlow', APVsimv:'VC-SIMV/AutoFlow', SCMV:'VC-CMV', SIMV:'VC-SIMV', 'PCV+':'PC-CMV', 'PSIMV+':'PC-SIMV', SPONT:'CPAP/PSV'};
 const VCM = ['SCMV', 'SIMV'];

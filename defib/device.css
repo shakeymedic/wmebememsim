@@ -225,3 +225,7 @@ body.embedded .zoll-device { border-width: 10px; padding: 16px; max-width: none;
     body.embedded { --ecg-h: clamp(140px, calc(100vh - 456px), 300px); }
 }
 @media (min-width: 601px) and (max-width: 899px) { body.embedded { --ecg-h: clamp(150px, calc(100vh - 896px), 260px); } }
+
+/* Hover hints (data-tip): one bubble near the pointer, never in the way of a press. */
+.tip-bubble { position: fixed; left: 0; top: 0; z-index: 10000; max-width: 280px; padding: 8px 11px; border-radius: 8px; background: rgba(17,24,39,0.96); color: #f8fafc; font: 13px/1.4 Arial, sans-serif; box-shadow: 0 6px 18px rgba(0,0,0,0.45); pointer-events: none; visibility: hidden; opacity: 0; transition: opacity 0.12s ease; }
+.tip-bubble.show { visibility: visible; opacity: 1; }

@@ -133,10 +133,11 @@ sub('const DEV_W = 1360, DEV_H = 1000;', 'const DEV_W = 1500, DEV_H = 900;');
 sub('const GW = 860, GH = 178;', 'const GW = 760, GH = 176;');
 between('function waveOpts() {', '/* trend of one value per simulated minute', read('waves.js'));
 
-// ---- the screen, the dialogs and editing (scripts/a350/screen.js, input.js) -------------------------
+// ---- the screen, the dialogs and editing (scripts/a350/screen.js, input.js); the hardware, the hover hints and
+//      the Education guide (hardware.js, guide.js) ------------------------------------------------------
 between('/* ======================= screen rendering ======================= */', '/* ---------- knob cursor (yellow outline) ---------- */', read('screen.js'));
 between('/* ---------- knob cursor (yellow outline) ---------- */', '/* ---------- front-panel keys ---------- */', read('input.js'));
-between('/* ---------- front-panel keys ---------- */', '/* full screen: CSS takes', read('hardware.js'));
+between('/* ---------- front-panel keys ---------- */', '/* full screen: CSS takes', read('hardware.js') + read('guide.js'));
 
 // ---- the simulator link: this page is the A350 -----------------------------------------------------
 sub("const DEVICE_MODEL = 'c6';", "const DEVICE_MODEL = 'a350';");
