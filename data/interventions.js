@@ -46,6 +46,8 @@ window.INTERVENTIONS = {
     'Suction': { label: 'Suction', route: 'manual', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway suctioned.', type: 'bolus', duration: 15, pk: { onset: 2, peak: 20, offset: 0, maxDoses: 3 } },
     // Clears a mucus plug injected on the ventilator (engine.js); on its own it changes no obs.
     'Bronchoscopy': { label: 'Bronchoscopy', route: 'via the tube', effect: {}, category: 'Airway', log: 'Bronchoscopy through the endotracheal tube: airways inspected and secretions suctioned.', type: 'bolus', duration: 60 },
+    // Corrects an endobronchial tube injected on the ventilator (engine.js); on its own it changes no obs.
+    'TubeWithdraw': { label: 'Pull tube back (endobronchial)', route: 'via the tube', effect: {}, category: 'Airway', log: 'Tracheal tube withdrawn to the correct length after checking the length at the teeth and listening to both sides of the chest.', type: 'bolus', duration: 20 },
     // RSI is deliberately performable with ANY induction agent or none at all — the expectations
     // below are advisory only. No SpO2 jump: oxygenation during the apnoeic period is modelled in
     // engine.js (pre-oxygenation reservoir vs. apnoeic desaturation) rather than asserted here.
@@ -102,6 +104,11 @@ window.INTERVENTIONS = {
     // GENUINELY NEAR-INSTANT AND TRANSIENT — adenosine works in 10-20s and is over inside a minute.
     'Adenosine': { label: 'Adenosine (6/12/18 mg; child by weight)', route: 'IV (rapid push + flush)', effect: { HR: -60, changeRhythm: 'chance' }, category: 'Circulation', log: 'IV Adenosine rapid bolus administered.', type: 'bolus', duration: 2, expects: ['IV Access'], pk: { onset: 5, peak: 10, plateau: 15, offset: 40, maxDoses: 3 }, cumulative: { unit: 'mg', perDose: 12, max: 36, message: 'Three escalating adenosine doses (adult 6/12/18 mg) completed without conversion — stop escalating: reconsider the diagnosis (is this AF/flutter/VT?) and move to rate control or synchronised cardioversion.' }, avBlock: { pause: 8, convertAt: 12, chanceByDose: [0.55, 0.75, 0.8] } },
     'Metaraminol': { label: 'Metaraminol', route: 'IV', effect: { BP: 15, HR: -3 }, category: 'Circulation', log: 'IV Metaraminol bolus administered.', type: 'bolus', duration: 10, pk: { onset: 45, peak: 120, offset: 1800, maxDoses: 4 }, expects: ['IV Access'] },
+    // The theatre drugs of the Association of Anaesthetists' Quick Reference Handbook (2-4 Hypotension,
+    // 3-1 Anaphylaxis), with the adult doses it gives. The effect sizes are the simulator's, not measured.
+    'Ephedrine': { label: 'Ephedrine (3-12 mg)', route: 'IV', effect: { BP: 12, HR: 8 }, category: 'Circulation', log: 'IV Ephedrine bolus administered (adult 3-12 mg).', type: 'bolus', duration: 10, pk: { onset: 30, peak: 120, offset: 900, maxDoses: 6 }, expects: ['IV Access'] },
+    'Glycopyrronium': { label: 'Glycopyrronium (200-400 mcg)', route: 'IV', effect: { HR: 15 }, category: 'Circulation', log: 'IV Glycopyrronium (glycopyrrolate) administered (adult 200-400 micrograms).', type: 'bolus', duration: 10, pk: { onset: 60, peak: 180, offset: 3600, maxDoses: 3 }, expects: ['IV Access'] },
+    'AdrenalineIVSmall': { label: 'Adrenaline IV (50 mcg; anaphylaxis)', route: 'IV', effect: { HR: 10, BP: 20 }, category: 'Circulation', log: 'IV Adrenaline 50 micrograms (0.5 ml of 1:10 000) administered for anaphylaxis. Repeat as needed; consider an infusion after three boluses.', type: 'bolus', duration: 5, pk: { onset: 15, peak: 60, offset: 300, maxDoses: 10 }, expects: ['IV Access'] },
     // Infusion: sustained while running, offset 2-5 min after it is stopped.
     'Noradrenaline': { label: 'Noradrenaline Infusion', route: 'IV infusion', effect: { BP: 20 }, category: 'Circulation', log: 'Noradrenaline infusion started.', type: 'continuous', duration: 300, pk: { onset: 30, peak: 120, offset: 120 }, expects: ['IV Access'] },
     'GTN': { label: 'GTN Spray', route: 'SL', effect: { BP: -8 }, category: 'Circulation', log: 'GTN Spray sublingual administered.', type: 'bolus', duration: 5, pk: { onset: 60, peak: 150, offset: 1500, maxDoses: 3 } },

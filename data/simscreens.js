@@ -9,7 +9,7 @@
 //
 //   Monitor      the obs, traces and results
 //   Defib        the defibrillator (defib/index.html, embedded)
-//   Ventilator   the HAMILTON-T1 (vent/index.html, embedded)
+//   Ventilator   the HAMILTON-T1 or HAMILTON-C6 (vent/index.html, embedded)
 //
 // in any combination (a screen always shows at least one). A screen with the monitor switches to
 // the defib or the ventilator when the facilitator brings it in; a screen without the monitor shows

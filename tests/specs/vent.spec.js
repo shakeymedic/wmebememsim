@@ -271,7 +271,7 @@ test('the facilitator controls a ventilator remotely: power, start, mode, a sett
   await expect.poll(() => logHas(page, /^Ventilator \(facilitator\): Ventilation started/)).toBe(true);
   expect(await logHas(page, /^Ventilator: Ventilation started/)).toBe(false);   // the facilitator's, not the candidate's
 
-  await page.getByLabel('Ventilator mode').selectOption('APVcmv');
+  await page.getByLabel('Ventilator mode', { exact: true }).selectOption('APVcmv');
   await expect.poll(() => vent.evaluate(() => window.__vent.V.mode)).toBe('APVcmv');
   // PEEP: one step up, then typed
   await expect(page.getByLabel('PEEP/CPAP value')).toBeVisible();
@@ -417,7 +417,7 @@ test('Ventilator Sim: ARDS in Assessment, on the room monitor, through to the ve
 
 test('every Ventilator Sim scenario starts with its lungs, airway and patient', async ({ page }) => {
   await openController(page);
-  const ids = await page.evaluate(() => window.VentSim.SCENARIOS.map(s => s.id));
+  const ids = await page.evaluate(() => window.VentSim.forDevice('t1').map(s => s.id));
   expect(ids.length).toBe(9);
   for (const id of ids) {
     const r = await page.evaluate((id) => {
