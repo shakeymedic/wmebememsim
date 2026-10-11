@@ -272,7 +272,7 @@
             const stop = US.subscribe(uid, list => { setCustomScenarios(list); setMyStatus('ready'); }, reason => setMyStatus(reason));
             return () => { stop(); US.cache = []; };
         }, [uid]);
-        useEffect(() => { if (uid) setMyAuthOpen(false); }, [uid]);
+        useEffect(() => { if (uid) { setMyAuthOpen(false); setRestrictedAuthOpen(false); } }, [uid]);
 
         const saveFailed = (e) => alert('Could not save to your account: ' + ((e && e.message) || 'the database refused it') + '.');
         const addLegacyToAccount = () => {
@@ -513,6 +513,7 @@
         const RestrictedSection = () => {
             const signedIn = !!(auth && auth.phase === 'signedIn');
             const status = (auth && auth.profile && auth.profile.status) || null;
+            const requestedCourse = !!(auth && auth.profile && auth.profile.requestedAccess && auth.profile.requestedAccess.rcuk);
             // ITEM 5: the same modal the header's account button opens. Read off window so this screen
             // keeps working if data/auth.js never loaded (the no-accounts deployment).
             const AuthModalComponent = window.AuthModal || null;
@@ -521,7 +522,7 @@
                     <div className="flex items-center gap-2 mb-2">
                         <Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button>
                         <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                            <Lucide icon={restrictedUnlocked ? 'unlock' : 'lock'} className="w-4 h-4"/> Restricted Scenarios
+                            <Lucide icon={restrictedUnlocked ? 'unlock' : 'lock'} className="w-4 h-4"/> Course scenarios
                         </h3>
                     </div>
 
@@ -531,7 +532,7 @@
                                 <Lucide icon="lock" className="w-6 h-6 text-amber-400 flex-none mt-0.5"/>
                                 <div className="text-sm text-slate-300 space-y-2">
                                     <p className="font-bold text-amber-300">This section is locked.</p>
-                                    <p>It holds copyrighted scenarios (for example RCUK course material) that cannot be distributed with the app. They are stored separately and released to individually approved accounts.</p>
+                                    <p>It holds scenarios from specific courses (for example ALS, ETC and others). They are copyrighted, so they cannot be distributed with the app and are only released to approved course faculty and participants.</p>
                                     <p className="text-slate-400">Everything else in the simulator — all {ALL_SCENARIOS.length} built-in scenarios, Quick Sim, the monitor, the defibrillator and the debrief — needs no account at all.</p>
                                 </div>
                             </div>
@@ -550,23 +551,24 @@
                                         </Button>
                                         <p className="text-slate-400">The account button in the header does the same thing.</p>
                                         {AuthModalComponent && restrictedAuthOpen && (
-                                            <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setRestrictedAuthOpen(false); }} context="Sign in, then request access to the restricted scenarios." />
+                                            <AuthModalComponent auth={auth} onClose={() => { if (auth.clearFeedback) auth.clearFeedback(); setRestrictedAuthOpen(false); }} context="Sign in, then request access to course scenarios." />
                                         )}
                                     </div>
                                 ) : (
                                     <div className="space-y-2">
                                         <p className="text-slate-400">
                                             Signed in as <span className="text-slate-200 font-bold">{auth.user && auth.user.email}</span>.
-                                            {status === 'approved'
-                                                ? ' Your account is approved but does not hold the restricted-content entitlement yet.'
-                                                : status === 'rejected'
-                                                    ? ' Your access request was declined.'
-                                                    : ' Your account is awaiting approval.'}
-                                            {' '}Use the <b>Request access</b> button below — the owner grants it manually.
+                                            {status === 'rejected'
+                                                ? ' Your access request was not approved.'
+                                                : requestedCourse
+                                                    ? ' Your request is awaiting approval by the site owner.'
+                                                    : ' If you teach or attend one of these courses, request access below (also available from your account, top right).'}
                                         </p>
-                                        <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-400 border-amber-500/60">
-                                            Request access
-                                        </Button>
+                                        {!requestedCourse && status !== 'rejected' && (
+                                            <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-400 border-amber-500/60">
+                                                Request access to course scenarios
+                                            </Button>
+                                        )}
                                         {auth.notice && <div className="text-emerald-300">{auth.notice}</div>}
                                         {auth.error && <div className="text-red-300">{auth.error}</div>}
                                     </div>
@@ -617,7 +619,7 @@
             { id: 'Psychiatric', label: 'Psychiatric', icon: 'brain', filter: s => s.category === 'Psychiatric' },
             // The restricted category. `restricted: true` means it does NOT filter
             // ALL_SCENARIOS at all — its contents come from Firebase at runtime, or it shows locked.
-            { id: 'Restricted', label: 'Restricted (RCUK)', icon: 'lock', restricted: true, filter: () => false },
+            { id: 'Restricted', label: 'Course scenarios (ALS, ETC)', icon: 'lock', restricted: true, filter: () => false },
         ];
 
         // WHAT TO RUN. Six plain choices, nothing preselected; picking one opens its panel. The
