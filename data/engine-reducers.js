@@ -50,6 +50,13 @@
         return { ventPhys: { ...res.ventPhys, applied }, changed: true, driving: true };
     };
 
+    // A Ventilator Sim scenario's starting lung adjustments (live.vent.lung), kept within the
+    // facilitator's own slider ranges (e.g. CO2 production raised for malignant hyperthermia).
+    const ventSimLung = (l) => {
+        const VP = window.VENT_PROFILES, out = {};
+        if (l && VP) Object.keys(l).forEach(k => { const d = VP.LUNG_ADJ[k], n = Number(l[k]); if (d && Number.isFinite(n)) out[k] = Math.min(d.max, Math.max(d.min, n)); });
+        return out;
+    };
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
@@ -477,7 +484,8 @@
                     ...(action.payload.ventSim && window.VENT_PROFILES ? {
                         vent: { profile: window.VENT_PROFILES.profiles[action.payload.ventSim.profile] ? action.payload.ventSim.profile : 'normal',
                             breathing: action.payload.ventSim.breathing === true || action.payload.ventSim.breathing === false ? action.payload.ventSim.breathing : null,
-                            lung: {}, probs: window.VENT_PROFILES.probList(action.payload.ventSim.startProblems || []), assess: action.payload.ventSim.mode === 'assessment' },
+                            lung: ventSimLung(action.payload.ventSim.lung), probs: window.VENT_PROFILES.probList(action.payload.ventSim.startProblems || []), assess: action.payload.ventSim.mode === 'assessment',
+                            model: action.payload.ventSim.device === 'c6' ? 'c6' : 't1' },
                         ventPanelOpen: true
                     } : {}),
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
@@ -515,7 +523,7 @@
                     vent: (p.vent && typeof p.vent === 'object' && window.VENT_PROFILES && window.VENT_PROFILES.profiles[p.vent.profile])
                         ? { profile: p.vent.profile, breathing: p.vent.breathing === true || p.vent.breathing === false ? p.vent.breathing : null,
                             lung: (p.vent.lung && typeof p.vent.lung === 'object') ? { ...p.vent.lung } : {},
-                            probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true } : null,
+                            probs: window.VENT_PROFILES.probList(p.vent.probs), assess: p.vent.assess === true, model: p.vent.model === 'c6' ? 'c6' : 't1' } : null,
                     activeInterventions: new Set(p.activeInterventions || []),
                     completedObjectives: new Set(p.completedObjectives || []),
                     // Point-of-care results and compressions in progress, when the snapshot carries them.
@@ -671,10 +679,12 @@
                 if (p.profile !== undefined && p.profile !== cur.profile && p.lung === undefined) lung = {};
                 const probs = p.probs !== undefined ? (VP ? VP.probList(p.probs) : []) : (cur.probs || []);
                 const assess = p.assess !== undefined ? p.assess === true : !!cur.assess;
+                // Which ventilator the candidate has: the HAMILTON-T1 (transport) or the HAMILTON-C6 (ICU).
+                const model = (p.model !== undefined ? p.model : cur.model) === 'c6' ? 'c6' : 't1';
                 return { ...state, vent: {
                     profile: VP && VP.profiles[profile] ? profile : 'normal',
                     breathing: breathing === true || breathing === false ? breathing : null,
-                    lung, probs, assess
+                    lung, probs, assess, model
                 } };
             }
             case 'SET_VENT_MIRROR': return { ...state, ventMirror: action.payload || {} };

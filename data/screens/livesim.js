@@ -917,7 +917,7 @@
             ? `${activeDrugRows[0].label}: ${(PHASE_STYLE[activeDrugRows[0].phase] || { label: String(activeDrugRows[0].phase) }).label.toLowerCase()}${activeDrugRows[0].sustained && !activeDrugRows[0].stopped ? ', running' : (Number.isFinite(activeDrugRows[0].remaining) ? `, ${fmtRemaining(activeDrugRows[0].remaining)} left` : '')}${activeDrugRows.length > 1 ? ` (+${activeDrugRows.length - 1} more)` : ''}`
             : '';
         const conditionSummary = deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs change only when you change them';
-        // The HAMILTON-T1: on the room monitor or its own tablet, the lungs it ventilates, and what
+        // The ventilator (HAMILTON-T1, or the HAMILTON-C6 ICU ventilator): on the room monitor or its own tablet, the lungs it ventilates, and what
         // each linked ventilator is showing right now (sessions/<CODE>/ventState).
         const VP = window.VENT_PROFILES;
         const ventPanelOpen = !!state.ventPanelOpen;
@@ -1550,8 +1550,8 @@
                         </div>
                         </Section>
 
-                        {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) on the room monitor or its own
-                             tablet. Its settings, tests and alarms arrive in the event log. ---- */}
+                        {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) on the
+                             room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
                         {VP && (
                         <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={!!(rawScenario && rawScenario.ventSim)}>
                             <div className="flex flex-col gap-2 text-[11px] text-slate-300">
@@ -1564,9 +1564,18 @@
                                 )}
                                 <Button variant="outline" onClick={() => sim.dispatch({ type: 'SET_VENT_PANEL', payload: !ventPanelOpen })}
                                         className={`w-full ${ventPanelOpen ? 'bg-cyan-900/30 border-cyan-500 text-cyan-300' : 'text-cyan-400 border-cyan-500/50'}`}
-                                        title="Shows the HAMILTON-T1 on the room monitor (it replaces the defib there). A ventilator tablet joined by QR code works whether this is on or off.">
+                                        title="Shows the ventilator on the room monitor (it replaces the defib there). A ventilator tablet joined by QR code works whether this is on or off.">
                                     <Lucide icon="wind" className="w-4 h-4"/> {ventPanelOpen ? 'Take the ventilator off the patient screens' : 'Show the ventilator on the patient screens'}
                                 </Button>
+                                <label className="flex items-center justify-between gap-2">
+                                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Ventilator</span>
+                                    <select aria-label="Ventilator model" value={ventCfg.model === 'c6' ? 'c6' : 't1'}
+                                            title="The device the candidate sees. Changing it swaps the ventilator on every screen; it starts switched off."
+                                            onChange={e => { sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { model: e.target.value } }); addLogEntry(`Ventilator changed to the ${VP.MODELS[e.target.value]} (facilitator)`, 'system'); }}
+                                            className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
+                                        {Object.keys(VP.MODELS).map(k => <option key={k} value={k}>{VP.MODELS[k]}</option>)}
+                                    </select>
+                                </label>
                                 {window.VentControls && <window.VentControls.VentPatientPanel sim={sim} cfg={ventCfg} addLogEntry={addLogEntry} />}
                                 <label className="flex items-center justify-between gap-2">
                                     <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Lungs</span>
@@ -1590,7 +1599,7 @@
                                     <div className="flex gap-1" role="group" aria-label="Who sets the obs">
                                         {[[true, 'Ventilator drives them'], [false, 'I set them']].map(([on, label]) => (
                                             <button key={label} type="button" aria-pressed={ventLinkOn === on}
-                                                    onClick={() => { if (ventLinkOn === on) return; sim.dispatch({ type: 'SET_VENT_LINK', payload: on }); addLogEntry(on ? 'Ventilator link on: a ventilating HAMILTON-T1 drives SpO2, RR and ETCO2 (facilitator).' : 'Ventilator link off: the facilitator sets the obs (facilitator).', 'system'); }}
+                                                    onClick={() => { if (ventLinkOn === on) return; sim.dispatch({ type: 'SET_VENT_LINK', payload: on }); addLogEntry(on ? 'Ventilator link on: the ventilator, while it ventilates, drives SpO2, RR and ETCO2 (facilitator).' : 'Ventilator link off: the facilitator sets the obs (facilitator).', 'system'); }}
                                                     className={`px-2 py-0.5 rounded border text-[10px] font-bold ${ventLinkOn === on ? 'bg-cyan-700 border-cyan-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300'}`}>{label}</button>
                                         ))}
                                     </div>
@@ -1618,7 +1627,7 @@
                                     return (
                                         <div key={m.id} data-testid="vent-mirror" className="bg-black/50 rounded p-2 flex flex-col gap-1">
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-bold text-cyan-300">{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}{Date.now() - Number(m.ts) > 15000 ? <span className="ml-1 text-amber-300">(no update for {Math.round((Date.now() - Number(m.ts)) / 1000)} s: link lost?)</span> : null}</span>
+                                                <span className="font-bold text-cyan-300">{m.model === 'c6' ? 'HAMILTON-C6' : 'HAMILTON-T1'}{' \u00b7 '}{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}{Date.now() - Number(m.ts) > 15000 ? <span className="ml-1 text-amber-300">(no update for {Math.round((Date.now() - Number(m.ts)) / 1000)} s: link lost?)</span> : null}</span>
                                                 <span className="font-bold text-white">{VENT_STATE_LABEL[m.state] || m.state}{m.state === 'ventilating' || m.state === 'standby' ? ` \u00b7 ${m.label}` : ''}{m.locked ? ' \u00b7 locked' : ''}</span>
                                             </div>
                                             {m.ctl && <div><span className="text-slate-400">Settings: </span>{m.ctl}</div>}

@@ -55,7 +55,7 @@
         return (
             <div className="flex flex-col gap-2" data-testid="vent-patient">
                 <div className="flex items-center justify-between gap-2">
-                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">On the T1</span>
+                    <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">On the ventilator</span>
                     <Seg label="Education or Assessment" value={cfg.assess === true}
                          options={[[false, 'Education'], [true, 'Assessment']]}
                          onChange={(v) => { setCfg({ assess: v }); addLogEntry(v ? 'Ventilator: Assessment (no alarm help on the screen) (facilitator)' : 'Ventilator: Education (alarm help on the screen) (facilitator)', 'system'); }} />
@@ -92,6 +92,10 @@
                     {probs.indexOf('plug') !== -1 && sim.applyIntervention && (
                         <button type="button" className="mt-1 w-full px-2 py-1 rounded bg-emerald-700 text-white text-[10px] font-bold"
                                 onClick={() => sim.applyIntervention('Bronchoscopy')}>Bronchoscopy done: clear the plug</button>
+                    )}
+                    {probs.indexOf('endo') !== -1 && sim.applyIntervention && (
+                        <button type="button" className="mt-1 w-full px-2 py-1 rounded bg-emerald-700 text-white text-[10px] font-bold"
+                                onClick={() => sim.applyIntervention('TubeWithdraw')}>Tube pulled back: fix the endobronchial tube</button>
                     )}
                 </div>
                 <details>
@@ -174,7 +178,7 @@
                             <select aria-label="Ventilator mode" value={m.mode === 'CPR' ? '' : m.mode} onChange={e => { if (e.target.value) send('mode', e.target.value); }}
                                     className="min-w-0 bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
                                 {m.mode === 'CPR' && <option value="">CPR</option>}
-                                {VP.MODES.map(([k, name]) => <option key={k} value={k}>{name}</option>)}
+                                {(m.model === 'c6' ? VP.MODES_C6 : VP.MODES).map(([k, name]) => <option key={k} value={k}>{name}</option>)}
                             </select>
                         </label>
                     )}

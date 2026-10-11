@@ -977,6 +977,17 @@
                 dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'plug') } });
                 addLogEntry('Ventilator problem fixed: mucus plug cleared by bronchoscopy.', 'system');
             }
+            // Pulling the tube back corrects the ventilator's injected endobronchial tube.
+            if (key === 'TubeWithdraw' && cur.vent && (cur.vent.probs || []).indexOf('endo') !== -1) {
+                dispatch({ type: 'SET_VENT_CONFIG', payload: { probs: cur.vent.probs.filter(id => id !== 'endo') } });
+                addLogEntry('Ventilator problem fixed: endobronchial tube pulled back.', 'system');
+            }
+            // Dantrolene in a malignant hyperthermia crisis (CO2 production raised on the ventilator's
+            // lungs): CO2 production returns to normal, so the ETCO2 falls over the next few minutes.
+            if (key === 'Dantrolene' && cur.vent && cur.vent.lung && Number(cur.vent.lung.m) > 100) {
+                dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { m: null } } });
+                addLogEntry('Ventilator lungs: CO2 production back to normal after dantrolene.', 'system');
+            }
             // WAVE 9 / ROOT FIX (same class): send only the fields this intervention actually
             // CHANGED. The payload is merged onto the LIVE baseVitals by the reducer, so a whole
             // snapshot-derived object here meant two instant-effect interventions in one tick

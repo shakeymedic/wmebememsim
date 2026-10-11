@@ -1184,17 +1184,18 @@ function sizeCanvas(cv) {
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
 }
 const CV = [$('#cv1'), $('#cv2'), $('#cv3')];
+const GW = 470, GH = 160;   /* one waveform panel, in screen pixels */
 function prepCanvas(cv) {
   const dpr = Math.min(2, window.devicePixelRatio || 1) * 1.2;
-  const w = 470 * dpr, h = 160 * dpr;
+  const w = GW * dpr, h = GH * dpr;
   if (cv.width !== Math.round(w) || cv.height !== Math.round(h)) { cv.width = Math.round(w); cv.height = Math.round(h); }
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
 }
 function niceTop(v, steps) { for (const s of steps) if (v <= s) return s; return steps[steps.length - 1]; }
 function drawWave(cv, buf, opt) {
   const ctx = prepCanvas(cv);
-  ctx.clearRect(0, 0, 470, 160);
-  const L = 54, R = 462, T = 26, Bm = 140;
+  ctx.clearRect(0, 0, GW, GH);
+  const L = 54, R = GW - 8, T = 26, Bm = GH - 20;
   const {ymin, ymax, colour, label, unit, ticks, lines, marks} = opt;
   const y = v => Bm - (clamp(v, ymin, ymax) - ymin) / (ymax - ymin) * (Bm - T);
   ctx.font = '13px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
@@ -1239,13 +1240,13 @@ function waveOpts() {
   };
 }
 function drawWaves() {
-  if (!V.power || V.selftest > 0) { CV.forEach(cv => prepCanvas(cv).clearRect(0, 0, 470, 160)); return; }
+  if (!V.power || V.selftest > 0) { CV.forEach(cv => prepCanvas(cv).clearRect(0, 0, GW, GH)); return; }
   /* HiFlowO2: Oxygen and Flow trends, and the plethysmogram if SpO2 is on (10.5.1) */
   if (isHFO()) {
     drawTrend(CV[0], TR.o2, {ymin:0, ymax:100, colour:'#3fd16b', label:'Oxygen', unit:'%', ticks:[0, 50, 100]});
     drawTrend(CV[1], TR.flow, {ymin:0, ymax:60, colour:'#e44fd0', label:'Flow', unit:'l/min', ticks:[0, 30, 60]});
     if (V.spo2On) drawWave(CV[2], bufPl, {ymin:0, ymax:1.3, colour:'#3ec6ff', label:'Pleth', unit:'', ticks:[]});
-    else prepCanvas(CV[2]).clearRect(0, 0, 470, 160);
+    else prepCanvas(CV[2]).clearRect(0, 0, GW, GH);
     return;
   }
   const o = waveOpts();
@@ -1266,8 +1267,8 @@ function trendTick() {
 }
 function drawTrend(cv, arr, opt) {
   const ctx = prepCanvas(cv);
-  ctx.clearRect(0, 0, 470, 160);
-  const L = 54, R = 462, T = 26, Bm = 140;
+  ctx.clearRect(0, 0, GW, GH);
+  const L = 54, R = GW - 8, T = 26, Bm = GH - 20;
   const {ymin, ymax, colour, label, unit, ticks} = opt;
   const y = v => Bm - (clamp(v, ymin, ymax) - ymin) / (ymax - ymin) * (Bm - T);
   ctx.font = '13px "Segoe UI",system-ui,sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
@@ -2066,6 +2067,18 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelE
 const EMBEDDED = (() => { try { return new URLSearchParams(window.location.search).get('embedded') === '1'; } catch (e) { return false; } })();
 if (EMBEDDED) document.body.classList.add('embedded');
 const VP = window.VENT_PROFILES;
+/* Which ventilator this page is. Both pages share this link layer; the session's live.vent.model says
+   which one the facilitator wants, and the other page hands over to it (keeping the address's query). */
+const DEVICE_MODEL = 't1';
+const MODEL_PAGES = {t1:'index.html', c6:'c6.html'};
+let switching = false;
+function switchModel(model) {
+  if (switching || !MODEL_PAGES[model]) return;
+  switching = true;
+  saveDevice();
+  try { if (fb.db && fb.code) { fb.db.ref('sessions/' + fb.code + '/presence/' + fb.presenceId).remove(); fb.db.ref('sessions/' + fb.code + '/ventState/' + fb.presenceId).remove(); } } catch (e) {}
+  window.location.replace(MODEL_PAGES[model] + window.location.search);
+}
 const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
 
 /* the trainer's teaching prompts and task list are not part of the simulation device */
@@ -2324,6 +2337,9 @@ function applyLive(v) {
   LIVE.muted = !!v.isMuted;
   LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
   $('#endedBanner').hidden = !LIVE.isFinished;
+  /* The facilitator chose the other ventilator (HAMILTON-T1 or HAMILTON-C6): open its page, same session */
+  const model = v.vent && v.vent.model === 'c6' ? 'c6' : 't1';
+  if (model !== DEVICE_MODEL) { switchModel(model); return; }
   applyConfig(v.vent || null);
   document.body.classList.toggle('assess', !!(v.vent && v.vent.assess));
   if (document.body.classList.contains('assess')) helpFor = null;

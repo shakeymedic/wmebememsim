@@ -42,6 +42,9 @@
         var probs = VP ? VP.probList(v.probs) : [];
         if (probs.length) out.probs = probs.join(',');
         if (v.assess === true) out.assess = true;
+        // The HAMILTON-C6 (vent/c6.html) instead of the HAMILTON-T1. Only sent for the C6, so a
+        // T1 session writes exactly what it did before.
+        if (v.model === 'c6') out.model = 'c6';
         return out;
     }
     var hasProb = function (cfg, id) { return VP ? VP.probList(cfg.probs).indexOf(id) !== -1 : false; };
@@ -105,7 +108,7 @@
         // True shunt: blood past collapsed lung stays venous (about 65%) whatever the oxygen. A mucus
         // plug: PEEP above 5 reopens a little of it (1% of the flow per cmH2O), never more than 40%.
         // A tension pneumothorax: until it is decompressed.
-        var qs = (lung.ptxShunt || 0) + (lung.plug ? Math.max(lung.plug * 0.6, lung.plug - 0.01 * Math.max(0, peep - 5)) : 0);
+        var qs = (lung.ptxShunt || 0) + (lung.plug ? Math.max(lung.plug * 0.6, lung.plug - 0.01 * Math.max(0, peep - 5)) : 0) + (lung.oneLung || 0);
         if (qs > 0) spo2T = (1 - qs) * spo2T + qs * 65;
         // A tube in the oesophagus: no oxygen reaches the lungs, so the patient desaturates over a minute or two.
         if (tubeOut) spo2T = Math.min(spo2T, 70);

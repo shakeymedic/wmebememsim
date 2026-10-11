@@ -26,7 +26,7 @@
         defib: { title: 'Defibrillator', short: 'Defib', icon: 'zap',
                text: 'The defibrillator on its own screen.' },
         vent: { title: 'Ventilator', short: 'Ventilator', icon: 'wind',
-               text: 'The HAMILTON-T1 ventilator on its own screen.' }
+               text: 'The ventilator (HAMILTON-T1 or HAMILTON-C6) on its own screen.' }
     };
     const LAYOUTS = { 1: ['all'], 2: ['monitor', 'devices'], 3: ['monitor', 'defib', 'vent'] };
     const MONITOR_PAGE_ROLES = ['all', 'monitor', 'devices'];
