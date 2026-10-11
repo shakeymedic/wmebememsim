@@ -433,7 +433,7 @@ function renderSMP() {
   const sb = V.standby, inv = isInvasive() && !sb && !P.disc;
   const rows = [['Pplateau', M.pplat, 0, 'cmH2O'], ['Pmean', M.pmean, 0, 'cmH2O'], ['AutoPEEP', isNIV() ? null : M.autopeep, 1, 'cmH2O'],
     ['Cstat', inv ? P.pr.C * 1000 : null, 1, 'ml/cmH2O'], ['Rinsp', inv ? P.pr.R : null, 0, 'cmH2O/(l/s)'], ['fSpont', M.fspont, 0, 'b/min'],
-    ['VTI', M.vti, 0, 'ml'], ['VLeak', M.vleak, 0, '%'], ['PetCO2', petco2(), 0, 'mmHg']];
+    ['VTI', M.vti, 0, 'ml'], ['VLeak', M.vleak, 0, '%'], ['PetCO2', petco2(), 1, 'kPa']];
   el.innerHTML = rows.map(r => \`<div><span>\${r[0]}<small>\${r[3]}</small></span><b>\${sb || r[1] === null || r[1] === undefined ? '--' : fmt(r[1], r[2])}</b></div>\`).join('');
 }`);
 sub(`function renderLEDs() {

@@ -96,7 +96,7 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .hw-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:6px}
 .hw-row b{min-width:56px;text-align:center;font-size:26px;font-weight:600;color:#111;background:#f7f8f8;border:1px solid #9aa2a8;border-radius:6px;padding:2px 6px;font-variant-numeric:tabular-nums}
 .hw-row .hu{font-size:12px;color:#3f474e;margin-left:-6px}
-.hb{width:50px;height:50px;border-radius:50%;border:2px solid #6c757d;background:linear-gradient(180deg,#f5f6f7,#c9ced2);font-size:26px;font-weight:700;color:#222;padding:0;cursor:pointer}
+.hb{position:relative;width:50px;height:50px;border-radius:50%;border:2px solid #6c757d;background:linear-gradient(180deg,#f5f6f7,#c9ced2);font-size:26px;font-weight:700;color:#222;padding:0;cursor:pointer}
 .hb:active{transform:translateY(1px)}
 .hw-sup{position:absolute;left:0;top:0;width:370px;height:66px;background:#2a2e33;border-radius:10px;display:flex;justify-content:space-around;align-items:center;color:#e8eef6;font-size:13px}
 .hw-sup span{text-align:center;line-height:1.15}
@@ -110,7 +110,7 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .flush sub{font-size:13px}
 .flush.lit{background:#7fe08a;box-shadow:0 0 14px rgba(127,224,138,.9)}
 .hw-o2 .hw-h{width:260px}
-.hsw{display:block;margin:4px 0 8px 40px;width:180px;height:40px;border-radius:20px;border:2px solid #3e8a52;background:#fff;font-size:15px;font-weight:700;color:#1e5a2e;cursor:pointer}
+.hsw{position:relative;display:block;margin:4px 0 8px 40px;width:180px;height:40px;border-radius:20px;border:2px solid #3e8a52;background:#fff;font-size:15px;font-weight:700;color:#1e5a2e;cursor:pointer}
 .hsw.add{background:#ffd400;border-color:#b38f00;color:#2b2100}
 .hw-o2 .hw-row{width:260px}
 .hw-apl{position:absolute;left:0;top:492px;width:370px;height:100px;background:#e9edf0;border:2px solid #7e878f;border-radius:12px;padding:8px 0}
@@ -141,7 +141,7 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .bstat .clock{font-size:18px;color:#fff}
 /* main menu bar (right) */
 .mmenu{position:absolute;left:1160px;top:56px;width:120px;height:744px;background:#1c2630;display:flex;flex-direction:column;gap:4px;padding:6px}
-.mm{height:64px;border:0;border-radius:4px;background:#3c4b59;color:#fff;font-size:15px;font-weight:600;line-height:1.15;padding:0 4px;white-space:normal}
+.mm{position:relative;height:80px;border:0;border-radius:4px;background:#3c4b59;color:#fff;font-size:15px;font-weight:600;line-height:1.15;padding:0 4px;white-space:normal}
 .mm.open{background:#e9eef2;color:#000}
 .mm[aria-disabled="true"]{opacity:.45}
 .mmenu .sp{flex:1}
@@ -177,14 +177,14 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .sb-btns .wb{height:56px;font-size:19px;min-width:200px}
 .sb-note{font-size:14px;color:#93a3b3;margin-top:16px}
 /* therapy bar */
-.tbar{position:absolute;left:0;top:586px;width:1160px;height:214px;background:#1c2630;border-top:2px solid #0b0f14}
+.tbar{position:absolute;z-index:3;left:0;top:586px;width:1160px;height:214px;background:#1c2630;border-top:2px solid #0b0f14}
 .tbar[hidden]{display:none}
-.tb-mode{position:absolute;left:10px;top:6px;width:430px;height:40px;display:flex;flex-direction:column;justify-content:center;font-size:20px;color:#fff;line-height:1.1}
+.tb-mode{position:absolute;left:10px;top:6px;width:380px;height:40px;display:flex;flex-direction:column;justify-content:center;font-size:20px;color:#fff;line-height:1.1}
 .tb-mode .pend{font-size:12px;color:#b8f0b0;font-weight:400}
-.tb-tabs{position:absolute;left:440px;top:4px;right:6px;height:44px;display:flex;gap:4px;justify-content:flex-end}
-.ttab,.tsync,.tmore{height:44px;border:0;border-radius:4px 4px 0 0;font-size:16px;font-weight:600;padding:0 12px;min-width:84px}
-.tsync{border-radius:4px;min-width:64px}
-.tmore{border-radius:4px;background:#3c4b59;color:#fff;margin-left:8px}
+.tb-tabs{position:absolute;left:388px;top:4px;right:6px;height:44px;display:flex;gap:4px;justify-content:flex-end}
+.ttab,.tsync,.tmore{position:relative;height:44px;border:0;border-radius:4px 4px 0 0;font-size:16px;font-weight:600;padding:0 12px;min-width:84px}
+.tsync{border-radius:4px;min-width:82px}
+.tmore{border-radius:4px;background:#3c4b59;color:#fff;margin-left:8px;min-width:84px}
 .tmore[aria-pressed="true"]{background:#e9eef2;color:#000}
 .ttab.on,.tsync.on{background:#1f7a3a;color:#fff}
 .ttab.avail,.tsync.avail{background:#3c4b59;color:#fff}
@@ -286,9 +286,9 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .a-main>.t1-wrap{min-width:0}
 .guide{flex:0 0 320px;min-height:0;display:flex;flex-direction:column;background:#111a24;border-left:2px solid #2a3a4c;color:#dbe4ee;font-size:13px;line-height:1.4}
 .guide[hidden]{display:none}
-.guide.closed{flex-basis:36px}
-.g-toggle{flex:0 0 auto;margin:6px;background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:5px 8px;font-weight:700;font-size:.8rem}
-.guide.closed .g-toggle{writing-mode:vertical-rl;margin:6px 3px;padding:10px 4px}
+.guide.closed{flex-basis:46px}
+.g-toggle{flex:0 0 auto;min-height:44px;margin:6px;background:#24456f;color:#fff;border:1px solid #3d6aa3;border-radius:7px;padding:5px 8px;font-weight:700;font-size:.8rem}
+.guide.closed .g-toggle{writing-mode:vertical-rl;margin:6px 1px;padding:10px 4px;min-width:44px;min-height:88px}
 .g-body{flex:1 1 auto;overflow:auto;padding:0 12px 12px}
 .guide.closed .g-body{display:none}
 .g-body h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#ffd24a;margin:12px 0 4px}
@@ -308,6 +308,27 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .g-task,.g-btn{text-align:left;background:#1c2b3a;color:#e8eef6;border:1px solid #2f4357;border-radius:6px;padding:5px 8px;font-size:13px}
 .g-task.on{background:#ffd24a;color:#1b1300;border-color:#ffd24a}
 .g-btn{margin-top:6px}
+/* ---- touch: every control at least 44 CSS px on the glass (a tablet at 1024 x 768 shows the machine at about
+   two-thirds size). fitDevice sets --hit (44 px in the machine's own pixels) and --shit (44 px in the screen's
+   pixels); an invisible ::after grows the hit area to that size around a control that is drawn smaller.
+   On the screen the menu keys and mode tabs sit close together, so their hit areas fill the gaps between them
+   and the mode tabs reach up over the bottom of the monitoring area rather than down over the settings. ---- */
+.hb:after,.t1 .k:after,.flush:after,.hsw:after,.win .wx:after{content:"";position:absolute;left:50%;top:50%;width:max(100%,var(--hit,44px));height:max(100%,var(--hit,44px));transform:translate(-50%,-50%);border-radius:50%}
+.hsw:after,.t1 .k.ap:after,.t1 .k:not(.pw):after{border-radius:12px}
+.win .wx:after{width:max(100%,var(--shit,44px));height:max(100%,var(--shit,44px))}
+.mm:after{content:"";position:absolute;left:-6px;right:-6px;top:-2px;bottom:-2px}
+.ttab:after,.tsync:after,.tmore:after{content:"";position:absolute;left:-2px;right:-2px;bottom:0;height:max(100%,min(var(--shit,44px),84px))}
+/* ---- a tall screen (a tablet held upright): the machine stacked, the screen on top and the gas and breathing
+   system underneath, so it fills the width (fitDevice adds .portrait; the arrangement is the simulator's) ---- */
+.t1.portrait{width:1100px;height:1330px}
+.t1.portrait .a-body{width:1100px;height:1312px}
+.t1.portrait .hw{left:30px;top:880px;width:1040px;height:430px}
+.t1.portrait .hw-sup{width:1040px}
+.t1.portrait .hw-vap{left:0;top:80px;width:330px}
+.t1.portrait .hw-o2{left:345px;top:80px;width:370px}
+.t1.portrait .hw-apl{left:730px;top:80px;width:310px}
+.t1.portrait .bag{left:735px;top:212px}
+.t1.portrait .ypiece{left:922px;top:222px;width:118px;height:180px}
 @media (max-width:700px){.guide:not(.closed){position:fixed;right:0;top:36px;bottom:0;width:min(320px,90vw);z-index:1100}}
 /* below-device controls (big targets, used on phones) */
 .under{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin:10px 0 0}
@@ -1379,13 +1400,24 @@ function powerTick(dtReal) {
 
 /* ======================= screen: scaling ======================= */
 const DEV_W = 1500, DEV_H = 900;
+/* The A350's scaling (replaces the T1's fitDevice). The machine is drawn at 1500 x 900 and scaled to fit. On a tall screen (a tablet held upright) it is stacked
+   instead, at 1100 x 1330: the screen on top, the gas and breathing system underneath (.portrait, the
+   simulator's arrangement), so it fills the width rather than sitting small in the middle.
+   --hit and --shit are 44 CSS px in the machine's and the screen's own pixels: the touch targets use them. */
+const DEV_TALL_W = 1100, DEV_TALL_H = 1330;
 function fitDevice() {
   const wrap = $('#device'), sc = $('#t1scaler'), t1 = $('#t1');
-  const s = Math.max(0.2, Math.min(wrap.clientWidth / DEV_W, (wrap.clientHeight - 4) / DEV_H));
+  const W = wrap.clientWidth, H = wrap.clientHeight - 4;
+  const tall = H > W * 1.1;
+  t1.classList.toggle('portrait', tall);
+  const dw = tall ? DEV_TALL_W : DEV_W, dh = tall ? DEV_TALL_H : DEV_H;
+  const s = Math.max(0.2, Math.min(W / dw, H / dh));
   t1.style.transform = 'scale(' + s + ')'; t1.style.transformOrigin = '0 0';
-  sc.style.width = (DEV_W * s) + 'px'; sc.style.height = (DEV_H * s) + 'px';
-  const box = $('#screenbox');
-  $('#screen').style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
+  sc.style.width = (dw * s) + 'px'; sc.style.height = (dh * s) + 'px';
+  const box = $('#screenbox'), ss = box.clientWidth / 1280;
+  $('#screen').style.transform = 'scale(' + ss + ')';
+  t1.style.setProperty('--hit', (44 / s).toFixed(1) + 'px');
+  t1.style.setProperty('--shit', (44 / (s * ss)).toFixed(1) + 'px');
 }
 new ResizeObserver(fitDevice).observe($('#device'));
 
@@ -1541,7 +1573,7 @@ function drawDynLung() {
     </g></svg>
     <div class="dl-pat">${esc(V.sex)}<br>${V.set.height} cm<br>IBW: ${ibw} kg</div>
     <div class="dl-note">${isNIV() ? 'In NIV, resistance and compliance values cannot be relied on (leak).' : ''}</div>
-    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2())}</b><small>mmHg</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
+    <div class="dl-row"><span>Rinsp<b>${inv ? fmt(P.pr.R) : '---'}</b><small>cmH2O/(l/s)</small></span><span>Cstat<b>${inv ? fmt(P.pr.C * 1000, 1) : '---'}</b><small>ml/cmH2O</small></span><span>PetCO2<b>${fmt(petco2(), 1)}</b><small>kPa</small></span><span>SpO2<b>${spo2}</b><small>%</small></span><span>Pulse<b>${pulse}</b><small>1/min</small></span></div>`;
 }
 
 /* ======================= screen rendering ======================= */
@@ -2223,7 +2255,10 @@ document.addEventListener('focusout', hideTip);
 /* ---------- the Education guide beside the machine ---------- */
 /* What the machine is doing, what the alarms mean, what the last thing hovered or touched is, and step-by-step
    help that points at the next control. Hidden in Assessment. All the simulator's text. */
-let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= 900 : v === '1'; } catch (e) { return window.innerWidth >= 900; } })();
+/* Open by default only where there is room for it beside a full-size machine (a laptop or a large
+   screen); on a tablet it starts closed and the Guide button opens it. A saved choice wins. */
+const GUIDE_OPEN_MIN = 1280;
+let guideOpen = (() => { try { const v = localStorage.getItem('wmebem_a350_guide'); return v === null ? window.innerWidth >= GUIDE_OPEN_MIN : v === '1'; } catch (e) { return window.innerWidth >= GUIDE_OPEN_MIN; } })();
 let guideTask = null, lastGuide = '';
 $('#guideToggle').addEventListener('click', () => {
   guideOpen = !guideOpen;
@@ -2498,10 +2533,12 @@ function applyProblems(list) {
   P.mains = !mainsOff;
   probsNow = list.slice();
 }
-/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit */
+/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit.
+   Shown in kPa to one decimal place, like the room monitor, the defib and the A350 (UK practice;
+   1 kPa = 7.50062 mmHg). LIVE.etco2 is already kPa, so this is display rounding only. */
 function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
-  return Math.round(LIVE.etco2 * 7.50062);
+  return Math.round(LIVE.etco2 * 10) / 10;
 }
 function clockStr() { const m = Math.floor(P ? P.onNivMin : 0); return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
 /* real time: one second of the page is one second of the patient */

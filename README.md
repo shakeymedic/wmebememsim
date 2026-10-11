@@ -447,7 +447,8 @@ patient.
   ventilator: state, mode, settings, measured values (with VTE per kg of ideal body weight), active
   alarms, tests and alarm limits (`sessions/<CODE>/ventState/<id>`, removed when it disconnects).
 - **What it shows of the patient.** SpO2 and pulse come from the controller when a probe is attached;
-  PetCO2 shows the controller's ETCO2 when capnography is on and the ventilator is ventilating.
+  PetCO2 shows the controller's ETCO2 (in kPa, one decimal place, like the monitor and the defib) when
+  capnography is on and the ventilator is ventilating.
 - **It breathes for the patient** (`data/engine-vent.js`). While a ventilator is ventilating, SpO2,
   RR and ETCO2 follow what it delivers: SpO2 from the oxygen and PEEP (the shunt that PEEP recruits),
   CO2 from the alveolar ventilation, settling over 3 to 5 minutes of real time; ETCO2 sits below

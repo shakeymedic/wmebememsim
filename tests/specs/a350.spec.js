@@ -235,3 +235,59 @@ test('the ventilator debrief understands the A350: its system test, its mode nam
   expect(out.a).toContain('A volume-controlled mode was used');
   expect(out.b).toContain('The trial was run on pressure support');
 });
+
+test('on a tablet: the guide starts closed below 1280 px, touch targets are at least 44 px, and upright the machine is stacked to fill the screen', async ({ page, context }) => {
+  const { code, dev, devErrors } = await startOnA350(page, context, 'an-arrest');
+  const open = async (w, h) => {
+    const p = await context.newPage();
+    await p.setViewportSize({ width: w, height: h });
+    await p.goto(`/vent/a350.html?session=${code}`);
+    await expect(p.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
+    return p;
+  };
+  await dev.close();
+  // 1024 x 768 (a landscape tablet): the guide is closed until asked for
+  const tab = await open(1024, 768);
+  await expect(tab.locator('#guide')).toHaveClass(/closed/);
+  await expect(tab.locator('#t1')).not.toHaveClass(/portrait/);
+  await switchOn(tab);
+  // every control answers a touch anywhere in a 44 x 44 px square centred on it (its drawing can be smaller);
+  // a mode tab's square sits on its bottom edge (its touch area reaches up, not down over the settings)
+  const hits = await tab.evaluate((sels) => sels.map(sel => {
+    const el = document.querySelector(sel), r = el.getBoundingClientRect(), cx = r.left + r.width / 2;
+    const cy = el.matches('.ttab') ? r.bottom - 22 : r.top + r.height / 2;
+    const pts = [[cx - 21, cy], [cx + 21, cy], [cx, cy - 21], [cx, cy + 21]];
+    return sel + ':' + pts.every(([x, y]) => { const at = document.elementFromPoint(x, y); return at && (at === el || el.contains(at)); });
+  }), ['#vapDn', '#vapUp', '#auxDn', '#auxUp', '#aplDn', '#aplUp', '#kPower', '#kAudio', '#kLight', '#kFlush', '#o2sw', '[data-tabmode="PC"]', '[data-open="alarms"].mm', '#guideToggle']);
+  expect(hits.filter(h => !h.endsWith(':true'))).toEqual([]);
+  // the + button still works from the edge of its touch area
+  const up = await tab.locator('#vapUp').boundingBox();
+  await tab.mouse.click(up.x + up.width / 2 + 20, up.y + up.height / 2);
+  await expect(tab.locator('#vapVal')).not.toHaveText('0');
+  // the guide opens when asked for
+  await tab.locator('#guideToggle').click();
+  await expect(tab.locator('#guide')).not.toHaveClass(/closed/);
+  await tab.locator('#guideToggle').click();   // (the choice is remembered: close it again for the next page)
+  await expect(tab.locator('#guide')).toHaveClass(/closed/);
+  await tab.close();
+
+  // 768 x 1024 (upright): stacked, the machine fills the width, the gas panel sits under the screen
+  const up2 = await open(768, 1024);
+  await expect(up2.locator('#t1')).toHaveClass(/portrait/);
+  const lay = await up2.evaluate(() => {
+    const d = document.querySelector('#device').getBoundingClientRect(), s = document.querySelector('#t1scaler').getBoundingClientRect();
+    const scr = document.querySelector('#screenbox').getBoundingClientRect(), hw = document.querySelector('.hw-vap').getBoundingClientRect();
+    return { fillW: s.width / d.width, fillH: s.height / d.height, hwBelow: hw.top > scr.bottom, screenW: scr.width };
+  });
+  expect(lay.fillW).toBeGreaterThan(0.9);
+  expect(lay.fillH).toBeGreaterThan(0.85);
+  expect(lay.hwBelow).toBe(true);
+  expect(lay.screenW).toBeGreaterThan(600);
+  await up2.close();
+
+  // 1366 x 768 (a laptop): the guide is open beside the machine
+  await page.evaluate(() => localStorage.removeItem('wmebem_a350_guide'));
+  const lap = await open(1366, 768);
+  await expect(lap.locator('#guide')).not.toHaveClass(/closed/);
+  expect(devErrors).toEqual([]);
+});
