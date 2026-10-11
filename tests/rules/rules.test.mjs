@@ -124,6 +124,30 @@ test('restricted scenarios need an approved account with the rcuk entitlement', 
   await assertFails(user('ok').ref('restrictedScenarios/RC002').set({ id: 'RC002', title: 'Mine' }));
 });
 
+test('my scenarios: only the owner can read or write them', async () => {
+  const scen = { id: 'CUST_1', title: 'Chest pain', category: 'Medical', vitals: { hr: 0, bpSys: 0 }, pmh: ['Asthma'], savedAt: Date.now() };
+  // Exactly what data/auth.js writes: one scenario by set, several by update, removal
+  await assertSucceeds(user('u1').ref('userScenarios/u1/CUST_1').set(scen));
+  await assertSucceeds(user('u1').ref('userScenarios/u1').update({ CUST_2: { ...scen, id: 'CUST_2' }, VF_ARREST: { ...scen, id: 'VF_ARREST' } }));
+  await assertSucceeds(user('u1').ref('userScenarios/u1').once('value'));
+  await assertSucceeds(user('u1').ref('userScenarios/u1/CUST_2').remove());
+  // Someone else's, signed out, or listing everyone's
+  await assertFails(user('u2').ref('userScenarios/u1').once('value'));
+  await assertFails(user('u2').ref('userScenarios/u1/CUST_9').set({ ...scen, id: 'CUST_9' }));
+  await assertFails(user('u2').ref('userScenarios/u1/CUST_1').remove());
+  await assertFails(anon().ref('userScenarios/u1').once('value'));
+  await assertFails(anon().ref('userScenarios/anon/CUST_1').set(scen));
+  await assertFails(user('u1').ref('userScenarios').once('value'));
+  await seed('users/admin1', { role: 'admin', status: 'approved' });
+  await assertFails(user('admin1').ref('userScenarios/u1').once('value'));
+  // Shape: an id matching the key and a title
+  await assertFails(user('u1').ref('userScenarios/u1/CUST_3').set({ ...scen, id: 'CUST_4' }));
+  await assertFails(user('u1').ref('userScenarios/u1/CUST_3').set({ id: 'CUST_3' }));
+  await assertFails(user('u1').ref('userScenarios/u1/CUST_3').set({ id: 'CUST_3', title: 7 }));
+  await assertFails(user('u1').ref('userScenarios/u1/CUST_3').set({ id: 'CUST_3', title: 'x'.repeat(201) }));
+  await assertFails(user('u1').ref('userScenarios/u1').set('not a list'));
+});
+
 test('payment events are closed to every client', async () => {
   await seed('users/admin1', { role: 'admin', status: 'approved' });
   await assertFails(user('admin1').ref('paymentEvents/e1').set({ ok: true }));

@@ -71,8 +71,13 @@ window.rehydrateScenario = (saved) => {
     try {
         base = (window.ALL_SCENARIOS || []).find(s => s.id === saved.id) || null;
         if (!base && saved.id) {
-            const custom = JSON.parse(localStorage.getItem('wmebem_custom_scenarios') || '[]');
-            base = custom.find(s => s.id === saved.id) || null;
+            // The signed-in account's scenarios as last loaded, then any saved only in this browser.
+            const mine = (window.UserScenarios && window.UserScenarios.cache) || [];
+            base = mine.find(s => s.id === saved.id) || null;
+            if (!base) {
+                const custom = JSON.parse(localStorage.getItem('wmebem_custom_scenarios') || '[]');
+                base = (Array.isArray(custom) ? custom : []).find(s => s && s.id === saved.id) || null;
+            }
         }
     } catch (e) { base = null; }
     const merged = { ...(base || {}), ...saved };

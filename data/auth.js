@@ -4,7 +4,8 @@
     // ---------------------------------------------------------------------------------------------
     // THE ONE RULE THIS FILE MUST NEVER BREAK (requirement B4):
     //   The app is fully usable with NO account. Nothing here may block, prompt, redirect, throw,
-    //   or log noise. Sign-in gates RESTRICTED CONTENT ONLY. Every existing feature — all 254
+    //   or log noise. Sign-in gates RESTRICTED CONTENT and SAVING YOUR OWN SCENARIOS (My scenarios)
+    //   only. Every other feature — all 254
     //   scenarios, Quick Sim, the monitor, the defibrillator, the debrief — works signed out, and
     //   works identically whether or not Firebase Authentication has even been enabled in the
     //   console. Requirement C4: until auth is enabled, the restricted section must simply read as
@@ -368,6 +369,94 @@
     window.useAuth = useAuth;
 
     // =============================================================================================
+    // MY SCENARIOS — custom scenarios saved to the signed-in account
+    // ---------------------------------------------------------------------------------------------
+    // Scenarios built in the Builder or imported from a file live at userScenarios/{uid}/{id}, and
+    // the rules let only that account read or write them. Saving needs an account; running a
+    // built-in scenario, or running a Builder scenario without saving it, does not.
+    // Before accounts held them they lived in this browser's localStorage (LEGACY_KEY). Those are
+    // still listed on this device and can be added to the account once signed in; a different web
+    // address (the custom domain) cannot see them at all, which is why the account is the home now.
+    // =============================================================================================
+    const LEGACY_KEY = 'wmebem_custom_scenarios';
+    const MAX_USER_SCENARIOS = 200;
+    // Firebase keys cannot contain . # $ [ ] / and the rules cap the length.
+    const safeKey = (id) => typeof id === 'string' && id.length > 0 && id.length <= 100 && !/[.#$\[\]\/]/.test(id);
+    const isScenario = (s) => !!s && typeof s === 'object' && !Array.isArray(s)
+        && typeof s.id === 'string' && s.id.length > 0 && typeof s.title === 'string' && s.title.length > 0;
+    // Through JSON: drops undefined and functions, which Firebase refuses to store.
+    const forStorage = (s) => { const c = JSON.parse(JSON.stringify(s)); c.title = String(c.title).slice(0, 200); return c; };
+    // A scenario whose id cannot be a database key gets a fresh CUST_ id rather than being refused.
+    let _idSeq = 0;
+    const withSafeId = (s) => safeKey(s.id) ? s : { ...s, id: `CUST_${Date.now()}_${++_idSeq}` };
+    const listFrom = (raw) => {
+        if (!raw || typeof raw !== 'object') return [];
+        return Object.keys(raw).map(k => raw[k]).filter(isScenario)
+            .sort((a, b) => (Number(a.savedAt) || 0) - (Number(b.savedAt) || 0) || a.title.localeCompare(b.title));
+    };
+
+    const UserScenarios = {
+        LEGACY_KEY, MAX: MAX_USER_SCENARIOS, isScenario, safeKey,
+        // Live list for one account. onList gets an array; onError gets 'denied' or 'unavailable'.
+        subscribe(uid, onList, onError) {
+            if (!uid || !window.db) { if (onError) onError('unavailable'); return () => {}; }
+            const ref = window.db.ref(`userScenarios/${uid}`);
+            const handler = ref.on('value', snap => {
+                const list = listFrom(snap.val());
+                UserScenarios.cache = list;
+                onList(list);
+            }, (e) => {
+                if (onError) onError(/permission|denied/i.test(String((e && e.message) || '')) ? 'denied' : 'unavailable');
+            });
+            return () => { try { ref.off('value', handler); } catch (e) {} };
+        },
+        save(uid, scenario) {
+            if (!uid || !window.db) return Promise.reject(new Error('Sign in to save scenarios.'));
+            if (!isScenario(scenario)) return Promise.reject(new Error('A scenario needs an id and a title.'));
+            const s = withSafeId(forStorage(scenario));
+            s.savedAt = Date.now();
+            return window.db.ref(`userScenarios/${uid}/${s.id}`).set(s).then(() => s);
+        },
+        // Several at once (file import, moving this device's scenarios in). Ids already in the
+        // account are skipped, never overwritten. Resolves to the number added.
+        saveMany(uid, list, existing) {
+            if (!uid || !window.db) return Promise.reject(new Error('Sign in to save scenarios.'));
+            const have = new Set((existing || []).map(s => s.id));
+            const room = Math.max(0, MAX_USER_SCENARIOS - have.size);
+            const updates = {};
+            let n = 0;
+            (list || []).filter(isScenario).forEach(raw => {
+                if (n >= room || have.has(raw.id)) return;
+                const s = withSafeId(forStorage(raw));
+                if (have.has(s.id)) return;
+                s.savedAt = Date.now() + n;
+                updates[s.id] = s;
+                have.add(s.id);
+                n++;
+            });
+            if (!n) return Promise.resolve(0);
+            return window.db.ref(`userScenarios/${uid}`).update(updates).then(() => n);
+        },
+        remove(uid, id) {
+            if (!uid || !window.db || !safeKey(id)) return Promise.reject(new Error('Sign in to delete scenarios.'));
+            return window.db.ref(`userScenarios/${uid}/${id}`).remove();
+        },
+        // Scenarios saved in this browser before accounts held them.
+        readLegacy() {
+            try {
+                const raw = localStorage.getItem(LEGACY_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return (Array.isArray(parsed) ? parsed : [parsed]).filter(isScenario);
+            } catch (e) { return []; }
+        },
+        clearLegacy() { try { localStorage.removeItem(LEGACY_KEY); } catch (e) {} },
+        // The signed-in account's list as last loaded, so a resumed run can find its scenario.
+        cache: []
+    };
+    window.UserScenarios = UserScenarios;
+
+    // =============================================================================================
     // RESTRICTED SCENARIO LOADER (requirement C2 / C5)
     // ---------------------------------------------------------------------------------------------
     // Restricted scenarios are read from RTDB at `restrictedScenarios/` AT RUNTIME and are never
@@ -467,7 +556,7 @@
                         <div>
                             <h3 className="text-lg font-bold text-white uppercase tracking-wider">Account</h3>
                             <p className="text-[11px] text-slate-400 mt-0.5">
-                                An account is only needed for restricted content. Everything else in the app works without one.
+                                An account saves your own scenarios and unlocks restricted content. Everything else in the app works without one.
                             </p>
                         </div>
                         <button aria-label="Close account panel" onClick={onClose} className="text-slate-400 hover:text-white"><Lucide icon="x" className="w-5 h-5"/></button>

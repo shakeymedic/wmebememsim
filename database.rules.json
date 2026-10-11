@@ -47,6 +47,9 @@
      .write on users/$uid itself would let them set entitlements.rcuk = true and help themselves
      to copyrighted content. tests/rules checks this in the emulator.)
 
+   * userScenarios/$uid: the custom scenarios an account saves (My scenarios). Readable and
+     writable by that account only.
+
    * Access is an ENTITLEMENTS MAP, not a boolean, so a paid tier is a new key rather than a
      rewrite:  entitlements: { rcuk: true, premium: false, expiresAt: null }
 
@@ -264,6 +267,23 @@
         },
 
         "$other": { ".validate": false }
+      }
+    },
+
+    // ------------------------------------------------------------------------------------------
+    // 2b. MY SCENARIOS — custom scenarios each account saves for itself (data/auth.js
+    //     UserScenarios). Only the owner may read or write them; nobody else, admins included,
+    //     can list or open another person's. Each must carry its own id (matching its key) and a
+    //     title, as the app's importer already requires.
+    // ------------------------------------------------------------------------------------------
+    "userScenarios": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren()",
+        "$scenarioId": {
+          ".validate": "$scenarioId.length <= 100 && newData.hasChildren(['id', 'title']) && newData.child('id').val() === $scenarioId && newData.child('title').isString() && newData.child('title').val().length <= 200"
+        }
       }
     },
 
