@@ -10,10 +10,10 @@
     const RG = window.RHYTHMS;
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
     const {
-        DEFAULT_VITALS, INVASIVE_SENSOR_KEYS, OBJECTIVE_TRIGGERS, SENSOR_DEFS, STANDARD_SENSOR_KEYS,
+        DEFAULT_VITALS, INVASIVE_SENSOR_KEYS, SENSOR_DEFS, STANDARD_SENSOR_KEYS,
         VENTILATOR_RATE, VOLUME_KEYS, ageBandOf, applyRhythmHrBand, buildDrugEntry, clampVital,
         fluidResponsiveness, getObstruction, getSensors, getUnmetExpectations, initialCoreState,
-        initialLogState, initialScenarioState, initialVitalsState, isDrugSpent, isVentilated,
+        initialLogState, initialScenarioState, initialVitalsState, isDrugSpent, isVentilated, keywordObjectivesFor,
         normaliseDeteriorationType, isAnaphylaxisScenario, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, pkFactor, pkPhase, pkRemaining,
         newRunId, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
     } = window.__EngineModel;
@@ -698,20 +698,10 @@
             const isPocCheck = SENSOR_DEFS.some(d => d.kind === 'poc' && d.key === key);
             dispatch({ type: 'SET_NOTIFICATION', payload: { msg: action.label + (isPocCheck ? " checked" : " Administered"), type: 'success', id: Date.now() } });
 
-            // The trigger table now lives at module scope (see OBJECTIVE_TRIGGERS
-            // above) so the debrief can derive the COMPONENTS of a multi-component objective from the
-            // same data the engine credits from. Behaviour here is unchanged: any matching key marks
-            // the objective as touched; the debrief decides met vs partial.
-            const triggers = OBJECTIVE_TRIGGERS[key];
-            const objList = (scenario.learningObjectives || []).concat(scenario.instructorBrief?.learningObjectives || []);
-            if (triggers && objList.length) {
-                objList.forEach(obj => {
-                    const objLower = obj.toLowerCase();
-                    if (triggers.some(kw => objLower.includes(kw))) {
-                        dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj });
-                    }
-                });
-            }
+            // Keyword credit (OBJECTIVE_TRIGGERS) only for objectives with no authored components:
+            // an authored objective is scored from its components or by the facilitator, so a keyword
+            // in its wording ("...from anaphylaxis") can no longer tick it for the wrong drug.
+            keywordObjectivesFor(scenario, key).forEach(obj => dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj }));
 
             if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
             // ---- E10: THE DEAD KEY. This test used to be `key === 'Adrenaline' && count >= 2`, and
@@ -1640,14 +1630,7 @@
         // The objective/stabiliser credit an intervention earns, factored out of applyIntervention so
         // a batched attach credits exactly what an individual press would.
         const creditIntervention = (key, scenario) => {
-            const triggers = OBJECTIVE_TRIGGERS[key];
-            const objList = (scenario.learningObjectives || []).concat(scenario.instructorBrief?.learningObjectives || []);
-            if (triggers && objList.length) {
-                objList.forEach(obj => {
-                    const objLower = obj.toLowerCase();
-                    if (triggers.some(kw => objLower.includes(kw))) dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj });
-                });
-            }
+            keywordObjectivesFor(scenario, key).forEach(obj => dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj }));
             if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
         };
         const attachSensors = (keys) => {

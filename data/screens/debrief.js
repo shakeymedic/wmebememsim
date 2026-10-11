@@ -494,8 +494,11 @@
         const partialCount = progress.partial || 0;
         const statusOf = (obj) => {
             const row = objectiveRows.find(r => r.objective === obj);
-            return row || { objective: obj, status: completed.has(obj) ? 'met' : 'none', components: [], metComponents: [], missingComponents: [], multiComponent: false };
+            return row || { objective: obj, status: completed.has(obj) ? 'met' : 'none', components: [], metComponents: [], missingComponents: [], multiComponent: false, facilitatorJudged: true };
         };
+        // Recognition, judgement and communication objectives cannot be scored from what was given,
+        // so the facilitator ticks them here (pressing again removes the tick).
+        const toggleObjective = (obj) => { if (sim && typeof sim.dispatch === 'function') sim.dispatch({ type: 'TOGGLE_OBJECTIVE', payload: obj }); };
 
         // Leaving the debrief loses it, so ask first unless the report has been saved or printed.
         const savedRef = useRef(false);
@@ -511,7 +514,7 @@
                 const label = r.status === 'met' ? '\u2713 Met' : r.status === 'partial' ? '\u25D0 Partly done' : '\u2715 Not Met';
                 const detail = (r.components && r.components.length)
                     ? `${r.metComponents.length ? 'Done: ' + esc(r.metComponents.join(', ')) : ''}${r.metComponents.length && r.missingComponents.length ? '<br>' : ''}${r.missingComponents.length ? 'Not done: ' + esc(r.missingComponents.join(', ')) : ''}`
-                    : '<span style="color:#64748b;">No component breakdown available for this objective.</span>';
+                    : `<span style="color:#64748b;">Facilitator judgement${r.status === 'met' ? ': ticked as demonstrated' : ': not ticked'} (not scored from actions).</span>`;
                 return `<tr><td style="padding:6px 10px;border-bottom:1px solid #334155;">${esc(obj)}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:${colour};font-weight:bold;white-space:nowrap;">${label}</td><td style="padding:6px 10px;border-bottom:1px solid #334155;color:#cbd5e1;font-size:.85rem;">${detail}</td></tr>`;
             }).join('');
             const logRows = state.log.map(l => { const colour = l.type === 'danger' ? '#ef4444' : l.type === 'success' ? '#22c55e' : '#cbd5e1'; return `<tr><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:#94a3b8;font-family:monospace;white-space:nowrap;">${esc(l.simTime)}</td><td style="padding:5px 10px;border-bottom:1px solid #1e293b;color:${colour};">${l.flagged ? '\uD83D\uDEA9 ' : ''}${esc(l.msg)}</td></tr>`; }).join('');
@@ -707,9 +710,14 @@
                                             return (
                                                 <li key={i} className="text-sm text-slate-300">
                                                     <div className="flex items-start gap-2">
-                                                        <Lucide icon={icon} className={`${colour} w-4 h-4 flex-none mt-0.5`} />
+                                                        {r.facilitatorJudged ? (
+                                                            <button type="button" onClick={() => toggleObjective(obj)} aria-pressed={r.status === 'met'} aria-label={`${r.status === 'met' ? 'Untick' : 'Tick'}: ${obj}`} data-testid="objective-tick" title="Not scored from actions: tick if the team demonstrated it" className="flex-none mt-0.5 rounded focus:outline-none focus:ring-2 focus:ring-sky-500">
+                                                                <Lucide icon={icon} className={`${colour} w-4 h-4`} />
+                                                            </button>
+                                                        ) : <Lucide icon={icon} className={`${colour} w-4 h-4 flex-none mt-0.5`} />}
                                                         <span className="flex-1">{obj}</span>
                                                         {r.status === 'partial' && <span className="text-[9px] uppercase font-bold text-amber-300 border border-amber-700 bg-amber-950/40 rounded px-1 py-0.5 flex-none">partly done</span>}
+                                                        {r.facilitatorJudged && <span className="text-[9px] uppercase font-bold text-slate-400 border border-slate-700 rounded px-1 py-0.5 flex-none">facilitator tick</span>}
                                                     </div>
                                                     {/* Name the components, so "not met" is never opaque. */}
                                                     {r.components && r.components.length > 0 && (
@@ -725,7 +733,7 @@
                                             );
                                         })}
                                     </ul>
-                                    <p className="text-[10px] text-slate-400 mt-2">A multi-component objective counts as met only when every component was done. Partly-done objectives show the missing component above and are excluded from the fully-met score.</p>
+                                    <p className="text-[10px] text-slate-400 mt-2">A multi-component objective counts as met only when every component was done. Partly-done objectives show the missing component above and are excluded from the fully-met score. Objectives marked “facilitator tick” (recognition, judgement, communication) are not scored from actions: tick the box if the team demonstrated it.</p>
                                 </>
                             )}
                         </div>

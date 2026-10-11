@@ -960,6 +960,9 @@
             case 'SET_NOTIFICATION': return { ...state, notification: action.payload };
             case 'UPDATE_AUDIO_LOOPS': return { ...state, activeLoops: action.payload };
             case 'COMPLETE_OBJECTIVE': const newObjs = new Set(state.completedObjectives); newObjs.add(action.payload); return { ...state, completedObjectives: newObjs };
+            // The facilitator's own tick in the debrief, for an objective that cannot be scored from
+            // what was given (recognition, judgement, communication). Pressing it again removes it.
+            case 'TOGGLE_OBJECTIVE': { const objs = new Set(state.completedObjectives); if (objs.has(action.payload)) objs.delete(action.payload); else objs.add(action.payload); return { ...state, completedObjectives: objs }; }
             case 'SET_WETFLAG_VISIBILITY': return { ...state, showWetflag: action.payload };
             default: return state;
         }
