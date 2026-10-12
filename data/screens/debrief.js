@@ -502,6 +502,11 @@
 
         // Leaving the debrief loses it, so ask first unless the report has been saved or printed.
         const savedRef = useRef(false);
+        // Course mark sheet (restricted course scenarios): A / N per criterion, kept for this debrief.
+        const MS = window.MarkScheme;
+        const [sheetMarks, setSheetMarks] = useState({});
+        const markSheetItem = (id, v) => setSheetMarks(m => { const n = { ...m }; if (v) n[id] = v; else delete n[id]; return n; });
+        const hasMarkSheet = !!(MS && MS.get(scenario) && MS.items(scenario).length);
         const exitDebrief = () => { if (savedRef.current || window.confirm('Leave the debrief? It cannot be reopened. Download or print the report first if you want to keep it.')) onExit(); };
         const generateReport = (mode) => {
             savedRef.current = true;
@@ -540,7 +545,8 @@
             const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
             const li = (arr) => arr.map(g => `<li>${esc(g)}</li>`).join('');
             const ventFeedbackCard = ventReview ? `<div class="card"><h3 style="margin-top:0;">Ventilator feedback</h3>${ventSim ? `<p class="muted" style="margin-top:0;">${esc(ventSim.name)} &middot; ${ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>` : ''}${ventReview.stats.length ? `<ul>${li(ventReview.stats)}</ul>` : ''}${ventReview.good.length ? `<h4>Good practice</h4><ul>${li(ventReview.good)}</ul>` : ''}${ventReview.improve.length ? `<h4>Areas for improvement</h4><ul>${li(ventReview.improve)}</ul>` : ''}${ventReview.problems.length ? `<h4>Problems</h4><ul>${li(ventReview.problems.map(p => p.text))}</ul>` : ''}</div>` : '';
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const markSheetCard = hasMarkSheet ? `<div class="card"><h3 style="margin-top:0;">${MS.get(scenario).kind === 'assessment' ? 'Team leader assessment' : 'Mark sheet'}</h3>${MS.criteriaHtml(scenario, sheetMarks)}</div>` : '';
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${markSheetCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -628,6 +634,7 @@
                                 <p className="text-[10px] text-slate-500 mt-2">Targets are the simulator's teaching targets for this scenario, not a guideline.</p>
                             </div>
                         )}
+                        {hasMarkSheet && <MS.DebriefMarkSheet scenario={scenario} marks={sheetMarks} onMark={markSheetItem} />}
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
                             {/* With no scenario there are no objectives and therefore no score.
