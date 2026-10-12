@@ -28,7 +28,7 @@
     //     lastSeenAt: 1758556800000,
     //     status: 'pending' | 'approved' | 'rejected',     // ADMIN-WRITE-ONLY
     //     role:   'user' | 'admin',                        // ADMIN-WRITE-ONLY
-    //     entitlements: { rcuk: false, premium: false, expiresAt: null },   // ADMIN-WRITE-ONLY
+    //     entitlements: { rcuk: false, etc: false, premium: false, expiresAt: null },   // ADMIN-WRITE-ONLY
     //     requestedAccess: { rcuk: true, at: 1758556800000 }                // user-writable, no privilege
     //   }
     // Access is an ENTITLEMENTS MAP, never a single boolean, so a paid tier is a new key
@@ -40,10 +40,27 @@
     // ---- ENTITLEMENT KEYS ----------------------------------------------------------------------
     // Declared centrally so the admin panel, the gate and the future payment webhook agree.
     const ENTITLEMENT_KEYS = [
-        { key: 'rcuk',    label: 'RCUK / restricted scenarios', note: 'Unlocks the Restricted premade section.' },
-        { key: 'premium', label: 'Premium (future paid tier)',  note: 'Reserved. Not sold yet; no payment path is connected.' }
+        { key: 'rcuk',    label: 'ALS and other courses (RCUK)', note: 'Unlocks the ALS and other non-ETC course scenarios.' },
+        { key: 'etc',     label: 'ETC',                          note: 'Unlocks the ETC (European Trauma Course) scenarios and their images.' },
+        { key: 'premium', label: 'Premium (future paid tier)',   note: 'Reserved. Not sold yet; no payment path is connected.' }
     ];
-    const DEFAULT_ENTITLEMENTS = { rcuk: false, premium: false, expiresAt: null };
+    const DEFAULT_ENTITLEMENTS = { rcuk: false, etc: false, premium: false, expiresAt: null };
+
+    // ---- COURSE ACCESS -------------------------------------------------------------------------
+    // Each course is released separately, because different people are entitled to each. A course
+    // has its own entitlement key and its own place in the database, and database.rules.json lets
+    // only accounts holding that key read it. Scenarios are routed by their `course` field: ETC to
+    // courseScenarios/etc, everything else (ALS and older uploads) to restrictedScenarios.
+    const COURSE_ACCESS = [
+        { key: 'rcuk', name: 'ALS and other courses', short: 'ALS', path: 'restrictedScenarios', images: null },
+        { key: 'etc',  name: 'ETC (European Trauma Course)', short: 'ETC', path: 'courseScenarios/etc', images: 'courseImages/etc' }
+    ];
+    const courseKeyFor = (sc) => {
+        const c = String((sc && sc.course) || '').trim().toUpperCase();
+        return c === 'ETC' ? 'etc' : 'rcuk';
+    };
+    window.COURSE_ACCESS = COURSE_ACCESS;
+    window.courseKeyFor = courseKeyFor;
 
     // ---- LAZY, SILENT AUTH RESOLUTION ----------------------------------------------------------
     // The sign-in SDK (~180 KB) is fetched on demand from window.FIREBASE_AUTH_SRC: when someone
@@ -479,34 +496,60 @@
     // enrichment, WETFLAG, investigations, defib and deterioration all behave identically with no
     // special-casing anywhere downstream.
     // =============================================================================================
-    window.loadRestrictedScenarios = async () => {
+    // `keys` are the course entitlements this account holds (window.COURSE_ACCESS). Each course is
+    // read on its own, so a refusal for one (not entitled, rules not yet published) does not hide
+    // the other. ETC scenarios uploaded to restrictedScenarios before the courses were split are
+    // skipped there: they belong to ETC and the next upload moves them.
+    window.loadRestrictedScenarios = async (keys = ['rcuk']) => {
         if (!window.db) return { ok: false, reason: 'no-database', scenarios: [] };
-        try {
-            const snap = await window.db.ref('restrictedScenarios').once('value');
-            const raw = snap.val();
-            if (!raw || typeof raw !== 'object') return { ok: true, reason: 'empty', scenarios: [] };
-            const list = Array.isArray(raw) ? raw : Object.keys(raw).map(k => {
-                const entry = raw[k];
-                if (!entry || typeof entry !== 'object') return null;
-                return { ...entry, id: entry.id || k };
-            });
-            const scenarios = [];
-            list.forEach(s => {
-                // Same shape guard the custom-scenario importer uses: an id and a title, or it is
-                // not a scenario and must not reach the list renderer.
-                if (!s || typeof s.id !== 'string' || !s.id || typeof s.title !== 'string' || !s.title) return;
-                try {
-                    const enriched = window.enrichScenario ? window.enrichScenario({ ...s, restricted: true }) : { ...s, restricted: true };
-                    if (enriched) scenarios.push(enriched);
-                } catch (e) { /* one malformed pasted entry must not take the list down */ }
-            });
-            return { ok: true, reason: scenarios.length ? 'loaded' : 'empty', scenarios };
-        } catch (e) {
-            // PERMISSION_DENIED is the expected, correct answer for an unentitled account. It is a
-            // state, not an error, and must not reach the console (requirement C4).
-            const denied = /permission|denied/i.test(String((e && e.message) || ''));
-            return { ok: false, reason: denied ? 'denied' : 'unavailable', scenarios: [] };
+        const wanted = COURSE_ACCESS.filter(c => keys.includes(c.key));
+        const scenarios = [];
+        let okCount = 0, denied = false;
+        for (const c of wanted) {
+            try {
+                const snap = await window.db.ref(c.path).once('value');
+                okCount++;
+                const raw = snap.val();
+                if (!raw || typeof raw !== 'object') continue;
+                const list = Array.isArray(raw) ? raw : Object.keys(raw).map(k => {
+                    const entry = raw[k];
+                    if (!entry || typeof entry !== 'object') return null;
+                    return { ...entry, id: entry.id || k };
+                });
+                list.forEach(s => {
+                    // Same shape guard the custom-scenario importer uses: an id and a title, or it is
+                    // not a scenario and must not reach the list renderer.
+                    if (!s || typeof s.id !== 'string' || !s.id || typeof s.title !== 'string' || !s.title) return;
+                    if (courseKeyFor(s) !== c.key) return;
+                    if (scenarios.some(x => x.id === s.id)) return;
+                    try {
+                        const enriched = window.enrichScenario ? window.enrichScenario({ ...s, restricted: true, courseKey: c.key }) : { ...s, restricted: true, courseKey: c.key };
+                        if (enriched) scenarios.push(enriched);
+                    } catch (e) { /* one malformed pasted entry must not take the list down */ }
+                });
+            } catch (e) {
+                // PERMISSION_DENIED is the expected, correct answer for an unentitled account. It is a
+                // state, not an error, and must not reach the console (requirement C4).
+                if (/permission|denied/i.test(String((e && e.message) || ''))) denied = true;
+            }
         }
+        if (!okCount) return { ok: false, reason: denied ? 'denied' : 'unavailable', scenarios: [] };
+        return { ok: true, reason: scenarios.length ? 'loaded' : 'empty', scenarios };
+    };
+
+    // A course image (an X-ray, CT, eFAST or scene photo from the course slides), read when a mark
+    // sheet shows it. Same entitlement as the course's scenarios. Cached for the page's lifetime.
+    const _courseImageCache = {};
+    window.loadCourseImage = async (courseKey, id) => {
+        const c = COURSE_ACCESS.find(x => x.key === courseKey);
+        if (!c || !c.images || !id || !window.db) return null;
+        const k = `${courseKey}/${id}`;
+        if (!_courseImageCache[k]) {
+            _courseImageCache[k] = window.db.ref(`${c.images}/${id}`).once('value')
+                .then(snap => { const v = snap.val(); return v && typeof v.src === 'string' ? v : null; })
+                .catch(() => { delete _courseImageCache[k]; return null; });
+        }
+        return _courseImageCache[k];
     };
 
     // =============================================================================================
@@ -631,41 +674,84 @@
     // ---- COURSE SCENARIO UPLOAD (admin) --------------------------------------------------------
     // Restricted course scenarios (e.g. the ETC pack) are kept OUT of this public repository and
     // uploaded from a JSON file the owner holds. Accepts { "<ID>": scenario, … }, an array of
-    // scenarios, or { "restrictedScenarios": { … } }. Each scenario is written to
-    // restrictedScenarios/<id> with update(), so scenarios already there that are not in the file
-    // are left alone, and a scenario with the same id is replaced.
+    // scenarios, { "restrictedScenarios": { … } }, or { "scenarios": { … }, "images": { … } }.
+    // Each scenario goes to its course's place (COURSE_ACCESS: ETC to courseScenarios/etc, the
+    // rest to restrictedScenarios) with update(), so scenarios already there that are not in the
+    // file are left alone, a scenario with the same id is replaced, and a copy of it left in the
+    // other course's place is removed. Images (data URLs, one per key, each with a `credit`) go to
+    // courseImages/<course>/<id>, one write each: a single write is limited in size.
+    const BAD_KEY = /[.#$\[\]\/]/;
     const parseCourseScenarioFile = (text) => {
         let raw;
         try { raw = JSON.parse(text); } catch (e) { return { error: 'That file is not valid JSON.' }; }
-        if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.restrictedScenarios && typeof raw.restrictedScenarios === 'object') raw = raw.restrictedScenarios;
+        let rawImages = null;
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+            if (raw.images && typeof raw.images === 'object' && !Array.isArray(raw.images)) rawImages = raw.images;
+            if (raw.scenarios && typeof raw.scenarios === 'object') raw = raw.scenarios;
+            else if (raw.restrictedScenarios && typeof raw.restrictedScenarios === 'object') raw = raw.restrictedScenarios;
+        }
         const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.keys(raw).map(k => (raw[k] && typeof raw[k] === 'object') ? { ...raw[k], id: raw[k].id || k } : null) : []);
         const ok = {}, bad = [];
         list.forEach((sc, i) => {
             const id = sc && typeof sc.id === 'string' ? sc.id.trim() : '';
             if (!sc || !id || typeof sc.title !== 'string' || !sc.title.trim()) { bad.push(`item ${i + 1}: needs an id and a title`); return; }
-            if (/[.#$\[\]\/]/.test(id)) { bad.push(`${id}: an id cannot contain . # $ [ ] or /`); return; }
+            if (BAD_KEY.test(id)) { bad.push(`${id}: an id cannot contain . # $ [ ] or /`); return; }
             if (ok[id]) { bad.push(`${id}: appears twice`); return; }
             // Realtime Database refuses the whole upload if any key, at any depth, has one of these.
             const badKey = (function find(v) {
                 if (!v || typeof v !== 'object') return null;
-                for (const k of Object.keys(v)) { if (/[.#$\[\]\/]/.test(k)) return k; const inner = find(v[k]); if (inner) return inner; }
+                for (const k of Object.keys(v)) { if (BAD_KEY.test(k)) return k; const inner = find(v[k]); if (inner) return inner; }
                 return null;
             })(sc);
             if (badKey) { bad.push(`${id}: the field name "${badKey.slice(0, 40)}" cannot contain . # $ [ ] or /`); return; }
             ok[id] = { ...sc, id };
         });
-        if (!Object.keys(ok).length) return { error: bad.length ? `No scenarios could be read (${bad.slice(0, 3).join('; ')}).` : 'The file has no scenarios in it.' };
+        const images = {};
+        if (rawImages) Object.keys(rawImages).forEach(id => {
+            const im = rawImages[id];
+            if (BAD_KEY.test(id) || id.length > 100) { bad.push(`image ${id.slice(0, 40)}: an id cannot contain . # $ [ ] or /`); return; }
+            if (!im || typeof im.src !== 'string' || !/^data:image\/(jpeg|png|webp);base64,/.test(im.src)) { bad.push(`image ${id}: needs a JPEG, PNG or WebP data URL`); return; }
+            if (im.src.length > 1000000) { bad.push(`image ${id}: larger than 1 MB`); return; }
+            if (typeof im.credit !== 'string' || !im.credit.trim()) { bad.push(`image ${id}: needs a credit`); return; }
+            const key = courseKeyFor(im);
+            const course = COURSE_ACCESS.find(c => c.key === key);
+            if (!course || !course.images) { bad.push(`image ${id}: images are only stored for ETC`); return; }
+            images[id] = { key, value: { src: im.src, credit: im.credit.slice(0, 400), modality: String(im.modality || '').slice(0, 16), ...(Number.isFinite(im.w) ? { w: im.w } : {}), ...(Number.isFinite(im.h) ? { h: im.h } : {}) } };
+        });
+        if (!Object.keys(ok).length && !Object.keys(images).length) return { error: bad.length ? `No scenarios could be read (${bad.slice(0, 3).join('; ')}).` : 'The file has no scenarios in it.' };
         const courses = {};
         Object.values(ok).forEach(sc => { const c = (typeof sc.course === 'string' && sc.course.trim()) || 'No course'; courses[c] = (courses[c] || 0) + 1; });
-        return { scenarios: ok, bad, courses };
+        return { scenarios: ok, images, bad, courses };
     };
     window.parseCourseScenarioFile = parseCourseScenarioFile;
+
+    // Writes a parsed file. `onProgress(done, total)` follows the image writes.
+    const uploadCourseFile = async (parsed, onProgress) => {
+        const byPath = {};
+        COURSE_ACCESS.forEach(c => { byPath[c.path] = {}; });
+        Object.values(parsed.scenarios || {}).forEach(sc => {
+            const key = courseKeyFor(sc);
+            COURSE_ACCESS.forEach(c => { byPath[c.path][sc.id] = c.key === key ? sc : null; });
+        });
+        for (const path of Object.keys(byPath)) {
+            if (Object.keys(byPath[path]).length) await window.db.ref(path).update(byPath[path]);
+        }
+        const ids = Object.keys(parsed.images || {});
+        for (let i = 0; i < ids.length; i++) {
+            const { key, value } = parsed.images[ids[i]];
+            const course = COURSE_ACCESS.find(c => c.key === key);
+            await window.db.ref(`${course.images}/${ids[i]}`).set(value);
+            if (onProgress) onProgress(i + 1, ids.length);
+        }
+    };
+    window.uploadCourseFile = uploadCourseFile;
 
     const CourseScenarioUpload = () => {
         const { Button, Lucide } = window;
         const [parsed, setParsed] = useState(null);
         const [fileName, setFileName] = useState('');
         const [busy, setBusy] = useState(false);
+        const [progress, setProgress] = useState(null);
         const [message, setMessage] = useState(null);
         const onFile = (e) => {
             const f = e.target.files && e.target.files[0];
@@ -676,33 +762,35 @@
             reader.onerror = () => setParsed({ error: 'The file could not be read.' });
             reader.readAsText(f);
         };
+        const count = parsed && parsed.scenarios ? Object.keys(parsed.scenarios).length : 0;
+        const imageCount = parsed && parsed.images ? Object.keys(parsed.images).length : 0;
         const upload = async () => {
-            if (!parsed || !parsed.scenarios || !window.db) return;
-            setBusy(true); setMessage(null);
+            if (!parsed || (!count && !imageCount) || !window.db) return;
+            setBusy(true); setMessage(null); setProgress(null);
             try {
-                await window.db.ref('restrictedScenarios').update(parsed.scenarios);
-                setMessage({ ok: true, text: `Uploaded ${Object.keys(parsed.scenarios).length} scenarios. Reopen Course scenarios to see them.` });
+                await uploadCourseFile(parsed, (done, total) => setProgress(`${done} of ${total} images`));
+                setMessage({ ok: true, text: `Uploaded ${count} scenario${count === 1 ? '' : 's'}${imageCount ? ` and ${imageCount} image${imageCount === 1 ? '' : 's'}` : ''}. Reopen Course scenarios to see them.` });
                 setParsed(null);
             } catch (e) {
                 setMessage({ ok: false, text: 'The database refused the upload. Only an admin can write course scenarios: check your own role is "admin" and that database.rules.json is published.' });
             }
-            setBusy(false);
+            setBusy(false); setProgress(null);
         };
-        const count = parsed && parsed.scenarios ? Object.keys(parsed.scenarios).length : 0;
+        const label = `Upload ${count} scenario${count === 1 ? '' : 's'}${imageCount ? ` and ${imageCount} image${imageCount === 1 ? '' : 's'}` : ''}`;
         return (
             <div className="border-t border-slate-700 mt-3 pt-3" data-testid="course-upload">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 flex items-center gap-1"><Lucide icon="upload" className="w-3 h-3"/> Course scenarios</div>
-                <p className="text-[11px] text-slate-400 mb-2">Upload a course scenario file (JSON). Scenarios with the same id are replaced; others already in the database are kept. Only people with course access can read them.</p>
+                <p className="text-[11px] text-slate-400 mb-2">Upload a course scenario file (JSON). ETC scenarios and images are only readable with ETC access; all others with ALS access. Scenarios with the same id are replaced; others already in the database are kept.</p>
                 <label className="inline-flex items-center gap-2 text-xs text-slate-200">
                     <span className="sr-only">Course scenario file</span>
                     <input type="file" accept="application/json,.json" aria-label="Course scenario file" onChange={onFile} className="text-xs text-slate-300 file:mr-2 file:rounded file:border file:border-slate-600 file:bg-slate-900 file:px-2 file:py-1 file:text-slate-200" />
                 </label>
                 {parsed && parsed.error && <div className="text-[11px] text-red-300 mt-2">{parsed.error}</div>}
-                {count > 0 && (
+                {(count > 0 || imageCount > 0) && (
                     <div className="mt-2 text-[11px] text-slate-300 space-y-1">
-                        <div>{fileName}: <b>{count}</b> scenario{count === 1 ? '' : 's'} ({Object.keys(parsed.courses).map(c => `${c}: ${parsed.courses[c]}`).join(', ')}).</div>
+                        <div>{fileName}: <b>{count}</b> scenario{count === 1 ? '' : 's'}{count ? ` (${Object.keys(parsed.courses).map(c => `${c}: ${parsed.courses[c]}`).join(', ')})` : ''}{imageCount ? <>, <b>{imageCount}</b> image{imageCount === 1 ? '' : 's'}</> : null}.</div>
                         {parsed.bad.length > 0 && <div className="text-amber-300">Skipped {parsed.bad.length}: {parsed.bad.slice(0, 5).join('; ')}{parsed.bad.length > 5 ? '…' : ''}</div>}
-                        <Button onClick={upload} disabled={busy} variant="primary" className="h-8 px-3 text-xs">{busy ? 'Uploading…' : `Upload ${count} scenario${count === 1 ? '' : 's'}`}</Button>
+                        <Button onClick={upload} disabled={busy} variant="primary" className="h-8 px-3 text-xs">{busy ? `Uploading…${progress ? ` ${progress}` : ''}` : label}</Button>
                     </div>
                 )}
                 {message && <div className={`text-[11px] mt-2 ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>{message.text}</div>}
@@ -855,14 +943,40 @@
     // Opened from the header once signed in: who you are, sign out, and (only if you want it) a
     // request for access to course scenarios. Course access is opt-in here rather than a status
     // badge in the header, because most people never need it.
-    const COURSE_ACCESS_TEXT = 'Scenarios from specific courses (for example ALS, ETC and others) are copyrighted, so they are only released to approved course faculty and participants.';
+    const COURSE_ACCESS_TEXT = 'Scenarios from specific courses (for example ALS and ETC) are copyrighted, so they are only released to approved course faculty and participants. Each course is approved separately.';
+    // One row per course: approved, requested, or a Request button. Also used by the locked
+    // Course scenarios section (data/screens/setup.js).
+    const courseAccessState = (auth, key) => {
+        const p = (auth && auth.profile) || {};
+        if (auth && auth.has && auth.has(key)) return 'approved';
+        if (p.status === 'rejected') return 'declined';
+        return (p.requestedAccess && p.requestedAccess[key]) ? 'requested' : 'none';
+    };
+    const CourseAccessList = ({ auth, compact = false }) => {
+        const { Button } = window;
+        return (
+            <ul className="space-y-1.5" data-testid="course-access-list">
+                {COURSE_ACCESS.map(c => {
+                    const st = courseAccessState(auth, c.key);
+                    return (
+                        <li key={c.key} className="flex flex-wrap items-center justify-between gap-2 text-xs" data-testid={`course-access-${c.key}`}>
+                            <span className="text-slate-200 font-bold">{c.name}</span>
+                            {st === 'approved' ? <span className="text-emerald-300 font-bold">Access approved</span>
+                                : st === 'declined' ? <span className="text-red-300">Not approved</span>
+                                : st === 'requested' ? <span className="text-amber-300">Requested, awaiting approval</span>
+                                : <Button onClick={() => auth.requestAccess(c.key)} variant="outline" className={`${compact ? 'h-7' : 'h-8'} px-3 text-xs text-amber-300 border-amber-500/60`}>Request {c.short} access</Button>}
+                        </li>
+                    );
+                })}
+            </ul>
+        );
+    };
+    window.CourseAccessList = CourseAccessList;
+    window.courseAccessState = courseAccessState;
     const AccountPanel = ({ auth, onClose }) => {
         const { Button, Lucide, Modal } = window;
         const p = auth.profile || {};
-        const requested = !!(p.requestedAccess && p.requestedAccess.rcuk);
-        const courseState = auth.has && auth.has('rcuk') ? 'approved'
-            : p.status === 'rejected' ? 'declined'
-            : requested ? 'requested' : 'none';
+        const anyApproved = COURSE_ACCESS.some(c => courseAccessState(auth, c.key) === 'approved');
         return (
             <Modal label="Your account" onClose={onClose}>
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-md shadow-2xl space-y-4">
@@ -878,15 +992,9 @@
                     <section className="bg-slate-900 border border-slate-700 rounded p-3 space-y-2" aria-labelledby="course-access-heading">
                         <h4 id="course-access-heading" className="text-sm font-bold text-white">Course scenarios (optional)</h4>
                         <p className="text-xs text-slate-400">{COURSE_ACCESS_TEXT} You only need this if you teach or attend one of those courses.</p>
-                        {courseState === 'approved' ? (
-                            <p className="text-xs text-emerald-300 font-bold">Access approved. Course scenarios are in Scenario library.</p>
-                        ) : courseState === 'declined' ? (
-                            <p className="text-xs text-red-300">Your request was not approved. Contact the site owner if you think this is wrong.</p>
-                        ) : courseState === 'requested' ? (
-                            <p className="text-xs text-amber-300">Requested. You will get access once the site owner approves it.</p>
-                        ) : (
-                            <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-300 border-amber-500/60">Request access to course scenarios</Button>
-                        )}
+                        <CourseAccessList auth={auth} />
+                        {anyApproved && <p className="text-xs text-emerald-300">Your course scenarios are in Scenario library, under Course scenarios.</p>}
+                        {p.status === 'rejected' && <p className="text-xs text-red-300">Your request was not approved. Contact the site owner if you think this is wrong.</p>}
                         {auth.notice && <div className="text-[11px] text-emerald-300">{auth.notice}</div>}
                         {auth.error && <div className="text-[11px] text-red-300">{auth.error}</div>}
                     </section>

@@ -72,8 +72,9 @@ test('restricted scenarios: locked without the entitlement, listed with it', asy
   await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
   await page.getByRole('button', { name: /Course scenarios \(ALS, ETC\)/ }).click();
   await expect(page.getByText('This section is locked.')).toBeVisible();
-  await page.getByRole('button', { name: 'Request access to course scenarios' }).click();
-  await expect(page.getByText('awaiting approval')).toBeVisible();
+  await page.getByRole('button', { name: 'Request ALS access' }).click();
+  await expect(page.getByTestId('course-access-rcuk')).toContainText('Requested, awaiting approval');
+  await expect(page.getByTestId('course-access-etc').getByRole('button', { name: 'Request ETC access' })).toBeVisible();
   await expect.poll(() => page.evaluate(([u]) => window.__fakeRtdb.get(`users/${u}/requestedAccess/rcuk`), [uid])).toBe(true);
 
   await page.evaluate(([u]) => window.__fakeRtdb.set(`users/${u}`, { email: 'a.learner@example.org', status: 'approved', entitlements: { rcuk: true } }), [uid]);
@@ -105,9 +106,11 @@ test('the account panel: course access is opt-in, requested from the panel, and 
   await page.getByRole('button', { name: /^Your account/ }).click();
   const panel = page.getByRole('dialog');
   await expect(panel.getByText('Course scenarios (optional)')).toBeVisible();
-  await expect(panel.getByText(/ALS, ETC and others/)).toBeVisible();
-  await panel.getByRole('button', { name: 'Request access to course scenarios' }).click();
-  await expect(panel.getByText('Requested. You will get access once the site owner approves it.')).toBeVisible();
+  await expect(panel.getByText(/Each course is approved separately/)).toBeVisible();
+  await panel.getByRole('button', { name: 'Request ETC access' }).click();
+  await expect(panel.getByTestId('course-access-etc')).toContainText('Requested, awaiting approval');
+  await expect(panel.getByTestId('course-access-rcuk').getByRole('button', { name: 'Request ALS access' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__fakeRtdb.get('users/uid_a_learner_example_org/requestedAccess/etc'))).toBe(true);
   await panel.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(errors).toEqual([]);

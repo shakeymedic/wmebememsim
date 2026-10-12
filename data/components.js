@@ -294,7 +294,9 @@
     // Shared modal shell: gives every overlay a dialog contract, keeps focus inside it, and restores
     // the invoking control when it closes. The visually-hidden label works even where a modal has a
     // custom visible heading.
-    const Modal = ({ label, onClose, children, className = '' }) => {
+    // `fixed` pins it to the screen wherever it is rendered (e.g. from inside a long list, where an
+    // absolute overlay would be centred on the list rather than on what the user is looking at).
+    const Modal = ({ label, onClose, children, className = '', fixed = false }) => {
         const dialogRef = useRef(null);
         const returnFocusRef = useRef(null);
         const closeRef = useRef(onClose);
@@ -324,17 +326,20 @@
                 returnFocusRef.current?.focus?.();
             };
         }, []);
-        return (
+        const overlay = (
             // max-md:fixed — on a phone the controller is one long scrolling page, so an absolutely
             // positioned overlay was centred in the middle of that page (jumping the view away from
             // the obs); fixed keeps every dialog over the screen the facilitator is looking at.
-            <div className="absolute max-md:fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm max-md:overflow-y-auto">
+            <div className={`${fixed ? 'fixed' : 'absolute max-md:fixed'} inset-0 z-50 bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm max-md:overflow-y-auto`}>
                 <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={labelIdRef.current} tabIndex="-1" className={className}>
                     <span id={labelIdRef.current} className="sr-only">{label}</span>
                     {children}
                 </div>
             </div>
         );
+        // Fixed overlays go to <body>: an ancestor with a transform (e.g. the fade-in animation)
+        // would otherwise become their containing block.
+        return (fixed && window.ReactDOM && window.ReactDOM.createPortal) ? window.ReactDOM.createPortal(overlay, document.body) : overlay;
     };
 
     const formatVitalValue = (value, decimals) => {

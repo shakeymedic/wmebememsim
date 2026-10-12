@@ -253,6 +253,20 @@
         const [show12Lead, setShow12Lead] = useState(false);
         const [viewImage, setViewImage] = useState(null);     // full-screen view of a result image
         const INV = window.INVESTIGATIONS;
+        // A restricted course image (e.g. an ETC X-ray) the facilitator chose to show. It is not in the
+        // app: the controller copies the one being shown to the session, and it is registered here
+        // so the result card can show it like any other image, with its credit.
+        const [, setCourseImageTick] = useState(0);
+        useEffect(() => {
+            if (!sessionID || !window.db || !INV || !INV.registerImage) return;
+            const ref = window.db.ref(`sessions/${sessionID}/courseImage`);
+            const onValue = (snap) => {
+                const v = snap && snap.val();
+                if (v && typeof v.key === 'string') { INV.registerImage(v.key, v); setCourseImageTick(t => t + 1); }
+            };
+            ref.on('value', onValue, () => {});
+            return () => ref.off('value', onValue);
+        }, [sessionID]);
         // The scenario's own real 12-lead, if it has one and it still fits the patient's rhythm. The
         // synced scenario carries its results at the top level (scenario.ecg); a locally loaded one
         // under scenario.investigations.

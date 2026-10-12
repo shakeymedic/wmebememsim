@@ -17,14 +17,16 @@
 //     results: [{ label, text }],              // sounds, AMPLE, blood gases, X-rays, eFAST, CT
 //     criticalPoints: [..], criticalNote,      // assessment scenarios
 //     criteria: { technical: [..], nonTechnical: [..], other: [..] },   // the A / N items
-//     summary, debriefPoints: [..], teachingPoints: [..]
+//     summary, debriefPoints: [..], teachingPoints: [..],
+//     media: [{ image, type, label, caption, slide }],   // course images: `image` is an id under
+//     mediaNote                                         // courseImages/<course>/ (read at run time)
 //   }
 //
 // Firebase stores arrays as objects with numeric keys (and drops empty ones), so every list is
 // read through asList().
 // =================================================================================================
 (() => {
-    const { useState } = React;
+    const { useState, useEffect } = React;
 
     const asList = (v) => {
         if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined && x !== '');
@@ -130,8 +132,88 @@
         );
     };
 
+    // ---- course images (X-rays, CT, eFAST, scene photos from the course slides) -----------------
+    // Read from the database only when a mark sheet is open, by an account entitled to the course.
+    const courseKeyOf = (scenario) => (scenario && scenario.courseKey) || (window.courseKeyFor ? window.courseKeyFor(scenario) : 'rcuk');
+    const media = (scenario) => asList((get(scenario) || {}).media).filter(m => m && typeof m === 'object' && typeof m.image === 'string' && m.image);
+    const mediaKey = (item) => `course:${item.image}`;
+    const loadMedia = async (scenario, item) => {
+        const img = window.loadCourseImage ? await window.loadCourseImage(courseKeyOf(scenario), item.image) : null;
+        if (img && window.INVESTIGATIONS && window.INVESTIGATIONS.registerImage) window.INVESTIGATIONS.registerImage(mediaKey(item), img);
+        return img;
+    };
+    // Shows one image on the patient monitor. Monitors join with no account, so the image being
+    // shown is copied to the session (sessions/<code>/courseImage) and removed when the run ends.
+    const showOnMonitor = async ({ sim, sessionID, scenario, item, withReport }) => {
+        const img = await loadMedia(scenario, item);
+        if (!img || !sim || !sim.revealInvestigation) return false;
+        const key = mediaKey(item);
+        if (sessionID && window.db) {
+            try { await window.db.ref(`sessions/${sessionID}/courseImage`).set({ key, src: img.src, credit: str(img.credit).slice(0, 400), modality: str(img.modality).slice(0, 16), ts: Date.now() }); }
+            catch (e) { return false; }
+        }
+        sim.revealInvestigation(str(item.type) || 'Picture', item.caption ? str(item.caption) : null, { image: key, hideReport: !(withReport && item.caption) });
+        return true;
+    };
+    const clearMonitorImage = (sessionID) => {
+        if (sessionID && window.db) { try { window.db.ref(`sessions/${sessionID}/courseImage`).remove(); } catch (e) {} }
+    };
+
+    const MediaThumb = ({ scenario, item, onShow, withReport }) => {
+        const [img, setImg] = useState(undefined);
+        const [sent, setSent] = useState(null);
+        const [big, setBig] = useState(false);
+        useEffect(() => { let live = true; loadMedia(scenario, item).then(v => { if (live) setImg(v || null); }); return () => { live = false; }; }, [item.image]);
+        return (
+            <li className="bg-slate-950/60 border border-slate-700 rounded p-2 flex gap-2 items-start" data-testid="mark-media-item">
+                <button type="button" onClick={() => img && setBig(true)} className="w-28 h-20 flex-none bg-black rounded overflow-hidden flex items-center justify-center" aria-label={`Enlarge ${str(item.label)}`}>
+                    {img ? <img src={img.src} alt={str(item.label)} className="max-w-full max-h-full object-contain" />
+                        : <span className="text-[10px] text-slate-500 px-1 text-center">{img === null ? 'Image not available' : 'Loading…'}</span>}
+                </button>
+                <div className="min-w-0 flex-1 text-xs">
+                    <div className="font-bold text-slate-100">{str(item.label) || str(item.type)}</div>
+                    {item.caption && <div className="text-slate-300 leading-snug">{str(item.caption)}</div>}
+                    {img && img.credit && <div className="text-[10px] text-slate-500 mt-0.5 leading-tight">Image: {str(img.credit)}.</div>}
+                    {onShow && img && (
+                        <button type="button" onClick={async () => setSent(await onShow(item, withReport) ? 'ok' : 'fail')}
+                            className="mt-1 px-2 py-1 rounded border border-purple-500/70 text-purple-200 hover:bg-purple-900/40 text-[11px] font-bold">Show on monitor</button>
+                    )}
+                    {sent === 'ok' && <span className="ml-2 text-[10px] text-emerald-300">Sent</span>}
+                    {sent === 'fail' && <span className="ml-2 text-[10px] text-red-300">Could not send</span>}
+                </div>
+                {big && img && (
+                    <div role="dialog" aria-label={`Image: ${str(item.label)}`} className="fixed inset-0 z-[90] bg-black/95 flex flex-col items-center justify-center p-3" onClick={() => setBig(false)}>
+                        <img src={img.src} alt={str(item.label)} className="max-w-full max-h-[86vh] object-contain" />
+                        <div className="text-[11px] text-slate-400 mt-2">Tap to close. Image: {str(img.credit)}.</div>
+                    </div>
+                )}
+            </li>
+        );
+    };
+
+    const MediaBlock = ({ scenario, onShowImage }) => {
+        const list = media(scenario);
+        const [withReport, setWithReport] = useState(true);
+        if (!list.length) return null;
+        const ms = get(scenario) || {};
+        return (
+            <Block title="Images" tone="text-purple-300">
+                <div data-testid="mark-media">
+                    {ms.mediaNote && <p className="text-[11px] text-slate-400 mb-2">{str(ms.mediaNote)}</p>}
+                    {onShowImage && (
+                        <label className="flex items-center gap-2 text-[11px] text-slate-300 mb-2 cursor-pointer">
+                            <input type="checkbox" checked={withReport} onChange={e => setWithReport(e.target.checked)} />
+                            Show the written finding with the image (untick to show the image alone)
+                        </label>
+                    )}
+                    <ul className="grid sm:grid-cols-2 gap-2">{list.map((m, i) => <MediaThumb key={`${m.image}-${i}`} scenario={scenario} item={m} onShow={onShowImage} withReport={withReport} />)}</ul>
+                </div>
+            </Block>
+        );
+    };
+
     // The whole facilitator pack. `marks`/`onMark` add A/N buttons to the criteria.
-    const MarkSheetBody = ({ scenario, marks, onMark }) => {
+    const MarkSheetBody = ({ scenario, marks, onMark, onShowImage }) => {
         const ms = get(scenario);
         if (!ms) return null;
         const setup = ms.setup && typeof ms.setup === 'object' ? ms.setup : {};
@@ -186,6 +268,7 @@
                         </dl>
                     </Block>
                 )}
+                <MediaBlock scenario={scenario} onShowImage={onShowImage} />
                 {items(scenario).length > 0 && <Block title={onMark ? 'Mark sheet' : 'Mark scheme'} tone="text-fuchsia-300"><Criteria scenario={scenario} marks={marks} onMark={onMark} /></Block>}
                 {(ms.summary || asList(ms.debriefPoints).length > 0) && (
                     <Block title="Debrief: learning points" tone="text-violet-300">
@@ -248,11 +331,12 @@
     };
 
     // ---- the modal (scenario list, briefing and controller) --------------------------------------
-    const MarkSheetModal = ({ scenario, onClose }) => {
+    // `onShowImage(item, withReport)` (controller only) adds Show on monitor to each course image.
+    const MarkSheetModal = ({ scenario, onClose, onShowImage }) => {
         const { Modal, Button, Lucide } = window;
         if (!scenario || !get(scenario)) return null;
         return (
-            <Modal label={`Mark sheet: ${scenario.title}`} onClose={onClose} className="bg-slate-800 border border-slate-600 rounded-lg w-full max-w-5xl max-h-[92vh] flex flex-col">
+            <Modal fixed label={`Mark sheet: ${scenario.title}`} onClose={onClose} className="bg-slate-800 border border-slate-600 rounded-lg w-full max-w-5xl max-h-[92vh] flex flex-col">
                 <div className="flex items-center justify-between gap-2 p-3 border-b border-slate-700">
                     <div className="min-w-0">
                         <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">{get(scenario).kind === 'assessment' ? 'Team leader assessment' : 'Facilitator pack'}{scenario.group ? ` · ${scenario.group}` : ''}</div>
@@ -263,7 +347,7 @@
                         <Button variant="secondary" onClick={onClose} className="h-8 px-3 text-xs">Close</Button>
                     </div>
                 </div>
-                <div className="overflow-y-auto p-3"><MarkSheetBody scenario={scenario} /></div>
+                <div className="overflow-y-auto p-3"><MarkSheetBody scenario={scenario} onShowImage={onShowImage} /></div>
             </Modal>
         );
     };
@@ -303,5 +387,5 @@
     };
     const courseOf = (s) => str(s && s.course).trim() || 'Other';
 
-    window.MarkScheme = { get, items, result, asList, sheetHtml, criteriaHtml, printSheet, groupScenarios, courseOf, MarkSheetBody, MarkSheetModal, DebriefMarkSheet };
+    window.MarkScheme = { media, loadMedia, showOnMonitor, clearMonitorImage, get, items, result, asList, sheetHtml, criteriaHtml, printSheet, groupScenarios, courseOf, MarkSheetBody, MarkSheetModal, DebriefMarkSheet };
 })();

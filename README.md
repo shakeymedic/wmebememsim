@@ -332,7 +332,7 @@ CT series) the credit says so.
 | **Ventilator Sim** | Ventilator skills on the HAMILTON-T1 (tablet or room monitor) with the full controller: nine scenarios (NIV, CPAP, ARDS, asthma, after RSI, DOPES, mucus plugging, transfer) in Education or Assessment mode. See [The ventilator](#the-ventilator-hamilton-t1) below. |
 | **Random scenario** | Generates a patient from the scenario templates with randomised demographics and obs. |
 | **Scenario library** | Pick from the 254 built-in scenarios by category. |
-| **Restricted** (a Scenario library category) | Copyright-restricted scenarios (e.g. RCUK), loaded from Firebase at runtime and gated on an entitlement. Locked unless your account has it. |
+| **Course scenarios** (a Scenario library category) | Copyright-restricted course scenarios (ALS, ETC), loaded from Firebase at runtime. Each course is gated on its own entitlement. Locked unless your account has one. |
 | **My scenarios: Saved** | Scenarios saved to the signed-in account (`userScenarios/<uid>` in the database; only that account can read or write them). Import a scenario JSON file, or edit, load or delete saved ones (with a confirmation). Signing in is required to save, import or list them. Scenarios saved in this browser before accounts held them (`localStorage` key `wmebem_custom_scenarios`) are listed as "saved on this device only" and can be added to the account once signed in. |
 | **My scenarios: Builder** | Build a scenario field by field in the UI. Signed in: Save, or Save and run. Signed out: Run without saving. |
 
@@ -651,28 +651,51 @@ Course scenarios can carry these extra fields. None is required.
   A (achieved) or N (not achieved). An assessment shows "Pass" only when every item is A, and
   "Not yet achieved" as soon as a critical point is N.
 - `summary`, `debriefPoints`, `teachingPoints`.
+- `media`: `[{ image, type, label, caption, slide }]`, course images (X-rays, CT, eFAST, scene photos).
+  `image` is an id under `courseImages/<course>/`; `type` is the investigation it stands for (`"X-ray"`,
+  `"CT"`, `"POCUS"` or `"Picture"`); `caption` is the written finding. `mediaNote` is shown above them.
 
 A scenario with a `markScheme` gets a **Mark sheet** button in the list, a facilitator pack box on the
 briefing, a **Mark sheet** button on the controller and an A/N mark sheet in the debrief, whose marks go
 into the downloaded or printed report. The mark scheme is never sent to the live session or the patient
 screens.
 
+Course images are read from the database only when a mark sheet is open, by an account with that course's
+entitlement, and each shows its credit. On the running controller, **Show on monitor** (on the mark sheet,
+or under Course images in the result chooser for that investigation) sends one to the patient monitor.
+Monitors join with no account, so the controller copies the one image being shown to
+`sessions/<code>/courseImage` and removes it when the scenario screen closes.
+
 **Uploading a course file.** Admin > Course scenarios > choose a JSON file (an object keyed by id, an
-array, or `{ "restrictedScenarios": { ... } }`). The file is checked first (id and title, no `. # $ [ ] /`
-in any field name) and then merged into `restrictedScenarios/`: a scenario with the same id is replaced,
-the others are kept. Keep course files out of this repository.
+array, `{ "restrictedScenarios": { ... } }`, or `{ "scenarios": { ... }, "images": { ... } }`). The file is
+checked first (id and title, no `. # $ [ ] /` in any field name; each image a JPEG, PNG or WebP data URL
+under 1 MB with a `credit`) and then merged in: a scenario with the same id is replaced, the others are
+kept. Each scenario goes to its course's place (`course: "ETC"` to `courseScenarios/etc/`, everything
+else to `restrictedScenarios/`), and a copy of it left in the other place is removed. Images go to
+`courseImages/<course>/<id>`, one write each. Keep course files out of this repository.
 
 ### Granting access
 
-A user needs **both** `status: "approved"` **and** `entitlements.rcuk: true`. Do this from the Admin
-panel in the app. A user can press "Request access" from the locked section, which writes a timestamped
-flag to their own record for you to see in the panel — it cannot grant anything.
+Each course is released separately, because different people are entitled to each:
+
+| Course | Entitlement | Scenarios | Images |
+| --- | --- | --- | --- |
+| ALS and other courses | `rcuk` | `restrictedScenarios/` | none |
+| ETC | `etc` | `courseScenarios/etc/` | `courseImages/etc/` |
+
+A user needs **both** `status: "approved"` **and** the course's entitlement (`entitlements.rcuk: true`,
+`entitlements.etc: true`, or both). Do this from the Admin panel in the app. A user can request each
+course from the locked section or their account panel, which writes a timestamped flag to their own
+record (`requestedAccess.rcuk`, `requestedAccess.etc`) for you to see in the panel; it cannot grant
+anything. The database rules for `courseScenarios/<course>` and `courseImages/<course>` check the
+entitlement with the same name, so adding another course is a new entry in `COURSE_ACCESS`
+(`data/auth.js`) and `ENTITLEMENT_KEYS`, with no new rule.
 
 ---
 
 ## Payments
 
-Not implemented, deliberately. `entitlements` exists as a **map** (`{ rcuk, premium, expiresAt }`)
+Not implemented, deliberately. `entitlements` exists as a **map** (`{ rcuk, etc, premium, expiresAt }`)
 rather than a single boolean precisely so a paid tier can be added without reworking the model.
 
 The one rule that must never be broken: **entitlements must only ever be written server-side.** The

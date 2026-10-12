@@ -162,3 +162,120 @@ test('admin: a course scenario file is checked and uploaded to the database', as
   expect(await page.evaluate(() => window.__fakeRtdb.get('restrictedScenarios/NEW_1/markScheme/kind'))).toBe('workshop');
   expect(errors).toEqual([]);
 });
+
+// ---- separate courses: ALS (rcuk) and ETC (etc) are approved separately ---------------------------
+// A 1x1 PNG stands in for a course image.
+const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+const etcScenario = {
+  ...workshop, id: 'ETCT_1', title: 'ETC test workshop', course: 'ETC', group: 'Test workshop',
+  markScheme: { ...workshop.markScheme, mediaNote: 'Test images.', media: [
+    { image: 'img_xray', type: 'X-ray', label: 'X-ray (1/2)', caption: 'Test pneumothorax' },
+    { image: 'img_scene', type: 'Picture', label: 'Picture' },
+  ] },
+};
+const etcImages = {
+  img_xray: { src: PNG, credit: 'Test course material, slide 3', modality: 'X-ray' },
+  img_scene: { src: PNG, credit: 'Test course material, slide 1', modality: 'Photo' },
+};
+
+async function signInAs(page, entitlements, role) {
+  await page.evaluate(([u, ent, r, a, b, e, imgs]) => {
+    window.__fakeRtdb.set(`users/${u}`, { email: 'a.learner@example.org', status: 'approved', entitlements: ent, ...(r ? { role: r } : {}) });
+    // An ETC copy left in restrictedScenarios from before the split must not show to ALS-only accounts
+    window.__fakeRtdb.set('restrictedScenarios', { [a.id]: a, [b.id]: b, OLD_ETC: { ...e, id: 'OLD_ETC', title: 'Old ETC copy' } });
+    window.__fakeRtdb.set('courseScenarios/etc', { [e.id]: e });
+    window.__fakeRtdb.set('courseImages/etc', imgs);
+  }, [UID, entitlements, role, workshop, other, etcScenario, etcImages]);
+  await page.getByRole('button', { name: /^Sign in$/ }).first().click();
+  await page.getByLabel('Email').fill('a.learner@example.org');
+  await page.getByLabel('Password').fill('correct horse');
+  await page.locator('form button[type=submit]').click();
+  await expect(page.getByRole('button', { name: /^Your account/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
+  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC\)/ }).click();
+}
+
+test('ALS and ETC access are separate: each account sees only the courses it is approved for', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await signInAs(page, { etc: true });
+  await expect(page.getByText('ETC test workshop')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('Workshop 1: Test fall')).toHaveCount(0);
+  await expect(page.getByText('Old ETC copy')).toHaveCount(0);
+  const more = page.getByTestId('course-access-more');
+  await expect(more.getByTestId('course-access-etc')).toContainText('Access approved');
+  await more.getByRole('button', { name: 'Request ALS access' }).click();
+  await expect.poll(() => page.evaluate(([u]) => window.__fakeRtdb.get(`users/${u}/requestedAccess/rcuk`), [UID])).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('ALS access alone does not show ETC, even an old ETC copy in the ALS place', async ({ page }) => {
+  await openController(page);
+  await signInAs(page, { rcuk: true });
+  await expect(page.getByText('Workshop 1: Test fall')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('ETC test workshop')).toHaveCount(0);
+  await expect(page.getByText('Old ETC copy')).toHaveCount(0);
+});
+
+test('course images: the mark sheet shows them with their credit and sends one to the patient monitor', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await signInAs(page, { etc: true });
+  await card(page, 'ETC test workshop').getByRole('button', { name: 'Mark sheet' }).click();
+  const sheet = page.getByRole('dialog', { name: /Mark sheet: ETC test workshop/ });
+  const media = sheet.getByTestId('mark-media');
+  await expect(media.getByTestId('mark-media-item')).toHaveCount(2);
+  await expect(media.getByRole('img', { name: 'X-ray (1/2)' })).toHaveAttribute('src', PNG);
+  await expect(media).toContainText('Image: Test course material, slide 3.');
+  await expect(media.getByRole('button', { name: 'Show on monitor' })).toHaveCount(0);   // only on the running controller
+  await sheet.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await card(page, 'ETC test workshop').getByRole('button', { name: 'Load' }).click();
+  await page.getByRole('button', { name: 'Start Scenario' }).click();
+  const monitor = await context.newPage();
+  await monitor.goto(`/index.html?mode=monitor&session=${code}`);
+  await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
+  await monitor.getByText('Tap to Enable Sound').click({ force: true });
+
+  await page.getByRole('button', { name: 'Mark sheet' }).click();
+  const live = page.getByRole('dialog', { name: /Mark sheet: ETC test workshop/ });
+  await live.getByTestId('mark-media-item').filter({ hasText: 'X-ray (1/2)' }).getByRole('button', { name: 'Show on monitor' }).click();
+  await expect(live.getByText('Sent')).toBeVisible();
+  const ci = await page.evaluate(([c]) => window.__fakeRtdb.get(`sessions/${c}/courseImage`), [code]);
+  expect(ci.key).toBe('course:img_xray');
+  expect(ci.credit).toBe('Test course material, slide 3');
+
+  const result = monitor.getByTestId('inv-result');
+  await expect(result.getByTestId('inv-image')).toHaveAttribute('src', PNG);
+  await expect(result).toContainText('Test pneumothorax');
+  await expect(result).toContainText('Image: Test course material, slide 3.');
+  // The mark scheme itself never reaches the session
+  const sess = await page.evaluate(([c]) => JSON.stringify(window.__fakeRtdb.get(`sessions/${c}/live`) || {}), [code]);
+  expect(sess).not.toContain('markScheme');
+  expect(errors).toEqual([]);
+});
+
+test('admin: an upload routes ETC to its own place, moves an old ETC copy and stores the images', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await signInAs(page, { rcuk: true }, 'admin');
+  await page.getByRole('button', { name: 'Admin', exact: true }).click();
+  const box = page.getByTestId('course-upload');
+  const file = {
+    scenarios: { OLD_ETC: { ...etcScenario, id: 'OLD_ETC', title: 'Moved ETC' }, ALS_9: { ...other, id: 'ALS_9', course: 'ALS', title: 'ALS nine' } },
+    images: { img_new: { course: 'ETC', src: PNG, credit: 'Test credit', modality: 'CT' }, bad_img: { course: 'ETC', src: 'http://example.org/x.png', credit: 'x' } },
+  };
+  await box.getByLabel('Course scenario file').setInputFiles({ name: 'pack.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await expect(box.getByText(/needs a JPEG, PNG or WebP data URL/)).toBeVisible();
+  await box.getByRole('button', { name: 'Upload 2 scenarios and 1 image' }).click();
+  await expect(box.getByText('Uploaded 2 scenarios and 1 image.', { exact: false })).toBeVisible();
+  const db = await page.evaluate(() => ({
+    restricted: Object.keys(window.__fakeRtdb.get('restrictedScenarios') || {}).sort(),
+    etc: Object.keys(window.__fakeRtdb.get('courseScenarios/etc') || {}).sort(),
+    img: window.__fakeRtdb.get('courseImages/etc/img_new'),
+  }));
+  expect(db.restricted).toEqual(['ALS_9', 'OC_1', 'TC_WS_1']);
+  expect(db.etc).toEqual(['ETCT_1', 'OLD_ETC']);
+  expect(db.img).toEqual({ src: PNG, credit: 'Test credit', modality: 'CT' });
+  expect(errors).toEqual([]);
+});
