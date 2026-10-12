@@ -91,6 +91,10 @@
         // not on screen. The panel now carries its OWN sign-in button, and the instructions for each of
         // the three states name only controls that are actually visible in that state.
         const [restrictedAuthOpen, setRestrictedAuthOpen] = useState(false);
+        // Course filter and the open mark sheet. Course scenarios carry `course` (e.g. 'ETC', 'ALS') and
+        // `group` (a workshop), so the list is grouped instead of one long column.
+        const [restrictedCourse, setRestrictedCourse] = useState('All');
+        const [markSheetFor, setMarkSheetFor] = useState(null);
 
         const [buildId, setBuildId] = useState(null);
         const [buildTitle, setBuildTitle] = useState("");
@@ -480,11 +484,31 @@
                             <p className="font-bold text-emerald-400">Unlocked — but there is nothing here yet.</p>
                             <p className="text-slate-400">No scenarios have been added to <span className="font-mono text-slate-300">restrictedScenarios/</span> in the database. See the “Restricted scenarios” section of README.md for the JSON shape to paste in.</p>
                         </div>
-                    ) : (
-                        <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
+                    ) : (() => {
+                        const MS = window.MarkScheme;
+                        const courseOf = MS ? MS.courseOf : (x => x.course || 'Other');
+                        const courses = Array.from(new Set(restricted.scenarios.map(courseOf)));
+                        const course = courses.includes(restrictedCourse) ? restrictedCourse : 'All';
+                        const shown = restricted.scenarios.filter(s => course === 'All' || courseOf(s) === course);
+                        const groups = MS ? MS.groupScenarios(shown) : [{ key: '', scenarios: shown }];
+                        return (
+                        <div className="space-y-2">
+                            {courses.length > 1 && (
+                                <div className="flex flex-wrap gap-1" role="group" aria-label="Course">
+                                    {['All', ...courses].map(c => (
+                                        <button key={c} type="button" aria-pressed={course === c} onClick={() => setRestrictedCourse(c)}
+                                            className={`h-8 px-3 rounded border text-xs font-bold ${course === c ? 'bg-amber-700 border-amber-500 text-white' : 'border-slate-600 text-slate-300 hover:text-white'}`}>{c === 'All' ? 'All courses' : c}</button>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-[11px] text-amber-300/80">Course material is copyrighted: use it on the course it belongs to, and do not copy or share it.</p>
+                            <div className="grid gap-2 max-h-[60vh] overflow-y-auto pr-2">
+                            {groups.map(g => (
+                                <div key={g.key} className="space-y-2">
+                                    {g.key && groups.length > 1 && <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mt-2">{g.key}</h4>}
                             {/* These run through the EXACT same handleGenerate/loadIntoBuilder
                                 path as a built-in scenario — no special-casing downstream. */}
-                            {restricted.scenarios.map(s => (
+                            {g.scenarios.map(s => (
                                 <div key={s.id} className="flex justify-between items-center bg-amber-950/20 hover:bg-amber-900/20 p-3 rounded border border-amber-800/50 group">
                                     <div className="flex-1 min-w-0">
                                         <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">
@@ -495,13 +519,19 @@
                                         <div className="text-xs text-slate-400 truncate">{getScenarioPreviewText(s)}</div>
                                     </div>
                                     <div className="flex gap-2 flex-none">
+                                        {window.MarkScheme && window.MarkScheme.get(s) && <Button onClick={() => setMarkSheetFor(s)} variant="outline" className="h-8 text-xs px-3">Mark sheet</Button>}
                                         <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
                                         <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
                                     </div>
                                 </div>
                             ))}
+                                </div>
+                            ))}
+                            </div>
+                            {markSheetFor && window.MarkScheme && <window.MarkScheme.MarkSheetModal scenario={markSheetFor} onClose={() => setMarkSheetFor(null)} />}
                         </div>
-                    )}
+                        );
+                    })()}
                 </div>
             );
         };
@@ -907,6 +937,9 @@
         // Most scenarios start with nothing attached (the team puts the monitoring on). Tick this when the
         // patient is already on a monitor: a ward or resus patient, a transfer, a handover.
         const [monitored, setMonitored] = useState(false);
+        const [showMarkSheet, setShowMarkSheet] = useState(false);
+        const MS = window.MarkScheme;
+        const markScheme = MS ? MS.get(scenario) : null;
         return (
             <div className="max-w-5xl mx-auto space-y-6 animate-fadeIn p-4 overflow-y-auto h-full">
                 <div className="bg-slate-800 border-l-4 border-sky-500 shadow-lg rounded-lg overflow-hidden">
@@ -953,6 +986,13 @@
                             <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30"><h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{brief.interventions && brief.interventions.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
                             <div className="p-3 bg-slate-900/50 rounded border border-slate-600"><h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4><div className="flex flex-col gap-1">{scenario.learningLinks && scenario.learningLinks.map((link, i) => (<a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-sky-400 hover:underline"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</a>))}</div></div>
                             <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30"><h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Learning Objectives</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{(brief.debriefPoints || brief.learningObjectives || []).map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+                            {markScheme && (
+                                <div className="p-3 bg-fuchsia-900/20 rounded border border-fuchsia-600/40" data-testid="briefing-marksheet">
+                                    <h4 className="text-sm font-bold text-fuchsia-300 uppercase mb-1">{markScheme.kind === 'assessment' ? 'Team leader assessment' : 'Facilitator pack'}</h4>
+                                    <p className="text-xs text-slate-300 mb-2">The pathway (each role's findings and expected actions), the results to give and the mark sheet. It stays available from the <b>Mark sheet</b> button while the scenario runs.</p>
+                                    <Button onClick={() => setShowMarkSheet(true)} variant="outline" className="h-8 px-3 text-xs">Open the mark sheet</Button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -962,6 +1002,7 @@
                         <span className="block text-xs text-slate-400">ECG, SpO2, NIBP and temperature attached from the start. Leave it unticked when putting the monitoring on is part of the team's task.</span></span>
                 </label>
                 {/* Kept in view at the bottom: on a laptop the button was below the fold. */}
+                {showMarkSheet && MS && <MS.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} />}
                 <div className="sticky bottom-0 z-10 -mx-1 px-1 py-2 bg-slate-900/95 backdrop-blur flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={() => onStart({ monitored })} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
             </div>
         );

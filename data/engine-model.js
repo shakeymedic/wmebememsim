@@ -1420,6 +1420,10 @@
             const library = (typeof window !== 'undefined' && window.SCENARIO_OBJECTIVE_ACTIONS) || {};
             raw = authoredLookup(library[scen.id], objective);
         }
+        // Course scenarios (e.g. ETC) set `objectivesFacilitatorOnly`: their objectives are judged by
+        // the facilitator, never inferred from keywords. Firebase drops the empty `[]` entries
+        // that would otherwise say so, and objective text is not a legal RTDB key anyway.
+        if ((raw === undefined || raw === null) && scen.objectivesFacilitatorOnly === true) return [];
         if (raw === undefined || raw === null) return null;
         return asList(raw)
             .map(g => (typeof g === 'string' ? [g] : asList(g)).filter(k => typeof k === 'string' && k.length))

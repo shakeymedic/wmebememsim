@@ -628,6 +628,40 @@ Paste this at `restrictedScenarios/RCUK_ALS_01` to check the wiring end to end:
 }
 ```
 
+### Courses, workshops and mark sheets
+
+Course scenarios can carry these extra fields. None is required.
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `course` | string | e.g. `"ETC"`, `"ALS"`. With more than one course, the list shows course filter chips |
+| `group` | string | A heading in the list, e.g. a workshop. Falls back to `category` |
+| `order` | number | Sort order in the list (then title) |
+| `objectivesFacilitatorOnly` | boolean | Learning objectives are ticked by the facilitator in the debrief, never inferred from the interventions given |
+| `markScheme` | object | The facilitator pack and mark sheet, below |
+
+`markScheme` (every part optional; lists are string arrays):
+
+- `kind`: `"workshop"` or `"assessment"`. `source`, `note`: shown at the top of the sheet.
+- `radioReport`, `learningOutcomes`, `technicalSkills`, `nonTechnicalSkills`.
+- `setup`: `{ initial, after, afterLabel, injuries, equipment, skills }` (observations and moulage).
+- `pathway`: `[{ role, findings, actions }]`, one row per role card (A, B, C, ...), new lines kept.
+- `results`: `[{ label, text }]`, the results to give when asked.
+- `criticalPoints`, `criticalNote`, and `criteria: { technical, nonTechnical, other }`: the items marked
+  A (achieved) or N (not achieved). An assessment shows "Pass" only when every item is A, and
+  "Not yet achieved" as soon as a critical point is N.
+- `summary`, `debriefPoints`, `teachingPoints`.
+
+A scenario with a `markScheme` gets a **Mark sheet** button in the list, a facilitator pack box on the
+briefing, a **Mark sheet** button on the controller and an A/N mark sheet in the debrief, whose marks go
+into the downloaded or printed report. The mark scheme is never sent to the live session or the patient
+screens.
+
+**Uploading a course file.** Admin > Course scenarios > choose a JSON file (an object keyed by id, an
+array, or `{ "restrictedScenarios": { ... } }`). The file is checked first (id and title, no `. # $ [ ] /`
+in any field name) and then merged into `restrictedScenarios/`: a scenario with the same id is replaced,
+the others are kept. Keep course files out of this repository.
+
 ### Granting access
 
 A user needs **both** `status: "approved"` **and** `entitlements.rcuk: true`. Do this from the Admin

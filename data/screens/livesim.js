@@ -396,6 +396,9 @@
         const [firedAlerts, setFiredAlerts] = useState(new Set());
         const firedAlertsRef = useRef(new Set());
         const [showKeyHelp, setShowKeyHelp] = useState(false);
+        // Course scenarios (e.g. ETC) carry a mark sheet: the pathway, results and criteria.
+        const [showMarkSheet, setShowMarkSheet] = useState(false);
+        const hasMarkSheet = !!(window.MarkScheme && window.MarkScheme.get(scenario));
         const [showJoin, setShowJoin] = useState(false);
         const [showFlagsModal, setShowFlagsModal] = useState(false);
         // Alarm tones now live in the shared engine (so the STUDENT monitor alarms too) and are routed
@@ -1012,6 +1015,7 @@
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
                         <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
                         <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
+                        {hasMarkSheet && <Button variant="outline" onClick={() => setShowMarkSheet(true)} className="h-8 px-2 whitespace-nowrap text-fuchsia-300 border-fuchsia-600/60"><Lucide icon="clipboard-check"/> Mark sheet</Button>}
                         {/* START/PAUSE lives beside the phone obs on small screens. */}
                         {!isRunning ? ( <Button variant="success" onClick={start} className={`h-8 px-4 font-bold max-md:hidden ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
                         {notStarted && <NotStartedBadge className="max-md:hidden" />}
@@ -2296,6 +2300,7 @@
                     </Modal>
                 )}
 
+                {showMarkSheet && hasMarkSheet && <window.MarkScheme.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} />}
                 {showKeyHelp && (
                     <Modal label="Keyboard shortcuts" onClose={()=>setShowKeyHelp(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">

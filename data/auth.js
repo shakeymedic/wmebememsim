@@ -628,6 +628,88 @@
         );
     };
 
+    // ---- COURSE SCENARIO UPLOAD (admin) --------------------------------------------------------
+    // Restricted course scenarios (e.g. the ETC pack) are kept OUT of this public repository and
+    // uploaded from a JSON file the owner holds. Accepts { "<ID>": scenario, … }, an array of
+    // scenarios, or { "restrictedScenarios": { … } }. Each scenario is written to
+    // restrictedScenarios/<id> with update(), so scenarios already there that are not in the file
+    // are left alone, and a scenario with the same id is replaced.
+    const parseCourseScenarioFile = (text) => {
+        let raw;
+        try { raw = JSON.parse(text); } catch (e) { return { error: 'That file is not valid JSON.' }; }
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.restrictedScenarios && typeof raw.restrictedScenarios === 'object') raw = raw.restrictedScenarios;
+        const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.keys(raw).map(k => (raw[k] && typeof raw[k] === 'object') ? { ...raw[k], id: raw[k].id || k } : null) : []);
+        const ok = {}, bad = [];
+        list.forEach((sc, i) => {
+            const id = sc && typeof sc.id === 'string' ? sc.id.trim() : '';
+            if (!sc || !id || typeof sc.title !== 'string' || !sc.title.trim()) { bad.push(`item ${i + 1}: needs an id and a title`); return; }
+            if (/[.#$\[\]\/]/.test(id)) { bad.push(`${id}: an id cannot contain . # $ [ ] or /`); return; }
+            if (ok[id]) { bad.push(`${id}: appears twice`); return; }
+            // Realtime Database refuses the whole upload if any key, at any depth, has one of these.
+            const badKey = (function find(v) {
+                if (!v || typeof v !== 'object') return null;
+                for (const k of Object.keys(v)) { if (/[.#$\[\]\/]/.test(k)) return k; const inner = find(v[k]); if (inner) return inner; }
+                return null;
+            })(sc);
+            if (badKey) { bad.push(`${id}: the field name "${badKey.slice(0, 40)}" cannot contain . # $ [ ] or /`); return; }
+            ok[id] = { ...sc, id };
+        });
+        if (!Object.keys(ok).length) return { error: bad.length ? `No scenarios could be read (${bad.slice(0, 3).join('; ')}).` : 'The file has no scenarios in it.' };
+        const courses = {};
+        Object.values(ok).forEach(sc => { const c = (typeof sc.course === 'string' && sc.course.trim()) || 'No course'; courses[c] = (courses[c] || 0) + 1; });
+        return { scenarios: ok, bad, courses };
+    };
+    window.parseCourseScenarioFile = parseCourseScenarioFile;
+
+    const CourseScenarioUpload = () => {
+        const { Button, Lucide } = window;
+        const [parsed, setParsed] = useState(null);
+        const [fileName, setFileName] = useState('');
+        const [busy, setBusy] = useState(false);
+        const [message, setMessage] = useState(null);
+        const onFile = (e) => {
+            const f = e.target.files && e.target.files[0];
+            setMessage(null); setParsed(null); setFileName(f ? f.name : '');
+            if (!f) return;
+            const reader = new FileReader();
+            reader.onload = () => setParsed(parseCourseScenarioFile(String(reader.result || '')));
+            reader.onerror = () => setParsed({ error: 'The file could not be read.' });
+            reader.readAsText(f);
+        };
+        const upload = async () => {
+            if (!parsed || !parsed.scenarios || !window.db) return;
+            setBusy(true); setMessage(null);
+            try {
+                await window.db.ref('restrictedScenarios').update(parsed.scenarios);
+                setMessage({ ok: true, text: `Uploaded ${Object.keys(parsed.scenarios).length} scenarios. Reopen Course scenarios to see them.` });
+                setParsed(null);
+            } catch (e) {
+                setMessage({ ok: false, text: 'The database refused the upload. Only an admin can write course scenarios: check your own role is "admin" and that database.rules.json is published.' });
+            }
+            setBusy(false);
+        };
+        const count = parsed && parsed.scenarios ? Object.keys(parsed.scenarios).length : 0;
+        return (
+            <div className="border-t border-slate-700 mt-3 pt-3" data-testid="course-upload">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 flex items-center gap-1"><Lucide icon="upload" className="w-3 h-3"/> Course scenarios</div>
+                <p className="text-[11px] text-slate-400 mb-2">Upload a course scenario file (JSON). Scenarios with the same id are replaced; others already in the database are kept. Only people with course access can read them.</p>
+                <label className="inline-flex items-center gap-2 text-xs text-slate-200">
+                    <span className="sr-only">Course scenario file</span>
+                    <input type="file" accept="application/json,.json" aria-label="Course scenario file" onChange={onFile} className="text-xs text-slate-300 file:mr-2 file:rounded file:border file:border-slate-600 file:bg-slate-900 file:px-2 file:py-1 file:text-slate-200" />
+                </label>
+                {parsed && parsed.error && <div className="text-[11px] text-red-300 mt-2">{parsed.error}</div>}
+                {count > 0 && (
+                    <div className="mt-2 text-[11px] text-slate-300 space-y-1">
+                        <div>{fileName}: <b>{count}</b> scenario{count === 1 ? '' : 's'} ({Object.keys(parsed.courses).map(c => `${c}: ${parsed.courses[c]}`).join(', ')}).</div>
+                        {parsed.bad.length > 0 && <div className="text-amber-300">Skipped {parsed.bad.length}: {parsed.bad.slice(0, 5).join('; ')}{parsed.bad.length > 5 ? '…' : ''}</div>}
+                        <Button onClick={upload} disabled={busy} variant="primary" className="h-8 px-3 text-xs">{busy ? 'Uploading…' : `Upload ${count} scenario${count === 1 ? '' : 's'}`}</Button>
+                    </div>
+                )}
+                {message && <div className={`text-[11px] mt-2 ${message.ok ? 'text-emerald-300' : 'text-red-300'}`}>{message.text}</div>}
+            </div>
+        );
+    };
+
     // ---- ADMIN PANEL (requirement B3) ----------------------------------------------------------
     // Visible only when role === 'admin'. Lists every user with their status and entitlements,
     // approves/rejects pending requests, and grants/revokes each entitlement individually.
@@ -756,6 +838,8 @@
                             </div>
                         ))}
                     </div>
+
+                    <CourseScenarioUpload />
 
                     <div className="border-t border-slate-700 mt-3 pt-3 text-[10px] text-slate-400">
                         Payments are not connected. When they are, entitlements must be written server-side from a
