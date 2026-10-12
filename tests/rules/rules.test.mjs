@@ -145,6 +145,46 @@ test('restricted scenarios need an approved account with the rcuk entitlement', 
   await assertFails(user('ok').ref('restrictedScenarios/RC002').set({ id: 'RC002', title: 'Mine' }));
 });
 
+test('each course is released separately: ETC needs entitlements.etc, ALS needs rcuk', async () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  await seed('courseScenarios/etc/ETC_1', { id: 'ETC_1', title: 'ETC workshop' });
+  await seed('courseImages/etc/img1', { src: png, credit: 'ETC slide 3' });
+  await seed('restrictedScenarios/RC001', { id: 'RC001', title: 'ALS' });
+  await seed('users/als', { status: 'approved', entitlements: { rcuk: true } });
+  await seed('users/etc', { status: 'approved', entitlements: { etc: true } });
+  await seed('users/etcPending', { status: 'pending', entitlements: { etc: true } });
+  await seed('users/admin1', { role: 'admin', status: 'approved' });
+  // ETC
+  await assertSucceeds(user('etc').ref('courseScenarios/etc').once('value'));
+  await assertSucceeds(user('etc').ref('courseImages/etc/img1').once('value'));
+  await assertFails(user('etc').ref('restrictedScenarios').once('value'));
+  await assertFails(user('als').ref('courseScenarios/etc').once('value'));
+  await assertFails(user('als').ref('courseImages/etc/img1').once('value'));
+  await assertFails(user('etcPending').ref('courseScenarios/etc').once('value'));
+  await assertFails(anon().ref('courseImages/etc/img1').once('value'));
+  await assertFails(user('etc').ref('courseScenarios').once('value'));            // no listing of every course
+  await assertFails(user('etc').ref('courseScenarios/etc/ETC_2').set({ id: 'ETC_2', title: 'Mine' }));
+  await assertFails(user('etc').ref('courseImages/etc/img2').set({ src: png, credit: 'x' }));
+  // An admin uploads, exactly as data/auth.js does: scenarios by update (null removes a copy
+  // left in the other course's place), then one image per write
+  await assertSucceeds(user('admin1').ref('courseScenarios/etc').update({ ETC_2: { id: 'ETC_2', title: 'New' }, OTHER: null }));
+  await assertSucceeds(user('admin1').ref('restrictedScenarios').update({ ETC_2: null }));
+  await assertSucceeds(user('admin1').ref('courseImages/etc/img2').set({ src: png, credit: 'ETC slide 4', modality: 'X-ray', w: 800, h: 600 }));
+  await assertFails(user('admin1').ref('courseImages/etc/img3').set({ src: 'https://example.org/x.png', credit: 'x' }));
+  await assertFails(user('admin1').ref('courseImages/etc/img3').set({ src: png }));
+  await assertFails(user('admin1').ref('courseImages/etc/img3').set({ src: png, credit: 'x', extra: 1 }));
+});
+
+test('a course image shown on the monitor: one image on the session, shape checked', async () => {
+  const png = 'data:image/png;base64,iVBORw0KGgo=';
+  await assertSucceeds(anon().ref(`sessions/${CODE}/courseImage`).set({ key: 'course:img1', src: png, credit: 'ETC slide 3', modality: 'X-ray', ts: Date.now() }));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/courseImage`).once('value'));
+  await assertSucceeds(anon().ref(`sessions/${CODE}/courseImage`).remove());
+  await assertFails(anon().ref(`sessions/${CODE}/courseImage`).set({ key: 'course:img1', src: 'https://example.org/x.png', credit: 'x', ts: 1 }));
+  await assertFails(anon().ref(`sessions/${CODE}/courseImage`).set({ key: 'course:img1', src: png, credit: 'x', ts: 1, other: 1 }));
+  await assertFails(anon().ref(`sessions/${CODE}/courseImage`).set({ key: 'course:img1', src: 'data:image/png;base64,' + 'A'.repeat(1000001), credit: 'x', ts: 1 }));
+});
+
 test('my scenarios: only the owner can read or write them', async () => {
   const scen = { id: 'CUST_1', title: 'Chest pain', category: 'Medical', vitals: { hr: 0, bpSys: 0 }, pmh: ['Asthma'], savedAt: Date.now() };
   // Exactly what data/auth.js writes: one scenario by set, several by update, removal

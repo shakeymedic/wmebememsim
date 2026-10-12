@@ -307,7 +307,14 @@
     };
 
     // The image that should go with a result, if any: an explicit key, or the scenario's own.
-    const imageFor = (key) => (key && IMAGES[key]) ? IMAGES[key] : null;
+    // Course images (keys 'course:<id>') are not shipped: they are read from the database at run
+    // time by whoever may see them, and registered here so every screen can show them the same way.
+    const COURSE_IMAGES = {};
+    const registerImage = (key, img) => {
+        if (typeof key !== 'string' || !key.startsWith('course:') || !img || typeof img.src !== 'string') return;
+        COURSE_IMAGES[key] = { src: img.src, modality: img.modality || '', credit: String(img.credit || '') };
+    };
+    const imageFor = (key) => (key && IMAGES[key]) ? IMAGES[key] : (key && COURSE_IMAGES[key]) ? COURSE_IMAGES[key] : null;
     // A real ECG image is only used while the patient's rhythm is one it can stand for.
     const ecgImageFits = (key, rhythm) => {
         const img = imageFor(key);
@@ -316,7 +323,7 @@
         const r = R ? R.canonical(rhythm || 'Sinus Rhythm') : rhythm;
         return !img.rhythms || img.rhythms.indexOf(r) !== -1;
     };
-    const creditText = (img) => img ? `${img.author}, ${img.licence}, via Wikimedia Commons${img.modified && img.modified !== 'Resized' ? ` (${img.modified.toLowerCase()})` : ''}` : '';
+    const creditText = (img) => !img ? '' : img.credit ? img.credit : `${img.author}, ${img.licence}, via Wikimedia Commons${img.modified && img.modified !== 'Resized' ? ` (${img.modified.toLowerCase()})` : ''}`;
 
-    window.INVESTIGATIONS = { IMAGES, FINDINGS, SCENARIO_RESULTS, byId, asResult, applyScenarioResults, imageFor, ecgImageFits, creditText, KEY };
+    window.INVESTIGATIONS = { IMAGES, FINDINGS, SCENARIO_RESULTS, byId, asResult, applyScenarioResults, imageFor, registerImage, ecgImageFits, creditText, KEY };
 })();

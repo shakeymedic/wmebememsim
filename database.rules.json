@@ -229,6 +229,18 @@
             "$other": { ".validate": false }
           }
         },
+        // A course image the facilitator chose to show on the patient monitor (from a restricted
+        // course's mark sheet). Monitors join with no account, so the controller copies the one image
+        // being shown here, and removes it when the scenario ends.
+        "courseImage": {
+          ".validate": "newData.hasChildren(['key', 'src', 'credit', 'ts'])",
+          "key": { ".validate": "newData.isString() && newData.val().length <= 120" },
+          "src": { ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length <= 1000000" },
+          "credit": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "modality": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "ts": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
         // The room monitor's requests to the controller (NIBP, actions).
         "command": {
           ".validate": "newData.hasChildren(['type', 'ts'])",
@@ -315,6 +327,36 @@
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$scenarioId": {
         ".validate": "newData.hasChildren(['id', 'title'])"
+      }
+    },
+
+    // ------------------------------------------------------------------------------------------
+    // 3b. COURSE SCENARIOS AND IMAGES, ONE PLACE PER COURSE (e.g. courseScenarios/etc). Each
+    //     course is released separately: reading courseScenarios/<course> or courseImages/<course>
+    //     needs an approved account whose entitlements.<course> is true. Write requires admin.
+    // ------------------------------------------------------------------------------------------
+    "courseScenarios": {
+      "$course": {
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child($course).val() === true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        "$scenarioId": {
+          ".validate": "newData.hasChildren(['id', 'title'])"
+        }
+      }
+    },
+    "courseImages": {
+      "$course": {
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child($course).val() === true",
+        ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
+        "$imageId": {
+          ".validate": "newData.hasChildren(['src', 'credit'])",
+          "src": { ".validate": "newData.isString() && newData.val().beginsWith('data:image/') && newData.val().length <= 1000000" },
+          "credit": { ".validate": "newData.isString() && newData.val().length <= 400" },
+          "modality": { ".validate": "newData.isString() && newData.val().length <= 16" },
+          "w": { ".validate": "newData.isNumber()" },
+          "h": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
       }
     },
 

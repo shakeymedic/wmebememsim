@@ -895,6 +895,12 @@
             return { text, image: imgFits ? image : null, ecgImageNotFitting: !!image && !imgFits };
         };
         const dismissInv = () => setInvModal(null);
+        // Course images (restricted course scenarios, e.g. ETC): sent from the mark sheet or from the
+        // result chooser. The copy on the session is removed when this screen closes.
+        const MSX = window.MarkScheme;
+        const courseMedia = (MSX && MSX.media && scenario) ? MSX.media(scenario) : [];
+        const showCourseImage = (item, withReport) => MSX.showOnMonitor({ sim, sessionID, scenario, item, withReport });
+        useEffect(() => () => { if (courseMedia.length && MSX && MSX.clearMonitorImage) MSX.clearMonitorImage(sessionID); }, [sessionID, courseMedia.length]);
         const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
 
         // A narrow monitor panel (small laptop, or dragged narrow) gets the compact tiles too: the
@@ -2018,6 +2024,19 @@
                                          </div>
                                      );
                                  })()}
+                                 {courseMedia.some(m => m.type === invModal) && (
+                                     <div data-testid="inv-course-media">
+                                        <label className="text-xs text-purple-300 font-bold uppercase mb-2 block">Course images ({MSX.courseOf(scenario)})</label>
+                                        <div className="grid grid-cols-1 gap-1.5">
+                                            {courseMedia.filter(m => m.type === invModal).map((m, i) => (
+                                                <button key={`${m.image}-${i}`} type="button" onClick={async () => { await showCourseImage(m, invWithReport); setInvModal(null); }}
+                                                        className="text-left px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs text-slate-100 rounded border border-purple-500/50">
+                                                    <b>{m.label || m.type}</b>{m.caption ? `: ${m.caption}` : ''}
+                                                </button>
+                                            ))}
+                                        </div>
+                                     </div>
+                                 )}
                                  {INV && INV.FINDINGS[invModal] && (
                                      <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
                                          <input type="checkbox" checked={invWithReport} onChange={e => setInvWithReport(e.target.checked)} />
@@ -2300,7 +2319,7 @@
                     </Modal>
                 )}
 
-                {showMarkSheet && hasMarkSheet && <window.MarkScheme.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} />}
+                {showMarkSheet && hasMarkSheet && <window.MarkScheme.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} onShowImage={showCourseImage} />}
                 {showKeyHelp && (
                     <Modal label="Keyboard shortcuts" onClose={()=>setShowKeyHelp(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">

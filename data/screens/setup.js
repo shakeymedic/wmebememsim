@@ -395,12 +395,15 @@
         // noise when Firebase Auth has never been enabled. The client-side check below controls the
         // UI ONLY — the real enforcement is the database rules (database.rules.json), which is why
         // we still attempt the read and treat PERMISSION_DENIED as a normal locked outcome.
-        const restrictedUnlocked = !!(auth && auth.has && auth.has('rcuk'));
+        // Each course (ALS, ETC) has its own entitlement; the section opens if the account holds any.
+        const heldCourses = (window.COURSE_ACCESS || [{ key: 'rcuk' }]).map(c => c.key).filter(k => !!(auth && auth.has && auth.has(k)));
+        const heldKey = heldCourses.join(',');
+        const restrictedUnlocked = heldCourses.length > 0;
         useEffect(() => {
             if (!restrictedUnlocked) { setRestricted({ phase: 'locked', scenarios: [], reason: null }); return; }
             let cancelled = false;
             setRestricted({ phase: 'loading', scenarios: [], reason: null });
-            (window.loadRestrictedScenarios ? window.loadRestrictedScenarios() : Promise.resolve({ ok: false, reason: 'unavailable', scenarios: [] }))
+            (window.loadRestrictedScenarios ? window.loadRestrictedScenarios(heldCourses) : Promise.resolve({ ok: false, reason: 'unavailable', scenarios: [] }))
                 .then(res => {
                     if (cancelled) return;
                     setRestricted({
@@ -410,12 +413,13 @@
                     });
                 });
             return () => { cancelled = true; };
-        }, [restrictedUnlocked]);
+        }, [heldKey]);
 
         const RestrictedSection = () => {
             const signedIn = !!(auth && auth.phase === 'signedIn');
             const status = (auth && auth.profile && auth.profile.status) || null;
-            const requestedCourse = !!(auth && auth.profile && auth.profile.requestedAccess && auth.profile.requestedAccess.rcuk);
+            const CourseAccessList = window.CourseAccessList || null;
+            const missingCourses = (window.COURSE_ACCESS || []).filter(c => !heldCourses.includes(c.key));
             // ITEM 5: the same modal the header's account button opens. Read off window so this screen
             // keeps working if data/auth.js never loaded (the no-accounts deployment).
             const AuthModalComponent = window.AuthModal || null;
@@ -427,6 +431,15 @@
                             <Lucide icon={restrictedUnlocked ? 'unlock' : 'lock'} className="w-4 h-4"/> Course scenarios
                         </h3>
                     </div>
+
+                    {restrictedUnlocked && missingCourses.length > 0 && CourseAccessList && (
+                        <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 space-y-2" data-testid="course-access-more">
+                            <p className="text-xs text-slate-400">Each course is approved separately. You can see {heldCourses.map(k => ((window.COURSE_ACCESS || []).find(c => c.key === k) || { short: k }).short).join(' and ')}.</p>
+                            <CourseAccessList auth={auth} compact />
+                            {auth.notice && <div className="text-xs text-emerald-300">{auth.notice}</div>}
+                            {auth.error && <div className="text-xs text-red-300">{auth.error}</div>}
+                        </div>
+                    )}
 
                     {!restrictedUnlocked ? (
                         <div className="bg-slate-900 border border-amber-700/60 rounded-lg p-4 space-y-3">
@@ -462,15 +475,9 @@
                                             Signed in as <span className="text-slate-200 font-bold">{auth.user && auth.user.email}</span>.
                                             {status === 'rejected'
                                                 ? ' Your access request was not approved.'
-                                                : requestedCourse
-                                                    ? ' Your request is awaiting approval by the site owner.'
-                                                    : ' If you teach or attend one of these courses, request access below (also available from your account, top right).'}
+                                                : ' Each course is approved separately. If you teach or attend one, request access to it below (also available from your account, top right).'}
                                         </p>
-                                        {!requestedCourse && status !== 'rejected' && (
-                                            <Button onClick={() => auth.requestAccess('rcuk')} variant="outline" className="h-8 px-3 text-xs text-amber-400 border-amber-500/60">
-                                                Request access to course scenarios
-                                            </Button>
-                                        )}
+                                        {CourseAccessList && <CourseAccessList auth={auth} compact />}
                                         {auth.notice && <div className="text-emerald-300">{auth.notice}</div>}
                                         {auth.error && <div className="text-red-300">{auth.error}</div>}
                                     </div>
@@ -482,7 +489,7 @@
                     ) : restricted.phase === 'empty' ? (
                         <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 space-y-2">
                             <p className="font-bold text-emerald-400">Unlocked — but there is nothing here yet.</p>
-                            <p className="text-slate-400">No scenarios have been added to <span className="font-mono text-slate-300">restrictedScenarios/</span> in the database. See the “Restricted scenarios” section of README.md for the JSON shape to paste in.</p>
+                            <p className="text-slate-400">No scenarios have been added for your course{heldCourses.length > 1 ? 's' : ''} yet. An admin uploads them from Admin, Course scenarios (see the “Restricted scenarios” section of README.md).</p>
                         </div>
                     ) : (() => {
                         const MS = window.MarkScheme;
