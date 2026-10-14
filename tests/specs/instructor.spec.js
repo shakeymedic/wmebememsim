@@ -50,13 +50,14 @@ test('core obs, More obs, one drug panel, and no duplicated recommended actions'
   const errors = trackErrors(page);
   await openController(page);
   await startScenario(page, 'Adult Medical', 'Anaphylaxis (Adult)');
-  // Core six are big tiles; More obs has GCS and glucose (Simple view), plus pH and K+ in Full view
+  // Core six are big tiles; More obs has GCS and glucose. pH and K+ are not obs (they come with the VBG)
   for (const label of ['HR', 'BP', 'SpO2', 'RR', 'Temp', 'ETCO2']) await expect(page.getByRole('button', { name: `Adjust ${label}` }).last()).toBeVisible();
   const more = page.locator('[data-section="moreObs"]');
   for (const label of ['GCS', 'Glucose']) await expect(more.getByRole('button', { name: `Adjust ${label}` })).toBeVisible();
   for (const label of ['pH', 'K+']) await expect(more.getByRole('button', { name: `Adjust ${label}` })).toHaveCount(0);
   await page.getByTestId('view-mode').getByRole('button', { name: 'Full' }).click();
-  for (const label of ['GCS', 'Glucose', 'pH', 'K+']) await expect(more.getByRole('button', { name: `Adjust ${label}` })).toBeVisible();
+  for (const label of ['GCS', 'Glucose']) await expect(more.getByRole('button', { name: `Adjust ${label}` })).toBeVisible();
+  for (const label of ['pH', 'K+']) await expect(page.getByRole('button', { name: `Adjust ${label}` })).toHaveCount(0);
 
   // Each recommended action appears once in the Common tab
   const rec = await page.evaluate(() => window.__simEngine.state.scenario.recommendedActions.filter(k => window.INTERVENTIONS[k]).map(k => window.INTERVENTIONS[k].label));

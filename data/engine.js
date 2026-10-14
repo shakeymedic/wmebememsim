@@ -137,6 +137,15 @@
                 return;
             }
 
+            // Better/Worse move the scenario's gas; the gas's pH and K+ are the patient's own
+            // (window.liveVbg), so the same change goes into the trend for pH and K+.
+            const gasTargets = (targets, from, to) => {
+                const b = stateRef.current.baseVitals || {};
+                [['ph', 'pH'], ['k', 'K']].forEach(([vk, gk]) => {
+                    const d = Number(to[gk]) - Number(from[gk]);
+                    if (targets[vk] === undefined && Number.isFinite(b[vk]) && Number.isFinite(d) && d !== 0) targets[vk] = b[vk] + d;
+                });
+            };
             if (action.type === 'TRIGGER_IMPROVE') {
                 let impTargets = {}; 
                 const scen = stateRef.current.scenario;
@@ -145,10 +154,12 @@
                 else { impTargets.hr = Math.max(60, vits.hr - 15); impTargets.bpSys = Math.min(120, vits.bpSys + 15); impTargets.spO2 = Math.min(99, vits.spO2 + 5); }
                 // Trends operate in BASE space (see the precedence comment): snapshot the base, not
                 // the displayed vitals, or the trend would swallow whatever the drugs are contributing.
-                enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                 if (scen?.vbg && window.calculateDynamicVbg) {
-                    dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'improve') }, currentState: stateRef.current });
+                    const nextVbg = window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'improve');
+                    gasTargets(impTargets, scen.vbg, nextVbg);
+                    dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: nextVbg }, currentState: stateRef.current });
                 }
+                enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                 dispatchCore({ type: 'SET_FLASH', payload: 'green', currentState: stateRef.current });
             }
             if (action.type === 'TRIGGER_DETERIORATE') {
@@ -157,10 +168,12 @@
                  const vits = stateRef.current.vitals;
                  if (scen && scen.evolution && scen.evolution.deteriorated && scen.evolution.deteriorated.vitals) { detTargets = { ...scen.evolution.deteriorated.vitals }; } 
                  else { detTargets.hr = Math.min(170, vits.hr + 20); detTargets.bpSys = Math.max(60, vits.bpSys - 20); detTargets.spO2 = Math.max(80, vits.spO2 - 10); }
-                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                  if (scen?.vbg && window.calculateDynamicVbg) {
-                     dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'deteriorate') }, currentState: stateRef.current });
+                     const nextVbg = window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'deteriorate');
+                     gasTargets(detTargets, scen.vbg, nextVbg);
+                     dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: nextVbg }, currentState: stateRef.current });
                  }
+                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                  dispatchCore({ type: 'SET_FLASH', payload: 'red', currentState: stateRef.current });
             }
 
@@ -544,9 +557,11 @@
                     dispatch({ type: 'RECORD_POC', payload: { key: 'bm', value: Number.isFinite(v.bm) ? v.bm : null, at: cur.time, clock } });
                     addLogEntry(`Capillary glucose ${Number.isFinite(v.bm) ? v.bm.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
                 } else {
-                    // The VBG reports pH and potassium at the moment the sample was taken.
-                    dispatch({ type: 'RECORD_POC', payload: { key: 'vbg', value: Number.isFinite(v.ph) ? v.ph : null, value2: Number.isFinite(v.k) ? v.k : null, at: cur.time, clock } });
-                    addLogEntry(`VBG: pH ${Number.isFinite(v.ph) ? v.ph.toFixed(2) : '--'}, K+ ${Number.isFinite(v.k) ? v.k.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
+                    // The VBG reports pH and potassium at the moment the sample was taken: the same
+                    // gas the monitor's VBG button gives (window.liveVbg).
+                    const gas = window.liveVbg ? window.liveVbg(cur.scenario, v, cur.activeInterventions, cur.time) : { pH: v.ph, K: v.k };
+                    dispatch({ type: 'RECORD_POC', payload: { key: 'vbg', value: Number.isFinite(gas.pH) ? gas.pH : null, value2: Number.isFinite(gas.K) ? gas.K : null, at: cur.time, clock } });
+                    addLogEntry(`VBG: pH ${Number.isFinite(gas.pH) ? gas.pH.toFixed(2) : '--'}, K+ ${Number.isFinite(gas.K) ? gas.K.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
                 }
                 // Execution deliberately CONTINUES into the normal intervention path below, so the
                 // check is counted and logged by exactly the same machinery as everything else.
@@ -1307,8 +1322,9 @@
                 // applies TIME/TREATMENT DELTAS on top of that baseline; every key it does not
                 // model (pO2, Na, Ca) is carried through from the authored block untouched.
                 if (type === 'VBG' && !customText && cur.scenario && window.calculateDynamicVbg) {
-                    const startVbg = cur.scenario.vbg || cur.scenario.investigations?.vbg || window.generateVbg?.('normal');
-                    const dynamic = window.calculateDynamicVbg(startVbg, cur.vitals, cur.activeInterventions, cur.time);
+                    // window.liveVbg (data/generators.js) does exactly that, then reports the
+                    // patient's own modelled pH and K+ in the gas (they are not shown as obs).
+                    const dynamic = window.liveVbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time);
                     // Pass the structured object — monitor.js will detect and render the table.
                     finalCustomText = { __vbg: true, ...dynamic };
                 }

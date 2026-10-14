@@ -67,9 +67,19 @@
                 // Give the scenario a clinically coherent starting K+ if it never declared one,
                 // so hyperkalaemia scenarios actually start hyperkalaemic and the treatment has a
                 // measurable endpoint. An explicit scenario/vitalsMod value always wins.
-                if (action.payload.vitals === undefined || action.payload.vitals === null || action.payload.vitals.k === undefined) {
+                // pH and K+ are what the VBG reports (window.liveVbg), so a patient whose scenario does
+                // not state them starts with its own gas's pH, and its gas's K+ when that is abnormal
+                // (otherwise the K+ inferred from the scenario, then the gas's).
+                const sv = action.payload.vitals || {};
+                const gas = action.payload.vbg || (action.payload.investigations && action.payload.investigations.vbg) || null;
+                const gasPh = gas ? Number(gas.pH) : NaN, gasK = gas ? Number(gas.K) : NaN;
+                if (sv.ph === undefined && Number.isFinite(gasPh)) initialVitals.ph = clampVital('ph', gasPh);
+                if (sv.k === undefined) {
                     const inferredK = inferPotassium(action.payload);
-                    if (inferredK !== null) initialVitals.k = inferredK;
+                    const gasAbnormal = Number.isFinite(gasK) && (gasK < 3.5 || gasK > 5.3);
+                    if (gasAbnormal) initialVitals.k = clampVital('k', gasK);
+                    else if (inferredK !== null) initialVitals.k = inferredK;
+                    else if (Number.isFinite(gasK)) initialVitals.k = clampVital('k', gasK);
                 }
                 // A scenario that STARTS in cardiac arrest starts with arrest observations. The
                 // built-in arrest scenarios only set hr/bp/SpO2/GCS, so the defaults filled in a
