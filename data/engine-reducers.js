@@ -743,6 +743,7 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
+            case 'LIVE_CLEARED': return state.liveSeen ? { ...state, liveSeen: false } : state;
             case 'SYNC_FROM_MASTER': return { ...state, liveSeen: true,
                 // isRunning / isMuted / activeLoops are what make the STUDENT MONITOR audible: every
                 // audio path in this file is gated on isRunning, which the monitor can only learn
