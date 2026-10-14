@@ -117,7 +117,7 @@ test('hands-free bagging keeps squeezing the bag at the set rate until it is sto
   await dev.locator('#knob').click();
   await expect.poll(() => state(dev).then(s => s.mode)).toBe('SCMV');
   await expect.poll(() => dev.evaluate(() => window.__vent.G.autoBag)).toBe(false);
-  expect(await logHas(page, /Hands-free bagging stopped \(a ventilator mode was started\)/)).toBe(true);
+  await expect.poll(() => logHas(page, /Hands-free bagging stopped \(a ventilator mode was started\)/)).toBe(true);
   expect(errors).toEqual([]);
   expect(devErrors).toEqual([]);
 });
