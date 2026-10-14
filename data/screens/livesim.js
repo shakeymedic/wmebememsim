@@ -988,6 +988,37 @@
         const resusSummary = `${RG.labelFor(state.rhythm)} \u00b7 ${defib.shockCount || 0} shock${(defib.shockCount || 0) === 1 ? '' : 's'}${cprInProgress ? ' \u00b7 CPR on' : ''}`;
         const trendBetter = () => { sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success"); };
         const trendWorse = () => { sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger"); };
+        // Patient condition: AUTO/MANUAL deterioration and the Trend buttons (placed under the obs, see below).
+        const conditionSection = () => (
+                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
+                            right={(
+                                <span className="flex gap-1 flex-none">
+                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                                </span>
+                            )}>
+                            <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
+                                        {deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs only change when you change them'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {detInfo.declared
+                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
+                                            : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}
+                                    </div>
+                                </div>
+                                <Button
+                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
+                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
+                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
+                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
+                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
+                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
+                                </Button>
+                            </div>
+                        </Section>
+        );
 
         return (
             <div className={`h-full overflow-hidden max-md:h-auto max-md:overflow-visible flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -1318,11 +1349,30 @@
                                  {coreTiles(compactTiles)}
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black">
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
+                                     right={!quickSim && shortScreen ? (
+                                         <span className="flex gap-1 flex-none" data-testid="condition-quick">
+                                             <button type="button" onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()} aria-pressed={deteriorationMode === 'auto'}
+                                                     title={deteriorationMode === 'auto' ? 'Deterioration is AUTO: click to go MANUAL' : 'Deterioration is MANUAL: click to go AUTO'}
+                                                     className={`h-6 px-2 rounded text-[10px] font-bold uppercase border ${deteriorationMode === 'auto' ? 'bg-amber-700 border-amber-400 text-white' : 'bg-slate-800 border-slate-500 text-slate-200'}`}>{deteriorationMode === 'auto' ? 'Auto' : 'Manual'}</button>
+                                             <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                             <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                                         </span>
+                                     ) : null}>
                                      <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
                                  </Section>
                              </div>
                         </div>
+
+                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons, straight under
+                             the obs (Jake's request) so steering the patient is all in one place.
+                             A short laptop screen (under 900 px high) has no room for it there without pushing
+                             ARREST off the screen, so it gets Auto / Better / Worse on the More obs row instead
+                             and the full section sits lower down, after the drugs. Closed by default; the mode is spelled out in the summary and Trend
+                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
+                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
+                             buttons). ---- */}
+                        {!quickSim && !shortScreen && conditionSection()}
 
                         {/* ---- RHYTHM & RESUS, straight under the obs so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
                              the rhythm and shock summary, and the defib controls when open. ---- */}
@@ -1586,41 +1636,8 @@
                             </Section>
                         )}
 
-                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons.
-                             Closed by default; the mode is spelled out in the summary and Trend
-                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
-                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
-                             buttons). ---- */}
-                        {!quickSim && (
-                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
-                            right={(
-                                <span className="flex gap-1 flex-none">
-                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
-                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
-                                </span>
-                            )}>
-                            <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
-                                        {deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs only change when you change them'}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5">
-                                        {detInfo.declared
-                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
-                                            : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}
-                                    </div>
-                                </div>
-                                <Button
-                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
-                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
-                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
-                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
-                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
-                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
-                                </Button>
-                            </div>
-                        </Section>
-                        )}
+                        {/* A short screen's full Patient condition section (its Auto / Better / Worse are on the More obs row). */}
+                        {!quickSim && shortScreen && conditionSection()}
 
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
