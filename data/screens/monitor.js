@@ -62,17 +62,21 @@
     };
     const SWITCH_LABELS = { monitor: 'Monitor', defib: 'Defib', vent: 'Ventilator' };
     const SWITCH_ICONS = { monitor: 'activity', defib: 'zap', vent: 'wind' };
-    // Bottom left over the monitor and the ventilator; TOP left over the defib, whose page leaves a
-    // margin there for it (bottom left it covered SYNC).
-    const ScreenSwitcher = ({ options, value, onChange, extra }) => {
+    // Bottom left over the ventilator; TOP left over the defib, whose page leaves a margin there for
+    // it (bottom left it covered SYNC). Over the monitor it is `inline`: the first cell of the
+    // investigations bar, which makes room for it. Floating over the monitor it covered the 12-Lead
+    // button.
+    const ScreenSwitcher = ({ options, value, onChange, extra, inline }) => {
         const { Lucide } = window;
         return (
             <div role="group" aria-label="Show on this screen" data-testid="screen-switcher"
-                 className={`absolute left-2 ${value === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg`}>
+                 className={inline
+                    ? 'flex-none flex items-center gap-1 px-1 bg-slate-900 border-r border-slate-800'
+                    : `absolute left-2 ${value === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg`}>
                 {options.map(k => (
-                    <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={value === k} data-screen={k}
+                    <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={value === k} data-screen={k} aria-label={SWITCH_LABELS[k]}
                             className={`min-h-[40px] px-3 rounded-lg flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${value === k ? 'bg-sky-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}>
-                        <Lucide icon={SWITCH_ICONS[k]} className="w-4 h-4"/> {SWITCH_LABELS[k]}
+                        <Lucide icon={SWITCH_ICONS[k]} className="w-4 h-4"/> <span className={inline ? 'hidden sm:inline' : undefined}>{SWITCH_LABELS[k]}</span>
                     </button>
                 ))}
                 {extra}
@@ -168,6 +172,10 @@
         useEffect(() => { if (onShows) onShows(shownView); }, [shownView]);
         const hosted = [].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []);
         useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
+        const switchOptions = ['monitor'].concat(hosted);
+        // Over the obs the switcher sits in the investigations bar, so it never hides a button. Over
+        // a device, or under the manual-defibrillator overlay (which covers that bar), it floats.
+        const switcherInline = shownView === 'monitor' && !(arrestPanelOpen && !defibHere);
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // Each sensor gates exactly its own value/trace. Derived from the shared
@@ -583,8 +591,8 @@
                     exactly like arrestPanelOpen) opens a WORKING defibrillator here, with the obs
                     still visible alongside it. */}
                 {/* The defib and ventilator pages themselves are hosted by MonitorContainer. */}
-                {(defibHere || ventHere) && (
-                    <ScreenSwitcher options={['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : [])} value={shownView} onChange={setFrontView} />
+                {(defibHere || ventHere) && !switcherInline && (
+                    <ScreenSwitcher options={switchOptions} value={shownView} onChange={setFrontView} />
                 )}
 
                 {arrestPanelOpen && !defibHere && (
@@ -701,7 +709,7 @@
                             <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
 
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg || !!etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />
 
                         {etco2Enabled && (
                             <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />
@@ -750,6 +758,9 @@
                     </div>
 
                     <div className="flex-none h-14 md:h-16 bg-slate-950 border border-slate-800 rounded flex overflow-hidden shadow-lg mt-1">
+                        {(defibHere || ventHere) && switcherInline && (
+                            <ScreenSwitcher inline options={switchOptions} value={shownView} onChange={setFrontView} />
+                        )}
                         {/* D2 ROOT CAUSE: this dispatched {type:'REQUEST_12LEAD'}, for which NO reducer case
                             exists in any of the four reducers. Nothing changed, so the button highlighted
                             while the previously-shown result card (e.g. URINE) stayed on screen. It now

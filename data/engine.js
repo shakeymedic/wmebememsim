@@ -1091,11 +1091,51 @@
             return parts.join(', ');
         };
         const fmtDuration = (s) => s >= 60 && s % 60 === 0 ? `${s / 60} min` : `${s} s`;
+        // AN RR TYPED WITH A VENTILATOR IN THE ROOM. The ventilator measures the rate the patient
+        // breathes, and while it breathes for the patient the monitor shows that measured rate. A typed
+        // RR used to stop at the monitor (held there), so the ventilator and the monitor disagreed. Now,
+        // when the patient breathes for themselves, it also becomes the patient's own rate on the
+        // ventilator (the Spontaneous rate lung adjustment), and the monitor hands RR back to the
+        // ventilator once the ventilator measures about that rate (or after 30 s of ventilating, when a
+        // mandatory rate above it wins). A sedated or paralysed patient has no own rate: the typed RR
+        // just holds, as before ("Release to ventilator" hands it back).
+        const rrHandoffRef = useRef(null);
+        const ventOwnRate = (cur, rr) => {
+            const VE = window.VENT_ENGINE, VP = window.VENT_PROFILES;
+            const n = Number(rr);
+            if (!VE || !VP || !Number.isFinite(n) || cur.ventLink === false) return null;
+            const d = VP.LUNG_ADJ.e;
+            if (n < d.min || n > d.max) return null;
+            if (!VE.driverFor(cur) && !Object.keys(cur.ventMirror || {}).length) return null;
+            const cfg = VE.configFor(cur);
+            if (cfg.breathing === false || VP.lungFor(cfg).sedated) return null;
+            return Math.round(n);
+        };
         const manualUpdateVitals = (targets) => {
-            const from = { ...stateRef.current.vitals };
+            const cur = stateRef.current;
+            const from = { ...cur.vitals };
             Object.keys(targets).forEach(key => dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value: targets[key] } }));
             addLogEntry(`Obs changed: ${describeObs(targets, from)}`, 'manual');
+            const own = targets.rr !== undefined ? ventOwnRate(cur, targets.rr) : null;
+            if (own !== null) {
+                dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { e: own } } });
+                rrHandoffRef.current = { value: own, at: Date.now() };
+                addLogEntry(`Ventilator: the patient now breathes at ${own}/min. The monitor's RR follows the ventilator again once it measures it.`, 'system');
+            } else if (targets.rr !== undefined) rrHandoffRef.current = null;
         };
+        useEffect(() => {
+            const h = rrHandoffRef.current;
+            if (isMonitorMode || !h) return;
+            const cur = stateRef.current;
+            if (!(cur.manualHold && cur.manualHold.rr)) { rrHandoffRef.current = null; return; }
+            const d = window.VENT_ENGINE && window.VENT_ENGINE.driverFor(cur);
+            if (!d || !d.phys) return;
+            if (!h.driving) h.driving = Date.now();
+            if (Math.abs(Number(d.phys.rr) - h.value) <= 2 || Date.now() - Math.max(h.at, h.driving) > 30000) {
+                rrHandoffRef.current = null;
+                dispatch({ type: 'RELEASE_MANUAL_HOLD', payload: ['rr'] });
+            }
+        }, [isMonitorMode, state.ventMirror]);
         const manualUpdateVital = (key, value) => manualUpdateVitals({ [key]: value });
         
         // =====================================================================================
