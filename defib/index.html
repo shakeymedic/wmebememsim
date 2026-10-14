@@ -25,8 +25,70 @@
     <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
     <script src="../data/firebase-config.js"></script>
     <link rel="stylesheet" href="device.css">
+    <script>
+      // Fit to the window (device.css, "Fitting the screen"): the device keeps one shape and is
+      // scaled as a whole. The shape is chosen here, before the first paint, from the window's
+      // orientation; fitDevice() below sets the scale once the device is in the page.
+      (function () {
+        var root = document.documentElement;
+        function shape() {
+          var w = window.innerWidth, h = window.innerHeight;
+          var cls = w <= 600 ? '' : (w >= h ? 'fit-land' : 'fit-port');
+          root.classList.toggle('fit-land', cls === 'fit-land');
+          root.classList.toggle('fit-port', cls === 'fit-port');
+          return cls;
+        }
+        var lastScale = 0;
+        function fitDevice() {
+          var stage = document.getElementById('deviceStage'), dev = document.getElementById('zollDevice');
+          if (!stage || !dev) return;
+          if (!shape()) {
+            stage.style.width = stage.style.height = stage.style.marginTop = '';
+            root.style.removeProperty('--fit-scale');
+            lastScale = 0;
+            return;
+          }
+          var cs = getComputedStyle(document.body);
+          var padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+          var padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+          var hints = document.getElementById('hintsRow');
+          var hintsH = hints && !hints.classList.contains('hidden') ? hints.offsetHeight + 8 : 0;
+          var availW = window.innerWidth - padX, availH = window.innerHeight - padY - hintsH;
+          // offsetWidth/Height are the device's own (unscaled) design size
+          var dw = dev.offsetWidth, dh = dev.offsetHeight;
+          if (!dw || !dh) return;
+          // a pixel spare, so rounding the stage up never makes the page scroll
+          var s = Math.max(0.3, Math.min((availW - 1) / dw, (availH - 1) / dh));
+          root.style.setProperty('--fit-scale', s.toFixed(4));
+          stage.style.width = Math.ceil(dw * s) + 'px';
+          stage.style.height = Math.ceil(dh * s) + 'px';
+          // centred in the space left over, top and bottom
+          stage.style.marginTop = Math.max(0, Math.floor((availH - dh * s) / 2)) + 'px';
+          if (Math.abs(s - lastScale) > 0.0005) {
+            lastScale = s;
+            // the traces size their canvases from the screen's on-screen size: let them redraw
+            window.dispatchEvent(new Event('fitchange'));
+          }
+        }
+        shape();
+        window.fitDevice = fitDevice;
+        window.addEventListener('resize', fitDevice);
+        window.addEventListener('orientationchange', fitDevice);
+        document.addEventListener('DOMContentLoaded', function () {
+          fitDevice();
+          // the device's design height changes with what it shows (hint row, capnogram, fonts)
+          if ('ResizeObserver' in window) {
+            var ro = new ResizeObserver(function () { fitDevice(); });
+            ro.observe(document.getElementById('zollDevice'));
+            var hints = document.getElementById('hintsRow'); if (hints) ro.observe(hints);
+          }
+          if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitDevice);
+        });
+      })();
+    </script>
 </head>
 <body>
+    <div class="device-stage" id="deviceStage">
     <div class="zoll-device" id="zollDevice">
         <a class="zoll-top-link" data-tip="The EM Evidence website (opens in a new tab)." href="https://emevidence.org" target="_blank" rel="noopener noreferrer"><img src="images/logo.png" alt="EM Evidence Logo" class="zoll-top-logo"></a>
         <div class="device-screen-section">
@@ -127,6 +189,7 @@
             </div>
             <div class="zoll-branding"><div class="zoll-logo-text">ZOLL</div></div>
         </div>
+    </div>
     </div>
 
     <!-- Education mode only: the RCUK hint cards the standalone Defib-sim offered. -->
@@ -911,6 +974,7 @@
         }
         function ctxClear() { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }
         window.addEventListener('resize', resize);
+        window.addEventListener('fitchange', resize);
         if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas);
 
         const SPEED = 125;          // px per second (a 25 mm/s-looking sweep on a tablet)
@@ -1029,6 +1093,7 @@
         function co2Reset() { co2X = 0; co2LastY = null; if (CW) { cctx.fillStyle = '#000'; cctx.fillRect(0, 0, CW, CH); } }
         if ('ResizeObserver' in window) new ResizeObserver(co2Resize).observe(co2Canvas);
         window.addEventListener('resize', co2Resize);
+        window.addEventListener('fitchange', co2Resize);
         function co2Frame(dt) {
             if (!co2Shown) return;
             if (!CW) co2Resize();
