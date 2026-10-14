@@ -75,3 +75,33 @@ test('a reloaded controller with no scenario takes a left-over patient off the s
   await expect(screen.getByTestId('screen-waiting')).toBeVisible({ timeout: 10000 });
   await expect(screen.getByTestId('screen-waiting')).toContainText('WAITING FOR CONTROLLER');
 });
+
+test('the finished card on a patient screen restarts the screen or goes back to the start screen', async ({ page, context }) => {
+  trackErrors(page);                                     // accepts Finish's confirm
+  const code = await openController(page);
+  await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
+  await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  const screen = await context.newPage();
+  const screenErrors = trackErrors(screen);
+  await screen.goto(`/index.html?mode=monitor&session=${code}`);
+  await expect(screen.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });
+
+  await page.getByRole('button', { name: 'Finish' }).click();
+  await expect(screen.getByText('Simulation complete')).toBeVisible({ timeout: 10000 });
+  await screen.getByTestId('finished-restart').click();
+  await expect(screen.getByTestId('screen-waiting')).toContainText('WAITING FOR CONTROLLER');
+
+  // The controller starts again: the screen shows the new patient
+  await page.evaluate(() => { window.__simEngine.reset(); });
+  await page.goto('/index.html');
+  await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
+  await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await expect(screen.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });
+  await expect(screen.getByText('Simulation complete')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Finish' }).click();
+  await expect(screen.getByText('Simulation complete')).toBeVisible({ timeout: 10000 });
+  await screen.getByTestId('finished-home').click();
+  await expect(screen.getByTestId('welcome-screen')).toBeVisible({ timeout: 10000 });
+  expect(screenErrors).toEqual([]);
+});
