@@ -504,6 +504,9 @@
                                 onVentSim={handleVentSim}
                                 auth={auth}
                                 onJoinClick={() => setView('join')} 
+                                // Back to the first screen (Controller or Patient screen). A full reload, as the
+                                // patient screen's "Back to start screen" does, so nothing of this controller lingers.
+                                onStartScreen={() => { try { sessionStorage.removeItem('wmebem_device_role'); } catch (e) {} window.location.href = window.location.pathname; }}
                                 sessionID={sessionID}
                                 onNewSessionCode={() => setSessionID(window.newSessionCode())}
                                 savedState={resumeData}
