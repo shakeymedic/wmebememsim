@@ -15,6 +15,19 @@ window.FIREBASE_CONFIG = {
     measurementId: "G-8C6WW1EWXJ"
 };
 
+// Google sign-in runs through this site's own address on the live hosts: _redirects passes
+// /__/auth/* through to wmebem-sim.firebaseapp.com. With the Firebase address as authDomain, phone
+// browsers that block third-party storage (Safari, and Chrome since 2023) can lose the sign-in
+// result, and the page waits for ever. Each host here needs https://<host>/__/auth/handler listed
+// under the OAuth client's "Authorised redirect URIs" in Google Cloud Console, or Google refuses
+// with redirect_uri_mismatch.
+(function () {
+    try {
+        var OWN_AUTH_HOSTS = ['emsimulator.com', 'www.emsimulator.com', 'wmebemsim.netlify.app'];
+        if (OWN_AUTH_HOSTS.indexOf(window.location.hostname) !== -1) window.FIREBASE_CONFIG.authDomain = window.location.host;
+    } catch (e) {}
+})();
+
 // Local testing only: ?emulator=127.0.0.1:9000 points the database at the Firebase emulator. It is
 // honoured only when the page itself is served from this computer, so it cannot redirect a
 // deployed site.

@@ -30,8 +30,25 @@
     signOut: function () { current = null; save(); emit(); return Promise.resolve(); },
     // Google: fails as "provider not enabled" unless a test sets window.__fakeGoogleEmail.
     signInWithPopup: function () {
+      window.__fakePopups = (window.__fakePopups || 0) + 1;
+      if (window.__fakeGooglePopup === 'hang') return new Promise(function () {});   // a pop-up that never reports back
+      if (window.__fakeGooglePopup === 'blocked') return Promise.reject({ code: 'auth/popup-blocked' });
       if (!window.__fakeGoogleEmail) return Promise.reject({ code: 'auth/operation-not-allowed' });
       current = userFor(window.__fakeGoogleEmail, 'Google User'); save(); emit(); return Promise.resolve({ user: current });
+    },
+    // Same-window Google sign-in: "goes to Google" by reloading the page. A test sets
+    // localStorage.fakeGoogleRedirectEmail before, or fakeGoogleRedirectError to make it fail.
+    signInWithRedirect: function () {
+      window.__fakeRedirects = (window.__fakeRedirects || 0) + 1;
+      var email = localStorage.getItem('fakeGoogleRedirectEmail');
+      if (email) { current = userFor(email, 'Google User'); save(); }
+      setTimeout(function () { window.location.reload(); }, 50);
+      return new Promise(function () {});
+    },
+    getRedirectResult: function () {
+      var err = localStorage.getItem('fakeGoogleRedirectError');
+      if (err) { localStorage.removeItem('fakeGoogleRedirectError'); return Promise.reject({ code: err }); }
+      return Promise.resolve({ user: current });
     }
   };
   window.firebase.auth = function () { return auth; };

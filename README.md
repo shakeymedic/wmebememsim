@@ -516,6 +516,16 @@ provider is not enabled.)
 Until you do this, the account button shows "Accounts unavailable" and the Restricted section shows as
 locked with an explanation. No errors, no console noise.
 
+For **Google** on the live site: Google sign-in runs through the site's own address (`_redirects`
+passes `/__/auth/*` to `wmebem-sim.firebaseapp.com`; see `data/firebase-config.js`), because phone
+browsers that block third-party storage can otherwise lose the result. So in **Google Cloud Console →
+APIs & Services → Credentials → OAuth 2.0 Client IDs → Web client (auto created by Google Service) →
+Authorised redirect URIs** add `https://emsimulator.com/__/auth/handler`,
+`https://www.emsimulator.com/__/auth/handler` and `https://wmebemsim.netlify.app/__/auth/handler`, and
+keep those addresses under Firebase → Authentication → Settings → Authorised domains. Without the
+redirect URIs Google shows "Error 400: redirect_uri_mismatch". In the installed app (Android, or a
+home-screen icon) Google opens in the same window rather than a pop-up.
+
 ### 2. Publish the database rules
 
 Firebase console → **Build → Realtime Database → Rules**. Paste the contents of
