@@ -453,7 +453,8 @@
             <>
                 {a.flags.map((f, i) => (
                     <React.Fragment key={i}>
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CHIP[f.level] || CHIP.slate}`}>{f.text}</span>
+                        {/* On a phone a flag the headline already spells out is not repeated as a chip. */}
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${CHIP[f.level] || CHIP.slate} ${String(a.headline || '').includes(f.text) ? 'max-md:hidden' : ''}`}>{f.text}</span>
                         {i === cprAt && resusButtons}
                     </React.Fragment>
                 ))}
@@ -475,8 +476,9 @@
                         <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400 mr-2">Patient now</span>
                         <span data-testid="patient-headline" className="text-sm md:text-base font-bold">{a.headline}</span>
                     </div>
-                    {/* The "Screens show: Monitor | Defib | Ventilator" switch (data/screens/screenspanel.js). */}
-                    {extra}
+                    {/* The "Screens show: Monitor | Defib | Ventilator" switch (data/screens/screenspanel.js). On a
+                        phone it takes its own full-width row under the headline, so the headline is not squeezed. */}
+                    {extra && <div className="min-w-0 max-md:order-last max-md:w-full">{extra}</div>}
                     <button type="button" onClick={toggle} aria-expanded={!collapsed} title={collapsed ? 'Show the patient figure and details' : 'Make this strip one line'} className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">
                         {collapsed ? 'More' : 'Less'}
                     </button>

@@ -434,7 +434,7 @@
         return (
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0" data-testid="screen-show-switch">
                 <span className="text-[9px] uppercase font-bold text-slate-300 tracking-wider flex items-center gap-1 whitespace-nowrap">
-                    <Lucide icon="monitor" className="w-3.5 h-3.5"/> Screens show
+                    <Lucide icon="monitor" className="w-3.5 h-3.5"/> <span className="max-sm:hidden">Screens show</span><span className="sm:hidden">Show</span>
                 </span>
                 <div role="group" aria-label="What the patient screens show" className="flex gap-1">
                     {views.map(v => {
@@ -448,7 +448,7 @@
                                             ? 'Put the monitor in front on the patient screens. A defib or ventilator already in the room stays ready behind it.'
                                             : `Bring the ${name} in${inRoom[v] ? '' : ' (if it is not already)'} and put it in front on the patient screens.`}
                                         className={`h-8 px-2.5 border-2 flex items-center gap-1 text-xs font-bold whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${v !== 'monitor' && inRoom[v] ? 'rounded-l-lg' : 'rounded-lg'} ${on ? SHOW_TONES[v].on : SHOW_TONES[v].off}`}>
-                                    <Lucide icon={SHOW_ICONS[v]} className="w-4 h-4"/> {SHOW_LABELS[v]}
+                                    <Lucide icon={SHOW_ICONS[v]} className="w-4 h-4"/> {v === 'vent' ? <><span className="max-sm:hidden">{SHOW_LABELS[v]}</span><span className="sm:hidden">Vent</span></> : SHOW_LABELS[v]}
                                 </button>
                                 {v !== 'monitor' && inRoom[v] && (
                                     <button type="button" data-take-away={v} onClick={() => takeAway(v)}

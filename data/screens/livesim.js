@@ -354,6 +354,11 @@
         const [trendDuration, setTrendDuration] = useState(30);
         const [showLogModal, setShowLogModal] = useState(false);
         const [showRhythmModal, setShowRhythmModal] = useState(false);
+        // PHONE ONLY: the trace strip and the Quick Sim rhythm list start folded away (the obs and the
+        // rhythm are already at the top of the page, and Change Rhythm opens the same list). Desktop and
+        // tablet layouts ignore these.
+        const [phoneTrace, setPhoneTrace] = useState(false);
+        const [phoneRhythms, setPhoneRhythms] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
@@ -1020,7 +1025,7 @@
                 <div className="md:hidden mb-2">
                     <div className="flex items-center gap-2 mb-1">
                         <div className="min-w-0 flex-1">
-                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change</div>
+                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change{!sensors.any && <span className="text-amber-400" data-testid="phone-none-on-monitor"> &middot; none on monitor</span>}</div>
                             <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
                         </div>
                         <div className="font-mono text-xl font-bold text-white">{formatTime(clockSeconds)}</div>
@@ -1029,7 +1034,8 @@
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
                     </div>
                     {notStarted && <NotStartedBadge long className="mb-1 w-full" />}
-                    <div className="grid grid-cols-3 min-[400px]:grid-cols-4 gap-1">
+                    {/* With nothing attached, the one line above says so instead of "not on monitor" on every tile. */}
+                    <div className={`grid grid-cols-3 min-[400px]:grid-cols-4 gap-1 ${sensors.any ? '' : '[&_[data-off-monitor]]:hidden'}`}>
                         {renderVitalTiles()}
                     </div>
                 </div>
@@ -1038,7 +1044,7 @@
                     START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
                 <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
-                        <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
+                        <Button variant="secondary" ariaLabel="Back" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/><span className="max-md:hidden ml-1">Back</span></Button>
                         <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
                         {hasMarkSheet && <Button variant="outline" onClick={() => setShowMarkSheet(true)} className="h-8 px-2 whitespace-nowrap text-fuchsia-300 border-fuchsia-600/60"><Lucide icon="clipboard-check"/> Mark sheet</Button>}
                         {/* START/PAUSE lives beside the phone obs on small screens. */}
@@ -1061,6 +1067,8 @@
                             const shows = Array.from(new Set(screens.map(c => c.display || 'patient monitor')));
                             const linked = n === 0 ? 'no screens linked' : (n === 1 ? shows[0] : `${n} screens linked`);
                             const label = syncProblem ? 'Sync error' : (syncStatus.state === 'connected' ? `Live \u00b7 ${linked}` : 'Syncing');
+                            // A phone gets the short form ("No screens", "2 screens") so the toolbar is two rows, not three.
+                            const shortLabel = syncProblem || syncStatus.state !== 'connected' ? label : (n === 0 ? 'No screens' : (n === 1 ? shows[0] : `${n} screens`));
                             const tip = [
                                 syncStatus.message || (syncStatus.state === 'connected' ? 'Live session sync is active.' : 'Connecting to the live session.'),
                                 n === 0
@@ -1074,7 +1082,7 @@
                             return (
                                 <div role={syncProblem ? 'alert' : 'status'} title={tip} data-testid="connection-badge" className={`h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold whitespace-nowrap ${tone}`}>
                                     <Lucide icon={syncProblem ? 'wifi-off' : (n === 0 ? 'wifi' : (shows.includes('defib') ? 'zap' : 'monitor'))} className="w-3 h-3" />
-                                    {label}
+                                    <span className="max-md:hidden">{label}</span><span className="md:hidden">{shortLabel}</span>
                                 </div>
                             );
                         })()}
@@ -1097,9 +1105,9 @@
                         {window.ScreenDeviceWarning && <window.ScreenDeviceWarning state={state} onOpen={() => setShowJoin(true)} />}
                         <Button ariaLabel="Screens: add patient screens and choose what each one shows" variant="outline" onClick={() => setShowJoin(true)}
                                 className="h-8 px-2 text-sky-300 border-sky-500/50 text-xs font-bold">
-                            <Lucide icon="monitor" className="w-4 h-4 mr-1"/> Screens
+                            <Lucide icon="monitor" className="w-4 h-4 md:mr-1"/><span className="max-md:hidden">Screens</span>
                         </Button>
-                        <MenuButton label="Tools" icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
+                        <MenuButton label={<span className="max-md:hidden">Tools</span>} icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
                             items={[
                                 { label: 'Drug calculator', icon: 'pill', hint: 'D', onClick: () => setShowDrugCalc(true) },
                                 { label: 'Timer alerts', icon: 'bell', hint: 'T', onClick: () => setShowTimerModal(true) },
@@ -1255,6 +1263,10 @@
                                              </button>
                                          </>
                                      )}
+                                     <button type="button" onClick={() => setPhoneTrace(v => !v)} aria-expanded={phoneTrace} data-testid="phone-trace-toggle"
+                                             className="md:hidden bg-slate-800 border border-slate-600 px-2 py-0.5 text-[10px] text-white rounded font-bold uppercase tracking-wider">
+                                         <Lucide icon="activity" className="w-3 h-3 inline mr-1"/>{phoneTrace ? 'Hide trace' : 'Trace'}
+                                     </button>
                                      <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-0.5 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
                                  </div>
                                  {/* The strip height is the facilitator's dragged value. ECGMonitor
@@ -1268,7 +1280,7 @@
                                      one-press attach. (It used to show a full preview behind a "No
                                      Monitoring" veil, and Quick Sim forced every trace on, so removing a
                                      sensor changed nothing on the facilitator's screen.) */}
-                                 <div className="relative" style={{ height: panel.prefs.stripHeight + 'px' }}>
+                                 <div className={`relative ${phoneTrace ? '' : 'max-md:hidden'}`} style={{ height: panel.prefs.stripHeight + 'px' }}>
                                  <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
                                              isPaused={traceFrozen} showTraces={sensors.any}
                                              showEcg={sEcg} showPleth={sSpo2} showResp={sResp}
@@ -1290,7 +1302,7 @@
                              </div>
 
                              {/* Strip-height grip + an explicit RESET back to the default size. */}
-                             <div className="flex items-center gap-2 px-1 bg-black">
+                             <div className={`flex items-center gap-2 px-1 bg-black ${phoneTrace ? '' : 'max-md:hidden'}`}>
                                  <ResizeGrip axis="y" onPointerDown={panel.beginDrag('y')}
                                              onNudge={(d) => panel.nudge('y', d)} onReset={panel.reset}
                                              value={panel.prefs.stripHeight} min={PANEL_BOUNDS.minStrip} max={PANEL_BOUNDS.maxStrip} />
@@ -1360,23 +1372,23 @@
                         {/* Wraps onto two lines in a narrow panel rather than pushing past its edge
                             (which put a horizontal scrollbar under the monitor panel). */}
                         <div className="flex-none flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
+                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] max-md:min-w-0 max-md:px-2 max-md:text-xs ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
-                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
+                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap max-md:hidden">(no cuff)</span>}
                             </Button>
                             {/* The same AUTO switch the team has on the monitor's NIBP tile: the cuff
                                 measures every 3 minutes while it is on. */}
                             <Button variant="outline" onClick={() => toggleNIBPMode && toggleNIBPMode()}
                                     title="Auto NIBP: the cuff measures every 3 minutes (the same switch as AUTO on the room monitor)."
-                                    className={`flex-none px-3 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
-                                 {state.nibp && state.nibp.mode === 'auto' ? 'Auto NIBP: on' : 'Auto NIBP: off'}
+                                    className={`flex-none px-3 max-md:px-2 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
+                                 <span>Auto<span className="max-md:hidden"> NIBP</span>: {state.nibp && state.nibp.mode === 'auto' ? 'on' : 'off'}</span>
                             </Button>
                             {/* A one-off displayed reading that does NOT change the patient (e.g. a
                                 spurious cuff reading). To change the actual BP, tap the BP tile. */}
                             <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
                                     title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
-                                    className="flex-1 min-w-[8rem] px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
-                                 Manual reading
+                                    className="flex-1 min-w-[8rem] max-md:min-w-0 max-md:px-2 px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
+                                 <span className="max-md:hidden">Manual reading</span><span className="md:hidden">Manual BP</span>
                             </Button>
                         </div>
 
@@ -1391,7 +1403,9 @@
                             sits above. The facilitator can read the current rhythm, the last
                             conversion and the running shock tally without opening anything.
                             ASSESSOR-LOCAL: lastConversion is never synced. */}
-                        <div className="flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2">
+                        {/* A phone already shows the rhythm above the obs, so this card appears there only
+                            once something has happened (a shock, a conversion, CPR). */}
+                        <div className={`flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2 ${(defib.shockCount || lastConversion || cprInProgress) ? '' : 'max-md:hidden'}`}>
                             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                                 <div className="min-w-0">
                                     <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Current rhythm</div>
@@ -1727,19 +1741,19 @@
                         investigation results, so the monitor's CXR, VBG, CT etc. buttons can be set. */}
                     {quickSim ? (
                     <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
-                        <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
-                            <div className="flex-1 min-w-[12rem]">
+                        <div className="bg-slate-900 p-3 max-md:p-2 border-b border-slate-700 flex flex-wrap gap-2 items-center">
+                            <div className="flex-1 min-w-[12rem] max-md:hidden">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Rhythm</div>
                                 <div className="text-sm font-bold text-white">{RG.labelFor(state.rhythm)}</div>
                             </div>
-                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
-                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} variant="success" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} variant="danger" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
                             {/* Same two-way sensor toggle as the Capnography chip, so it is logged
                                 and notified like every other attach/detach (it used to flip
                                 TOGGLE_ETCO2 directly and leave no trace in the event log). */}
                             <Button onClick={() => toggleSensor('etco2')} variant="outline"
                                 title={etco2Enabled ? 'Capnography attached — click to remove (the CO2 trace and ETCO2 go blank on the team monitor).' : 'Capnography not attached — click to attach.'}
-                                className={`h-11 px-3 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
+                                className={`h-11 px-3 max-md:px-2 max-md:flex-1 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
                                 Capnography {etco2Enabled ? 'on' : 'off'}
                             </Button>
                         </div>
@@ -1798,11 +1812,17 @@
                                 defibrillator's shockability logic or the arrest model. Arrest rhythms
                                 are marked so the facilitator can see what will zero the obs. */}
                             <div>
-                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Select rhythm ({RG.SELECTABLE.length})</div>
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Select rhythm ({RG.SELECTABLE.length})</div>
+                                    <button type="button" onClick={() => setPhoneRhythms(v => !v)} aria-expanded={phoneRhythms} data-testid="phone-rhythms-toggle"
+                                            className="md:hidden text-[10px] uppercase font-bold px-2 py-1 rounded border border-slate-600 text-slate-200 hover:bg-slate-700">
+                                        {phoneRhythms ? 'Hide list' : 'Show all'}
+                                    </button>
+                                </div>
                                 {/* The precedence rule, documented in the Quick Sim pane where
                                     the HR-then-rhythm sequence is most commonly used. */}
-                                <div className="text-[9px] text-slate-400 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                <div className={`text-[9px] text-slate-400 mb-2 leading-relaxed ${phoneRhythms ? '' : 'max-md:hidden'}`}>Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
+                                <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 ${phoneRhythms ? '' : 'max-md:hidden'}`}>
                                     {RG.SELECTABLE.map(r => {
                                         const isCur = state.rhythm === r;
                                         const arrest = RG.inArrest(r);
@@ -1836,7 +1856,7 @@
                                 competing for this pane there is room to keep it permanently visible. */}
                             <div>
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Event log ({state.log.length})</div>
-                                <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 overflow-y-auto">
+                                <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 max-md:max-h-48 overflow-y-auto">
                                     {state.log.length === 0 && <div className="text-slate-400 text-center py-4">Nothing logged yet. Attach monitoring, press START, then change the obs or the rhythm.</div>}
                                     {state.log.slice().reverse().map((entry, i) => (
                                         <div key={i} className={`flex gap-3 border-b border-slate-800 last:border-0 pb-0.5 ${entry.flagged ? 'bg-amber-900/20 -mx-1 px-1 rounded' : ''}`}>
@@ -1850,8 +1870,8 @@
 
                         <div className="bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2">
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
-                            <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
-                            <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
+                            <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
+                            <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0">Add Log</Button>
                         </div>
                     </div>
                     ) : (
