@@ -566,10 +566,12 @@
         };
 
         return (
-            <div className="h-full flex flex-col bg-slate-900 p-4 overflow-hidden">
-                <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Lucide icon="check-circle" className="text-emerald-500"/> Simulation Complete</h1>
+            <div className="h-full flex flex-col bg-slate-900 p-4 overflow-hidden max-lg:h-auto max-lg:overflow-visible max-md:p-3" data-testid="debrief-screen">
+                {/* Below lg the two columns stack, so the page scrolls as one instead of splitting the
+                    screen's height between them; on phones the header stacks and its buttons go two a row. */}
+                <div className="flex justify-between items-center gap-3 mb-4 border-b border-slate-700 pb-4 max-md:flex-col max-md:items-stretch">
+                    <div className="min-w-0">
+                        <h1 className="text-2xl max-md:text-xl font-bold text-white flex items-center gap-2"><Lucide icon="check-circle" className="text-emerald-500"/> Simulation Complete</h1>
                         <p className="text-slate-400">
                             {scenario.title || 'Simulation'}
                             {isQuickSim && <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 border border-sky-700 bg-sky-950/40 rounded px-1.5 py-0.5">Quick Sim &middot; no scenario</span>}
@@ -577,16 +579,16 @@
                             {' '}• Duration: {durationText}
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        {defibSim && <Button onClick={printCertificate} variant="secondary" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
-                        <Button onClick={() => generateReport('print')} variant="secondary" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
-                        <Button onClick={() => generateReport('download')} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
-                        <Button onClick={exitDebrief} variant="secondary">Exit to Menu</Button>
+                    <div className="flex gap-2 flex-none max-md:grid max-md:grid-cols-2" data-testid="debrief-actions">
+                        {defibSim && <Button onClick={printCertificate} variant="secondary" className="whitespace-nowrap" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
+                        <Button onClick={() => generateReport('print')} variant="secondary" className="whitespace-nowrap" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
+                        <Button onClick={() => generateReport('download')} variant="secondary" className="whitespace-nowrap"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
+                        <Button onClick={exitDebrief} variant="secondary" className="whitespace-nowrap">Exit to Menu</Button>
                     </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
-                    <div className="overflow-y-auto space-y-4 pr-2">
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0 max-lg:flex-none max-lg:overflow-visible">
+                    <div className="overflow-y-auto space-y-4 pr-2 min-w-0 max-lg:overflow-visible max-lg:pr-0">
                         <ObsTimeline history={state.history} log={state.log} emptyText={timelineEmpty} />
                         {defibReview && (
                             <div className="bg-slate-800 p-4 rounded-lg border border-amber-700/60" data-testid="defib-feedback">
@@ -794,18 +796,18 @@
                         </div>
                     </div>
 
-                    <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-                        <div className="flex border-b border-slate-700 bg-slate-900 p-2 gap-2">
+                    <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden min-w-0 max-lg:max-h-[75vh]" data-testid="debrief-log">
+                        <div className="flex flex-wrap border-b border-slate-700 bg-slate-900 p-2 gap-2">
                             {['all', 'actions', 'manual', 'shocks', 'rhythm', 'system'].map(f => (
                                 <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold uppercase ${filter === f ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                                     {f}
                                 </button>
                             ))}
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        <div className="flex-1 overflow-y-auto p-4 max-md:p-3 space-y-2 min-h-0">
                             {filteredLog.map((entry, i) => (
                                 <div key={i} className={`flex gap-3 text-sm border-b border-slate-700/50 pb-1 ${entry.flagged ? 'bg-amber-900/10 p-1 rounded' : ''}`}>
-                                    <span className="text-slate-400 font-mono w-16 flex-shrink-0">{entry.simTime}</span>
+                                    <span className="text-slate-400 font-mono w-16 max-md:w-12 flex-shrink-0">{entry.simTime}</span>
                                     <span className={`flex-grow ${entry.type === 'danger' ? 'text-red-400 font-bold' : entry.type === 'success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
                                         {entry.flagged && <Lucide icon="flag" className="inline w-3 h-3 text-amber-500 mr-1"/>}
                                         {entry.msg}
