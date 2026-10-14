@@ -52,7 +52,7 @@
         );
     };
 
-    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onDefibSim, onVentSim, onNewSessionCode, auth, initialMode, initialPremadeCategory }) => {
+    const SetupScreen = ({ onGenerate, savedState, onResume, sessionID, onJoinClick, onQuickSim, onDefibSim, onVentSim, onNewSessionCode, auth, initialMode, initialPremadeCategory, onStartScreen = null }) => {
         const { ALL_SCENARIOS, HUMAN_FACTOR_CHALLENGES, Button, Lucide, generateHistory, estimateWeight, calculateWetflag, generateVbg, generateName,
                 getScenarioPreviewText, formatProfileTemplate, validateBuilderField, BUILDER_LIMITS, HumanFactorBadge } = window;
         
@@ -625,7 +625,13 @@
 
                 {!mode ? (
                     <section aria-labelledby="run-heading" data-testid="mode-chooser">
-                        <h2 id="run-heading" className="text-xl font-bold text-white mb-3">What do you want to run?</h2>
+                        {/* Back to the app's first screen ("What is this device for?"), e.g. to make this
+                            device a patient screen instead. */}
+                        <div className="flex flex-wrap items-center gap-3 mb-3">
+                            {onStartScreen && <Button variant="secondary" onClick={onStartScreen} ariaLabel="Back to the start screen"
+                                    className="h-9 px-3 text-sm"><Lucide icon="arrow-left" className="w-4 h-4"/> Start screen</Button>}
+                            <h2 id="run-heading" className="text-xl font-bold text-white">What do you want to run?</h2>
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {MODES.map(m => (
                                 <button key={m.id} type="button" onClick={() => pickMode(m.id)} aria-label={m.label} data-testid={`mode-${m.id}`}
