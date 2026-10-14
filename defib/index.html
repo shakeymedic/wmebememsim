@@ -592,7 +592,9 @@
                 coEl.textContent = patient.capno.on ? fmt(patient.etco2, 1) : '--';
                 // The breathing rate the capnography counts: the same RR as the room monitor, so a
                 // ventilator rate change shows here too.
-                $('etco2Unit').textContent = patient.capno.on ? ('kPa · RR ' + (patient.capno.ventilating ? Math.round(Number(patient.capno.rr) || 0) : 0)) : 'kPa';
+                // RR 0 while the capnogram is drawing breaths (CPR, bagging) would contradict the waveform: show --.
+                const capRr = patient.capno.ventilating ? Math.round(Number(patient.capno.rr) || 0) : 0;
+                $('etco2Unit').textContent = patient.capno.on ? ('kPa · RR ' + (capRr > 0 ? capRr : (patient.capno.ventilating ? '--' : 0))) : 'kPa';
                 const n = patient.nibp;
                 bpEl.textContent = n.sys > 0 ? (Math.round(n.sys) + '/' + Math.round(n.dia)) : '--/--';
             }

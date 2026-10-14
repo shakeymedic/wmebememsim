@@ -27,8 +27,9 @@ test('Quick Sim waits for START, then records the obs and real log times', async
   expect(s.sessionTime).toBeGreaterThanOrEqual(5);
   expect(s.time).toBe(s.sessionTime);                    // one clock once the patient is live
   await E(page, () => window.__simEngine.manualUpdateVitals({ hr: 140 }));
+  // The log entry lands on the next render, which can lag on a busy machine
+  await expect.poll(() => E(page, () => window.__simEngine.state.log.slice(-1)[0].msg)).toMatch(/^Obs changed: HR \d+ → 140$/);
   const last = await E(page, () => window.__simEngine.state.log.slice(-1)[0]);
-  expect(last.msg).toMatch(/^Obs changed: HR \d+ → 140$/);
   expect(last.simTime).not.toBe('00:00');
   expect(errors).toEqual([]);
 });

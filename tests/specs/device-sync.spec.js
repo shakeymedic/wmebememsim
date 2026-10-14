@@ -84,7 +84,7 @@ test('an RR the facilitator types reaches the ventilator, and the monitor follow
   await startVentilating(vent);
   await expect.poll(() => eng(page, () => !!window.VENT_ENGINE.driverFor(window.__simEngine.state)), { timeout: 30000 }).toBe(true);
   await eng(page, () => window.__simEngine.manualUpdateVitals({ rr: 30 }));
-  expect(await eng(page, () => window.__simEngine.state.vitals.rr)).toBe(30);
+  await expect.poll(() => eng(page, () => window.__simEngine.state.vitals.rr)).toBe(30);   // the next render, which can lag on a busy machine
   await expect.poll(() => eng(page, () => window.__simEngine.state.vent.lung.e)).toBe(30);
   await expect.poll(() => vent.evaluate(() => Math.round(window.__vent.P.rr))).toBe(30);
   await expect.poll(() => logHas(page, /^Ventilator: the patient now breathes at 30\/min/)).toBe(true);

@@ -97,9 +97,11 @@ test('Back from a briefing does not offer the unstarted scenario as "paused", an
 
 test('the skills checklist ticks reach the debrief, and survive a reload and Resume', async ({ page }) => {
   await openController(page);
-  await startQuickSim(page);
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
+  await page.getByRole('button', { name: /Adult Medical/ }).click();
+  await page.getByRole('button', { name: 'Load', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Start Scenario' }).click();
   await pressStart(page);
-  await page.getByRole('button', { name: 'FULL', exact: true }).click().catch(() => {});
   await page.getByRole('button', { name: 'Assessment', exact: true }).click();
   await page.getByRole('button', { name: 'Mark Team Leadership as achieved' }).click();
   await page.getByRole('button', { name: 'Mark CPR Quality as needing improvement' }).click();
