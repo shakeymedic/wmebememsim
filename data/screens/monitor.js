@@ -806,9 +806,10 @@
         const mine = useMyScreen(sessionID, screenId);
         const role = mine.role || S.roleOf(screen);
         const parts = S.partsOf(role);
-        // No controller on this code yet: it has neither sent the patient nor numbered this screen (the
-        // screen's own engine always has obs, so those cannot tell). A mistyped code stays here.
-        const waiting = !sim.state.liveSeen && !mine.n;
+        // No patient from the controller yet (none chosen, or it was taken off): the screen stays blank
+        // and waits, even once the controller has numbered it. This screen's own engine always has
+        // default obs, so those must never be shown as a patient. A mistyped code stays here too.
+        const waiting = !sim.state.liveSeen;
         const [shows, setShows] = useState(null);
         // The embedded defib and ventilator pages live HERE, not inside MonitorScreen/DeviceScreen,
         // so a role change that adds or removes the monitor (which swaps those two) does not reload
@@ -836,16 +837,18 @@
 
         if (waiting) {
             return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn p-4 text-center" data-testid="screen-waiting">
+                <div className="relative h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn p-4 text-center" data-testid="screen-waiting">
                     {mine.n
                         ? <div className={`rounded-2xl px-8 font-black leading-none ${S.numberColour(mine.n)}`} style={{ fontSize: 'min(30vh, 30vw)' }} data-testid="waiting-screen-number">{mine.n}</div>
                         : <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />}
                     {mine.n && <div className="text-3xl font-bold text-white">Screen {mine.n}</div>}
                     <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
+                    {mine.n && !syncProblem && <div className="text-sm text-slate-300" data-testid="waiting-for-scenario">Connected. The patient appears here when the controller starts a scenario.</div>}
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
                     <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{S.ROLES[role].title}</b>{mine.n ? '' : ' (until the controller numbers it)'}</div>
                     <div className="text-xs text-slate-400 max-w-md">The controller chooses what this screen shows, in <b>Screens</b>. Nothing needs doing here.</div>
                     {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
+                    {overlay}
                 </div>
             );
         }
