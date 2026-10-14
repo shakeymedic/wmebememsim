@@ -164,6 +164,7 @@
     <script type="text/babel" src="data/screens/ventsetup.js"></script>
     <script type="text/babel" src="data/screens/screenspanel.js"></script>
     <script type="text/babel" src="data/screens/markscheme.js"></script>
+    <script type="text/babel" src="data/screens/invresults.js"></script>
     <script type="text/babel" src="data/screens/setup.js"></script>
     <script type="text/babel" src="data/screens/monitor.js"></script>
     <script type="text/babel" src="data/screens/ventcontrol.js"></script>
@@ -519,6 +520,7 @@
                         {view === 'briefing' && (
                             <BriefingScreen 
                                 scenario={generatedScenario} 
+                                sim={engine} 
                                 onStart={handleStart} 
                                 onBack={() => setView('setup')} 
                             />

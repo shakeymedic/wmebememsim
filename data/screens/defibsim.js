@@ -277,6 +277,14 @@
                             <button type="button" onClick={() => setShowAllRhythms(!showAllRhythms)} className="mt-2 text-[10px] text-sky-400 hover:text-sky-200 underline">{showAllRhythms ? 'Fewer rhythms' : 'All rhythms'}</button>
                         </div>
 
+                        {/* What the patient monitor's investigation buttons give (data/screens/invresults.js). */}
+                        {window.InvResults && (
+                            <Section id="defibInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                                     summary={Object.keys(state.scenario.invChanged || {}).length ? `Changed: ${Object.keys(state.scenario.invChanged).join(', ')}` : "Scenario's own results"}>
+                                <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                            </Section>
+                        )}
+
                         <Section id="defibShock" tone="card" title="Shock response" summary={shockSummary} defaultOpen={false}>
                             {steps.length > 0 && step && !step.done
                                 ? <p className="text-[11px] text-sky-300 mb-2">The custom sequence decides what a shock does until it completes.</p>
