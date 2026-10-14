@@ -468,9 +468,9 @@
     const coreReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
+            case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus, remotePresence: state.remotePresence };
             case 'LOAD_SCENARIO': 
-                if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
+                if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus, remotePresence: state.remotePresence };
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
@@ -488,6 +488,8 @@
                 // standard set or individual sensors from the controller's Monitoring & access panel.
                 // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
                 return { ...initialCoreState, runId: action.runId || newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
+                    // The joined screens are still joined: keep them, or the badge says "no screens linked" until the next heartbeat.
+                    remotePresence: state.remotePresence,
                     showWetflag: action.payload.showWetflag === true, deteriorationMode: detMode0,
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
                     pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
@@ -554,6 +556,12 @@
                     waveformGain: Number.isFinite(p.waveformGain) && p.waveformGain > 0 ? p.waveformGain : state.waveformGain,
                     noise: (p.noise && typeof p.noise === 'object') ? { ...state.noise, ...p.noise } : state.noise,
                     metronomeOn: p.metronomeOn === undefined ? state.metronomeOn : !!p.metronomeOn,
+                    pacing: (p.pacing && typeof p.pacing === 'object') ? { ...state.pacing, ...p.pacing } : state.pacing,
+                    remotePacerState: (p.remotePacerState && typeof p.remotePacerState === 'object') ? { rate: Number(p.remotePacerState.rate) || 0, output: Number(p.remotePacerState.output) || 0 } : state.remotePacerState,
+                    pacingThreshold: Number(p.pacingThreshold) > 0 ? Number(p.pacingThreshold)
+                        : (p.scenario && Number(p.scenario.pacingThreshold) > 0 ? Number(p.scenario.pacingThreshold) : state.pacingThreshold),
+                    ventLink: p.ventLink !== false,
+                    assessments: (p.assessments && typeof p.assessments === 'object') ? { ...p.assessments } : {},
                     // A resumed session is NOT a paused session. Its clock is
                     // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
                     // therefore froze the controller's waveform strip until START was pressed. The

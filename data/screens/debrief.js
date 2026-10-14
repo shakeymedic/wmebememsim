@@ -396,6 +396,9 @@
         // Ventilator feedback: any session in which a ventilator was used (Ventilator Sim or not).
         const ventSim = scenario.ventSim || null;
         const ventReview = window.VentSim && window.VentSim.used(state) ? window.VentSim.assess(state) : null;
+        // The Live Skills Checklist (controller, Assessment tab): only the skills the facilitator marked.
+        const skillMarks = Object.entries((state.assessments && typeof state.assessments === 'object') ? state.assessments : {})
+            .filter(([, v]) => v === true || v === false);
         const printCertificate = () => {
             const name = window.prompt('Learner name for the certificate (leave blank to omit):', '') ;
             if (name === null) return;
@@ -545,8 +548,9 @@
             const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
             const li = (arr) => arr.map(g => `<li>${esc(g)}</li>`).join('');
             const ventFeedbackCard = ventReview ? `<div class="card"><h3 style="margin-top:0;">Ventilator feedback</h3>${ventSim ? `<p class="muted" style="margin-top:0;">${esc(ventSim.name)} &middot; ${ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>` : ''}${ventReview.stats.length ? `<ul>${li(ventReview.stats)}</ul>` : ''}${ventReview.good.length ? `<h4>Good practice</h4><ul>${li(ventReview.good)}</ul>` : ''}${ventReview.improve.length ? `<h4>Areas for improvement</h4><ul>${li(ventReview.improve)}</ul>` : ''}${ventReview.problems.length ? `<h4>Problems</h4><ul>${li(ventReview.problems.map(p => p.text))}</ul>` : ''}</div>` : '';
+            const skillsCard = skillMarks.length ? `<div class="card"><h3 style="margin-top:0;">Skills checklist</h3><table class="compact"><thead><tr><th>Skill</th><th>Marked</th></tr></thead><tbody>${skillMarks.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v ? 'Observed' : 'Needs improvement'}</td></tr>`).join('')}</tbody></table></div>` : '';
             const markSheetCard = hasMarkSheet ? `<div class="card"><h3 style="margin-top:0;">${MS.get(scenario).kind === 'assessment' ? 'Team leader assessment' : 'Mark sheet'}</h3>${MS.criteriaHtml(scenario, sheetMarks)}</div>` : '';
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${markSheetCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${markSheetCard}${skillsCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -635,6 +639,19 @@
                             </div>
                         )}
                         {hasMarkSheet && <MS.DebriefMarkSheet scenario={scenario} marks={sheetMarks} onMark={markSheetItem} />}
+                        {skillMarks.length > 0 && (
+                            <div className="bg-slate-800 p-4 rounded-lg border border-slate-700" data-testid="debrief-skills">
+                                <h3 className="text-lg font-bold text-white mb-2">Skills checklist</h3>
+                                <ul className="space-y-1">
+                                    {skillMarks.map(([k, v]) => (
+                                        <li key={k} className="flex items-center justify-between text-sm">
+                                            <span className="text-slate-200">{k}</span>
+                                            <span className={`font-bold ${v ? 'text-emerald-400' : 'text-red-400'}`}>{v ? 'Observed' : 'Needs improvement'}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
                             {/* With no scenario there are no objectives and therefore no score.

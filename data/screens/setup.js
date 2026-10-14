@@ -191,8 +191,22 @@
             setLegacyScenarios([]);
         };
 
+        // The scenario last loaded into the Builder. Saving it again keeps any field the Builder does
+        // not show (an imported scenario's evolution or investigations, for example).
+        const buildOrigRef = useRef(null);
+        // A blank Builder. After a save the next scenario built is a new one, not the saved one again.
+        const newBuilder = () => {
+            buildOrigRef.current = null;
+            setBuildId(null); setBuildTitle(""); setBuildName(""); setBuildAge(40); setBuildSex("Male"); setBuildCat("Medical");
+            setDescDirty(false); setBuildPMH("Hypertension"); setBuildDhx("Nil"); setBuildAllergies("NKDA"); setBuildDifficulty("Intermediate");
+            setBuildCxrUrl(""); setBuildCtUrl(""); setBuildInvResults({}); setBuildInvEditing(null); setBuildLearningObj(""); setBuildCustomActions("");
+            setBuildVitals({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, rhythm: "Sinus Rhythm" });
+            setHf('hf0');
+        };
         const loadIntoBuilder = (s) => {
+            buildOrigRef.current = s;
             setBuildId(s.id || `CUST_${Date.now()}`);
+            setHf((s.hf && s.hf.id) || 'hf0');
             setBuildTitle(s.title);
             setBuildName(s.patientName || "");
             setBuildAge(s.patientAge ?? 40);   // a newborn is 0, not 40
@@ -313,6 +327,10 @@
                 hf: HUMAN_FACTOR_CHALLENGES.find(h => h.id === hf) || HUMAN_FACTOR_CHALLENGES[0]
             };
 
+            // Editing a saved scenario: keep what the Builder does not show.
+            const orig = buildOrigRef.current;
+            if (orig && orig.id === newScen.id) Object.keys(orig).forEach(k => { if (!(k in newScen)) newScen[k] = orig[k]; });
+
             if (!canSave) { if (run) handleGenerate(newScen); return; }
             if (!customScenarios.some(c => c.id === newScen.id) && customScenarios.length >= US.MAX) {
                 alert(`Your account holds up to ${US.MAX} scenarios. Delete one to save another.` + (run ? ' This one will run without being saved.' : ''));
@@ -335,7 +353,7 @@
                 setSaving(false);
                 setMyNotice(`Not connected: "${newScen.title}" will save to your account when the connection comes back. Keep this page open until then.`);
             }, 10000);
-            US.save(uid, newScen).then(() => { setMyNotice(`Saved "${newScen.title}" to your account.`); setMode('custom'); })
+            US.save(uid, newScen).then(() => { setMyNotice(`Saved "${newScen.title}" to your account.`); newBuilder(); setMode('custom'); })
                 .catch(saveFailed).finally(() => { done = true; clearTimeout(slow); setSaving(false); });
         };
 
@@ -417,13 +435,15 @@
                 .then(res => {
                     if (cancelled) return;
                     setRestricted({
-                        phase: res.ok ? (res.scenarios.length ? 'ready' : 'empty') : 'locked',
+                        // Entitled but the read failed (offline, rules not published): say so, not a blank list.
+                        phase: res.ok ? (res.scenarios.length ? 'ready' : 'empty') : 'error',
                         scenarios: res.scenarios,
                         reason: res.reason
                     });
                 });
             return () => { cancelled = true; };
-        }, [heldKey]);
+            // Read again each time the section is opened, so a course just uploaded shows up.
+        }, [heldKey, !!(premadeCategory && premadeCategory.restricted)]);
 
         const RestrictedSection = () => {
             const signedIn = !!(auth && auth.phase === 'signedIn');
@@ -496,6 +516,11 @@
                         </div>
                     ) : restricted.phase === 'loading' ? (
                         <div className="text-center text-slate-400 py-8 text-sm">Loading restricted scenarios…</div>
+                    ) : restricted.phase === 'error' ? (
+                        <div className="bg-slate-900 border border-red-800 rounded-lg p-4 text-sm text-slate-300 space-y-2" role="alert">
+                            <p className="font-bold text-red-300">Course scenarios could not be loaded.</p>
+                            <p className="text-slate-400">{restricted.reason === 'denied' ? 'The database refused the read. If access was granted recently, sign out and in again.' : 'Check the internet connection, then go Back and open Course scenarios again.'}</p>
+                        </div>
                     ) : restricted.phase === 'empty' ? (
                         <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 text-sm text-slate-300 space-y-2">
                             <p className="font-bold text-emerald-400">Unlocked — but there is nothing here yet.</p>
@@ -714,7 +739,9 @@
                                     ))}
                                 </div>
                             ) : premadeCategory.restricted ? (
-                                <RestrictedSection />
+                                // Called, not mounted: a component defined inside SetupScreen is a new type on every
+                                // render, so the panel (and its sign-in box) was rebuilt, losing what was typed.
+                                RestrictedSection()
                             ) : (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 mb-4"><Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button><h3 className="text-lg font-bold text-sky-400">{premadeCategory.label} Scenarios</h3></div>
@@ -812,6 +839,12 @@
                     )}
                     {mode === 'builder' && (
                         <div className="space-y-4 animate-fadeIn">
+                            {buildId && customScenarios.some(c => c.id === buildId) && (
+                                <div className="flex flex-wrap items-center justify-between gap-2 bg-sky-950/40 border border-sky-800 rounded p-2 text-xs text-sky-200" data-testid="builder-editing">
+                                    <span>Editing your saved scenario. Saving updates it.</span>
+                                    <Button variant="secondary" onClick={newBuilder} className="h-8 px-3 text-xs">New scenario</Button>
+                                </div>
+                            )}
                             <input type="text" placeholder="Scenario Title" value={buildTitle} onChange={e=>setBuildTitle(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-3 text-white placeholder-slate-400 font-bold"/>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                                 <div><label className="text-[10px] text-slate-400 uppercase">Patient Name</label><input aria-label="Patient Name" type="text" placeholder="Auto-generate if blank" value={buildName} onChange={e=>setBuildName(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white placeholder-slate-400"/></div>
