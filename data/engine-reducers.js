@@ -682,8 +682,15 @@
             // The defib and the ventilator share the room monitor's screen: opening one closes the other.
             // The defib and the ventilator are brought into the room independently; each patient
             // screen decides what it shows (data/simscreens.js).
-            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
-            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload };
+            // Bringing a device in also puts it in front (the patient screens already do that), so
+            // the controller's "Patient screens show" switch reflects it.
+            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload,
+                ...(action.payload && !state.defibPanelOpen ? { screenFront: { view: 'defib', at: Date.now() } } : {}) };
+            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload,
+                ...(action.payload && !state.ventPanelOpen ? { screenFront: { view: 'vent', at: Date.now() } } : {}) };
+            // Put the monitor, the defib or the ventilator in front on every patient screen that has it.
+            case 'SET_SCREEN_FRONT': return ['monitor', 'defib', 'vent'].includes(action.payload)
+                ? { ...state, screenFront: { view: action.payload, at: Date.now() } } : state;
             // A patient screen's own role and what it is showing (never synced; read by presence).
             case 'SET_LOCAL_SCREEN': return { ...state, localScreen: action.payload || null };
             // The ventilator's lungs: a known profile, whether the patient breathes for themselves

@@ -2546,7 +2546,7 @@ function switchModel(model) {
 function takePendingPower() {
   try { const p = sessionStorage.getItem('wmebem_vent_power') === '1'; sessionStorage.removeItem('wmebem_vent_power'); return p; } catch (e) { return false; }
 }
-const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:''};
+const LIVE = {linked:false, spo2:null, hr:null, etco2:null, rr:null, isFinished:false, muted:false, sex:'Male', config:null, key:null, run:'', ownRate:null};
 
 /* the trainer's teaching prompts and task list are not part of the simulation device */
 function addPrompt() {}
@@ -2577,8 +2577,19 @@ function applyConfig(config) {
   const own = VP.profiles[P.id];
   P.VAbase = (own.vtBase - own.vd) * own.rrBase;
   if (profileChanged) { P.paco2 = pr.paco2; P.hco3 = pr.hco3; P.vtAvg = pr.vtBase; }
+  /* The facilitator set the patient's own breathing rate (the Spontaneous rate slider, or an RR typed on
+     the controller while this ventilator breathes for the patient): the patient breathes at it now, so the
+     ventilator's measured rate and the room monitor's RR agree within a few breaths. */
+  const ownRate = setRate(config);
+  if (ownRate !== null && ownRate !== LIVE.ownRate) P.rrEase = ownRate;
+  LIVE.ownRate = ownRate;
   if (pr.sedated) P.fatigue = 0;
   applyProblems(VP.probList(config && config.probs));
+}
+/* the patient's own breathing rate when the facilitator has set one (lung adjustment 'e'), else null */
+function setRate(config) {
+  const e = config && config.lung ? Number(config.lung.e) : NaN;
+  return Number.isFinite(e) && e > 0 ? e : null;
 }
 /* the facilitator's injected problems (press again to fix): the trainer's EVENTS, set from the controller.
    Bronchospasm, a blocked tube, a tension pneumothorax and a mucus plug change the lung (VP.lungFor); a displaced tube
@@ -2620,7 +2631,8 @@ function patientTick(dt) {
      oxygenation bring a fast rate down towards 18 (the early sign that NIV or CPAP is working). */
   const helped = V.power && !V.standby && !V.ambient && !P.disc;
   const relief = helped ? clamp((P.vtAvg - pr.vtBase) / 0.15, 0, 1) * 0.7 + (LIVE.sat !== null && LIVE.sat !== undefined && LIVE.sat >= 92 ? 0.3 : 0) : 0;
-  const rrT = pr.rrBase - Math.max(0, pr.rrBase - 18) * relief + (P.deteriorate ? 4 : 0);
+  /* A rate the facilitator set is the rate the patient breathes at: no easing towards 18 on top of it. */
+  const rrT = (setRate(LIVE.config) !== null ? pr.rrBase : pr.rrBase - Math.max(0, pr.rrBase - 18) * relief) + (P.deteriorate ? 4 : 0);
   P.rrEase = P.rrEase === undefined || P.rrEase === null ? rrT : P.rrEase + (rrT - P.rrEase) * Math.min(1, dt / 90);
   P.rr = P.apnoea || pr.sedated || P.passive ? 0 : P.rrEase;
   P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);

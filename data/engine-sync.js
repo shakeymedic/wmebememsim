@@ -281,7 +281,9 @@
                     // runId rides inside `defib` (a free-form key in the rules) so a ventilator or
                     // defib tablet can tell a re-run of the same scenario from the run before it
                     // without a database-rules change.
-                    defib: { ...(cur.defib || {}), runId: cur.runId || null },
+                    // screenFront (what the facilitator wants in front on the patient screens) rides
+                    // in here too, for the same reason: no database-rules change.
+                    defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null },
                     // The ventilator on the room monitor, and the lungs it ventilates (the
                     // facilitator's choice, else one picked from the scenario).
                     ventPanelOpen: !!cur.ventPanelOpen,
@@ -379,7 +381,7 @@
             state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
             state.activeDrugs, state.deteriorationMode,
             state.defibPanelOpen, state.defib, state.pacing, state.metronomeOn,
-            state.ventPanelOpen, state.vent
+            state.ventPanelOpen, state.vent, state.screenFront
         ]);
 
         useEffect(() => {

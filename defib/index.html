@@ -55,7 +55,7 @@
                 <div class="vitals-display">
                     <div class="vital-item" data-tip="Heart rate, counted from the QRS complexes on the ECG. Shows --- when there are none to count."><div class="vital-label">HR</div><div class="vital-value" id="hrDisplay">--</div><div class="vital-unit">bpm</div></div>
                     <div class="vital-item" data-tip="Oxygen saturation from the pulse oximeter. Shows --- when there is no reading."><div class="vital-label">SpO₂</div><div class="vital-value" id="spo2Display">--</div><div class="vital-unit">%</div></div>
-                    <div class="vital-item" data-tip="End-tidal CO₂ in kPa. Shows -- unless capnography is attached in the scenario."><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit">kPa</div></div>
+                    <div class="vital-item" data-tip="End-tidal CO₂ in kPa, with the breathing rate (RR) the capnography counts. Shows -- unless capnography is attached in the scenario."><div class="vital-label">ETCO₂</div><div class="vital-value" id="etco2Display">--</div><div class="vital-unit" id="etco2Unit">kPa</div></div>
                     <div class="vital-item" data-tip="The last blood pressure taken with the cuff. It does not update on its own: press NIBP for a new reading."><div class="vital-label" id="bpLabel">NIBP</div><div class="vital-value" id="bpDisplay">--/--</div><div class="vital-unit">mmHg</div></div>
                 </div>
                 <div class="message-bar" id="messageBar" data-tip="Device messages: prompts, warnings and the result of what you last pressed." role="status" aria-live="polite"></div>
@@ -579,6 +579,7 @@
             const hrEl = $('hrDisplay'), spEl = $('spo2Display'), coEl = $('etco2Display'), bpEl = $('bpDisplay');
             if (!patient.linked || off) {
                 hrEl.textContent = '--'; spEl.textContent = '--'; coEl.textContent = '--'; bpEl.textContent = '--/--';
+                $('etco2Unit').textContent = 'kPa';
                 [hrEl, spEl].forEach(e => e.classList.remove('critical'));
             } else {
                 // The monitor counts QRS complexes: a rate in PEA or pulseless VT, none in VF or asystole
@@ -589,6 +590,9 @@
                 spEl.classList.toggle('critical', !(patient.spo2 > 0));
                 // No sensor, no number: the R Series shows CO2 only while its sensor is connected.
                 coEl.textContent = patient.capno.on ? fmt(patient.etco2, 1) : '--';
+                // The breathing rate the capnography counts: the same RR as the room monitor, so a
+                // ventilator rate change shows here too.
+                $('etco2Unit').textContent = patient.capno.on ? ('kPa · RR ' + (patient.capno.ventilating ? Math.round(Number(patient.capno.rr) || 0) : 0)) : 'kPa';
                 const n = patient.nibp;
                 bpEl.textContent = n.sys > 0 ? (Math.round(n.sys) + '/' + Math.round(n.dia)) : '--/--';
             }

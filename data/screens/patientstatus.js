@@ -393,7 +393,7 @@
     };
 
     // ---- the strip ------------------------------------------------------------------------------
-    const PatientStatusPanel = ({ sim, addLogEntry, showVent = true }) => {
+    const PatientStatusPanel = ({ sim, addLogEntry, showVent = true, extra = null }) => {
         const state = sim.state;
         const a = assess(state);
         const VP = window.VENT_PROFILES;
@@ -469,12 +469,14 @@
 
         return (
             <section aria-label="Patient status" data-testid="patient-status" className={`flex-none mb-2 rounded border-l-4 border ${TONE[a.tone] || TONE.slate}`}>
-                <div className="flex items-center gap-2 px-2 py-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1">
                     <span className={`flex-none w-2.5 h-2.5 rounded-full ${a.tone === 'red' ? 'bg-red-500 animate-pulse' : a.tone === 'amber' ? 'bg-amber-400' : a.tone === 'cyan' ? 'bg-cyan-400' : 'bg-emerald-400'}`} aria-hidden="true" />
                     <div className="min-w-0 flex-1">
                         <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400 mr-2">Patient now</span>
                         <span data-testid="patient-headline" className="text-sm md:text-base font-bold">{a.headline}</span>
                     </div>
+                    {/* The "Screens show: Monitor | Defib | Ventilator" switch (data/screens/screenspanel.js). */}
+                    {extra}
                     <button type="button" onClick={toggle} aria-expanded={!collapsed} title={collapsed ? 'Show the patient figure and details' : 'Make this strip one line'} className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">
                         {collapsed ? 'More' : 'Less'}
                     </button>
