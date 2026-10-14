@@ -755,21 +755,21 @@
                         )}
                     </div>
 
-                    {/* Temp / capillary glucose / pH are point-of-care measurements rather than
+                    {/* Temp / capillary glucose are point-of-care measurements rather than
                         continuous monitored channels, so they get their own slim strip instead of
                         shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
                         (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
                     {/* B2 / WAVE 7 — POINT-OF-CARE STRIP.
                         Temp is a CONTINUOUS channel: it needs its probe attached and then tracks live.
-                        Glucose, pH and K+ are INTERMITTENT: they show the value from the moment the
-                        sample was taken, with its timestamp, and do NOT follow the live model. An
-                        unattached sensor / untaken sample reads NO SENSOR / NO SAMPLE in the same
-                        styling as the main trace, so the team can see what is missing. */}
-                    <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                        Glucose is INTERMITTENT: it shows the value from the moment the sample was
+                        taken, with its timestamp, and does NOT follow the live model. An unattached
+                        sensor / untaken sample reads NO PROBE / NO SAMPLE in the same styling as the
+                        main trace, so the team can see what is missing. pH and K+ are not on this
+                        strip: they come with the gas when the team presses VBG. */}
+                    <div className="flex-none grid grid-cols-2 gap-2 mt-1">
                         {(() => {
                             const tempOn = sTemp && Number.isFinite(vitals.temp);
                             const bm = poc.bm || null;
-                            const vbg = poc.vbg || null;
                             const cell = (label, value, unit, sub, alert) => (
                                 <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${alert ? 'border-amber-600' : 'border-slate-800'}`}>
                                     <span className="text-[11px] md:text-xs lg:text-sm uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[10px] lg:text-xs text-slate-400 normal-case tracking-normal">{sub}</span> : null}</span>
@@ -783,14 +783,6 @@
                                     {cell('Glucose', (bm && Number.isFinite(bm.value)) ? bm.value.toFixed(1) : null, 'mmol/L',
                                           bm ? bm.clock : 'no sample',
                                           !!(bm && Number.isFinite(bm.value) && (bm.value < 4 || bm.value > 11)))}
-                                    {cell('pH', (vbg && Number.isFinite(vbg.value)) ? vbg.value.toFixed(2) : null, '',
-                                          vbg ? vbg.clock : 'no gas',
-                                          !!(vbg && Number.isFinite(vbg.value) && (vbg.value < 7.30 || vbg.value > 7.50)))}
-                                    {/* Serum potassium — hyperkalaemia and DKA finally have a
-                                        measurable endpoint. Reported from the VBG sample, like the real thing. */}
-                                    {cell('K+', (vbg && Number.isFinite(vbg.value2)) ? vbg.value2.toFixed(1) : null, 'mmol/L',
-                                          vbg ? vbg.clock : 'no gas',
-                                          !!(vbg && Number.isFinite(vbg.value2) && (vbg.value2 < 3.0 || vbg.value2 > 5.5)))}
                                 </>
                             );
                         })()}
