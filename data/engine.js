@@ -1114,7 +1114,10 @@
             if (!VE || !VP || !Number.isFinite(n) || cur.ventLink === false) return null;
             const d = VP.LUNG_ADJ.e;
             if (n < d.min || n > d.max) return null;
-            if (!VE.driverFor(cur) && !Object.keys(cur.ventMirror || {}).length) return null;
+            // A ventilator taken away stays in the mirror for a minute: it is not the patient's any more.
+            // (A ventilator on the patient screens closes with the panel; a separate tablet stays.)
+            const recent = Object.values(cur.ventMirror || {}).some(m => m && !m.embedded && Number(m.ts) > Date.now() - 25000);
+            if (!VE.driverFor(cur) && !(cur.ventPanelOpen && Object.keys(cur.ventMirror || {}).length) && !recent) return null;
             const cfg = VE.configFor(cur);
             if (cfg.breathing === false || VP.lungFor(cfg).sedated) return null;
             return Math.round(n);

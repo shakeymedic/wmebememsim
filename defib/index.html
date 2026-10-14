@@ -381,6 +381,12 @@
                     return;
                 }
                 fb.linked = true;
+                // A new scenario on the same code (a new run id) gets a fresh device: switched off, pacer
+                // at 0 mA, SYNC off and the energy back to the patient's recommended one, as the
+                // ventilator does. The controller starts every run with the defib in monitor mode.
+                const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
+                if (run && lastRunId && run !== lastRunId) freshDevice();
+                if (run) lastRunId = run;
                 applyPatient(fromSession(v));
                 if (!staleChecked) { staleChecked = true; clearStaleDevice(engineDefibOf(v)); }
             }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
@@ -395,6 +401,17 @@
         // it is told the device is off, otherwise pacing carried on with the dial showing OFF. Not
         // when another live defib (a second tablet, the monitor's) is the one pacing.
         let staleChecked = false;
+        let lastRunId = '';
+        function freshDevice() {
+            Object.keys(timers).forEach(cancel);
+            pendingSync = null; stopChargeTone();
+            device.mode = 'off'; device.machine = 'IDLE'; device.sync = false;
+            device.pacerOutput = 0; device.pacerRate = 60; device.pacerDemand = true;
+            device.energyTouched = false; device.energy = patient.recommendedEnergy || RG.ADULT_DEFAULT_ENERGY;
+            setMessage('', '');
+            ctxClear();
+            syncMetronome();
+        }
         function clearStaleDevice(eng) {
             const stalePacing = eng.pacerOutput > 0;
             const staleMode = eng.mode === 'pacer' || eng.mode === 'defib';
@@ -575,7 +592,9 @@
                 coEl.textContent = patient.capno.on ? fmt(patient.etco2, 1) : '--';
                 // The breathing rate the capnography counts: the same RR as the room monitor, so a
                 // ventilator rate change shows here too.
-                $('etco2Unit').textContent = patient.capno.on ? ('kPa · RR ' + (patient.capno.ventilating ? Math.round(Number(patient.capno.rr) || 0) : 0)) : 'kPa';
+                // RR 0 while the capnogram is drawing breaths (CPR, bagging) would contradict the waveform: show --.
+                const capRr = patient.capno.ventilating ? Math.round(Number(patient.capno.rr) || 0) : 0;
+                $('etco2Unit').textContent = patient.capno.on ? ('kPa · RR ' + (capRr > 0 ? capRr : (patient.capno.ventilating ? '--' : 0))) : 'kPa';
                 const n = patient.nibp;
                 bpEl.textContent = n.sys > 0 ? (Math.round(n.sys) + '/' + Math.round(n.dia)) : '--/--';
             }
@@ -601,6 +620,7 @@
             if (['CHARGING', 'READY', 'DISCHARGING'].indexOf(device.machine) === -1) return;
             cancel('charge'); cancel('dump'); pendingSync = null; stopChargeTone();
             device.machine = 'IDLE';
+            send('CHARGE_CANCEL', {});
             if (reason) setMessage('CHARGE CANCELLED - ' + reason, 'ready');
             render();
         }
@@ -653,6 +673,7 @@
                 later('dump', () => {
                     if (device.machine !== 'READY') return;
                     device.machine = 'IDLE';
+                    send('CHARGE_CANCEL', {});
                     setMessage('CHARGE DUMPED - SAFETY TIMEOUT', 'ready');
                     sounds.alarm();
                     render();
@@ -667,7 +688,7 @@
                 // The device fires on the next R wave it detects, or not at all
                 if (!patient.linked || !hasQrs() || (device.lead !== 'PADS' && patient.noise && patient.noise.leadoff)) {
                     setMessage('SYNC: NO R-WAVE DETECTED - SHOCK NOT DELIVERED', 'alert');
-                    later('dump', () => { if (device.machine === 'READY') { device.machine = 'IDLE'; setMessage('CHARGE DUMPED', 'ready'); render(); } }, 60000);
+                    later('dump', () => { if (device.machine === 'READY') { device.machine = 'IDLE'; send('CHARGE_CANCEL', {}); setMessage('CHARGE DUMPED', 'ready'); render(); } }, 60000);
                     return;
                 }
                 device.machine = 'DISCHARGING';
@@ -963,7 +984,7 @@
                 // after the usual safety timeout if it is not used.
                 pendingSync = null; device.machine = 'READY';
                 setMessage('SYNC: NO R-WAVE DETECTED - SHOCK NOT DELIVERED', 'alert');
-                later('dump', () => { if (device.machine === 'READY') { device.machine = 'IDLE'; setMessage('CHARGE DUMPED', 'ready'); render(); } }, 60000);
+                later('dump', () => { if (device.machine === 'READY') { device.machine = 'IDLE'; send('CHARGE_CANCEL', {}); setMessage('CHARGE DUMPED', 'ready'); render(); } }, 60000);
                 render();
             }
 

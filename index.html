@@ -522,7 +522,9 @@
                                 scenario={generatedScenario} 
                                 sim={engine} 
                                 onStart={handleStart} 
-                                onBack={() => setView('setup')} 
+                                // Back from a briefing unloads the scenario it loaded: it never ran, so the
+                                // menu must not offer it as "Scenario paused", and the screens go back to waiting.
+                                onBack={() => { engine.reset(); setView('setup'); }} 
                             />
                         )}
                         {(view === 'livesim' || view === 'debrief') && (

@@ -389,12 +389,18 @@
         const drugCalcWeightError = window.validateBuilderField ? window.validateBuilderField('weight', drugCalcWeightStr) : null;
         const drugCalcWeight = drugCalcWeightError ? 0 : parseFloat(drugCalcWeightStr);
         const [showTimerModal, setShowTimerModal] = useState(false);
-        const [timerAlerts, setTimerAlerts] = useState([]);
+        // Timer alerts and a running preset belong to the run, not to this screen: Back to the menu
+        // unmounts it, so they are kept per run id and picked up again on "Return to scenario".
+        const keepStore = window.__liveSimKeep || (window.__liveSimKeep = {});
+        const kept = (state.runId && keepStore[state.runId]) || null;
+        const [timerAlerts, setTimerAlerts] = useState(() => (kept && kept.timerAlerts) || []);
+        const timerAlertsRef = useRef(timerAlerts);
+        timerAlertsRef.current = timerAlerts;
         const [newAlertMins, setNewAlertMins] = useState('5');
         const [newAlertMsg, setNewAlertMsg] = useState('');
         const [timerAlertError, setTimerAlertError] = useState('');
-        const [firedAlerts, setFiredAlerts] = useState(new Set());
-        const firedAlertsRef = useRef(new Set());
+        const [firedAlerts, setFiredAlerts] = useState(() => new Set((kept && kept.fired) || []));
+        const firedAlertsRef = useRef(new Set((kept && kept.fired) || []));
         const [showKeyHelp, setShowKeyHelp] = useState(false);
         // Course scenarios (e.g. ETC) carry a mark sheet: the pathway, results and criteria.
         const [showMarkSheet, setShowMarkSheet] = useState(false);
@@ -596,7 +602,7 @@
         const QSP = window.QuickSimPresets;
         const [presetList, setPresetList] = useState(() => (QSP ? QSP.all() : []));
         const [presetView, setPresetView] = useState(null);    // { name, idx, total, note, nextIn, waiting }
-        const presetRunRef = useRef(null);                      // { preset, idx, accMs, lastTs, lastNote }
+        const presetRunRef = useRef((kept && kept.presetRun) ? { ...kept.presetRun, lastTs: Date.now() } : null);   // { preset, idx, accMs, lastTs, lastNote }
         const liveStateRef = useRef(state);
         liveStateRef.current = state;
         const presetActionsRef = useRef(null);
@@ -657,6 +663,16 @@
             refreshPresetView();
         };
         const presetActive = !!presetView;
+        // A preset kept from before Back shows (and carries on) straight away.
+        useEffect(() => { if (presetRunRef.current) refreshPresetView(); }, []);
+        // Keep this run's alerts and preset for when the screen comes back (only the latest run).
+        const runIdNow = state.runId;
+        useEffect(() => () => {
+            if (!runIdNow) return;
+            const store = window.__liveSimKeep || (window.__liveSimKeep = {});
+            Object.keys(store).forEach(k => { if (k !== runIdNow) delete store[k]; });
+            store[runIdNow] = { timerAlerts: timerAlertsRef.current, fired: Array.from(firedAlertsRef.current), presetRun: presetRunRef.current };
+        }, [runIdNow]);
         useEffect(() => {
             if (!presetActive) return;
             const id = setInterval(() => {

@@ -533,6 +533,7 @@
         useEffect(() => {
             if (isMonitorMode) return;
             const cur = stateRef.current;
+            if (cur.isFinished) return;                 // the debrief is frozen at Finish
             // Capture waits for START like every other effect on the patient (re-evaluated then).
             if (notStarted && notStarted(cur)) return;
             const pacing = cur.pacing || {};
