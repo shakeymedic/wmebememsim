@@ -173,6 +173,8 @@
                 </div>
 
                 {/* The patient at a glance (data/screens/patientstatus.js), as on the full controller. */}
+                {/* PATIENT SCREENS SHOW: Monitor | Defib, one press each (data/screens/screenspanel.js). */}
+                {window.PatientScreenSwitch && <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} showVent={false} onOpenScreens={() => setShowScreens(true)} />}
                 {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showVent={false} />}
 
                 {!state.isRunning && !state.isFinished && (

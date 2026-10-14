@@ -81,15 +81,32 @@
     };
     // Which view is in front. A device the facilitator brings in comes to the front; one taken
     // away hands the screen back. `avail` lists what this screen can show right now, in order.
-    const useFrontView = (avail, opened, fallback) => {
+    // `request` is the facilitator's "Patient screens show" switch on the controller ({ view, at },
+    // carried in the live defib object): each new request puts that view in front, if this screen
+    // has it. A request this screen cannot show yet is dropped after a few seconds, so a screen
+    // given the device much later does not jump to it out of the blue.
+    const REQUEST_WAIT_MS = 15000;
+    const useFrontView = (avail, opened, fallback, request) => {
         const [front, setFront] = useState(null);
         const prev = useRef({});
+        const asked = useRef({ at: null, seen: 0, done: false });
         useEffect(() => {
             const p = prev.current;
             const newly = ['defib', 'vent'].find(k => opened[k] && !p[k] && avail.includes(k));
             if (newly) setFront(newly);
             prev.current = { ...opened };
         }, [opened.defib, opened.vent, avail.join(',')]);
+        const reqAt = request && request.at ? request.at : null;
+        const reqView = request && request.view ? request.view : null;
+        useEffect(() => {
+            if (!reqAt || !reqView) return;
+            const a = asked.current;
+            if (a.at !== reqAt) asked.current = { at: reqAt, seen: Date.now(), done: false };
+            const cur = asked.current;
+            if (cur.done) return;
+            if (Date.now() - cur.seen > REQUEST_WAIT_MS) { cur.done = true; return; }
+            if (avail.includes(reqView)) { setFront(reqView); cur.done = true; }
+        }, [reqAt, reqView, avail.join(',')]);
         const shown = avail.includes(front) ? front : fallback;
         return [shown, setFront];
     };
@@ -125,7 +142,7 @@
         const devices = ['defib', 'vent'].filter(k => (parts || ['defib', 'vent']).includes(k));
         const opened = { defib: devices.includes('defib') && !!state.defibPanelOpen, vent: devices.includes('vent') && !!state.ventPanelOpen };
         const fallback = devices.length > 1 ? (opened.vent && !opened.defib ? 'vent' : 'defib') : devices[0];
-        const [shown, setFront] = useFrontView(devices, opened, fallback);
+        const [shown, setFront] = useFrontView(devices, opened, fallback, state.defib && state.defib.screenFront);
         useEffect(() => { if (onShows) onShows(shown); }, [shown]);
         const hosted = state.isFinished ? [] : devices;
         useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
@@ -164,7 +181,7 @@
         const defibHere = partList.includes('defib') && !!defibPanelOpen;
         const ventHere = partList.includes('vent') && !!state.ventPanelOpen;
         const [shownView, setFrontView] = useFrontView(['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []),
-            { defib: defibHere, vent: ventHere }, 'monitor');
+            { defib: defibHere, vent: ventHere }, 'monitor', state.defib && state.defib.screenFront);
         useEffect(() => { if (onShows) onShows(shownView); }, [shownView]);
         const hosted = [].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []);
         useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
