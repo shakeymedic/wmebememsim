@@ -63,3 +63,42 @@ test('a flag the headline already names is not repeated as a chip on a phone', a
   expect(await noSideScroll(page)).toBe(true);
   expect(errors).toEqual([]);
 });
+
+test('the debrief on a phone: header stacks, buttons fit, the page scrolls as one and Print still works', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await startQuickSim(page);
+  await page.evaluate(() => {
+    const base = window.ALL_SCENARIOS.find(s => s.ageRange !== 'Paediatric' && !s.defibSim);
+    window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: window.generatePatientFromTemplate(base, {}) });
+  });
+  await expect.poll(() => page.evaluate(() => !window.__simEngine.state.scenario.quickSim)).toBe(true);
+  await page.evaluate(() => window.__simEngine.start());
+  for (let i = 0; i < 12; i++) await page.evaluate(() => window.__simEngine.dispatch({ type: 'TICK_TIME' }));
+  await page.locator('button:visible', { hasText: 'Finish' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Simulation Complete' })).toBeVisible();
+
+  // Every header button is wholly on screen, and nothing runs off the side.
+  for (const name of [/Print/, /Download Report/, /Exit to Menu/]) {
+    const b = await page.getByTestId('debrief-actions').getByRole('button', { name }).boundingBox();
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width).toBeLessThanOrEqual(390);
+  }
+  expect(await noSideScroll(page)).toBe(true);
+
+  // No card is cut short by a fixed-height box: the cards are full height and reachable by scrolling.
+  const summary = page.getByRole('heading', { name: 'Performance Summary' }).locator('..');
+  const clipped = await summary.evaluate(el => el.scrollHeight > el.clientHeight + 1);
+  expect(clipped).toBe(false);
+  await page.getByText('Instructor Notes', { exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByPlaceholder('Add feedback notes here...')).toBeInViewport();
+  const log = page.getByTestId('debrief-log');
+  await log.scrollIntoViewIfNeeded();
+  for (const f of ['all', 'actions', 'manual', 'shocks', 'rhythm', 'system']) await expect(log.getByRole('button', { name: f, exact: true })).toBeInViewport();
+  await expect(log).toContainText('Simulation Started');
+
+  // Print opens the print-friendly report.
+  const [popup] = await Promise.all([context.waitForEvent('page'), page.getByTestId('debrief-actions').getByRole('button', { name: /Print/ }).click()]);
+  await expect(popup.locator('h2')).toContainText('Simulation Debrief Report');
+  expect(errors).toEqual([]);
+});
