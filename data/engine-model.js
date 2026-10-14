@@ -125,6 +125,11 @@
         // facilitator's choice of lungs ({ profile, breathing }); null = chosen from the scenario
         // (VENT_PROFILES.profileForScenario). Both reach the ventilator inside the live payload.
         ventPanelOpen: false,
+        // What the facilitator last asked the patient screens to put in FRONT ('monitor', 'defib'
+        // or 'vent'), from the "Patient screens show" switch at the top of the controller
+        // (data/screens/screenspanel.js). { view, at }; null = nothing asked yet. A device that is
+        // in the room stays loaded behind the front view, so the ventilator keeps ventilating.
+        screenFront: null,
         vent: null,
         // The facilitator's switch: true = a ventilating HAMILTON-T1 drives SpO2, RR and ETCO2
         // (and nudges HR and BP); false = the facilitator sets the obs by hand.
