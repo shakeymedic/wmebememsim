@@ -1,1 +1,4 @@
+# Google sign-in's handler pages, served from this site's own address (see data/firebase-config.js).
+/__/auth/*      https://wmebem-sim.firebaseapp.com/__/auth/:splat      200
+/__/firebase/*  https://wmebem-sim.firebaseapp.com/__/firebase/:splat  200
 /* /index.html 200

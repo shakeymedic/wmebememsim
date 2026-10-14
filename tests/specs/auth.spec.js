@@ -115,3 +115,66 @@ test('the account panel: course access is opt-in, requested from the panel, and 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+// Phones (14 Oct 2026): a Google window that never reported back left the box on "Working…".
+test('Continue with Google: a pop-up that never reports back can be cancelled, and email sign-in is not stuck', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await page.getByRole('button', { name: /^Sign in$/ }).first().click();
+  await page.evaluate(() => { window.__fakeGooglePopup = 'hang'; });
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  const waiting = page.getByRole('button', { name: 'Waiting for Google… tap to cancel' });
+  await expect(waiting).toBeVisible();
+  await expect(page.locator('form button[type=submit]')).not.toHaveText('Working…');
+  await waiting.click();
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeEnabled();
+  await expect(page.locator('form button[type=submit]')).toHaveText('Sign in');
+  await page.getByLabel('Email').fill('after.cancel@example.org');
+  await page.getByLabel('Password').fill('correct horse');
+  await page.locator('form button[type=submit]').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('Continue with Google: a blocked pop-up offers sign-in in the same window, which comes back signed in', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await page.getByRole('button', { name: /^Sign in$/ }).first().click();
+  await page.evaluate(() => { window.__fakeGooglePopup = 'blocked'; localStorage.setItem('fakeGoogleRedirectEmail', 'same.window@gmail.com'); });
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  await expect(page.getByText('The Google sign-in window was blocked.', { exact: false })).toBeVisible();
+  const back = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Sign in with Google in this window' }).click();
+  await back;
+  await expect(page.getByRole('button', { name: 'Your account (Google User)' })).toBeVisible({ timeout: 15000 });
+  expect(await page.evaluate(() => sessionStorage.getItem('wmebem_google_redirect'))).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('Continue with Google in the installed app goes to Google in the same window instead of a pop-up', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  await context.addInitScript(() => { try { sessionStorage.setItem('wmebem_installed_app', '1'); } catch (e) {} });
+  await openController(page);
+  await page.getByRole('button', { name: /^Sign in$/ }).first().click();
+  await page.evaluate(() => { localStorage.setItem('fakeGoogleRedirectEmail', 'app.user@gmail.com'); });
+  const back = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  await back;
+  await expect(page.getByRole('button', { name: 'Your account (Google User)' })).toBeVisible({ timeout: 15000 });
+  expect(await page.evaluate(() => window.__fakePopups || 0)).toBe(0);
+  expect(errors).toEqual([]);
+});
+
+test('Continue with Google in the installed app: a failure on the way back is shown in the sign-in box', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  await context.addInitScript(() => { try { sessionStorage.setItem('wmebem_installed_app', '1'); } catch (e) {} });
+  await openController(page);
+  await page.getByRole('button', { name: /^Sign in$/ }).first().click();
+  await page.evaluate(() => { localStorage.setItem('fakeGoogleRedirectError', 'auth/network-request-failed'); });
+  const back = page.waitForEvent('load');
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  await back;
+  await expect(page.getByText('Could not reach Firebase.', { exact: false })).toBeVisible({ timeout: 15000 });
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeEnabled();
+  expect(errors).toEqual([]);
+});

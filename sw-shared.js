@@ -37,6 +37,8 @@ self.installServiceWorker = function (name, version, precache) {
     // Only this site's own files. Never the live session (Firebase long-polls with GETs when
     // WebSockets are blocked, and a cached answer would freeze a device on a stale patient).
     if (url.origin !== self.location.origin) return;
+    // Google sign-in's handler pages (proxied to Firebase) must never come from the cache.
+    if (url.pathname.indexOf('/__/') === 0) return;
     e.respondWith(fetch(req).then(function (res) {
       if (res && res.ok && res.type === 'basic') {
         var copy = res.clone();

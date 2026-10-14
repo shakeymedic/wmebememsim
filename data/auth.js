@@ -88,9 +88,32 @@
         return _sdkPromise;
     };
     const setAuthFlag = (v) => { try { localStorage.setItem(AUTH_FLAG, v); } catch (e) {} };
+
+    // A Google pop-up is not dependable in the installed app (the Android app, or the site added
+    // to a home screen): on an iPhone home-screen app Firebase cannot even see the window, so it
+    // waits for ever. There the page goes to Google and comes back instead. This flag (per tab)
+    // marks a sign-in on its way back.
+    const REDIRECT_FLAG = 'wmebem_google_redirect';
+    const redirectPending = () => { try { return sessionStorage.getItem(REDIRECT_FLAG) === '1'; } catch (e) { return false; } };
+    const setRedirectPending = (on) => { try { on ? sessionStorage.setItem(REDIRECT_FLAG, '1') : sessionStorage.removeItem(REDIRECT_FLAG); } catch (e) {} };
+    // Read once as the page loads: only a page that has just come back from Google asks for the
+    // result (asking on the page that is about to leave would clear the flag too early).
+    let _backFromGoogle = redirectPending();
+    const INSTALLED_FLAG = 'wmebem_installed_app';
+    const isInstalledApp = () => {
+        try {
+            if (String(document.referrer || '').indexOf('android-app://') === 0) sessionStorage.setItem(INSTALLED_FLAG, '1');
+            if (sessionStorage.getItem(INSTALLED_FLAG) === '1') return true;
+        } catch (e) {}
+        try { if (window.navigator && window.navigator.standalone === true) return true; } catch (e) {}
+        try { if (window.matchMedia && (window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches)) return true; } catch (e) {}
+        return false;
+    };
+    window.__isInstalledApp = isInstalledApp;
     // Has this browser signed in before? Our own flag first; for accounts from before the flag
     // existed, Firebase's own persisted-session storage.
     const signedInBefore = async () => {
+        if (_backFromGoogle) return true;
         try {
             const f = localStorage.getItem(AUTH_FLAG);
             if (f === '1') return true;
@@ -132,7 +155,12 @@
         'auth/invalid-login-credentials': 'Incorrect email or password.',
         'auth/too-many-requests': 'Too many attempts. Please wait a minute and try again.',
         'auth/network-request-failed': 'Could not reach Firebase. Check the network connection.',
-        'auth/popup-blocked': 'The Google sign-in window was blocked. Allow pop-ups for this site and try again.',
+        'auth/popup-blocked': 'The Google sign-in window was blocked. Use the button below to sign in with Google in this window instead.',
+        'auth/operation-not-supported-in-this-environment': 'Google sign-in cannot open a window here. Use the button below to sign in with Google in this window instead.',
+        'auth/web-storage-unsupported': 'This browser is blocking the storage Google sign-in needs (often private browsing). Try a normal browser window, or sign in with email.',
+        'auth/redirect-cancelled-by-user': 'Sign-in was cancelled.',
+        'auth/user-cancelled': 'Sign-in was cancelled.',
+        'auth/internal-error': 'Google sign-in did not finish. Please try again.',
         'auth/popup-closed-by-user': 'Sign-in was cancelled.',
         'auth/cancelled-popup-request': 'Sign-in was cancelled.',
         'auth/account-exists-with-different-credential': 'There is already an account with this email. Sign in with your email and password instead.',
@@ -215,6 +243,11 @@
             user: null,
             profile: null,
             busy: false,
+            // true while a Google pop-up is open: the Google button then offers to cancel, so a
+            // window that never reports back cannot leave the box stuck on "Working…".
+            googlePending: false,
+            // true after a pop-up was blocked or is not possible here: offer the same-window way.
+            offerRedirect: false,
             error: null,
             notice: null
         }));
@@ -263,7 +296,8 @@
                 }
                 setAuthFlag('1');
                 const summary = { uid: user.uid, email: user.email, displayName: user.displayName };
-                setState(s => ({ ...s, phase: 'signedIn', user: summary, error: null }));
+                setRedirectPending(false);
+                setState(s => ({ ...s, phase: 'signedIn', user: summary, error: null, busy: false, googlePending: false, offerRedirect: false }));
 
                 const db = window.db;
                 if (!db) {
@@ -301,11 +335,22 @@
                 setState(s => ({ ...s, phase: 'off', available: false, reason: 'unavailable' }));
             });
 
+            // Back from Google in the same window: success arrives through onAuthStateChanged
+            // above; a failure is only reported here, so keep it for the sign-in box.
+            if (_backFromGoogle && typeof auth.getRedirectResult === 'function') {
+                _backFromGoogle = false;
+                auth.getRedirectResult().then(() => { setRedirectPending(false); }).catch((e) => {
+                    setRedirectPending(false);
+                    if (cancelled) return;
+                    setState(s => ({ ...s, busy: false, googlePending: false, error: describeAuthError(e), notice: null, redirectFailed: true }));
+                });
+            }
+
             return () => { cancelled = true; detachProfile(); try { unsub(); } catch (e) {} };
         }, [sdkReady]);
 
         const run = useCallback(async (fn, successNotice) => {
-            setState(s => ({ ...s, busy: true, error: null, notice: null }));
+            setState(s => ({ ...s, busy: true, googlePending: false, offerRedirect: false, error: null, notice: null }));
             const loaded = await loadAuthSdk();
             const auth = loaded ? getAuth() : null;
             if (!auth) {
@@ -355,14 +400,53 @@
         // onAuthStateChanged handler above, as for any sign-in). If the Google provider is not
         // enabled in the console, or this web address is not an authorised domain, it fails with a
         // message saying which, and nothing else changes.
-        const signInWithGoogle = useCallback(() =>
-            run(async (auth) => {
+        //
+        // In a browser tab Google opens in a pop-up, so the page (and anything typed in the
+        // Builder) stays as it is. In the installed app, or when asked (`sameWindow`, offered after
+        // a pop-up was blocked), the page goes to Google and comes back signed in.
+        const googleAttempt = React.useRef(0);
+        const signInWithGoogle = useCallback(async (opts) => {
+            const sameWindow = !!(opts && opts.sameWindow === true) || isInstalledApp();
+            const attempt = ++googleAttempt.current;
+            setState(s => ({ ...s, busy: true, googlePending: !sameWindow, offerRedirect: false, error: null, notice: null }));
+            const loaded = await loadAuthSdk();
+            const auth = loaded ? getAuth() : null;
+            if (attempt !== googleAttempt.current) return false;
+            if (!auth) {
+                setState(s => ({ ...s, busy: false, googlePending: false, phase: 'off', available: false, reason: _authError,
+                    error: _authError === 'not-loaded' ? AUTH_MESSAGES['auth/network-request-failed'] : AUTH_MESSAGES['auth/configuration-not-found'] }));
+                return false;
+            }
+            setSdkReady(true);
+            try {
                 if (!window.firebase.auth.GoogleAuthProvider) throw { code: 'google/not-enabled' };
                 const provider = new window.firebase.auth.GoogleAuthProvider();
                 if (provider.setCustomParameters) provider.setCustomParameters({ prompt: 'select_account' });
-                try { await auth.signInWithPopup(provider); }
-                catch (e) { throw (e && e.code === 'auth/operation-not-allowed') ? { code: 'google/not-enabled' } : e; }
-            }), [run]);
+                if (sameWindow) {
+                    setRedirectPending(true);
+                    await auth.signInWithRedirect(provider);   // the page leaves for Google here
+                    return true;
+                }
+                await auth.signInWithPopup(provider);
+                if (attempt === googleAttempt.current) setState(s => ({ ...s, busy: false, googlePending: false, error: null }));
+                return true;
+            } catch (e0) {
+                if (sameWindow) setRedirectPending(false);
+                const e = (e0 && e0.code === 'auth/operation-not-allowed') ? { code: 'google/not-enabled' } : e0;
+                if (attempt !== googleAttempt.current) return false;   // cancelled meanwhile
+                const code = e && e.code;
+                setState(s => ({ ...s, busy: false, googlePending: false, error: describeAuthError(e), notice: null,
+                    offerRedirect: !sameWindow && (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') }));
+                return false;
+            }
+        }, []);
+
+        // Gives up waiting for the Google pop-up. If it does finish later, onAuthStateChanged
+        // still signs the account in.
+        const cancelGoogle = useCallback(() => {
+            googleAttempt.current++;
+            setState(s => ({ ...s, busy: false, googlePending: false, error: null, notice: null }));
+        }, []);
 
         const signOut = useCallback(() => run(async (auth) => { await auth.signOut(); setAuthFlag('0'); }), [run]);
 
@@ -381,14 +465,14 @@
             }
         }, [state.user]);
 
-        const clearFeedback = useCallback(() => setState(s => ({ ...s, error: null, notice: null })), []);
+        const clearFeedback = useCallback(() => setState(s => ({ ...s, error: null, notice: null, offerRedirect: false, redirectFailed: false })), []);
 
         return {
             ...state,
             isAdmin: !!(state.profile && state.profile.role === 'admin'),
             entitlements: (state.profile && state.profile.entitlements) || { ...DEFAULT_ENTITLEMENTS },
             has: (key) => hasEntitlement(state.profile, key),
-            signIn, signUp, signOut, resetPassword, signInWithGoogle, requestAccess, clearFeedback
+            signIn, signUp, signOut, resetPassword, signInWithGoogle, cancelGoogle, requestAccess, clearFeedback
         };
     };
     window.useAuth = useAuth;
@@ -611,6 +695,11 @@
         const signedInNow = auth.phase === 'signedIn' && !!auth.user;
         useEffect(() => { if (signedInNow && onClose) onClose(); }, [signedInNow]);
 
+        // Fetch the sign-in library as the box opens, so tapping "Continue with Google" opens
+        // Google's window straight away: a phone browser blocks a window opened after a wait.
+        useEffect(() => { if (auth.available && canLoadSdk()) loadAuthSdk(); }, []);
+        const installed = isInstalledApp();
+
         return (
             <Modal label="Account" onClose={onClose}>
                 <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-md shadow-2xl">
@@ -643,11 +732,24 @@
 
                             {tab !== 'reset' && (
                                 <>
-                                    <button type="button" onClick={auth.signInWithGoogle} disabled={auth.busy}
-                                        className="w-full h-11 rounded border border-slate-500 bg-white text-slate-900 text-sm font-bold hover:bg-slate-100 flex items-center justify-center gap-2 disabled:opacity-60">
-                                        <span aria-hidden="true" className="font-black text-base text-sky-600">G</span>
-                                        {tab === 'signup' ? 'Create account with Google' : 'Continue with Google'}
-                                    </button>
+                                    {auth.googlePending ? (
+                                        <div className="space-y-1">
+                                            <button type="button" onClick={auth.cancelGoogle}
+                                                className="w-full h-11 rounded border border-slate-500 bg-slate-200 text-slate-900 text-sm font-bold hover:bg-white flex items-center justify-center gap-2">
+                                                Waiting for Google… tap to cancel
+                                            </button>
+                                            <p className="text-[11px] text-slate-400 text-center" role="status">Finish signing in in the Google window. If you closed it, tap the button above and try again.</p>
+                                        </div>
+                                    ) : (
+                                        <button type="button" onClick={() => auth.signInWithGoogle()} disabled={auth.busy}
+                                            className="w-full h-11 rounded border border-slate-500 bg-white text-slate-900 text-sm font-bold hover:bg-slate-100 flex items-center justify-center gap-2 disabled:opacity-60">
+                                            <span aria-hidden="true" className="font-black text-base text-sky-600">G</span>
+                                            {tab === 'signup' ? 'Create account with Google' : 'Continue with Google'}
+                                        </button>
+                                    )}
+                                    {installed && !auth.googlePending && context && /save/i.test(context) && (
+                                        <p className="text-[11px] text-amber-300 text-center">In the app, Google sign-in leaves this page briefly, so anything not yet saved is lost. Signing in with email keeps it.</p>
+                                    )}
                                     <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-slate-400" aria-hidden="true">
                                         <span className="flex-1 border-t border-slate-700"></span>or use email<span className="flex-1 border-t border-slate-700"></span>
                                     </div>
@@ -658,10 +760,16 @@
                             {tab !== 'reset' && <Field label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete={tab === 'signup' ? 'new-password' : 'current-password'} required />}
 
                             {auth.error && <div className="bg-red-950/50 border border-red-600 rounded p-2 text-[11px] text-red-200">{auth.error}</div>}
+                            {auth.offerRedirect && (
+                                <button type="button" onClick={() => auth.signInWithGoogle({ sameWindow: true })} disabled={auth.busy}
+                                    className="w-full h-11 rounded border border-sky-500 bg-slate-900 text-sky-200 text-sm font-bold hover:bg-slate-800 disabled:opacity-60">
+                                    Sign in with Google in this window
+                                </button>
+                            )}
                             {auth.notice && <div className="bg-emerald-950/50 border border-emerald-600 rounded p-2 text-[11px] text-emerald-200">{auth.notice}</div>}
 
                             <Button type="submit" variant="primary" disabled={auth.busy} className="w-full h-11 font-bold">
-                                {auth.busy ? 'Working…' : (tab === 'signin' ? 'Sign in' : tab === 'signup' ? 'Create account' : 'Send reset email')}
+                                {auth.busy && !auth.googlePending ? 'Working…' : (tab === 'signin' ? 'Sign in' : tab === 'signup' ? 'Create account' : 'Send reset email')}
                             </Button>
                         </form>
                     )}
@@ -1023,6 +1131,9 @@
         // Each box belongs to one state: signing in closes the sign-in box, signing out the
         // account panel, so neither reappears by itself on the next change.
         useEffect(() => { if (signedIn) setShowAuth(false); else setShowAccount(false); }, [!!signedIn]);
+        // The one exception to "never auto-opens": back from Google in the same window with a
+        // failure, the person has just asked to sign in, so show them why it did not work.
+        useEffect(() => { if (auth.redirectFailed && !signedIn) setShowAuth(true); }, [!!auth.redirectFailed]);
 
         return (
             <div className="flex items-center gap-1">
