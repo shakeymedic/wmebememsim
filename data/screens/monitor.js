@@ -330,7 +330,7 @@
             return [...new Set(keys)].join(' ');
         })();
         useEffect(() => {
-            scenarioImageKeys.split(' ').filter(Boolean).forEach(k => { const im = new Image(); im.src = INV.IMAGES[k].src; });
+            scenarioImageKeys.split(' ').filter(Boolean).forEach(k => { const im = new Image(); im.src = INV.IMAGES[k].loop || INV.IMAGES[k].src; });
         }, [scenarioImageKeys]);
         const canvasRef = useRef(null);
         
@@ -584,8 +584,9 @@
                                 {img && (
                                     <figure className="mb-2">
                                         <button type="button" onClick={() => setViewImage(invToast.image)} className="block w-full bg-black rounded overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400" aria-label={`Open the ${img.modality === 'ECG' ? '12-lead ECG' : invToast.title} image full screen`}>
-                                            <img src={img.src} alt={img.modality === 'ECG' ? '12-lead ECG' : `${invToast.title} image`} className={`w-full object-contain ${img.modality === 'ECG' ? 'max-h-[42vh] bg-white' : 'max-h-[48vh]'}`} data-testid="inv-image"
-                                                onError={() => setInvToast(t => (t && t.image === invToast.image) ? { ...t, image: null, hideReport: false } : t)} />
+                                            {/* An ultrasound clip plays as a short loop (img.loop); if it cannot load, its still frame is used. */}
+                                            <img src={img.loop || img.src} alt={img.modality === 'ECG' ? '12-lead ECG' : `${invToast.title} image`} className={`w-full object-contain ${img.modality === 'ECG' ? 'max-h-[42vh] bg-white' : 'max-h-[48vh]'}`} data-testid="inv-image"
+                                                onError={(e) => { if (img.loop && !e.currentTarget.src.endsWith(img.src)) { e.currentTarget.src = img.src; return; } setInvToast(t => (t && t.image === invToast.image) ? { ...t, image: null, hideReport: false } : t); }} />
                                         </button>
                                         <figcaption className="text-[10px] text-slate-400 mt-1 leading-tight">Tap to enlarge. Image: {INV.creditText(img)}.</figcaption>
                                     </figure>
@@ -603,7 +604,7 @@
                 {viewImage && INV && INV.imageFor(viewImage) && (
                     <Modal label="Investigation image" onClose={() => setViewImage(null)}>
                         <div className="bg-black/95 flex flex-col items-center justify-center p-3 w-[96vw] h-[94vh]" onClick={() => setViewImage(null)}>
-                            <img src={INV.imageFor(viewImage).src} alt="Investigation image, full screen" className="max-w-full max-h-[86vh] object-contain bg-white" data-testid="inv-image-full" />
+                            <img src={INV.imageFor(viewImage).loop || INV.imageFor(viewImage).src} onError={(e) => { const im = INV.imageFor(viewImage); if (im.loop && !e.currentTarget.src.endsWith(im.src)) e.currentTarget.src = im.src; }} alt="Investigation image, full screen" className="max-w-full max-h-[86vh] object-contain bg-white" data-testid="inv-image-full" />
                             <div className="text-[11px] text-slate-400 mt-2">Tap to close. Image: {INV.creditText(INV.imageFor(viewImage))}.</div>
                         </div>
                     </Modal>
