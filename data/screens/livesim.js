@@ -895,6 +895,11 @@
             return { text, image: imgFits ? image : null, ecgImageNotFitting: !!image && !imgFits };
         };
         const dismissInv = () => setInvModal(null);
+        // The closed "Investigation results" section says which results the facilitator has changed.
+        const invChangedSummary = (sc) => {
+            const ch = Object.keys((sc && sc.invChanged) || {});
+            return ch.length ? `Changed: ${ch.join(', ')}` : "Scenario's own results";
+        };
         // Course images (restricted course scenarios, e.g. ETC): sent from the mark sheet or from the
         // result chooser. The copy on the session is removed when this screen closes.
         const MSX = window.MarkScheme;
@@ -1703,8 +1708,9 @@
                         Replaces the intervention library entirely. Everything here is scenario-free:
                         the full rhythm registry (including every arrest rhythm), the two relative trend
                         buttons, the custom/flagged log entry row, and the live event log. There is no
-                        search, no tabs, no drug groups, no investigations, no voice and no assessment
-                        checklist, because none of those mean anything without a scenario. */}
+                        search, no tabs, no drug groups, no voice and no assessment checklist, because
+                        none of those mean anything without a scenario. The one exception is the
+                        investigation results, so the monitor's CXR, VBG, CT etc. buttons can be set. */}
                     {quickSim ? (
                     <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
@@ -1802,6 +1808,16 @@
                                 </div>
                             </div>
 
+                            {/* INVESTIGATION RESULTS: what each investigation button on the patient
+                                monitor gives (data/screens/invresults.js). Closed by default; unchanged,
+                                the buttons give the same results as before. */}
+                            {window.InvResults && (
+                                <Section id="quickInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                                         summary={invChangedSummary(scenario)}>
+                                    <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                                </Section>
+                            )}
+
                             {/* EVENT LOG, inline rather than behind the log modal: with nothing else
                                 competing for this pane there is room to keep it permanently visible. */}
                             <div>
@@ -1888,6 +1904,14 @@
                                     </div>
                                 </div>
                             ) : activeTab === 'Investigations' ? (
+                                <>
+                                {window.InvResults && (
+                                    <Section id="invResults" tone="card" title="What the monitor buttons give" defaultOpen={true}
+                                             summary={invChangedSummary(scenario)} className="mb-3">
+                                        <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                                    </Section>
+                                )}
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Send a result to the monitor now</div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                     {['ECG', 'VBG', 'X-ray', 'Urine', 'POCUS', 'CT'].map(type => (
                                         <Button key={type} onClick={() => handleInvClick(type)} variant="outline" className="h-14 flex flex-col items-center justify-center gap-1">
@@ -1896,6 +1920,7 @@
                                         </Button>
                                     ))}
                                 </div>
+                                </>
                             ) : activeTab === 'Drugs' ? (
                                 renderDrugsTab()
                             ) : (

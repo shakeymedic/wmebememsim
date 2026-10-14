@@ -109,6 +109,10 @@
         const [buildDifficulty, setBuildDifficulty] = useState("Intermediate");
         const [buildCxrUrl, setBuildCxrUrl] = useState("");
         const [buildCtUrl, setBuildCtUrl] = useState("");
+        // What the monitor's investigation buttons give in this scenario ({ type: choice }, see
+        // INVESTIGATIONS.setResult); empty = the scenario's default results.
+        const [buildInvResults, setBuildInvResults] = useState({});
+        const [buildInvEditing, setBuildInvEditing] = useState(null);
         const [buildLearningObj, setBuildLearningObj] = useState("");
         const [buildCustomActions, setBuildCustomActions] = useState("");
         const [buildVitals, setBuildVitals] = useState({ hr: 80, bpSys: 120, rr: 16, spO2: 98, temp: 37, gcs: 15, rhythm: "Sinus Rhythm" });
@@ -202,6 +206,7 @@
             setBuildDifficulty(s.difficulty || "Intermediate");
             setBuildCxrUrl(s.customImages?.xray || "");
             setBuildCtUrl(s.customImages?.ct || "");
+            setBuildInvResults((s.invResults && typeof s.invResults === 'object') ? s.invResults : {});
             setBuildLearningObj(Array.isArray(s.learningObjectives) ? s.learningObjectives.join(', ') : (s.instructorBrief?.learningObjectives?.join(', ') || ''));
             setBuildCustomActions(Array.isArray(s.customActions) ? s.customActions.join(', ') : '');
             // ?? not ||: an arrest's HR 0 / BP 0 must survive into the Builder (|| turned a VF
@@ -295,6 +300,7 @@
                 allergies: buildAllergies.split(',').map(s=>s.trim()),
                 difficulty: buildDifficulty,
                 customImages: { xray: buildCxrUrl || null, ct: buildCtUrl || null },
+                invResults: buildInvResults,
                 learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : [],
                 customActions: buildCustomActions.split(',').map(s=>s.trim()).filter(Boolean),
                 instructorBrief: { progression: "Custom Scenario", interventions: [], learningObjectives: buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean).length ? buildLearningObj.split(',').map(s=>s.trim()).filter(Boolean) : [] },
@@ -354,12 +360,16 @@
                      // so enrich them here. Without this the live observations screen loads with no
                      // equipment list, no guideline links, no investigations and no VBG result.
                      const enriched = window.enrichScenario ? window.enrichScenario(selectedBase) : selectedBase;
-                     onGenerate({
+                     const ready = {
                          ...enriched,
                          vbg: enriched.vbg || generateVbg(enriched.vbgClinicalState || "normal"),
                          showWetflag,
                          hf: selectedBase.hf || selectedHf
-                     }, {});
+                     };
+                     // The Builder's chosen investigation results (shown as changed on the controller,
+                     // where they can still be changed or undone).
+                     const I = window.INVESTIGATIONS;
+                     onGenerate(I && I.applyResultSpecs ? I.applyResultSpecs(ready, selectedBase.invResults) : ready, {});
                      return;
                  }
 
@@ -833,6 +843,33 @@
                                 <input type="url" placeholder="CT Scan Image URL (optional)" value={buildCtUrl} onChange={e=>setBuildCtUrl(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded p-2 text-white text-sm placeholder-slate-400"/>
                             </div>
                             
+                            {window.InvResults && window.INVESTIGATIONS && (() => {
+                                const I = window.INVESTIGATIONS, IR = window.InvResults;
+                                const rowFor = (type) => {
+                                    const spec = buildInvResults[type];
+                                    if (!spec) return { type, text: 'Default for this scenario.', image: null, changed: false };
+                                    return Object.assign({ type }, I.currentResult(I.setResult({ ecg: { type: buildVitals.rhythm || 'Sinus Rhythm' } }, type, spec), type, buildVitals.rhythm || 'Sinus Rhythm'));
+                                };
+                                const setSpec = (type, spec) => {
+                                    setBuildInvResults(prev => { const next = Object.assign({}, prev); if (spec) next[type] = spec; else delete next[type]; return next; });
+                                    setBuildInvEditing(null);
+                                };
+                                const rows = I.RESULT_TYPES.map(rowFor);
+                                const editing = buildInvEditing ? rows.filter(r => r.type === buildInvEditing)[0] : null;
+                                return (
+                                    <div data-testid="builder-inv-results">
+                                        <h4 className="text-xs font-bold text-slate-400 uppercase mt-2 mb-1">Investigation results</h4>
+                                        <IR.ResultsPanel rows={rows} onEdit={setBuildInvEditing} onReset={(t) => setSpec(t, null)} resetTitle="Back to the default"
+                                                         intro="What each investigation button on the patient monitor gives. You can still change them on the controller during the run." />
+                                        {editing && (
+                                            <IR.ResultEditor type={editing.type} current={editing} resetLabel="Default result"
+                                                             currentVbg={buildInvResults.VBG && buildInvResults.VBG.vbg ? buildInvResults.VBG.vbg : null}
+                                                             onPick={(spec) => setSpec(editing.type, spec)} onReset={() => setSpec(editing.type, null)} onClose={() => setBuildInvEditing(null)} />
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
                             <h4 className="text-xs font-bold text-slate-400 uppercase mt-2">Initial Observations</h4>
                             <div className="grid grid-cols-3 gap-2">
                                 {[['hr','Heart Rate'],['bpSys','Sys BP'],['rr','Resp Rate'],['spO2','SpO2 %'],['gcs','GCS'],['temp','Temp °C']].map(([key, label]) => (
@@ -937,7 +974,7 @@
         );
     };
 
-    const BriefingScreen = ({ scenario: rawScenario, onStart, onBack }) => {
+    const BriefingScreen = ({ scenario: rawScenario, onStart, onBack, sim = null }) => {
         const { Button, Lucide, HumanFactorBadge } = window;
         const scenario = rawScenario || {};
         const brief = scenario.instructorBrief || {};
@@ -993,6 +1030,14 @@
                             <div className="p-3 bg-emerald-900/20 rounded border border-emerald-600/30"><h4 className="text-sm font-bold text-emerald-400 uppercase mb-1">Key Interventions</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{brief.interventions && brief.interventions.map((l, i) => <li key={i}>{l}</li>)}</ul></div>
                             <div className="p-3 bg-slate-900/50 rounded border border-slate-600"><h4 className="text-sm font-bold text-slate-400 uppercase mb-1">Guidelines & Resources</h4><div className="flex flex-col gap-1">{scenario.learningLinks && scenario.learningLinks.map((link, i) => (<a key={i} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-sky-400 hover:underline"><Lucide icon="external-link" className="w-3 h-3"/> {link.label}</a>))}</div></div>
                             <div className="p-3 bg-indigo-900/20 rounded border border-indigo-600/30"><h4 className="text-sm font-bold text-indigo-400 uppercase mb-1">Learning Objectives</h4><ul className="list-disc pl-4 text-sm text-slate-300 space-y-1">{(brief.debriefPoints || brief.learningObjectives || []).map((l, i) => <li key={i}>{l}</li>)}</ul></div>
+                            {/* What the monitor's investigation buttons give, changeable before the run
+                                (and on the controller during it). The scenario is already loaded. */}
+                            {sim && sim.state && sim.state.scenario && window.InvResults && window.Section && (
+                                <window.Section id="briefingInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                                                summary={Object.keys(sim.state.scenario.invChanged || {}).length ? `Changed: ${Object.keys(sim.state.scenario.invChanged).join(', ')}` : "Scenario's own results \u00b7 open to change"}>
+                                    <window.InvResults.LiveResults sim={sim} addLogEntry={sim.addLogEntry} />
+                                </window.Section>
+                            )}
                             {markScheme && (
                                 <div className="p-3 bg-fuchsia-900/20 rounded border border-fuchsia-600/40" data-testid="briefing-marksheet">
                                     <h4 className="text-sm font-bold text-fuchsia-300 uppercase mb-1">{markScheme.kind === 'assessment' ? 'Team leader assessment' : 'Facilitator pack'}</h4>

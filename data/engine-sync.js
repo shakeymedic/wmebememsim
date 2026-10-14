@@ -394,7 +394,10 @@
                         dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
                     }
                     catch (err) { console.error("Sync Error", err); } 
-                } 
+                } else {
+                    // The controller took the patient off (no scenario loaded): back to waiting.
+                    dispatch({ type: 'LIVE_CLEARED' });
+                }
             };
             const handleReadError = (error) => {
                 console.error('Firebase monitor read failed:', error);

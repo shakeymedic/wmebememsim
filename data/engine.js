@@ -987,6 +987,14 @@
                         const clear = { findings: 'Lung re-expanded after decompression.', image: null, findingId: null };
                         updatedScenario.chestXray = { ...(updatedScenario.chestXray || {}), ...clear };
                         if (inv.chestXray) updatedScenario.investigations = { ...inv, chestXray: { ...inv.chestXray, ...clear } };
+                        // A pneumothorax the facilitator chose is decompressed the same way, and is
+                        // then no longer "their" result (data/investigations.js setResult).
+                        if (updatedScenario.invChanged && updatedScenario.invChanged['X-ray']) {
+                            updatedScenario.invChanged = Object.assign({}, updatedScenario.invChanged);
+                            updatedScenario.invDefaults = Object.assign({}, updatedScenario.invDefaults || {});
+                            delete updatedScenario.invChanged['X-ray'];
+                            delete updatedScenario.invDefaults['X-ray'];
+                        }
                         updateNeeded = true;
                     }
                 }
@@ -1590,6 +1598,16 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
         const reset = () => { clearSimTimers(); refibTimerRef.current = null; dispatch({ type: 'CLEAR_SESSION' }); };
+        // The controller has no scenario loaded (a fresh start, a reload before Resume, or after
+        // Finish): take the last patient off the session so every patient screen goes back to
+        // WAITING FOR CONTROLLER instead of showing a stale or default patient. The diff base is
+        // dropped too, so the next scenario is sent whole. Controller only; never with a scenario.
+        const clearLivePatient = () => {
+            const db = window.db;
+            if (isMonitorMode || !db || !sessionID || stateRef.current.scenario) return;
+            lastPayloadRef.current = {};
+            db.ref(`sessions/${sessionID}/live`).remove().catch(e => console.error('Could not clear the live patient:', e));
+        };
         // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
         // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
         const enableAudio = () => {
@@ -1738,7 +1756,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, notStarted: () => notStarted(stateRef.current), applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, clearLivePatient, notStarted: () => notStarted(stateRef.current), applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,
