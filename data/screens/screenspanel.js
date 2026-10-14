@@ -376,18 +376,19 @@
     };
 
     // =========================================================================================
-    // "PATIENT SCREENS SHOW: MONITOR | DEFIB | VENTILATOR", at the top of the live controller.
+    // "SCREENS SHOW: MONITOR | DEFIB | VENTILATOR", at the top of the live controller.
     // One press puts that view in front on every patient screen that has it (state.screenFront,
     // carried to the screens in the live defib object). Defib and Ventilator bring the device in
     // first if it is not in the room yet. Monitor only changes what is in front: a defib or
     // ventilator already in the room stays loaded behind it (the ventilator keeps ventilating),
-    // and the small x beside a device takes it away. Under the buttons, what each numbered
-    // screen reports it is showing now.
+    // and the small x beside a device takes it away. Beside the buttons (wide screens), what each
+    // numbered screen reports it is showing now. It sits in the "Patient now" strip's top line
+    // (PatientStatusPanel's `extra`), so it costs the controller no extra height on a laptop.
     // =========================================================================================
     const SHOW_LABELS = { monitor: 'Monitor', defib: 'Defib', vent: 'Ventilator' };
     const SHOW_ICONS = { monitor: 'activity', defib: 'zap', vent: 'wind' };
     const SHOW_TONES = {
-        monitor: { on: 'bg-sky-600 border-sky-300 text-white', off: 'bg-slate-900 border-sky-700/70 text-sky-300 hover:border-sky-400' },
+        monitor: { on: 'bg-sky-700 border-sky-300 text-white', off: 'bg-slate-900 border-sky-700/70 text-sky-300 hover:border-sky-400' },
         defib: { on: 'bg-amber-500 border-amber-200 text-black', off: 'bg-slate-900 border-amber-600/70 text-amber-300 hover:border-amber-400' },
         vent: { on: 'bg-cyan-500 border-cyan-200 text-black', off: 'bg-slate-900 border-cyan-700/70 text-cyan-300 hover:border-cyan-400' }
     };
@@ -431,27 +432,29 @@
         const unseen = live.length > 0 && !cover[front].length && !(front !== 'monitor' && tablet(front));
 
         return (
-            <div className="flex-none mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-slate-800/80 border border-slate-600 rounded-lg px-2 py-1.5" data-testid="screen-show-switch">
-                <span className="text-[10px] uppercase font-bold text-slate-300 tracking-wider flex items-center gap-1">
-                    <Lucide icon="monitor" className="w-3.5 h-3.5"/> Patient screens show
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0" data-testid="screen-show-switch">
+                <span className="text-[9px] uppercase font-bold text-slate-300 tracking-wider flex items-center gap-1 whitespace-nowrap">
+                    <Lucide icon="monitor" className="w-3.5 h-3.5"/> Screens show
                 </span>
-                <div role="group" aria-label="What the patient screens show" className="flex flex-wrap gap-1.5">
+                <div role="group" aria-label="What the patient screens show" className="flex gap-1">
                     {views.map(v => {
                         const on = front === v;
+                        const name = v === 'vent' ? 'ventilator' : v;
                         return (
                             <span key={v} className="inline-flex">
                                 <button type="button" data-show={v} aria-pressed={on} onClick={() => show(v)}
+                                        aria-label={`${SHOW_LABELS[v]} on the patient screens`}
                                         title={v === 'monitor'
                                             ? 'Put the monitor in front on the patient screens. A defib or ventilator already in the room stays ready behind it.'
-                                            : `Bring the ${v === 'vent' ? 'ventilator' : 'defib'} in${inRoom[v] ? '' : ' (if it is not already)'} and put it in front on the patient screens.`}
-                                        className={`min-h-[40px] px-3 border-2 flex items-center gap-1.5 text-sm font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${v !== 'monitor' && inRoom[v] ? 'rounded-l-lg' : 'rounded-lg'} ${on ? SHOW_TONES[v].on : SHOW_TONES[v].off}`}>
+                                            : `Bring the ${name} in${inRoom[v] ? '' : ' (if it is not already)'} and put it in front on the patient screens.`}
+                                        className={`h-8 px-2.5 border-2 flex items-center gap-1 text-xs font-bold whitespace-nowrap focus:outline-none focus-visible:ring-2 focus-visible:ring-white ${v !== 'monitor' && inRoom[v] ? 'rounded-l-lg' : 'rounded-lg'} ${on ? SHOW_TONES[v].on : SHOW_TONES[v].off}`}>
                                     <Lucide icon={SHOW_ICONS[v]} className="w-4 h-4"/> {SHOW_LABELS[v]}
                                 </button>
                                 {v !== 'monitor' && inRoom[v] && (
                                     <button type="button" data-take-away={v} onClick={() => takeAway(v)}
-                                            aria-label={`Take the ${v === 'vent' ? 'ventilator' : 'defib'} away`}
-                                            title={`Take the ${v === 'vent' ? 'ventilator' : 'defib'} away: it closes on every patient screen.`}
-                                            className={`min-h-[40px] px-1.5 border-2 border-l-0 rounded-r-lg flex items-center ${on ? SHOW_TONES[v].on : SHOW_TONES[v].off}`}>
+                                            aria-label={`Take the ${name} away`}
+                                            title={`Take the ${name} away: it closes on every patient screen.`}
+                                            className={`h-8 px-1 border-2 border-l-0 rounded-r-lg flex items-center ${on ? SHOW_TONES[v].on : SHOW_TONES[v].off}`}>
                                         <Lucide icon="x" className="w-3.5 h-3.5"/>
                                     </button>
                                 )}
@@ -459,22 +462,25 @@
                         );
                     })}
                 </div>
-                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-300 min-w-0" data-testid="screen-show-now" aria-live="polite">
+                {/* What each numbered screen reports it is showing now (wide screens; the badge in the toolbar has it too). */}
+                <div className="max-xl:hidden flex flex-wrap items-center gap-1.5 text-[11px] text-slate-300 min-w-0" data-testid="screen-show-now">
                     {link && link.ready && live.length === 0 && (
-                        <button type="button" onClick={onOpenScreens} className="underline text-slate-400 hover:text-white">No patient screen connected yet: add one</button>
+                        <button type="button" onClick={onOpenScreens} className="underline text-slate-400 hover:text-white whitespace-nowrap">No patient screen yet</button>
                     )}
                     {live.map(s => (
-                        <span key={s.id} className="flex items-center gap-1" data-screen-now={s.n}>
+                        <span key={s.id} className="flex items-center gap-1 whitespace-nowrap" data-screen-now={s.n}>
                             <span className={`w-5 h-5 rounded text-[11px] font-black flex items-center justify-center ${window.SimScreens.numberColour(s.n)}`}>{s.n}</span>
                             {SHOWING[s.display] || window.SimScreens.ROLES[s.role].short}
                         </span>
                     ))}
-                    {unseen && (
-                        <button type="button" onClick={onOpenScreens} className="text-amber-300 underline" data-testid="screen-show-unseen">
-                            No screen is set to show the {front === 'vent' ? 'ventilator' : front}: choose one in Screens
-                        </button>
-                    )}
                 </div>
+                {unseen && (
+                    <button type="button" onClick={onOpenScreens} data-testid="screen-show-unseen"
+                            title="Open Screens and turn it on for one of the patient screens."
+                            className="h-8 px-2 flex items-center gap-1 rounded border border-amber-500 bg-amber-950/60 text-amber-200 text-[10px] uppercase font-bold whitespace-nowrap">
+                        <Lucide icon="alert-triangle" className="w-3 h-3"/> No screen is set to show the {front === 'vent' ? 'ventilator' : front}
+                    </button>
+                )}
             </div>
         );
     };

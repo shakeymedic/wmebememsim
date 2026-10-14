@@ -1097,9 +1097,8 @@
 
                 {/* THE PATIENT AT A GLANCE (data/screens/patientstatus.js): what is happening now, the obs out of
                     range, a stick figure of everything attached, and the ventilator chooser. */}
-                {/* PATIENT SCREENS SHOW: Monitor | Defib | Ventilator, one press each (data/screens/screenspanel.js). */}
-                {window.PatientScreenSwitch && <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} onOpenScreens={() => setShowJoin(true)} />}
-                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} />}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry}
+                    extra={window.PatientScreenSwitch ? <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} onOpenScreens={() => setShowJoin(true)} /> : null} />}
 
                 {/* This row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
                     + md:col-span-7 lg:col-span-8). It is now a flex row so the left monitor/obs panel
