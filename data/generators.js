@@ -316,6 +316,26 @@ window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, time
     return vbg;
 };
 
+// THE GAS THE TEAM GETS NOW. pH and K+ are not obs: they are what a VBG reports. The patient's
+// modelled pH and K+ (vitals.ph / vitals.k, which bicarbonate, insulin-dextrose, calcium and the rest
+// steer) ARE the gas's pH and K+, so the result on the monitor follows treatment. Everything else
+// comes from the scenario's gas as before (calculateDynamicVbg), and the pH also carries that
+// model's own time drift (hypoventilation, ventilation, shock) on top of the patient's pH.
+window.liveVbg = (scenario, vitals, activeInterventions, timeSeconds) => {
+    const s = scenario || {};
+    const start = s.vbg || (s.investigations && s.investigations.vbg) || (window.generateVbg ? window.generateVbg('normal') : null);
+    const v = vitals || {};
+    const ai = activeInterventions instanceof Set ? activeInterventions : new Set(activeInterventions || []);
+    const gas = window.calculateDynamicVbg(start, v, ai, Number(timeSeconds) || 0);
+    const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    if (Number.isFinite(v.ph)) {
+        const drift = (start && Number.isFinite(Number(start.pH)) && Number.isFinite(gas.pH)) ? gas.pH - Number(start.pH) : 0;
+        gas.pH = Math.round(clamp(v.ph + drift, 6.5, 7.9) * 100) / 100;
+    }
+    if (Number.isFinite(v.k)) gas.K = Math.round(clamp(v.k, 1, 10) * 10) / 10;
+    return gas;
+};
+
 window.generateUrine = (type = "normal") => {
     const base = { leuks: "-", nitrites: "-", blood: "-", ketones: "-", protein: "-", glucose: "-", bhcg: "Negative" };
     if(type === "uti") return { ...base, leuks: "+++", nitrites: "+" };
@@ -401,8 +421,24 @@ window.buildQuickSimScenario = (opts = {}) => {
     const base = window.getBaseVitals(age);
     const rhythm = (window.RHYTHMS && window.RHYTHMS.isKnown(opts.rhythm)) ? window.RHYTHMS.canonical(opts.rhythm) : 'Sinus Rhythm';
 
+    // The starting HR has to match the starting rhythm: picking Sinus Tachycardia used to start at
+    // the age's normal rate (75/min in an adult). Sinus Rhythm keeps the age-normal rate; sinus
+    // tachycardia/bradycardia in a child is set against that age's normal band (the adult band of
+    // 110-130 is normal, or slow, for an infant); every other organised rhythm takes the
+    // registry's band, as a live rhythm change does. Pulseless rhythms keep base HR here: the
+    // reducer writes the arrest obs and the monitor shows '---'.
+    const randBetween = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo + 1));
+    let hr = base.hr;
+    if (rhythm !== 'Sinus Rhythm' && window.RHYTHMS && !window.RHYTHMS.isPulseless(rhythm)) {
+        const kidBand = (age <= 12 && window.sinusRateBand) ? window.sinusRateBand(age) : null;
+        const band = window.RHYTHMS.defaultHrRange(rhythm);
+        if (kidBand && rhythm === 'Sinus Tachycardia') hr = randBetween(kidBand.high + 10, kidBand.high + 30);
+        else if (kidBand && rhythm === 'Sinus Bradycardia') hr = randBetween(Math.max(30, kidBand.low - 30), kidBand.low - 10);
+        else if (band) hr = randBetween(band[0], band[1]);
+    }
+
     const vitals = {
-        hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, rr: base.rr,
+        hr, bpSys: base.bpSys, bpDia: base.bpDia, rr: base.rr,
         spO2: 98, temp: base.temp, gcs: base.gcs, bm: base.bm, pupils: base.pupils,
         etco2: 4.5, ph: 7.4, k: 4.2
     };

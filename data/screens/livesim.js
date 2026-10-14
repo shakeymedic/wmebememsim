@@ -354,6 +354,11 @@
         const [trendDuration, setTrendDuration] = useState(30);
         const [showLogModal, setShowLogModal] = useState(false);
         const [showRhythmModal, setShowRhythmModal] = useState(false);
+        // PHONE ONLY: the trace strip and the Quick Sim rhythm list start folded away (the obs and the
+        // rhythm are already at the top of the page, and Change Rhythm opens the same list). Desktop and
+        // tablet layouts ignore these.
+        const [phoneTrace, setPhoneTrace] = useState(false);
+        const [phoneRhythms, setPhoneRhythms] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
@@ -389,12 +394,18 @@
         const drugCalcWeightError = window.validateBuilderField ? window.validateBuilderField('weight', drugCalcWeightStr) : null;
         const drugCalcWeight = drugCalcWeightError ? 0 : parseFloat(drugCalcWeightStr);
         const [showTimerModal, setShowTimerModal] = useState(false);
-        const [timerAlerts, setTimerAlerts] = useState([]);
+        // Timer alerts and a running preset belong to the run, not to this screen: Back to the menu
+        // unmounts it, so they are kept per run id and picked up again on "Return to scenario".
+        const keepStore = window.__liveSimKeep || (window.__liveSimKeep = {});
+        const kept = (state.runId && keepStore[state.runId]) || null;
+        const [timerAlerts, setTimerAlerts] = useState(() => (kept && kept.timerAlerts) || []);
+        const timerAlertsRef = useRef(timerAlerts);
+        timerAlertsRef.current = timerAlerts;
         const [newAlertMins, setNewAlertMins] = useState('5');
         const [newAlertMsg, setNewAlertMsg] = useState('');
         const [timerAlertError, setTimerAlertError] = useState('');
-        const [firedAlerts, setFiredAlerts] = useState(new Set());
-        const firedAlertsRef = useRef(new Set());
+        const [firedAlerts, setFiredAlerts] = useState(() => new Set((kept && kept.fired) || []));
+        const firedAlertsRef = useRef(new Set((kept && kept.fired) || []));
         const [showKeyHelp, setShowKeyHelp] = useState(false);
         // Course scenarios (e.g. ETC) carry a mark sheet: the pathway, results and criteria.
         const [showMarkSheet, setShowMarkSheet] = useState(false);
@@ -596,7 +607,7 @@
         const QSP = window.QuickSimPresets;
         const [presetList, setPresetList] = useState(() => (QSP ? QSP.all() : []));
         const [presetView, setPresetView] = useState(null);    // { name, idx, total, note, nextIn, waiting }
-        const presetRunRef = useRef(null);                      // { preset, idx, accMs, lastTs, lastNote }
+        const presetRunRef = useRef((kept && kept.presetRun) ? { ...kept.presetRun, lastTs: Date.now() } : null);   // { preset, idx, accMs, lastTs, lastNote }
         const liveStateRef = useRef(state);
         liveStateRef.current = state;
         const presetActionsRef = useRef(null);
@@ -657,6 +668,16 @@
             refreshPresetView();
         };
         const presetActive = !!presetView;
+        // A preset kept from before Back shows (and carries on) straight away.
+        useEffect(() => { if (presetRunRef.current) refreshPresetView(); }, []);
+        // Keep this run's alerts and preset for when the screen comes back (only the latest run).
+        const runIdNow = state.runId;
+        useEffect(() => () => {
+            if (!runIdNow) return;
+            const store = window.__liveSimKeep || (window.__liveSimKeep = {});
+            Object.keys(store).forEach(k => { if (k !== runIdNow) delete store[k]; });
+            store[runIdNow] = { timerAlerts: timerAlertsRef.current, fired: Array.from(firedAlertsRef.current), presetRun: presetRunRef.current };
+        }, [runIdNow]);
         useEffect(() => {
             if (!presetActive) return;
             const id = setInterval(() => {
@@ -895,6 +916,11 @@
             return { text, image: imgFits ? image : null, ecgImageNotFitting: !!image && !imgFits };
         };
         const dismissInv = () => setInvModal(null);
+        // The closed "Investigation results" section says which results the facilitator has changed.
+        const invChangedSummary = (sc) => {
+            const ch = Object.keys((sc && sc.invChanged) || {});
+            return ch.length ? `Changed: ${ch.join(', ')}` : "Scenario's own results";
+        };
         // Course images (restricted course scenarios, e.g. ETC): sent from the mark sheet or from the
         // result chooser. The copy on the session is removed when this screen closes.
         const MSX = window.MarkScheme;
@@ -913,8 +939,9 @@
         const shortScreen = (window.innerHeight || 1000) < 900;
         const compactTiles = narrowPanel || shortScreen;
         // The vital tiles. The core six (HR, BP, SpO2, RR, Temp, ETCO2) are the big tiles in the
-        // desktop panel; GCS, glucose, pH and K+ sit in a smaller "More obs" row beneath them. The
-        // phone view shows all ten, compact, core first.
+        // desktop panel; GCS and glucose sit in a smaller "More obs" row beneath them. The phone view
+        // shows all eight, compact, core first. pH and K+ are not obs: they are what the VBG reports,
+        // so they are set and shown with the VBG result (Investigation results, data/screens/invresults.js).
         // The tiles always show the patient's TRUE value (the facilitator must be able to steer a
         // vital before its sensor goes on); the amber note says when the team cannot currently see it.
         const tileProps = (compact) => ({ compact, medium: !compact, visible: true });
@@ -931,11 +958,8 @@
         ];
         const moreTiles = () => [
             <VitalDisplay key="gcs" compact visible label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} trend={getTrend('gcs')} />,
-            <VitalDisplay key="bm" compact visible label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />,
-            // pH and K+ are modelled vitals (sodium bicarbonate, hyperkalaemia and DKA steer them).
-            <VitalDisplay key="ph" compact visible label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />,
-            <VitalDisplay key="k" compact visible label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
-        ].filter(t => !simple || (t.key !== 'ph' && t.key !== 'k'));   // Simple view: GCS and glucose only
+            <VitalDisplay key="bm" compact visible label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
+        ];
         const renderVitalTiles = () => <>{coreTiles(true)}{moreTiles()}</>;
 
         // One-line summaries shown on a closed section.
@@ -964,6 +988,37 @@
         const resusSummary = `${RG.labelFor(state.rhythm)} \u00b7 ${defib.shockCount || 0} shock${(defib.shockCount || 0) === 1 ? '' : 's'}${cprInProgress ? ' \u00b7 CPR on' : ''}`;
         const trendBetter = () => { sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success"); };
         const trendWorse = () => { sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger"); };
+        // Patient condition: AUTO/MANUAL deterioration and the Trend buttons (placed under the obs, see below).
+        const conditionSection = () => (
+                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
+                            right={(
+                                <span className="flex gap-1 flex-none">
+                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                                </span>
+                            )}>
+                            <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
+                                        {deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs only change when you change them'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                        {detInfo.declared
+                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
+                                            : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}
+                                    </div>
+                                </div>
+                                <Button
+                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
+                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
+                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
+                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
+                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
+                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
+                                </Button>
+                            </div>
+                        </Section>
+        );
 
         return (
             <div className={`h-full overflow-hidden max-md:h-auto max-md:overflow-visible flex flex-col p-2 bg-slate-900 relative ${flash === 'red' ? 'flash-red' : (flash === 'green' ? 'flash-green' : '')}`}>
@@ -1001,7 +1056,7 @@
                 <div className="md:hidden mb-2">
                     <div className="flex items-center gap-2 mb-1">
                         <div className="min-w-0 flex-1">
-                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change</div>
+                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change{!sensors.any && <span className="text-amber-400" data-testid="phone-none-on-monitor"> &middot; none on monitor</span>}</div>
                             <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
                         </div>
                         <div className="font-mono text-xl font-bold text-white">{formatTime(clockSeconds)}</div>
@@ -1010,7 +1065,8 @@
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
                     </div>
                     {notStarted && <NotStartedBadge long className="mb-1 w-full" />}
-                    <div className="grid grid-cols-3 min-[400px]:grid-cols-4 gap-1">
+                    {/* With nothing attached, the one line above says so instead of "not on monitor" on every tile. */}
+                    <div className={`grid grid-cols-3 min-[400px]:grid-cols-4 gap-1 ${sensors.any ? '' : '[&_[data-off-monitor]]:hidden'}`}>
                         {renderVitalTiles()}
                     </div>
                 </div>
@@ -1019,7 +1075,7 @@
                     START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
                 <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
-                        <Button variant="secondary" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/> Back</Button>
+                        <Button variant="secondary" ariaLabel="Back" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/><span className="max-md:hidden ml-1">Back</span></Button>
                         <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>
                         {hasMarkSheet && <Button variant="outline" onClick={() => setShowMarkSheet(true)} className="h-8 px-2 whitespace-nowrap text-fuchsia-300 border-fuchsia-600/60"><Lucide icon="clipboard-check"/> Mark sheet</Button>}
                         {/* START/PAUSE lives beside the phone obs on small screens. */}
@@ -1042,6 +1098,8 @@
                             const shows = Array.from(new Set(screens.map(c => c.display || 'patient monitor')));
                             const linked = n === 0 ? 'no screens linked' : (n === 1 ? shows[0] : `${n} screens linked`);
                             const label = syncProblem ? 'Sync error' : (syncStatus.state === 'connected' ? `Live \u00b7 ${linked}` : 'Syncing');
+                            // A phone gets the short form ("No screens", "2 screens") so the toolbar is two rows, not three.
+                            const shortLabel = syncProblem || syncStatus.state !== 'connected' ? label : (n === 0 ? 'No screens' : (n === 1 ? shows[0] : `${n} screens`));
                             const tip = [
                                 syncStatus.message || (syncStatus.state === 'connected' ? 'Live session sync is active.' : 'Connecting to the live session.'),
                                 n === 0
@@ -1055,7 +1113,7 @@
                             return (
                                 <div role={syncProblem ? 'alert' : 'status'} title={tip} data-testid="connection-badge" className={`h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold whitespace-nowrap ${tone}`}>
                                     <Lucide icon={syncProblem ? 'wifi-off' : (n === 0 ? 'wifi' : (shows.includes('defib') ? 'zap' : 'monitor'))} className="w-3 h-3" />
-                                    {label}
+                                    <span className="max-md:hidden">{label}</span><span className="md:hidden">{shortLabel}</span>
                                 </div>
                             );
                         })()}
@@ -1078,9 +1136,9 @@
                         {window.ScreenDeviceWarning && <window.ScreenDeviceWarning state={state} onOpen={() => setShowJoin(true)} />}
                         <Button ariaLabel="Screens: add patient screens and choose what each one shows" variant="outline" onClick={() => setShowJoin(true)}
                                 className="h-8 px-2 text-sky-300 border-sky-500/50 text-xs font-bold">
-                            <Lucide icon="monitor" className="w-4 h-4 mr-1"/> Screens
+                            <Lucide icon="monitor" className="w-4 h-4 md:mr-1"/><span className="max-md:hidden">Screens</span>
                         </Button>
-                        <MenuButton label="Tools" icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
+                        <MenuButton label={<span className="max-md:hidden">Tools</span>} icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
                             items={[
                                 { label: 'Drug calculator', icon: 'pill', hint: 'D', onClick: () => setShowDrugCalc(true) },
                                 { label: 'Timer alerts', icon: 'bell', hint: 'T', onClick: () => setShowTimerModal(true) },
@@ -1097,7 +1155,8 @@
 
                 {/* THE PATIENT AT A GLANCE (data/screens/patientstatus.js): what is happening now, the obs out of
                     range, a stick figure of everything attached, and the ventilator chooser. */}
-                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} />}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry}
+                    extra={window.PatientScreenSwitch ? <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} onOpenScreens={() => setShowJoin(true)} /> : null} />}
 
                 {/* This row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
                     + md:col-span-7 lg:col-span-8). It is now a flex row so the left monitor/obs panel
@@ -1235,6 +1294,10 @@
                                              </button>
                                          </>
                                      )}
+                                     <button type="button" onClick={() => setPhoneTrace(v => !v)} aria-expanded={phoneTrace} data-testid="phone-trace-toggle"
+                                             className="md:hidden bg-slate-800 border border-slate-600 px-2 py-0.5 text-[10px] text-white rounded font-bold uppercase tracking-wider">
+                                         <Lucide icon="activity" className="w-3 h-3 inline mr-1"/>{phoneTrace ? 'Hide trace' : 'Trace'}
+                                     </button>
                                      <button onClick={()=>setShowRhythmModal(true)} className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 px-2 py-0.5 text-[10px] text-white rounded font-bold uppercase tracking-wider">Change Rhythm</button>
                                  </div>
                                  {/* The strip height is the facilitator's dragged value. ECGMonitor
@@ -1248,7 +1311,7 @@
                                      one-press attach. (It used to show a full preview behind a "No
                                      Monitoring" veil, and Quick Sim forced every trace on, so removing a
                                      sensor changed nothing on the facilitator's screen.) */}
-                                 <div className="relative" style={{ height: panel.prefs.stripHeight + 'px' }}>
+                                 <div className={`relative ${phoneTrace ? '' : 'max-md:hidden'}`} style={{ height: panel.prefs.stripHeight + 'px' }}>
                                  <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
                                              isPaused={traceFrozen} showTraces={sensors.any}
                                              showEcg={sEcg} showPleth={sSpo2} showResp={sResp}
@@ -1270,7 +1333,7 @@
                              </div>
 
                              {/* Strip-height grip + an explicit RESET back to the default size. */}
-                             <div className="flex items-center gap-2 px-1 bg-black">
+                             <div className={`flex items-center gap-2 px-1 bg-black ${phoneTrace ? '' : 'max-md:hidden'}`}>
                                  <ResizeGrip axis="y" onPointerDown={panel.beginDrag('y')}
                                              onNudge={(d) => panel.nudge('y', d)} onReset={panel.reset}
                                              value={panel.prefs.stripHeight} min={PANEL_BOUNDS.minStrip} max={PANEL_BOUNDS.maxStrip} />
@@ -1286,11 +1349,30 @@
                                  {coreTiles(compactTiles)}
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black">
-                                     <div className={`grid ${narrowPanel || simple ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>{moreTiles()}</div>
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
+                                     right={!quickSim && shortScreen ? (
+                                         <span className="flex gap-1 flex-none" data-testid="condition-quick">
+                                             <button type="button" onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()} aria-pressed={deteriorationMode === 'auto'}
+                                                     title={deteriorationMode === 'auto' ? 'Deterioration is AUTO: click to go MANUAL' : 'Deterioration is MANUAL: click to go AUTO'}
+                                                     className={`h-6 px-2 rounded text-[10px] font-bold uppercase border ${deteriorationMode === 'auto' ? 'bg-amber-700 border-amber-400 text-white' : 'bg-slate-800 border-slate-500 text-slate-200'}`}>{deteriorationMode === 'auto' ? 'Auto' : 'Manual'}</button>
+                                             <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                             <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                                         </span>
+                                     ) : null}>
+                                     <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
                                  </Section>
                              </div>
                         </div>
+
+                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons, straight under
+                             the obs (Jake's request) so steering the patient is all in one place.
+                             A short laptop screen (under 900 px high) has no room for it there without pushing
+                             ARREST off the screen, so it gets Auto / Better / Worse on the More obs row instead
+                             and the full section sits lower down, after the drugs. Closed by default; the mode is spelled out in the summary and Trend
+                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
+                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
+                             buttons). ---- */}
+                        {!quickSim && !shortScreen && conditionSection()}
 
                         {/* ---- RHYTHM & RESUS, straight under the obs so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
                              the rhythm and shock summary, and the defib controls when open. ---- */}
@@ -1340,23 +1422,23 @@
                         {/* Wraps onto two lines in a narrow panel rather than pushing past its edge
                             (which put a horizontal scrollbar under the monitor panel). */}
                         <div className="flex-none flex flex-wrap gap-2">
-                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
+                            <Button variant="outline" onClick={cycleNibp} className={`flex-1 min-w-[9rem] max-md:min-w-0 max-md:px-2 max-md:text-xs ${sensors.nibp ? 'text-sky-400 border-sky-500/50 hover:bg-sky-900/30' : 'text-slate-400 border-slate-600'}`}
                                     title={sensors.nibp ? 'Take an NIBP reading now (about 5 s).' : 'No NIBP cuff is attached — attach it first (Monitoring & access).'}>
-                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap">(no cuff)</span>}
+                                 <Lucide icon="activity" className="w-4 h-4 flex-none"/> <span className="whitespace-nowrap">{sensors.nibp ? 'Cycle NIBP Now' : 'Cycle NIBP'}</span>{!sensors.nibp && <span className="ml-1 text-[10px] whitespace-nowrap max-md:hidden">(no cuff)</span>}
                             </Button>
                             {/* The same AUTO switch the team has on the monitor's NIBP tile: the cuff
                                 measures every 3 minutes while it is on. */}
                             <Button variant="outline" onClick={() => toggleNIBPMode && toggleNIBPMode()}
                                     title="Auto NIBP: the cuff measures every 3 minutes (the same switch as AUTO on the room monitor)."
-                                    className={`flex-none px-3 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
-                                 {state.nibp && state.nibp.mode === 'auto' ? 'Auto NIBP: on' : 'Auto NIBP: off'}
+                                    className={`flex-none px-3 max-md:px-2 text-[10px] uppercase font-bold whitespace-nowrap ${state.nibp && state.nibp.mode === 'auto' ? 'text-emerald-300 border-emerald-500/60 bg-emerald-900/20' : 'text-slate-400 border-slate-600'}`}>
+                                 <span>Auto<span className="max-md:hidden"> NIBP</span>: {state.nibp && state.nibp.mode === 'auto' ? 'on' : 'off'}</span>
                             </Button>
                             {/* A one-off displayed reading that does NOT change the patient (e.g. a
                                 spurious cuff reading). To change the actual BP, tap the BP tile. */}
                             <Button variant="outline" onClick={() => { setNibpSys(vitals.bpSys); setNibpDia(vitals.bpDia); setShowNIBPModal(true); }}
                                     title="Show a one-off NIBP reading without changing the patient's BP (e.g. a spurious reading). To change the patient's BP, tap the BP tile."
-                                    className="flex-1 min-w-[8rem] px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
-                                 Manual reading
+                                    className="flex-1 min-w-[8rem] max-md:min-w-0 max-md:px-2 px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
+                                 <span className="max-md:hidden">Manual reading</span><span className="md:hidden">Manual BP</span>
                             </Button>
                         </div>
 
@@ -1371,7 +1453,9 @@
                             sits above. The facilitator can read the current rhythm, the last
                             conversion and the running shock tally without opening anything.
                             ASSESSOR-LOCAL: lastConversion is never synced. */}
-                        <div className="flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2">
+                        {/* A phone already shows the rhythm above the obs, so this card appears there only
+                            once something has happened (a shock, a conversion, CPR). */}
+                        <div className={`flex-none rounded border-l-4 border-amber-500 bg-slate-800 p-2 ${(defib.shockCount || lastConversion || cprInProgress) ? '' : 'max-md:hidden'}`}>
                             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                                 <div className="min-w-0">
                                     <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Current rhythm</div>
@@ -1552,41 +1636,8 @@
                             </Section>
                         )}
 
-                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons.
-                             Closed by default; the mode is spelled out in the summary and Trend
-                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
-                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
-                             buttons). ---- */}
-                        {!quickSim && (
-                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
-                            right={(
-                                <span className="flex gap-1 flex-none">
-                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
-                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
-                                </span>
-                            )}>
-                            <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                    <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
-                                        {deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs only change when you change them'}
-                                    </div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5">
-                                        {detInfo.declared
-                                            ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.`
-                                            : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}
-                                    </div>
-                                </div>
-                                <Button
-                                    ariaLabel={deteriorationMode === 'auto' ? 'Switch deterioration to MANUAL' : 'Switch deterioration to AUTO'}
-                                    variant={deteriorationMode === 'auto' ? 'warning' : 'secondary'}
-                                    onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()}
-                                    className="h-9 px-3 flex-none font-bold text-[11px] uppercase">
-                                    <Lucide icon={deteriorationMode === 'auto' ? 'pause' : 'play'} className="w-4 h-4 mr-1"/>
-                                    {deteriorationMode === 'auto' ? 'Go MANUAL' : 'Go AUTO'}
-                                </Button>
-                            </div>
-                        </Section>
-                        )}
+                        {/* A short screen's full Patient condition section (its Auto / Better / Worse are on the More obs row). */}
+                        {!quickSim && shortScreen && conditionSection()}
 
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
@@ -1702,23 +1753,24 @@
                         Replaces the intervention library entirely. Everything here is scenario-free:
                         the full rhythm registry (including every arrest rhythm), the two relative trend
                         buttons, the custom/flagged log entry row, and the live event log. There is no
-                        search, no tabs, no drug groups, no investigations, no voice and no assessment
-                        checklist, because none of those mean anything without a scenario. */}
+                        search, no tabs, no drug groups, no voice and no assessment checklist, because
+                        none of those mean anything without a scenario. The one exception is the
+                        investigation results, so the monitor's CXR, VBG, CT etc. buttons can be set. */}
                     {quickSim ? (
                     <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
-                        <div className="bg-slate-900 p-3 border-b border-slate-700 flex flex-wrap gap-2 items-center">
-                            <div className="flex-1 min-w-[12rem]">
+                        <div className="bg-slate-900 p-3 max-md:p-2 border-b border-slate-700 flex flex-wrap gap-2 items-center">
+                            <div className="flex-1 min-w-[12rem] max-md:hidden">
                                 <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold">Rhythm</div>
                                 <div className="text-sm font-bold text-white">{RG.labelFor(state.rhythm)}</div>
                             </div>
-                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-emerald-900 border border-emerald-500 text-emerald-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
-                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} className="h-11 w-24 shrink-0 text-xs px-2 bg-red-900 border border-red-500 text-red-100 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} variant="success" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
+                            <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} variant="danger" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
                             {/* Same two-way sensor toggle as the Capnography chip, so it is logged
                                 and notified like every other attach/detach (it used to flip
                                 TOGGLE_ETCO2 directly and leave no trace in the event log). */}
                             <Button onClick={() => toggleSensor('etco2')} variant="outline"
                                 title={etco2Enabled ? 'Capnography attached — click to remove (the CO2 trace and ETCO2 go blank on the team monitor).' : 'Capnography not attached — click to attach.'}
-                                className={`h-11 px-3 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
+                                className={`h-11 px-3 max-md:px-2 max-md:flex-1 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
                                 Capnography {etco2Enabled ? 'on' : 'off'}
                             </Button>
                         </div>
@@ -1777,11 +1829,17 @@
                                 defibrillator's shockability logic or the arrest model. Arrest rhythms
                                 are marked so the facilitator can see what will zero the obs. */}
                             <div>
-                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Select rhythm ({RG.SELECTABLE.length})</div>
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                    <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Select rhythm ({RG.SELECTABLE.length})</div>
+                                    <button type="button" onClick={() => setPhoneRhythms(v => !v)} aria-expanded={phoneRhythms} data-testid="phone-rhythms-toggle"
+                                            className="md:hidden text-[10px] uppercase font-bold px-2 py-1 rounded border border-slate-600 text-slate-200 hover:bg-slate-700">
+                                        {phoneRhythms ? 'Hide list' : 'Show all'}
+                                    </button>
+                                </div>
                                 {/* The precedence rule, documented in the Quick Sim pane where
                                     the HR-then-rhythm sequence is most commonly used. */}
-                                <div className="text-[9px] text-slate-400 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                <div className={`text-[9px] text-slate-400 mb-2 leading-relaxed ${phoneRhythms ? '' : 'max-md:hidden'}`}>Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
+                                <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 ${phoneRhythms ? '' : 'max-md:hidden'}`}>
                                     {RG.SELECTABLE.map(r => {
                                         const isCur = state.rhythm === r;
                                         const arrest = RG.inArrest(r);
@@ -1801,11 +1859,21 @@
                                 </div>
                             </div>
 
+                            {/* INVESTIGATION RESULTS: what each investigation button on the patient
+                                monitor gives (data/screens/invresults.js). Closed by default; unchanged,
+                                the buttons give the same results as before. */}
+                            {window.InvResults && (
+                                <Section id="quickInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                                         summary={invChangedSummary(scenario)}>
+                                    <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                                </Section>
+                            )}
+
                             {/* EVENT LOG, inline rather than behind the log modal: with nothing else
                                 competing for this pane there is room to keep it permanently visible. */}
                             <div>
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Event log ({state.log.length})</div>
-                                <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 overflow-y-auto">
+                                <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 max-md:max-h-48 overflow-y-auto">
                                     {state.log.length === 0 && <div className="text-slate-400 text-center py-4">Nothing logged yet. Attach monitoring, press START, then change the obs or the rhythm.</div>}
                                     {state.log.slice().reverse().map((entry, i) => (
                                         <div key={i} className={`flex gap-3 border-b border-slate-800 last:border-0 pb-0.5 ${entry.flagged ? 'bg-amber-900/20 -mx-1 px-1 rounded' : ''}`}>
@@ -1819,8 +1887,8 @@
 
                         <div className="bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2">
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
-                            <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
-                            <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 shrink-0">Add Log</Button>
+                            <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
+                            <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0">Add Log</Button>
                         </div>
                     </div>
                     ) : (
@@ -1887,6 +1955,14 @@
                                     </div>
                                 </div>
                             ) : activeTab === 'Investigations' ? (
+                                <>
+                                {window.InvResults && (
+                                    <Section id="invResults" tone="card" title="What the monitor buttons give" defaultOpen={true}
+                                             summary={invChangedSummary(scenario)} className="mb-3">
+                                        <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                                    </Section>
+                                )}
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Send a result to the monitor now</div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                     {['ECG', 'VBG', 'X-ray', 'Urine', 'POCUS', 'CT'].map(type => (
                                         <Button key={type} onClick={() => handleInvClick(type)} variant="outline" className="h-14 flex flex-col items-center justify-center gap-1">
@@ -1895,6 +1971,7 @@
                                         </Button>
                                     ))}
                                 </div>
+                                </>
                             ) : activeTab === 'Drugs' ? (
                                 renderDrugsTab()
                             ) : (

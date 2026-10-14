@@ -335,12 +335,14 @@
                 improve.push('High-flow nasal oxygen was used: it does not give the ventilatory support this patient needs. Use NIV, NIV-ST or CPAP');
         }
 
-        // Ventilator samples (while it was breathing for the patient)
+        // Ventilator samples (while it was breathing for the patient). A value the machine did not
+        // report is stored as null, and null >= 0 is true in JavaScript, so test for a real number.
+        var fin = function (v) { return typeof v === 'number' && isFinite(v); };
         var vtk = samples.filter(function (s) { return s.vte > 0 && s.ibw > 0 && !s.niv; }).map(function (s) { return s.vte / s.ibw; });
         var pplat = samples.filter(function (s) { return s.pplat > 0; }).map(function (s) { return s.pplat; });
-        var dp = samples.filter(function (s) { return s.pplat > 0 && s.peep >= 0; }).map(function (s) { return s.pplat - s.peep; });
-        var ap = samples.filter(function (s) { return s.autopeep >= 0; }).map(function (s) { return s.autopeep; });
-        var peeps = samples.filter(function (s) { return s.setPeep >= 0; }).map(function (s) { return s.setPeep; });
+        var dp = samples.filter(function (s) { return s.pplat > 0 && fin(s.peep) && s.peep >= 0; }).map(function (s) { return s.pplat - s.peep; });
+        var ap = samples.filter(function (s) { return fin(s.autopeep) && s.autopeep >= 0; }).map(function (s) { return s.autopeep; });
+        var peeps = samples.filter(function (s) { return fin(s.setPeep) && s.setPeep >= 0; }).map(function (s) { return s.setPeep; });
         var ipaps = samples.filter(function (s) { return s.ipap > 0; }).map(function (s) { return s.ipap; });
         if (vtk.length) {
             var mv = round1(median(vtk));

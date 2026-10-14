@@ -14,6 +14,8 @@
         // Back to the menu pauses the run, so it does not carry on unseen; the menu offers a way
         // straight back into it.
         const goBack = () => { if (sim.state.isRunning) sim.pause(); setView('setup'); };
+        // Finish ends the run for good, so it is not offered for resuming after a reload.
+        const finish = () => { sim.stop(); try { localStorage.removeItem('wmebem_sim_state'); } catch (e) {} setView('debrief'); };
 
         if (view === 'debrief') {
             return <DebriefScreen sim={sim} onExit={onRestart} />;
@@ -25,7 +27,7 @@
             return (
                 <DefibSimScreen
                     sim={sim}
-                    onFinish={() => { sim.stop(); setView('debrief'); }}
+                    onFinish={finish}
                     onBack={goBack}
                     sessionID={sessionID}
                 />
@@ -35,10 +37,7 @@
         return (
             <LiveSimScreen 
                 sim={sim} 
-                onFinish={() => {
-                    sim.stop();
-                    setView('debrief');
-                }}
+                onFinish={finish}
                 onBack={goBack}
                 sessionID={sessionID}
             />

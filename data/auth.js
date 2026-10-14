@@ -313,7 +313,9 @@
                     if (!snap.exists()) {
                         return profileRef.update({
                             email: user.email || '',
-                            displayName: user.displayName || (user.email ? String(user.email).split('@')[0] : 'User'),
+                            // A brand-new account's chosen name: the profile write races signUp's own,
+                            // and updateProfile() has not always landed yet, so use the name typed.
+                            displayName: user.displayName || window.__pendingSignupName || (user.email ? String(user.email).split('@')[0] : 'User'),
                             createdAt: Date.now(),
                             lastSeenAt: Date.now()
                         }).catch(() => {});
@@ -374,8 +376,9 @@
 
         const signUp = useCallback((email, password, displayName) =>
             run(async (auth) => {
-                const cred = await auth.createUserWithEmailAndPassword(String(email || '').trim(), String(password || ''));
                 const name = String(displayName || '').trim();
+                window.__pendingSignupName = name || null;
+                const cred = await auth.createUserWithEmailAndPassword(String(email || '').trim(), String(password || ''));
                 if (name && cred.user && cred.user.updateProfile) { try { await cred.user.updateProfile({ displayName: name }); } catch (e) {} }
                 // New accounts are 'pending' by ABSENCE: the user cannot write status, so the
                 // profile simply has no status until an admin approves. normaliseProfile() reads

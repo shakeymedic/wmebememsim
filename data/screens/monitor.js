@@ -62,17 +62,21 @@
     };
     const SWITCH_LABELS = { monitor: 'Monitor', defib: 'Defib', vent: 'Ventilator' };
     const SWITCH_ICONS = { monitor: 'activity', defib: 'zap', vent: 'wind' };
-    // Bottom left over the monitor and the ventilator; TOP left over the defib, whose page leaves a
-    // margin there for it (bottom left it covered SYNC).
-    const ScreenSwitcher = ({ options, value, onChange, extra }) => {
+    // Bottom left over the ventilator; TOP left over the defib, whose page leaves a margin there for
+    // it (bottom left it covered SYNC). Over the monitor it is `inline`: the first cell of the
+    // investigations bar, which makes room for it. Floating over the monitor it covered the 12-Lead
+    // button.
+    const ScreenSwitcher = ({ options, value, onChange, extra, inline }) => {
         const { Lucide } = window;
         return (
             <div role="group" aria-label="Show on this screen" data-testid="screen-switcher"
-                 className={`absolute left-2 ${value === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg`}>
+                 className={inline
+                    ? 'flex-none flex items-center gap-1 px-1 bg-slate-900 border-r border-slate-800'
+                    : `absolute left-2 ${value === 'defib' ? 'top-0.5' : 'bottom-2'} z-[120] flex gap-1 p-1 rounded-xl bg-slate-900/90 border border-slate-600 shadow-lg`}>
                 {options.map(k => (
-                    <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={value === k} data-screen={k}
+                    <button key={k} type="button" onClick={() => onChange(k)} aria-pressed={value === k} data-screen={k} aria-label={SWITCH_LABELS[k]}
                             className={`min-h-[40px] px-3 rounded-lg flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${value === k ? 'bg-sky-600 text-white' : 'text-slate-200 hover:bg-slate-700'}`}>
-                        <Lucide icon={SWITCH_ICONS[k]} className="w-4 h-4"/> {SWITCH_LABELS[k]}
+                        <Lucide icon={SWITCH_ICONS[k]} className="w-4 h-4"/> <span className={inline ? 'hidden sm:inline' : undefined}>{SWITCH_LABELS[k]}</span>
                     </button>
                 ))}
                 {extra}
@@ -81,15 +85,32 @@
     };
     // Which view is in front. A device the facilitator brings in comes to the front; one taken
     // away hands the screen back. `avail` lists what this screen can show right now, in order.
-    const useFrontView = (avail, opened, fallback) => {
+    // `request` is the facilitator's "Patient screens show" switch on the controller ({ view, at },
+    // carried in the live defib object): each new request puts that view in front, if this screen
+    // has it. A request this screen cannot show yet is dropped after a few seconds, so a screen
+    // given the device much later does not jump to it out of the blue.
+    const REQUEST_WAIT_MS = 15000;
+    const useFrontView = (avail, opened, fallback, request) => {
         const [front, setFront] = useState(null);
         const prev = useRef({});
+        const asked = useRef({ at: null, seen: 0, done: false });
         useEffect(() => {
             const p = prev.current;
             const newly = ['defib', 'vent'].find(k => opened[k] && !p[k] && avail.includes(k));
             if (newly) setFront(newly);
             prev.current = { ...opened };
         }, [opened.defib, opened.vent, avail.join(',')]);
+        const reqAt = request && request.at ? request.at : null;
+        const reqView = request && request.view ? request.view : null;
+        useEffect(() => {
+            if (!reqAt || !reqView) return;
+            const a = asked.current;
+            if (a.at !== reqAt) asked.current = { at: reqAt, seen: Date.now(), done: false };
+            const cur = asked.current;
+            if (cur.done) return;
+            if (Date.now() - cur.seen > REQUEST_WAIT_MS) { cur.done = true; return; }
+            if (avail.includes(reqView)) { setFront(reqView); cur.done = true; }
+        }, [reqAt, reqView, avail.join(',')]);
         const shown = avail.includes(front) ? front : fallback;
         return [shown, setFront];
     };
@@ -118,14 +139,34 @@
 
     // A screen without the monitor: its device(s), ready all the time, with the one the facilitator
     // last brought in at the front when it has both.
-    const DeviceScreen = ({ sim, sessionID, parts, onShows, onHost }) => {
+    // The two ways off the "Simulation complete" card on a patient screen: back to the app's first
+    // screen (this device stops being a patient screen), or restart this screen as a blank patient
+    // screen on the same code, waiting for the controller's next scenario.
+    const FinishedActions = ({ onRestart }) => {
+        const { Lucide } = window;
+        const backToStart = () => {
+            try { sessionStorage.removeItem('wmebem_device_role'); } catch (e) {}
+            window.location.href = window.location.pathname;
+        };
+        const btn = 'min-h-[48px] px-5 rounded-lg font-bold flex items-center justify-center gap-2';
+        return (
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center" data-testid="finished-actions">
+                {onRestart && <button type="button" onClick={onRestart} data-testid="finished-restart"
+                        className={`${btn} bg-sky-600 hover:bg-sky-500 text-white`}><Lucide icon="monitor" className="w-5 h-5"/> Restart monitor</button>}
+                <button type="button" onClick={backToStart} data-testid="finished-home"
+                        className={`${btn} bg-slate-700 hover:bg-slate-600 text-white`}><Lucide icon="arrow-left" className="w-5 h-5"/> Back to start screen</button>
+            </div>
+        );
+    };
+
+    const DeviceScreen = ({ sim, sessionID, parts, onShows, onHost, onRestart }) => {
         const { Lucide } = window;
         const { state } = sim;
         useWakeLock();
         const devices = ['defib', 'vent'].filter(k => (parts || ['defib', 'vent']).includes(k));
         const opened = { defib: devices.includes('defib') && !!state.defibPanelOpen, vent: devices.includes('vent') && !!state.ventPanelOpen };
         const fallback = devices.length > 1 ? (opened.vent && !opened.defib ? 'vent' : 'defib') : devices[0];
-        const [shown, setFront] = useFrontView(devices, opened, fallback);
+        const [shown, setFront] = useFrontView(devices, opened, fallback, state.defib && state.defib.screenFront);
         useEffect(() => { if (onShows) onShows(shown); }, [shown]);
         const hosted = state.isFinished ? [] : devices;
         useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
@@ -136,6 +177,7 @@
                         <Lucide icon="check-circle" className="w-14 h-14 text-emerald-500 mx-auto mb-4" />
                         <h1 className="text-3xl font-bold mb-2">Simulation complete</h1>
                         <p className="text-slate-300">Please turn to your facilitator for the debrief.</p>
+                        <FinishedActions onRestart={onRestart} />
                     </div>
                 </div>
             );
@@ -154,7 +196,7 @@
         );
     };
 
-    const MonitorScreen = ({ sim, sessionID, parts, onShows, onHost }) => {
+    const MonitorScreen = ({ sim, sessionID, parts, onShows, onHost, onRestart }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
@@ -164,10 +206,14 @@
         const defibHere = partList.includes('defib') && !!defibPanelOpen;
         const ventHere = partList.includes('vent') && !!state.ventPanelOpen;
         const [shownView, setFrontView] = useFrontView(['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []),
-            { defib: defibHere, vent: ventHere }, 'monitor');
+            { defib: defibHere, vent: ventHere }, 'monitor', state.defib && state.defib.screenFront);
         useEffect(() => { if (onShows) onShows(shownView); }, [shownView]);
         const hosted = [].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : []);
         useEffect(() => { if (onHost) onHost(hosted); }, [hosted.join(',')]);
+        const switchOptions = ['monitor'].concat(hosted);
+        // Over the obs the switcher sits in the investigations bar, so it never hides a button. Over
+        // a device, or under the manual-defibrillator overlay (which covers that bar), it floats.
+        const switcherInline = shownView === 'monitor' && !(arrestPanelOpen && !defibHere);
         const syncStatus = state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         // Each sensor gates exactly its own value/trace. Derived from the shared
@@ -461,6 +507,7 @@
                         <h1 className="text-3xl font-bold tracking-wide mb-2">Simulation complete</h1>
                         <p className="text-slate-300 text-lg mb-4">This session has ended. The monitor is no longer live.</p>
                         <p className="text-slate-400 text-sm">Please turn to your facilitator — the debrief happens with them, not on this screen.</p>
+                        <FinishedActions onRestart={onRestart} />
                         <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 font-mono uppercase tracking-widest">Monitor standby</div>
                     </div>
                 </div>
@@ -583,8 +630,8 @@
                     exactly like arrestPanelOpen) opens a WORKING defibrillator here, with the obs
                     still visible alongside it. */}
                 {/* The defib and ventilator pages themselves are hosted by MonitorContainer. */}
-                {(defibHere || ventHere) && (
-                    <ScreenSwitcher options={['monitor'].concat(defibHere ? ['defib'] : [], ventHere ? ['vent'] : [])} value={shownView} onChange={setFrontView} />
+                {(defibHere || ventHere) && !switcherInline && (
+                    <ScreenSwitcher options={switchOptions} value={shownView} onChange={setFrontView} />
                 )}
 
                 {arrestPanelOpen && !defibHere && (
@@ -701,28 +748,28 @@
                             <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
 
-                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} />
+                        <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg || !!etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />
 
                         {etco2Enabled && (
                             <VitalDisplay label="ETCO2" value={vitals.etco2} prev={prevVitals.etco2} unit="kPa" alert={vitals.etco2 < 4.0 || vitals.etco2 > 6.5} visible={etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
                     </div>
 
-                    {/* Temp / capillary glucose / pH are point-of-care measurements rather than
+                    {/* Temp / capillary glucose are point-of-care measurements rather than
                         continuous monitored channels, so they get their own slim strip instead of
                         shrinking the HR/BP/SpO2 tiles. They are modelled vitals from Wave 2 onwards
                         (active warming, IV dextrose, bicarbonate) and must be readable by the team. */}
                     {/* B2 / WAVE 7 — POINT-OF-CARE STRIP.
                         Temp is a CONTINUOUS channel: it needs its probe attached and then tracks live.
-                        Glucose, pH and K+ are INTERMITTENT: they show the value from the moment the
-                        sample was taken, with its timestamp, and do NOT follow the live model. An
-                        unattached sensor / untaken sample reads NO SENSOR / NO SAMPLE in the same
-                        styling as the main trace, so the team can see what is missing. */}
-                    <div className="flex-none grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                        Glucose is INTERMITTENT: it shows the value from the moment the sample was
+                        taken, with its timestamp, and does NOT follow the live model. An unattached
+                        sensor / untaken sample reads NO PROBE / NO SAMPLE in the same styling as the
+                        main trace, so the team can see what is missing. pH and K+ are not on this
+                        strip: they come with the gas when the team presses VBG. */}
+                    <div className="flex-none grid grid-cols-2 gap-2 mt-1">
                         {(() => {
                             const tempOn = sTemp && Number.isFinite(vitals.temp);
                             const bm = poc.bm || null;
-                            const vbg = poc.vbg || null;
                             const cell = (label, value, unit, sub, alert) => (
                                 <div className={`bg-slate-950 border rounded px-2 py-1 flex items-baseline justify-between ${alert ? 'border-amber-600' : 'border-slate-800'}`}>
                                     <span className="text-[11px] md:text-xs lg:text-sm uppercase tracking-widest text-slate-400 font-bold">{label}{sub ? <span className="ml-1 text-[10px] lg:text-xs text-slate-400 normal-case tracking-normal">{sub}</span> : null}</span>
@@ -736,20 +783,15 @@
                                     {cell('Glucose', (bm && Number.isFinite(bm.value)) ? bm.value.toFixed(1) : null, 'mmol/L',
                                           bm ? bm.clock : 'no sample',
                                           !!(bm && Number.isFinite(bm.value) && (bm.value < 4 || bm.value > 11)))}
-                                    {cell('pH', (vbg && Number.isFinite(vbg.value)) ? vbg.value.toFixed(2) : null, '',
-                                          vbg ? vbg.clock : 'no gas',
-                                          !!(vbg && Number.isFinite(vbg.value) && (vbg.value < 7.30 || vbg.value > 7.50)))}
-                                    {/* Serum potassium — hyperkalaemia and DKA finally have a
-                                        measurable endpoint. Reported from the VBG sample, like the real thing. */}
-                                    {cell('K+', (vbg && Number.isFinite(vbg.value2)) ? vbg.value2.toFixed(1) : null, 'mmol/L',
-                                          vbg ? vbg.clock : 'no gas',
-                                          !!(vbg && Number.isFinite(vbg.value2) && (vbg.value2 < 3.0 || vbg.value2 > 5.5)))}
                                 </>
                             );
                         })()}
                     </div>
 
                     <div className="flex-none h-14 md:h-16 bg-slate-950 border border-slate-800 rounded flex overflow-hidden shadow-lg mt-1">
+                        {(defibHere || ventHere) && switcherInline && (
+                            <ScreenSwitcher inline options={switchOptions} value={shownView} onChange={setFrontView} />
+                        )}
                         {/* D2 ROOT CAUSE: this dispatched {type:'REQUEST_12LEAD'}, for which NO reducer case
                             exists in any of the four reducers. Nothing changed, so the button highlighted
                             while the previously-shown result card (e.g. URINE) stayed on screen. It now
@@ -806,9 +848,14 @@
         const mine = useMyScreen(sessionID, screenId);
         const role = mine.role || S.roleOf(screen);
         const parts = S.partsOf(role);
-        // No controller on this code yet: it has neither sent the patient nor numbered this screen (the
-        // screen's own engine always has obs, so those cannot tell). A mistyped code stays here.
-        const waiting = !sim.state.liveSeen && !mine.n;
+        // No patient from the controller yet (none chosen, or it was taken off): the screen stays blank
+        // and waits, even once the controller has numbered it. This screen's own engine always has
+        // default obs, so those must never be shown as a patient. A mistyped code stays here too.
+        // "Restart monitor" on the finished card: back to a blank, waiting screen on the same code
+        // until the controller starts the next scenario (the finished run no longer shows).
+        const [restarted, setRestarted] = useState(false);
+        useEffect(() => { if (!sim.state.isFinished) setRestarted(false); }, [sim.state.isFinished]);
+        const waiting = !sim.state.liveSeen || (restarted && !!sim.state.isFinished);
         const [shows, setShows] = useState(null);
         // The embedded defib and ventilator pages live HERE, not inside MonitorScreen/DeviceScreen,
         // so a role change that adds or removes the monitor (which swaps those two) does not reload
@@ -836,24 +883,26 @@
 
         if (waiting) {
             return (
-                <div className="h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn p-4 text-center" data-testid="screen-waiting">
+                <div className="relative h-full flex flex-col items-center justify-center bg-black text-slate-400 gap-4 animate-fadeIn p-4 text-center" data-testid="screen-waiting">
                     {mine.n
                         ? <div className={`rounded-2xl px-8 font-black leading-none ${S.numberColour(mine.n)}`} style={{ fontSize: 'min(30vh, 30vw)' }} data-testid="waiting-screen-number">{mine.n}</div>
                         : <Lucide icon="wifi" className="w-12 h-12 animate-pulse text-sky-500" />}
                     {mine.n && <div className="text-3xl font-bold text-white">Screen {mine.n}</div>}
                     <div className={`text-xl font-mono tracking-widest ${syncProblem ? 'text-red-300' : ''}`}>{syncProblem ? 'DISCONNECTED FROM LIVE SESSION' : 'WAITING FOR CONTROLLER'}</div>
+                    {mine.n && !syncProblem && <div className="text-sm text-slate-300" data-testid="waiting-for-scenario">Connected. The patient appears here when the controller starts a scenario.</div>}
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
                     <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{S.ROLES[role].title}</b>{mine.n ? '' : ' (until the controller numbers it)'}</div>
                     <div className="text-xs text-slate-400 max-w-md">The controller chooses what this screen shows, in <b>Screens</b>. Nothing needs doing here.</div>
                     {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
+                    {overlay}
                 </div>
             );
         }
         return (
             <div className="h-full w-full relative">
                 {parts.includes('monitor')
-                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} />
-                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} />}
+                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} onRestart={() => setRestarted(true)} />
+                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} onRestart={() => setRestarted(true)} />}
                 {['defib', 'vent'].map(k => host.includes(k) && parts.includes(k) && !sim.state.isFinished
                     ? <DeviceLayer key={k} kind={k} sessionID={sessionID} shown={showsNow === k} /> : null)}
                 {overlay}

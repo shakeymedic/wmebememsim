@@ -396,6 +396,9 @@
         // Ventilator feedback: any session in which a ventilator was used (Ventilator Sim or not).
         const ventSim = scenario.ventSim || null;
         const ventReview = window.VentSim && window.VentSim.used(state) ? window.VentSim.assess(state) : null;
+        // The Live Skills Checklist (controller, Assessment tab): only the skills the facilitator marked.
+        const skillMarks = Object.entries((state.assessments && typeof state.assessments === 'object') ? state.assessments : {})
+            .filter(([, v]) => v === true || v === false);
         const printCertificate = () => {
             const name = window.prompt('Learner name for the certificate (leave blank to omit):', '') ;
             if (name === null) return;
@@ -545,8 +548,9 @@
             const defibFeedbackCard = defibReview ? `<div class="card"><h3 style="margin-top:0;">Defib Sim feedback</h3><p class="muted" style="margin-top:0;">${esc(defibSim.name)} &middot; ${defibSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>${defibReview.outcome ? `<p><b>${esc(defibReview.outcome.title)}.</b> ${esc(defibReview.outcome.text)}</p>` : ''}${defibReview.good.length ? `<h4>Good practice</h4><ul>${defibReview.good.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}${defibReview.improve.length ? `<h4>Areas for improvement</h4><ul>${defibReview.improve.map(g => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}</div>` : '';
             const li = (arr) => arr.map(g => `<li>${esc(g)}</li>`).join('');
             const ventFeedbackCard = ventReview ? `<div class="card"><h3 style="margin-top:0;">Ventilator feedback</h3>${ventSim ? `<p class="muted" style="margin-top:0;">${esc(ventSim.name)} &middot; ${ventSim.mode === 'assessment' ? 'Assessment' : 'Education'} mode</p>` : ''}${ventReview.stats.length ? `<ul>${li(ventReview.stats)}</ul>` : ''}${ventReview.good.length ? `<h4>Good practice</h4><ul>${li(ventReview.good)}</ul>` : ''}${ventReview.improve.length ? `<h4>Areas for improvement</h4><ul>${li(ventReview.improve)}</ul>` : ''}${ventReview.problems.length ? `<h4>Problems</h4><ul>${li(ventReview.problems.map(p => p.text))}</ul>` : ''}</div>` : '';
+            const skillsCard = skillMarks.length ? `<div class="card"><h3 style="margin-top:0;">Skills checklist</h3><table class="compact"><thead><tr><th>Skill</th><th>Marked</th></tr></thead><tbody>${skillMarks.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v ? 'Observed' : 'Needs improvement'}</td></tr>`).join('')}</tbody></table></div>` : '';
             const markSheetCard = hasMarkSheet ? `<div class="card"><h3 style="margin-top:0;">${MS.get(scenario).kind === 'assessment' ? 'Team leader assessment' : 'Mark sheet'}</h3>${MS.criteriaHtml(scenario, sheetMarks)}</div>` : '';
-            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${markSheetCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
+            const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Debrief \u2014 ${safeTitle}</title><style>${reportCss}</style></head><body><h1>${safeTitle}</h1><h2>Simulation Debrief Report &nbsp;&bull;&nbsp; ${esc(new Date().toLocaleString('en-GB'))}</h2><div class="card"><div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">${scoreBlock}<div><div style="font-size:.75rem;color:#64748b;text-transform:uppercase;">Duration</div><div style="font-size:1.5rem;font-weight:bold;">${esc(durationText)}</div></div></div></div>${defibFeedbackCard}${ventFeedbackCard}${markSheetCard}${skillsCard}${objCard}${trendCard}${devCard}${defibCard}<div class="card breakable"><h3 style="color:#38bdf8;margin-top:0;">Simulation Log</h3><table><thead><tr><th>Time</th><th>Event</th></tr></thead><tbody>${logRows}</tbody></table></div><div class="card"><h3 style="color:#fbbf24;margin-top:0;">Instructor Notes</h3><div style="white-space:pre-wrap;">${esc(instructorNotes)}</div></div></body></html>`;
             if (mode === 'print') {
                 // Opened from the click itself, so popup blockers allow it. If one still blocks it,
                 // fall back to downloading the same file.
@@ -562,10 +566,12 @@
         };
 
         return (
-            <div className="h-full flex flex-col bg-slate-900 p-4 overflow-hidden">
-                <div className="flex justify-between items-center mb-4 border-b border-slate-700 pb-4">
-                    <div>
-                        <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Lucide icon="check-circle" className="text-emerald-500"/> Simulation Complete</h1>
+            <div className="h-full flex flex-col bg-slate-900 p-4 overflow-hidden max-lg:h-auto max-lg:overflow-visible max-md:p-3" data-testid="debrief-screen">
+                {/* Below lg the two columns stack, so the page scrolls as one instead of splitting the
+                    screen's height between them; on phones the header stacks and its buttons go two a row. */}
+                <div className="flex justify-between items-center gap-3 mb-4 border-b border-slate-700 pb-4 max-md:flex-col max-md:items-stretch">
+                    <div className="min-w-0">
+                        <h1 className="text-2xl max-md:text-xl font-bold text-white flex items-center gap-2"><Lucide icon="check-circle" className="text-emerald-500"/> Simulation Complete</h1>
                         <p className="text-slate-400">
                             {scenario.title || 'Simulation'}
                             {isQuickSim && <span className="ml-2 text-[10px] uppercase tracking-wider font-bold text-sky-400 border border-sky-700 bg-sky-950/40 rounded px-1.5 py-0.5">Quick Sim &middot; no scenario</span>}
@@ -573,16 +579,16 @@
                             {' '}• Duration: {durationText}
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        {defibSim && <Button onClick={printCertificate} variant="secondary" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
-                        <Button onClick={() => generateReport('print')} variant="secondary" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
-                        <Button onClick={() => generateReport('download')} variant="secondary"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
-                        <Button onClick={exitDebrief} variant="secondary">Exit to Menu</Button>
+                    <div className="flex gap-2 flex-none max-md:grid max-md:grid-cols-2" data-testid="debrief-actions">
+                        {defibSim && <Button onClick={printCertificate} variant="secondary" className="whitespace-nowrap" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
+                        <Button onClick={() => generateReport('print')} variant="secondary" className="whitespace-nowrap" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
+                        <Button onClick={() => generateReport('download')} variant="secondary" className="whitespace-nowrap"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
+                        <Button onClick={exitDebrief} variant="secondary" className="whitespace-nowrap">Exit to Menu</Button>
                     </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
-                    <div className="overflow-y-auto space-y-4 pr-2">
+                <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0 max-lg:flex-none max-lg:overflow-visible">
+                    <div className="overflow-y-auto space-y-4 pr-2 min-w-0 max-lg:overflow-visible max-lg:pr-0">
                         <ObsTimeline history={state.history} log={state.log} emptyText={timelineEmpty} />
                         {defibReview && (
                             <div className="bg-slate-800 p-4 rounded-lg border border-amber-700/60" data-testid="defib-feedback">
@@ -635,6 +641,19 @@
                             </div>
                         )}
                         {hasMarkSheet && <MS.DebriefMarkSheet scenario={scenario} marks={sheetMarks} onMark={markSheetItem} />}
+                        {skillMarks.length > 0 && (
+                            <div className="bg-slate-800 p-4 rounded-lg border border-slate-700" data-testid="debrief-skills">
+                                <h3 className="text-lg font-bold text-white mb-2">Skills checklist</h3>
+                                <ul className="space-y-1">
+                                    {skillMarks.map(([k, v]) => (
+                                        <li key={k} className="flex items-center justify-between text-sm">
+                                            <span className="text-slate-200">{k}</span>
+                                            <span className={`font-bold ${v ? 'text-emerald-400' : 'text-red-400'}`}>{v ? 'Observed' : 'Needs improvement'}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                         <div className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                             <h3 className="text-lg font-bold text-white mb-2">Performance Summary</h3>
                             {/* With no scenario there are no objectives and therefore no score.
@@ -777,18 +796,18 @@
                         </div>
                     </div>
 
-                    <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
-                        <div className="flex border-b border-slate-700 bg-slate-900 p-2 gap-2">
+                    <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden min-w-0 max-lg:max-h-[75vh]" data-testid="debrief-log">
+                        <div className="flex flex-wrap border-b border-slate-700 bg-slate-900 p-2 gap-2">
                             {['all', 'actions', 'manual', 'shocks', 'rhythm', 'system'].map(f => (
                                 <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold uppercase ${filter === f ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                                     {f}
                                 </button>
                             ))}
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        <div className="flex-1 overflow-y-auto p-4 max-md:p-3 space-y-2 min-h-0">
                             {filteredLog.map((entry, i) => (
                                 <div key={i} className={`flex gap-3 text-sm border-b border-slate-700/50 pb-1 ${entry.flagged ? 'bg-amber-900/10 p-1 rounded' : ''}`}>
-                                    <span className="text-slate-400 font-mono w-16 flex-shrink-0">{entry.simTime}</span>
+                                    <span className="text-slate-400 font-mono w-16 max-md:w-12 flex-shrink-0">{entry.simTime}</span>
                                     <span className={`flex-grow ${entry.type === 'danger' ? 'text-red-400 font-bold' : entry.type === 'success' ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
                                         {entry.flagged && <Lucide icon="flag" className="inline w-3 h-3 text-amber-500 mr-1"/>}
                                         {entry.msg}

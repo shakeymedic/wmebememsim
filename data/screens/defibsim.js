@@ -173,7 +173,8 @@
                 </div>
 
                 {/* The patient at a glance (data/screens/patientstatus.js), as on the full controller. */}
-                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showVent={false} />}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showVent={false}
+                    extra={window.PatientScreenSwitch ? <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} showVent={false} onOpenScreens={() => setShowScreens(true)} /> : null} />}
 
                 {!state.isRunning && !state.isFinished && (
                     <div role="status" data-testid="defib-clock-stopped" className="flex items-center gap-2 px-3 py-2 rounded border border-amber-600 bg-amber-950/40 text-amber-200 text-xs">
@@ -276,6 +277,14 @@
                             </div>
                             <button type="button" onClick={() => setShowAllRhythms(!showAllRhythms)} className="mt-2 text-[10px] text-sky-400 hover:text-sky-200 underline">{showAllRhythms ? 'Fewer rhythms' : 'All rhythms'}</button>
                         </div>
+
+                        {/* What the patient monitor's investigation buttons give (data/screens/invresults.js). */}
+                        {window.InvResults && (
+                            <Section id="defibInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                                     summary={Object.keys(state.scenario.invChanged || {}).length ? `Changed: ${Object.keys(state.scenario.invChanged).join(', ')}` : "Scenario's own results"}>
+                                <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                            </Section>
+                        )}
 
                         <Section id="defibShock" tone="card" title="Shock response" summary={shockSummary} defaultOpen={false}>
                             {steps.length > 0 && step && !step.done

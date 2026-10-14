@@ -22,7 +22,7 @@
         // does not leave every event in the log at 00:00. Not after a deliberate facilitator pause
         // (pausedAt is set only by PAUSE_SIM), and not for display-only presses.
         // The ventilator's log lines are reports, not presses on the defib.
-        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC', 'VENT_LOG'];
+        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC', 'VENT_LOG', 'CHARGE_CANCEL'];
         const autoStartClock = (type, p) => {
             const cur = stateRef.current;
             if (!cur || !cur.scenario || !cur.scenario.defibSim) return;
@@ -43,6 +43,9 @@
         // reaches the patient when START is pressed).
         const handleDeviceEvent = (type, p, where) => {
             const cur = stateRef.current;
+            // After Finish the debrief is frozen: a press on a tablet (or a tablet closing) no
+            // longer changes the shocks, rhythm or log.
+            if (cur.isFinished) return;
             p = p || {};
             const src = `student (${where})`;
             autoStartClock(type, p);
@@ -54,6 +57,8 @@
                         p.sync && RG.isPulseless(cur.rhythm) ? 'warning' : 'action', !!(p.sync && RG.isPulseless(cur.rhythm)));
                     break;
                 case 'CHARGE_INIT': initCharge(p.energy); break;
+                // The tablet dumped or cancelled its charge: the room monitor and the controller stop showing CHARGED.
+                case 'CHARGE_CANCEL': if (cur.defib && cur.defib.charged) dispatch({ type: 'SET_DEFIB_STATE', payload: { charged: false, chargeEnergy: null } }); break;
                 case 'SHOCK_DELIVERED': deliverShock(p.energy, src, { sync: !!p.sync }); break;
                 case 'ANALYSE':
                 case 'ANALYSIS_RESULT': analyseRhythm(src); break;       // judged here, from the controller's rhythm
@@ -276,7 +281,9 @@
                     // runId rides inside `defib` (a free-form key in the rules) so a ventilator or
                     // defib tablet can tell a re-run of the same scenario from the run before it
                     // without a database-rules change.
-                    defib: { ...(cur.defib || {}), runId: cur.runId || null },
+                    // screenFront (what the facilitator wants in front on the patient screens) rides
+                    // in here too, for the same reason: no database-rules change.
+                    defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null },
                     // The ventilator on the room monitor, and the lungs it ventilates (the
                     // facilitator's choice, else one picked from the scenario).
                     ventPanelOpen: !!cur.ventPanelOpen,
@@ -374,7 +381,7 @@
             state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
             state.activeDrugs, state.deteriorationMode,
             state.defibPanelOpen, state.defib, state.pacing, state.metronomeOn,
-            state.ventPanelOpen, state.vent
+            state.ventPanelOpen, state.vent, state.screenFront
         ]);
 
         useEffect(() => {
@@ -392,7 +399,10 @@
                         dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'connected', message: null } });
                     }
                     catch (err) { console.error("Sync Error", err); } 
-                } 
+                } else {
+                    // The controller took the patient off (no scenario loaded): back to waiting.
+                    dispatch({ type: 'LIVE_CLEARED' });
+                }
             };
             const handleReadError = (error) => {
                 console.error('Firebase monitor read failed:', error);
@@ -573,6 +583,7 @@
         useEffect(() => {
             if (isMonitorMode || ventDrivingRef.current === ventDriving) return;
             ventDrivingRef.current = ventDriving;
+            if (stateRef.current.isFinished) return;
             if (ventDriving) {
                 const held = ['spO2', 'rr', 'etco2'].filter(k => state.manualHold && state.manualHold[k]);
                 addLogEntry(`Ventilator is breathing for the patient: SpO2, RR and ETCO2 now follow it${held.length ? ` (except ${held.join(', ')}, which you set by hand)` : ''}.`, 'system');
@@ -682,7 +693,12 @@
                         ventPanelOpen: !!cur.ventPanelOpen, defibPanelOpen: !!cur.defibPanelOpen,
                         etco2Pathology: cur.etco2Pathology || 'normal', audioOutput: cur.audioOutput, isMuted: !!cur.isMuted,
                         waveformGain: cur.waveformGain, noise: cur.noise, metronomeOn: !!cur.metronomeOn,
-                        hypoxiaDeficit: cur.hypoxiaDeficit || 0, investigationsRevealed: cur.investigationsRevealed || {}
+                        hypoxiaDeficit: cur.hypoxiaDeficit || 0, investigationsRevealed: cur.investigationsRevealed || {},
+                        // A paced patient, the pacer, its capture threshold, the ventilator link and the
+                        // skills checklist: without them a resumed paced patient stayed 'Paced' with the
+                        // pacer off, and the checklist ticks were lost.
+                        pacing: cur.pacing || null, remotePacerState: cur.remotePacerState || null, pacingThreshold: cur.pacingThreshold,
+                        ventLink: cur.ventLink !== false, assessments: cur.assessments || {}
                     };
                     localStorage.setItem('wmebem_sim_state', JSON.stringify(slim));
                 } catch (e) {

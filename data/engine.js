@@ -137,6 +137,15 @@
                 return;
             }
 
+            // Better/Worse move the scenario's gas; the gas's pH and K+ are the patient's own
+            // (window.liveVbg), so the same change goes into the trend for pH and K+.
+            const gasTargets = (targets, from, to) => {
+                const b = stateRef.current.baseVitals || {};
+                [['ph', 'pH'], ['k', 'K']].forEach(([vk, gk]) => {
+                    const d = Number(to[gk]) - Number(from[gk]);
+                    if (targets[vk] === undefined && Number.isFinite(b[vk]) && Number.isFinite(d) && d !== 0) targets[vk] = b[vk] + d;
+                });
+            };
             if (action.type === 'TRIGGER_IMPROVE') {
                 let impTargets = {}; 
                 const scen = stateRef.current.scenario;
@@ -145,10 +154,12 @@
                 else { impTargets.hr = Math.max(60, vits.hr - 15); impTargets.bpSys = Math.min(120, vits.bpSys + 15); impTargets.spO2 = Math.min(99, vits.spO2 + 5); }
                 // Trends operate in BASE space (see the precedence comment): snapshot the base, not
                 // the displayed vitals, or the trend would swallow whatever the drugs are contributing.
-                enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                 if (scen?.vbg && window.calculateDynamicVbg) {
-                    dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'improve') }, currentState: stateRef.current });
+                    const nextVbg = window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'improve');
+                    gasTargets(impTargets, scen.vbg, nextVbg);
+                    dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: nextVbg }, currentState: stateRef.current });
                 }
+                enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: impTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                 dispatchCore({ type: 'SET_FLASH', payload: 'green', currentState: stateRef.current });
             }
             if (action.type === 'TRIGGER_DETERIORATE') {
@@ -157,10 +168,12 @@
                  const vits = stateRef.current.vitals;
                  if (scen && scen.evolution && scen.evolution.deteriorated && scen.evolution.deteriorated.vitals) { detTargets = { ...scen.evolution.deteriorated.vitals }; } 
                  else { detTargets.hr = Math.min(170, vits.hr + 20); detTargets.bpSys = Math.max(60, vits.bpSys - 20); detTargets.spO2 = Math.max(80, vits.spO2 - 10); }
-                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                  if (scen?.vbg && window.calculateDynamicVbg) {
-                     dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'deteriorate') }, currentState: stateRef.current });
+                     const nextVbg = window.calculateDynamicVbg(scen.vbg, vits, stateRef.current.activeInterventions, 0, 'deteriorate');
+                     gasTargets(detTargets, scen.vbg, nextVbg);
+                     dispatchScenario({ type: 'UPDATE_SCENARIO', payload: { ...scen, vbg: nextVbg }, currentState: stateRef.current });
                  }
+                 enhancedAction = { ...enhancedAction, payload: { trends: { active: true, targets: detTargets, duration: 30, elapsed: 0, startVitals: { ...stateRef.current.baseVitals } } } };
                  dispatchCore({ type: 'SET_FLASH', payload: 'red', currentState: stateRef.current });
             }
 
@@ -544,9 +557,11 @@
                     dispatch({ type: 'RECORD_POC', payload: { key: 'bm', value: Number.isFinite(v.bm) ? v.bm : null, at: cur.time, clock } });
                     addLogEntry(`Capillary glucose ${Number.isFinite(v.bm) ? v.bm.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
                 } else {
-                    // The VBG reports pH and potassium at the moment the sample was taken.
-                    dispatch({ type: 'RECORD_POC', payload: { key: 'vbg', value: Number.isFinite(v.ph) ? v.ph : null, value2: Number.isFinite(v.k) ? v.k : null, at: cur.time, clock } });
-                    addLogEntry(`VBG: pH ${Number.isFinite(v.ph) ? v.ph.toFixed(2) : '--'}, K+ ${Number.isFinite(v.k) ? v.k.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
+                    // The VBG reports pH and potassium at the moment the sample was taken: the same
+                    // gas the monitor's VBG button gives (window.liveVbg).
+                    const gas = window.liveVbg ? window.liveVbg(cur.scenario, v, cur.activeInterventions, cur.time) : { pH: v.ph, K: v.k };
+                    dispatch({ type: 'RECORD_POC', payload: { key: 'vbg', value: Number.isFinite(gas.pH) ? gas.pH : null, value2: Number.isFinite(gas.K) ? gas.K : null, at: cur.time, clock } });
+                    addLogEntry(`VBG: pH ${Number.isFinite(gas.pH) ? gas.pH.toFixed(2) : '--'}, K+ ${Number.isFinite(gas.K) ? gas.K.toFixed(1) : '--'} mmol/L (POC, ${clock}).`, 'action');
                 }
                 // Execution deliberately CONTINUES into the normal intervention path below, so the
                 // check is counted and logged by exactly the same machinery as everything else.
@@ -987,6 +1002,14 @@
                         const clear = { findings: 'Lung re-expanded after decompression.', image: null, findingId: null };
                         updatedScenario.chestXray = { ...(updatedScenario.chestXray || {}), ...clear };
                         if (inv.chestXray) updatedScenario.investigations = { ...inv, chestXray: { ...inv.chestXray, ...clear } };
+                        // A pneumothorax the facilitator chose is decompressed the same way, and is
+                        // then no longer "their" result (data/investigations.js setResult).
+                        if (updatedScenario.invChanged && updatedScenario.invChanged['X-ray']) {
+                            updatedScenario.invChanged = Object.assign({}, updatedScenario.invChanged);
+                            updatedScenario.invDefaults = Object.assign({}, updatedScenario.invDefaults || {});
+                            delete updatedScenario.invChanged['X-ray'];
+                            delete updatedScenario.invDefaults['X-ray'];
+                        }
                         updateNeeded = true;
                     }
                 }
@@ -1091,11 +1114,54 @@
             return parts.join(', ');
         };
         const fmtDuration = (s) => s >= 60 && s % 60 === 0 ? `${s / 60} min` : `${s} s`;
+        // AN RR TYPED WITH A VENTILATOR IN THE ROOM. The ventilator measures the rate the patient
+        // breathes, and while it breathes for the patient the monitor shows that measured rate. A typed
+        // RR used to stop at the monitor (held there), so the ventilator and the monitor disagreed. Now,
+        // when the patient breathes for themselves, it also becomes the patient's own rate on the
+        // ventilator (the Spontaneous rate lung adjustment), and the monitor hands RR back to the
+        // ventilator once the ventilator measures about that rate (or after 30 s of ventilating, when a
+        // mandatory rate above it wins). A sedated or paralysed patient has no own rate: the typed RR
+        // just holds, as before ("Release to ventilator" hands it back).
+        const rrHandoffRef = useRef(null);
+        const ventOwnRate = (cur, rr) => {
+            const VE = window.VENT_ENGINE, VP = window.VENT_PROFILES;
+            const n = Number(rr);
+            if (!VE || !VP || !Number.isFinite(n) || cur.ventLink === false) return null;
+            const d = VP.LUNG_ADJ.e;
+            if (n < d.min || n > d.max) return null;
+            // A ventilator taken away stays in the mirror for a minute: it is not the patient's any more.
+            // (A ventilator on the patient screens closes with the panel; a separate tablet stays.)
+            const recent = Object.values(cur.ventMirror || {}).some(m => m && !m.embedded && Number(m.ts) > Date.now() - 25000);
+            if (!VE.driverFor(cur) && !(cur.ventPanelOpen && Object.keys(cur.ventMirror || {}).length) && !recent) return null;
+            const cfg = VE.configFor(cur);
+            if (cfg.breathing === false || VP.lungFor(cfg).sedated) return null;
+            return Math.round(n);
+        };
         const manualUpdateVitals = (targets) => {
-            const from = { ...stateRef.current.vitals };
+            const cur = stateRef.current;
+            const from = { ...cur.vitals };
             Object.keys(targets).forEach(key => dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key, value: targets[key] } }));
             addLogEntry(`Obs changed: ${describeObs(targets, from)}`, 'manual');
+            const own = targets.rr !== undefined ? ventOwnRate(cur, targets.rr) : null;
+            if (own !== null) {
+                dispatch({ type: 'SET_VENT_CONFIG', payload: { lung: { e: own } } });
+                rrHandoffRef.current = { value: own, at: Date.now() };
+                addLogEntry(`Ventilator: the patient now breathes at ${own}/min. The monitor's RR follows the ventilator again once it measures it.`, 'system');
+            } else if (targets.rr !== undefined) rrHandoffRef.current = null;
         };
+        useEffect(() => {
+            const h = rrHandoffRef.current;
+            if (isMonitorMode || !h) return;
+            const cur = stateRef.current;
+            if (!(cur.manualHold && cur.manualHold.rr)) { rrHandoffRef.current = null; return; }
+            const d = window.VENT_ENGINE && window.VENT_ENGINE.driverFor(cur);
+            if (!d || !d.phys) return;
+            if (!h.driving) h.driving = Date.now();
+            if (Math.abs(Number(d.phys.rr) - h.value) <= 2 || Date.now() - Math.max(h.at, h.driving) > 30000) {
+                rrHandoffRef.current = null;
+                dispatch({ type: 'RELEASE_MANUAL_HOLD', payload: ['rr'] });
+            }
+        }, [isMonitorMode, state.ventMirror]);
         const manualUpdateVital = (key, value) => manualUpdateVitals({ [key]: value });
         
         // =====================================================================================
@@ -1256,8 +1322,9 @@
                 // applies TIME/TREATMENT DELTAS on top of that baseline; every key it does not
                 // model (pO2, Na, Ca) is carried through from the authored block untouched.
                 if (type === 'VBG' && !customText && cur.scenario && window.calculateDynamicVbg) {
-                    const startVbg = cur.scenario.vbg || cur.scenario.investigations?.vbg || window.generateVbg?.('normal');
-                    const dynamic = window.calculateDynamicVbg(startVbg, cur.vitals, cur.activeInterventions, cur.time);
+                    // window.liveVbg (data/generators.js) does exactly that, then reports the
+                    // patient's own modelled pH and K+ in the gas (they are not shown as obs).
+                    const dynamic = window.liveVbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time);
                     // Pass the structured object — monitor.js will detect and render the table.
                     finalCustomText = { __vbg: true, ...dynamic };
                 }
@@ -1590,6 +1657,16 @@
         const pause = () => { dispatch({ type: 'PAUSE_SIM' }); };
         const stop = () => { dispatch({ type: 'STOP_SIM' }); };
         const reset = () => { clearSimTimers(); refibTimerRef.current = null; dispatch({ type: 'CLEAR_SESSION' }); };
+        // The controller has no scenario loaded (a fresh start, a reload before Resume, or after
+        // Finish): take the last patient off the session so every patient screen goes back to
+        // WAITING FOR CONTROLLER instead of showing a stale or default patient. The diff base is
+        // dropped too, so the next scenario is sent whole. Controller only; never with a scenario.
+        const clearLivePatient = () => {
+            const db = window.db;
+            if (isMonitorMode || !db || !sessionID || stateRef.current.scenario) return;
+            lastPayloadRef.current = {};
+            db.ref(`sessions/${sessionID}/live`).remove().catch(e => console.error('Could not clear the live patient:', e));
+        };
         // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
         // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
         const enableAudio = () => {
@@ -1738,7 +1815,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, notStarted: () => notStarted(stateRef.current), applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, clearLivePatient, notStarted: () => notStarted(stateRef.current), applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,

@@ -67,9 +67,19 @@
                 // Give the scenario a clinically coherent starting K+ if it never declared one,
                 // so hyperkalaemia scenarios actually start hyperkalaemic and the treatment has a
                 // measurable endpoint. An explicit scenario/vitalsMod value always wins.
-                if (action.payload.vitals === undefined || action.payload.vitals === null || action.payload.vitals.k === undefined) {
+                // pH and K+ are what the VBG reports (window.liveVbg), so a patient whose scenario does
+                // not state them starts with its own gas's pH, and its gas's K+ when that is abnormal
+                // (otherwise the K+ inferred from the scenario, then the gas's).
+                const sv = action.payload.vitals || {};
+                const gas = action.payload.vbg || (action.payload.investigations && action.payload.investigations.vbg) || null;
+                const gasPh = gas ? Number(gas.pH) : NaN, gasK = gas ? Number(gas.K) : NaN;
+                if (sv.ph === undefined && Number.isFinite(gasPh)) initialVitals.ph = clampVital('ph', gasPh);
+                if (sv.k === undefined) {
                     const inferredK = inferPotassium(action.payload);
-                    if (inferredK !== null) initialVitals.k = inferredK;
+                    const gasAbnormal = Number.isFinite(gasK) && (gasK < 3.5 || gasK > 5.3);
+                    if (gasAbnormal) initialVitals.k = clampVital('k', gasK);
+                    else if (inferredK !== null) initialVitals.k = inferredK;
+                    else if (Number.isFinite(gasK)) initialVitals.k = clampVital('k', gasK);
                 }
                 // A scenario that STARTS in cardiac arrest starts with arrest observations. The
                 // built-in arrest scenarios only set hr/bp/SpO2/GCS, so the defaults filled in a
@@ -450,6 +460,13 @@
                     wetflag: action.payload.wetflag, deterioration: { type: action.payload.pathology },
                     ...action.payload.investigations 
                 };
+                // A result the controller no longer has (the database drops nulls) must not linger
+                // here from an earlier sync: e.g. an X-ray the facilitator chose and then undid.
+                if (action.payload.investigations && typeof action.payload.investigations === 'object') {
+                    ['vbg', 'ecg', 'chestXray', 'urine', 'ct', 'pocus'].forEach(k => {
+                        if (action.payload.investigations[k] === undefined) syncedScenario[k] = null;
+                    });
+                }
                 return { ...state, scenario: syncedScenario };
             case 'UPDATE_SCENARIO': return { ...state, scenario: action.payload };
             case 'REVEAL_INVESTIGATION': return { ...state, investigationsRevealed: { ...state.investigationsRevealed, [action.payload]: true }, loadingInvestigations: { ...state.loadingInvestigations, [action.payload]: false } };
@@ -461,9 +478,9 @@
     const coreReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
-            case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
+            case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus, remotePresence: state.remotePresence };
             case 'LOAD_SCENARIO': 
-                if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus };
+                if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus, remotePresence: state.remotePresence };
                 const initialRhythm = (action.payload.ecg && action.payload.ecg.type) ? action.payload.ecg.type : "Sinus Rhythm";
                 let startICP = 10;
                 if(action.payload.category === 'Trauma' && (action.payload.title || '').includes('Head')) startICP = 25;
@@ -481,6 +498,8 @@
                 // standard set or individual sensors from the controller's Monitoring & access panel.
                 // (Quick Sim used to seed 'Obs' here; it no longer does, by request.)
                 return { ...initialCoreState, runId: action.runId || newRunId(), rhythm: initialRhythm, icp: startICP, isOffline: state.isOffline, syncStatus: state.syncStatus,
+                    // The joined screens are still joined: keep them, or the badge says "no screens linked" until the next heartbeat.
+                    remotePresence: state.remotePresence,
                     showWetflag: action.payload.showWetflag === true, deteriorationMode: detMode0,
                     defibSettings: cleanDefibSettings(initialCoreState.defibSettings, action.payload.defibSettings),
                     pacingThreshold: Number(action.payload.pacingThreshold) > 0 ? Number(action.payload.pacingThreshold) : initialCoreState.pacingThreshold,
@@ -547,6 +566,12 @@
                     waveformGain: Number.isFinite(p.waveformGain) && p.waveformGain > 0 ? p.waveformGain : state.waveformGain,
                     noise: (p.noise && typeof p.noise === 'object') ? { ...state.noise, ...p.noise } : state.noise,
                     metronomeOn: p.metronomeOn === undefined ? state.metronomeOn : !!p.metronomeOn,
+                    pacing: (p.pacing && typeof p.pacing === 'object') ? { ...state.pacing, ...p.pacing } : state.pacing,
+                    remotePacerState: (p.remotePacerState && typeof p.remotePacerState === 'object') ? { rate: Number(p.remotePacerState.rate) || 0, output: Number(p.remotePacerState.output) || 0 } : state.remotePacerState,
+                    pacingThreshold: Number(p.pacingThreshold) > 0 ? Number(p.pacingThreshold)
+                        : (p.scenario && Number(p.scenario.pacingThreshold) > 0 ? Number(p.scenario.pacingThreshold) : state.pacingThreshold),
+                    ventLink: p.ventLink !== false,
+                    assessments: (p.assessments && typeof p.assessments === 'object') ? { ...p.assessments } : {},
                     // A resumed session is NOT a paused session. Its clock is
                     // non-zero and it is not running, which Wave 6 read as "deliberately paused" and
                     // therefore froze the controller's waveform strip until START was pressed. The
@@ -667,8 +692,15 @@
             // The defib and the ventilator share the room monitor's screen: opening one closes the other.
             // The defib and the ventilator are brought into the room independently; each patient
             // screen decides what it shows (data/simscreens.js).
-            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload };
-            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload };
+            // Bringing a device in also puts it in front (the patient screens already do that), so
+            // the controller's "Patient screens show" switch reflects it.
+            case 'SET_DEFIB_PANEL': return { ...state, defibPanelOpen: !!action.payload,
+                ...(action.payload && !state.defibPanelOpen ? { screenFront: { view: 'defib', at: Date.now() } } : {}) };
+            case 'SET_VENT_PANEL': return { ...state, ventPanelOpen: !!action.payload,
+                ...(action.payload && !state.ventPanelOpen ? { screenFront: { view: 'vent', at: Date.now() } } : {}) };
+            // Put the monitor, the defib or the ventilator in front on every patient screen that has it.
+            case 'SET_SCREEN_FRONT': return ['monitor', 'defib', 'vent'].includes(action.payload)
+                ? { ...state, screenFront: { view: action.payload, at: Date.now() } } : state;
             // A patient screen's own role and what it is showing (never synced; read by presence).
             case 'SET_LOCAL_SCREEN': return { ...state, localScreen: action.payload || null };
             // The ventilator's lungs: a known profile, whether the patient breathes for themselves
@@ -736,6 +768,7 @@
             case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
+            case 'LIVE_CLEARED': return state.liveSeen ? { ...state, liveSeen: false } : state;
             case 'SYNC_FROM_MASTER': return { ...state, liveSeen: true,
                 // isRunning / isMuted / activeLoops are what make the STUDENT MONITOR audible: every
                 // audio path in this file is gated on isRunning, which the monitor can only learn
@@ -750,7 +783,10 @@
                 potassium: Number.isFinite(action.payload.potassium) ? action.payload.potassium : state.potassium,
                 activeDrugs: Array.isArray(action.payload.activeDrugs) ? action.payload.activeDrugs : [],
                 deteriorationMode: action.payload.deteriorationMode === 'auto' ? 'auto' : 'manual',
-                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, ventPanelOpen: !!action.payload.ventPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}) }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
+                rhythm: action.payload.rhythm, cprInProgress: action.payload.cprInProgress, etco2Enabled: action.payload.etco2Enabled, etco2Pathology: action.payload.co2Pathology || 'normal', co2Severity: Number.isFinite(action.payload.co2Severity) ? action.payload.co2Severity : 0, flash: action.payload.flash, cycleTimer: action.payload.cycleTimer, activeInterventions: new Set(action.payload.activeInterventions || []), nibp: action.payload.nibp || state.nibp, speech: action.payload.speech || state.speech, soundEffect: action.payload.soundEffect || state.soundEffect, audioOutput: action.payload.audioOutput || 'monitor', arrestPanelOpen: action.payload.arrestPanelOpen !== undefined ? action.payload.arrestPanelOpen : state.arrestPanelOpen, defibPanelOpen: !!action.payload.defibPanelOpen, ventPanelOpen: !!action.payload.ventPanelOpen, defib: { ...state.defib, ...(action.payload.defib || {}),
+                    // The database drops a null, so a new run's "no request" never arrived and an old
+                    // Monitor/Defib/Ventilator request was applied again after the screen remounted.
+                    screenFront: (action.payload.defib && action.payload.defib.screenFront) || null }, isFinished: action.payload.isFinished || false, monitorPopup: action.payload.monitorPopup || state.monitorPopup, waveformGain: action.payload.waveformGain || 1.0, noise: action.payload.noise || { interference: false }, notification: action.payload.notification || null, remotePacerState: action.payload.remotePacerState || {rate: 0, output: 0}, pacingThreshold: action.payload.pacingThreshold || 70, lastUpdate: Date.now(), showWetflag: action.payload.showWetflag === true, monitorTimer: action.payload.monitorTimer || state.monitorTimer, pocReadings: action.payload.pocReadings || state.pocReadings || {} };
             case 'UPDATE_ASSESSMENT': return { ...state, assessments: action.payload };
             case 'SET_FLASH': return { ...state, flash: action.payload };
             case 'START_INTERVENTION_TIMER': return { ...state, activeDurations: { ...state.activeDurations, [action.payload.key]: { startTime: state.time, duration: action.payload.duration } } };

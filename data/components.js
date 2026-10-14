@@ -877,7 +877,7 @@
                     <div className={`font-mono font-bold leading-tight tracking-tight text-center whitespace-nowrap ${color} ${hasValue2 ? 'text-xl' : 'text-2xl'}`}>
                         {hasValue2 ? `${show(value)}/${show(value2)}` : show(value)}{trendIcon && <span className="text-sm text-sky-400 ml-0.5">{trendIcon}</span>}
                     </div>
-                    {note && <span className="absolute left-1.5 right-1 bottom-0.5 text-[8px] leading-none uppercase tracking-wide font-bold text-amber-400/90 truncate pointer-events-none">{note}</span>}
+                    {note && <span data-off-monitor={note === 'not on monitor' ? '' : undefined} className="absolute left-1.5 right-1 bottom-0.5 text-[8px] leading-none uppercase tracking-wide font-bold text-amber-400/90 truncate pointer-events-none">{note}</span>}
                     {!hideTrends && trend && trend.active && (
                         <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-slate-800"><div className="bg-sky-500 h-full" style={{ width: `${trend.progress * 100}%` }}></div></div>
                     )}
