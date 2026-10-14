@@ -939,8 +939,9 @@
         const shortScreen = (window.innerHeight || 1000) < 900;
         const compactTiles = narrowPanel || shortScreen;
         // The vital tiles. The core six (HR, BP, SpO2, RR, Temp, ETCO2) are the big tiles in the
-        // desktop panel; GCS, glucose, pH and K+ sit in a smaller "More obs" row beneath them. The
-        // phone view shows all ten, compact, core first.
+        // desktop panel; GCS and glucose sit in a smaller "More obs" row beneath them. The phone view
+        // shows all eight, compact, core first. pH and K+ are not obs: they are what the VBG reports,
+        // so they are set and shown with the VBG result (Investigation results, data/screens/invresults.js).
         // The tiles always show the patient's TRUE value (the facilitator must be able to steer a
         // vital before its sensor goes on); the amber note says when the team cannot currently see it.
         const tileProps = (compact) => ({ compact, medium: !compact, visible: true });
@@ -957,11 +958,8 @@
         ];
         const moreTiles = () => [
             <VitalDisplay key="gcs" compact visible label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} trend={getTrend('gcs')} />,
-            <VitalDisplay key="bm" compact visible label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />,
-            // pH and K+ are modelled vitals (sodium bicarbonate, hyperkalaemia and DKA steer them).
-            <VitalDisplay key="ph" compact visible label="pH" value={vitals.ph} onClick={()=>openVitalControl('ph')} trend={getTrend('ph')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />,
-            <VitalDisplay key="k" compact visible label="K+" value={vitals.k} unit="mmol" onClick={()=>openVitalControl('k')} trend={getTrend('k')} note={pocReadings.vbg ? `VBG ${pocReadings.vbg.clock}` : 'VBG not taken'} />
-        ].filter(t => !simple || (t.key !== 'ph' && t.key !== 'k'));   // Simple view: GCS and glucose only
+            <VitalDisplay key="bm" compact visible label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
+        ];
         const renderVitalTiles = () => <>{coreTiles(true)}{moreTiles()}</>;
 
         // One-line summaries shown on a closed section.
@@ -1320,8 +1318,8 @@
                                  {coreTiles(compactTiles)}
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}${simple ? '' : ` \u00b7 pH ${Number.isFinite(vitals.ph) ? vitals.ph.toFixed(2) : '--'} \u00b7 K+ ${Number.isFinite(vitals.k) ? vitals.k.toFixed(1) : '--'}`}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black">
-                                     <div className={`grid ${narrowPanel || simple ? 'grid-cols-2' : 'grid-cols-4'} gap-1`}>{moreTiles()}</div>
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black">
+                                     <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
                                  </Section>
                              </div>
                         </div>

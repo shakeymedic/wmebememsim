@@ -316,6 +316,26 @@ window.calculateDynamicVbg = (startVbg, currentVitals, activeInterventions, time
     return vbg;
 };
 
+// THE GAS THE TEAM GETS NOW. pH and K+ are not obs: they are what a VBG reports. The patient's
+// modelled pH and K+ (vitals.ph / vitals.k, which bicarbonate, insulin-dextrose, calcium and the rest
+// steer) ARE the gas's pH and K+, so the result on the monitor follows treatment. Everything else
+// comes from the scenario's gas as before (calculateDynamicVbg), and the pH also carries that
+// model's own time drift (hypoventilation, ventilation, shock) on top of the patient's pH.
+window.liveVbg = (scenario, vitals, activeInterventions, timeSeconds) => {
+    const s = scenario || {};
+    const start = s.vbg || (s.investigations && s.investigations.vbg) || (window.generateVbg ? window.generateVbg('normal') : null);
+    const v = vitals || {};
+    const ai = activeInterventions instanceof Set ? activeInterventions : new Set(activeInterventions || []);
+    const gas = window.calculateDynamicVbg(start, v, ai, Number(timeSeconds) || 0);
+    const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    if (Number.isFinite(v.ph)) {
+        const drift = (start && Number.isFinite(Number(start.pH)) && Number.isFinite(gas.pH)) ? gas.pH - Number(start.pH) : 0;
+        gas.pH = Math.round(clamp(v.ph + drift, 6.5, 7.9) * 100) / 100;
+    }
+    if (Number.isFinite(v.k)) gas.K = Math.round(clamp(v.k, 1, 10) * 10) / 10;
+    return gas;
+};
+
 window.generateUrine = (type = "normal") => {
     const base = { leuks: "-", nitrites: "-", blood: "-", ketones: "-", protein: "-", glucose: "-", bhcg: "Negative" };
     if(type === "uti") return { ...base, leuks: "+++", nitrites: "+" };

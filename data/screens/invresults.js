@@ -38,6 +38,7 @@
                                     <div className="text-[10px] text-slate-400 line-clamp-2" title={r.text || ''}>
                                         {r.changed && r.label ? <b className="text-amber-200">{r.label}: </b> : null}{r.text || 'Image only.'}
                                     </div>
+                                    {r.note && <div className="text-[10px] text-sky-300" data-testid={`inv-result-note-${r.type}`}>{r.note}</div>}
                                     {r.ecgImageNotFitting && <div className="text-[10px] text-amber-300">The chosen ECG does not match the current rhythm, so the 12-lead is drawn from the rhythm.</div>}
                                 </div>
                                 <div className="flex flex-col gap-1 flex-none">
@@ -126,7 +127,7 @@
                                     ))}
                                 </div>
                                 {vbgErrors.length > 0 && <p className="text-[11px] text-red-300 mt-1">Check: {vbgErrors.map(k => (I.VBG_FIELDS.filter(f => f.k === k)[0] || {}).label).join(', ')}.</p>}
-                                <p className="text-[10px] text-slate-400 mt-1">These are the values the team gets now. As before, the gas still changes with time and treatment (ventilation, shock, insulin).</p>
+                                <p className="text-[10px] text-slate-400 mt-1">These are the values the team gets now, and the pH and K+ become the patient's. The gas still changes with time and treatment (ventilation, shock, insulin, bicarbonate).</p>
                                 <Button onClick={() => pick({ vbg: I.cleanVbg(vbg, startVbg), preset: vbgPreset })} variant="primary" className="w-full mt-2" disabled={vbgErrors.length > 0}>Use these values</Button>
                             </div>
                         )}
@@ -197,15 +198,32 @@
         const scenario = state.scenario;
         if (!I || !scenario) return null;
         const RG = window.RHYTHMS;
-        const rows = I.RESULT_TYPES.map(type => Object.assign({ type }, I.currentResult(scenario, type, state.rhythm)));
+        // pH and K+ are not obs: the VBG reports the patient's own pH and K+ (window.liveVbg), so the
+        // VBG row shows the gas the team would get now and choosing a gas sets the patient's pH and K+.
+        const liveGas = window.liveVbg ? window.liveVbg(scenario, state.vitals, state.activeInterventions, state.time) : null;
+        const rows = I.RESULT_TYPES.map(type => {
+            const row = Object.assign({ type }, I.currentResult(scenario, type, state.rhythm));
+            if (type === 'VBG' && liveGas) {
+                row.text = I.vbgSummary(liveGas);
+                row.note = 'pH and K+ are the patient\u2019s own and change with treatment. Change sets them.';
+            }
+            return row;
+        });
         const apply = (type, spec) => {
             const next = I.setResult(scenario, type, spec);
             sim.dispatch({ type: 'UPDATE_SCENARIO', payload: next });
             if (addLogEntry) addLogEntry(spec ? `${type} result set: ${I.specLabel(type, spec)}` : `${type} result back to the scenario's own`, 'system');
+            if (type === 'VBG') {
+                const gas = next.vbg || (next.investigations || {}).vbg || null;
+                const set = {};
+                if (gas && Number.isFinite(Number(gas.pH))) set.ph = Number(gas.pH);
+                if (gas && Number.isFinite(Number(gas.K))) set.k = Number(gas.K);
+                if (Object.keys(set).length && sim.manualUpdateVitals) sim.manualUpdateVitals(set);
+            }
             setEditing(null);
         };
         const cur = editing ? rows.filter(r => r.type === editing)[0] : null;
-        const scenarioVbg = scenario.vbg || (scenario.investigations || {}).vbg || null;
+        const scenarioVbg = liveGas || scenario.vbg || (scenario.investigations || {}).vbg || null;
         return (
             <>
                 <ResultsPanel rows={rows} onEdit={setEditing} onReset={(t) => apply(t, null)} resetTitle="Back to the scenario's own result"
