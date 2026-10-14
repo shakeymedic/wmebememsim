@@ -314,6 +314,15 @@
             useEffect(() => { window.__simEngine = engine; });
             // The patient screens in this session: numbered here, and told what to show (Screens).
             const screenLink = useScreenLinkController(sessionID, !['welcome', 'join'].includes(view));
+            // No scenario chosen yet on this controller: every patient screen on its code shows
+            // WAITING FOR CONTROLLER, never a default or left-over patient. Not on the welcome or join
+            // screens, where this device may be about to become a patient screen on that code.
+            const hasScenario = !!engine.state.scenario;
+            const syncConnected = (engine.state.syncStatus || {}).state === 'connected';
+            useEffect(() => {
+                if (hasScenario || ['welcome', 'join'].includes(view)) return;
+                engine.clearLivePatient();
+            }, [hasScenario, view, sessionID, syncConnected]);
 
             // --- HANDLERS ---
             // ---- MONITORING AT THE START. Most scenarios begin with nothing attached, because putting the
