@@ -122,7 +122,27 @@
 
     // A screen without the monitor: its device(s), ready all the time, with the one the facilitator
     // last brought in at the front when it has both.
-    const DeviceScreen = ({ sim, sessionID, parts, onShows, onHost }) => {
+    // The two ways off the "Simulation complete" card on a patient screen: back to the app's first
+    // screen (this device stops being a patient screen), or restart this screen as a blank patient
+    // screen on the same code, waiting for the controller's next scenario.
+    const FinishedActions = ({ onRestart }) => {
+        const { Lucide } = window;
+        const backToStart = () => {
+            try { sessionStorage.removeItem('wmebem_device_role'); } catch (e) {}
+            window.location.href = window.location.pathname;
+        };
+        const btn = 'min-h-[48px] px-5 rounded-lg font-bold flex items-center justify-center gap-2';
+        return (
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center" data-testid="finished-actions">
+                {onRestart && <button type="button" onClick={onRestart} data-testid="finished-restart"
+                        className={`${btn} bg-sky-600 hover:bg-sky-500 text-white`}><Lucide icon="monitor" className="w-5 h-5"/> Restart monitor</button>}
+                <button type="button" onClick={backToStart} data-testid="finished-home"
+                        className={`${btn} bg-slate-700 hover:bg-slate-600 text-white`}><Lucide icon="arrow-left" className="w-5 h-5"/> Back to start screen</button>
+            </div>
+        );
+    };
+
+    const DeviceScreen = ({ sim, sessionID, parts, onShows, onHost, onRestart }) => {
         const { Lucide } = window;
         const { state } = sim;
         useWakeLock();
@@ -140,6 +160,7 @@
                         <Lucide icon="check-circle" className="w-14 h-14 text-emerald-500 mx-auto mb-4" />
                         <h1 className="text-3xl font-bold mb-2">Simulation complete</h1>
                         <p className="text-slate-300">Please turn to your facilitator for the debrief.</p>
+                        <FinishedActions onRestart={onRestart} />
                     </div>
                 </div>
             );
@@ -158,7 +179,7 @@
         );
     };
 
-    const MonitorScreen = ({ sim, sessionID, parts, onShows, onHost }) => {
+    const MonitorScreen = ({ sim, sessionID, parts, onShows, onHost, onRestart }) => {
         const { VitalDisplay, ECGMonitor, Lucide, Button, Modal } = window;
         const { state, enableAudio, triggerNIBP, toggleNIBPMode, revealInvestigation } = sim;
         const { vitals, prevVitals, rhythm, flash, activeInterventions, etco2Enabled, etco2Pathology, cprInProgress, scenario, nibp, monitorPopup, notification, arrestPanelOpen, defibPanelOpen, loadingInvestigations, showWetflag } = state;
@@ -469,6 +490,7 @@
                         <h1 className="text-3xl font-bold tracking-wide mb-2">Simulation complete</h1>
                         <p className="text-slate-300 text-lg mb-4">This session has ended. The monitor is no longer live.</p>
                         <p className="text-slate-400 text-sm">Please turn to your facilitator — the debrief happens with them, not on this screen.</p>
+                        <FinishedActions onRestart={onRestart} />
                         <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 font-mono uppercase tracking-widest">Monitor standby</div>
                     </div>
                 </div>
@@ -820,7 +842,11 @@
         // No patient from the controller yet (none chosen, or it was taken off): the screen stays blank
         // and waits, even once the controller has numbered it. This screen's own engine always has
         // default obs, so those must never be shown as a patient. A mistyped code stays here too.
-        const waiting = !sim.state.liveSeen;
+        // "Restart monitor" on the finished card: back to a blank, waiting screen on the same code
+        // until the controller starts the next scenario (the finished run no longer shows).
+        const [restarted, setRestarted] = useState(false);
+        useEffect(() => { if (!sim.state.isFinished) setRestarted(false); }, [sim.state.isFinished]);
+        const waiting = !sim.state.liveSeen || (restarted && !!sim.state.isFinished);
         const [shows, setShows] = useState(null);
         // The embedded defib and ventilator pages live HERE, not inside MonitorScreen/DeviceScreen,
         // so a role change that adds or removes the monitor (which swaps those two) does not reload
@@ -866,8 +892,8 @@
         return (
             <div className="h-full w-full relative">
                 {parts.includes('monitor')
-                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} />
-                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} />}
+                    ? <MonitorScreen key="monitor" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} onRestart={() => setRestarted(true)} />
+                    : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} onRestart={() => setRestarted(true)} />}
                 {['defib', 'vent'].map(k => host.includes(k) && parts.includes(k) && !sim.state.isFinished
                     ? <DeviceLayer key={k} kind={k} sessionID={sessionID} shown={showsNow === k} /> : null)}
                 {overlay}

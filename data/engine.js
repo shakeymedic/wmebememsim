@@ -987,6 +987,14 @@
                         const clear = { findings: 'Lung re-expanded after decompression.', image: null, findingId: null };
                         updatedScenario.chestXray = { ...(updatedScenario.chestXray || {}), ...clear };
                         if (inv.chestXray) updatedScenario.investigations = { ...inv, chestXray: { ...inv.chestXray, ...clear } };
+                        // A pneumothorax the facilitator chose is decompressed the same way, and is
+                        // then no longer "their" result (data/investigations.js setResult).
+                        if (updatedScenario.invChanged && updatedScenario.invChanged['X-ray']) {
+                            updatedScenario.invChanged = Object.assign({}, updatedScenario.invChanged);
+                            updatedScenario.invDefaults = Object.assign({}, updatedScenario.invDefaults || {});
+                            delete updatedScenario.invChanged['X-ray'];
+                            delete updatedScenario.invDefaults['X-ray'];
+                        }
                         updateNeeded = true;
                     }
                 }
