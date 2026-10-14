@@ -325,5 +325,178 @@
     };
     const creditText = (img) => !img ? '' : img.credit ? img.credit : `${img.author}, ${img.licence}, via Wikimedia Commons${img.modified && img.modified !== 'Resized' ? ` (${img.modified.toLowerCase()})` : ''}`;
 
-    window.INVESTIGATIONS = { IMAGES, FINDINGS, SCENARIO_RESULTS, byId, asResult, applyScenarioResults, imageFor, registerImage, ecgImageFits, creditText, KEY };
+    // ---- The facilitator's own results for this run ------------------------------------------------
+    // What each investigation button on the room monitor returns can be changed by the facilitator,
+    // before START or during the run. The choice is written into the scenario's own result fields
+    // (top level and scenario.investigations, the same places the sync payload and the monitor
+    // already read), so the monitor, the "Scenario finding" send and a resumed run all agree.
+    // The scenario's original fields are kept in scenario.invDefaults so "Back to the scenario's
+    // own result" can restore them, and scenario.invChanged says what was chosen (for the label).
+    //
+    // A choice ("spec") is one of:
+    //   { findingId }            a library finding (with its image, if it has one)
+    //   { text }                 the facilitator's own written report
+    //   { vbg: {pH, pCO2, ...} } (VBG) the gas the team gets; it still drifts with treatment
+    //   { urine: 'uti' }         (Urine) a dipstick preset from generateUrine
+    //   { pocus: 'normal' }      (POCUS) a preset from generatePocus
+    //   { ecgLive: true }        (ECG) no real image: the 12-lead is drawn from the live rhythm
+    const RESULT_TYPES = ['ECG', 'VBG', 'X-ray', 'Urine', 'POCUS', 'CT'];
+    const FIELD = { 'X-ray': 'chestXray', CT: 'ct', POCUS: 'pocus', Urine: 'urine', ECG: 'ecg', VBG: 'vbg' };
+    // What the room monitor shows when a scenario has no result of that type at all.
+    const FALLBACK = { ECG: 'Drawn from the live rhythm.', 'X-ray': 'Lung fields clear.', CT: 'No acute intracranial pathology.', Urine: 'Urinalysis Normal.', POCUS: 'No free fluid seen.' };
+    const URINE_PRESETS = [
+        { id: 'normal', label: 'Normal dipstick' }, { id: 'uti', label: 'UTI (leucocytes, nitrites)' }, { id: 'dka', label: 'DKA (ketones, glucose)' },
+        { id: 'hhs', label: 'HHS (glucose, trace ketones)' }, { id: 'rhabdo', label: 'Rhabdomyolysis (blood: myoglobin)' },
+        { id: 'pregnancy', label: 'Pregnancy test positive' }, { id: 'renal_colic', label: 'Renal colic (blood)' }
+    ];
+    const POCUS_PRESETS = [
+        { id: 'normal', label: 'Normal (heart, lungs, FAST)' }, { id: 'tamponade', label: 'Tamponade' }, { id: 'pneumothorax', label: 'Pneumothorax (left)' }
+    ];
+    const VBG_PRESETS = [
+        { id: 'normal', label: 'Normal' }, { id: 'dka_severe', label: 'Severe DKA' }, { id: 'hhs', label: 'HHS' },
+        { id: 'septic_shock', label: 'Septic shock' }, { id: 'haemorrhagic_shock', label: 'Haemorrhagic shock' },
+        { id: 'copd_retainer', label: 'COPD (chronic CO2 retainer)' }, { id: 'respiratory_acidosis_acute', label: 'Acute respiratory acidosis' },
+        { id: 'metabolic_acidosis_severe', label: 'Severe metabolic acidosis' }, { id: 'metabolic_alkalosis', label: 'Metabolic alkalosis' },
+        { id: 'hyperkalemia', label: 'Hyperkalaemia' }, { id: 'hyponatremia', label: 'Hyponatraemia' }, { id: 'gi_bleed', label: 'GI bleed' },
+        { id: 'hypercalcemia', label: 'Hypercalcaemia' }, { id: 'hypothermia', label: 'Hypothermia' }, { id: 'co_poisoning', label: 'Carbon monoxide poisoning' }
+    ];
+    // The VBG values the facilitator can type, with the limits the editor accepts.
+    const VBG_FIELDS = [
+        { k: 'pH', label: 'pH', min: 6.5, max: 7.9, step: 0.01 }, { k: 'pCO2', label: 'pCO2 (kPa)', min: 1, max: 20, step: 0.1 },
+        { k: 'pO2', label: 'pO2 (kPa)', min: 1, max: 70, step: 0.1 }, { k: 'HCO3', label: 'HCO3 (mmol/L)', min: 1, max: 60, step: 1 },
+        { k: 'BE', label: 'BE', min: -35, max: 35, step: 1 }, { k: 'Lac', label: 'Lactate (mmol/L)', min: 0, max: 30, step: 0.1 },
+        { k: 'K', label: 'K+ (mmol/L)', min: 1, max: 10, step: 0.1 }, { k: 'Glu', label: 'Glucose (mmol/L)', min: 0.5, max: 60, step: 0.1 },
+        { k: 'Na', label: 'Na+ (mmol/L, optional)', min: 100, max: 180, step: 1, optional: true },
+        { k: 'Ca', label: 'Ca2+ (mmol/L, optional)', min: 0.5, max: 5, step: 0.01, optional: true }
+    ];
+    const vbgSummary = (v) => !v ? '' : `pH ${Number(v.pH).toFixed(2)}, pCO2 ${Number(v.pCO2).toFixed(1)}, lactate ${Number(v.Lac).toFixed(1)}, K+ ${Number(v.K).toFixed(1)}, glucose ${Number(v.Glu).toFixed(1)}`;
+    const urineText = (u) => {
+        const labels = { leuks: 'Leucocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
+        return Object.keys(labels).filter(k => u[k] !== undefined).map(k => `${labels[k]}: ${u[k]}`).join(', ');
+    };
+    const pocusText = (p) => ['heart', 'lungs', 'abdo', 'aorta', 'ivc'].filter(k => p[k]).map(k => p[k]).join(' ');
+    const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined && o[k] !== null;
+
+    // A label for a choice, as the controller lists it.
+    const specLabel = (type, spec) => {
+        if (!spec) return '';
+        if (spec.findingId && byId[spec.findingId]) return byId[spec.findingId].label;
+        if (spec.text) return 'Your own report';
+        if (spec.ecgLive) return 'Drawn from the live rhythm';
+        if (spec.urine) { const p = URINE_PRESETS.filter(x => x.id === spec.urine)[0]; return p ? p.label : spec.urine; }
+        if (spec.pocus) { const p = POCUS_PRESETS.filter(x => x.id === spec.pocus)[0]; return p ? p.label : spec.pocus; }
+        if (spec.vbg) return spec.preset ? ((VBG_PRESETS.filter(x => x.id === spec.preset)[0] || {}).label || 'Your values') : 'Your values';
+        return '';
+    };
+
+    // A clean VBG from typed values: every field the monitor's grid prints must be a finite number.
+    const cleanVbg = (v, base) => {
+        const out = Object.assign({}, base || {});
+        VBG_FIELDS.forEach(f => {
+            const n = Number(v && v[f.k]);
+            if (v && v[f.k] !== '' && v[f.k] !== null && v[f.k] !== undefined && Number.isFinite(n)) out[f.k] = Math.min(f.max, Math.max(f.min, n));
+            else if (f.optional) delete out[f.k];
+        });
+        ['pH', 'pCO2', 'pO2', 'HCO3', 'BE', 'Lac', 'K', 'Glu'].forEach(k => { if (!Number.isFinite(Number(out[k]))) out[k] = ({ pH: 7.4, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.0, K: 4.0, Glu: 5.5 })[k]; });
+        if (!Number.isFinite(Number(out.Ketones))) out.Ketones = 0.2;
+        return out;
+    };
+
+    // Apply a choice (or, with spec null, restore the scenario's own result). Returns a NEW scenario.
+    const setResult = (scenario, type, spec) => {
+        const f = FIELD[type];
+        if (!scenario || !f) return scenario;
+        const out = Object.assign({}, scenario);
+        const inv = Object.assign({}, scenario.investigations || {});
+        const defaults = Object.assign({}, scenario.invDefaults || {});
+        const changed = Object.assign({}, scenario.invChanged || {});
+        const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+        if (!defaults[type]) defaults[type] = { top: has(scenario, f) ? scenario[f] : null, gen: has(inv, f) ? inv[f] : null, topKey: own(scenario, f), genKey: own(inv, f) };
+        const d = defaults[type];
+        // Put back exactly what was there: a value, a null, or no key at all.
+        const put = (obj, k, v, hadKey) => { if (v !== null && v !== undefined) obj[k] = v; else if (hadKey) obj[k] = null; else delete obj[k]; };
+        if (!spec) {
+            if (type !== 'ECG') put(out, f, d.top, d.topKey);
+            put(inv, f, d.gen, d.genKey);
+            delete defaults[type]; delete changed[type];
+        } else if (type === 'ECG') {
+            const fd = spec.findingId ? byId[spec.findingId] : null;
+            const base = Object.assign({}, d.gen || d.top || scenario.ecg || {});
+            base.image = fd ? fd.image : null;
+            base.imageReport = fd ? fd.report : null;
+            base.findingId = fd ? fd.id : null;
+            inv.ecg = base;
+            changed[type] = Object.assign({ label: specLabel(type, spec) }, spec);
+        } else {
+            let block = null;
+            if (type === 'VBG') {
+                const start = spec.vbg || (spec.preset && window.generateVbg ? window.generateVbg(spec.preset) : null);
+                block = cleanVbg(start, null);
+            } else if (spec.findingId && byId[spec.findingId]) {
+                block = asResult(spec.findingId);
+            } else if (spec.urine && window.generateUrine) {
+                block = window.generateUrine(spec.urine);
+            } else if (spec.pocus && window.generatePocus) {
+                block = window.generatePocus(spec.pocus);
+            } else if (spec.text) {
+                block = { findings: String(spec.text).slice(0, 2000), image: null, findingId: null };
+            }
+            if (!block) return scenario;
+            out[f] = block;
+            inv[f] = block;
+            const keep = Object.assign({ label: specLabel(type, spec) }, spec);
+            if (type === 'VBG') { keep.vbg = block; }
+            changed[type] = keep;
+        }
+        // What scenario.investigations was before the first change (Quick Sim has none), so undoing
+        // every change leaves the scenario exactly as it was.
+        const shape = scenario.invShape || (scenario.investigations === null ? 'null' : own(scenario, 'investigations') ? 'obj' : 'none');
+        out.investigations = inv;
+        out.invDefaults = defaults;
+        out.invChanged = changed;
+        out.invShape = shape;
+        if (!Object.keys(changed).length) {
+            if (!Object.keys(inv).length && shape === 'null') out.investigations = null;
+            else if (!Object.keys(inv).length && shape === 'none') delete out.investigations;
+            delete out.invDefaults; delete out.invChanged; delete out.invShape;
+        }
+        return out;
+    };
+
+    // What the monitor button for this type will give right now: { text, image, changed, label,
+    // ecgImageNotFitting }. Mirrors how the room monitor resolves a result.
+    const currentResult = (scenario, type, rhythm) => {
+        const f = FIELD[type];
+        const spec = scenario && scenario.invChanged ? scenario.invChanged[type] : null;
+        const res = { text: null, image: null, changed: !!spec, label: spec ? (spec.label || specLabel(type, spec)) : '', ecgImageNotFitting: false };
+        if (!scenario || !f) return res;
+        const top = scenario[f], gen = (scenario.investigations || {})[f];
+        const src = (type === 'ECG') ? (gen || top) : ((top && (typeof top === 'string' || top.findings || top.image || Object.keys(top).length)) ? top : gen);
+        if (type === 'VBG') { res.text = vbgSummary(src || (window.generateVbg ? window.generateVbg('normal') : null)); return res; }
+        if (type === 'ECG') {
+            if (src && src.image) {
+                if (ecgImageFits(src.image, rhythm)) { res.image = src.image; res.text = src.imageReport || src.findings || null; }
+                else res.ecgImageNotFitting = true;
+            }
+            if (!res.image) res.text = FALLBACK.ECG;
+            return res;
+        }
+        if (src) {
+            res.text = typeof src === 'string' ? src : (src.findings || (type === 'Urine' ? urineText(src) : type === 'POCUS' ? pocusText(src) : null));
+            res.image = (typeof src === 'object' && src.image && imageFor(src.image)) ? src.image : null;
+        }
+        if (!res.text && !res.image) res.text = FALLBACK[type];
+        return res;
+    };
+
+    // The Builder stores choices as scenario.invResults ({ type: spec }); apply them at run time.
+    const applyResultSpecs = (scenario, specs) => {
+        if (!scenario || !specs || typeof specs !== 'object') return scenario;
+        let out = scenario;
+        RESULT_TYPES.forEach(t => { if (specs[t]) out = setResult(out, t, specs[t]); });
+        return out;
+    };
+
+    window.INVESTIGATIONS = { IMAGES, FINDINGS, SCENARIO_RESULTS, byId, asResult, applyScenarioResults, imageFor, registerImage, ecgImageFits, creditText, KEY,
+        RESULT_TYPES, FIELD, URINE_PRESETS, POCUS_PRESETS, VBG_PRESETS, VBG_FIELDS, setResult, currentResult, applyResultSpecs, specLabel, cleanVbg, vbgSummary };
 })();
