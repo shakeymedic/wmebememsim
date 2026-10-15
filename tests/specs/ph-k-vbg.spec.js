@@ -3,7 +3,7 @@
 // bicarbonate, insulin-dextrose and the rest steer) are the gas the team gets when they press VBG,
 // and choosing a VBG result on the controller sets them (window.liveVbg, data/screens/invresults.js).
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -49,6 +49,8 @@ test('pH and K+ are off the obs and the monitor strip, and the VBG gives the pat
   const code = await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'AM004');
+  await pressStart(page);
+  await page.getByRole('button', { name: 'PAUSE', exact: true }).click();
   const monitor = await openMonitor(context, code);
   const monErrors = trackErrors(monitor);
 

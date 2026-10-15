@@ -105,10 +105,10 @@
     // words next to START rather than left to a 00:00 clock.
     const NotStartedBadge = ({ className = '', long = false }) => (
         <span data-testid="not-started" role="status"
-              title="The patient is not live yet: no trends, deterioration or drug effects until you press START. Anything you give now is recorded and starts acting at START."
+              title="Setting up: the patient is not live yet. The patient screens stay blank and there are no trends, deterioration or drug effects until you press START. Anything you set or give now is recorded and starts acting at START."
               className={`h-8 px-2 inline-flex items-center justify-center gap-1 rounded border border-amber-400 bg-amber-950/70 text-amber-200 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap ${className}`}>
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" aria-hidden="true" />
-            <span>Not started<span className={long ? '' : 'hidden xl:inline'}>: press START</span></span>
+            <span>Set-up: not running<span className={long ? '' : 'hidden xl:inline'}> &middot; press START</span></span>
         </span>
     );
 
@@ -889,7 +889,12 @@
         const shockEnergy = Number.isFinite(Number(defib.energy)) && Number(defib.energy) > 0
             ? Math.round(Number(defib.energy)) : recommendedEnergy;
 
-        const getTrend = (key) => trends.active && trends.targets[key] !== undefined ? { active: true, progress: trends.elapsed / trends.duration, target: trends.targets[key] } : null;
+        const getTrend = (key) => {
+            if (!trends.active || !trends.targets || trends.targets[key] === undefined) return null;
+            const d = trends.durations ? Number(trends.durations[key]) : Number(trends.duration);
+            const e = trends.durations ? Number((trends.elapsedBy || {})[key]) || 0 : Number(trends.elapsed) || 0;
+            return { active: true, progress: d > 0 ? Math.min(1, e / d) : 1, target: trends.targets[key] };
+        };
         const addTimerAlert = () => {
             const mins = Number(newAlertMins);
             if (!newAlertMsg.trim()) { setTimerAlertError('Enter an alert message.'); return; }
@@ -1102,7 +1107,9 @@
 
                 {/* Wraps instead of overflowing: at ~375px this was one non-scrolling row and Back/Finish/
                     START plus every tool button sat off-screen, i.e. unreachable on a phone. */}
-                <div className="flex flex-wrap justify-between items-center gap-y-2 bg-slate-800 p-2 rounded mb-2 border border-slate-700">
+                {/* Before the first START the toolbar turns amber (no extra height), so set-up is never
+                    mistaken for a running scenario. */}
+                <div data-testid="controller-toolbar" data-setup={notStarted ? 'true' : undefined} className={`flex flex-wrap justify-between items-center gap-y-2 p-2 rounded mb-2 border ${notStarted ? 'bg-amber-950/70 border-amber-500 ring-2 ring-amber-400/70' : 'bg-slate-800 border-slate-700'}`}>
                     <div className="flex flex-wrap gap-2 items-center relative z-20">
                         <Button variant="secondary" ariaLabel="Back" onClick={onBack} className="h-8 px-2 whitespace-nowrap"><Lucide icon="arrow-left"/><span className="max-md:hidden ml-1">Back</span></Button>
                         <Button variant="danger" onClick={confirmFinish} className="h-8 px-2 font-bold whitespace-nowrap"><Lucide icon="square"/> Finish</Button>

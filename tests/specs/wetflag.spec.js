@@ -1,7 +1,7 @@
 // WETFLAG on the room monitor: hidden until the facilitator shows it, and shown or hidden from the
 // controller at any time.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -21,6 +21,7 @@ test('a paediatric scenario starts with WETFLAG hidden; the controller shows and
   });
   await expect.poll(() => page.evaluate(() => !!window.__simEngine.state.scenario.wetflag)).toBe(true);
   expect(await page.evaluate(() => window.__simEngine.state.showWetflag)).toBe(false);
+  await pressStart(page);
 
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);

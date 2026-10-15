@@ -2,7 +2,7 @@
 // the monitor and the defib, an RR the facilitator types reaches the ventilator, and the Monitor /
 // Ventilator switch on a patient screen never hides a button.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -24,6 +24,7 @@ const eng = (page, fn) => page.evaluate(fn);
 test('Monitor/Ventilator switch sits in the investigations bar and does not cover the 12-Lead button', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const monitor = await context.newPage();
   const errors = trackErrors(monitor);
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);

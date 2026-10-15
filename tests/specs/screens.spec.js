@@ -3,7 +3,7 @@
 // on the screen itself (like Windows' Identify) and chooses what each one shows (monitor, defib,
 // ventilator, or a mix), at any time.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, session, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -79,6 +79,7 @@ test('two screens: a quick set-up makes one the monitor and the other the defib 
   const errors = trackErrors(page);
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const one = await joinAsScreen(context, code);
   const two = await joinAsScreen(context, code);
   await expect.poll(() => assigned(page, code)).toEqual(['1:all', '2:all']);
@@ -145,6 +146,7 @@ test('a device brought in that no screen shows is flagged on the controller', as
 test('a reload keeps the screen\'s number and what it shows; a duplicated tab becomes a new screen', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const { screen } = await joinAsScreen(context, code);
   await expect.poll(() => assigned(page, code)).toEqual(['1:all']);
   await openScreens(page);
@@ -175,6 +177,7 @@ test('a reload keeps the screen\'s number and what it shows; a duplicated tab be
 test('an older link with ?screen= starts the screen as that, and the controller can still change it', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const screen = await context.newPage();
   await screen.goto(`/index.html?mode=monitor&session=${code}&screen=devices`);
   await expect(screen.getByTestId('device-screen')).toBeVisible();
@@ -212,6 +215,7 @@ test('a screen plugged into this computer opens in a window of its own, a new on
 test('one screen: the monitor switches between the obs, the defib and the ventilator, keeping both devices loaded', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const monitor = await context.newPage();
   const monitorErrors = trackErrors(monitor);
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
@@ -271,6 +275,7 @@ test('Defib Sim has the Screens panel too, and Open defib still opens the defib 
 test('a device stays loaded when the controller adds or removes the monitor on its screen (pacing is not stopped)', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const { screen, errors } = await joinAsScreen(context, code);
   await expect.poll(() => assigned(page, code)).toEqual(['1:all']);
   await page.evaluate(() => { window.__simEngine.dispatch({ type: 'SET_DEFIB_PANEL', payload: true }); window.__simEngine.dispatch({ type: 'SET_VENT_PANEL', payload: true }); });
