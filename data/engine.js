@@ -390,7 +390,43 @@
             if (isMonitorMode && current.audioLive !== undefined) return !!current.audioLive;
             return !!current.isRunning;
         };
-        const isAudioRouted = (current) => (isMonitorMode && (current.audioOutput === 'monitor' || current.audioOutput === 'both'))
+        // ONE patient screen makes the monitor's sounds. Several screens can join a session (one computer
+        // opens a window per screen), and each runs its own clock: two of them beeping the pulse gave the
+        // room two trains of beeps drifting in and out of step (Jake, 15 Oct 2026). Each screen reads the
+        // same presence list (data/engine-sync.js), so they all pick the same one, without a rules change:
+        // the connected screen showing the monitor with the lowest id. A screen showing only the defib or
+        // the ventilator never makes them; the device pages keep their own sounds.
+        const [soundScreen, setSoundScreen] = useState(true);
+        const soundScreenRef = useRef(true);
+        const localScreen = state.localScreen;
+        useEffect(() => {
+            const S = window.SimScreens, db = window.db;
+            const set = (v) => { soundScreenRef.current = v; setSoundScreen(v); };
+            if (!isMonitorMode || !sessionID || !db || !S) { set(true); return; }
+            const showsMonitor = (role) => S.partsOf(role).includes('monitor');
+            const me = localScreen;
+            let latest = {};
+            const decide = () => {
+                if (!me || !me.id) { set(true); return; }          // not yet a screen: nothing to share with
+                if (!showsMonitor(me.role)) { set(false); return; }
+                const now = Date.now();
+                const ids = Object.keys(latest).filter(k => {
+                    const c = latest[k] || {};
+                    return typeof c.role === 'string' && c.role.startsWith('screen:') && showsMonitor(c.role.slice(7))
+                        && Number.isFinite(Number(c.ts)) && Math.abs(now - Number(c.ts)) < 30000;
+                });
+                if (!ids.includes(me.id)) ids.push(me.id);
+                ids.sort();
+                set(ids[0] === me.id);
+            };
+            const ref = db.ref(`sessions/${sessionID}/presence`);
+            const onVal = (snap) => { latest = (snap && snap.val()) || {}; decide(); };
+            ref.on('value', onVal, () => { latest = {}; decide(); });
+            const sweep = setInterval(decide, 5000);
+            decide();
+            return () => { ref.off('value', onVal); clearInterval(sweep); };
+        }, [isMonitorMode, sessionID, localScreen && localScreen.id, localScreen && localScreen.role]);
+        const isAudioRouted = (current) => (isMonitorMode && soundScreenRef.current && (current.audioOutput === 'monitor' || current.audioOutput === 'both'))
             || (!isMonitorMode && (current.audioOutput === 'controller' || current.audioOutput === 'both'));
 
         // Pulse-oximeter beep. Every early exit now RESCHEDULES: previously a manual rhythm change to
@@ -489,7 +525,7 @@
             if (alarmSensors.spo2 && v.spO2 < th.spO2) fire('spO2', 'critical');
             // Respiratory rate is chest-wall impedance off the ECG electrodes.
             if (alarmSensors.ecg && (v.rr < th.rr.low || v.rr > th.rr.high)) fire('rr', 'alert');
-        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions, state.audioLive, state.pausedAt]);
+        }, [state.vitals.hr, state.vitals.spO2, state.vitals.rr, state.rhythm, state.isRunning, state.isMuted, state.audioOutput, isMonitorMode, state.activeInterventions, state.audioLive, state.pausedAt, soundScreen]);
         
         // Auto mode only measures while a cuff is actually on (it resumes when the cuff goes back on).
         // The countdown rides the sim clock (TICK_TIME), so it waits for START like everything else;
@@ -522,8 +558,7 @@
                 lastSoundRef.current = state.soundEffect.timestamp; 
                 const first = !seenSoundRef.current; seenSoundRef.current = true;
                 if (first && Date.now() - state.soundEffect.timestamp > 8000) return;
-                const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
-                if (shouldPlay && audioCtxRef.current) { playMedicalSound(state.soundEffect.type); } 
+                if (isAudioRouted(state) && audioCtxRef.current) { playMedicalSound(state.soundEffect.type); } 
             } 
         }, [state.soundEffect, isMonitorMode, state.audioOutput]);
         
@@ -582,8 +617,7 @@
                 lastSpeechRef.current = state.speech.timestamp; 
                 const first = !seenSpeechRef.current; seenSpeechRef.current = true;
                 if (first && Date.now() - state.speech.timestamp > 8000) return;
-                const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
-                if (!shouldPlay) return;
+                if (!isAudioRouted(state)) return;
                 const clip = state.speech.clip;
                 if (clip && window.VOICE_CLIPS && window.VOICE_CLIPS.includes(clip) && audioCtxRef.current) {
                     playVoiceClip(clip).catch(() => speakAloud(state.speech.text));
@@ -1605,7 +1639,7 @@
             const wanted = (current.isMuted || !isAudioRouted(current)) ? {} : (current.activeLoops || {});
             Object.keys(loopNodesRef.current).forEach(type => { if (!wanted[type]) stopAudioLoop(type); });
             Object.keys(wanted).forEach(type => { if (wanted[type] && !loopNodesRef.current[type]) startAudioLoop(type); });
-        }, [state.activeLoops, state.isMuted, state.audioOutput, isMonitorMode, audioCtxState]);
+        }, [state.activeLoops, state.isMuted, state.audioOutput, isMonitorMode, audioCtxState, soundScreen]);
 
         // --- GROUP C: the AUTO / MANUAL deterioration toggle -------------------------------------
         // C3 is the critical requirement: "if switching from one to the other the obs should remain
