@@ -341,6 +341,15 @@
         const etco2Shape = etco2Pathology || 'normal';
         const setEtco2Shape = (shape) => sim.dispatch({ type: 'SET_ETCO2_PATHOLOGY', payload: shape });
         
+        // "Set up the patient" (data/screens/patientstatus.js PatientSetup): injuries and the kit already
+        // on when the team arrives, offered beside START until the scenario starts.
+        const [showSetup, setShowSetup] = useState(false);
+        const PS = window.PatientStatus;
+        const setUpButton = (cls) => notStarted && PS && PS.PatientSetup && state.scenario ? (
+            <Button variant="warning" onClick={() => setShowSetup(true)} className={`h-8 px-2 whitespace-nowrap font-bold ${cls || ''}`} ariaLabel="Set up the patient">
+                <Lucide icon="bed"/> Set up patient
+            </Button>
+        ) : null;
         const [activeTab, setActiveTab] = useState("Common");
         // Simple / Full view (shared with every screen on this device; Simple is the default).
         const [viewMode, setViewMode] = window.useViewMode();
@@ -1172,6 +1181,7 @@
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
                     </div>
                     {notStarted && <NotStartedBadge long className="mb-1 w-full" />}
+                    {setUpButton('mb-1 w-full justify-center')}
                     {/* With nothing attached, the one line above says so instead of "not on monitor" on every tile. */}
                     <div className={`grid grid-cols-3 min-[400px]:grid-cols-4 gap-1 ${sensors.any ? '' : '[&_[data-off-monitor]]:hidden'}`}>
                         {renderVitalTiles()}
@@ -1190,6 +1200,8 @@
                         {/* START/PAUSE lives beside the phone obs on small screens. */}
                         {!isRunning ? ( <Button variant="success" onClick={start} className={`h-8 px-4 font-bold max-md:hidden ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play"/> START</Button> ) : ( <Button variant="warning" onClick={pause} className="h-8 px-4 max-md:hidden"><Lucide icon="pause"/> PAUSE</Button> )}
                         {notStarted && <NotStartedBadge className="max-md:hidden" />}
+                        {setUpButton('max-md:hidden')}
+                        {showSetup && PS && PS.PatientSetup && <PS.PatientSetup sim={sim} addLogEntry={addLogEntry} onClose={() => setShowSetup(false)} />}
                         {!isRunning && !notStarted && !state.isFinished && (
                             <span data-testid="paused-badge" role="status" className="max-md:hidden h-8 px-2 flex items-center rounded border border-slate-500 bg-slate-900 text-slate-200 text-[11px] font-bold uppercase tracking-wider">Paused</span>
                         )}

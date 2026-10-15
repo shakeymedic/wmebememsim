@@ -1867,6 +1867,26 @@
             keywordObjectivesFor(scenario, key).forEach(obj => dispatch({ type: 'COMPLETE_OBJECTIVE', payload: obj }));
             if (scenario.stabilisers && scenario.stabilisers.includes(key)) { dispatch({ type: 'TRIGGER_IMPROVE' }); addLogEntry("Patient condition IMPROVING", "success"); }
         };
+        // PATIENT SET-UP (before START): kit already on the patient when the team arrives, such as
+        // tourniquets, a cannula or an oxygen mask. It is shown on the picture and counts as on
+        // (the team can take it off), but it is not the team's action: no effect on the obs (the
+        // obs set for the scenario are the obs with this kit on), no objective credit, no
+        // countdown. A second press takes it off again.
+        const setUpIntervention = (key) => {
+            const cur = stateRef.current;
+            const action = INTERVENTIONS[key];
+            if (!cur.scenario || !action) return;
+            const sensor = key === 'Obs' || STANDARD_SENSOR_KEYS.indexOf(key) !== -1;
+            const on = sensor ? isSensorAttached(getSensors(cur), key) : cur.activeInterventions.has(key);
+            if (on) {
+                dispatch(sensor ? { type: 'DETACH_SENSOR', payload: key } : { type: 'REMOVE_INTERVENTION', payload: key });
+                dropPendingEffects(key);
+                addLogEntry(`Set-up: ${action.label} taken off again.`, 'system');
+                return;
+            }
+            dispatch({ type: 'UPDATE_INTERVENTION_STATE', payload: { add: [key], inc: [] } });
+            addLogEntry(`Set-up: ${action.label} already in place when the team arrives.`, 'system');
+        };
         const attachSensors = (keys) => {
             const cur = stateRef.current;
             if (!cur.scenario) {
@@ -1938,7 +1958,7 @@
         const attachStandardMonitoring = () => attachSensors(['Obs']);
         const attachInvasiveMonitoring = () => attachSensors(INVASIVE_SENSOR_KEYS);
 
-        return { state, dispatch, start, pause, stop, reset, clearLivePatient, notStarted: () => notStarted(stateRef.current), applyIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
+        return { state, dispatch, start, pause, stop, reset, clearLivePatient, notStarted: () => notStarted(stateRef.current), applyIntervention, setUpIntervention, addLogEntry, manualUpdateVital, manualUpdateVitals, triggerArrest, triggerROSC, revealInvestigation, clearInvestigation, nextCycle, enableAudio, speak, playSound, toggleAudioLoop, startTrend, triggerNIBP, stopNIBP, toggleNIBPMode, triggerAction, initCharge, deliverShock, playAlertTone,
         // Wave 3 surface
         changeRhythm, applyCardioversion: (o) => applyCardioversion(stateRef.current, o || {}),
         setDefibMode, setDefibEnergy, toggleDefibSync, analyseRhythm, setQueuedRhythm, toggleCPR,

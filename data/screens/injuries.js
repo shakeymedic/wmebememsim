@@ -618,10 +618,11 @@
     };
 
     // ---- the editor ---------------------------------------------------------------------------
-    function InjuryEditor({ scenario, onChange, onClose }) {
-        const { Modal, Button, Lucide } = window;
+    // The list with Remove buttons and the "Add" row: inside the Injuries window below, and in the
+    // controller's "Set up the patient" window (data/screens/patientstatus.js).
+    function InjuryPicker({ scenario, onChange }) {
+        const { Button } = window;
         const list = forScenario(scenario);
-        const own = Array.isArray(scenario.injuries);
         const [pick, setPick] = useState(0);
         const [side, setSide] = useState('R');
         const preset = PRESETS[pick];
@@ -632,39 +633,49 @@
         };
         const remove = (n) => onChange(list.filter((_, m) => m !== n));
         return (
+            <>
+                <div className="space-y-1.5 overflow-y-auto flex-grow pr-1 mb-3" data-testid="injury-list">
+                    {list.length === 0 && <p className="text-sm text-slate-400 italic">No injuries.</p>}
+                    {list.map((i, n) => (
+                        <div key={n} className="flex items-center justify-between gap-2 bg-slate-900 border border-slate-700 rounded px-2 py-1.5">
+                            <span className="text-sm text-slate-100">{label(i)}</span>
+                            <button type="button" onClick={() => remove(n)} aria-label={`Remove ${label(i)}`} className="text-[10px] uppercase font-bold px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">Remove</button>
+                        </div>
+                    ))}
+                </div>
+                <div className="border-t border-slate-700 pt-3 flex flex-wrap gap-2 items-end">
+                    <label className="flex flex-col gap-1 text-[11px] text-slate-400 font-bold uppercase flex-1 min-w-[12rem]">Add
+                        <select value={pick} onChange={e => setPick(Number(e.target.value))} aria-label="Injury to add" className="bg-slate-900 border border-slate-600 rounded px-2 h-9 text-sm text-white normal-case font-normal">
+                            {PRESETS.map((p, n) => <option key={n} value={n}>{p.name}</option>)}
+                        </select>
+                    </label>
+                    {preset.sided && (
+                        <label className="flex flex-col gap-1 text-[11px] text-slate-400 font-bold uppercase">Side
+                            <select value={side} onChange={e => setSide(e.target.value)} aria-label="Side" className="bg-slate-900 border border-slate-600 rounded px-2 h-9 text-sm text-white normal-case font-normal">
+                                <option value="R">Right</option><option value="L">Left</option><option value="both">Both</option>
+                            </select>
+                        </label>
+                    )}
+                    <Button onClick={add} variant="primary" className="h-9 px-4">Add</Button>
+                </div>
+            </>
+        );
+    }
+
+    function InjuryEditor({ scenario, onChange, onClose }) {
+        const { Modal, Button, Lucide } = window;
+        const own = Array.isArray(scenario.injuries);
+        return (
             <Modal fixed label="Injuries on the patient picture" onClose={onClose}>
                 <div className="bg-slate-800 p-5 rounded-lg border border-slate-600 w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col" data-testid="injury-editor">
                     <div className="flex justify-between items-start mb-3 gap-2">
                         <div className="min-w-0">
                             <h3 className="text-lg font-bold text-white uppercase tracking-wider">Injuries</h3>
-                            <p className="text-[11px] text-slate-400">What the patient picture on this controller shows. {own ? 'You have changed the list.' : 'Read from the scenario’s own words.'} The team does not see this picture.</p>
+                            <p className="text-[11px] text-slate-400">What the patient picture shows. {own ? 'You have changed the list.' : 'Read from the scenario’s own words.'} The team sees the picture only when you show it on the monitor.</p>
                         </div>
                         <button aria-label="Close" onClick={onClose} className="text-slate-400 hover:text-white flex-none"><Lucide icon="x" className="w-5 h-5" /></button>
                     </div>
-                    <div className="space-y-1.5 overflow-y-auto flex-grow pr-1 mb-3" data-testid="injury-list">
-                        {list.length === 0 && <p className="text-sm text-slate-400 italic">No injuries.</p>}
-                        {list.map((i, n) => (
-                            <div key={n} className="flex items-center justify-between gap-2 bg-slate-900 border border-slate-700 rounded px-2 py-1.5">
-                                <span className="text-sm text-slate-100">{label(i)}</span>
-                                <button type="button" onClick={() => remove(n)} aria-label={`Remove ${label(i)}`} className="text-[10px] uppercase font-bold px-2 py-1 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">Remove</button>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="border-t border-slate-700 pt-3 flex flex-wrap gap-2 items-end">
-                        <label className="flex flex-col gap-1 text-[11px] text-slate-400 font-bold uppercase flex-1 min-w-[12rem]">Add
-                            <select value={pick} onChange={e => setPick(Number(e.target.value))} aria-label="Injury to add" className="bg-slate-900 border border-slate-600 rounded px-2 h-9 text-sm text-white normal-case font-normal">
-                                {PRESETS.map((p, n) => <option key={n} value={n}>{p.name}</option>)}
-                            </select>
-                        </label>
-                        {preset.sided && (
-                            <label className="flex flex-col gap-1 text-[11px] text-slate-400 font-bold uppercase">Side
-                                <select value={side} onChange={e => setSide(e.target.value)} aria-label="Side" className="bg-slate-900 border border-slate-600 rounded px-2 h-9 text-sm text-white normal-case font-normal">
-                                    <option value="R">Right</option><option value="L">Left</option><option value="both">Both</option>
-                                </select>
-                            </label>
-                        )}
-                        <Button onClick={add} variant="primary" className="h-9 px-4">Add</Button>
-                    </div>
+                    <InjuryPicker scenario={scenario} onChange={onChange} />
                     <div className="border-t border-slate-700 pt-3 mt-3 grid grid-cols-2 gap-2">
                         <Button onClick={() => onChange(null)} variant="secondary" className="w-full" disabled={!own}>Scenario's own</Button>
                         <Button onClick={onClose} variant="outline" className="w-full">Done</Button>
@@ -674,5 +685,5 @@
         );
     }
 
-    window.Injuries = { detect, forScenario, label, PRESETS, geometry, pointFor, kitPlan, Sprite, Body, InjuryLayer, KitLayer, InjuryEditor };
+    window.Injuries = { detect, forScenario, label, PRESETS, geometry, pointFor, kitPlan, Sprite, Body, InjuryLayer, KitLayer, InjuryPicker, InjuryEditor };
 })();

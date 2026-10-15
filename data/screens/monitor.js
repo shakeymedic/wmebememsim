@@ -385,6 +385,8 @@
             if (monitorPopup && monitorPopup.type && monitorPopup.timestamp > lastPopupTime.current) {
                 lastPopupTime.current = monitorPopup.timestamp;
                 const type = monitorPopup.type;
+                // The patient picture is drawn over the whole screen by MonitorContainer, not as a result card.
+                if (type === 'Patient picture') { setInvToast(null); setViewImage(null); return; }
                 let title = type;
                 let content = "No findings recorded.";
 
@@ -906,6 +908,9 @@
         const syncStatus = sim.state.syncStatus || { state: 'connecting', message: 'Connecting to live session…' };
         const syncProblem = ['unavailable', 'disconnected', 'error', 'degraded'].includes(syncStatus.state);
         const overlay = (mine.identify || flashing) && mine.n ? <ScreenNumberOverlay n={mine.n} role={role} /> : null;
+        // The patient picture the controller chose to show (data/screens/patientstatus.js), on every screen
+        // with a monitor, also while the scenario is still being set up (a handover before START).
+        const picture = parts.includes('monitor') && window.PatientStatus ? <window.PatientStatus.MonitorPicture state={sim.state} /> : null;
 
         if (waiting) {
             return (
@@ -921,6 +926,7 @@
                     <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{S.ROLES[role].title}</b>{mine.n ? '' : ' (until the controller numbers it)'}</div>
                     <div className="text-xs text-slate-400 max-w-md">The controller chooses what this screen shows, in <b>Screens</b>. Nothing needs doing here.</div>
                     {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
+                    {!syncProblem && !sim.state.isFinished && picture}
                     {overlay}
                 </div>
             );
@@ -932,6 +938,7 @@
                     : <DeviceScreen key="devices" sim={sim} sessionID={sessionID} parts={parts} onShows={setShows} onHost={setHost} onRestart={() => setRestarted(true)} />}
                 {['defib', 'vent'].map(k => host.includes(k) && parts.includes(k) && !sim.state.isFinished
                     ? <DeviceLayer key={k} kind={k} sessionID={sessionID} shown={showsNow === k} /> : null)}
+                {!sim.state.isFinished && picture}
                 {overlay}
             </div>
         );

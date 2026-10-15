@@ -173,7 +173,7 @@
                 </div>
 
                 {/* The patient at a glance (data/screens/patientstatus.js), as on the full controller. */}
-                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showVent={false}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showVent={false} setUp
                     extra={window.PatientScreenSwitch ? <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} showVent={false} onOpenScreens={() => setShowScreens(true)} /> : null} />}
 
                 {!state.isRunning && !state.isFinished && (

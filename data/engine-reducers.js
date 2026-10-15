@@ -1004,7 +1004,9 @@
             case 'TRIGGER_POPUP': {
                 const p = (action.payload && typeof action.payload === 'object') ? action.payload : { type: action.payload, customText: action.customText || null };
                 return { ...state, monitorPopup: { type: p.type, timestamp: Date.now(), customText: p.customText !== undefined ? p.customText : null,
-                    image: typeof p.image === 'string' ? p.image : null, hideReport: !!p.hideReport } };
+                    image: typeof p.image === 'string' ? p.image : null, hideReport: !!p.hideReport,
+                    // The patient picture shown on the monitor (data/screens/patientstatus.js showPicture)
+                    picture: p.picture && typeof p.picture === 'object' ? p.picture : null } };
             }
             case 'CLEAR_POPUP': return { ...state, monitorPopup: { type: null, timestamp: Date.now(), customText: null } };
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
