@@ -69,6 +69,7 @@ test('the controller chooses the lungs: picked from the scenario, then changed b
 test('on the room monitor: the Ventilator toggle shows it, the learner can flip to the obs, and it carries on where it left off', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const monitor = await context.newPage();
   const monitorErrors = trackErrors(monitor);
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
@@ -420,6 +421,7 @@ test('Ventilator Sim: ARDS in Assessment, on the room monitor, through to the ve
   await expect(page.getByTestId('vent-brief')).toContainText('ARDS: lung-protective ventilation (Assessment)');
   await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'ards', breathing: false, airway: 'tube', assess: true });
   expect(await live(page, code, '/ventPanelOpen')).toBe(true);
+  await pressStart(page);
 
   // The candidate's tablet is the room monitor, with the ventilator already on it
   const monitor = await context.newPage();

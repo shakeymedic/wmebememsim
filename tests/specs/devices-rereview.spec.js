@@ -2,7 +2,7 @@
 // data arrives is kept, the ventilator goes quiet when the session ends, the room monitor says when it
 // has no controller.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -44,6 +44,7 @@ test('a room monitor with a code no controller is using says so; with one it sho
   const code = await openController(page);
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.attachStandardMonitoring && window.__simEngine.attachStandardMonitoring());
+  await pressStart(page);
   const m2 = await context.newPage();
   await m2.goto(`/index.html?mode=monitor&session=${code}`);
   await expect(m2.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });

@@ -283,9 +283,12 @@
                     // without a database-rules change.
                     // screenFront (what the facilitator wants in front on the patient screens) rides
                     // in here too, for the same reason: no database-rules change.
-                    // volume rides inside defib, like runId: live's key list is closed in the database
-                    // rules and defib is free-form, so the patient screens get it with no rules change.
-                    defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null, volume: Number.isFinite(cur.volume) ? cur.volume : 1 },
+                    // volume and `started` (false only before the first START) ride inside defib, like runId:
+                    // live's key list is closed in the database rules and defib is free-form, so the patient
+                    // screens get them with no rules change. The screens stay blank while the facilitator sets up.
+                    defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null,
+                             volume: Number.isFinite(cur.volume) ? cur.volume : 1,
+                             started: !!(cur.isRunning || cur.isFinished || (cur.pausedAt !== null && cur.pausedAt !== undefined)) },
                     // The ventilator on the room monitor, and the lungs it ventilates (the
                     // facilitator's choice, else one picked from the scenario).
                     ventPanelOpen: !!cur.ventPanelOpen,

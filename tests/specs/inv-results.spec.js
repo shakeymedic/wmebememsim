@@ -2,7 +2,7 @@
 // each investigation (data/screens/invresults.js, INVESTIGATIONS.setResult), in Quick Sim, a premade
 // scenario, Defib Sim and the Builder, before START and during the run.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -77,12 +77,15 @@ test('Quick Sim: change the CXR before START; the monitor CXR button gives it; U
   const errors = trackErrors(page);
   const code = await openController(page);
   await startQuickSim(page);
-  const monitor = await openMonitor(context, code);
+  const monitor = await context.newPage();
   const monErrors = trackErrors(monitor);
+  await monitor.goto(`/index.html?mode=monitor&session=${code}`);
+  // Before START the patient screen waits, blank
+  await expect(monitor.getByTestId('waiting-for-start')).toBeVisible({ timeout: 15000 });
 
   // Untouched, nothing changes: the default result
-  let card = await press(monitor, 'CXR');
-  await expect(card).toContainText('Lung fields clear.');
+  await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
+  expect(await monitor.evaluate(() => (window.__monitorEngine.state.scenario.chestXray || {}).image || null)).toBe(null);
 
   await expandSection(page, 'quickInvResults');
   const row = page.getByTestId('inv-result-row-X-ray');
@@ -95,9 +98,12 @@ test('Quick Sim: change the CXR before START; the monitor CXR button gives it; U
   await expect(row).toContainText('Tension pneumothorax (right)');
   // Choosing sends nothing to the monitor (the room monitor only has the new result to hand)
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.chestXray || {}).image)).toBe('cxr-ptx-tension');
-  await expect(monitor.getByTestId('inv-result')).toContainText('Lung fields clear.');
+  await pressStart(page);
+  await monitor.getByText('Tap to Enable Sound').click({ force: true });
+  await expect(monitor.getByText('Tap to Enable Sound')).toHaveCount(0);
+  await expect(monitor.getByTestId('inv-result')).not.toContainText('pneumothorax');
 
-  card = await press(monitor, 'CXR');
+  let card = await press(monitor, 'CXR');
   await expect(card.getByTestId('inv-image')).toHaveAttribute('src', 'images/investigations/cxr-ptx-tension.jpg');
   await expect(card).toContainText('large right pneumothorax');
 
@@ -119,6 +125,7 @@ test('premade scenario: typed VBG and own CT report reach the monitor buttons; S
   const code = await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'AM020');   // subarachnoid haemorrhage
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   await page.getByRole('button', { name: 'Investigations', exact: true }).click();
   const panel = page.getByTestId('inv-results-panel');
@@ -184,6 +191,7 @@ test('Defib Sim: the investigation results section changes what the monitor give
   await expandSection(page, 'defibInvResults');
   await page.getByRole('button', { name: 'Change the Urine result' }).click();
   await page.getByTestId('inv-result-editor').getByRole('button', { name: 'UTI (leucocytes, nitrites)' }).click();
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.urine || {}).nitrites)).toBe('+');
   const card = await press(monitor, 'Urine');
@@ -207,6 +215,7 @@ test('Builder: chosen results are saved with the scenario and given by the monit
   await expect.poll(() => page.evaluate(() => window.__simEngine && window.__simEngine.state.scenario && window.__simEngine.state.scenario.ct && window.__simEngine.state.scenario.ct.image)).toBe('ct-sah');
   await page.getByRole('button', { name: 'Investigations', exact: true }).click();
   await expect(page.getByTestId('inv-result-row-CT').getByTestId('inv-result-changed')).toBeVisible();
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.ct || {}).image)).toBe('ct-sah');
   const card = await press(monitor, 'CT Head');
@@ -230,6 +239,7 @@ test('briefing: a premade scenario\'s result can be changed before the run start
   // On the controller it shows as changed, and the monitor's CT Head button gives it
   await page.getByRole('button', { name: 'Investigations', exact: true }).click();
   await expect(page.getByTestId('inv-result-row-CT').getByTestId('inv-result-changed')).toBeVisible();
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.ct || {}).image)).toBe('ct-normal-head');
   const card = await press(monitor, 'CT Head');

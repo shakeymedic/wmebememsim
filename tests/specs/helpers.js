@@ -37,9 +37,14 @@ async function openController(page) {
   return page.evaluate(() => localStorage.getItem('wmebem_session_id'));
 }
 
-async function startQuickSim(page) {
+// Quick Sim starts with its rhythms-and-log column folded away (the obs column fills the screen). Most
+// tests use that column, so this opens it unless { folded: true } is passed. Phones never fold it.
+async function startQuickSim(page, { folded = false } = {}) {
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  const fold = page.locator('[data-testid="right-fold-bar"] button');
+  await fold.first().waitFor({ state: 'attached' });
+  if (!folded && await fold.isVisible() && (await fold.getAttribute('aria-expanded')) === 'false') await fold.click();
 }
 
 // Every launch mode waits for START (the controller says "Not started" until then). Press it, as
