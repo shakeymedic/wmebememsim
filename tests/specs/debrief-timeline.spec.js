@@ -102,8 +102,11 @@ test('full scenario debrief shows the interventions on the graph, and the report
   await expect(tl).toBeVisible();
   await expect(tl.getByTestId('obs-events')).toContainText(/oxygen/i);
 
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download Report/ }).click()]);
-  const html = require('fs').readFileSync(await download.path(), 'utf8');
+  await page.evaluate(() => { const real = window.reportToPdf; window.reportToPdf = (h, f) => { window.__reportHtml = h; return real(h, f); }; });
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download PDF/ }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^Debrief - .+\.pdf$/);
+  expect(require('fs').readFileSync(await download.path()).subarray(0, 5).toString()).toBe('%PDF-');
+  const html = await page.evaluate(() => window.__reportHtml);
   expect(html).toContain('Obs, interventions and changes');
   expect(html).toMatch(/<svg[^>]*role="img"/);
   expect(html).toContain('What happened');

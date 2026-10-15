@@ -423,7 +423,7 @@
         // noise when Firebase Auth has never been enabled. The client-side check below controls the
         // UI ONLY — the real enforcement is the database rules (database.rules.json), which is why
         // we still attempt the read and treat PERMISSION_DENIED as a normal locked outcome.
-        // Each course (ALS, ETC) has its own entitlement; the section opens if the account holds any.
+        // Each course (ALS, ETC, CABC) has its own entitlement; the section opens if the account holds any.
         const heldCourses = (window.COURSE_ACCESS || [{ key: 'rcuk' }]).map(c => c.key).filter(k => !!(auth && auth.has && auth.has(k)));
         const heldKey = heldCourses.join(',');
         const restrictedUnlocked = heldCourses.length > 0;
@@ -477,7 +477,7 @@
                                 <Lucide icon="lock" className="w-6 h-6 text-amber-400 flex-none mt-0.5"/>
                                 <div className="text-sm text-slate-300 space-y-2">
                                     <p className="font-bold text-amber-300">This section is locked.</p>
-                                    <p>It holds scenarios from specific courses (for example ALS, ETC and others). They are copyrighted, so they cannot be distributed with the app and are only released to approved course faculty and participants.</p>
+                                    <p>It holds scenarios from specific courses (for example ALS, ETC, CABC and others). They are copyrighted, so they cannot be distributed with the app and are only released to approved course faculty and participants.</p>
                                     <p className="text-slate-400">Everything else in the simulator — all {ALL_SCENARIOS.length} built-in scenarios, Quick Sim, the monitor, the defibrillator and the debrief — needs no account at all.</p>
                                 </div>
                             </div>
@@ -515,7 +515,7 @@
                             </div>
                         </div>
                     ) : restricted.phase === 'loading' ? (
-                        <div className="text-center text-slate-400 py-8 text-sm">Loading restricted scenarios…</div>
+                        <div className="text-center text-slate-400 py-8 text-sm">Loading course scenarios…</div>
                     ) : restricted.phase === 'error' ? (
                         <div className="bg-slate-900 border border-red-800 rounded-lg p-4 text-sm text-slate-300 space-y-2" role="alert">
                             <p className="font-bold text-red-300">Course scenarios could not be loaded.</p>
@@ -544,18 +544,23 @@
                                 </div>
                             )}
                             <p className="text-[11px] text-amber-300/80">Course material is copyrighted: use it on the course it belongs to, and do not copy or share it.</p>
-                            <div className="grid gap-2 max-h-[60vh] overflow-y-auto pr-2">
+                            {/* grid-cols-1 is minmax(0, 1fr): without it a long case summary widened the column
+                                past the screen, pushing Mark sheet, Edit and Load out of sight. */}
+                            <div className="grid grid-cols-1 gap-2 max-h-[60vh] overflow-y-auto pr-2">
                             {groups.map(g => (
                                 <div key={g.key} className="space-y-2">
                                     {g.key && groups.length > 1 && <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 mt-2">{g.key}</h4>}
                             {/* These run through the EXACT same handleGenerate/loadIntoBuilder
                                 path as a built-in scenario — no special-casing downstream. */}
                             {g.scenarios.map(s => (
-                                <div key={s.id} className="flex justify-between items-center bg-amber-950/20 hover:bg-amber-900/20 p-3 rounded border border-amber-800/50 group">
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">
+                                <div key={s.id} className="flex flex-wrap gap-2 justify-between items-center bg-amber-950/20 hover:bg-amber-900/20 p-3 rounded border border-amber-800/50 group">
+                                    {/* On a phone the buttons drop below the title rather than overlap it. */}
+                                    <div className="flex-1 min-w-[12rem]">
+                                        <div className="font-bold text-slate-200 group-hover:text-white flex flex-wrap items-center gap-2">
                                             {s.title}
-                                            <span className="text-[9px] bg-amber-900/50 text-amber-300 px-1 rounded border border-amber-700 uppercase font-bold">restricted</span>
+                                            {/* The course this scenario belongs to. It used to say "restricted", which read as still
+                                                locked to an account that had just been given access. */}
+                                            <span className="text-[9px] bg-emerald-900/40 text-emerald-300 px-1 rounded border border-emerald-700 uppercase font-bold" data-testid="course-badge">{(s.course && String(s.course).trim()) || ((window.COURSE_ACCESS || []).find(c => c.key === s.courseKey) || { short: 'Course' }).short}</span>
                                             <DiffBadge d={s.difficulty}/>
                                         </div>
                                         <div className="text-xs text-slate-400 truncate">{getScenarioPreviewText(s)}</div>
@@ -589,7 +594,7 @@
             { id: 'Psychiatric', label: 'Psychiatric', icon: 'brain', filter: s => s.category === 'Psychiatric' },
             // The restricted category. `restricted: true` means it does NOT filter
             // ALL_SCENARIOS at all — its contents come from Firebase at runtime, or it shows locked.
-            { id: 'Restricted', label: 'Course scenarios (ALS, ETC)', icon: 'lock', restricted: true, filter: () => false },
+            { id: 'Restricted', label: 'Course scenarios (ALS, ETC, CABC)', icon: restrictedUnlocked ? 'unlock' : 'lock', restricted: true, filter: () => false },
         ];
 
         // WHAT TO RUN. Six plain choices, nothing preselected; picking one opens its panel. The

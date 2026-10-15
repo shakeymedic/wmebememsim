@@ -79,7 +79,7 @@ test('the debrief on a phone: header stacks, buttons fit, the page scrolls as on
   await expect(page.getByRole('heading', { name: 'Simulation Complete' })).toBeVisible();
 
   // Every header button is wholly on screen, and nothing runs off the side.
-  for (const name of [/Print/, /Download Report/, /Exit to Menu/]) {
+  for (const name of [/Print/, /Download PDF/, /Exit to Menu/]) {
     const b = await page.getByTestId('debrief-actions').getByRole('button', { name }).boundingBox();
     expect(b.x).toBeGreaterThanOrEqual(0);
     expect(b.x + b.width).toBeLessThanOrEqual(390);
