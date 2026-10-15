@@ -137,7 +137,7 @@
             dset.cvEnergy && dset.cvEnergy !== 'default' ? `cardioversion at ${dset.cvEnergy} J` : null,
             state.queuedRhythm ? `next shock \u2192 ${RG.shortFor(state.queuedRhythm)}` : null
         ].filter(Boolean).join(' \u00b7 ');
-        const artefactsOn = [['movement', 'movement'], ['interference', 'mains'], ['leadoff', 'lead off']].filter(([k]) => noise[k]).map(([, l]) => l);
+        const artefactsOn = [['movement', 'movement'], ['interference', 'mains'], ['tremor', 'tremor'], ['leadoff', 'lead off']].filter(([k]) => noise[k]).map(([, l]) => l);
         const pacingSummary = `Threshold ${state.pacingThreshold} mA \u00b7 ${artefactsOn.length ? artefactsOn.join(', ') : 'no artefacts'}`;
         const drugsSummary = `Adrenaline ${arrest.adrenaline.length} \u00b7 Amiodarone ${arrest.amiodarone.length}`;
 
@@ -206,7 +206,7 @@
                                 <span className="text-[10px] text-slate-400">what the pads show</span>
                             </div>
                             <div className="h-40">
-                                <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
+                                <ECGMonitor noise={state.noise} rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
                                             isPaused={false} showTraces={true} showEcg={true} showPleth={!pulseless} showResp={false}
                                             showEtco2={false} showArt={false} isCPR={state.cprInProgress} showSyncMarkers={!!defib.syncMode} className="h-full"/>
                             </div>
@@ -326,7 +326,7 @@
                             </div>
                             <div className="text-[10px] text-slate-400 mb-2">Mechanical capture (a pulse) needs about 10 mA more.</div>
                             <div className="flex flex-wrap gap-1">
-                                {[['movement', 'Patient movement'], ['interference', 'Mains interference'], ['leadoff', 'Lead off']].map(([k, label]) => (
+                                {[['movement', 'Patient movement'], ['interference', 'Mains interference'], ['tremor', 'Shivering / tremor'], ['leadoff', 'Lead off']].map(([k, label]) => (
                                     <button key={k} type="button" data-artefact={k} aria-pressed={!!noise[k]} onClick={() => sim.setNoise({ [k]: !noise[k] })} className={chip(!!noise[k], 'bg-amber-800 border-amber-400 text-white')}>{label}</button>
                                 ))}
                             </div>

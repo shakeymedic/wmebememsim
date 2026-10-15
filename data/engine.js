@@ -1972,8 +1972,14 @@
         setMetronome: (on) => { dispatch({ type: 'SET_METRONOME', payload: !!on }); addLogEntry(`CPR metronome ${on ? 'ON' : 'OFF'} (on the defib)`, 'system'); },
         setNoise: (patch) => {
             dispatch({ type: 'SET_NOISE', payload: patch });
-            const names = { interference: 'mains interference', movement: 'movement artefact', leadoff: 'lead off' };
-            Object.keys(patch || {}).forEach(k => { if (names[k]) addLogEntry(`Artefact: ${names[k]} ${patch[k] ? 'ON' : 'OFF'}`, 'system'); });
+            const names = { interference: 'mains interference', movement: 'movement artefact', leadoff: 'lead off', tremor: 'shivering / tremor' };
+            const styles = { normal: 'normal', poor: 'poor peripheral perfusion', motion: 'motion artefact', swing: 'respiratory swing', overdamped: 'overdamped', underdamped: 'underdamped' };
+            Object.keys(patch || {}).forEach(k => {
+                if (names[k]) addLogEntry(`Artefact: ${names[k]} ${patch[k] ? 'ON' : 'OFF'}`, 'system');
+                if (k === 'pleth' && styles[patch[k]]) addLogEntry(`Pleth trace: ${styles[patch[k]]}`, 'system');
+                if (k === 'art' && styles[patch[k]]) addLogEntry(`Arterial trace: ${styles[patch[k]]}`, 'system');
+                if (k === 'artFlush' && patch[k]) addLogEntry('Arterial line flush test', 'system');
+            });
         },
         setDefibSettings: (patch) => {
             dispatch({ type: 'SET_DEFIB_SETTINGS', payload: patch });

@@ -563,6 +563,13 @@
         const hrNoCount = (() => {
             const RG = window.RHYTHMS;
             return !!(RG && RG.isPulseless(rhythm) && RG.displayRate(rhythm, vitals.hr) === null);
+        })() || !!(state.noise && state.noise.leadoff && !sSpo2);   // lead off and no pleth to count from
+        // A badly damped arterial line reads wrong, exactly as a real one does: underdamped
+        // overestimates systolic, overdamped underestimates it; the mean stays the same.
+        const abpShown = (() => {
+            const b = window.RHYTHMS && window.RHYTHMS.artDisplayBias ? window.RHYTHMS.artDisplayBias(state.noise && state.noise.art) : { sys: 0, dia: 0 };
+            if (!(vitals.bpSys > 0) || (window.RHYTHMS && window.RHYTHMS.isPulseless(rhythm))) return { sys: vitals.bpSys, dia: vitals.bpDia };
+            return { sys: Math.round(vitals.bpSys + b.sys), dia: Math.max(0, Math.round(vitals.bpDia + b.dia)) };
         })();
         const getGridCols = () => {
             const count = tileCount;
@@ -673,14 +680,14 @@
                             the first sign of ROSC. */}
                         <div className={`flex-grow min-h-0 relative bg-black grid ${etco2Enabled ? 'grid-rows-3' : 'grid-rows-2'}`}>
                              <div className="relative min-h-0 border-b border-slate-800">
-                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showPleth={false} showResp={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" />
+                                <ECGMonitor noise={state.noise} rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showPleth={false} showResp={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="LEAD II" />
                              </div>
                              <div className={`relative min-h-0 ${etco2Enabled ? 'border-b border-slate-800' : ''}`}>
-                                <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showPleth={false} showResp={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" />
+                                <ECGMonitor noise={state.noise} rhythmType={rhythm} hr={vitals.hr} rr={0} spO2={0} isPaused={false} showTraces={true} showPleth={false} showResp={false} showEtco2={false} showArt={false} isCPR={cprInProgress} className="h-full" rhythmLabel="PADS" />
                              </div>
                              {etco2Enabled && (
                                 <div className="relative min-h-0" data-testid="arrest-capnogram">
-                                    <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} etco2={vitals.etco2} isPaused={false} showTraces={true}
+                                    <ECGMonitor noise={state.noise} rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} etco2={vitals.etco2} isPaused={false} showTraces={true}
                                                 showEcg={false} showPleth={false} showResp={false} showEtco2={true} showArt={false}
                                                 isCPR={cprInProgress} cprBadge={false} co2Pathology={etco2Pathology || 'normal'} co2Severity={co2Severity}
                                                 ventilating={capnoVentilating} className="h-full" />
@@ -715,7 +722,7 @@
                 <div className={`flex-grow flex flex-col p-2 md:p-3 gap-2 h-full relative z-10 ${isPaeds && showWetflag && scenario?.wetflag ? 'md:pr-52' : ''}`}>
                     <div className="flex-grow relative border border-slate-800 rounded overflow-hidden flex flex-col min-h-0 bg-black">
                         {hasMonitoring ? (
-                            <ECGMonitor rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
+                            <ECGMonitor noise={state.noise} rhythmType={rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
                                         isPaused={false} showTraces={true}
                                         showEcg={sEcg} showPleth={sSpo2} showResp={sEcg}
                                         // A removed ECG/SpO2 sensor leaves its lane in place and
@@ -769,7 +776,7 @@
                         <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={sSpo2} isMonitor={true} hideTrends={true} dense={denseTiles} />
 
                         {hasArtLine && (
-                            <VitalDisplay label="ABP" value={vitals.bpSys} value2={vitals.bpDia} unit="mmHg" alert={vitals.bpSys < 90} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
+                            <VitalDisplay label="ABP" value={abpShown.sys} value2={abpShown.dia} unit="mmHg" alert={abpShown.sys < 90} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
 
                         <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg || !!etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />

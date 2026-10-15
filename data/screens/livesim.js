@@ -1478,7 +1478,7 @@
                                      Monitoring" veil, and Quick Sim forced every trace on, so removing a
                                      sensor changed nothing on the facilitator's screen.) */}
                                  <div className={`relative ${phoneTrace ? '' : 'max-md:hidden'}`} style={{ height: panel.prefs.stripHeight + 'px' }}>
-                                 <ECGMonitor rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
+                                 <ECGMonitor noise={state.noise} rhythmType={state.rhythm} hr={vitals.hr} rr={vitals.rr} spO2={vitals.spO2} etco2={vitals.etco2}
                                              isPaused={traceFrozen} showTraces={sensors.any}
                                              showEcg={sEcg} showPleth={sSpo2} showResp={sResp}
                                              reserveLanes={sensors.any ? ['ecg', 'pleth', 'resp'] : []}
@@ -2360,6 +2360,10 @@
                                     </div>
                                 )}
 
+                                {/* How the trace LOOKS (data/screens/traceoptions.js): ECG artefact, pleth, arterial line. */}
+                                {window.TraceVariations && (modalVital === 'hr' || modalVital === 'spO2' || modalVital === 'bp') && (
+                                    <window.TraceVariations kind={modalVital} sim={sim} noise={state.noise} hasArt={!!sensors.art} hasSpo2={!!sensors.spo2} hasEcg={!!sensors.ecg} />
+                                )}
                                 <div>
                                     <label className="text-xs text-slate-400 font-bold uppercase mb-1 block">Get there</label>
                                     <div className="grid grid-cols-4 gap-1">

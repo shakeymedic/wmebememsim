@@ -390,6 +390,9 @@
     // speed, so the slower time base cannot reintroduce the phase defect.
     // =========================================================================================
     const SWEEP_SECONDS = { ecg: 8, pleth: 8, art: 8, resp: 8, co2: 16 };
+    // Respiratory swing (pulse pressure variation, e.g. hypovolaemia): the pulse height rises and
+    // falls with each breath. Returns the pulse size as a fraction of normal, 0.6 to 1.
+    const respSwing = (respCycle) => 1 - 0.4 * (0.5 - 0.5 * Math.cos(2 * Math.PI * respCycle));
 
     const ECGMonitor = ({ rhythmType, hr, rr, spO2, etco2, isPaused, showTraces, showEtco2, showArt,
                           // How obstructed the patient is, 0-1. Supplied by the
@@ -400,6 +403,10 @@
                           // Show the "CPR IN PROGRESS" badge (off for an extra lane under another monitor).
                           cprBadge = true,
                           rhythmLabel, showSyncMarkers = false,
+                          // Facilitator-chosen trace artefacts and variations (state.noise): ECG
+                          // movement / mains / tremor / lead off, pleth and arterial styles, and the
+                          // arterial fast-flush test counter. {} = clean traces.
+                          noise = null,
                           // Individually attachable sensors. Each trace can now be
                           // gated on its own sensor instead of one all-or-nothing flag. They default
                           // to the legacy behaviour (`showTraces` drives pleth + resp) so every
@@ -432,14 +439,17 @@
         // the sweep cursors from zero AND left the old picture on the canvas, so a removed trace
         // stayed on screen until the sweep happened to overwrite it (8 s, 30 s for CO2) — and
         // stayed FOREVER when no drawn lane was left to sweep over it.
+        const traceNoise = noise || {};
         const animRef = useRef(null);
-        if (animRef.current === null) animRef.current = { time: 0, ecgPhase: 0, respPhase: 0, lanes: {}, layoutSig: null, drawnSig: '' };
+        if (animRef.current === null) animRef.current = { time: 0, ecgPhase: 0, respPhase: 0, lanes: {}, layoutSig: null, drawnSig: '',
+            // The flush count already seen, so mounting mid-session never replays an old flush.
+            flushSeen: Number(traceNoise.artFlush) || 0, flushAt: null };
 
         // Keep frequently-changing values in refs so vitals updates don't tear down
         // and restart the animation loop (which would reset the sweep cursors and leave stale
         // trace to the right of the sweep).
-        const liveRef = useRef({ rhythmType, hr, rr, spO2, etco2, co2Pathology, co2Severity, ventilating, isCPR, showSyncMarkers });
-        liveRef.current = { rhythmType, hr, rr, spO2, etco2, co2Pathology, co2Severity, ventilating, isCPR, showSyncMarkers };
+        const liveRef = useRef({ rhythmType, hr, rr, spO2, etco2, co2Pathology, co2Severity, ventilating, isCPR, showSyncMarkers, noise: traceNoise });
+        liveRef.current = { rhythmType, hr, rr, spO2, etco2, co2Pathology, co2Severity, ventilating, isCPR, showSyncMarkers, noise: traceNoise };
 
         // Rhythm resolution and waveform evaluation are delegated ENTIRELY to the registry
         // (data/rhythms.js). WAVE 7 removed the last of the duplicated evaluation logic that used
@@ -655,11 +665,20 @@
                     const phaseAdvance = ecgPhase - prevEcgPhase;
                     const nSub = Math.max(1, Math.min(8, Math.ceil(phaseAdvance / 0.004)));
                     const ecgSamples = [];
-                    for (let i = 1; i <= nSub; i++) {
-                        const f = i / nSub;
+                    // Artefact (mains hum in particular) needs the full sub-sampling to show.
+                    const n = live.noise;
+                    const artefactOn = !!(n.movement || n.interference || n.tremor || n.leadoff);
+                    const nS = artefactOn ? 8 : nSub;
+                    for (let i = 1; i <= nS; i++) {
+                        const f = i / nS;
                         const ph = prevEcgPhase + phaseAdvance * f;
                         const bi = Math.floor(ph);
-                        ecgSamples.push(ecgBaseY - getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi, ecgFreq * 60) * ecgAmp);
+                        let v = getECGValue(ph - bi, live.rhythmType, live.isCPR, time + elapsed * f, bi, ecgFreq * 60) * ecgAmp;
+                        if (artefactOn && RG.ecgArtefact) {
+                            const a = RG.ecgArtefact(n, time + elapsed * f, ecgLead);
+                            v = a.replace !== undefined ? a.replace : v + a.add * 0.7;
+                        }
+                        ecgSamples.push(ecgBaseY - v);
                     }
                     const ecgY = ecgSamples[ecgSamples.length - 1];
                     drawLane('ecg', '#22c55e', ecgY, ecgSamples);
@@ -700,22 +719,45 @@
                 if (plethOn) {
                     const spo2BaseY = traceHeight * (laneIdx.pleth + 0.62);
                     // No saturation reading, or no output: no pulse wave (a flat pleth is the sign).
-                    const pv = (live.spO2 < 10 || pulseless) ? 0
-                        : RG.pulseValue('pleth', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase) });
+                    const pStyle = live.noise.pleth || 'normal';
+                    let pv = (live.spO2 < 10 || pulseless) ? 0
+                        : RG.pulseValue('pleth', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase), style: pStyle });
+                    if (pv > 0 && pStyle === 'swing') pv = pv * respSwing(respCycle) + 3 * Math.sin(2 * Math.PI * respCycle);
+                    // Poor perfusion: the monitor's auto-gain shows a little noise on a weak signal.
+                    if (pStyle === 'poor') pv += 0.8 * Math.sin(2 * Math.PI * 3.1 * time) + 0.6 * Math.sin(2 * Math.PI * 7.3 * time + 1);
+                    // Motion artefact (a moving or shivering hand): large irregular swings swamp the pulse.
+                    if (pStyle === 'motion') pv += 9 * Math.sin(time * 2 * Math.PI * 1.1) * (0.6 + 0.4 * Math.sin(time * 0.9)) + 5 * Math.sin(time * 2 * Math.PI * 2.7 + 0.5) + (Math.sin(time * 0.8) > 0.9 ? 12 : 0);
                     drawLane('pleth', '#3b82f6', spo2BaseY - pv);
                 }
 
                 // -------------------------------------------------- ARTERIAL LINE
                 // Beat-by-beat radial pressure pulses above a diastolic baseline. Without output the
                 // line sits flat near zero; chest compressions generate small pressure waves.
+                // A flush pressed while no arterial line is drawn is used up, never replayed later.
+                const flushes = Number(live.noise.artFlush) || 0;
+                if (flushes !== anim.flushSeen) { anim.flushAt = (artOn && flushes > anim.flushSeen) ? time : null; anim.flushSeen = flushes; }
                 if (artOn) {
                     const artBaseY = traceHeight * (laneIdx.art + 0.7);
+                    const aStyle = live.noise.art || 'normal';
                     let av;
                     if (pulseless) {
                         const c = (time * 1.83) % 1;
                         av = live.isCPR ? 3 + 15 * Math.exp(-0.5 * Math.pow((c - 0.3) / 0.09, 2)) : 2;
                     } else {
-                        av = 6 + RG.pulseValue('art', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase) });
+                        av = 6 + RG.pulseValue('art', cycleT, rid, { hr: ecgFreq * 60, beat: Math.floor(ecgPhase), style: aStyle });
+                        if (aStyle === 'swing') av = 6 + (av - 6) * respSwing(respCycle) + 3 * Math.sin(2 * Math.PI * respCycle);
+                    }
+                    // Fast-flush (square wave) test: the pressure jumps off the top of the scale while
+                    // the flush is held, then drops back and rings according to the damping.
+                    if (anim.flushAt !== null && RG.flushRelease) {
+                        const since = time - anim.flushAt;
+                        const top = traceHeight * 0.55;
+                        const hold = RG.FLUSH_HOLD_S;
+                        const style = aStyle === 'swing' ? 'normal' : aStyle;
+                        if (since < 0.05) av = av + (top - av) * (since / 0.05);
+                        else if (since < hold) av = top;
+                        else if (since < hold + 1.5) av = av + (top - av) * RG.flushRelease(since - hold, style);
+                        else anim.flushAt = null;
                     }
                     drawLane('art', '#ef4444', artBaseY - av);
                 }
@@ -789,8 +831,8 @@
             <div className={`relative w-full bg-black ${className}`}>
                 <canvas ref={canvasRef} className="block w-full h-full" />
                 {offLanes.map(k => <div key={`off-${k}`} className={`${labelClass} text-slate-400 uppercase tracking-wider`} style={{ top: topOf(k) }}>{OFF_TEXT[k]}</div>)}
-                {showEcg && <div className={`${labelClass} text-green-500`} style={{ top: topOf('ecg') }}>{rhythmLabel || "LEAD II"}</div>}
-                {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH</div>}
+                {showEcg && <div className={`${labelClass} text-green-500`} style={{ top: topOf('ecg') }}>{rhythmLabel || "LEAD II"}{traceNoise.leadoff && ecgLead !== 'PADS' && <span className="ml-1 text-amber-400" data-testid="ecg-check-leads">CHECK LEADS</span>}</div>}
+                {plethOn && <div className={`${labelClass} text-blue-500`} style={{ top: topOf('pleth') }}>PLETH{(traceNoise.pleth === 'poor' || traceNoise.pleth === 'motion') && <span className="ml-1 text-amber-400" data-testid="pleth-poor-signal">POOR SIGNAL</span>}</div>}
                 {artOn && <div className={`${labelClass} text-red-500`} style={{ top: topOf('art') }}>ART</div>}
                 {respOn && <div className={`${labelClass} text-yellow-500`} style={{ top: topOf('resp') }}>RESP</div>}
                 {co2On && <div className={`${labelClass} text-purple-500`} style={{ top: topOf('co2') }} title="Capnogram: 0 to 8 kPa, drawn at half the ECG speed (12.5 mm/s)">CO2 <span className="text-purple-300/80 font-normal">0&ndash;8 kPa</span></div>}
