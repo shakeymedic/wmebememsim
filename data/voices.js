@@ -1,15 +1,17 @@
 // The patient voice library: stock phrases, each recorded once per voice by scripts/make-voices.mjs
 // (Gemini text-to-speech) into voices/<voice>/<phrase>.mp3. data/voice-clips.js lists which clips exist;
 // a phrase with no clip for the chosen voice falls back to the device's built-in voice.
-// Sounds (groans, coughs) have no words, so they only show once their clips exist.
+// mood (optional) overrides the usual "unwell and worried" delivery. Sounds (groans, coughs) have no words:
+// tags are what the voice performs, heard what the check must hear, and they only show once their clips exist.
 window.VOICE_LIBRARY = {
     voices: [
-        { id: "man", label: "Man", gemini: "Charon", who: "a British man in his 40s" },
-        { id: "woman", label: "Woman", gemini: "Kore", who: "a British woman in her 40s" },
-        { id: "older-man", label: "Older man", gemini: "Algenib", who: "a British man in his late 70s, a little frail and slow" },
-        { id: "older-woman", label: "Older woman", gemini: "Sulafat", who: "a British woman in her late 70s, a little frail and slow" },
-        { id: "teen", label: "Teenager", gemini: "Puck", who: "a British teenager of about 15" },
-        { id: "child", label: "Child", gemini: "Leda", who: "a British child of about 7, with a small high voice" },
+        // gemini: a voice from Google's TTS voice list (GET /v1beta/voices); style: how it is spoken.
+        { id: "man", label: "Man", gemini: "en-gb-podcaster-9", style: "a man in his forties" },
+        { id: "woman", label: "Woman", gemini: "en-gb-assistant-3", style: "a woman in her forties" },
+        { id: "older-man", label: "Older man", gemini: "en-gb-csagent-3", style: "a frail elderly man in his late seventies, slow and a little shaky" },
+        { id: "older-woman", label: "Older woman", gemini: "en-gb-training-2", style: "a frail elderly woman in her late seventies, slow and a little shaky" },
+        { id: "teen", label: "Teenager", gemini: "en-gb-csagent-13", style: "a teenage boy of about fifteen" },
+        { id: "child", label: "Child", gemini: "en-gb-csagent-8", style: "a young child of about seven with a small, high voice" },
     ],
     groups: [
         { label: "Answers", phrases: [
@@ -21,7 +23,7 @@ window.VOICE_LIBRARY = {
             { id: "can-you-say-that-again", text: "Can you say that again?" },
             { id: "ok", text: "OK." },
             { id: "please-help-me", text: "Please help me." },
-            { id: "thank-you", text: "Thank you." },
+            { id: "thank-you", text: "Thank you.", mood: "tired but grateful" },
         ] },
         { label: "Pain", phrases: [
             { id: "my-chest-really-hurts", text: "My chest really hurts." },
@@ -36,12 +38,12 @@ window.VOICE_LIBRARY = {
             { id: "worst-headache-of-my-life", text: "Worst headache of my life." },
             { id: "my-back-is-agony", text: "My back is agony." },
             { id: "my-leg-really-hurts-i-cant", text: "My leg really hurts, I can't move it." },
-            { id: "ow-that-hurts", text: "Ow! That hurts!" },
+            { id: "ow-that-hurts", text: "Ow! That hurts!", mood: "in sudden sharp pain" },
             { id: "please-give-me-something-for-the", text: "Please give me something for the pain." },
         ] },
         { label: "Breathing", phrases: [
-            { id: "i-cant-breathe", text: "I can't breathe." },
-            { id: "i-cant-catch-my-breath", text: "I can't... catch my breath." },
+            { id: "i-cant-breathe", text: "I can't breathe.", mood: "panicky and breathless" },
+            { id: "i-cant-catch-my-breath", text: "I can't... catch my breath.", mood: "panicky and breathless" },
             { id: "my-chest-feels-tight", text: "My chest feels tight." },
             { id: "im-wheezing-i-need-my-inhaler", text: "I'm wheezing, I need my inhaler." },
             { id: "ive-been-coughing-up-green-stuff", text: "I've been coughing up green stuff." },
@@ -65,14 +67,14 @@ window.VOICE_LIBRARY = {
             { id: "ive-been-stung-by-a-wasp", text: "I've been stung by a wasp." },
         ] },
         { label: "Confused", phrases: [
-            { id: "where-am-i", text: "Where am I?" },
-            { id: "whats-happening", text: "What's happening?" },
+            { id: "where-am-i", text: "Where am I?", mood: "confused and drowsy" },
+            { id: "whats-happening", text: "What's happening?", mood: "confused and drowsy" },
             { id: "i-cant-move-my-arm", text: "I can't move my arm." },
             { id: "my-face-feels-funny", text: "My face feels funny." },
             { id: "i-cant-see-properly", text: "I can't see properly." },
-            { id: "i-dont-remember-what-happened", text: "I don't remember what happened." },
-            { id: "what-day-is-it", text: "What day is it?" },
-            { id: "who-are-you", text: "Who are you?" },
+            { id: "i-dont-remember-what-happened", text: "I don't remember what happened.", mood: "confused and drowsy" },
+            { id: "what-day-is-it", text: "What day is it?", mood: "confused and drowsy" },
+            { id: "who-are-you", text: "Who are you?", mood: "confused and drowsy" },
         ] },
         { label: "History", phrases: [
             { id: "it-started-about-an-hour-ago", text: "It started about an hour ago." },
@@ -90,17 +92,17 @@ window.VOICE_LIBRARY = {
             { id: "i-think-i-might-be-pregnant", text: "I think I might be pregnant." },
         ] },
         { label: "Feelings", phrases: [
-            { id: "im-scared", text: "I'm scared." },
-            { id: "am-i-going-to-die", text: "Am I going to die?" },
-            { id: "please-dont-leave-me", text: "Please don't leave me." },
+            { id: "im-scared", text: "I'm scared.", mood: "frightened" },
+            { id: "am-i-going-to-die", text: "Am I going to die?", mood: "frightened" },
+            { id: "please-dont-leave-me", text: "Please don't leave me.", mood: "frightened" },
             { id: "is-my-family-here", text: "Is my family here?" },
             { id: "i-want-to-go-home", text: "I want to go home." },
-            { id: "leave-me-alone", text: "Leave me alone!" },
-            { id: "get-off-me", text: "Get off me!" },
-            { id: "dont-touch-me", text: "Don't touch me!" },
-            { id: "im-fine-i-dont-need-to", text: "I'm fine, I don't need to be here." },
-            { id: "i-feel-a-bit-better-now", text: "I feel a bit better now." },
-            { id: "thats-much-better-thank-you", text: "That's much better, thank you." },
+            { id: "leave-me-alone", text: "Leave me alone!", mood: "angry and agitated" },
+            { id: "get-off-me", text: "Get off me!", mood: "angry and agitated" },
+            { id: "dont-touch-me", text: "Don't touch me!", mood: "angry and agitated" },
+            { id: "im-fine-i-dont-need-to", text: "I'm fine, I don't need to be here.", mood: "irritable and dismissive" },
+            { id: "i-feel-a-bit-better-now", text: "I feel a bit better now.", mood: "tired but relieved" },
+            { id: "thats-much-better-thank-you", text: "That's much better, thank you.", mood: "relieved and grateful" },
         ] },
         { label: "Children", phrases: [
             { id: "i-want-my-mum", text: "I want my mum." },
@@ -119,14 +121,14 @@ window.VOICE_LIBRARY = {
             { id: "i-hit-my-head", text: "I hit my head." },
         ] },
         { label: "Sounds", sounds: true, phrases: [
-            { id: "groan", text: "Groan", direction: "a long, low groan of pain, with no words" },
-            { id: "moan", text: "Moaning", direction: "quiet moaning in pain, with no words" },
-            { id: "gasp", text: "Gasp", direction: "a sharp gasp for breath, with no words" },
-            { id: "scream", text: "Scream", direction: "a short scream of pain, with no words" },
-            { id: "cough", text: "Cough", direction: "two or three harsh coughs, with no words" },
-            { id: "crying", text: "Crying", direction: "quiet sobbing and crying, with no words" },
-            { id: "sigh", text: "Sigh", direction: "a long sigh of relief, with no words" },
-            { id: "snore", text: "Snoring", direction: "three slow, loud snores, with no words" },
+            { id: "groan", text: "Groan", tags: "<groan>", heard: "groan|moan|grunt" },
+            { id: "moan", text: "Moaning", tags: "<moan> <short pause> <moan>", heard: "moan|groan|whimper" },
+            { id: "gasp", text: "Gasp", tags: "<gasp>", heard: "gasp|breath|inhale|pant" },
+            { id: "scream", text: "Scream", tags: "<scream>", heard: "scream|shout|yell|cry" },
+            { id: "cough", text: "Cough", tags: "<cough> <cough>", heard: "cough" },
+            { id: "crying", text: "Crying", tags: "<sob> <short pause> <sob>", heard: "sob|cry|weep|whimper" },
+            { id: "sigh", text: "Sigh", tags: "<sigh>", heard: "sigh|exhale" },
+            { id: "snore", text: "Snoring", tags: "<snore> <long pause> <snore>", heard: "snor" },
         ] },
     ]
 };
