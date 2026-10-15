@@ -350,7 +350,11 @@
         const [speechText, setSpeechText] = useState(""); 
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
-        const [modalTarget2, setModalTarget2] = useState(""); 
+        const [modalTarget2, setModalTarget2] = useState("");
+        // GCS picked as E, V and M (Jake's request); the total is what the engine keeps. The last
+        // breakdown set here is remembered so the GCS tile can show it while the total still matches.
+        const [gcsParts, setGcsParts] = useState(null);
+        const [lastGcsParts, setLastGcsParts] = useState(null); 
         const [trendDuration, setTrendDuration] = useState(30);
         const [showLogModal, setShowLogModal] = useState(false);
         const [showRhythmModal, setShowRhythmModal] = useState(false);
@@ -804,9 +808,24 @@
              );
         };
 
-        // BP defaults to an immediate change: the team only sees it when the cuff next measures,
-        // so there is nothing to gain from ramping it. Everything else ramps over 30 s by default.
-        const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(key === 'bp' ? 0 : 30); };
+        // A plausible starting split for a GCS total (or the last breakdown set, if it still adds up).
+        const GCS_SPLIT = { 15: [4, 5, 6], 14: [3, 5, 6], 13: [3, 4, 6], 12: [3, 4, 5], 11: [3, 3, 5], 10: [2, 3, 5], 9: [2, 2, 5], 8: [2, 2, 4], 7: [1, 2, 4], 6: [1, 1, 4], 5: [1, 1, 3], 4: [1, 1, 2], 3: [1, 1, 1] };
+        const gcsSplit = (total, last) => {
+            const t = Math.max(3, Math.min(15, Math.round(Number(total)) || 15));
+            if (last && last.e + last.v + last.m === t) return { ...last };
+            const [e, v, m] = GCS_SPLIT[t]; return { e, v, m };
+        };
+        const GCS_SCALE = {
+            e: { label: 'Eyes (E)', options: [[4, 'Spontaneous'], [3, 'To voice'], [2, 'To pain'], [1, 'None']] },
+            v: { label: 'Verbal (V)', options: [[5, 'Orientated'], [4, 'Confused'], [3, 'Words'], [2, 'Sounds'], [1, 'None']] },
+            m: { label: 'Motor (M)', options: [[6, 'Obeys'], [5, 'Localises'], [4, 'Withdraws'], [3, 'Abnormal flexion'], [2, 'Extends'], [1, 'None']] }
+        };
+        const pickGcsPart = (k, n) => { const next = { ...(gcsParts || gcsSplit(modalTarget)), [k]: n }; setGcsParts(next); setModalTarget(next.e + next.v + next.m); };
+        const gcsPartsLabel = (p) => p ? `E${p.e} V${p.v} M${p.m}` : '';
+
+        // Every obs change defaults to NOW (Jake's request): it goes to the patient straight away.
+        // 30 s, 2 min and 5 min are still there for a gradual change.
+        const openVitalControl = (key) => { if (key === 'gcs') setGcsParts(gcsSplit(vitals.gcs, lastGcsParts)); setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(0); };
         // A blank or non-numeric field used to reach the reducer as NaN, which then poisoned the Firebase
         // diff (RTDB rejects NaN) and froze the student monitor for the rest of the session.
         const validateVitalModal = () => {
@@ -845,6 +864,11 @@
             if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
             else if (modalVital === 'pupils') { targets.pupils = modalTarget; }
             else { targets[modalVital] = parseFloat(modalTarget); }
+            if (modalVital === 'gcs') {
+                const parts = gcsParts && gcsParts.e + gcsParts.v + gcsParts.m === targets.gcs ? gcsParts : null;
+                setLastGcsParts(parts);
+                if (parts) addLogEntry(`GCS set to ${targets.gcs} (${gcsPartsLabel(parts)})`, 'manual');
+            }
             if (trendDuration === 0) sim.manualUpdateVitals(targets);
             else startTrend(targets, trendDuration);
             // The cuff reads the patient when it finishes inflating (~5 s), by which time an
@@ -957,7 +981,7 @@
             <VitalDisplay key="etco2" {...tileProps(compact)} label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
         ];
         const moreTiles = () => [
-            <VitalDisplay key="gcs" compact visible label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} trend={getTrend('gcs')} />,
+            <VitalDisplay key="gcs" compact visible label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} trend={getTrend('gcs')} note={lastGcsParts && lastGcsParts.e + lastGcsParts.v + lastGcsParts.m === Math.round(vitals.gcs) ? gcsPartsLabel(lastGcsParts) : null} />,
             <VitalDisplay key="bm" compact visible label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
         ];
         const renderVitalTiles = () => <>{coreTiles(true)}{moreTiles()}</>;
@@ -988,15 +1012,20 @@
         const resusSummary = `${RG.labelFor(state.rhythm)} \u00b7 ${defib.shockCount || 0} shock${(defib.shockCount || 0) === 1 ? '' : 's'}${cprInProgress ? ' \u00b7 CPR on' : ''}`;
         const trendBetter = () => { sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success"); };
         const trendWorse = () => { sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger"); };
+        // Auto/Manual and Trend Better/Worse: ONE set of controls, shown in one place only (see below).
+        const conditionButtons = (
+                            <span className="flex gap-1 flex-none" data-testid="condition-quick">
+                                <button type="button" onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()} aria-pressed={deteriorationMode === 'auto'}
+                                        title={`${deteriorationMode === 'auto' ? 'Deterioration is AUTO: click to go MANUAL' : 'Deterioration is MANUAL: click to go AUTO'}. ${detInfo.declared ? `Scenario: ${detInfo.type} at rate ${detInfo.rate}. Treating the cause slows, then reverses it.` : 'This scenario declares no deterioration rate, so AUTO would change nothing.'}`}
+                                        className={`h-6 px-2 rounded text-[10px] font-bold uppercase border ${deteriorationMode === 'auto' ? 'bg-amber-700 border-amber-400 text-white' : 'bg-slate-800 border-slate-500 text-slate-200'}`}>{deteriorationMode === 'auto' ? 'Auto' : 'Manual'}</button>
+                                <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                            </span>
+        );
         // Patient condition: AUTO/MANUAL deterioration and the Trend buttons (placed under the obs, see below).
-        const conditionSection = () => (
-                        <Section id="condition" tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
-                            right={(
-                                <span className="flex gap-1 flex-none">
-                                    <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
-                                    <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
-                                </span>
-                            )}>
+        const conditionSection = (extraClass = '') => (
+                        <Section id="condition" className={extraClass} tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
+                            right={conditionButtons}>
                             <div title="Switching either way leaves the obs exactly where they are; there is no jump in either direction." className="flex items-center justify-between gap-2">
                                 <div className="min-w-0">
                                     <div className={`text-sm font-bold ${deteriorationMode === 'auto' ? 'text-amber-300' : 'text-slate-200'}`}>
@@ -1164,7 +1193,33 @@
                     md it stacks exactly as before (flex-col, full width), so the verified 375 px
                     layout is untouched. */}
                 <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0 max-md:flex-none max-md:overflow-visible">
-                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 md:overflow-y-auto md:h-full md:pr-1">
+                    <div style={panel.panelStyle} className={`w-full md:w-[34%] md:max-w-[72%] flex flex-col ${shortScreen ? 'gap-1' : 'gap-2'} md:overflow-y-auto md:h-full md:pr-1`}>
+                         {/* ---- OBS AT THE TOP of the column on desktop/tablet (Jake's request), so the obs you
+                              change are the first thing in it; the monitor strip stays lower down. Being its own block adds a gap,
+                              so a short screen tightens the column's gaps to keep ARREST on screen (start-rule.spec). ---- */}
+                         <div className="hidden md:block flex-none bg-black border border-slate-800 rounded overflow-hidden" data-testid="obs-top">
+                             {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
+                                 very top of the page instead (see PHONE OBS below). */}
+                             <div className={`hidden md:grid ${compactTiles ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
+                                 {coreTiles(compactTiles)}
+                             </div>
+                             <div className="hidden md:block bg-black px-1 pb-1">
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
+                                     right={!quickSim && shortScreen ? conditionButtons : null}>
+                                     <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
+                                 </Section>
+                             </div>
+                         </div>
+
+                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and Trend Better/Worse, straight under
+                             the obs (Jake's request), in ONE place only. On a short laptop screen (under 900 px
+                             high) there is no room for its own row without pushing ARREST off the screen, so
+                             the same three buttons sit on the More obs row instead and this row is hidden
+                             (the scenario's rate is on the Auto button's tooltip). Phones have no More obs row,
+                             so they keep this row. Hidden in Quick Sim (no scenario, so no declared
+                             deterioration; its own pane has the Trend buttons). ---- */}
+                        {!quickSim && conditionSection(shortScreen ? 'md:hidden' : '')}
+
                          {/* The scenario brief card is replaced in Quick Sim by a one-line factual
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
@@ -1335,38 +1390,10 @@
                                  )}
                              </div>
 
-                             {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
-                                 very top of the page instead (see PHONE OBS below). */}
-                             <div className={`hidden md:grid ${compactTiles ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
-                                 {coreTiles(compactTiles)}
-                             </div>
-                             <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
-                                     right={!quickSim && shortScreen ? (
-                                         <span className="flex gap-1 flex-none" data-testid="condition-quick">
-                                             <button type="button" onClick={() => sim.toggleDeteriorationMode && sim.toggleDeteriorationMode()} aria-pressed={deteriorationMode === 'auto'}
-                                                     title={deteriorationMode === 'auto' ? 'Deterioration is AUTO: click to go MANUAL' : 'Deterioration is MANUAL: click to go AUTO'}
-                                                     className={`h-6 px-2 rounded text-[10px] font-bold uppercase border ${deteriorationMode === 'auto' ? 'bg-amber-700 border-amber-400 text-white' : 'bg-slate-800 border-slate-500 text-slate-200'}`}>{deteriorationMode === 'auto' ? 'Auto' : 'Manual'}</button>
-                                             <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
-                                             <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
-                                         </span>
-                                     ) : null}>
-                                     <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
-                                 </Section>
-                             </div>
                         </div>
 
-                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and the Trend buttons, straight under
-                             the obs (Jake's request) so steering the patient is all in one place.
-                             A short laptop screen (under 900 px high) has no room for it there without pushing
-                             ARREST off the screen, so it gets Auto / Better / Worse on the More obs row instead
-                             and the full section sits lower down, after the drugs. Closed by default; the mode is spelled out in the summary and Trend
-                             Better/Worse stay usable on the header while it is closed. Hidden in Quick
-                             Sim (no scenario, so no declared deterioration; its own pane has the Trend
-                             buttons). ---- */}
-                        {!quickSim && !shortScreen && conditionSection()}
 
-                        {/* ---- RHYTHM & RESUS, straight under the obs so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
+                        {/* ---- RHYTHM & RESUS, under the monitor strip so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
                              the rhythm and shock summary, and the defib controls when open. ---- */}
                         <Section id="resus" title="Rhythm & resus" summary={resusSummary} defaultOpen={true}>
                         <div className="flex flex-col gap-2">
@@ -1628,9 +1655,6 @@
                             </Section>
                         )}
 
-                        {/* A short screen's full Patient condition section (its Auto / Better / Worse are on the More obs row). */}
-                        {!quickSim && shortScreen && conditionSection()}
-
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
                         {VP && (
@@ -1757,14 +1781,6 @@
                             </div>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} variant="success" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} variant="danger" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
-                            {/* Same two-way sensor toggle as the Capnography chip, so it is logged
-                                and notified like every other attach/detach (it used to flip
-                                TOGGLE_ETCO2 directly and leave no trace in the event log). */}
-                            <Button onClick={() => toggleSensor('etco2')} variant="outline"
-                                title={etco2Enabled ? 'Capnography attached — click to remove (the CO2 trace and ETCO2 go blank on the team monitor).' : 'Capnography not attached — click to attach.'}
-                                className={`h-11 px-3 max-md:px-2 max-md:flex-1 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
-                                Capnography {etco2Enabled ? 'on' : 'off'}
-                            </Button>
                         </div>
 
                         <div className="md:flex-1 md:overflow-y-auto p-3 space-y-3">
@@ -2178,7 +2194,25 @@
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Set {VITAL_NAMES[modalVital] || modalVital}</h3>
                             {/* Enter confirms from either field, so a value can be typed and sent without the mouse. */}
                             <div className="space-y-4" onKeyDown={e => { if (e.key === 'Enter' && e.target && e.target.type === 'number') { e.preventDefault(); confirmVitalUpdate(false); } }}>
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input aria-label={modalVital === 'bp' ? 'Systolic' : (VITAL_NAMES[modalVital] || 'Target')} type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : modalVital === 'gcs' ? 'Total (type it, or pick E, V and M below)' : 'Target'}</label><input aria-label={modalVital === 'bp' ? 'Systolic' : (VITAL_NAMES[modalVital] || 'Target')} type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>{ setModalTarget(e.target.value); if (modalVital === 'gcs') { const t = Math.round(parseFloat(e.target.value)); setGcsParts(t >= 3 && t <= 15 ? gcsSplit(t) : null); } }} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                {modalVital === 'gcs' && (
+                                    <div data-testid="gcs-parts" className="space-y-2">
+                                        {['e', 'v', 'm'].map(k => (
+                                            <div key={k} role="group" aria-label={GCS_SCALE[k].label}>
+                                                <div className="text-xs text-slate-400 font-bold uppercase mb-1">{GCS_SCALE[k].label}{gcsParts ? <span className="text-white ml-1">{gcsParts[k]}</span> : null}</div>
+                                                <div className="grid grid-cols-3 gap-1">
+                                                    {GCS_SCALE[k].options.map(([n, txt]) => (
+                                                        <button key={n} type="button" onClick={() => pickGcsPart(k, n)} aria-pressed={!!gcsParts && gcsParts[k] === n} aria-label={`${k.toUpperCase()}${n} ${txt}`}
+                                                                className={`p-1.5 rounded border text-[11px] font-bold leading-tight ${gcsParts && gcsParts[k] === n ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                                                            {n} <span className="font-normal">{txt}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {gcsParts && <div className="text-xs text-slate-300 text-center font-mono" data-testid="gcs-parts-total">{gcsPartsLabel(gcsParts)} = {gcsParts.e + gcsParts.v + gcsParts.m}</div>}
+                                    </div>
+                                )}
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input aria-label="Diastolic" type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
                                 {modalVital === 'etco2' && (
