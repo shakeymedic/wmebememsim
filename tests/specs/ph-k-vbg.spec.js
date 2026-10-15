@@ -63,12 +63,12 @@ test('pH and K+ are off the obs and the monitor strip, and the VBG gives the pat
 
   // The gas carries the patient's modelled K+: treatment that lowered it shows in the next VBG
   let grid = await pressVbg(monitor);
-  await expect(grid).toContainText('K+: 7.5');
+  await expect(grid.getByTestId('gas-val-K')).toHaveText(/7.5$/);
   await page.evaluate(() => window.__simEngine.manualUpdateVitals({ k: 5.9, ph: 7.28 }));
   await expect.poll(() => monitor.evaluate(() => window.__monitorEngine.state.vitals.k)).toBe(5.9);
   grid = await pressVbg(monitor);
-  await expect(grid).toContainText('K+: 5.9');
-  await expect(grid).toContainText('pH: 7.28');
+  await expect(grid.getByTestId('gas-val-K')).toHaveText(/5.9$/);
+  await expect(grid.getByTestId('gas-val-pH')).toHaveText(/7.28$/);
 
   // The controller's VBG row shows the same live gas and says pH/K+ live there
   await page.getByRole('button', { name: 'Investigations', exact: true }).click();
@@ -87,8 +87,8 @@ test('pH and K+ are off the obs and the monitor strip, and the VBG gives the pat
   await expect.poll(() => page.evaluate(() => [window.__simEngine.state.vitals.ph, window.__simEngine.state.vitals.k])).toEqual([7.12, 6.4]);
   await expect.poll(() => monitor.evaluate(() => window.__monitorEngine.state.vitals.k)).toBe(6.4);
   grid = await pressVbg(monitor);
-  await expect(grid).toContainText('pH: 7.12');
-  await expect(grid).toContainText('K+: 6.4');
+  await expect(grid.getByTestId('gas-val-pH')).toHaveText(/7.12$/);
+  await expect(grid.getByTestId('gas-val-K')).toHaveText(/6.4$/);
   expect(errors).toEqual([]);
   expect(monErrors).toEqual([]);
 });

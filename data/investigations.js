@@ -446,7 +446,7 @@
         { k: 'BE', label: 'BE', min: -35, max: 35, step: 1 }, { k: 'Lac', label: 'Lactate (mmol/L)', min: 0, max: 30, step: 0.1 },
         { k: 'K', label: 'K+ (mmol/L)', min: 1, max: 10, step: 0.1 }, { k: 'Glu', label: 'Glucose (mmol/L)', min: 0.5, max: 60, step: 0.1 },
         { k: 'Na', label: 'Na+ (mmol/L, optional)', min: 100, max: 180, step: 1, optional: true },
-        { k: 'Ca', label: 'Ca2+ (mmol/L, optional)', min: 0.5, max: 5, step: 0.01, optional: true }
+        { k: 'Ca', label: 'Ionised Ca2+ (mmol/L, optional)', min: 0.3, max: 3, step: 0.01, optional: true }
     ];
     const vbgSummary = (v) => !v ? '' : `pH ${Number(v.pH).toFixed(2)}, pCO2 ${Number(v.pCO2).toFixed(1)}, lactate ${Number(v.Lac).toFixed(1)}, K+ ${Number(v.K).toFixed(1)}, glucose ${Number(v.Glu).toFixed(1)}`;
     const urineText = (u) => {
