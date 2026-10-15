@@ -102,3 +102,49 @@ test('Quick Sim: no separate Capnography on/off button under Rhythm; the Capnogr
   await expect(page.getByTestId('obs-top')).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('Quick Sim: Monitoring & access and Ventilator always start closed, and there is no Auto deterioration', async ({ page }) => {
+  const errors = trackErrors(page);
+  const { startQuickSim } = require('./helpers');
+  await openController(page);
+  await startQuickSim(page);
+  const mon = page.locator('[data-section="monitoring"] > div > button[aria-expanded]');
+  await expect(mon).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('[data-section="vent"] > div > button[aria-expanded]')).toHaveAttribute('aria-expanded', 'false');
+  await mon.click();
+  await expect(mon).toHaveAttribute('aria-expanded', 'true');
+  // A new Quick Sim starts closed again, even though it was opened last time.
+  await page.reload();
+  await openController(page);
+  await startQuickSim(page);
+  await expect(page.locator('[data-section="monitoring"] > div > button[aria-expanded]')).toHaveAttribute('aria-expanded', 'false');
+  // Manual only: no Auto switch and no Patient condition row, but Trend Better / Worse are there.
+  expect(await page.evaluate(() => window.__simEngine.state.deteriorationMode || 'manual')).toBe('manual');
+  await expect(page.locator('[data-testid="condition-quick"]')).toHaveCount(0);
+  await expect(page.locator('[data-section="condition"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Trend\s*Better/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Trend\s*Worse/ })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('Quick Sim starts with the rhythms column folded: the obs column fills the screen, with Better / Worse on the More obs row', async ({ page }) => {
+  const errors = trackErrors(page);
+  const { startQuickSim } = require('./helpers');
+  await openController(page);
+  await startQuickSim(page, { folded: true });
+  const fold = page.locator('[data-testid="right-fold-bar"] button');
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: 'Sinus Bradycardia', exact: true })).toBeHidden();
+  const obsW = (await page.getByTestId('obs-top').boundingBox()).width;
+  expect(obsW).toBeGreaterThan(1000);                      // 1440 wide: the obs column takes the screen
+  // One set of Better / Worse, on the More obs row, and it works.
+  await expect(page.locator('button[title="Trend the patient WORSE (logged)"]:visible')).toHaveCount(1);
+  await page.getByTestId('trend-quick').getByRole('button', { name: 'Better', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.log.some(l => /Improving \(Trend\)/.test(l.msg)))).toBe(true);
+  // Open it: the rhythms are back, and Better / Worse move back to that column (still one set).
+  await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: 'Sinus Bradycardia', exact: true })).toBeVisible();
+  await expect(page.getByTestId('trend-quick')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

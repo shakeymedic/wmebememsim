@@ -363,6 +363,20 @@
         // tablet layouts ignore these.
         const [phoneTrace, setPhoneTrace] = useState(false);
         const [phoneRhythms, setPhoneRhythms] = useState(false);
+        // The right-hand column (interventions, or Quick Sim's rhythms) can be folded away so the obs
+        // column fills the screen. Quick Sim always starts folded; a scenario remembers the last choice.
+        const RIGHT_FOLD_KEY = 'wmebem_right_folded';
+        const [rightFolded, setRightFolded] = useState(() => {
+            if (state.scenario && state.scenario.quickSim) return true;
+            try { return localStorage.getItem(RIGHT_FOLD_KEY) === '1'; } catch (e) { return false; }
+        });
+        // A new Quick Sim run starts folded even if this screen stays mounted between runs.
+        useEffect(() => { if (state.scenario && state.scenario.quickSim) setRightFolded(true); }, [state.runId]);
+        const toggleRightFolded = () => setRightFolded(f => {
+            const n = !f;
+            if (!(state.scenario && state.scenario.quickSim)) { try { localStorage.setItem(RIGHT_FOLD_KEY, n ? '1' : '0'); } catch (e) {} }
+            return n;
+        });
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
@@ -1027,6 +1041,14 @@
                                 <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
                             </span>
         );
+        // Quick Sim has no Auto deterioration, only Trend Better / Worse. With its rhythm column folded away
+        // they sit on the More obs row instead (one set on screen at a time).
+        const trendOnlyButtons = (
+                            <span className="flex gap-1 flex-none" data-testid="trend-quick">
+                                <button type="button" onClick={trendBetter} title="Trend the patient BETTER (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-emerald-900 border border-emerald-500 text-emerald-100 hover:bg-emerald-800">Better</button>
+                                <button type="button" onClick={trendWorse} title="Trend the patient WORSE (logged)" className="h-6 px-2 rounded text-[10px] font-bold uppercase bg-red-900 border border-red-500 text-red-100 hover:bg-red-800">Worse</button>
+                            </span>
+        );
         // Patient condition: AUTO/MANUAL deterioration and the Trend buttons (placed under the obs, see below).
         const conditionSection = (extraClass = '') => (
                         <Section id="condition" className={extraClass} tone={deteriorationMode === 'auto' ? 'amber' : 'default'} title="Patient condition" summary={conditionSummary} defaultOpen={false}
@@ -1200,7 +1222,7 @@
                     md it stacks exactly as before (flex-col, full width), so the verified 375 px
                     layout is untouched. */}
                 <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0 max-md:flex-none max-md:overflow-visible">
-                    <div style={panel.panelStyle} className={`w-full md:w-[34%] md:max-w-[72%] flex flex-col ${shortScreen ? 'gap-1' : 'gap-2'} md:overflow-y-auto md:h-full md:pr-1`}>
+                    <div style={rightFolded ? undefined : panel.panelStyle} className={`w-full ${rightFolded ? 'md:flex-1 md:min-w-0' : 'md:w-[34%] md:max-w-[72%]'} flex flex-col ${shortScreen ? 'gap-1' : 'gap-2'} md:overflow-y-auto md:h-full md:pr-1`}>
                          {/* ---- OBS AT THE TOP of the column on desktop/tablet (Jake's request), so the obs you
                               change are the first thing in it; the monitor strip stays lower down. Being its own block adds a gap,
                               so a short screen tightens the column's gaps to keep ARREST on screen (start-rule.spec). ---- */}
@@ -1212,7 +1234,7 @@
                              </div>
                              <div className="hidden md:block bg-black px-1 pb-1">
                                  <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
-                                     right={!quickSim && shortScreen ? conditionButtons : null}>
+                                     right={quickSim ? (rightFolded ? trendOnlyButtons : null) : (shortScreen ? conditionButtons : null)}>
                                      <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
                                  </Section>
                              </div>
@@ -1262,7 +1284,7 @@
                             access and it still does not attach them — but it no longer says "all".
                             "All on" appears only when literally everything is on. Full invasive
                             monitoring is its own clearly-labelled button. */}
-                        <Section id="monitoring" title="Monitoring & access" summary={monitoringSummary} defaultOpen={false}
+                        <Section id="monitoring" title="Monitoring & access" summary={monitoringSummary} defaultOpen={false} remember={!quickSim}
                             right={!sensors.standard && (
                                 <Button onClick={attachStandard} variant="primary" className="h-6 px-2 text-[10px] uppercase font-bold flex-none" ariaLabel="Attach standard monitoring"
                                         title="Attach the standard four: ECG electrodes, SpO2 probe, NIBP cuff and temperature probe.">Attach</Button>
@@ -1768,9 +1790,9 @@
                     
                     {/* The drag handle. Vertical grip, col-resize cursor, keyboard-accessible,
                         md+ only (a width drag means nothing in the stacked mobile layout). */}
-                    <ResizeGrip axis="x" onPointerDown={panel.beginDrag('x')}
+                    {!rightFolded && <ResizeGrip axis="x" onPointerDown={panel.beginDrag('x')}
                                 onNudge={(d) => panel.nudge('x', d)} onReset={panel.reset}
-                                value={panel.prefs.width || 0} min={PANEL_BOUNDS.minWidth} max={2000} />
+                                value={panel.prefs.width || 0} min={PANEL_BOUNDS.minWidth} max={2000} />}
 
                     {/* =================== WAVE 4b / A2: THE QUICK SIM RIGHT-HAND PANE ===================
                         Replaces the intervention library entirely. Everything here is scenario-free:
@@ -1779,6 +1801,18 @@
                         search, no tabs, no drug groups, no voice and no assessment checklist, because
                         none of those mean anything without a scenario. The one exception is the
                         investigation results, so the monitor's CXR, VBG, CT etc. buttons can be set. */}
+                    {/* FOLD THE RIGHT COLUMN (Jake: the obs column is THE column; the other one is minimised).
+                        Quick Sim starts folded; a scenario remembers the choice on this device. md+ only:
+                        on a phone the columns stack and nothing is folded. */}
+                    <div className="hidden md:flex flex-none flex-col items-center" data-testid="right-fold-bar">
+                        <button type="button" onClick={toggleRightFolded} aria-expanded={!rightFolded} aria-controls="right-column"
+                                aria-label={rightFolded ? `Open the ${quickSim ? 'rhythms and log' : 'interventions and log'} column` : `Fold away the ${quickSim ? 'rhythms and log' : 'interventions and log'} column`}
+                                className={`rounded border border-slate-600 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold uppercase tracking-widest text-[10px] flex items-center justify-center gap-1 ${rightFolded ? 'h-full w-8 flex-col py-3' : 'h-8 w-8'}`}>
+                            <Lucide icon={rightFolded ? 'chevrons-left' : 'chevrons-right'} className="w-4 h-4" />
+                            {rightFolded && <span style={{ writingMode: 'vertical-rl' }}>{quickSim ? 'Rhythms & log' : 'Interventions & log'}</span>}
+                        </button>
+                    </div>
+                    <div id="right-column" className={`contents ${rightFolded ? 'md:[&>*]:hidden' : ''}`}>
                     {quickSim ? (
                     <div className="flex-1 min-w-0 flex flex-col bg-slate-800 rounded border border-slate-700 md:overflow-hidden relative">
                         <div className="bg-slate-900 p-3 max-md:p-2 border-b border-slate-700 flex flex-wrap gap-2 items-center">
@@ -2048,6 +2082,7 @@
                         </div>
                     </div>
                     )}
+                    </div>
                 </div>
 
                 {showLogModal && (
