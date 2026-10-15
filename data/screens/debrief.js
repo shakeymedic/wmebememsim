@@ -379,7 +379,7 @@
         );
     };
 
-    const DebriefScreen = ({ sim, onExit }) => {
+    const DebriefScreen = ({ sim, onExit, onReturn }) => {
         const { state } = sim;
         const { Lucide, Button } = window;
         const scenario = state.scenario || {};
@@ -580,6 +580,7 @@
                         </p>
                     </div>
                     <div className="flex gap-2 flex-none max-md:grid max-md:grid-cols-2" data-testid="debrief-actions">
+                        {onReturn && <Button onClick={onReturn} variant="outline" className="whitespace-nowrap" ariaLabel="Back to scenario"><Lucide icon="arrow-left" className="mr-2 h-4 w-4"/> Back to scenario</Button>}
                         {defibSim && <Button onClick={printCertificate} variant="secondary" className="whitespace-nowrap" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
                         <Button onClick={() => generateReport('print')} variant="secondary" className="whitespace-nowrap" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
                         <Button onClick={() => generateReport('download')} variant="secondary" className="whitespace-nowrap"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>

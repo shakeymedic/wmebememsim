@@ -10,7 +10,7 @@ async function openMonitor(context, code) {
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
-  await monitor.getByText('Tap to Enable Sound').click({ force: true });
+  { const snd = monitor.getByText('Tap to Enable Sound'); if (await snd.count()) await snd.click({ force: true }); }
   await expect(monitor.getByText('Tap to Enable Sound')).toHaveCount(0);
   return monitor;
 }

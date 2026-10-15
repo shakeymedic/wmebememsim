@@ -15,7 +15,7 @@
         drugOffsets, hasHighO2Consumption, inferPotassium, initialCoreState, initialLogState,
         initialScenarioState, initialVitalsState, isCategoricalVital, isDrugSpent, isVentilated,
         isVitalValueSafe, newRunId, normaliseDeteriorationType, normalisePupils, paralysisFromDrugs,
-        paralysisPhase, pkFactor, safeApnoeaSeconds, sanitizeForRealtimeDatabase
+        paralysisPhase, pkFactor, safeApnoeaSeconds, sanitizeForRealtimeDatabase, muteDrugsFor
     } = window.__EngineModel;
 
     // ONE SECOND OF VENTILATOR PHYSIOLOGY (data/engine-vent.js), written into `base`.
@@ -135,7 +135,9 @@
                     return { ...state, baseVitals: pbase, vitals: { ...state.vitals, [key]: pv }, prevVitals: { ...state.vitals }, manualHold: { ...(state.manualHold || {}), [key]: true } };
                 }
                 const t = cs ? cs.time : 0;
-                const drugs = cs ? cs.activeDrugs : [];
+                // Everything already given stops acting on this obs (muteDrugsFor; the core reducer
+                // stores the same change), so the typed number is the number shown, and stays.
+                const drugs = muteDrugsFor(cs ? cs.activeDrugs : [], key);
                 const inArrest = cs ? PULSELESS_RHYTHMS.indexOf(cs.rhythm) !== -1 : false;
                 // The facilitator types the number they want to SEE. Store it in base space by
                 // removing whatever the drugs are currently contributing, so the displayed value is
@@ -478,6 +480,12 @@
     const coreReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
+            // A typed obs: the drugs already given stop acting on it (see the vitals reducer).
+            case 'MANUAL_VITAL_UPDATE': {
+                const key = action.payload && action.payload.key;
+                if (!key || isCategoricalVital(key) || !isVitalValueSafe(key, action.payload.value) || !(state.activeDrugs || []).length) return state;
+                return { ...state, activeDrugs: muteDrugsFor(state.activeDrugs, key) };
+            }
             case 'CLEAR_SESSION': return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus, remotePresence: state.remotePresence };
             case 'LOAD_SCENARIO': 
                 if(!action.payload) return { ...initialCoreState, runId: null, activeInterventions: new Set(), interventionCounts: {}, isOffline: state.isOffline, syncStatus: state.syncStatus, remotePresence: state.remotePresence };
@@ -585,6 +593,8 @@
             // marker is the sim-clock second it happened at, so it is a primitive and survives sync.
             case 'PAUSE_SIM': return { ...state, isRunning: false, pausedAt: Number.isFinite(state.time) ? state.time : 0 };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
+            // Finish pressed by mistake: back into the same run, paused, with everything as it was.
+            case 'UNDO_FINISH': return { ...state, isRunning: false, isFinished: false };
             case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
             case 'SET_SYNC_STATUS': {
                 const syncStatus = {

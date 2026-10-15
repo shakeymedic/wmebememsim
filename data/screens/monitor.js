@@ -238,7 +238,10 @@
         // monitor and the facilitator strip draw the identical capnogram shape and can never disagree.
         const co2Severity = Number.isFinite(state.co2Severity) ? state.co2Severity : 0;
         
-        const [audioEnabled, setAudioEnabled] = useState(false);
+        // Starts hidden when this page's sound is already on: the engine (and its AudioContext) outlives
+        // this screen, which remounts for every new scenario, so a monitor someone already tapped (or a
+        // browser that allows sound for the site) used to ask again at the start of every scenario.
+        const [audioEnabled, setAudioEnabled] = useState(() => sim.audioContextState === 'running');
 
         // ---- KEEP THE ROOM MONITOR AWAKE ------------------------------------------------------
         // A tablet on the wall used to dim and lock mid-scenario, because nothing asked it not to.
@@ -294,6 +297,9 @@
         const audioContextState = sim.audioContextState;
         useEffect(() => {
             if (audioEnabled && audioContextState === 'suspended') setAudioEnabled(false);
+            // Sound came on without the button (a tap anywhere, a press on a device, or the browser
+            // allowing it): the button has nothing left to do.
+            else if (!audioEnabled && audioContextState === 'running') setAudioEnabled(true);
         }, [audioContextState, audioEnabled]);
         const [invToast, setInvToast] = useState(null); 
         const [show12Lead, setShow12Lead] = useState(false);

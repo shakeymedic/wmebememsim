@@ -301,7 +301,9 @@
             // iOS only lets a context resume inside a user gesture, so any tap or key press on the
             // page is used to wake a context that has been (re-)suspended; otherwise the cuff,
             // charge and alarm sounds stay silent until someone finds the "enable sound" button.
-            const onGesture = () => { if (ctx.state === 'suspended') resumeAudio(true); };
+            // enableAudio (below) also unlocks speech on iOS, as the monitor's button does, now that the button
+            // hides itself once sound is on.
+            const onGesture = () => { if (ctx.state === 'suspended') enableAudio(); };
             document.addEventListener('pointerdown', onGesture, true);
             document.addEventListener('keydown', onGesture, true);
             return () => {

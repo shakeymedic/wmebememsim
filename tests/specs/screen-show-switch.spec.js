@@ -18,7 +18,7 @@ test('the switch at the top puts the monitor, the defib or the ventilator in fro
   const monitorErrors = trackErrors(monitor);
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
-  await monitor.getByText('Tap to Enable Sound').click({ force: true });
+  { const snd = monitor.getByText('Tap to Enable Sound'); if (await snd.count()) await snd.click({ force: true }); }
 
   const bar = page.getByTestId('screen-show-switch');
   await expect(bar).toBeVisible();

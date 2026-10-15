@@ -1074,7 +1074,7 @@
                             {sim && sim.state && sim.state.scenario && window.InvResults && window.Section && (
                                 <window.Section id="briefingInvResults" tone="card" title="Investigation results" defaultOpen={false}
                                                 summary={Object.keys(sim.state.scenario.invChanged || {}).length ? `Changed: ${Object.keys(sim.state.scenario.invChanged).join(', ')}` : "Scenario's own results \u00b7 open to change"}>
-                                    <window.InvResults.LiveResults sim={sim} addLogEntry={sim.addLogEntry} />
+                                    <window.InvResults.LiveResults sim={sim} addLogEntry={sim.addLogEntry} canSend={false} />
                                 </window.Section>
                             )}
                             {markScheme && (

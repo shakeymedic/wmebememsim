@@ -235,7 +235,7 @@ test('course images: the mark sheet shows them with their credit and sends one t
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
-  await monitor.getByText('Tap to Enable Sound').click({ force: true });
+  { const snd = monitor.getByText('Tap to Enable Sound'); if (await snd.count()) await snd.click({ force: true }); }
 
   await page.getByRole('button', { name: 'Mark sheet' }).click();
   const live = page.getByRole('dialog', { name: /Mark sheet: ETC test workshop/ });
