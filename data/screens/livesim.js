@@ -823,9 +823,9 @@
         const pickGcsPart = (k, n) => { const next = { ...(gcsParts || gcsSplit(modalTarget)), [k]: n }; setGcsParts(next); setModalTarget(next.e + next.v + next.m); };
         const gcsPartsLabel = (p) => p ? `E${p.e} V${p.v} M${p.m}` : '';
 
-        // BP defaults to an immediate change: the team only sees it when the cuff next measures,
-        // so there is nothing to gain from ramping it. Everything else ramps over 30 s by default.
-        const openVitalControl = (key) => { if (key === 'gcs') setGcsParts(gcsSplit(vitals.gcs, lastGcsParts)); setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(key === 'bp' ? 0 : 30); };
+        // Every obs change defaults to NOW (Jake's request): it goes to the patient straight away.
+        // 30 s, 2 min and 5 min are still there for a gradual change.
+        const openVitalControl = (key) => { if (key === 'gcs') setGcsParts(gcsSplit(vitals.gcs, lastGcsParts)); setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(0); };
         // A blank or non-numeric field used to reach the reducer as NaN, which then poisoned the Firebase
         // diff (RTDB rejects NaN) and froze the student monitor for the rest of the session.
         const validateVitalModal = () => {

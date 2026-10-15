@@ -62,7 +62,7 @@ test('BP: "Change and cycle cuff now" measures straight away (about 5 s) and the
   expect(errors).toEqual([]);
 });
 
-test('BP defaults to an immediate change; other obs still default to 30 s', async ({ page }) => {
+test('every obs change defaults to Now (BP and the rest); 30 s is still one press away', async ({ page }) => {
   await openController(page);
   await startQuickSim(page);
   await page.getByRole('button', { name: 'Adjust BP' }).last().click();
@@ -72,6 +72,8 @@ test('BP defaults to an immediate change; other obs still default to 30 s', asyn
   await expect(page.getByRole('dialog').getByText('No NIBP cuff or arterial line attached')).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Adjust HR' }).last().click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Now', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('dialog').getByRole('button', { name: '30 s', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('button', { name: '30 s', exact: true })).toHaveAttribute('aria-pressed', 'true');
 });
 
