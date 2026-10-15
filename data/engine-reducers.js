@@ -57,6 +57,29 @@
         if (l && VP) Object.keys(l).forEach(k => { const d = VP.LUNG_ADJ[k], n = Number(l[k]); if (d && Number.isFinite(n)) out[k] = Math.min(d.max, Math.max(d.min, n)); });
         return out;
     };
+    const dropKey = (obj, key) => { const o = { ...(obj || {}) }; delete o[key]; return o; };
+    // Adds a ramp for `newTargets` (each from its value in `fromVitals`, over `duration` s) to the ramps
+    // already running. Those keep their own start, target, length and progress; an obs named again
+    // starts afresh. Older single-period trends (no `durations`) are carried over key by key.
+    const mergeTrend = (prev, newTargets, fromVitals, duration) => {
+        const dur = Number(duration);
+        const targets = {}, startVitals = {}, durations = {}, elapsedBy = {};
+        if (prev && prev.active && prev.targets) {
+            const legacy = !prev.durations;
+            Object.keys(prev.targets).forEach(k => {
+                if (Object.prototype.hasOwnProperty.call(newTargets, k)) return;
+                targets[k] = prev.targets[k];
+                startVitals[k] = (prev.startVitals || {})[k];
+                durations[k] = legacy ? Number(prev.duration) : Number(prev.durations[k]);
+                elapsedBy[k] = legacy ? (Number(prev.elapsed) || 0) : (Number((prev.elapsedBy || {})[k]) || 0);
+            });
+        }
+        Object.keys(newTargets).forEach(k => {
+            targets[k] = newTargets[k]; startVitals[k] = (fromVitals || {})[k];
+            durations[k] = dur; elapsedBy[k] = 0;
+        });
+        return { active: true, targets, startVitals, durations, elapsedBy, duration: dur, elapsed: 0 };
+    };
     const vitalsReducer = (state, action) => {
         const cs = action.currentState;
         switch (action.type) {
@@ -156,7 +179,8 @@
                 if (trends && trends.active && trends.targets && Object.prototype.hasOwnProperty.call(trends.targets, key)) {
                     const targets = { ...trends.targets }; delete targets[key];
                     const startVitals = { ...(trends.startVitals || {}) }; delete startVitals[key];
-                    trends = Object.keys(targets).length ? { ...trends, targets, startVitals } : { ...trends, active: false, targets: {}, startVitals: {} };
+                    const keyed = trends.durations ? { durations: dropKey(trends.durations, key), elapsedBy: dropKey(trends.elapsedBy, key) } : {};
+                    trends = Object.keys(targets).length ? { ...trends, targets, startVitals, ...keyed } : { ...trends, active: false, targets: {}, startVitals: {}, ...(trends.durations ? { durations: {}, elapsedBy: {} } : {}) };
                 }
                 // Record that the facilitator typed this one. See `manualHold`.
                 // A typed SpO2 is the new baseline: any earlier apnoea deficit no longer applies.
@@ -177,7 +201,11 @@
                     safeTargets[k] = (typeof raw === 'number' && offs[k]) ? clampVital(k, baseForDisplayed(k, raw, offs[k], ceils[k])) : raw;
                 });
                 if (Object.keys(safeTargets).length === 0) return state;
-                return { ...state, trends: { active: true, targets: safeTargets, duration: action.payload.duration, elapsed: 0, startVitals: { ...state.baseVitals } } };
+                // Each obs keeps its OWN time period (Jake: "if I change multiple obs over different time
+                // periods they all change over the appropriate time"). A new change no longer replaces the
+                // ramps already running: those carry on with their own start, target, length and progress,
+                // and only an obs named again starts afresh from where it is now.
+                return { ...state, trends: mergeTrend(state.trends, safeTargets, state.baseVitals, action.payload.duration) };
             }
             case 'STOP_TREND': return { ...state, trends: { ...state.trends, active: false, elapsed: 0 } };
             // The facilitator hands typed vitals back to the ventilator ("Release to ventilator").
@@ -200,7 +228,12 @@
                     ventPhys: vt.ventPhys, hypoxiaTimer: vt.driving ? 0 : state.hypoxiaTimer };
             }
             case 'TRIGGER_IMPROVE':
-            case 'TRIGGER_DETERIORATE': return { ...state, trends: action.payload.trends };
+            case 'TRIGGER_DETERIORATE': {
+                // Trend Better / Worse steers the obs it names over its own 30 s; any other obs already
+                // changing over its own period carries on.
+                const t = action.payload.trends || {};
+                return { ...state, trends: mergeTrend(state.trends, t.targets || {}, t.startVitals || state.baseVitals, t.duration) };
+            }
             // ======================= WAVE 6 / QUICK SIM RAMPS ==========================================
             // A ramp ("take the HR to 130 over 120 s") is the facilitator's own instruction and must
             // progress as soon as it is given. Before Wave 6 the ONLY thing that advanced a trend was

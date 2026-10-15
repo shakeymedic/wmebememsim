@@ -1,7 +1,7 @@
 // Investigation results: the image library (every image present, credited and openly licensed),
 // each scenario's own results, and how a result with an image reaches the room monitor.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -98,6 +98,7 @@ test('the scenario X-ray reaches the monitor as a real image with its report and
   const code = await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'AM031');
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   const monErrors = trackErrors(monitor);
   await page.evaluate(() => window.__simEngine.revealInvestigation('X-ray', null));
@@ -117,6 +118,7 @@ test('the facilitator can send a library image without its report', async ({ pag
   const code = await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'AM002');
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   await page.evaluate(() => window.__simEngine.revealInvestigation('X-ray', 'report text', { image: 'cxr-copd', hideReport: true }));
   const card = monitor.getByTestId('inv-result');
@@ -129,6 +131,7 @@ test('an ultrasound clip plays on the monitor as a loop, full screen too', async
   const code = await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'AT025');
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   const monErrors = trackErrors(monitor);
   await page.evaluate(() => window.__simEngine.revealInvestigation('POCUS', null));
@@ -148,6 +151,7 @@ test('a real 12-lead shows only while the rhythm still fits it', async ({ page, 
   const code = await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'AM001');
+  await pressStart(page);
   const monitor = await openMonitor(context, code);
   await monitor.getByRole('button', { name: /12-Lead/ }).click();
   await expect(monitor.getByTestId('ecg-12lead-image')).toHaveAttribute('src', 'images/investigations/ecg-stemi-anterior-2.jpg');

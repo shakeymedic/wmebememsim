@@ -283,7 +283,10 @@
                     // without a database-rules change.
                     // screenFront (what the facilitator wants in front on the patient screens) rides
                     // in here too, for the same reason: no database-rules change.
-                    defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null },
+                    // `started` (false only before the first START) rides in here for the same reason: the patient
+                    // screens stay blank while the facilitator sets the scenario up.
+                    defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null,
+                             started: !!(cur.isRunning || cur.isFinished || (cur.pausedAt !== null && cur.pausedAt !== undefined)) },
                     // The ventilator on the room monitor, and the lungs it ventilates (the
                     // facilitator's choice, else one picked from the scenario).
                     ventPanelOpen: !!cur.ventPanelOpen,

@@ -55,9 +55,11 @@ test('a patient screen stays blank and waiting while the controller has no scena
   await expect(screen.getByTestId('screen-waiting')).toBeVisible();
   await expect(screen.getByText('NO SENSOR DETECTED')).toHaveCount(0);
 
-  // A scenario starts: the patient appears
+  // A scenario is loaded: the screen waits for START; START: the patient appears
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await expect(screen.getByTestId('waiting-for-start')).toBeVisible({ timeout: 15000 });
+  await pressStart(page);
   await expect(screen.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });
   expect(screenErrors).toEqual([]);
 });
@@ -66,6 +68,7 @@ test('a reloaded controller with no scenario takes a left-over patient off the s
   const code = await openController(page);
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await pressStart(page);
   const screen = await context.newPage();
   await screen.goto(`/index.html?mode=monitor&session=${code}`);
   await expect(screen.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });
@@ -81,6 +84,7 @@ test('the finished card on a patient screen restarts the screen or goes back to 
   const code = await openController(page);
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await pressStart(page);
   const screen = await context.newPage();
   const screenErrors = trackErrors(screen);
   await screen.goto(`/index.html?mode=monitor&session=${code}`);
@@ -96,6 +100,7 @@ test('the finished card on a patient screen restarts the screen or goes back to 
   await page.goto('/index.html');
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await pressStart(page);
   await expect(screen.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });
   await expect(screen.getByText('Simulation complete')).toHaveCount(0);
 
@@ -103,5 +108,32 @@ test('the finished card on a patient screen restarts the screen or goes back to 
   await expect(screen.getByText('Simulation complete')).toBeVisible({ timeout: 10000 });
   await screen.getByTestId('finished-home').click();
   await expect(screen.getByTestId('welcome-screen')).toBeVisible({ timeout: 10000 });
+  expect(screenErrors).toEqual([]);
+});
+
+test('a loaded scenario stays off the patient screens until the controller presses START', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
+  await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await page.evaluate(() => window.__simEngine.attachStandardMonitoring());
+  const screen = await context.newPage();
+  const screenErrors = trackErrors(screen);
+  await screen.goto(`/index.html?mode=monitor&session=${code}`);
+
+  // Set-up: the screen shows the waiting card and no obs; the controller toolbar is marked set-up
+  await expect(screen.getByTestId('waiting-for-start')).toBeVisible({ timeout: 15000 });
+  await expect(screen.getByTestId('screen-waiting')).toContainText('SCENARIO BEING SET UP');
+  await expect(page.getByTestId('controller-toolbar')).toHaveAttribute('data-setup', 'true');
+  await screen.waitForTimeout(1500);
+  await expect(screen.getByTestId('waiting-for-start')).toBeVisible();
+  await expect(screen.getByTestId('obs-heart-rate')).toHaveCount(0);
+
+  // START: the patient appears and the toolbar leaves set-up
+  await pressStart(page);
+  await expect(screen.getByTestId('screen-waiting')).toHaveCount(0, { timeout: 15000 });
+  await expect(screen.getByTestId('obs-heart-rate')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('controller-toolbar')).not.toHaveAttribute('data-setup', /.*/);
+  expect(errors).toEqual([]);
   expect(screenErrors).toEqual([]);
 });

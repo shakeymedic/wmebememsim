@@ -3,7 +3,7 @@
 // patient screen that has it, bringing the device in first if needed. A device already in the room
 // stays loaded behind the monitor, and the small x takes it away.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, session, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -14,6 +14,7 @@ test('the switch at the top puts the monitor, the defib or the ventilator in fro
   const errors = trackErrors(page);
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);
   const monitor = await context.newPage();
   const monitorErrors = trackErrors(monitor);
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);

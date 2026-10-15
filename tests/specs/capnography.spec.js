@@ -88,6 +88,7 @@ test('room monitor: the capnogram lane in the normal view and the arrest view', 
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.dispatch({ type: 'TOGGLE_ETCO2' }));
   await expect.poll(() => live(page, code, '/etco2Enabled')).toBe(true);
+  await pressStart(page);
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);

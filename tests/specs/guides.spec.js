@@ -2,7 +2,7 @@
 // served, and the pages pass the same automated accessibility checks as the app.
 const { test } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { useFakeFirebase, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -19,6 +19,7 @@ test('the footer links to the guides on the instructor screens, never on the roo
   await check();                                   // setup screen
   await startQuickSim(page);
   await check();                                   // live scenario
+  await pressStart(page);
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
