@@ -42,8 +42,11 @@ test('the debrief report downloads as a self-contained page with the log and the
   await page.evaluate(() => window.__simEngine.deliverShock(150, 'test'));
   await page.getByRole('button', { name: 'Finish' }).click();
   await expect(page.getByTestId('defib-feedback')).toBeVisible();
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download Report/ }).click()]);
-  const html = require('fs').readFileSync(await download.path(), 'utf8');
+  await page.evaluate(() => { const real = window.reportToPdf; window.reportToPdf = (h, f) => { window.__reportHtml = h; return real(h, f); }; });
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: /Download PDF/ }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^Debrief - .+\.pdf$/);
+  expect(require('fs').readFileSync(await download.path()).subarray(0, 5).toString()).toBe('%PDF-');
+  const html = await page.evaluate(() => window.__reportHtml);
   expect(html).toMatch(/<!DOCTYPE html>/i);
   expect(html).toContain('Simulation Log');
   expect(html).toMatch(/Shock delivered 150J/);

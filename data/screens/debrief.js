@@ -511,7 +511,9 @@
         const markSheetItem = (id, v) => setSheetMarks(m => { const n = { ...m }; if (v) n[id] = v; else delete n[id]; return n; });
         const hasMarkSheet = !!(MS && MS.get(scenario) && MS.items(scenario).length);
         const exitDebrief = () => { if (savedRef.current || window.confirm('Leave the debrief? It cannot be reopened. Download or print the report first if you want to keep it.')) onExit(); };
+        const [pdfBusy, setPdfBusy] = useState(false);
         const generateReport = (mode) => {
+            if (mode === 'download' && pdfBusy) return;
             savedRef.current = true;
             const esc = (value) => String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
             // The report shows the same three-state status and names the components
@@ -562,7 +564,20 @@
                     return;
                 }
             }
-            const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0);
+            const downloadHtml = () => { const blob = new Blob([html], { type: 'text/html' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Debrief_${Date.now()}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 0); };
+            // The download is a PDF (data/report-pdf.js). If the PDF cannot be made (the libraries
+            // fail to load offline on a first visit, an old browser), the same report is saved as a
+            // web page instead, as it used to be.
+            if (mode === 'download' && typeof window.reportToPdf === 'function') {
+                const d = new Date(); const p2 = (n) => String(n).padStart(2, '0');
+                const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}`;
+                setPdfBusy(true);
+                window.reportToPdf(html, `Debrief - ${scenario.title || 'Simulation'} - ${stamp}.pdf`)
+                    .catch((e) => { console.warn('PDF report failed, saving as a web page instead', e); downloadHtml(); })
+                    .finally(() => setPdfBusy(false));
+                return;
+            }
+            downloadHtml();
         };
 
         return (
@@ -582,7 +597,7 @@
                     <div className="flex gap-2 flex-none max-md:grid max-md:grid-cols-2" data-testid="debrief-actions">
                         {defibSim && <Button onClick={printCertificate} variant="secondary" className="whitespace-nowrap" title="Print a certificate of completion for the learner"><Lucide icon="check-circle" className="mr-2 h-4 w-4"/> Certificate</Button>}
                         <Button onClick={() => generateReport('print')} variant="secondary" className="whitespace-nowrap" title="Open a print-friendly report and print it (or save as PDF)"><Lucide icon="printer" className="mr-2 h-4 w-4"/> Print</Button>
-                        <Button onClick={() => generateReport('download')} variant="secondary" className="whitespace-nowrap"><Lucide icon="download" className="mr-2 h-4 w-4"/> Download Report</Button>
+                        <Button onClick={() => generateReport('download')} variant="secondary" className="whitespace-nowrap" disabled={pdfBusy}><Lucide icon="download" className="mr-2 h-4 w-4"/> {pdfBusy ? 'Making PDF\u2026' : 'Download PDF'}</Button>
                         <Button onClick={exitDebrief} variant="secondary" className="whitespace-nowrap">Exit to Menu</Button>
                     </div>
                 </div>
