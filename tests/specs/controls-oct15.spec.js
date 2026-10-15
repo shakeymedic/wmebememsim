@@ -157,6 +157,7 @@ test('an interrupted AudioContext (iPad) keeps the sound button and a tap resume
   });
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);     // the patient screens stay blank until START
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
