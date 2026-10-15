@@ -33,7 +33,18 @@ test('the library: every image exists, is credited and openly licensed; every ma
     const b = await res.body();
     expect(b[0] === 0xff && b[1] === 0xd8, `${img.src} is a JPEG`).toBe(true);
     expect(b.length, `${img.src} size`).toBeLessThan(450 * 1024);
+    if (img.loop) {
+      // An ultrasound clip: a short animated WebP (RIFF....WEBP), kept small.
+      const lr = await request.get('/' + img.loop);
+      expect(lr.status(), img.loop).toBe(200);
+      const l = await lr.body();
+      expect(l.slice(0, 4).toString() === 'RIFF' && l.slice(8, 12).toString() === 'WEBP', `${img.loop} is a WebP`).toBe(true);
+      expect(l.length, `${img.loop} size`).toBeLessThan(450 * 1024);
+    }
   }
+  // Ultrasound was the gap: keep a real set of POCUS images, several of them moving clips.
+  expect(lib.images.filter(i => i.modality === 'POCUS').length).toBeGreaterThan(20);
+  expect(lib.images.filter(i => i.loop).length).toBeGreaterThan(8);
 });
 
 test('scenario results: specific findings replace the generic normal, and known content bugs are fixed', async ({ page }) => {
@@ -111,6 +122,26 @@ test('the facilitator can send a library image without its report', async ({ pag
   const card = monitor.getByTestId('inv-result');
   await expect(card.getByTestId('inv-image')).toHaveAttribute('src', 'images/investigations/cxr-copd.jpg');
   await expect(card).not.toContainText('report text');
+});
+
+test('an ultrasound clip plays on the monitor as a loop, full screen too', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await startQuickSim(page);
+  await loadScenario(page, 'AT025');
+  const monitor = await openMonitor(context, code);
+  const monErrors = trackErrors(monitor);
+  await page.evaluate(() => window.__simEngine.revealInvestigation('POCUS', null));
+  const card = monitor.getByTestId('inv-result');
+  await expect(card.getByTestId('inv-image')).toHaveAttribute('src', 'images/investigations/us-fast-positive.webp');
+  await expect(card).toContainText("Morison's pouch");
+  await expect(card).toContainText('Gillman L');
+  // The loop really decodes (an animated WebP the browser can show)
+  await expect.poll(() => card.getByTestId('inv-image').evaluate(i => i.complete && i.naturalWidth)).toBeGreaterThan(0);
+  await card.getByTestId('inv-image').click();
+  await expect(monitor.getByTestId('inv-image-full')).toHaveAttribute('src', 'images/investigations/us-fast-positive.webp');
+  expect(errors).toEqual([]);
+  expect(monErrors).toEqual([]);
 });
 
 test('a real 12-lead shows only while the rhythm still fits it', async ({ page, context }) => {
