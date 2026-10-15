@@ -1,0 +1,2 @@
+// Written by scripts/make-voices.mjs: the patient voice clips that exist in voices/. Do not edit by hand.
+window.VOICE_CLIPS = ["man/yes","man/no","man/my-chest-really-hurts","man/leave-me-alone","man/i-want-my-mum","man/groan","man/cough","older-woman/yes","older-woman/my-chest-really-hurts","older-woman/leave-me-alone","older-woman/i-want-my-mum","older-woman/cough","child/yes","child/my-chest-really-hurts","child/leave-me-alone","child/i-want-my-mum","child/scream","child/cough","child/crying"];

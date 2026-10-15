@@ -348,6 +348,58 @@
         const [customLog, setCustomLog] = useState("");
         const [searchTerm, setSearchTerm] = useState("");
         const [speechText, setSpeechText] = useState(""); 
+        const [showVolume, setShowVolume] = useState(false);
+        const volumePct = (Number.isFinite(state.volume) ? state.volume : 1) * 100;
+        const lastVolumeRef = useRef(1);
+        const setVolume = (v) => { if (v > 0) lastVolumeRef.current = v; sim.dispatch({ type: 'SET_VOLUME', payload: v }); };
+        // Patient voice library (data/voices.js): which recorded voice the stock phrases use. 'auto' picks
+        // one from the patient's age and sex. Remembered on this device.
+        const [voicePick, setVoicePickRaw] = useState(() => { try { return (window.localStorage && window.localStorage.getItem('wmebem_voice')) || 'auto'; } catch (e) { return 'auto'; } });
+        const setVoicePick = (v) => { setVoicePickRaw(v); try { window.localStorage && window.localStorage.setItem('wmebem_voice', v); } catch (e) {} };
+        const VOICE_LIB = window.VOICE_LIBRARY || { voices: [], groups: [] };
+        const VOICE_CLIPS = window.VOICE_CLIPS || [];
+        const autoVoice = (() => {
+            const age = Number(scenario.patientAge), female = /^f/i.test(scenario.sex || '');
+            if (age < 12) return 'child';
+            if (age < 18) return 'teen';
+            if (age >= 70) return female ? 'older-woman' : 'older-man';
+            return female ? 'woman' : 'man';
+        })();
+        const voiceId = voicePick === 'auto' ? autoVoice : voicePick;
+        const hasClip = (phraseId) => VOICE_CLIPS.includes(`${voiceId}/${phraseId}`);
+        const sayPhrase = (p) => speak(p.text, hasClip(p.id) ? `${voiceId}/${p.id}` : null);
+        // The Voice tab, and a section of its own in Quick Sim (which has no tabs).
+        const renderVoicePanel = () => (
+            <div className="space-y-4">
+                <div className="bg-slate-900 p-3 rounded border border-slate-700">
+                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="mic" className="w-3 h-3"/> Text to Speech</h3>
+                    <div className="flex gap-2">
+                        <input type="text" value={speechText} onChange={(e) => setSpeechText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (speak(speechText) || setSpeechText(""))} className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm" placeholder="Type what the patient says..."/>
+                        <Button onClick={() => {speak(speechText); setSpeechText("");}} variant="primary" className="h-10">Speak</Button>
+                    </div>
+                </div>
+                <div className="bg-slate-900 p-3 rounded border border-slate-700">
+                    <label htmlFor="voicePick" className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient's voice</label>
+                    <select id="voicePick" data-testid="voice-pick" value={voicePick} onChange={(e) => setVoicePick(e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm">
+                        <option value="auto">Match the patient ({(VOICE_LIB.voices.find(v => v.id === autoVoice) || {}).label || autoVoice})</option>
+                        {VOICE_LIB.voices.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                    </select>
+                    {!VOICE_LIB.voices.some(v => VOICE_CLIPS.some(c => c.startsWith(v.id + '/'))) && <p className="text-[10px] text-slate-400 mt-2">Recorded voices are not installed yet, so phrases use this device's built-in voice.</p>}
+                </div>
+                {VOICE_LIB.groups.filter(g => !g.sounds || g.phrases.some(p => hasClip(p.id))).map(g => (
+                    <div key={g.label}>
+                        <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">{g.label}</div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {g.phrases.filter(p => !g.sounds || hasClip(p.id)).map(p => (
+                                <Button key={p.id} onClick={() => sayPhrase(p)} variant="secondary" className="min-h-[3rem] h-auto py-2 text-sm normal-case justify-start px-3 text-left border border-slate-600 bg-slate-800">
+                                    <Lucide icon={g.sounds ? 'volume-2' : 'message-square'} className="w-4 h-4 mr-2 opacity-50 shrink-0"/> {g.sounds ? p.text : `"${p.text}"`}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
         const [modalTarget2, setModalTarget2] = useState("");
@@ -464,7 +516,6 @@
         const RHYTHMS = RG.SELECTABLE;
         const ARREST_RHYTHMS = RG.ARREST;
         const ROSC_RHYTHMS = RG.ROSC;
-        const VOICE_PHRASES = ["My chest hurts", "I can't breathe", "I feel sick", "Who are you?", "My tummy hurts", "I feel dizzy", "Am I going to die?", "Yes", "No", "I'm thirsty", "Where am I?", "Please help me"];
         
         // The 28 new route-specific keys are grouped here so they are reachable in two taps
         // and sit beside their IV equivalents (the route is printed on every button).
@@ -1190,6 +1241,32 @@
                                 <Lucide icon="volume-x" className="w-4 h-4 mr-1"/> Muted
                             </Button>
                         )}
+                        {/* Patient-screen volume (monitor, defib, ventilator and the patient's voice). */}
+                        {/* Below 1280 px it lives in the Tools menu instead, so the toolbar does not wrap and push
+                            the HR, ARREST and CPR controls down on a 1024 px laptop or a phone. */}
+                        <div className="max-xl:hidden">
+                            <Button ariaLabel={`Patient screen volume ${Math.round(volumePct)}%`} variant="outline" onClick={() => setShowVolume(o => !o)}
+                                    className={`h-8 px-2 text-xs font-bold ${volumePct === 0 ? 'text-red-400 border-red-500/60' : 'text-slate-200 border-slate-500/60'}`}>
+                                <Lucide icon={volumePct === 0 ? 'volume-x' : 'volume-2'} className="w-4 h-4 md:mr-1"/><span className="max-md:hidden">{Math.round(volumePct)}%</span>
+                            </Button>
+                        </div>
+                            {showVolume && (
+                                <div data-testid="volume-panel" className="fixed right-4 top-16 z-50 w-72 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-600 rounded shadow-2xl p-3 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label htmlFor="volumeSlider" className="text-xs font-bold text-slate-300 uppercase">Patient screen volume</label>
+                                        <span className="font-mono text-sm text-white">{Math.round(volumePct)}%</span>
+                                    </div>
+                                    <input id="volumeSlider" type="range" min="0" max="150" step="10" value={Math.round(volumePct)}
+                                           onChange={(e) => setVolume(Number(e.target.value) / 100)} className="w-full accent-sky-500"/>
+                                    <div className="flex justify-between text-[10px] text-slate-400"><span>Off</span><span>Normal (100%)</span><span>Max</span></div>
+                                    <div className="flex gap-2">
+                                        <Button onClick={() => setVolume(volumePct === 0 ? (lastVolumeRef.current || 1) : 0)} variant={volumePct === 0 ? 'danger' : 'secondary'} className="h-9 flex-1 text-xs">{volumePct === 0 ? 'Unmute' : 'Mute all'}</Button>
+                                        <Button onClick={() => sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'VolumeTest' })} variant="secondary" className="h-9 flex-1 text-xs">Test sound</Button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400">Sets the monitor, defib, ventilator and patient voice on every patient screen. Above 100% the quieter sounds (pulse beep, voice) get louder; the alarms are already near the most a device can play.</p>
+                                    <Button onClick={() => setShowVolume(false)} variant="outline" className="h-8 w-full text-xs">Done</Button>
+                                </div>
+                            )}
                         <ViewModeToggle />
                         {window.ScreenDeviceWarning && <window.ScreenDeviceWarning state={state} onOpen={() => setShowJoin(true)} />}
                         <Button ariaLabel="Screens: add patient screens and choose what each one shows" variant="outline" onClick={() => setShowJoin(true)}
@@ -1202,6 +1279,7 @@
                                 { label: 'Timer alerts', icon: 'bell', hint: 'T', onClick: () => setShowTimerModal(true) },
                                 { label: 'Full simulation log', icon: 'list', onClick: () => setShowLogModal(true) },
                                 { label: `Sound plays on: ${audioOutput === 'both' ? 'both' : (audioOutput === 'controller' ? 'this controller' : 'room monitor')}`, icon: 'volume-2', hint: 'change', onClick: cycleAudioOutput },
+                                { label: `Patient screen volume: ${Math.round(volumePct)}%`, icon: 'volume-2', onClick: () => setShowVolume(true) },
                                 { label: isMuted ? 'Unmute alarms' : 'Mute alarms', icon: isMuted ? 'volume-2' : 'volume-x', onClick: () => sim.dispatch({type: 'SET_MUTED', payload: !isMuted}) },
                                 { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) }
                             ]} />
@@ -1828,6 +1906,9 @@
                             {/* SCRIPTED PRESETS: one press runs a timed sequence of rhythm/obs changes.
                                 Simple view keeps only a running preset (so it can be stopped) and a link
                                 to the list in Full view. */}
+                            <Section id="qsVoice" title="Patient voice" summary="Make the patient speak on the monitor" defaultOpen={false}>
+                                {renderVoicePanel()}
+                            </Section>
                             <div data-testid="presets">
                                 <div className="flex items-center justify-between mb-1 gap-2">
                                     <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Presets</div>
@@ -1987,22 +2068,7 @@
                                     </div>
                                 </div>
                             ) : activeTab === 'Voice' ? (
-                                <div className="space-y-4">
-                                    <div className="bg-slate-900 p-3 rounded border border-slate-700">
-                                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="mic" className="w-3 h-3"/> Text to Speech</h3>
-                                        <div className="flex gap-2">
-                                            <input type="text" value={speechText} onChange={(e) => setSpeechText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (speak(speechText) || setSpeechText(""))} className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm" placeholder="Type what the patient says..."/>
-                                            <Button onClick={() => {speak(speechText); setSpeechText("");}} variant="primary" className="h-10">Speak</Button>
-                                        </div>
-                                    </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                                        {VOICE_PHRASES.map(phrase => (
-                                            <Button key={phrase} onClick={() => speak(phrase)} variant="secondary" className="h-12 text-sm normal-case justify-start px-4 text-left border border-slate-600 bg-slate-800">
-                                                <Lucide icon="message-square" className="w-4 h-4 mr-2 opacity-50"/> "{phrase}"
-                                            </Button>
-                                        ))}
-                                    </div>
-                                </div>
+                                renderVoicePanel()
                             ) : activeTab === 'Investigations' ? (
                                 <>
                                 {window.InvResults && (

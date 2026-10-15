@@ -1021,7 +1021,7 @@ function beep(n, gap, freq) {
         shaper.connect(actx.destination); actx.__simOut = shaper;
       } catch (e) { actx.__simOut = actx.destination; }
     }
-    const t0 = actx.currentTime + 0.02, vol = (0.04 + 0.02 * V.loud) * 4 * 4;
+    const t0 = actx.currentTime + 0.02, vol = (0.04 + 0.02 * V.loud) * 4 * 4 * (LIVE.volume ?? 1);
     for (let i = 0; i < n; i++) {
       const o = actx.createOscillator(), g = actx.createGain();
       o.type = 'square'; o.frequency.value = freq;
@@ -2379,6 +2379,8 @@ function applyLive(v) {
   LIVE.rr = Number.isFinite(Number(vit.rr)) ? Number(vit.rr) : null;
   LIVE.isFinished = !!v.isFinished;
   LIVE.muted = !!v.isMuted;
+  // The controller's patient-screen volume rides inside live.defib (0 silent, 1 normal, 1.5 most).
+  LIVE.volume = v.defib && Number.isFinite(Number(v.defib.volume)) ? Math.max(0, Math.min(1.5, Number(v.defib.volume))) : 1;
   LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
   $('#endedBanner').hidden = !LIVE.isFinished;
   /* The facilitator chose another machine (HAMILTON-T1, HAMILTON-C6 or Atlan A350): open its page, same session */

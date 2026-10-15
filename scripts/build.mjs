@@ -214,9 +214,9 @@ const stamp = (swRel, files) => {
 };
 // The app: every file except source maps, the defib tablet's own folder and the workers.
 // The guide PDFs are left out: they are large and only wanted on demand (the guide pages are kept).
-// So are the investigation images (several MB together): the room monitor fetches the loaded
+// So are the investigation images (several MB together) and the patient voice clips (voices/): the room monitor fetches the loaded
 // scenario's images when the scenario starts, and the worker stores each one as it is fetched.
-const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.endsWith('.pdf') && !r.startsWith('defib/') && !r.startsWith('vent/') && !r.startsWith('images/investigations/') && !['sw.js', '_redirects'].includes(r));
+const appFiles = listFiles(OUT).filter(r => !r.endsWith('.map') && !r.endsWith('.pdf') && !r.startsWith('defib/') && !r.startsWith('vent/') && !r.startsWith('images/investigations/') && !r.startsWith('voices/') && !['sw.js', '_redirects'].includes(r));
 stamp('sw.js', ['./', ...appFiles]);
 // Each device tablet (defib, ventilator): its folder plus every file its page loads from the rest of the site.
 const deviceFiles = (dev) => {

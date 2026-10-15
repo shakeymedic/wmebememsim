@@ -78,6 +78,8 @@
         monitorTimer: { visible: false, active: false, time: 0 },
         flash: null, activeInterventions: new Set(), interventionCounts: {},
         activeDurations: {}, isMuted: false,
+        // Patient-screen volume set on the controller: 1 is normal, 0 silent, up to 1.5 for a noisy room.
+        volume: 1,
         etco2Enabled: false, isParalysed: false, queuedRhythm: null, cprInProgress: false,
         // Every administered drug that carries a `pk` envelope, with the time it was given. This is
         // the single source of truth for drug timing: numeric effects, wear-off AND neuromuscular

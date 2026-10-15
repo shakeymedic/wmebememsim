@@ -32,11 +32,21 @@
             const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
             const shaper = ctx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
             shaper.connect(ctx.destination);
-            ctx.__simOut = shaper;
+            // The controller's volume (setSimVolume) sits in front of the limiter, so above 100% the
+            // quieter sounds keep getting louder while the loud ones stay just under clipping.
+            const volume = ctx.createGain(); volume.gain.value = ctx.__simVolume ?? 1;
+            volume.connect(shaper);
+            ctx.__simVol = volume;
+            ctx.__simOut = volume;
         } catch (e) { ctx.__simOut = ctx.destination; }
         return ctx.__simOut;
     };
     window.simSoundOut = simSoundOut;
+    const setSimVolume = (ctx, v) => {
+        if (!ctx) return;
+        ctx.__simVolume = v;
+        if (ctx.__simVol) { try { ctx.__simVol.gain.setTargetAtTime(v, ctx.currentTime, 0.05); } catch (e) { ctx.__simVol.gain.value = v; } }
+    };
 
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [vitalsState, rawDispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
@@ -517,6 +527,55 @@
             } 
         }, [state.soundEffect, isMonitorMode, state.audioOutput]);
         
+        // The device's built-in voice, for typed words and any phrase without a recorded clip. Its
+        // loudness is the device's own: the page cannot raise it.
+        const speakAloud = (text) => {
+            if (!text || !('speechSynthesis' in window)) return;
+            stopVoiceClip();
+            window.speechSynthesis.cancel(); 
+            if (window.speechSynthesis.paused) window.speechSynthesis.resume(); 
+            const utterance = new SpeechSynthesisUtterance(text); 
+            utterance.volume = Math.min(1, volumeOf(stateRef.current));
+            if (utterance.volume <= 0) return;
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en-gb')) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+                utterance.voice = enVoice || voices[0];
+            }
+            window.speechSynthesis.speak(utterance); 
+        };
+        // Recorded voice clips (voices/<voice>/<phrase>.mp3) play through the same boosted output as
+        // the alarms, so they are much louder than the built-in voice. Each is fetched the first time
+        // it is used and kept decoded for the rest of the session. A new phrase cuts off the last one.
+        const voiceBuffersRef = useRef({});
+        const voiceSourceRef = useRef(null);
+        const stopVoiceClip = () => { try { if (voiceSourceRef.current) voiceSourceRef.current.stop(); } catch (e) {} voiceSourceRef.current = null; };
+        const playVoiceClip = async (clip) => {
+            const ctx = audioCtxRef.current;
+            if (audioBlocked(ctx)) await resumeAudio();
+            let buffer = voiceBuffersRef.current[clip];
+            if (!buffer) {
+                const res = await fetch(`voices/${clip}.mp3`);
+                if (!res.ok) throw new Error(`voice clip ${clip}: ${res.status}`);
+                const bytes = await res.arrayBuffer();
+                buffer = await new Promise((ok, fail) => { const p = ctx.decodeAudioData(bytes, ok, fail); if (p && p.catch) p.catch(fail); });
+                voiceBuffersRef.current[clip] = buffer;
+            }
+            stopVoiceClip();
+            try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+            const src = ctx.createBufferSource();
+            src.buffer = buffer; src.connect(soundOut(ctx)); src.start();
+            voiceSourceRef.current = src;
+            src.onended = () => { if (voiceSourceRef.current === src) voiceSourceRef.current = null; };
+        };
+        // Volume: set on the controller (state.volume); the patient screens get it inside the synced
+        // defib object (see engine-sync.js). 0 is silent, 1 normal, 1.5 the most.
+        const volumeOf = (st) => {
+            const v = isMonitorMode ? (st.defib && st.defib.volume) : st.volume;
+            return Number.isFinite(v) ? Math.max(0, Math.min(1.5, v)) : 1;
+        };
+        const currentVolume = volumeOf(state);
+        useEffect(() => { setSimVolume(audioCtxRef.current, currentVolume); }, [currentVolume, audioCtxState]);
         const lastSpeechRef = useRef(0);
         useEffect(() => { 
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) { 
@@ -524,17 +583,11 @@
                 const first = !seenSpeechRef.current; seenSpeechRef.current = true;
                 if (first && Date.now() - state.speech.timestamp > 8000) return;
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
-                if (shouldPlay && 'speechSynthesis' in window) { 
-                    window.speechSynthesis.cancel(); 
-                    if (window.speechSynthesis.paused) window.speechSynthesis.resume(); 
-                    const utterance = new SpeechSynthesisUtterance(state.speech.text); 
-                    const voices = window.speechSynthesis.getVoices();
-                    if (voices.length > 0) {
-                        const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
-                        utterance.voice = enVoice || voices[0];
-                    }
-                    window.speechSynthesis.speak(utterance); 
-                } 
+                if (!shouldPlay) return;
+                const clip = state.speech.clip;
+                if (clip && window.VOICE_CLIPS && window.VOICE_CLIPS.includes(clip) && audioCtxRef.current) {
+                    playVoiceClip(clip).catch(() => speakAloud(state.speech.text));
+                } else speakAloud(state.speech.text);
             } 
         }, [state.speech, isMonitorMode, state.audioOutput]);
 
@@ -1426,7 +1479,9 @@
                 addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}.${adrenaline ? '' : ' Adrenaline improves the chance of ROSC at the next check.'}`, 'info');
             }
         };
-        const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
+        // `clip` ('voice/phrase') names a recorded clip from the voice library (data/voices.js); the screen
+        // that plays it falls back to the device's built-in voice if it has no such clip.
+        const speak = (text, clip = null) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text, clip }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const playSound = (type) => { dispatch({ type: 'TRIGGER_SOUND', payload: type }); addLogEntry(`Sound: ${type}`, 'manual'); };
         const startTrend = (targets, durationSecs) => {
             const from = { ...stateRef.current.vitals };
@@ -1473,7 +1528,12 @@
         
         const playMedicalSound = (type) => {
             if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (audioBlocked(ctx)) resumeAudio(); const t = ctx.currentTime;
-            
+
+            // Volume check from the controller: the critical alarm tone, twice.
+            if (type === 'VolumeTest') {
+                [0, 0.35].forEach(d => { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.frequency.value = 880; osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0.3, t + d); gain.gain.exponentialRampToValueAtTime(0.001, t + d + 0.3); osc.start(t + d); osc.stop(t + d + 0.3); });
+                return;
+            }
             if (type === 'charge') {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(1200, t + 2.0);
                 osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.1); gain.gain.setValueAtTime(0.3, t + 1.8); gain.gain.linearRampToValueAtTime(0, t + 2.0);

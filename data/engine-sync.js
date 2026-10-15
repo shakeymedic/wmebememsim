@@ -283,9 +283,11 @@
                     // without a database-rules change.
                     // screenFront (what the facilitator wants in front on the patient screens) rides
                     // in here too, for the same reason: no database-rules change.
-                    // `started` (false only before the first START) rides in here for the same reason: the patient
-                    // screens stay blank while the facilitator sets the scenario up.
+                    // volume and `started` (false only before the first START) ride inside defib, like runId:
+                    // live's key list is closed in the database rules and defib is free-form, so the patient
+                    // screens get them with no rules change. The screens stay blank while the facilitator sets up.
                     defib: { ...(cur.defib || {}), runId: cur.runId || null, screenFront: cur.screenFront || null,
+                             volume: Number.isFinite(cur.volume) ? cur.volume : 1,
                              started: !!(cur.isRunning || cur.isFinished || (cur.pausedAt !== null && cur.pausedAt !== undefined)) },
                     // The ventilator on the room monitor, and the lungs it ventilates (the
                     // facilitator's choice, else one picked from the scenario).
@@ -381,7 +383,7 @@
             state.arrestPanelOpen, state.isFinished, state.monitorPopup, state.waveformGain,
             state.noise, state.notification, state.remotePacerState, state.pacingThreshold,
             state.showWetflag, state.etco2Pathology, isMonitorMode, sessionID,
-            state.isRunning, state.isMuted, state.activeLoops, state.isParalysed,
+            state.isRunning, state.isMuted, state.volume, state.activeLoops, state.isParalysed,
             state.activeDrugs, state.deteriorationMode,
             state.defibPanelOpen, state.defib, state.pacing, state.metronomeOn,
             state.ventPanelOpen, state.vent, state.screenFront
