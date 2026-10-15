@@ -1,5 +1,5 @@
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
 
 // Regression: when the sweep wrapped part-way through a frame, every later sub-sample drew a
 // line from the left edge straight across to the right edge.
@@ -58,6 +58,7 @@ test('big-screen monitor: the obs numbers scale with the screen and still fit 10
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.etco2Enabled)).toBe(true);
   await page.evaluate(() => window.__simEngine.triggerNIBP());
   await expect.poll(() => page.evaluate(() => (window.__simEngine.state.nibp || {}).sys || 0), { timeout: 30000 }).toBeGreaterThan(0);
+  await pressStart(page);
   const tv = await openMonitorOn(context, code, 1920, 1080);
   const errors = trackErrors(tv);
   await expect.poll(async () => (await tileFit(tv)).length, { timeout: 15000 }).toBe(6);   // HR, NIBP, SpO2, ABP, RR, ETCO2
@@ -79,6 +80,7 @@ test('big-screen monitor: the VBG is larger than text-xs and the result card clo
   const code = await openController(page);
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.attachStandardMonitoring());
+  await pressStart(page);
   const mon = await openMonitorOn(context, code, 1366, 768);
   await page.evaluate(() => window.__simEngine.revealInvestigation('VBG'));
   const grid = mon.getByTestId('vbg-grid');
@@ -96,6 +98,7 @@ test('a pulseless rhythm with no QRS to count shows HR --- in red, as the defib 
   const code = await openController(page);
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.attachStandardMonitoring());
+  await pressStart(page);
   const mon = await openMonitorOn(context, code, 1366, 768);
   const errors = trackErrors(mon);
   const hr = mon.getByTestId('obs-heart-rate');

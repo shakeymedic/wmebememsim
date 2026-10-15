@@ -1582,6 +1582,29 @@
         if (!trends || !trends.active) return { owned, ran: false };
         const targets = trends.targets || {};
         const startVitals = trends.startVitals || {};
+        // Per-obs periods (START_TREND since 15 Oct 2026): each obs has its own length and progress,
+        // and the ramp ends only when the last of them has arrived.
+        if (trends.durations) {
+            const durations = { ...trends.durations };
+            const elapsedBy = { ...(trends.elapsedBy || {}) };
+            const tg = { ...targets }, sv = { ...startVitals };
+            Object.keys(tg).forEach(key => {
+                const d = Number(durations[key]);
+                const e = (Number(elapsedBy[key]) || 0) + 1;
+                elapsedBy[key] = e;
+                const p = (Number.isFinite(d) && d > 0) ? Math.min(1, e / d) : 1;
+                const startVal = sv[key], targetVal = tg[key];
+                if (isCategoricalVital(key)) { if (targetVal !== undefined) base[key] = normalisePupils(targetVal); }
+                else if (typeof startVal === 'number' && typeof targetVal === 'number') base[key] = p >= 1 ? targetVal : startVal + ((targetVal - startVal) * p);
+                else if (targetVal !== undefined) base[key] = targetVal;
+                owned[key] = true;
+                if (p >= 1) { delete tg[key]; delete sv[key]; delete durations[key]; delete elapsedBy[key]; }
+            });
+            trends.targets = tg; trends.startVitals = sv; trends.durations = durations; trends.elapsedBy = elapsedBy;
+            trends.elapsed = (Number(trends.elapsed) || 0) + 1;
+            if (Object.keys(tg).length === 0) trends.active = false;
+            return { owned, ran: true };
+        }
         const duration = Number(trends.duration);
         trends.elapsed = (Number(trends.elapsed) || 0) + 1;
         // A 0 s / invalid duration means "now": progress 1 on the first tick, never NaN.

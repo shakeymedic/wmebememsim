@@ -2,7 +2,7 @@
 // mark sheet (scenario list, briefing, controller, debrief) and the admin upload. The data here is
 // made up: real course content (e.g. ETC) is copyrighted and is never in the repository.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, pressStart, expect } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -280,6 +280,7 @@ test('course images: the mark sheet shows them with their credit and sends one t
 
   await card(page, 'ETC test workshop').getByRole('button', { name: 'Load' }).click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();
+  await pressStart(page);
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
