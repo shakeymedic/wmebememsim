@@ -22,7 +22,8 @@ test('the footer links to the guides on the instructor screens, never on the roo
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
-  await expect(monitor.getByText('Tap to Enable Sound')).toBeVisible();
+  // (The "Tap to Enable Sound" prompt is no marker of a loaded monitor: since PR #42 it shows only while
+  // the browser holds sound back, which headless Chromium sometimes does not.)
   await expect(monitor.getByTestId('guide-links')).toHaveCount(0);
 });
 
