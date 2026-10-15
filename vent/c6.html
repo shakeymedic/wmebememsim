@@ -1056,13 +1056,24 @@ function beep(n, gap, freq) {
   if (!V.sound) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    const t0 = actx.currentTime + 0.02, vol = 0.04 + 0.02 * V.loud;
+    // Loudness 1-10 now peaks at about 0.25-0.95 of full scale (it was 0.015-0.06, too quiet to hear in
+    // a room even at 10). Above 0.7 the output is rounded off towards 1.0 so several alarms at once
+    // do not clip harshly (the same stage as data/engine.js).
+    if (!actx.__simOut) {
+      try {
+        const BOOST = 1;
+        const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
+        const shaper = actx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
+        shaper.connect(actx.destination); actx.__simOut = shaper;
+      } catch (e) { actx.__simOut = actx.destination; }
+    }
+    const t0 = actx.currentTime + 0.02, vol = (0.04 + 0.02 * V.loud) * 4 * 4;
     for (let i = 0; i < n; i++) {
       const o = actx.createOscillator(), g = actx.createGain();
       o.type = 'square'; o.frequency.value = freq;
       g.gain.setValueAtTime(0, t0 + i * gap); g.gain.linearRampToValueAtTime(vol * 0.25, t0 + i * gap + 0.02);
       g.gain.setValueAtTime(vol * 0.25, t0 + i * gap + 0.13); g.gain.linearRampToValueAtTime(0, t0 + i * gap + 0.16);
-      o.connect(g).connect(actx.destination); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.18);
+      o.connect(g).connect(actx.__simOut); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.18);
     }
   } catch (e) { /* audio not available */ }
 }
@@ -2594,12 +2605,17 @@ function applySound() {
 }
 /* the device's own Alarm sound handler flips V.sound; this keeps that choice and the session mute together */
 $('#btnSound').addEventListener('click', () => { soundWanted = V.sound; applySound(); });
-/* browsers start audio only after a touch: wake it on the first one */
-document.addEventListener('pointerdown', () => {
-  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+/* browsers start audio only after a touch: wake it on the first one. On an iPad a finger's pointerdown
+   does not count, only the touchend/click after it, so all of them are listened for. Safari also has an
+   'interrupted' state (screen lock, a call), and the iPad's silent setting mutes web audio unless the
+   page asks for the 'playback' audio session. */
+const wakeSound = () => {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state !== 'running' && actx.state !== 'closed') actx.resume(); } catch (e) {}
   /* embedded in the room monitor: tell it, so it enables its own sound from this touch */
   try { if (EMBEDDED && window.parent !== window) window.parent.postMessage({type:'wmebem-device-gesture'}, window.location.origin); } catch (e) {}
-}, {capture:true});
+};
+['pointerdown', 'touchend', 'click', 'keydown'].forEach(t => document.addEventListener(t, wakeSound, {capture:true}));
 
 /* ---------- main loop: real time, and it keeps ventilating when the tab is hidden ---------- */
 let acc250 = 0, acc1000 = 0, lastT = performance.now();

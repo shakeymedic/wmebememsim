@@ -17,8 +17,16 @@
         // Finish ends the run for good, so it is not offered for resuming after a reload.
         const finish = () => { sim.stop(); try { localStorage.removeItem('wmebem_sim_state'); } catch (e) {} setView('debrief'); };
 
+        // Finish pressed by mistake: the debrief offers the way back into the same run (paused, so
+        // the facilitator presses START when ready). The patient screens come back with it.
+        const returnToScenario = () => {
+            sim.dispatch({ type: 'UNDO_FINISH' });
+            sim.addLogEntry('Back to the scenario after Finish (facilitator)', 'system');
+            setView('livesim');
+        };
+
         if (view === 'debrief') {
-            return <DebriefScreen sim={sim} onExit={onRestart} />;
+            return <DebriefScreen sim={sim} onExit={onRestart} onReturn={returnToScenario} />;
         }
 
         // Defib Sim scenarios get their own controller, on the same engine.

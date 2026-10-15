@@ -88,7 +88,7 @@ async function openMonitor(context, code) {
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
   // The sound overlay covers the monitor until tapped
-  await monitor.getByText('Tap to Enable Sound').click({ force: true });   // it bounces, so never "stable"
+  { const snd = monitor.getByText('Tap to Enable Sound'); if (await snd.count()) await snd.click({ force: true }); }   // it bounces, so never "stable"
   await expect(monitor.getByText('Tap to Enable Sound')).toHaveCount(0);
   return monitor;
 }

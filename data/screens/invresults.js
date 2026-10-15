@@ -7,7 +7,9 @@
 //     (VBG, urine dipstick, POCUS), typed VBG values and a typed report.
 //   - LiveResults wires the two to a running simulation (data/engine.js): a choice rewrites the
 //     scenario's result fields through INVESTIGATIONS.setResult, so the sync payload carries it to the
-//     room monitor and nothing new is synced or stored. Choosing sends nothing to the monitor.
+//     room monitor and nothing new is synced or stored. Choosing sends nothing to the monitor;
+//     each row's Send button puts that result on the patient screens straight away, whenever the
+//     facilitator wants (every mode, including Quick Sim and Defib Sim, which have no other way).
 //
 // The Builder uses ResultsPanel and ResultEditor with its own list of choices (scenario.invResults),
 // applied when the scenario runs (INVESTIGATIONS.applyResultSpecs).
@@ -17,7 +19,7 @@
 
     const SHORT = { ECG: '12-lead ECG', VBG: 'VBG', 'X-ray': 'X-ray', Urine: 'Urine', POCUS: 'POCUS', CT: 'CT' };
 
-    function ResultsPanel({ rows, onEdit, onReset, intro, resetTitle }) {
+    function ResultsPanel({ rows, onEdit, onReset, onSend, sent, intro, resetTitle }) {
         const { Lucide } = window;
         const I = INV();
         return (
@@ -42,6 +44,13 @@
                                     {r.ecgImageNotFitting && <div className="text-[10px] text-amber-300">The chosen ECG does not match the current rhythm, so the 12-lead is drawn from the rhythm.</div>}
                                 </div>
                                 <div className="flex flex-col gap-1 flex-none">
+                                    {onSend && (
+                                        <button type="button" onClick={() => onSend(r.type)} data-testid={`inv-send-${r.type}`}
+                                                aria-label={`Send the ${SHORT[r.type] || r.type} result to the patient screens now`}
+                                                className={`text-[10px] uppercase font-bold px-2 py-1 rounded border ${sent === r.type ? 'border-emerald-400 bg-emerald-800 text-white' : 'border-purple-400 bg-purple-700 text-white hover:bg-purple-600'}`}>
+                                            {sent === r.type ? 'Sent' : 'Send'}
+                                        </button>
+                                    )}
                                     <button type="button" onClick={() => onEdit(r.type)} aria-label={`Change the ${SHORT[r.type] || r.type} result`}
                                             className="text-[10px] uppercase font-bold px-2 py-1 rounded border border-sky-600 text-sky-300 hover:bg-sky-900/40">Change</button>
                                     {r.changed && onReset && (
@@ -191,9 +200,10 @@
     }
 
     // The panel and chooser wired to a running simulation.
-    function LiveResults({ sim, addLogEntry, intro }) {
+    function LiveResults({ sim, addLogEntry, intro, canSend = true }) {
         const I = INV();
         const [editing, setEditing] = useState(null);
+        const [sent, setSent] = useState(null);
         const state = sim.state;
         const scenario = state.scenario;
         if (!I || !scenario) return null;
@@ -222,12 +232,23 @@
             }
             setEditing(null);
         };
+        // Send it now: the same as the team pressing that button on the patient monitor, so the
+        // monitor shows the result as it is set here (the scenario's own unless changed), with its image.
+        const send = (type) => {
+            if (!sim.revealInvestigation) return;
+            sim.revealInvestigation(type, null, {});
+            setSent(type);
+            setTimeout(() => setSent(t => (t === type ? null : t)), 2500);
+        };
         const cur = editing ? rows.filter(r => r.type === editing)[0] : null;
         const scenarioVbg = liveGas || scenario.vbg || (scenario.investigations || {}).vbg || null;
         return (
             <>
                 <ResultsPanel rows={rows} onEdit={setEditing} onReset={(t) => apply(t, null)} resetTitle="Back to the scenario's own result"
-                              intro={intro === undefined ? "What each investigation button on the patient monitor gives. Change any of them before START or during the run; nothing is sent until the team (or you) asks for the result." : intro} />
+                              onSend={canSend ? send : null} sent={sent}
+                              intro={intro === undefined ? (canSend
+                                  ? "What each investigation button on the patient monitor gives. Send puts a result on the patient screens now, at any time. Change any of them before START or during the run; changing sends nothing."
+                                  : "What each investigation button on the patient monitor gives. Change any of them before START or during the run; nothing is sent until the team (or you) asks for the result.") : intro} />
                 {editing && (
                     <ResultEditor type={editing} current={cur} currentVbg={scenarioVbg}
                                   rhythmLabel={RG ? RG.labelFor(state.rhythm) : state.rhythm}

@@ -1191,7 +1191,7 @@
 
                 {/* THE PATIENT AT A GLANCE (data/screens/patientstatus.js): what is happening now, the obs out of
                     range, a stick figure of everything attached, and the ventilator chooser. */}
-                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry}
+                {window.PatientStatus && <window.PatientStatus.PatientStatusPanel sim={sim} addLogEntry={addLogEntry} showScenario={!quickSim}
                     extra={window.PatientScreenSwitch ? <window.PatientScreenSwitch sim={sim} addLogEntry={addLogEntry} onOpenScreens={() => setShowJoin(true)} /> : null} />}
 
                 {/* This row was a fixed 12-column grid (md:col-span-5 lg:col-span-4
@@ -1238,18 +1238,10 @@
                             </div>
                             {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
                          </div>
-                         ) : (
-                         <div className={`flex-none bg-slate-800 ${shortScreen ? 'p-2' : 'p-3'} rounded border-l-4 border-sky-500 shadow-md`}>
-                            {/* A short screen keeps this to the essentials (the full profile is a hover
-                                away) so the obs and resus controls fit beneath it. */}
-                            {!shortScreen && <h3 className="text-xs font-bold text-sky-400 uppercase mb-1 flex items-center gap-2"><Lucide icon="user" className="w-3 h-3"/> Patient Details</h3>}
-                            <div className="text-sm text-white font-bold" title={shortScreen ? formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex) : undefined}>{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex})</div>
-                            {scenario.title && <div className={`text-xs text-emerald-400 font-bold uppercase mt-0.5 ${shortScreen ? 'truncate' : ''}`} title={scenario.title}>{scenario.title}</div>}
-                            {!shortScreen && scenario.deterioration && scenario.deterioration.type && <div className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5">Dx: {scenario.deterioration.type}</div>}
-                            {!shortScreen && <div className="text-xs text-slate-300 mt-1 line-clamp-2">{formatProfileTemplate(scenario.patientProfileTemplate || scenario.profile, scenario.patientAge, scenario.sex)}</div>}
-                            <HumanFactorBadge hf={scenario.hf} className="mt-2" />
-                         </div>
-                         )}
+                         ) : null}
+                         {/* A library or course scenario: who the patient is, the story and the whole brief
+                             are in the "Patient now" strip above and its "Full scenario" window, so the obs and
+                             the resus controls start higher up here. */}
 
                         {/* ============ WAVE 7 / ITEM 4: ATTACH EACH PIECE OF MONITORING INDIVIDUALLY ============
                             "I also want to be able to put on each bit of monitoring individually
@@ -1673,7 +1665,7 @@
                         {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
                         {VP && (
-                        <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={!!(rawScenario && rawScenario.ventSim)}>
+                        <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={!!(rawScenario && rawScenario.ventSim)} remember={!quickSim}>
                             <div className="flex flex-col gap-2 text-[11px] text-slate-300">
                                 {rawScenario && rawScenario.ventSim && (
                                     <div className="bg-cyan-950/40 border border-cyan-700/60 rounded p-2" data-testid="vent-brief">
@@ -1886,7 +1878,7 @@
                                 monitor gives (data/screens/invresults.js). Closed by default; unchanged,
                                 the buttons give the same results as before. */}
                             {window.InvResults && (
-                                <Section id="quickInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                                <Section id="quickInvResults" tone="card" title="Investigations: send or change" defaultOpen={false}
                                          summary={invChangedSummary(scenario)}>
                                     <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
                                 </Section>

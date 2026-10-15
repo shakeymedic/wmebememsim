@@ -264,6 +264,8 @@ window.INTERVENTIONS = {
     'Cooling': { label: 'Active Cooling', route: 'external', effect: { Temp: -3 }, category: 'Procedures', log: 'Active cooling started. Cools at ~2.0 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 7200, offset: 3600 }, drive: { vital: 'temp', ratePerHour: -2.0, target: 36.8 } },
     'CPR': { label: 'Start CPR', route: 'manual', effect: { BP: 40, cpr: true }, category: 'Procedures', log: 'Chest compressions started.', type: 'continuous', duration: 5 },
     'Splinting': { label: 'Splint / Immobilise', route: 'external', effect: {}, category: 'Procedures', log: 'Limb splinted / immobilised.', type: 'continuous', duration: 60 },
+    // Shown on the controller's patient picture (data/screens/injuries.js) on the injured leg.
+    'TractionSplint': { label: 'Traction Splint (Kendrick)', route: 'external', effect: {}, category: 'Procedures', log: 'Traction splint (Kendrick) applied.', type: 'continuous', duration: 120 },
     'Collar': { label: 'C-Spine Collar', route: 'external', effect: {}, category: 'Procedures', log: 'C-Spine immobilisation applied.', type: 'continuous', duration: 15 },
     'PelvicBinder': { label: 'Pelvic Binder', route: 'external', effect: { BP: 5 }, category: 'Procedures', log: 'Pelvic binder applied.', type: 'continuous', duration: 30, pk: { onset: 10, peak: 90, offset: 120 } },
     'Thoracotomy': { label: 'Resus Thoracotomy', route: 'surgical', effect: { BP: 20, SpO2: 15 }, category: 'Procedures', log: 'Resuscitative Thoracotomy performed.', type: 'bolus', duration: 120 },
@@ -284,6 +286,7 @@ window.INTERVENTIONS = {
     // GENUINELY NEAR-INSTANT — relieving tamponade works immediately. No pk.
     'Pericardiocentesis': { label: 'Pericardiocentesis', route: 'percutaneous', effect: { BP: 20, HR: -10 }, category: 'Procedures', log: 'Needle pericardiocentesis performed.', type: 'bolus', duration: 60 },
     'Tourniquet': { label: 'Tourniquet', route: 'external', effect: {}, category: 'Procedures', log: 'Tourniquet applied.', type: 'continuous', duration: 10 },
+    'WoundDressing': { label: 'Wound Dressing / Packing', route: 'topical', effect: {}, category: 'Procedures', log: 'Wound dressed / packed.', type: 'continuous', duration: 60 },
     'Plaster': { label: 'Plaster / Backslab', route: 'external', effect: {}, category: 'Procedures', log: 'Plaster backslab applied.', type: 'continuous', duration: 120 },
     'ClingFilm': { label: 'Cling Film', route: 'topical', effect: { Temp: 0.5 }, category: 'Procedures', log: 'Burns covered with cling film (reduces evaporative heat loss).', type: 'continuous', duration: 30, pk: { onset: 300, peak: 3600, offset: 1800 } },
     'ExchangeTransfusion': { label: 'Exchange Transfusion', route: 'IV', effect: {}, category: 'Procedures', log: 'Exchange Transfusion started.', type: 'continuous', duration: 300, expects: ['IV Access'] },

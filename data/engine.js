@@ -19,6 +19,25 @@
     } = window.__EngineModel;
     const { coreReducer, logReducer, scenarioReducer, vitalsReducer } = window.__EngineReducers;
 
+    // The shared output stage for one AudioContext, built once and cached on it. Every sound is
+    // boosted x4 (+12 dB) and then soft-limited: anything above 0.7 of full scale is rounded off
+    // towards 1.0 instead of clipping harshly, so the quiet tones (a pulse beep peaked at 0.1) come
+    // up a lot while the loud ones (shock, cuff, two at once) do not distort. A curve is used rather
+    // than a DynamicsCompressor because Chrome's compressor barely raised the short beeps.
+    // The defib (defib/index.html) and ventilator (vent/index.html) pages carry their own copy.
+    const simSoundOut = (ctx) => {
+        if (ctx.__simOut) return ctx.__simOut;
+        try {
+            const BOOST = 4;
+            const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
+            const shaper = ctx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
+            shaper.connect(ctx.destination);
+            ctx.__simOut = shaper;
+        } catch (e) { ctx.__simOut = ctx.destination; }
+        return ctx.__simOut;
+    };
+    window.simSoundOut = simSoundOut;
+
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [vitalsState, rawDispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
         const [logState, rawDispatchLog] = useReducer(logReducer, initialLogState);
@@ -283,6 +302,12 @@
         // autoplay policy. The "Tap to Enable Sound" overlay resumes THIS ref, which is correct; what
         // was missing was recovery when iOS/tab-backgrounding re-suspends it, so watch statechange.
         const [audioCtxState, setAudioCtxState] = useState('unknown');
+        // Safari has a third state, 'interrupted' (screen lock, a call, Siri, another app's audio):
+        // it needs the same resume as 'suspended', and checking only 'suspended' left iPads silent.
+        const audioBlocked = (ctx) => !!ctx && ctx.state !== 'running' && ctx.state !== 'closed';
+        // Every sound goes through simSoundOut (above): the tones were written quietly, so even at full
+        // device volume a room monitor was hard to hear.
+        const soundOut = simSoundOut;
         useEffect(() => {
             if (!audioCtxRef.current) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -291,23 +316,28 @@
             }
             const ctx = audioCtxRef.current;
             setAudioCtxState(ctx.state);
+            // Also before any tap, for a Safari that is set to allow sound on this site (see unmuteIos).
+            try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
             const onStateChange = () => {
                 setAudioCtxState(ctx.state);
                 // Re-suspension is common on iOS and when a tab is backgrounded. Try to recover
                 // immediately; if the browser refuses without a gesture the overlay can be re-shown.
-                if (ctx.state === 'suspended') { try { ctx.resume().catch(() => {}); } catch (e) {} }
+                if (audioBlocked(ctx)) { try { ctx.resume().catch(() => {}); } catch (e) {} }
             };
             ctx.addEventListener('statechange', onStateChange);
             // iOS only lets a context resume inside a user gesture, so any tap or key press on the
             // page is used to wake a context that has been (re-)suspended; otherwise the cuff,
             // charge and alarm sounds stay silent until someone finds the "enable sound" button.
-            const onGesture = () => { if (ctx.state === 'suspended') resumeAudio(true); };
-            document.addEventListener('pointerdown', onGesture, true);
-            document.addEventListener('keydown', onGesture, true);
+            // enableAudio (below) also unlocks speech on iOS, as the monitor's button does, now that the button
+            // hides itself once sound is on.
+            // On an iPad a finger's pointerdown/touchstart does not count as a gesture for audio; only the
+            // touchend/click that follow do, so listen for those too.
+            const onGesture = () => { if (audioBlocked(ctx)) enableAudio(); };
+            const GESTURES = ['pointerdown', 'keydown', 'touchend', 'click'];
+            GESTURES.forEach(t => document.addEventListener(t, onGesture, true));
             return () => {
                 ctx.removeEventListener('statechange', onStateChange);
-                document.removeEventListener('pointerdown', onGesture, true);
-                document.removeEventListener('keydown', onGesture, true);
+                GESTURES.forEach(t => document.removeEventListener(t, onGesture, true));
             };
         }, []);
 
@@ -326,16 +356,19 @@
                     source.start(0);
                 } catch (e) { /* priming is best-effort */ }
             };
-            if (ctx.state === 'suspended') {
+            // Prime first, synchronously: iOS only counts what happens inside the gesture itself, and a
+            // buffer started after the resume promise settles is already outside it.
+            primeSilence();
+            if (audioBlocked(ctx)) {
                 try {
                     const p = ctx.resume();
                     if (p && typeof p.then === 'function') {
-                        return p.then(() => { primeSilence(); setAudioCtxState(ctx.state); return true; }).catch(e => { console.warn('AudioContext resume failed', e); return false; });
+                        return p.then(() => { setAudioCtxState(ctx.state); return ctx.state === 'running'; }).catch(e => { console.warn('AudioContext resume failed', e); setAudioCtxState(ctx.state); return false; });
                     }
                 } catch (e) { console.warn('AudioContext resume threw', e); return Promise.resolve(false); }
+                return Promise.resolve(ctx.state === 'running');
             }
-            primeSilence();
-            return Promise.resolve(true);
+            return Promise.resolve(ctx.state === 'running');
         };
 
         // Is this device the one that should be making noise right now?
@@ -375,7 +408,7 @@
                 if (!beepSensors.spo2 && !beepSensors.ecg) { retry(1000); return; }
 
                 if (!current.isMuted && ctx && isAudioRouted(current)) {
-                    if (ctx.state === 'suspended') { resumeAudio(); retry(500); return; }
+                    if (audioBlocked(ctx)) { resumeAudio(); retry(500); return; }
                     try {
                         const osc = ctx.createOscillator(); const gain = ctx.createGain();
                         osc.type = 'sine';
@@ -389,7 +422,7 @@
                         else if (spO2 >= 85) freq = 400 + ((spO2 - 85) * (400 / 15));
                         else freq = Math.max(180, 400 - ((85 - spO2) * (220 / 35)));
                         osc.frequency.value = Math.max(120, Math.min(900, freq));
-                        osc.connect(gain); gain.connect(ctx.destination);
+                        osc.connect(gain); gain.connect(soundOut(ctx));
                         const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.1, now + 0.01); gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
                         osc.start(now); osc.stop(now + 0.2);
                     } catch (e) { console.warn('Beep failed', e); }
@@ -411,10 +444,10 @@
             const ctx = audioCtxRef.current;
             if (!ctx) return;
             try {
-                if (ctx.state === 'suspended') { resumeAudio(); return; }
+                if (audioBlocked(ctx)) { resumeAudio(); return; }
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
-                osc.connect(gain); gain.connect(ctx.destination);
+                osc.connect(gain); gain.connect(soundOut(ctx));
                 osc.frequency.value = type === 'critical' ? 880 : 660;
                 osc.type = 'sine';
                 gain.gain.setValueAtTime(0.3, ctx.currentTime);
@@ -1436,26 +1469,26 @@
         // If the context is (re-)suspended when the cuff starts, play once it has resumed rather
         // than dropping the sound (resume() is asynchronous).
         const playInflationSound = () => { const ctx0 = audioCtxRef.current; if (!ctx0) return; if (ctx0.state !== 'running') { resumeAudio().then(() => { if (ctx0.state === 'running' && stateRef.current.nibp.inflating) playInflationTone(ctx0); }); return; } playInflationTone(ctx0); };
-        const playInflationTone = (ctx) => { { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
+        const playInflationTone = (ctx) => { { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         
         const playMedicalSound = (type) => {
-            if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const t = ctx.currentTime;
+            if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (audioBlocked(ctx)) resumeAudio(); const t = ctx.currentTime;
             
             if (type === 'charge') {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(1200, t + 2.0);
-                osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.1); gain.gain.setValueAtTime(0.3, t + 1.8); gain.gain.linearRampToValueAtTime(0, t + 2.0);
+                osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.1); gain.gain.setValueAtTime(0.3, t + 1.8); gain.gain.linearRampToValueAtTime(0, t + 2.0);
                 osc.start(t); osc.stop(t + 2.0);
             }
             else if (type === 'shock') {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); const filter = ctx.createBiquadFilter(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, t); osc.frequency.exponentialRampToValueAtTime(50, t + 0.2);
                 filter.type = 'lowpass'; filter.frequency.setValueAtTime(3000, t); filter.frequency.exponentialRampToValueAtTime(100, t + 0.2);
-                osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(1.0, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
+                osc.connect(filter); filter.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(1.0, t); gain.gain.exponentialRampToValueAtTime(0.01, t + 0.2);
                 osc.start(t); osc.stop(t + 0.2);
             }
-            else if (type === 'Wheeze') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain(); osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.4; lfoGain.gain.value = 150; lfo.connect(lfoGain); lfoGain.connect(osc.frequency); osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.1, t + 1); gain.gain.linearRampToValueAtTime(0, t + 3); osc.start(t); lfo.start(t); osc.stop(t+3); lfo.stop(t+3); }
-            else if (type === 'Stridor') { const osc1 = ctx.createOscillator(); const osc2 = ctx.createOscillator(); const gain = ctx.createGain(); osc1.frequency.value = 600; osc2.frequency.value = 620; osc1.type = 'sawtooth'; osc2.type = 'sawtooth'; osc1.connect(gain); osc2.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.1, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 2); osc1.start(t); osc2.start(t); osc1.stop(t+2); osc2.stop(t+2); }
-            else if (type === 'Vomit') { const bufferSize = ctx.sampleRate * 2; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; } const bufferSource = ctx.createBufferSource(); bufferSource.buffer = buffer; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 300; const gain = ctx.createGain(); bufferSource.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.2); gain.gain.exponentialRampToValueAtTime(0.01, t + 1.5); bufferSource.start(t); bufferSource.stop(t+1.5); }
-            else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
+            else if (type === 'Wheeze') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain(); osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.4; lfoGain.gain.value = 150; lfo.connect(lfoGain); lfoGain.connect(osc.frequency); osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.1, t + 1); gain.gain.linearRampToValueAtTime(0, t + 3); osc.start(t); lfo.start(t); osc.stop(t+3); lfo.stop(t+3); }
+            else if (type === 'Stridor') { const osc1 = ctx.createOscillator(); const osc2 = ctx.createOscillator(); const gain = ctx.createGain(); osc1.frequency.value = 600; osc2.frequency.value = 620; osc1.type = 'sawtooth'; osc2.type = 'sawtooth'; osc1.connect(gain); osc2.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.1, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 2); osc1.start(t); osc2.start(t); osc1.stop(t+2); osc2.stop(t+2); }
+            else if (type === 'Vomit') { const bufferSize = ctx.sampleRate * 2; const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate); const data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; } const bufferSource = ctx.createBufferSource(); bufferSource.buffer = buffer; const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 300; const gain = ctx.createGain(); bufferSource.connect(filter); filter.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.2); gain.gain.exponentialRampToValueAtTime(0.01, t + 1.5); bufferSource.start(t); bufferSource.stop(t+1.5); }
+            else if (type === 'Snoring') { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.value = 40; osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.2, t + 0.5); gain.gain.linearRampToValueAtTime(0, t + 1.5); osc.start(t); osc.stop(t+1.5); }
         };
         
         // Loop synthesis split out from the toggle so the STUDENT MONITOR can start/stop the same
@@ -1464,13 +1497,13 @@
         const startAudioLoop = (type) => {
             const ctx = audioCtxRef.current;
             if (!ctx || loopNodesRef.current[type]) return;
-            if (ctx.state === 'suspended') resumeAudio();
+            if (audioBlocked(ctx)) resumeAudio();
             try {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain();
                 if (type === 'Wheeze') { osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.25; lfoGain.gain.value = 200; }
                 else if (type === 'Stridor') { osc.type = 'sawtooth'; osc.frequency.value = 600; lfo.frequency.value = 0.3; lfoGain.gain.value = 100; }
                 else { osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.25; lfoGain.gain.value = 150; }
-                lfo.connect(lfoGain); lfoGain.connect(osc.frequency); osc.connect(gain); gain.connect(ctx.destination);
+                lfo.connect(lfoGain); lfoGain.connect(osc.frequency); osc.connect(gain); gain.connect(soundOut(ctx));
                 const now = ctx.currentTime; gain.gain.setValueAtTime(0, now); gain.gain.value = 0.05;
                 osc.start(); lfo.start();
                 loopNodesRef.current[type] = { stop: () => { try { gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5); } catch (e) {} setTimeout(() => { try { osc.stop(); lfo.stop(); } catch (e) {} }, 500); } };
@@ -1667,9 +1700,39 @@
             lastPayloadRef.current = {};
             db.ref(`sessions/${sessionID}/live`).remove().catch(e => console.error('Could not clear the live patient:', e));
         };
+        // iPads and iPhones put web audio in the "ambient" category, which the Silent Mode switch (or
+        // Control Centre's silent bell) mutes even though the context is running. Asking for the
+        // "playback" category, as a media player does, lets it sound (Safari 16.4 and later). Older
+        // Safari switches category when an <audio> element plays, so a moment of silence is played
+        // inside the same gesture. Neither changes anything on other browsers.
+        const silentAudioRef = useRef(null);
+        const unmuteIos = () => {
+            try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) {}
+            if (navigator.audioSession) return;
+            const isIos = /iP(ad|hone|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (!isIos) return;
+            try {
+                if (!silentAudioRef.current) {
+                    // 0.1 s of 8 kHz 8-bit mono silence as a WAV
+                    const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+                    const str = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+                    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+                    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+                    v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+                    let bin = ''; b.forEach(x => { bin += String.fromCharCode(x); });
+                    const el = document.createElement('audio');
+                    el.setAttribute('playsinline', ''); el.setAttribute('x-webkit-airplay', 'deny'); el.preload = 'auto';
+                    el.src = 'data:audio/wav;base64,' + btoa(bin);
+                    silentAudioRef.current = el;
+                }
+                const pr = silentAudioRef.current.play();
+                if (pr && pr.catch) pr.catch(() => {});
+            } catch (e) {}
+        };
         // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
         // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
         const enableAudio = () => {
+            unmuteIos();
             const p = resumeAudio(true);
             if (window.speechSynthesis) {
                 try {

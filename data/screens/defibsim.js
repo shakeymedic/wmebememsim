@@ -280,7 +280,7 @@
 
                         {/* What the patient monitor's investigation buttons give (data/screens/invresults.js). */}
                         {window.InvResults && (
-                            <Section id="defibInvResults" tone="card" title="Investigation results" defaultOpen={false}
+                            <Section id="defibInvResults" tone="card" title="Investigations: send or change" defaultOpen={false}
                                      summary={Object.keys(state.scenario.invChanged || {}).length ? `Changed: ${Object.keys(state.scenario.invChanged).join(', ')}` : "Scenario's own results"}>
                                 <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
                             </Section>
