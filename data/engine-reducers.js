@@ -726,10 +726,17 @@
                 return { ...state, defib: nextDefib, arrest: shocked && a.since !== null ? { ...a, shocks: a.shocks + 1 } : a };
             }
             case 'SET_DEFIB_STEP': return { ...state, defibStep: action.payload ? { ...(state.defibStep || {}), ...action.payload } : null };
-            // Device artefacts shown on the learner's defib: only these keys, only booleans.
+            // Trace artefacts and variations shown on the learner's monitor and defib: only these
+            // keys. ECG artefacts are booleans; pleth and art are one of a fixed set of styles;
+            // artFlush counts fast-flush tests (each increase draws one on every screen).
+            // `noise` is free-form in the database rules, so none of this needs a rules change.
             case 'SET_NOISE': {
                 const n = { ...(state.noise || {}) };
-                ['interference', 'movement', 'leadoff'].forEach(k => { if (action.payload && action.payload[k] !== undefined) n[k] = !!action.payload[k]; });
+                const p = action.payload || {};
+                ['interference', 'movement', 'leadoff', 'tremor'].forEach(k => { if (p[k] !== undefined) n[k] = !!p[k]; });
+                const STYLES = { pleth: ['normal', 'poor', 'motion', 'swing'], art: ['normal', 'overdamped', 'underdamped', 'swing'] };
+                Object.keys(STYLES).forEach(k => { if (p[k] !== undefined) n[k] = STYLES[k].indexOf(p[k]) !== -1 ? p[k] : 'normal'; });
+                if (p.artFlush) n.artFlush = (Number(n.artFlush) || 0) + 1;
                 return { ...state, noise: n };
             }
             // The defib and the ventilator share the room monitor's screen: opening one closes the other.

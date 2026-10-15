@@ -1015,10 +1015,9 @@
         function sampleAt(phase, t) {
             const beat = Math.floor(phase);
             let y = RG.ecgValue(phase - beat, t, patient.rhythm, { hr: drawRate(), beat, lead: device.lead, cpr: patient.cpr || (patient.noise && patient.noise.cpr) });
-            const n = patient.noise || {};
-            if (n.movement) y += 18 * Math.sin(t * 2.3) + 10 * Math.sin(t * 7.1 + 1) + (Math.sin(t * 0.7) > 0.95 ? 30 : 0);
-            if (n.interference) y += 4 * Math.sin(t * 2 * Math.PI * 50);
-            if (n.leadoff && device.lead !== 'PADS') y = 1.5 * Math.sin(t * 0.8);
+            // Movement, mains, tremor and lead off (one definition, shared with the room monitor).
+            const art = RG.ecgArtefact(patient.noise, t, device.lead);
+            y = art.replace !== undefined ? art.replace : y + art.add;
             return y * device.gain * (Number(patient.gain) || 1);
         }
 

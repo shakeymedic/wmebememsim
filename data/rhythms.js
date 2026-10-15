@@ -702,6 +702,23 @@
         return rAnchor(rr) / rr;
     }
 
+    // ---- ECG ARTEFACT the facilitator can switch on (state.noise), in the trace's own units, at
+    // absolute time t (seconds). Returns { add, replace }: `replace` (lead off) is the whole
+    // signal; otherwise `add` is summed onto the ECG. Pads are glued on, so lead off never
+    // affects them.
+    function ecgArtefact(n, t, lead) {
+        n = n || {};
+        if (n.leadoff && lead !== 'PADS') return { replace: 1.5 * Math.sin(t * 0.8) };
+        var a = 0;
+        // Patient movement: large, slow, irregular baseline swings with the odd sharp deflection.
+        if (n.movement) a += 18 * Math.sin(t * 2.3) + 10 * Math.sin(t * 7.1 + 1) + (Math.sin(t * 0.7) > 0.95 ? 30 : 0);
+        // Mains interference: 50 Hz hum, a thick fuzzy line.
+        if (n.interference) a += 4 * Math.sin(t * 2 * Math.PI * 50);
+        // Shivering or tremor: irregular 4-8 Hz oscillation that can mimic flutter waves or VF.
+        if (n.tremor) a += (9 * Math.sin(2 * Math.PI * 5.2 * t) + 4.5 * Math.sin(2 * Math.PI * 7.9 * t + 0.6)) * (0.65 + 0.35 * Math.sin(t * 1.3));
+        return { add: a };
+    }
+
     // ---- PULSE WAVEFORMS (pleth and arterial line), beat by beat.
     // Each beat's pulse is a time-shifted, real-duration shape that starts a pulse-transit time
     // after its R wave, so a pulse follows every QRS at any rate (and none follows a dropped beat).
@@ -719,12 +736,61 @@
         var y = 26 * Math.exp(-(x - 0.09) / 0.26);
         return y - gs(x, 0.30, 3.5, 0.015) + gs(x, 0.34, 3.2, 0.03);
     }
+    // ---- TRACE VARIATIONS the facilitator can choose (state.noise.pleth / state.noise.art).
+    // Poor peripheral perfusion (cold, shut down, vasoconstricted): a small, rounded pulse with a
+    // slower upstroke and no dicrotic notch. pulseValue scales it to about a third of normal.
+    function plethPoorShape(x) {
+        if (x < 0) return 0;
+        if (x < 0.24) { var u = x / 0.24; return 20 * Math.pow(Math.sin(u * Math.PI / 2), 1.3); }
+        return 20 * Math.exp(-(x - 0.24) / 0.34);
+    }
+    // OVERDAMPED arterial line (air bubble, clot, kinked or compliant tubing, under-filled pressure
+    // bag): slurred upstroke, blunted rounded peak, no dicrotic notch. Systolic reads falsely LOW
+    // and diastolic falsely HIGH; the mean is preserved.
+    function artOverdampedShape(x) {
+        if (x < 0) return 0;
+        if (x < 0.19) { var u = x / 0.19; return 19 * Math.pow(Math.sin(u * Math.PI / 2), 1.2); }
+        return 19 * Math.exp(-(x - 0.19) / 0.34);
+    }
+    // UNDERDAMPED arterial line (long or stiff tubing, too many connectors, resonance with a
+    // fast heart rate): a tall narrow systolic spike with "ringing" after it and an exaggerated
+    // dicrotic notch. Systolic reads falsely HIGH and diastolic falsely LOW; the mean is preserved.
+    function artUnderdampedShape(x) {
+        if (x < 0) return 0;
+        var y;
+        if (x < 0.06) { var u = x / 0.06; y = 36 * (1 - Math.pow(1 - u, 2.6)); }
+        else y = 18 + 18 * Math.exp(-(x - 0.06) / 0.035) - 18 * (1 - Math.exp(-(x - 0.06) / 0.30));
+        if (x >= 0.06) y += 6 * Math.exp(-(x - 0.06) / 0.16) * Math.sin(2 * Math.PI * 10 * (x - 0.06));
+        return Math.max(-4, y - gs(x, 0.30, 5, 0.015) + gs(x, 0.34, 4, 0.03));
+    }
+    var PULSE_SHAPES = {
+        pleth: { normal: plethShape, poor: plethPoorShape },
+        art: { normal: artShape, overdamped: artOverdampedShape, underdamped: artUnderdampedShape }
+    };
+    // How far the DISPLAYED arterial numbers move with the damping (mmHg); MAP stays the same.
+    function artDisplayBias(style) {
+        if (style === 'underdamped') return { sys: 20, dia: -10 };
+        if (style === 'overdamped') return { sys: -16, dia: 8 };
+        return { sys: 0, dia: 0 };
+    }
+    // The fast-flush (square wave) test, `x` seconds after the flush valve is released, as a
+    // fraction of the flush pressure still showing. Optimal damping: a sharp drop with one or two
+    // oscillations. Overdamped: a slow, sloping return with none. Underdamped: several.
+    var FLUSH_HOLD_S = 1.2;
+    function flushRelease(x, style) {
+        if (x < 0) return 1;
+        if (style === 'overdamped') return Math.exp(-x / 0.22);
+        var tau = style === 'underdamped' ? 0.16 : 0.05;
+        return Math.exp(-x / tau) * Math.cos(2 * Math.PI * 9 * x);
+    }
+
     function pulseValue(kind, cyclePhase, rhythmName, opts) {
         opts = opts || {};
         var id = canonical(rhythmName);
         var r = BY_ID[id];
         if (r.realtime) return 0;
-        var shape = kind === 'art' ? artShape : plethShape;
+        var family = PULSE_SHAPES[kind === 'art' ? 'art' : 'pleth'];
+        var shape = family[opts.style] || family.normal;
         var transit = kind === 'art' ? 0.12 : 0.22;
         var beat = Math.floor(opts.beat || 0);
         var baseRr = 60 / clampNum(Number(opts.hr) > 0 ? Number(opts.hr) : 60, 10, 350);
@@ -739,7 +805,7 @@
             var fill = clampNum(Math.pow(beatRr(id, opts.hr, b - 1) / baseRr, 1.5), 0.3, 1.3);
             y += fill * shape(t + offset - rAnchor(rr) - transit);
         }
-        return y;
+        return kind !== 'art' && opts.style === 'poor' ? y * 0.3 : y;
     }
 
     // -------------------------------------------------------------------------
@@ -1057,6 +1123,12 @@
         ecgValue: ecgValue,
         rWavePhase: rWavePhase,
         pulseValue: pulseValue,
+        // Facilitator-chosen pulse trace variations (see PULSE_SHAPES).
+        artDisplayBias: artDisplayBias,
+        flushRelease: flushRelease,
+        FLUSH_HOLD_S: FLUSH_HOLD_S,
+        // ECG artefact, shared by the React monitor and the standalone defibrillator.
+        ecgArtefact: ecgArtefact,
         LEADS: ['I', 'II', 'III', 'aVR', 'aVL', 'aVF', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'PADS'],
         // Shared by the React monitor AND the standalone defibrillator.
         beatIntervalFactor: beatIntervalFactor,
