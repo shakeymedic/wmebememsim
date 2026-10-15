@@ -195,7 +195,7 @@
             cyanosed: !arrest && spo2 !== null && spo2 < 88,
             eyesClosed: arrest || paralysed || !!tube || (gcs !== null && gcs <= 8),
             distressed: flags.some(f => /^Distressed/.test(f.text)),
-            sex: s.scenario && s.scenario.sex === 'Female' ? 'Female' : 'Male',
+            sex: s.scenario && s.scenario.sex === 'Female' ? 'Female' : 'Male', age,
             injuries, kit
         };
     }
@@ -204,10 +204,8 @@
     // The patient lying on a trolley, seen from above with the head at the top (so the patient's right
     // side is on the left of the picture), with every piece of kit drawn where it really goes and its
     // cable or tubing running to the monitor, the ventilator, the defib or the drip stand.
-    const SKIN = { normal: '#e9b993', shade: '#c98f6b', cyan: '#9fb4d6', cyanShade: '#7189b3', arrest: '#b9bec7', arrestShade: '#8b919c' };
     const PatientFigure = ({ a, className }) => {
-        const skin = a.arrest ? SKIN.arrest : a.cyanosed ? SKIN.cyan : SKIN.normal;
-        const shade = a.arrest ? SKIN.arrestShade : a.cyanosed ? SKIN.cyanShade : SKIN.shade;
+        const tint = a.arrest ? 'ps-arrest' : a.cyanosed ? 'ps-cyan' : null;
         const ventCol = a.ventilating ? '#22d3ee' : '#f59e0b';
         const anyMon = a.sensors.ecg || a.sensors.spo2 || a.sensors.nibp || a.sensors.temp || a.sensors.etco2 || a.sensors.art;
         const label = [a.headline,
@@ -217,67 +215,47 @@
             a.vent ? `Ventilator: ${a.modelName}, ${a.vent.state}` : null,
             a.other.length ? a.other.join(', ') : null,
             a.injuries.length && window.Injuries ? 'Injuries: ' + a.injuries.map(window.Injuries.label).join(', ') : null].filter(Boolean).join('. ');
-        const INJ = window.Injuries;
-        const g = INJ ? INJ.geometry(a.injuries) : null;
+        const INJ = window.Injuries, BA = window.BodyArt;
         const pregnant = a.injuries.some(i => i.kind === 'pregnant');
+        // The body: the man, the woman, the pregnant woman, or the child (smaller the younger), from
+        // the artwork in images/patient/ (data/screens/bodyart.js).
+        const F = BA ? BA.frame(BA.pick(a.sex, a.age, pregnant)) : null;
+        const g = INJ && F ? INJ.geometry(a.injuries, F) : null;
+        const S = INJ ? INJ.Sprite : null;
         const breathing = !a.apnoeic && !a.ventilating && !a.bagging;
         const chestMoves = !a.arrest && (breathing || a.ventilating || a.bagging);
-        const breathDur = a.distressed ? '1.6s' : '3.6s';
+        const breathDur = a.ventilating || a.bagging ? '4.5s' : a.distressed ? '1.6s' : '3.6s';
         // where the airway leaves the patient: the mouth, or the front of the neck
         const ax = 95, ay = a.tube === 'fona' ? 54 : 41;
         const cable = { fill: 'none', strokeWidth: 1.1, strokeLinecap: 'round', opacity: 0.85 };
+        // Kit on the arms follows the arm (and moves to the other arm when one is missing).
+        const armOK = (s, n) => g && g[s].arm.cut > n;
+        const nibpSide = armOK('R', 2) ? 'R' : 'L', ivSide = armOK('R', 3) ? 'R' : 'L';
+        const artSide = armOK('L', 4) ? 'L' : 'R', spo2Side = armOK('L', 4) ? 'L' : armOK('R', 4) ? 'R' : null;
+        const at = (s, i) => g[s].arm.pts[i];
+        const mid = (p, q, t) => [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+        const z = g ? g.z : 1;
+        const trolley = BA ? BA.place(BA.frame(BA.pick('Male', null, false)), BA.TROLLEY) : null;
         return (
             <svg viewBox="0 0 220 250" role="img" aria-label={label} data-testid="patient-figure" className={className}>
                 <title>{label}</title>
                 <defs>
-                    <linearGradient id="ps-skin" x1="0" x2="1"><stop offset="0" stopColor={shade} /><stop offset="0.35" stopColor={skin} /><stop offset="0.65" stopColor={skin} /><stop offset="1" stopColor={shade} /></linearGradient>
-                    <radialGradient id="ps-pillow"><stop offset="0" stopColor="#f1f5f9" /><stop offset="1" stopColor="#cbd5e1" /></radialGradient>
+                    {/* cyanosed: blue-grey; in arrest: grey and pale */}
+                    <filter id="ps-cyan" colorInterpolationFilters="sRGB"><feColorMatrix type="matrix" values="0.6 0.15 0.1 0 0  0.1 0.7 0.15 0 0  0.15 0.2 0.85 0 0.06  0 0 0 1 0" /></filter>
+                    <filter id="ps-arrest" colorInterpolationFilters="sRGB"><feColorMatrix type="matrix" values="0.42 0.36 0.14 0 0.04  0.4 0.38 0.14 0 0.04  0.4 0.36 0.2 0 0.06  0 0 0 1 0" /></filter>
                 </defs>
 
                 {/* the trolley, its mattress and the pillow */}
-                <rect x="52" y="3" width="86" height="244" rx="12" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
-                <rect x="57" y="8" width="76" height="234" rx="9" fill="#334155" />
-                <ellipse cx="95" cy="28" rx="30" ry="18" fill="url(#ps-pillow)" opacity="0.9" />
+                {trolley ? <image href="images/patient/body/trolley.webp" {...trolley} preserveAspectRatio="none" />
+                    : <rect x="52" y="3" width="86" height="244" rx="12" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />}
 
                 {/* the drip stand (IV fluids) */}
-                {a.iv && <g data-part="drip">
-                    <line x1="24" y1="6" x2="24" y2="70" stroke="#94a3b8" strokeWidth="1.5" /><line x1="16" y1="6" x2="32" y2="6" stroke="#94a3b8" strokeWidth="1.5" />
-                    <rect x="17" y="9" width="14" height="20" rx="3" fill="#e0f2fe" fillOpacity="0.85" stroke="#7dd3fc" />
-                    <rect x="17" y="17" width="14" height="12" rx="2" fill="#7dd3fc" fillOpacity="0.55" />
-                    <rect x="22" y="29" width="4" height="7" fill="#cbd5e1" />
-                </g>}
+                {a.iv && <g data-part="drip">{S ? <S name="drip" c={[24, 25]} w={28} /> : <line x1="24" y1="6" x2="24" y2="70" stroke="#94a3b8" strokeWidth="1.5" />}</g>}
                 {/* the arterial line's pressure bag and transducer */}
-                {a.sensors.art && <g data-part="artbag"><rect x="9" y="42" width="11" height="15" rx="3" fill="#fecaca" stroke="#ef4444" /><text x="14.5" y="52" fontSize="5" textAnchor="middle" fill="#7f1d1d" fontWeight="bold">300</text></g>}
+                {a.sensors.art && <g data-part="artbag"><rect x="9" y="46" width="11" height="15" rx="3" fill="#fecaca" stroke="#ef4444" /><text x="14.5" y="56" fontSize="5" textAnchor="middle" fill="#7f1d1d" fontWeight="bold">300</text></g>}
 
-                {/* the patient's body */}
-                <g data-part="body">
-                    {/* the whole patient: arms by the sides, legs, hands and feet, bent where a fracture
-                        deforms them and short where an amputation took them (data/screens/injuries.js) */}
-                    {g && <INJ.Limbs g={g} skin={skin} shade={shade} />}
-                    {/* neck and chest, which rise and fall with each breath */}
-                    <rect x="88" y="44" width="14" height="14" rx="3" fill={skin} />
-                    <g>
-                        {chestMoves && <animateTransform attributeName="transform" type="scale" additive="sum" values="1 1;1.035 1.02;1 1" dur={a.ventilating || a.bagging ? '4.5s' : breathDur} repeatCount="indefinite" />}
-                        <path d="M72 58 Q95 50 118 58 Q124 62 124 72 L121 108 Q120 122 114 128 L76 128 Q70 122 69 108 L66 72 Q66 62 72 58 Z" fill="url(#ps-skin)" stroke={shade} strokeWidth="0.8" />
-                        {/* collarbones, the sternum and the lower ribs */}
-                        <path d="M78 60 Q86 63 93 61 M97 61 Q104 63 112 60" stroke={shade} strokeWidth="0.9" fill="none" opacity="0.8" />
-                        <path d="M95 64 L95 92" stroke={shade} strokeWidth="0.7" opacity="0.6" />
-                        <path d="M76 96 Q86 104 95 98 Q104 104 114 96" stroke={shade} strokeWidth="0.7" fill="none" opacity="0.6" />
-                        <circle cx="84" cy="80" r="1.4" fill={shade} /><circle cx="106" cy="80" r="1.4" fill={shade} />
-                    </g>
-                    {pregnant && <g data-part="pregnant"><ellipse cx="95" cy="108" rx="21" ry="17" fill="url(#ps-skin)" stroke={shade} strokeWidth="0.8" /><ellipse cx="99" cy="102" rx="7" ry="5" fill="#ffffff" opacity="0.12" /><circle cx="95" cy="109" r="1.3" fill={shade} /></g>}
-                    {/* the head: hair, ears, eyes (closed when unconscious or anaesthetised), nose and mouth */}
-                    <ellipse cx="95" cy="30" rx="15" ry="17" fill={skin} stroke={shade} strokeWidth="0.8" />
-                    <ellipse cx="80.5" cy="31" rx="2.4" ry="4" fill={shade} /><ellipse cx="109.5" cy="31" rx="2.4" ry="4" fill={shade} />
-                    <path d={a.sex === 'Female' ? 'M79 30 Q76 10 95 11 Q114 10 111 30 Q110 19 95 17 Q80 19 79 30 Z' : 'M81 24 Q80 12 95 12 Q110 12 109 24 Q104 17 95 17 Q86 17 81 24 Z'} fill="#4a3426" />
-                    {a.eyesClosed
-                        ? <path d="M86 29 q3 2 6 0 M98 29 q3 2 6 0" stroke="#3f2a1f" strokeWidth="1" fill="none" />
-                        : <g fill="#1f2937"><ellipse cx="89" cy="28.5" rx="1.6" ry="1.3" /><ellipse cx="101" cy="28.5" rx="1.6" ry="1.3" /></g>}
-                    <path d="M95 30 L93.6 35 L96 35.4" stroke={shade} strokeWidth="0.8" fill="none" />
-                    {!a.tube && <path d={a.distressed ? 'M91 40 Q95 37 99 40 Q95 42.5 91 40 Z' : 'M91.5 39.5 Q95 41.5 98.5 39.5'} stroke="#8b4a3c" strokeWidth="1" fill={a.distressed ? '#5b2b25' : 'none'} />}
-                </g>
-
-                {/* the injuries, then the kit on them (collar, binder, traction splint, splints, tourniquet ...) */}
+                {/* the patient, then the injuries and the kit on them (data/screens/injuries.js) */}
+                {g && <INJ.Body g={g} eyesClosed={a.eyesClosed} breathe={chestMoves} breathDur={breathDur} tint={tint} />}
                 {g && <INJ.InjuryLayer list={a.injuries} g={g} />}
                 {g && <INJ.KitLayer kit={a.kit} list={a.injuries} g={g} />}
 
@@ -305,83 +283,101 @@
                     <text x="172" y="142" fontSize="5.5" textAnchor="middle" fill="#fdba74" fontWeight="bold">DEFIB</text>
                 </g>}
 
-                {/* CPR: hands on the lower sternum, or a LUCAS over the chest */}
-                {a.lucas && <g data-part="lucas"><path d="M64 98 L64 70 Q95 56 126 70 L126 98" stroke="#fbbf24" strokeWidth="4" fill="none" /><rect x="87" y="62" width="16" height="10" rx="2" fill="#fbbf24" /><circle cx="95" cy="84" r="5" fill="#fde68a" stroke="#b45309"><animate attributeName="r" values="5;3.5;5" dur="0.55s" repeatCount="indefinite" /></circle></g>}
-                {a.cpr && !a.lucas && <g data-part="cpr">
-                    <g><animateTransform attributeName="transform" type="translate" values="0 0;0 3;0 0" dur="0.55s" repeatCount="indefinite" />
-                        <ellipse cx="95" cy="86" rx="9" ry="6" fill="#fcd34d" stroke="#b45309" strokeWidth="0.8" /><ellipse cx="95" cy="84" rx="8" ry="5" fill="#fde68a" stroke="#b45309" strokeWidth="0.8" />
-                    </g>
-                </g>}
+                {/* Kit on the arms, placed by the arm's own joints */}
+                {/* NIBP cuff on the upper arm, its tube to the monitor */}
+                {g && a.sensors.nibp && (() => {
+                    const p = at(nibpSide, 1);
+                    return <g data-part="nibp">
+                        <path d={`M${p[0]} ${p[1] - 4} C${p[0] - 14} ${p[1] - 8} 44 10 60 6 C80 1 120 1 136 6 C148 12 146 50 152 60`} stroke="#64748b" {...cable} strokeWidth="1.6" />
+                        <S name="cuff" c={p} w={12 * z} h={15 * z} rot={nibpSide === 'R' ? 8 : -8} />
+                    </g>;
+                })()}
+                {/* IV cannula in the forearm, the giving set up to the drip */}
+                {g && a.iv && (() => {
+                    const p = at(ivSide, 3);
+                    return <g data-part="iv">
+                        <path d={`M20 44 C22 80 ${p[0] - 14} ${p[1] - 6} ${p[0]} ${p[1]}`} stroke="#7dd3fc" {...cable} />
+                        <S name="cannula" c={p} w={11 * z} rot={-70} />
+                    </g>;
+                })()}
+                {/* arterial line in the radial artery, the transducer line to the pressure bag */}
+                {g && a.sensors.art && (() => {
+                    const p = mid(at(artSide, 3), at(artSide, 4), 0.8);
+                    return <g data-part="art">
+                        <path d={`M${p[0]} ${p[1]} C150 150 30 170 14 61`} stroke="#ef4444" {...cable} opacity="0.7" />
+                        <S name="cannula" c={p} w={9 * z} rot={-110} /><circle cx={p[0]} cy={p[1]} r={1.6 * z} fill="#dc2626" />
+                    </g>;
+                })()}
+                {/* SpO2 probe on a finger, its cable to the monitor (an ear probe if both hands are missing) */}
+                {g && a.sensors.spo2 && (() => {
+                    const p = spo2Side ? mid(at(spo2Side, 4), at(spo2Side, 5), 0.78) : g.T([110.5, 31]);
+                    return <g data-part="spo2">
+                        <path d={`M${p[0]} ${p[1]} C140 140 140 110 150 92`} stroke="#94a3b8" {...cable} />
+                        <S name="spo2" c={p} w={11 * z} rot={spo2Side === 'R' ? 100 : 80} />
+                        <circle cx={p[0]} cy={p[1]} r={1.2 * z} fill="#fecaca"><animate attributeName="opacity" values="1;0.3;1" dur="0.9s" repeatCount="indefinite" /></circle>
+                    </g>;
+                })()}
 
-                {/* ECG: right arm (red), left arm (yellow), left leg (green), leads to the monitor */}
-                {a.sensors.ecg && <g data-part="ecg">
-                    <path d="M79 66 C100 52 130 60 150 70 M111 66 C125 62 138 64 150 72 M112 110 C130 104 140 90 150 76" stroke="#e2e8f0" {...cable} />
-                    {[[79, 66, '#ef4444'], [111, 66, '#facc15'], [112, 110, '#22c55e']].map(([x, y, c]) => <g key={c}><circle cx={x} cy={y} r="4.2" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.6" /><circle cx={x} cy={y} r="2.2" fill={c} /></g>)}
-                </g>}
-                {/* defib / pacing pads: right of the upper sternum and the left side, cables to the defib */}
-                {a.pads && <g data-part="pads">
-                    <path d="M80 70 C110 48 140 110 150 122 M124 98 C134 104 142 116 150 128" stroke="#f97316" {...cable} strokeWidth="1.4" />
-                    <rect x="73" y="65" width="15" height="19" rx="3" fill="#fb923c" stroke="#9a3412" strokeWidth="0.8" transform="rotate(-12 80 74)" />
-                    <rect x="114" y="88" width="13" height="20" rx="3" fill="#fb923c" stroke="#9a3412" strokeWidth="0.8" transform="rotate(10 120 98)" />
-                </g>}
-                {/* NIBP cuff on the right upper arm, its tube to the monitor */}
-                {a.sensors.nibp && <g data-part="nibp">
-                    <path d="M57 80 C44 76 44 10 60 6 C80 1 120 1 136 6 C148 12 146 50 152 60" stroke="#64748b" {...cable} strokeWidth="1.6" />
-                    <rect x="56" y="72" width="14" height="17" rx="3" fill="#1d4ed8" stroke="#93c5fd" strokeWidth="0.8" transform="rotate(14 63 80)" />
-                    <path d="M58 78 h10 M58 83 h10" stroke="#93c5fd" strokeWidth="0.6" transform="rotate(14 63 80)" />
-                </g>}
-                {/* IV cannula in the right forearm, the giving set up to the drip */}
-                {a.iv && <g data-part="iv">
-                    <path d="M24 36 C24 70 46 100 60 108" stroke="#7dd3fc" {...cable} />
-                    <rect x="56" y="103" width="10" height="8" rx="1.5" fill="#f8fafc" fillOpacity="0.85" transform="rotate(-20 61 107)" />
-                    <rect x="59" y="105" width="5" height="4" rx="1" fill="#22d3ee" transform="rotate(-20 61 107)" />
-                </g>}
-                {/* arterial line in the left radial artery, the transducer line to the pressure bag */}
-                {a.sensors.art && <g data-part="art">
-                    <path d="M128 122 C150 150 30 170 14 57" stroke="#ef4444" {...cable} opacity="0.7" />
-                    <rect x="124" y="118" width="9" height="7" rx="1.5" fill="#f8fafc" /><circle cx="128.5" cy="121.5" r="2" fill="#dc2626" />
-                </g>}
-                {/* SpO2 probe on a left finger, its cable to the monitor */}
-                {a.sensors.spo2 && <g data-part="spo2">
-                    <path d="M131 140 C140 140 140 110 150 92" stroke="#94a3b8" {...cable} />
-                    <rect x="125" y="134" width="10" height="8" rx="2.5" fill="#dc2626" stroke="#7f1d1d" strokeWidth="0.6" /><circle cx="130" cy="138" r="1.4" fill="#fecaca"><animate attributeName="opacity" values="1;0.3;1" dur="0.9s" repeatCount="indefinite" /></circle>
-                </g>}
-                {/* temperature probe at the left ear */}
-                {a.sensors.temp && <g data-part="temp"><path d="M111 31 C126 30 138 50 150 62" stroke="#fb923c" {...cable} /><circle cx="110.5" cy="31" r="2.2" fill="#fb923c" /></g>}
-                {/* central line in the right internal jugular */}
-                {a.cvc && <g data-part="cvc"><path d="M88 52 l-6 -3 M88 52 l-7 0 M88 52 l-6 3" stroke="#a78bfa" strokeWidth="1.4" /><rect x="85.5" y="49" width="5" height="6" rx="1" fill="#c4b5fd" /></g>}
-                {/* chest drain on the left side, to its bottle */}
-                {a.drain && <g data-part="drain"><path d="M122 92 C140 100 136 150 144 170" stroke="#cbd5e1" strokeWidth="1.8" fill="none" /><rect x="138" y="168" width="14" height="20" rx="2" fill="#e2e8f0" fillOpacity="0.4" stroke="#cbd5e1" /><rect x="138" y="180" width="14" height="8" fill="#ef4444" fillOpacity="0.5" /></g>}
-                {/* urinary catheter, to the bag hanging off the trolley */}
-                {a.catheter && <g data-part="catheter"><path d="M95 130 C96 160 60 170 40 178" stroke="#fde047" strokeWidth="1.4" fill="none" /><rect x="28" y="172" width="16" height="20" rx="3" fill="#fde047" fillOpacity="0.45" stroke="#facc15" /></g>}
+                {/* Kit on the head and trunk: placed for the adult man and moved onto this body */}
+                <g transform={F ? F.matrix : undefined}>
+                    {/* CPR: hands on the lower sternum, or a LUCAS over the chest */}
+                    {a.lucas && <g data-part="lucas">{S && <S name="lucas" c={[95, 82]} w={60} />}<circle cx="95" cy="86" r="4" fill="#38bdf8" fillOpacity="0.5"><animate attributeName="r" values="4.5;3;4.5" dur="0.55s" repeatCount="indefinite" /></circle></g>}
+                    {a.cpr && !a.lucas && <g data-part="cpr">
+                        <g><animateTransform attributeName="transform" type="translate" values="0 0;0 3;0 0" dur="0.55s" repeatCount="indefinite" />
+                            {S && <S name="cprhands" c={[95, 86]} w={17} />}
+                        </g>
+                    </g>}
 
-                {/* the airway */}
-                {(a.niv || a.oxygen || (a.bagging && !a.tube)) && !a.tube && <g data-part="mask">
-                    {a.niv && <path d="M80 31 Q78 24 81 22 M110 31 Q112 24 109 22" stroke="#64748b" strokeWidth="2" fill="none" />}
-                    <path d={a.niv ? 'M86 26 Q95 20 104 26 L105 41 Q95 49 85 41 Z' : 'M87 32 Q95 28 103 32 L103 41 Q95 47 87 41 Z'} fill={a.niv ? '#bae6fd' : a.bagging ? '#f1f5f9' : '#bbf7d0'} fillOpacity="0.55" stroke={a.niv ? '#38bdf8' : a.bagging ? '#94a3b8' : '#22c55e'} strokeWidth="1.2" />
-                    {a.oxygen && !a.niv && !a.bagging && <path d="M103 40 C120 46 120 10 150 4" stroke="#22c55e" {...cable} />}
-                </g>}
-                {a.tube && <g data-part="tube">
-                    {a.tube !== 'fona' && <path d="M82 38 Q95 44 108 38" stroke="#f8fafc" strokeWidth="1.2" fill="none" opacity="0.8" />}
-                    {a.tube === 'sga'
-                        ? <rect x="91" y={ay - 5} width="8" height="9" rx="2" fill="#4ade80" stroke="#166534" strokeWidth="0.8" />
-                        : <circle cx={ax} cy={ay} r="2.6" fill="#f8fafc" stroke="#0ea5e9" strokeWidth="1" />}
-                    <path d={`M${ax} ${ay} C${ax + 6} ${ay - 2} ${ax + 10} ${ay - 4} ${ax + 15} ${ay - 6}`} stroke="#e2e8f0" strokeWidth="2.6" fill="none" />
-                </g>}
-                {/* the ventilator circuit, or the bag */}
-                {(a.tube || a.niv || (a.vent && a.ventilating)) && a.vent && !a.bagging && <path data-part="circuit"
-                    d={`M${ax + 15} ${(a.tube ? ay - 6 : 36)} C${ax + 30} ${(a.tube ? ay - 14 : 30)} ${ax + 40} 30 150 28`}
-                    stroke="#cbd5e1" strokeWidth="4" strokeDasharray="1.6 1.2" fill="none" opacity="0.9" />}
-                {a.bagging && <g data-part="bag">
-                    <path d={`M${a.tube ? ax + 15 : 103} ${a.tube ? ay - 6 : 37} C120 30 124 22 128 18`} stroke="#94a3b8" strokeWidth="3" fill="none" />
-                    <ellipse cx="136" cy="14" rx="12" ry="8" fill="#38bdf8" fillOpacity="0.45" stroke="#0284c7" strokeWidth="1.2"><animate attributeName="rx" values="12;9;12" dur="5s" repeatCount="indefinite" /></ellipse>
-                </g>}
-                {/* capnography: the adaptor on the airway and its sampling line to the monitor */}
-                {a.sensors.etco2 && <g data-part="etco2">
-                    <path d={`M${a.tube ? ax + 14 : 104} ${a.tube ? ay - 5 : 40} C130 50 140 56 150 66`} stroke="#facc15" {...cable} />
-                    <rect x={a.tube ? ax + 9 : 99} y={a.tube ? ay - 11 : 34} width="12" height="7" rx="1.5" fill="#facc15" stroke="#854d0e" strokeWidth="0.5" />
-                    <text x={a.tube ? ax + 15 : 105} y={a.tube ? ay - 6 : 39} fontSize="4.5" textAnchor="middle" fill="#000" fontWeight="bold">CO2</text>
-                </g>}
+                    {/* ECG: right arm (red), left arm (yellow), left leg (green), leads to the monitor */}
+                    {a.sensors.ecg && <g data-part="ecg">
+                        <path d="M77 66 C100 52 130 60 150 70 M113 66 C125 62 138 64 150 72 M112 112 C130 104 140 90 150 76" stroke="#e2e8f0" {...cable} />
+                        {[[77, 66, '#ef4444'], [113, 66, '#facc15'], [112, 112, '#22c55e']].map(([x, y, c]) => <g key={c}>{S && <S name="electrode" c={[x, y]} w={8} />}<circle cx={x} cy={y} r="1.3" fill={c} /></g>)}
+                    </g>}
+                    {/* defib / pacing pads: right of the upper sternum and the left side, cables to the defib */}
+                    {a.pads && <g data-part="pads">
+                        <path d="M84 70 C110 48 140 110 150 122 M124 98 C134 104 142 116 150 128" stroke="#f97316" {...cable} strokeWidth="1.4" />
+                        {[[80, 75, -12], [120, 99, 10]].map(([x, y, r]) => <g key={x} transform={`rotate(${r} ${x} ${y})`}>
+                            <rect x={x - 7.5} y={y - 9.5} width="15" height="19" rx="3" fill="#f8fafc" stroke="#94a3b8" strokeWidth="0.8" />
+                            <rect x={x - 5.5} y={y - 7.5} width="11" height="15" rx="2" fill="#e2e8f0" stroke="#cbd5e1" strokeWidth="0.5" />
+                            <rect x={x - 2} y={y - 11} width="4" height="3" rx="1" fill="#f97316" />
+                        </g>)}
+                    </g>}
+                    {/* temperature probe at the left ear */}
+                    {a.sensors.temp && <g data-part="temp"><path d="M111 31 C126 30 138 50 150 62" stroke="#fb923c" {...cable} /><circle cx="110.5" cy="31" r="2" fill="#fb923c" /></g>}
+                    {/* central line in the right internal jugular */}
+                    {a.cvc && <g data-part="cvc">{S && <S name="cvc" c={[86, 54]} w={11} rot={-25} />}</g>}
+                    {/* chest drain on the left side, to its bottle */}
+                    {a.drain && <g data-part="drain"><path d="M121 92 C140 100 136 150 142 166" stroke="#cbd5e1" strokeWidth="1.6" fill="none" />{S && <S name="drain" c={[145, 178]} w={18} />}<circle cx="121" cy="92" r="1.6" fill="#f8fafc" /></g>}
+                    {/* urinary catheter, to the bag hanging off the trolley */}
+                    {a.catheter && <g data-part="catheter"><path d="M95 136 C96 160 60 170 46 176" stroke="#fde047" strokeWidth="1.3" fill="none" />{S && <S name="catheter" c={[36, 184]} w={22} />}</g>}
+
+                    {/* the airway */}
+                    {a.adjunct === 'OPA' && !a.tube && !a.niv && !a.oxygen && !a.bagging && <g data-part="opa">{S && <S name="guedel" c={[95, 40]} w={6} />}</g>}
+                    {(a.niv || a.oxygen) && !a.tube && !a.bagging && <g data-part="mask">
+                        {a.niv
+                            ? <><path d="M80 31 Q78 24 81 22 M110 31 Q112 24 109 22" stroke="#64748b" strokeWidth="2" fill="none" />
+                                <path d="M86 26 Q95 20 104 26 L105 41 Q95 49 85 41 Z" fill="#bae6fd" fillOpacity="0.55" stroke="#38bdf8" strokeWidth="1.2" /></>
+                            : <>{S && <S name="mask" c={[100, 40]} w={27} />}<path d="M106 46 C120 42 120 10 150 4" stroke="#22c55e" {...cable} /></>}
+                    </g>}
+                    {a.bagging && !a.tube && <g data-part="mask"><ellipse cx="95" cy="37" rx="8" ry="7" fill="#f1f5f9" fillOpacity="0.25" stroke="#94a3b8" strokeWidth="1" /></g>}
+                    {a.tube && <g data-part="tube">
+                        {a.tube !== 'fona' && <path d="M82 38 Q95 44 108 38" stroke="#f8fafc" strokeWidth="1.2" fill="none" opacity="0.8" />}
+                        {S && (a.tube === 'sga' ? <S name="igel" c={[ax + 2, ay - 2]} w={10} rot={-30} /> : <S name="tube" c={[ax + 3, ay - 4]} w={10} rot={-20} />)}
+                    </g>}
+                    {/* the ventilator circuit, or the bag */}
+                    {(a.tube || a.niv || (a.vent && a.ventilating)) && a.vent && !a.bagging && <path data-part="circuit"
+                        d={`M${ax + 8} ${(a.tube ? ay - 10 : 36)} C${ax + 30} ${(a.tube ? ay - 16 : 30)} ${ax + 40} 30 150 28`}
+                        stroke="#cbd5e1" strokeWidth="4" strokeDasharray="1.6 1.2" fill="none" opacity="0.9" />}
+                    {a.bagging && <g data-part="bag">
+                        {S && (a.tube ? <S name="bvm" c={[121, 26]} w={38} rot={-25} flip /> : <S name="bvm" c={[113, 32]} w={44} rot={-10} flip />)}
+                    </g>}
+                    {/* capnography: the adaptor on the airway and its sampling line to the monitor */}
+                    {a.sensors.etco2 && <g data-part="etco2">
+                        <path d={`M${a.tube ? ax + 14 : 104} ${a.tube ? ay - 5 : 40} C130 50 140 56 150 66`} stroke="#facc15" {...cable} />
+                        <rect x={a.tube ? ax + 9 : 99} y={a.tube ? ay - 11 : 34} width="12" height="7" rx="1.5" fill="#facc15" stroke="#854d0e" strokeWidth="0.5" />
+                        <text x={a.tube ? ax + 15 : 105} y={a.tube ? ay - 6 : 39} fontSize="4.5" textAnchor="middle" fill="#000" fontWeight="bold">CO2</text>
+                    </g>}
+                </g>
             </svg>
         );
     };

@@ -45,8 +45,8 @@ test('naming an obs again re-times only that obs', async ({ page }) => {
   await pressStart(page);
   await page.evaluate(() => window.__simEngine.startTrend({ hr: 120, rr: 30 }, 30));
   await page.evaluate(() => window.__simEngine.startTrend({ rr: 10 }, 3));
-  const t = await page.evaluate(() => window.__simEngine.state.trends);
-  expect(t.durations).toEqual({ hr: 30, rr: 3 });
+  // state is the engine's last render: wait for the render after startTrend
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.trends.durations)).toEqual({ hr: 30, rr: 3 });
   await expect.poll(() => v(page, 'rr'), { timeout: 10000 }).toBe(10);
   const stillHr = await page.evaluate(() => window.__simEngine.state.trends);
   expect(stillHr.active).toBe(true);
