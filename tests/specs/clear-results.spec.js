@@ -74,3 +74,16 @@ test('a library image sent from the result chooser clears too, and Defib Sim has
   await expandSection(page, await head.getAttribute('data-section'));
   await expect(page.getByTestId('inv-clear-screens')).toBeVisible();
 });
+
+test('Clear screens also takes the patient picture off the monitor', async ({ page, context }) => {
+  const code = await openController(page);
+  await startQuickSim(page);
+  await pressStart(page);
+  const monitor = await openMonitor(context, code);
+  await page.getByTestId('patient-status').getByTestId('picture-on-monitor').click();
+  await expect(monitor.getByTestId('monitor-picture')).toBeVisible();
+  await expandSection(page, 'quickInvResults');
+  await expect(page.getByTestId('inv-on-screens')).toContainText('Patient picture');
+  await page.getByTestId('inv-clear-screens').click();
+  await expect(monitor.getByTestId('monitor-picture')).toHaveCount(0);
+});
