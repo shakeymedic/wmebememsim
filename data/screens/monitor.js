@@ -375,7 +375,12 @@
         }, []);
 
         useEffect(() => {
-            if (monitorPopup && monitorPopup.type === null) {
+            // A clear from the controller. Only a clear newer than the result on screen: the controller's
+            // live updates carry its last popup, which must not wipe a result the team opened here since.
+            // (The database drops null fields, so a synced clear arrives with no type at all.)
+            if (monitorPopup && !monitorPopup.type) {
+                if (!(monitorPopup.timestamp > lastPopupTime.current)) return;
+                lastPopupTime.current = monitorPopup.timestamp;
                 if (invToast) setInvToast(null);
                 if (show12Lead) setShow12Lead(false);
                 setViewImage(null);
