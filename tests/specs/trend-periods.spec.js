@@ -23,7 +23,8 @@ test('HR over 20 s, then SpO2 over 4 s, then BP now: each arrives on its own tim
   await page.evaluate(() => window.__simEngine.manualUpdateVitals({ bpSys: 90, bpDia: 55 }));
 
   // BP is there at once; SpO2 arrives in about 4 s while HR is still on its way.
-  expect(await v(page, 'bpSys')).toBe(90);
+  // (polled briefly: the engine's state is read after React has rendered the change)
+  await expect.poll(() => v(page, 'bpSys'), { timeout: 1500 }).toBe(90);
   await expect.poll(() => v(page, 'spO2'), { timeout: 10000 }).toBe(86);
   const hrWhenSpo2Arrived = await base(page, 'hr');
   expect(hrWhenSpo2Arrived).toBeGreaterThan(82);
@@ -31,7 +32,8 @@ test('HR over 20 s, then SpO2 over 4 s, then BP now: each arrives on its own tim
   // HR carries on and arrives at its own 20 s.
   await expect.poll(() => v(page, 'hr'), { timeout: 30000 }).toBe(140);
   expect(await v(page, 'spO2')).toBe(86);
-  expect(await v(page, 'bpSys')).toBe(90);
+  // (polled briefly: the engine's state is read after React has rendered the change)
+  await expect.poll(() => v(page, 'bpSys'), { timeout: 1500 }).toBe(90);
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.trends.active)).toBe(false);
   expect(errors).toEqual([]);
 });

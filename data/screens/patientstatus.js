@@ -8,8 +8,8 @@
 //     arterial line, IV access, central line, airway, ventilator, pads, catheter, CPR
 //   - the ventilator chooser (HAMILTON-T1, HAMILTON-C6, Atlan A350), switchable at any time
 //
-// Everything is derived from the engine state the controller already has: nothing new is stored or
-// synced. The thresholds are NEWS2's red scores for adults and approximate ranges for children; they
+// Everything is derived from the engine state the controller already has (only "Show on monitor"
+// sends anything: the picture, in monitorPopup). The thresholds are NEWS2's red scores for adults and approximate ranges for children; they
 // are prompts for the facilitator, not a scoring system.
 (() => {
     const { useState } = React;
@@ -394,10 +394,130 @@
         green: 'bg-emerald-700 text-white', slate: 'bg-slate-700 text-slate-100'
     };
 
+    // ---- the picture on the patient monitor --------------------------------------------------
+    // "Show on monitor" puts the picture on every patient screen that has a monitor, for the team to
+    // see (a handover, or a guide to the moulage). It rides in monitorPopup like a result, so the
+    // database rules are unchanged: the injuries, sex and age go with it, and the monitor draws the
+    // kit, colour and breathing from its own synced state, so they stay live. A result sent later
+    // replaces it, as one result replaces another.
+    const PICTURE = 'Patient picture';
+    const pictureOf = (state) => {
+        const INJ = window.Injuries, sc = state.scenario || {};
+        const injuries = INJ ? INJ.forScenario(sc).map(i => ({ region: i.region, kind: i.kind, side: i.side || null, open: !!i.open })) : [];
+        return { injuries, sex: sc.sex === 'Female' ? 'Female' : 'Male', age: num(sc.patientAge) };
+    };
+    const pictureShown = (state) => !!(state.monitorPopup && state.monitorPopup.type === PICTURE && state.monitorPopup.picture);
+    const usePictureOnMonitor = (sim, log) => {
+        const state = sim.state;
+        const shown = pictureShown(state);
+        const now = JSON.stringify(pictureOf(state));
+        // Keep the monitor's copy up to date while it is showing (an injury added, a different patient).
+        React.useEffect(() => {
+            if (shown && JSON.stringify(state.monitorPopup.picture) !== now) sim.dispatch({ type: 'TRIGGER_POPUP', payload: { type: PICTURE, picture: JSON.parse(now) } });
+        }, [shown, now]);
+        const toggle = () => {
+            if (shown) { sim.dispatch({ type: 'CLEAR_POPUP' }); log('Patient picture taken off the monitor (facilitator)', 'system'); }
+            else { sim.dispatch({ type: 'TRIGGER_POPUP', payload: { type: PICTURE, picture: JSON.parse(now) } }); log('Patient picture shown on the monitor (facilitator)', 'system'); }
+        };
+        return { shown, toggle };
+    };
+    const PictureButton = ({ pic, className = '' }) => (
+        <button type="button" onClick={pic.toggle} aria-pressed={pic.shown} data-testid="picture-on-monitor"
+                title={pic.shown ? 'Take the patient picture off the patient monitor' : 'Show this picture on the patient monitor, for the team to see'}
+                className={`flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${pic.shown ? 'bg-sky-900/50 border-sky-400 text-sky-100' : 'border-sky-600 text-sky-300 hover:bg-sky-900/40'} ${className}`}>
+            {pic.shown ? 'Hide from monitor' : 'Show on monitor'}
+        </button>
+    );
+    // The monitor's side (data/screens/monitor.js MonitorContainer): the picture over the whole screen.
+    const MonitorPicture = ({ state }) => {
+        if (!pictureShown(state)) return null;
+        const p = state.monitorPopup.picture;
+        const injuries = Array.isArray(p.injuries) ? p.injuries : Object.values(p.injuries || {});
+        const a = assess({ ...state, scenario: { ...(state.scenario || {}), sex: p.sex, patientAge: p.age, injuries } });
+        return (
+            <div className="absolute inset-0 z-[80] bg-slate-950 flex flex-col items-center justify-center p-3 animate-fadeIn" data-testid="monitor-picture">
+                <div className="text-slate-300 text-sm md:text-lg font-bold uppercase tracking-widest mb-2">The patient</div>
+                <PatientFigure a={a} className="h-[82vh] max-w-full" />
+            </div>
+        );
+    };
+
+    // ---- setting the patient up before START -------------------------------------------------
+    // Injuries and the kit already on the patient when the team arrives (tourniquets, a cannula, an
+    // oxygen mask ...), in any mode. Kit put on here is not the team's action and does not change the
+    // obs (sim.setUpIntervention, data/engine.js); the team can still take it off.
+    const SETUP_KIT = [
+        ['Obs', 'Monitoring'], ['IV Access', 'IV cannula'], ['Oxygen', 'Oxygen mask'], ['OPA', 'Guedel airway'], ['NPA', 'Nasal airway'],
+        ['Collar', 'Collar'], ['PelvicBinder', 'Pelvic binder'], ['Tourniquet', 'Tourniquet'], ['WoundDressing', 'Dressings'], ['ChestSeal', 'Chest seal'],
+        ['TractionSplint', 'Traction splint'], ['Splinting', 'Splint'], ['Plaster', 'Backslab'], ['ClingFilm', 'Cling film'],
+        ['Catheter', 'Urinary catheter'], ['ArtLine', 'Arterial line'], ['CVC', 'Central line']
+    ];
+    const kitOn = (state, key) => key === 'Obs'
+        ? !!(window.getSensors && window.getSensors(state).standard) || has(state.activeInterventions, 'Obs')
+        : has(state.activeInterventions, key);
+    const PatientSetup = ({ sim, addLogEntry, onClose }) => {
+        const { Modal, Button, Lucide } = window;
+        const INJ = window.Injuries, state = sim.state;
+        const log = addLogEntry || sim.addLogEntry;
+        const pic = usePictureOnMonitor(sim, log);
+        if (!state.scenario) return null;
+        const a = assess(state);
+        const setInjuries = (next) => {
+            const sc = { ...state.scenario };
+            if (next) sc.injuries = next; else delete sc.injuries;
+            sim.dispatch({ type: 'UPDATE_SCENARIO', payload: sc });
+            const now = INJ ? INJ.forScenario(sc).map(INJ.label) : [];
+            log(`Set-up: injuries ${now.length ? now.join(', ') : 'none'}`, 'system');
+        };
+        const kit = (key) => sim.setUpIntervention ? sim.setUpIntervention(key) : sim.applyIntervention(key);
+        return (
+            <Modal fixed label="Set up the patient" onClose={onClose}>
+                <div className="bg-slate-800 p-4 rounded-lg border border-slate-600 w-full max-w-4xl shadow-2xl max-h-[92vh] overflow-y-auto" data-testid="patient-setup">
+                    <div className="flex justify-between items-start mb-3 gap-2">
+                        <div className="min-w-0">
+                            <h3 className="text-lg font-bold text-white uppercase tracking-wider">Set up the patient</h3>
+                            <p className="text-[11px] text-slate-400">Injuries, and what is already done when the team arrives. Kit put on here does not change the obs and is not marked as the team’s; they can still take it off.</p>
+                        </div>
+                        <button aria-label="Close" onClick={onClose} className="text-slate-400 hover:text-white flex-none"><Lucide icon="x" className="w-5 h-5" /></button>
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="flex-none flex flex-col items-center gap-2">
+                            <PatientFigure a={a} className="w-56 h-64 bg-slate-950/70 rounded-lg" />
+                            <PictureButton pic={pic} className="text-xs px-3 py-1" />
+                        </div>
+                        <div className="min-w-0 flex-1 flex flex-col">
+                            <h4 className="text-xs font-bold uppercase text-slate-300 mb-1">Injuries</h4>
+                            {INJ && <INJ.InjuryPicker scenario={state.scenario} onChange={setInjuries} />}
+                        </div>
+                        <div className="min-w-0 md:w-64 flex-none">
+                            <h4 className="text-xs font-bold uppercase text-slate-300 mb-1">Already done</h4>
+                            <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Already done when the team arrives">
+                                {SETUP_KIT.map(([key, name]) => {
+                                    const on = kitOn(state, key);
+                                    return (
+                                        <button key={key} type="button" onClick={() => kit(key)} aria-pressed={on} data-kit={key}
+                                                className={`px-2 py-1.5 rounded border text-xs font-bold text-left ${on ? 'bg-emerald-800/60 border-emerald-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300 hover:border-emerald-500'}`}>
+                                            {on ? '\u2713 ' : ''}{name}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                    <div className="border-t border-slate-700 pt-3 mt-3 flex justify-end gap-2">
+                        {Array.isArray(state.scenario.injuries) && <Button onClick={() => setInjuries(null)} variant="secondary">Scenario's own injuries</Button>}
+                        <Button onClick={onClose} variant="primary" className="px-6">Done</Button>
+                    </div>
+                </div>
+            </Modal>
+        );
+    };
+
     // ---- the strip ------------------------------------------------------------------------------
     // `showScenario`: the scenario's summary and its "Full scenario" window (data/screens/scenarioview.js),
     // for library and course scenarios (not Quick Sim, which has no scenario).
-    const PatientStatusPanel = ({ sim, addLogEntry, showVent = true, extra = null, showScenario = false }) => {
+    // `setUp`: a "Set up patient" button here until START (where the page has none of its own).
+    const PatientStatusPanel = ({ sim, addLogEntry, showVent = true, extra = null, showScenario = false, setUp = false }) => {
         const state = sim.state;
         const a = assess(state);
         const [showFull, setShowFull] = useState(false);
@@ -418,6 +538,9 @@
         const ventInPlay = !!(state.vent || (state.scenario && state.scenario.ventSim) || Object.keys(state.ventMirror || {}).length);
         const toggle = () => { const n = !collapsed; setCollapsed(n); try { localStorage.setItem('wmebem_status_collapsed', n ? '1' : '0'); } catch (e) {} };
         const log = addLogEntry || sim.addLogEntry;
+        const pic = usePictureOnMonitor(sim, log);
+        const [showSetup, setShowSetup] = useState(false);
+        const notStarted = !state.isRunning && !state.isFinished && (state.pausedAt === null || state.pausedAt === undefined);
         const model = a.model;
         const ventShown = !!state.ventPanelOpen;
         const setModel = (m) => {
@@ -500,6 +623,10 @@
                             Full scenario
                         </button>
                     )}
+                    {setUp && notStarted && state.scenario && (
+                        <button type="button" onClick={() => setShowSetup(true)} aria-label="Set up the patient" className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-amber-400 bg-amber-700 text-white hover:bg-amber-600">Set up patient</button>
+                    )}
+                    {state.scenario && <PictureButton pic={pic} />}
                     <button type="button" onClick={toggle} aria-expanded={!collapsed} title={collapsed ? 'Show the patient figure and details' : 'Make this strip one line'} className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">
                         {collapsed ? 'More' : 'Less'}
                     </button>
@@ -556,10 +683,11 @@
                     </div>
                 )}
                 {showFull && SV && state.scenario && <SV.FullScenarioModal scenario={state.scenario} onClose={() => setShowFull(false)} />}
+                {showSetup && <PatientSetup sim={sim} addLogEntry={log} onClose={() => setShowSetup(false)} />}
                 {editInjuries && INJ && state.scenario && <INJ.InjuryEditor scenario={state.scenario} onChange={setInjuries} onClose={() => setEditInjuries(false)} />}
             </section>
         );
     };
 
-    window.PatientStatus = { assess, limitsFor, PatientFigure, PatientStatusPanel };
+    window.PatientStatus = { assess, limitsFor, PatientFigure, PatientStatusPanel, PatientSetup, MonitorPicture, usePictureOnMonitor, PictureButton };
 })();
