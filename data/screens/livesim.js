@@ -350,7 +350,11 @@
         const [speechText, setSpeechText] = useState(""); 
         const [modalVital, setModalVital] = useState(null); 
         const [modalTarget, setModalTarget] = useState("");
-        const [modalTarget2, setModalTarget2] = useState(""); 
+        const [modalTarget2, setModalTarget2] = useState("");
+        // GCS picked as E, V and M (Jake's request); the total is what the engine keeps. The last
+        // breakdown set here is remembered so the GCS tile can show it while the total still matches.
+        const [gcsParts, setGcsParts] = useState(null);
+        const [lastGcsParts, setLastGcsParts] = useState(null); 
         const [trendDuration, setTrendDuration] = useState(30);
         const [showLogModal, setShowLogModal] = useState(false);
         const [showRhythmModal, setShowRhythmModal] = useState(false);
@@ -804,9 +808,24 @@
              );
         };
 
+        // A plausible starting split for a GCS total (or the last breakdown set, if it still adds up).
+        const GCS_SPLIT = { 15: [4, 5, 6], 14: [3, 5, 6], 13: [3, 4, 6], 12: [3, 4, 5], 11: [3, 3, 5], 10: [2, 3, 5], 9: [2, 2, 5], 8: [2, 2, 4], 7: [1, 2, 4], 6: [1, 1, 4], 5: [1, 1, 3], 4: [1, 1, 2], 3: [1, 1, 1] };
+        const gcsSplit = (total, last) => {
+            const t = Math.max(3, Math.min(15, Math.round(Number(total)) || 15));
+            if (last && last.e + last.v + last.m === t) return { ...last };
+            const [e, v, m] = GCS_SPLIT[t]; return { e, v, m };
+        };
+        const GCS_SCALE = {
+            e: { label: 'Eyes (E)', options: [[4, 'Spontaneous'], [3, 'To voice'], [2, 'To pain'], [1, 'None']] },
+            v: { label: 'Verbal (V)', options: [[5, 'Orientated'], [4, 'Confused'], [3, 'Words'], [2, 'Sounds'], [1, 'None']] },
+            m: { label: 'Motor (M)', options: [[6, 'Obeys'], [5, 'Localises'], [4, 'Withdraws'], [3, 'Abnormal flexion'], [2, 'Extends'], [1, 'None']] }
+        };
+        const pickGcsPart = (k, n) => { const next = { ...(gcsParts || gcsSplit(modalTarget)), [k]: n }; setGcsParts(next); setModalTarget(next.e + next.v + next.m); };
+        const gcsPartsLabel = (p) => p ? `E${p.e} V${p.v} M${p.m}` : '';
+
         // BP defaults to an immediate change: the team only sees it when the cuff next measures,
         // so there is nothing to gain from ramping it. Everything else ramps over 30 s by default.
-        const openVitalControl = (key) => { setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(key === 'bp' ? 0 : 30); };
+        const openVitalControl = (key) => { if (key === 'gcs') setGcsParts(gcsSplit(vitals.gcs, lastGcsParts)); setModalVital(key); setModalTarget(vitals[key === 'bp' ? 'bpSys' : key]); if (key === 'bp') setModalTarget2(vitals.bpDia); setTrendDuration(key === 'bp' ? 0 : 30); };
         // A blank or non-numeric field used to reach the reducer as NaN, which then poisoned the Firebase
         // diff (RTDB rejects NaN) and froze the student monitor for the rest of the session.
         const validateVitalModal = () => {
@@ -845,6 +864,11 @@
             if (modalVital === 'bp') { targets.bpSys = parseFloat(modalTarget); targets.bpDia = parseFloat(modalTarget2); }
             else if (modalVital === 'pupils') { targets.pupils = modalTarget; }
             else { targets[modalVital] = parseFloat(modalTarget); }
+            if (modalVital === 'gcs') {
+                const parts = gcsParts && gcsParts.e + gcsParts.v + gcsParts.m === targets.gcs ? gcsParts : null;
+                setLastGcsParts(parts);
+                if (parts) addLogEntry(`GCS set to ${targets.gcs} (${gcsPartsLabel(parts)})`, 'manual');
+            }
             if (trendDuration === 0) sim.manualUpdateVitals(targets);
             else startTrend(targets, trendDuration);
             // The cuff reads the patient when it finishes inflating (~5 s), by which time an
@@ -957,7 +981,7 @@
             <VitalDisplay key="etco2" {...tileProps(compact)} label="ETCO2" value={vitals.etco2} unit="kPa" onClick={()=>openVitalControl('etco2')} trend={getTrend('etco2')} note={sensors.etco2 ? null : 'not on monitor'} />
         ];
         const moreTiles = () => [
-            <VitalDisplay key="gcs" compact visible label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} trend={getTrend('gcs')} />,
+            <VitalDisplay key="gcs" compact visible label="GCS" value={vitals.gcs} onClick={()=>openVitalControl('gcs')} trend={getTrend('gcs')} note={lastGcsParts && lastGcsParts.e + lastGcsParts.v + lastGcsParts.m === Math.round(vitals.gcs) ? gcsPartsLabel(lastGcsParts) : null} />,
             <VitalDisplay key="bm" compact visible label="Glucose" value={vitals.bm} unit="mmol" onClick={()=>openVitalControl('bm')} trend={getTrend('bm')} note={pocReadings.bm ? `POC ${pocReadings.bm.clock}` : 'POC not checked'} />
         ];
         const renderVitalTiles = () => <>{coreTiles(true)}{moreTiles()}</>;
@@ -2179,7 +2203,25 @@
                             <h3 className="text-lg font-bold text-white mb-4 uppercase tracking-wider">Set {VITAL_NAMES[modalVital] || modalVital}</h3>
                             {/* Enter confirms from either field, so a value can be typed and sent without the mouse. */}
                             <div className="space-y-4" onKeyDown={e => { if (e.key === 'Enter' && e.target && e.target.type === 'number') { e.preventDefault(); confirmVitalUpdate(false); } }}>
-                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : 'Target'}</label><input aria-label={modalVital === 'bp' ? 'Systolic' : (VITAL_NAMES[modalVital] || 'Target')} type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>setModalTarget(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                <div><label className="text-xs text-slate-400 font-bold uppercase">{modalVital === 'bp' ? 'Systolic' : modalVital === 'gcs' ? 'Total (type it, or pick E, V and M below)' : 'Target'}</label><input aria-label={modalVital === 'bp' ? 'Systolic' : (VITAL_NAMES[modalVital] || 'Target')} type="number" step={modalVital === 'ph' ? 0.01 : (modalVital === 'temp' || modalVital === 'etco2' || modalVital === 'bm' || modalVital === 'k') ? 0.1 : 1} value={modalTarget} onChange={e=>{ setModalTarget(e.target.value); if (modalVital === 'gcs') { const t = Math.round(parseFloat(e.target.value)); setGcsParts(t >= 3 && t <= 15 ? gcsSplit(t) : null); } }} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" autoFocus /></div>
+                                {modalVital === 'gcs' && (
+                                    <div data-testid="gcs-parts" className="space-y-2">
+                                        {['e', 'v', 'm'].map(k => (
+                                            <div key={k} role="group" aria-label={GCS_SCALE[k].label}>
+                                                <div className="text-xs text-slate-400 font-bold uppercase mb-1">{GCS_SCALE[k].label}{gcsParts ? <span className="text-white ml-1">{gcsParts[k]}</span> : null}</div>
+                                                <div className="grid grid-cols-3 gap-1">
+                                                    {GCS_SCALE[k].options.map(([n, txt]) => (
+                                                        <button key={n} type="button" onClick={() => pickGcsPart(k, n)} aria-pressed={!!gcsParts && gcsParts[k] === n} aria-label={`${k.toUpperCase()}${n} ${txt}`}
+                                                                className={`p-1.5 rounded border text-[11px] font-bold leading-tight ${gcsParts && gcsParts[k] === n ? 'bg-sky-700 border-sky-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-300'}`}>
+                                                            {n} <span className="font-normal">{txt}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {gcsParts && <div className="text-xs text-slate-300 text-center font-mono" data-testid="gcs-parts-total">{gcsPartsLabel(gcsParts)} = {gcsParts.e + gcsParts.v + gcsParts.m}</div>}
+                                    </div>
+                                )}
                                 {modalVital === 'bp' && <div><label className="text-xs text-slate-400 font-bold uppercase">Diastolic</label><input aria-label="Diastolic" type="number" value={modalTarget2} onChange={e=>setModalTarget2(e.target.value)} onFocus={e => e.target.select()} className="w-full bg-slate-900 border border-slate-500 rounded p-3 text-xl font-mono text-white text-center font-bold" /></div>}
                                 
                                 {modalVital === 'etco2' && (
