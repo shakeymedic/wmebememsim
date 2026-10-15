@@ -7,9 +7,10 @@
 //     does not give is drawn on the right and labelled "side not stated".
 //   - forScenario(scenario) is what the picture shows: the facilitator's own list (scenario.injuries,
 //     set in the Injuries editor) when there is one, otherwise what detect() found.
-//   - Limbs, InjuryLayer and KitLayer are the SVG layers. The kit (collar, pelvic binder, traction
-//     splint, splint, backslab, tourniquet, chest seal, dressing, cling film) appears when its
-//     intervention is ticked, on the injured limb where there is one.
+//   - Body, InjuryLayer and KitLayer are the picture's layers, drawn from the artwork in
+//     images/patient/ (data/screens/bodyart.js). The kit (collar, pelvic binder, traction splint,
+//     splint, backslab, tourniquet, chest seal, dressing, cling film) appears when its intervention
+//     is ticked, on the injured limb where there is one.
 //   - InjuryEditor lets the facilitator add or remove injuries during the run.
 //
 // Nothing here is synced or stored except scenario.injuries, which rides in the scenario like the
@@ -293,69 +294,88 @@
 
     // ---- where things are on the picture ------------------------------------------------------
     // The picture is 220 x 250, the patient seen from above with the head at the top, so the
-    // patient's RIGHT is on the LEFT of the picture. Points are given for the right side and
-    // mirrored about x = 95 for the left.
+    // patient's RIGHT is on the LEFT of the picture. The body is the generated artwork in
+    // images/patient/ (data/screens/bodyart.js), cut into a torso and four pieces per limb. Each
+    // limb is a chain of six points from the art: the root (shoulder or hip), mid-bone, the elbow
+    // or knee, mid-bone, the wrist or ankle, and the end of the hand or the toes. Pieces 1 to 4
+    // start at points 1 to 4: a fracture turns the pieces below it about a point, and an
+    // amputation leaves them off.
     const mx = (side, x) => side === 'L' ? 190 - x : x;
     const injAt = (list, side, regions, kinds) => list.find(i => i.side === side && regions.indexOf(i.region) !== -1 && (!kinds || kinds.indexOf(i.kind) !== -1));
+    const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+    // As SVG's rotate(deg cx cy): positive turns clockwise on the screen
+    const rotAbout = (p, c, deg) => {
+        const r = deg * Math.PI / 180, s = Math.sin(r), k = Math.cos(r), dx = p[0] - c[0], dy = p[1] - c[1];
+        return [c[0] + dx * k - dy * s, c[1] + dx * s + dy * k];
+    };
+    const angle = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+
+    // Where each point of a chain ends up: turned by every bend at or above its piece, the lowest
+    // bend first (the nesting of the SVG groups in LimbArt), and moved up by `dy` (a hip fracture's
+    // shortening) unless it is the root.
+    function pose(rest, rot, dy) {
+        return rest.map((q, i) => {
+            if (i === 0) return q;
+            let p = q;
+            for (let j = Math.min(i, 4); j >= 1; j--) if (rot[j]) p = rotAbout(p, rest[j], rot[j]);
+            return [p[0], p[1] + (dy || 0)];
+        });
+    }
 
     // The limbs' joints, bent where a fracture deforms them, short where an amputation took them.
-    function geometry(list) {
-        const g = {};
+    // `F` is the body's frame from BodyArt.frame() (the man when it is not given).
+    function geometry(list, F) {
+        const BA = window.BodyArt;
+        F = F || BA.frame();
+        const z = F.S / BA.BASE;
+        const g = { F, T: F.T, z };
         ['R', 'L'].forEach(side => {
-            const X = (x) => mx(side, x);
-            const lat = side === 'L' ? 1 : -1;     // outward, in picture x
+            const out = side === 'L' ? -1 : 1;     // the rotation that swings the lower part outward
             const has = (regions, kinds) => !!injAt(list, side, regions, kinds);
-            // arm: shoulder, elbow, wrist, hand
-            const arm = { segs: [], hand: [X(61), 131], stump: null };
-            const ampHand = has(['hand'], ['amputation']), ampFore = has(['forearm', 'arm'], ['amputation']);
-            const upper = [[X(71), 62]];
-            if (has(['upperArm'], ['fracture'])) upper.push([X(71) + lat * 10, 82]);
-            upper.push([X(63), 96]);
-            const fore = [[X(63), 96]];
-            if (has(['forearm', 'arm'], ['fracture'])) fore.push([X(63) + lat * 6, 110]);
-            if (ampFore) fore.push([X(62), 108]); else fore.push([X(61), 124]);
-            arm.segs = [{ pts: upper, w: 10 }, { pts: fore, w: 9 }];
-            if (ampFore) { arm.stump = [X(62), 108]; arm.hand = null; }
-            else if (ampHand) { arm.stump = [X(61), 124]; arm.hand = null; }
-            arm.mid = { upperArm: [X(66), 79], forearm: [X(62), 110], hand: [X(61), 131] };
-            // leg: hip, knee, ankle, foot
+            const J = F.art.joints[side];
+            const restA = J.arm.map(F.at), restL = J.leg.map(F.at);
+            const ar = [0, 0, 0, 0, 0], lr = [0, 0, 0, 0, 0];
+            if (has(['upperArm'], ['fracture'])) ar[1] = 18 * out;
+            if (has(['forearm', 'arm'], ['fracture'])) ar[3] = 18 * out;
+            if (has(['thigh'], ['fracture'])) lr[1] = 14 * out;
+            if (has(['knee'], ['fracture'])) lr[2] = 12 * out;
+            if (has(['shin', 'leg'], ['fracture'])) lr[3] = 14 * out;
             const hipFx = has(['hip'], ['fracture']);
-            const sh = hipFx ? 7 : 0;
-            const leg = { segs: [], foot: null, footRot: 0, stump: null };
-            const thigh = [[X(84), 128]];
-            if (has(['thigh'], ['fracture'])) thigh.push([X(84) + lat * 6, 155 - sh]);
-            const kneeOut = has(['knee'], ['fracture']) ? lat * 5 : 0;
-            const ampThigh = has(['thigh'], ['amputation']), ampShin = has(['shin', 'leg'], ['amputation']);
-            if (ampThigh) { thigh.push([X(83.5), 160]); leg.stump = [X(83.5), 160]; }
-            else thigh.push([X(83) + kneeOut, 180 - sh]);
-            leg.segs.push({ pts: thigh, w: 14 });
-            if (!ampThigh) {
-                const shin = [[X(83) + kneeOut, 180 - sh]];
-                if (has(['shin', 'leg'], ['fracture'])) shin.push([X(83) + kneeOut + lat * 6, 200 - sh]);
-                if (ampShin) { shin.push([X(83) + kneeOut, 196]); leg.stump = [X(83) + kneeOut, 196]; }
-                else shin.push([X(82), 220 - sh]);
-                leg.segs.push({ pts: shin, w: 10 });
-                if (!ampShin) {
-                    const ankleFx = has(['ankle'], ['fracture']);
-                    leg.foot = [X(82) + (ankleFx ? lat * 5 : 0) + (hipFx ? lat * 3 : 0), 228 - sh];
-                    leg.footRot = (hipFx ? 50 : 0) * (side === 'L' ? 1 : -1) + (ankleFx ? 35 * (side === 'L' ? 1 : -1) : 0);
-                }
-            }
-            leg.ankle = ampThigh || ampShin ? null : [X(82), 220 - sh];
-            leg.mid = { hip: [X(74), 134], thigh: [X(83.5), 155 - sh], knee: [X(83) + kneeOut, 180 - sh], shin: [X(82.5), 200 - sh],
-                ankle: [X(82), 219 - sh], foot: [X(82), 228 - sh], leg: [X(82.5), 200 - sh] };
+            if (has(['ankle'], ['fracture'])) lr[4] += 30 * out;
+            if (hipFx) lr[4] += 45 * out;          // shortened and externally rotated
+            const dy = hipFx ? -5 * z : 0;
+            const aCut = has(['forearm', 'arm'], ['amputation']) ? 3 : has(['hand'], ['amputation']) ? 4 : 5;
+            const lCut = has(['thigh'], ['amputation']) ? 1 : has(['shin', 'leg'], ['amputation']) ? 3 : 5;
+            const A = pose(restA, ar, 0), L = pose(restL, lr, dy);
+            const arm = {
+                rest: restA, rot: ar, cut: aCut, dy: 0, pts: A,
+                segs: [{ pts: [A[0], A[2]] }, { pts: [A[2], A[Math.min(aCut, 4)]] }],
+                hand: aCut === 5 ? lerp(A[4], A[5], 0.45) : null,
+                stump: aCut < 5 ? A[aCut] : null,
+                mid: { upperArm: A[1], forearm: A[3], hand: lerp(A[4], A[5], 0.45) }
+            };
+            const legSegs = [{ pts: [L[0], lCut === 1 ? L[1] : L[2]] }];
+            if (lCut >= 3) legSegs.push({ pts: [L[2], L[Math.min(lCut, 4)]] });
+            const leg = {
+                rest: restL, rot: lr, cut: lCut, dy, pts: L, segs: legSegs,
+                foot: lCut === 5 ? lerp(L[4], L[5], 0.5) : null,
+                ankle: lCut === 5 ? L[4] : null,
+                stump: lCut < 5 ? L[lCut] : null,
+                mid: { hip: lerp(L[0], [95, L[0][1]], 0.25), thigh: L[1], knee: L[2], shin: L[3], ankle: L[4], foot: lerp(L[4], L[5], 0.5), leg: L[3] }
+            };
             g[side] = { arm, leg };
         });
         return g;
     }
 
+    // Places on the trunk and head, for the adult man; g.T moves them onto the body shown.
     const POINT = {
         head: () => [95, 15], face: () => [95, 36], neck: () => [95, 51], abdomen: () => [95, 108], pelvis: () => [95, 130],
-        eye: (s) => [mx(s, 89), 28], chest: (s) => s === 'C' ? [95, 76] : [mx(s, 82), 80], flank: (s) => [mx(s, 71), 110],
+        eye: (s) => [mx(s, 89), 28], chest: (s) => s === 'C' ? [95, 76] : [mx(s, 82), 80], flank: (s) => [mx(s, 74), 110],
         groin: (s) => [mx(s, 87), 141]
     };
     function pointFor(i, g) {
-        if (POINT[i.region]) return POINT[i.region](i.side || 'R');
+        if (POINT[i.region]) return g.T(POINT[i.region](i.side || 'R'));
         const side = i.side === 'L' ? 'L' : 'R';
         const G = g[side];
         if (ARM_REGIONS.has(i.region) || i.region === 'arm') return G.arm.mid[i.region === 'arm' ? 'forearm' : i.region];
@@ -363,43 +383,52 @@
     }
 
     // ---- the layers ---------------------------------------------------------------------------
-    const line = (pts) => 'M' + pts.map(p => `${p[0]} ${p[1]}`).join(' L');
+    // A kit or injury picture, centred on `c`, `w` wide (and `h` high, or its own shape), turned by `rot`.
+    const Sprite = ({ name, c, w, h, rot, opacity, flip }) => {
+        const H = h || window.BodyArt.kitH(name, w);
+        const t = [rot ? `rotate(${rot} ${c[0]} ${c[1]})` : '', flip ? `translate(${2 * c[0]} 0) scale(-1 1)` : ''].join(' ').trim();
+        return <image href={window.BodyArt.kitSrc(name)} x={c[0] - w / 2} y={c[1] - H / 2} width={w} height={H} preserveAspectRatio="none"
+            transform={t || undefined} opacity={opacity} />;
+    };
 
-    // Arms, legs, hands and feet (and the shorts), in the skin colours patientstatus.js chooses.
-    const Limbs = ({ g, skin, shade }) => (
-        <g data-part="limbs">
-            {['R', 'L'].map(side => {
-                const { arm, leg } = g[side];
-                return (
-                    <g key={side}>
-                        {leg.segs.map((s, k) => <path key={'ls' + k} d={line(s.pts)} stroke={shade} strokeWidth={s.w + 2} strokeLinecap="round" strokeLinejoin="round" fill="none" />)}
-                        {leg.segs.map((s, k) => <path key={'l' + k} d={line(s.pts)} stroke={skin} strokeWidth={s.w} strokeLinecap="round" strokeLinejoin="round" fill="none" />)}
-                        {leg.foot && <ellipse cx={leg.foot[0]} cy={leg.foot[1]} rx="5" ry="7.5" fill={skin} stroke={shade} strokeWidth="0.8" transform={`rotate(${leg.footRot} ${leg.foot[0]} ${leg.foot[1] - 4})`} />}
-                        {arm.segs.map((s, k) => <path key={'as' + k} d={line(s.pts)} stroke={shade} strokeWidth={s.w + 2} strokeLinecap="round" strokeLinejoin="round" fill="none" />)}
-                        {arm.segs.map((s, k) => <path key={'a' + k} d={line(s.pts)} stroke={skin} strokeWidth={s.w} strokeLinecap="round" strokeLinejoin="round" fill="none" />)}
-                        {arm.hand && <ellipse cx={arm.hand[0]} cy={arm.hand[1]} rx="5" ry="7" fill={skin} stroke={shade} strokeWidth="0.8" />}
+    // One limb: its pieces nested so each bend carries everything below it.
+    const LimbArt = ({ F, side, limb, L }) => {
+        const BA = window.BodyArt;
+        let inner = null;
+        for (let k = Math.min(L.cut - 1, 4); k >= 1; k--) {
+            const box = BA.place(F, F.art.pieces[`${side}${limb}${k}`]);
+            inner = <g transform={L.rot[k] ? `rotate(${L.rot[k]} ${L.rest[k][0]} ${L.rest[k][1]})` : undefined}>
+                <image href={BA.src(F, `${side}${limb}${k}`)} {...box} preserveAspectRatio="none" />{inner}
+            </g>;
+        }
+        return <g transform={L.dy ? `translate(0 ${L.dy})` : undefined}>{inner}</g>;
+    };
+
+    // The patient: the torso (head, trunk, shorts and the tops of the limbs), the chest rising and
+    // falling with each breath, the eyes closed when they are, then the legs and the arms.
+    // `tint` is the id of an SVG filter (cyanosed, or in arrest).
+    const Body = ({ g, eyesClosed, breathe, breathDur, tint }) => {
+        const BA = window.BodyArt, F = g.F;
+        const torso = BA.place(F, F.art.pieces.torso), chest = BA.place(F, F.art.pieces.chest), eyes = BA.place(F, F.art.pieces.eyesClosed);
+        const c = F.at(F.art.chest);
+        return (
+            <g data-part="body" filter={tint ? `url(#${tint})` : undefined}>
+                <image href={BA.src(F, 'torso')} {...torso} preserveAspectRatio="none" />
+                <g transform={`translate(${c[0]} ${c[1]})`}>
+                    <g>
+                        {breathe && <animateTransform attributeName="transform" type="scale" values="1 1;1.035 1.02;1 1" dur={breathDur} repeatCount="indefinite" />}
+                        <image href={BA.src(F, 'chest')} x={chest.x - c[0]} y={chest.y - c[1]} width={chest.width} height={chest.height} preserveAspectRatio="none" />
                     </g>
-                );
-            })}
-            {/* shorts */}
-            <path d="M65 118 Q95 112 125 118 L128 141 Q112 147 98 141 L95 137 L92 141 Q78 147 62 141 Z" fill="#3b4d6b" stroke="#2c3a52" strokeWidth="0.8" />
-            <path d="M65 118 Q95 112 125 118" stroke="#a5b4cf" strokeWidth="1.6" fill="none" />
-        </g>
-    );
+                </g>
+                {eyesClosed && <image data-part="eyes-closed" href={BA.src(F, 'eyesClosed')} {...eyes} preserveAspectRatio="none" />}
+                <g data-part="limbs">
+                    {['R', 'L'].map(side => <LimbArt key={'l' + side} F={F} side={side} limb="leg" L={g[side].leg} />)}
+                    {['R', 'L'].map(side => <LimbArt key={'a' + side} F={F} side={side} limb="arm" L={g[side].arm} />)}
+                </g>
+            </g>
+        );
+    };
 
-    const Bruise = ({ p, rx = 6, ry = 4.5, rot = 0 }) => (
-        <g transform={`rotate(${rot} ${p[0]} ${p[1]})`}>
-            <ellipse cx={p[0]} cy={p[1]} rx={rx} ry={ry} fill="#7c3aed" opacity="0.45" />
-            <ellipse cx={p[0] + 0.8} cy={p[1] + 0.5} rx={rx * 0.55} ry={ry * 0.55} fill="#3b0764" opacity="0.4" />
-        </g>
-    );
-    const Wound = ({ p, rot = -30 }) => (
-        <g>
-            <ellipse cx={p[0]} cy={p[1]} rx="3.6" ry="1.3" fill="#450a0a" stroke="#dc2626" strokeWidth="0.8" transform={`rotate(${rot} ${p[0]} ${p[1]})`} />
-            <path d={`M${p[0] + 1} ${p[1] + 1.5} q1 3 0 5.5`} stroke="#b91c1c" strokeWidth="1.3" fill="none" strokeLinecap="round" />
-            <circle cx={p[0] + 1} cy={p[1] + 8} r="1" fill="#b91c1c" />
-        </g>
-    );
     const BURN_SHAPE = {
         chest: (s) => s === 'C' || !s ? { c: [95, 82], rx: 22, ry: 17 } : { c: [mx(s, 84), 82], rx: 11, ry: 15 },
         abdomen: () => ({ c: [95, 108], rx: 18, ry: 11 }), face: () => ({ c: [95, 32], rx: 12, ry: 13 }),
@@ -407,67 +436,81 @@
         head: () => ({ c: [95, 20], rx: 13, ry: 9 })
     };
     function burnShape(i, g) {
-        if (BURN_SHAPE[i.region]) return BURN_SHAPE[i.region](i.side);
+        if (BURN_SHAPE[i.region]) { const b = BURN_SHAPE[i.region](i.side); return { c: g.T(b.c), rx: b.rx * g.F.kx, ry: b.ry * g.F.ky, rot: 0 }; }
         const side = i.side === 'L' ? 'L' : 'R';
-        const G = g[side];
-        if (i.region === 'arm') return { c: [mx(side, 65), 96], rx: 6, ry: 28 };
-        if (ARM_REGIONS.has(i.region)) { const p = G.arm.mid[i.region]; return { c: p, rx: 6, ry: i.region === 'hand' ? 7 : 12 }; }
-        if (i.region === 'leg') return { c: [mx(side, 83), 176], rx: 8.5, ry: 44 };
-        const p = G.leg.mid[i.region] || G.leg.mid.shin; return { c: p, rx: 8, ry: 13 };
+        const G = g[side], z = g.z;
+        // along the limb: from one point of its chain to another
+        const along = (P, a, b, w) => ({ c: lerp(P[a], P[b], 0.5), rx: w * z, ry: Math.hypot(P[b][0] - P[a][0], P[b][1] - P[a][1]) / 2 + 2 * z, rot: angle(P[a], P[b]) - 90 });
+        const A = G.arm.pts, L = G.leg.pts;
+        if (i.region === 'arm') return along(A, 0, Math.min(G.arm.cut, 4), 6);
+        if (i.region === 'upperArm') return along(A, 0, 2, 6);
+        if (i.region === 'forearm') return along(A, 2, Math.min(G.arm.cut, 4), 5.5);
+        if (i.region === 'hand') return { c: G.arm.mid.hand, rx: 5 * z, ry: 7 * z, rot: 0 };
+        if (i.region === 'leg') return along(L, 0, Math.min(G.leg.cut, 4), 8.5);
+        if (i.region === 'thigh' || i.region === 'hip') return along(L, 0, Math.min(G.leg.cut, 2), 8);
+        if (i.region === 'shin') return along(L, 2, Math.min(G.leg.cut, 4), 6.5);
+        const p = G.leg.mid[i.region] || G.leg.mid.shin; return { c: p, rx: 7 * z, ry: 9 * z, rot: 0 };
     }
 
-    const InjuryLayer = ({ list, g }) => (
-        <g data-part="injuries">
-            {list.map((i, k) => {
-                const p = pointFor(i, g);
-                const id = `injury-${i.region}-${i.kind}`;
-                if (i.kind === 'pregnant') return null;   // drawn with the body
-                if (i.kind === 'burn') {
-                    const b = burnShape(i, g);
-                    return <g key={k} data-part={id}>
-                        <ellipse cx={b.c[0]} cy={b.c[1]} rx={b.rx} ry={b.ry} fill="#ef4444" opacity="0.5" />
-                        <ellipse cx={b.c[0] - b.rx * 0.3} cy={b.c[1] - b.ry * 0.25} rx={b.rx * 0.35} ry={b.ry * 0.3} fill="#7c2d12" opacity="0.55" />
-                        <ellipse cx={b.c[0] + b.rx * 0.35} cy={b.c[1] + b.ry * 0.3} rx={b.rx * 0.3} ry={b.ry * 0.22} fill="#fde68a" opacity="0.45" />
-                    </g>;
-                }
-                if (i.kind === 'amputation') {
-                    const side = i.side === 'L' ? 'L' : 'R';
-                    const st = (LEG_REGIONS.has(i.region) || i.region === 'leg') ? g[side].leg.stump : g[side].arm.stump;
-                    if (!st) return null;
-                    return <g key={k} data-part={id}><circle cx={st[0]} cy={st[1] + 1} r="5.5" fill="#991b1b" stroke="#ef4444" strokeWidth="0.8" /><circle cx={st[0]} cy={st[1] + 1} r="1.6" fill="#fef3c7" />
-                        <path d={`M${st[0] - 2} ${st[1] + 6} q-1 4 0 7 M${st[0] + 2} ${st[1] + 6} q1 3 0 5`} stroke="#b91c1c" strokeWidth="1.3" fill="none" strokeLinecap="round" /></g>;
-                }
-                if (i.kind === 'evisceration') return <g key={k} data-part={id}>
-                    <Wound p={[p[0], p[1] + 4]} rot={0} />
-                    {[[-4, -1], [1, -3], [5, 0], [-1, 2], [3, 3]].map(([dx, dy], n) => <circle key={n} cx={p[0] + dx} cy={p[1] + dy} r="2.6" fill="#f9a8d4" stroke="#be185d" strokeWidth="0.6" />)}
-                </g>;
-                if (i.kind === 'impaled') return <g key={k} data-part={id}><Wound p={p} rot={0} /><path d={`M${p[0]} ${p[1]} L${p[0] + 26} ${p[1] - 20}`} stroke="#57534e" strokeWidth="3.4" strokeLinecap="round" /><path d={`M${p[0]} ${p[1]} L${p[0] + 26} ${p[1] - 20}`} stroke="#a8a29e" strokeWidth="1.2" strokeLinecap="round" /></g>;
-                if (i.kind === 'wound') return <g key={k} data-part={id}><Wound p={p} /></g>;
-                if (i.kind === 'crush') {
-                    if (i.region === 'leg') { const G = g[i.side === 'L' ? 'L' : 'R'].leg.mid; return <g key={k} data-part={id}><Bruise p={G.thigh} rx={6} ry={14} /><Bruise p={G.shin} rx={5} ry={12} /></g>; }
-                    return <g key={k} data-part={id}><Bruise p={p} rx={9} ry={7} /></g>;
-                }
-                if (i.kind === 'fracture') {
-                    const limb = LEG_REGIONS.has(i.region) || ARM_REGIONS.has(i.region) || i.region === 'leg' || i.region === 'arm';
-                    if (i.region === 'chest') {
-                        const s = i.side === 'L' ? 'L' : 'R', q = [mx(s, 73), 90];
-                        return <g key={k} data-part={id}><Bruise p={q} rx={7} ry={9} /><path d={`M${q[0] - 5} ${q[1] - 6} l9 2 M${q[0] - 5} ${q[1]} l9 2 M${q[0] - 5} ${q[1] + 6} l9 2`} stroke="#fca5a5" strokeWidth="0.8" strokeDasharray="2 1.2" /></g>;
-                    }
-                    if (i.region === 'pelvis') return <g key={k} data-part={id}><Bruise p={[95, 132]} rx={16} ry={6} /></g>;
-                    return <g key={k} data-part={id}>
-                        <Bruise p={p} rx={limb ? 5.5 : 7} ry={limb ? 7 : 5} />
-                        {limb && <path d={`M${p[0] - 4} ${p[1] - 2} l2.5 2.5 l2 -3 l2 3 l2.5 -2.5`} stroke="#fecaca" strokeWidth="0.9" fill="none" />}
-                        {i.open && <><Wound p={[p[0] + 1, p[1] + 1]} rot={70} /><path d={`M${p[0] - 1} ${p[1] - 1} l3 -3`} stroke="#fefce8" strokeWidth="1.6" strokeLinecap="round" /></>}
-                    </g>;
-                }
-                // bruising, or an injury the text does not describe further
-                if (i.region === 'head') return <g key={k} data-part={id}><Bruise p={[p[0] - 6, p[1] + 2]} rx={5} ry={4} /><Wound p={[p[0] - 5, p[1] + 1]} rot={15} /></g>;
-                if (i.region === 'eye') return <g key={k} data-part={id}><ellipse cx={p[0]} cy={p[1]} rx="4.2" ry="3.4" fill="#5b21b6" opacity="0.55" /></g>;
-                if (i.region === 'abdomen' && i.kind === 'bruise') return <g key={k} data-part={id}><Bruise p={p} rx={15} ry={4} rot={-25} /></g>;
-                return <g key={k} data-part={id}><Bruise p={p} /></g>;
-            })}
+    // The raw end of an amputated limb, across the limb's line.
+    const Stump = ({ p, from, w }) => (
+        <g transform={`rotate(${angle(from, p) - 90} ${p[0]} ${p[1]})`}>
+            <ellipse cx={p[0]} cy={p[1]} rx={w / 2} ry={w / 4} fill="#991b1b" stroke="#ef4444" strokeWidth="0.6" />
+            <ellipse cx={p[0]} cy={p[1]} rx={w / 7} ry={w / 9} fill="#fef3c7" />
+            <path d={`M${p[0] - w / 5} ${p[1] + w / 5} q-0.6 ${w / 3} 0 ${w / 1.8} M${p[0] + w / 6} ${p[1] + w / 5} q0.6 ${w / 4} 0 ${w / 2.4}`} stroke="#b91c1c" strokeWidth="1.1" fill="none" strokeLinecap="round" />
         </g>
     );
+
+    const InjuryLayer = ({ list, g }) => {
+        const z = g.z;
+        return (
+            <g data-part="injuries">
+                {list.map((i, k) => {
+                    const p = pointFor(i, g);
+                    const id = `injury-${i.region}-${i.kind}`;
+                    if (i.kind === 'pregnant') return null;   // the pregnant body is drawn instead
+                    if (i.kind === 'burn') {
+                        const b = burnShape(i, g);
+                        return <g key={k} data-part={id}><Sprite name="burn" c={b.c} w={b.rx * 2} h={b.ry * 2} rot={b.rot} opacity={0.92} /></g>;
+                    }
+                    if (i.kind === 'amputation') {
+                        const side = i.side === 'L' ? 'L' : 'R';
+                        const isLeg = LEG_REGIONS.has(i.region) || i.region === 'leg';
+                        const limb = isLeg ? g[side].leg : g[side].arm;
+                        if (!limb.stump) return null;
+                        return <g key={k} data-part={id}><Stump p={limb.stump} from={limb.pts[limb.cut - 1]} w={(isLeg ? (limb.cut === 1 ? 15 : 10) : 7) * z} /></g>;
+                    }
+                    if (i.kind === 'evisceration') return <g key={k} data-part={id}><Sprite name="evisceration" c={p} w={22 * z} /></g>;
+                    if (i.kind === 'impaled') return <g key={k} data-part={id}><Sprite name="knife" c={[p[0] + 4 * z, p[1] - 7 * z]} w={15 * z} /></g>;
+                    if (i.kind === 'wound') return <g key={k} data-part={id}><Sprite name="laceration" c={p} w={9 * z} rot={-15} /></g>;
+                    if (i.kind === 'crush') {
+                        if (i.region === 'leg') { const G = g[i.side === 'L' ? 'L' : 'R'].leg.mid; return <g key={k} data-part={id}><Sprite name="bruise" c={G.thigh} w={14 * z} h={26 * z} /><Sprite name="abrasion" c={G.shin} w={12 * z} h={22 * z} /></g>; }
+                        return <g key={k} data-part={id}><Sprite name="bruise" c={p} w={18 * z} /><Sprite name="abrasion" c={p} w={12 * z} /></g>;
+                    }
+                    if (i.kind === 'fracture') {
+                        const limb = LEG_REGIONS.has(i.region) || ARM_REGIONS.has(i.region) || i.region === 'leg' || i.region === 'arm';
+                        if (i.region === 'chest') {
+                            const q = g.T([mx(i.side === 'L' ? 'L' : 'R', 73), 90]);
+                            return <g key={k} data-part={id}><Sprite name="bruise" c={q} w={15 * z} h={19 * z} />
+                                <path d={`M${q[0] - 5} ${q[1] - 6} l9 2 M${q[0] - 5} ${q[1]} l9 2 M${q[0] - 5} ${q[1] + 6} l9 2`} stroke="#fca5a5" strokeWidth="0.8" strokeDasharray="2 1.2" /></g>;
+                        }
+                        if (i.region === 'pelvis') return <g key={k} data-part={id}><Sprite name="bruise" c={g.T([95, 132])} w={34 * z} h={12 * z} /></g>;
+                        return <g key={k} data-part={id}>
+                            <Sprite name="swelling" c={p} w={(limb ? 13 : 15) * z} />
+                            <Sprite name="bruise" c={p} w={(limb ? 9 : 12) * z} opacity={0.8} />
+                            {i.open && <><Sprite name="laceration" c={[p[0] + 1, p[1] + 1]} w={8 * z} rot={60} /><path d={`M${p[0] - 1} ${p[1] - 1} l${3 * z} ${-3 * z}`} stroke="#fefce8" strokeWidth={1.6 * z} strokeLinecap="round" /></>}
+                        </g>;
+                    }
+                    // bruising, or an injury the text does not describe further
+                    if (i.region === 'head') return <g key={k} data-part={id}><Sprite name="bruise" c={[p[0] - 6, p[1] + 2]} w={11 * z} /><Sprite name="laceration" c={[p[0] - 5, p[1] + 1]} w={7 * z} rot={15} /></g>;
+                    if (i.region === 'eye') return <g key={k} data-part={id}><Sprite name="bruise" c={p} w={10 * z} h={8 * z} /></g>;
+                    if (i.region === 'abdomen' && i.kind === 'bruise') return <g key={k} data-part={id}><Sprite name="bruise" c={p} w={32 * z} h={9 * z} rot={-25} /></g>;
+                    if (i.kind === 'bruise') return <g key={k} data-part={id}><Sprite name="bruise" c={p} w={13 * z} /></g>;
+                    return <g key={k} data-part={id}><Sprite name="abrasion" c={p} w={12 * z} /></g>;
+                })}
+            </g>
+        );
+    };
 
     // The kit on the patient. `has(key)` is whether that intervention is on.
     const LIMB_TARGETS = ['thigh', 'shin', 'leg', 'knee', 'ankle', 'foot', 'hip', 'forearm', 'arm', 'upperArm', 'hand'];
@@ -505,81 +548,74 @@
         return kit;
     }
 
-    // A strap or slab laid along a limb between two points.
-    const Slab = ({ a, b, w, fill, stroke, lines }) => {
-        const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy), ang = Math.atan2(dy, dx) * 180 / Math.PI;
-        return (
-            <g transform={`translate(${a[0]} ${a[1]}) rotate(${ang})`}>
-                <rect x="-2" y={-w / 2} width={len + 4} height={w} rx="3" fill={fill} stroke={stroke} strokeWidth="0.8" opacity="0.92" />
-                {Array.from({ length: lines }).map((_, n) => <line key={n} x1={(n + 1) * (len + 4) / (lines + 1) - 2} y1={-w / 2} x2={(n + 1) * (len + 4) / (lines + 1) - 2} y2={w / 2} stroke={stroke} strokeWidth="1.2" />)}
-            </g>
-        );
-    };
+    // The two ends of the part of a limb a splint or backslab covers.
     function segFor(region, side, g) {
         const G = g[side];
-        const arm = G.arm.segs, leg = G.leg.segs;
+        const arm = G.arm.segs, leg = G.leg.segs, L = G.leg.pts;
         const first = (s) => s.pts[0], last = (s) => s.pts[s.pts.length - 1];
         if (region === 'upperArm') return [first(arm[0]), last(arm[0])];
-        if (ARM_REGIONS.has(region) || region === 'arm') return [first(arm[1]), last(arm[1])];
+        if (ARM_REGIONS.has(region) || region === 'arm') return [first(arm[1]), region === 'hand' && G.arm.hand ? G.arm.pts[5] : last(arm[1])];
         if (region === 'thigh' || region === 'hip') return [first(leg[0]), last(leg[0])];
-        if (region === 'knee') return [[leg[0].pts[0][0], 160], leg[1] ? [last(leg[1])[0], 200] : last(leg[0])];
+        if (region === 'knee') return [L[1], leg[1] ? L[3] : last(leg[0])];
         if (leg[1]) {
-            if (region === 'ankle' || region === 'foot') { const e = last(leg[1]); return [[e[0], e[1] - 22], [e[0], e[1] + 6]]; }
+            if (region === 'ankle' || region === 'foot') return G.leg.foot ? [L[3], L[5]] : [L[3], last(leg[1])];
             return [first(leg[1]), last(leg[1])];
         }
         return [first(leg[0]), last(leg[0])];
     }
+    // A kit picture laid along a limb from a to b
+    const Along = ({ name, a, b, w, extra = 4 }) => {
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1]) + extra;
+        return <Sprite name={name} c={lerp(a, b, 0.5)} w={len} h={w} rot={angle(a, b)} />;
+    };
 
-    const KitLayer = ({ kit, list, g }) => (
-        <g data-part="kit">
-            {kit.map((k, n) => {
-                if (k.type === 'collar') return <g key={n} data-part="collar"><rect x="83" y="43" width="24" height="15" rx="5" fill="#1d4ed8" stroke="#bfdbfe" strokeWidth="0.9" /><rect x="91" y="46" width="8" height="7" rx="2" fill="#0f172a" stroke="#93c5fd" strokeWidth="0.6" /><path d="M85 50 h4 M101 50 h4" stroke="#bfdbfe" strokeWidth="0.8" /></g>;
-                if (k.type === 'binder') return <g key={n} data-part="binder"><rect x="63" y="126" width="64" height="11" rx="3" fill="#111827" stroke="#9ca3af" strokeWidth="0.9" /><rect x="90" y="127.5" width="10" height="8" rx="1.5" fill="#f59e0b" stroke="#78350f" strokeWidth="0.6" /></g>;
-                if (k.type === 'traction') {
-                    const s = k.side, L = g[s].leg, X = (x) => mx(s, x);
-                    const ankle = L.ankle || L.segs[L.segs.length - 1].pts.slice(-1)[0];
-                    const tip = [X(82), 246];
-                    return <g key={n} data-part="traction">
-                        <path d={`M${X(70)} 126 L${tip[0]} ${tip[1]}`} stroke="#cbd5e1" strokeWidth="2.4" strokeLinecap="round" />
-                        <path d={`M${X(70)} 126 L${tip[0]} ${tip[1]}`} stroke="#64748b" strokeWidth="0.8" strokeLinecap="round" />
-                        <path d={`M${ankle[0] - 4} ${ankle[1]} L${tip[0]} ${tip[1] - 3} L${ankle[0] + 4} ${ankle[1]}`} stroke="#facc15" strokeWidth="1.4" fill="none" />
-                        {[140, 166, 190, 208].map(y => <rect key={y} x={Math.min(X(70), X(92)) } y={y - 1.8} width="22" height="3.6" rx="1" fill="#facc15" opacity="0.9" stroke="#713f12" strokeWidth="0.4" />)}
-                        <rect x={tip[0] - 2.5} y={tip[1] - 3} width="5" height="4" rx="1" fill="#facc15" />
-                    </g>;
-                }
-                if (k.type === 'splint' || k.type === 'plaster') {
-                    const [a, b] = segFor(k.region, k.side, g);
-                    const leg = !(ARM_REGIONS.has(k.region) || k.region === 'arm');
-                    return <g key={n} data-part={k.type}><Slab a={a} b={b} w={leg ? 15 : 11} fill={k.type === 'splint' ? '#f97316' : '#f5f5f4'} stroke={k.type === 'splint' ? '#9a3412' : '#a8a29e'} lines={k.type === 'splint' ? 3 : 5} /></g>;
-                }
-                if (k.type === 'tourniquet') {
-                    const s = k.side, X = (x) => mx(s, x);
-                    const p = k.limb === 'leg' ? [X(84), 142] : [X(68), 72];
-                    const w = k.limb === 'leg' ? 20 : 15;
-                    return <g key={n} data-part="tourniquet"><rect x={p[0] - w / 2} y={p[1] - 2.5} width={w} height="5" rx="1.5" fill="#0f172a" stroke="#475569" strokeWidth="0.7" />
-                        <path d={`M${p[0] - 5} ${p[1] - 5} L${p[0] + 5} ${p[1] + 5}`} stroke="#94a3b8" strokeWidth="1.8" strokeLinecap="round" /><rect x={p[0] + (s === 'L' ? 7 : -12)} y={p[1] - 7} width="5" height="4" rx="1" fill="#dc2626" /></g>;
-                }
-                if (k.type === 'chestseal') {
-                    const p = POINT.chest(k.side);
-                    return <g key={n} data-part="chestseal"><circle cx={p[0]} cy={p[1]} r="7" fill="#e0f2fe" fillOpacity="0.55" stroke="#0ea5e9" strokeWidth="1" /><rect x={p[0] - 2} y={p[1] - 2} width="4" height="4" rx="1" fill="#0ea5e9" /></g>;
-                }
-                if (k.type === 'dressing') {
-                    const spots = list.filter(i => ['wound', 'amputation', 'evisceration', 'impaled'].indexOf(i.kind) !== -1 || (i.kind === 'fracture' && i.open));
-                    return <g key={n} data-part="dressing">{spots.map((i, m) => {
-                        let p = pointFor(i, g);
-                        if (i.kind === 'amputation') { const s = i.side === 'L' ? 'L' : 'R'; p = ((LEG_REGIONS.has(i.region) || i.region === 'leg') ? g[s].leg.stump : g[s].arm.stump) || p; p = [p[0], p[1] + 2]; }
-                        return <g key={m}><rect x={p[0] - 5.5} y={p[1] - 4.5} width="11" height="9" rx="1.5" fill="#f8fafc" stroke="#cbd5e1" strokeWidth="0.6" /><circle cx={p[0] + 0.5} cy={p[1]} r="2" fill="#dc2626" opacity="0.45" /></g>;
+    const KitLayer = ({ kit, list, g }) => {
+        const z = g.z, T = g.T;
+        return (
+            <g data-part="kit">
+                {kit.map((k, n) => {
+                    if (k.type === 'collar') return <g key={n} data-part="collar"><Sprite name="collar" c={T([95, 53])} w={25 * g.F.kx} h={26 * g.F.ky} /></g>;
+                    if (k.type === 'binder') return <g key={n} data-part="binder"><Sprite name="binder" c={T([95, 131])} w={72 * g.F.kx} h={17 * g.F.ky} /></g>;
+                    if (k.type === 'traction') {
+                        const L = g[k.side].leg;
+                        const end = L.ankle || L.stump;
+                        const top = lerp(L.pts[0], L.pts[1], -0.2);
+                        const tip = lerp(L.pts[2], end, 1.45);
+                        // the picture runs from the pole's end (left) to the ischial pad (right)
+                        return <g key={n} data-part="traction"><Along name="traction" a={tip} b={top} w={13 * z} extra={0} /></g>;
+                    }
+                    if (k.type === 'splint' || k.type === 'plaster') {
+                        const [a, b] = segFor(k.region, k.side, g);
+                        const leg = !(ARM_REGIONS.has(k.region) || k.region === 'arm');
+                        return <g key={n} data-part={k.type}><Along name={k.type === 'splint' ? 'vacsplint' : 'plaster'} a={a} b={b} w={(leg ? 16 : 12) * z} extra={6 * z} /></g>;
+                    }
+                    if (k.type === 'tourniquet') {
+                        const P = k.limb === 'leg' ? g[k.side].leg.pts : g[k.side].arm.pts;
+                        const cut = (k.limb === 'leg' ? g[k.side].leg : g[k.side].arm).cut;
+                        // above the wound: high on the thigh or upper arm, higher still above a stump there
+                        const p = lerp(P[0], P[1], k.limb === 'leg' ? (cut === 1 ? 0.3 : 0.62) : 0.5);
+                        const w = (k.limb === 'leg' ? 24 : 17) * z;
+                        return <g key={n} data-part="tourniquet"><Sprite name="tourniquet" c={p} w={w} h={w * 0.32} rot={angle(P[0], P[1]) - 90} /></g>;
+                    }
+                    if (k.type === 'chestseal') return <g key={n} data-part="chestseal"><Sprite name="chestseal" c={T(POINT.chest(k.side))} w={15 * z} /></g>;
+                    if (k.type === 'dressing') {
+                        const spots = list.filter(i => ['wound', 'amputation', 'evisceration', 'impaled'].indexOf(i.kind) !== -1 || (i.kind === 'fracture' && i.open));
+                        return <g key={n} data-part="dressing">{spots.map((i, m) => {
+                            let p = pointFor(i, g);
+                            if (i.kind === 'amputation') { const s = i.side === 'L' ? 'L' : 'R'; p = ((LEG_REGIONS.has(i.region) || i.region === 'leg') ? g[s].leg.stump : g[s].arm.stump) || p; }
+                            return <Sprite key={m} name="dressing" c={p} w={(i.kind === 'evisceration' ? 20 : 11) * z} />;
+                        })}</g>;
+                    }
+                    if (k.type === 'clingfilm') return <g key={n} data-part="clingfilm">{list.filter(i => i.kind === 'burn').map((i, m) => {
+                        const b = burnShape(i, g);
+                        return <g key={m} transform={b.rot ? `rotate(${b.rot} ${b.c[0]} ${b.c[1]})` : undefined}><ellipse cx={b.c[0]} cy={b.c[1]} rx={b.rx + 1.5} ry={b.ry + 1.5} fill="#e0f2fe" fillOpacity="0.28" stroke="#f8fafc" strokeOpacity="0.7" strokeWidth="0.6" />
+                            <path d={`M${b.c[0] - b.rx * 0.6} ${b.c[1] - b.ry * 0.2} l${b.rx * 0.5} ${-b.ry * 0.4}`} stroke="#ffffff" strokeOpacity="0.7" strokeWidth="0.8" /></g>;
                     })}</g>;
-                }
-                if (k.type === 'clingfilm') return <g key={n} data-part="clingfilm">{list.filter(i => i.kind === 'burn').map((i, m) => {
-                    const b = burnShape(i, g);
-                    return <g key={m}><ellipse cx={b.c[0]} cy={b.c[1]} rx={b.rx + 1.5} ry={b.ry + 1.5} fill="#e0f2fe" fillOpacity="0.28" stroke="#f8fafc" strokeOpacity="0.7" strokeWidth="0.6" />
-                        <path d={`M${b.c[0] - b.rx * 0.6} ${b.c[1] - b.ry * 0.2} l${b.rx * 0.5} ${-b.ry * 0.4}`} stroke="#ffffff" strokeOpacity="0.7" strokeWidth="0.8" /></g>;
-                })}</g>;
-                return null;
-            })}
-        </g>
-    );
+                    return null;
+                })}
+            </g>
+        );
+    };
 
     // ---- the editor ---------------------------------------------------------------------------
     function InjuryEditor({ scenario, onChange, onClose }) {
@@ -638,5 +674,5 @@
         );
     }
 
-    window.Injuries = { detect, forScenario, label, PRESETS, geometry, kitPlan, Limbs, InjuryLayer, KitLayer, InjuryEditor };
+    window.Injuries = { detect, forScenario, label, PRESETS, geometry, pointFor, kitPlan, Sprite, Body, InjuryLayer, KitLayer, InjuryEditor };
 })();
