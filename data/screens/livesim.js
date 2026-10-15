@@ -1193,7 +1193,33 @@
                     md it stacks exactly as before (flex-col, full width), so the verified 375 px
                     layout is untouched. */}
                 <div ref={panel.rowRef} className="flex-1 flex flex-col md:flex-row gap-2 overflow-hidden min-h-0 max-md:flex-none max-md:overflow-visible">
-                    <div style={panel.panelStyle} className="w-full md:w-[34%] md:max-w-[72%] flex flex-col gap-2 md:overflow-y-auto md:h-full md:pr-1">
+                    <div style={panel.panelStyle} className={`w-full md:w-[34%] md:max-w-[72%] flex flex-col ${shortScreen ? 'gap-1' : 'gap-2'} md:overflow-y-auto md:h-full md:pr-1`}>
+                         {/* ---- OBS AT THE TOP of the column on desktop/tablet (Jake's request), so the obs you
+                              change are the first thing in it; the monitor strip stays lower down. Being its own block adds a gap,
+                              so a short screen tightens the column's gaps to keep ARREST on screen (start-rule.spec). ---- */}
+                         <div className="hidden md:block flex-none bg-black border border-slate-800 rounded overflow-hidden" data-testid="obs-top">
+                             {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
+                                 very top of the page instead (see PHONE OBS below). */}
+                             <div className={`hidden md:grid ${compactTiles ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
+                                 {coreTiles(compactTiles)}
+                             </div>
+                             <div className="hidden md:block bg-black px-1 pb-1">
+                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
+                                     right={!quickSim && shortScreen ? conditionButtons : null}>
+                                     <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
+                                 </Section>
+                             </div>
+                         </div>
+
+                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and Trend Better/Worse, straight under
+                             the obs (Jake's request), in ONE place only. On a short laptop screen (under 900 px
+                             high) there is no room for its own row without pushing ARREST off the screen, so
+                             the same three buttons sit on the More obs row instead and this row is hidden
+                             (the scenario's rate is on the Auto button's tooltip). Phones have no More obs row,
+                             so they keep this row. Hidden in Quick Sim (no scenario, so no declared
+                             deterioration; its own pane has the Trend buttons). ---- */}
+                        {!quickSim && conditionSection(shortScreen ? 'md:hidden' : '')}
+
                          {/* The scenario brief card is replaced in Quick Sim by a one-line factual
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
@@ -1372,29 +1398,10 @@
                                  )}
                              </div>
 
-                             {/* Desktop/tablet tiles. On a phone the same tiles render compactly at the
-                                 very top of the page instead (see PHONE OBS below). */}
-                             <div className={`hidden md:grid ${compactTiles ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 bg-black`}>
-                                 {coreTiles(compactTiles)}
-                             </div>
-                             <div className="hidden md:block bg-black px-1 pb-1">
-                                 <Section id="moreObs" title="More obs" summary={`GCS ${vitals.gcs} \u00b7 Glucose ${Number.isFinite(vitals.bm) ? vitals.bm.toFixed(1) : '--'}`} defaultOpen={!shortScreen} className="border-slate-800 bg-black"
-                                     right={!quickSim && shortScreen ? conditionButtons : null}>
-                                     <div className="grid grid-cols-2 gap-1">{moreTiles()}</div>
-                                 </Section>
-                             </div>
                         </div>
 
-                        {/* ---- PATIENT CONDITION: AUTO/MANUAL deterioration and Trend Better/Worse, straight under
-                             the obs (Jake's request), in ONE place only. On a short laptop screen (under 900 px
-                             high) there is no room for its own row without pushing ARREST off the screen, so
-                             the same three buttons sit on the More obs row instead and this row is hidden
-                             (the scenario's rate is on the Auto button's tooltip). Phones have no More obs row,
-                             so they keep this row. Hidden in Quick Sim (no scenario, so no declared
-                             deterioration; its own pane has the Trend buttons). ---- */}
-                        {!quickSim && conditionSection(shortScreen ? 'md:hidden' : '')}
 
-                        {/* ---- RHYTHM & RESUS, straight under the obs so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
+                        {/* ---- RHYTHM & RESUS, under the monitor strip so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
                              the rhythm and shock summary, and the defib controls when open. ---- */}
                         <Section id="resus" title="Rhythm & resus" summary={resusSummary} defaultOpen={true}>
                         <div className="flex flex-col gap-2">
@@ -1782,14 +1789,6 @@
                             </div>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_IMPROVE'}); addLogEntry("Patient Improving (Trend)", "success")}} variant="success" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Better</span></Button>
                             <Button onClick={() => {sim.dispatch({type: 'TRIGGER_DETERIORATE'}); addLogEntry("Patient Deteriorating (Trend)", "danger")}} variant="danger" className="h-11 w-24 max-md:w-auto max-md:flex-1 shrink-0 text-xs px-2 flex-col gap-0 leading-tight"><span>Trend</span><span className="font-bold">Worse</span></Button>
-                            {/* Same two-way sensor toggle as the Capnography chip, so it is logged
-                                and notified like every other attach/detach (it used to flip
-                                TOGGLE_ETCO2 directly and leave no trace in the event log). */}
-                            <Button onClick={() => toggleSensor('etco2')} variant="outline"
-                                title={etco2Enabled ? 'Capnography attached — click to remove (the CO2 trace and ETCO2 go blank on the team monitor).' : 'Capnography not attached — click to attach.'}
-                                className={`h-11 px-3 max-md:px-2 max-md:flex-1 shrink-0 text-[10px] uppercase font-bold ${etco2Enabled ? 'bg-purple-950/40 border-purple-500 text-purple-300' : ''}`}>
-                                Capnography {etco2Enabled ? 'on' : 'off'}
-                            </Button>
                         </div>
 
                         <div className="md:flex-1 md:overflow-y-auto p-3 space-y-3">

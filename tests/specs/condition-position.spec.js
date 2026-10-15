@@ -75,3 +75,30 @@ test('on a phone Patient condition is one row, with one set of buttons', async (
   expect(errors).toEqual([]);
   await context.close();
 });
+
+test('desktop: the obs tiles are the first thing in the left column, above the patient card and the monitor strip', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
+  await page.getByRole('button', { name: 'Adult Medical', exact: true }).click();
+  await page.locator('div.justify-between', { hasText: 'Tension Pneumothorax' }).first().getByRole('button', { name: 'Load' }).click();
+  await page.getByRole('button', { name: 'Start Scenario' }).click();
+  const top = page.getByTestId('obs-top');
+  await expect(top).toBeVisible();
+  const first = await top.evaluate(el => el.parentElement.firstElementChild === el);
+  expect(first).toBe(true);
+  const y = async (loc) => (await loc.boundingBox()).y;
+  expect(await y(top)).toBeLessThan(await y(page.locator('[data-section="monitoring"]')));
+  expect(await y(top)).toBeLessThan(await y(page.getByRole('button', { name: /Show Timer/i })));
+  expect(errors).toEqual([]);
+});
+
+test('Quick Sim: no separate Capnography on/off button under Rhythm; the Capnography chip still attaches it', async ({ page }) => {
+  const errors = trackErrors(page);
+  const { startQuickSim } = require('./helpers');
+  await openController(page);
+  await startQuickSim(page);
+  await expect(page.getByRole('button', { name: /^Capnography (on|off)$/i })).toHaveCount(0);
+  await expect(page.getByTestId('obs-top')).toBeVisible();
+  expect(errors).toEqual([]);
+});
