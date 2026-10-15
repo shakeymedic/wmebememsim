@@ -142,3 +142,30 @@ test('injury detection reads the common phrasings', async ({ page }) => {
   expect(r.none).toEqual([]);
   expect(r.openClosed).toEqual(['forearm:R:true', 'thigh:L:false']);
 });
+
+// iPad Safari reports 'interrupted' (screen lock, a call, Siri) as well as 'suspended'. Both must keep
+// the sound button up, and a tap must resume from either.
+test('an interrupted AudioContext (iPad) keeps the sound button and a tap resumes it', async ({ page, context }) => {
+  await context.addInitScript(() => {
+    const Real = window.AudioContext;
+    window.AudioContext = class extends Real {
+      constructor(...a) { super(...a); this.__fake = 'interrupted'; this.__resumes = 0; (window.__fakeCtxs = window.__fakeCtxs || []).push(this); }
+      get state() { return this.__fake; }
+      // Like Safari: resuming only works inside a tap
+      resume() { const p = super.resume(); if (window.event && /^(click|touchend|pointerup|keydown)$/.test(window.event.type)) { this.__resumes++; this.__fake = 'running'; this.dispatchEvent(new Event('statechange')); } return p; }
+    };
+  });
+  const code = await openController(page);
+  await startQuickSim(page);
+  const monitor = await context.newPage();
+  await monitor.goto(`/index.html?mode=monitor&session=${code}`);
+  await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
+  // Something resumed it before any tap? Put it back to interrupted, as Safari does after a screen lock.
+  await monitor.evaluate(() => window.__fakeCtxs.forEach(c => { c.__fake = 'interrupted'; c.dispatchEvent(new Event('statechange')); }));
+  const btn = monitor.getByTestId('enable-sound');
+  await expect(btn).toBeVisible();
+  await btn.click({ force: true });
+  await expect(btn).toHaveCount(0);
+  expect(await monitor.evaluate(() => window.__fakeCtxs.reduce((n, c) => n + c.__resumes, 0))).toBeGreaterThan(0);
+  expect(await monitor.evaluate(() => window.__monitorEngine.audioContextState)).toBe('running');
+});

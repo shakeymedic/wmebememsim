@@ -296,7 +296,10 @@
         // AudioContext, and a one-way flag left the monitor permanently silent with no way to fix it.
         const audioContextState = sim.audioContextState;
         useEffect(() => {
-            if (audioEnabled && audioContextState === 'suspended') setAudioEnabled(false);
+            // Any state but running means no sound: 'suspended', or Safari's 'interrupted' (iPad screen
+            // lock, a call, Siri). Checking only 'suspended' hid the button on iPads that were still silent.
+            const blocked = audioContextState === 'suspended' || audioContextState === 'interrupted';
+            if (audioEnabled && blocked) setAudioEnabled(false);
             // Sound came on without the button (a tap anywhere, a press on a device, or the browser
             // allowing it): the button has nothing left to do.
             else if (!audioEnabled && audioContextState === 'running') setAudioEnabled(true);
@@ -523,7 +526,9 @@
         const handleEnableAudio = () => {
             requestWakeLock();
             const result = enableAudio();
-            if (result && typeof result.then === 'function') result.then(() => setAudioEnabled(true)).catch(() => setAudioEnabled(true));
+            // Hidden only once the sound has really started; if the browser still refuses, the button
+            // stays so the next tap can try again.
+            if (result && typeof result.then === 'function') result.then(ok => setAudioEnabled(ok !== false)).catch(() => setAudioEnabled(false));
             else setAudioEnabled(true);
         };
         enableAudioRef.current = audioEnabled ? null : handleEnableAudio;
