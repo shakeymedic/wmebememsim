@@ -270,7 +270,7 @@ window.generateVbg = (clinicalState = "normal") => {
         case "hyperkalemia": vbg = { pH: 7.35, pCO2: 5.0, pO2: 4.8, HCO3: 22, BE: -2, Lac: 1.5, K: 7.5, Glu: 6.0, Ketones: 0.2 }; break;
         case "hyponatremia": vbg = { pH: 7.40, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Na: 115, Glu: 5.5, Ketones: 0.2 }; break;
         case "gi_bleed": vbg = { pH: 7.32, pCO2: 4.8, pO2: 4.2, HCO3: 20, BE: -4, Lac: 3.5, K: 4.1, Glu: 6.5, Ketones: 1.5 }; break; 
-        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 3.5, Glu: 5.5, Ketones: 0.2 }; break;
+        case "hypercalcemia": vbg = { pH: 7.42, pCO2: 5.3, pO2: 5.0, HCO3: 24, BE: 0, Lac: 1.2, K: 4.0, Ca: 1.75, Glu: 5.5, Ketones: 0.2 }; break;   // Ca is IONISED (the gas measures it): about half a total Ca of 3.5
         case "hypothermia": vbg = { pH: 7.30, pCO2: 5.0, pO2: 4.0, HCO3: 22, BE: -2, Lac: 2.5, K: 3.5, Glu: 4.5, Ketones: 0.3 }; break;
         case "co_poisoning": vbg = { pH: 7.35, pCO2: 5.0, pO2: 4.5, HCO3: 18, BE: -6, Lac: 4.0, K: 4.0, Glu: 6.0, Ketones: 0.2 }; break;
         default: break;

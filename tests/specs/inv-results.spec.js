@@ -151,8 +151,8 @@ test('premade scenario: typed VBG and own CT report reach the monitor buttons; S
 
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.ct || {}).findings)).toBe('CT head: no bleed seen.');
   let card = await press(monitor, 'VBG');
-  await expect(card.getByTestId('vbg-grid')).toContainText('pH: 7.05');
-  await expect(card.getByTestId('vbg-grid')).toContainText('K+: 6.8');
+  await expect(card.getByTestId('vbg-grid').getByTestId('gas-val-pH')).toHaveText(/7.05$/);
+  await expect(card.getByTestId('vbg-grid').getByTestId('gas-val-K')).toHaveText(/6.8$/);
   card = await press(monitor, 'CT Head');
   await expect(card).toContainText('CT head: no bleed seen.');
   await expect(card.getByTestId('inv-image')).toHaveCount(0);

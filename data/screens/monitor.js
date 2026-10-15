@@ -11,6 +11,106 @@
         );
     };
 
+    // =========================================================================================
+    // THE BLOOD GAS, AS THE ANALYSER PRINTS IT (Jake, 15 Oct 2026: "look like they're printed on
+    // white paper"). Modelled on real point-of-care analyser printouts: grouped sections, the
+    // value with a flag, the unit, and [low - high] reference limits, with a legend at the foot.
+    // UK units (kPa, mmol/L). The limits are typical adult values; real labs set their own.
+    //   ref   [low, high]   outside it: one arrow
+    //   crit  [low, high]   outside it: two arrows (null = no limit on that side)
+    // A venous sample's pO2 is printed without limits or a flag: venous pO2 is meant to be low.
+    // Analytes the gas does not carry are left off rather than invented.
+    const GAS_ROWS = [
+        { section: 'Blood gas values' },
+        { k: 'pH', label: 'pH', dp: 2, unit: '', ref: [7.35, 7.45], crit: [7.20, 7.60] },
+        { k: 'pCO2', label: <>pCO<sub>2</sub></>, dp: 1, unit: 'kPa', ref: [4.7, 6.0], crit: [2.7, 9.3] },
+        { k: 'pO2', label: <>pO<sub>2</sub></>, dp: 1, unit: 'kPa', ref: [10.0, 13.3], crit: [5.3, null], arterialOnly: true },
+        { k: 'BE', label: <>cBase(Ecf)<sub>c</sub></>, dp: 1, unit: 'mmol/L', ref: [-2.0, 3.0], signed: true, calc: true },
+        { k: 'HCO3', label: <>cHCO<sub>3</sub><sup>−</sup>(P,st)<sub>c</sub></>, dp: 1, unit: 'mmol/L', ref: [22.0, 26.0], calc: true },
+        { section: 'Electrolyte values' },
+        { k: 'K', label: <>cK<sup>+</sup></>, dp: 1, unit: 'mmol/L', ref: [3.5, 5.3], crit: [2.5, 6.5] },
+        { k: 'Na', label: <>cNa<sup>+</sup></>, dp: 0, unit: 'mmol/L', ref: [135, 145], crit: [120, 160] },
+        { k: 'Ca', label: <>cCa<sup>2+</sup></>, dp: 2, unit: 'mmol/L', ref: [1.15, 1.33], crit: [0.75, 1.60] },
+        { section: 'Metabolite values' },
+        { k: 'Glu', label: 'cGlu', dp: 1, unit: 'mmol/L', ref: [4.0, 7.8], crit: [2.2, 25.0] },
+        { k: 'Lac', label: 'cLac', dp: 1, unit: 'mmol/L', ref: [0.5, 2.0], crit: [null, 4.0] },
+        { k: 'Osm', label: <>mOsm<sub>c</sub></>, dp: 0, unit: 'mmol/kg', ref: [275, 295], calc: true }
+    ];
+    const gasFlag = (row, n, arterial) => {
+        if (row.arterialOnly && !arterial) return '';
+        const c = row.crit || [];
+        if (c[0] !== null && c[0] !== undefined && n < c[0]) return '↓↓';
+        if (c[1] !== null && c[1] !== undefined && n > c[1]) return '↑↑';
+        if (n < row.ref[0]) return '↓';
+        if (n > row.ref[1]) return '↑';
+        return '';
+    };
+    const fmtGas = (n, dp, signed) => (signed && n > 0 ? '+' : '') + n.toFixed(dp).replace('-', '−');
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const GasPrintout = ({ gas }) => {
+        const g = gas || {};
+        const arterial = g.sample === 'Arterial';
+        const when = new Date(Number(g.takenAt) || Date.now());
+        const stamp = `${pad2(when.getDate())}/${pad2(when.getMonth() + 1)}/${when.getFullYear()} ${pad2(when.getHours())}:${pad2(when.getMinutes())}`;
+        const fio2 = Number(g.fio2);
+        const temp = Number(g.temp);
+        const box = (on) => <span className="inline-block w-[1.1em] text-center border border-neutral-800 leading-[1em] mr-1 text-[0.8em]">{on ? '✕' : ' '}</span>;
+        // Only the rows the gas carries; a section with none of its rows is left out too.
+        const rows = [];
+        GAS_ROWS.forEach(r => {
+            if (r.section) { rows.push(r); return; }
+            const n = Number(g[r.k]);
+            if (g[r.k] === undefined || g[r.k] === null || g[r.k] === '' || !Number.isFinite(n)) return;
+            rows.push(Object.assign({ n }, r));
+        });
+        const shown = rows.filter((r, i) => !r.section || (rows[i + 1] && !rows[i + 1].section));
+        const anyCalc = shown.some(r => r.calc);
+        return (
+            <div className="bg-[#fbfbf8] text-neutral-900 rounded-sm shadow-[0_2px_10px_rgba(0,0,0,0.5)] px-4 pt-3 pb-3 font-sans text-[15px] sm:text-base leading-snug max-h-[76vh] overflow-y-auto"
+                 data-testid="vbg-grid" role="group" aria-label={`${arterial ? 'Arterial' : 'Venous'} blood gas printout`}>
+                <div className="border-b border-neutral-800 pb-2 mb-1.5">
+                    <div className="flex justify-between items-baseline gap-2">
+                        <span className="font-semibold tracking-wide">Blood gas report</span>
+                        <span className="text-[0.8em] text-neutral-600 tabular-nums">{stamp}</span>
+                    </div>
+                    <div className="grid grid-cols-[auto_1fr] gap-x-3 text-[0.85em] mt-1">
+                        <span>Patient ID</span><span className="font-mono">{g.patientId || 'SIM-0001'}</span>
+                        <span>Sample type</span>
+                        <span data-testid="gas-sample">{box(!arterial)}Venous<span className="ml-2">{box(arterial)}Arterial</span><span className="ml-2">{box(false)}Capillary</span></span>
+                        <span>T</span><span className="tabular-nums">{Number.isFinite(temp) && temp > 0 ? temp.toFixed(1) : '37.0'} °C</span>
+                        <span>FO<sub>2</sub>(I)</span><span className="tabular-nums" data-testid="gas-fio2">{Number.isFinite(fio2) && fio2 > 0 ? fio2.toFixed(2) : '–'}</span>
+                    </div>
+                </div>
+                <table className="w-full border-collapse tabular-nums">
+                    <tbody>
+                        {shown.map((r, i) => {
+                            if (r.section) return (
+                                <tr key={'s' + i}><td colSpan={4} className={`font-semibold text-[0.95em] pb-0.5 ${i ? 'pt-2' : ''}`}>{r.section}</td></tr>
+                            );
+                            const flag = gasFlag(r, r.n, arterial);
+                            const noRange = r.arterialOnly && !arterial;
+                            return (
+                                <tr key={r.k} data-testid={`gas-row-${r.k}`}>
+                                    <td className="pl-3 pr-2 whitespace-nowrap">{r.label}</td>
+                                    <td className="text-right whitespace-nowrap font-semibold" data-testid={`gas-val-${r.k}`}>
+                                        <span className="inline-block min-w-[1.7em] text-left font-normal" title={flag ? (flag.length > 1 ? 'Outside critical range' : 'Outside reference range') : undefined}>{flag}</span>{fmtGas(r.n, r.dp, r.signed)}
+                                    </td>
+                                    <td className="pl-2 pr-1 whitespace-nowrap text-[0.85em]">{r.unit}</td>
+                                    <td className="text-right whitespace-nowrap text-[0.85em] text-neutral-700">{noRange ? '' : `[ ${fmtGas(r.ref[0], r.dp, r.signed)} – ${fmtGas(r.ref[1], r.dp, r.signed)} ]`}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+                <div className="border-t border-neutral-800 mt-3 pt-1.5 text-[0.75em] grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-neutral-800">
+                    <span>{'↑ ↓'}</span><span>Outside reference range</span>
+                    <span>{'↑↑ ↓↓'}</span><span>Outside critical range</span>
+                    {anyCalc && <><span className="italic">c</span><span>Calculated value</span></>}
+                </div>
+            </div>
+        );
+    };
+
     // The 12-lead renderer lives in data/rhythms.js (RHYTHMS.render12Lead) so this monitor and the
     // standalone defibrillator page draw the identical recording from the identical registry.
     const render12Lead = (canvas, rhythm, scenario, hr) => window.RHYTHMS.render12Lead(canvas, rhythm, scenario, hr);
@@ -396,21 +496,9 @@
                 let content = "No findings recorded.";
 
                 const ct = monitorPopup.customText;
-                // The VBG as a grid of values, readable from across the room (it was text-xs).
-                const vbgGrid = (v) => (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-base xl:text-lg font-mono" data-testid="vbg-grid">
-                        <span>pH: <b className={v.pH < 7.35 || v.pH > 7.45 ? "text-red-400" : "text-emerald-400"}>{v.pH.toFixed(2)}</b></span>
-                        <span>pCO2: <b className={v.pCO2 > 6.0 || v.pCO2 < 4.5 ? "text-red-400" : "text-emerald-400"}>{v.pCO2.toFixed(1)}</b></span>
-                        <span>pO2: <b className={v.pO2 < 8.0 ? "text-red-400" : "text-emerald-400"}>{Number.isFinite(v.pO2) ? v.pO2.toFixed(1) : '--'}</b></span>
-                        <span>Lac: <b className={v.Lac > 2 ? "text-red-400" : "text-emerald-400"}>{v.Lac.toFixed(1)}</b></span>
-                        <span>K+: <b className={v.K > 5.5 ? "text-red-400" : "text-emerald-400"}>{v.K.toFixed(1)}</b></span>
-                        <span>Glu: <b className={v.Glu > 11 ? "text-red-400" : "text-emerald-400"}>{v.Glu.toFixed(1)}</b></span>
-                        <span>BE: <b>{v.BE.toFixed(1)}</b></span>
-                        <span>HCO3: <b>{v.HCO3.toFixed(1)}</b></span>
-                        {v.Na !== undefined && <span>Na+: <b className={v.Na < 135 || v.Na > 145 ? "text-red-400" : "text-emerald-400"}>{v.Na.toFixed(0)}</b></span>}
-                        {v.Ca !== undefined && <span>Ca²⁺: <b className={v.Ca > 2.6 ? "text-red-400" : "text-emerald-400"}>{v.Ca.toFixed(2)}</b></span>}
-                    </div>
-                );
+                // The VBG as the analyser prints it: white paper, sections, flags and reference limits.
+                // (Values stay at least 16 px on a room screen so they read from across the room.)
+                const vbgGrid = (v) => <GasPrintout gas={v} />;
                 // Structured VBG payload from revealInvestigation('VBG')
                 if (ct && typeof ct === 'object' && ct.__vbg) {
                     const v = ct;
@@ -457,7 +545,7 @@
                     else if (type === 'Urine') content = findings('urine', "Urinalysis Normal.");
                     else if (type === 'POCUS') content = findings('pocus', "No free fluid seen.");
                     else if (type === 'VBG' && scenario.vbg) {
-                        const v = scenario.vbg;
+                        const v = Object.assign({ sample: 'Venous' }, scenario.vbg);
                         content = vbgGrid(v);
                     }
                 }
@@ -478,7 +566,7 @@
                 pendingImage.current = null;
                 if (image && !(INV && INV.imageFor(image))) { if (String(image).startsWith('course:')) pendingImage.current = image; image = null; }
                 setViewImage(null);
-                setInvToast({ title, content, image, hideReport: !!monitorPopup.hideReport });
+                setInvToast({ title, content, image, hideReport: !!monitorPopup.hideReport, gas: !!(ct && typeof ct === 'object' && ct.__vbg) || (type === 'VBG' && !ct && !!(scenario && scenario.vbg)) });
             }
         }, [monitorPopup, scenario]);
         useEffect(() => {
@@ -610,7 +698,7 @@
                     const wide = !!img;
                     return (
                         <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
-                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? (img.modality === 'ECG' ? 'w-[760px]' : 'w-[520px]') : 'w-96 xl:w-[30rem] 2xl:w-[36rem]'}`} data-testid="inv-result">
+                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? (img.modality === 'ECG' ? 'w-[760px]' : 'w-[520px]') : (invToast && invToast.gas ? 'w-[30rem] xl:w-[32rem]' : 'w-96 xl:w-[30rem] 2xl:w-[36rem]')}`} data-testid="inv-result">
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="text-purple-400 font-bold uppercase text-base md:text-lg flex items-center gap-2"><Lucide icon="activity" className="w-5 h-5"/> {invToast?.title} Result</h3>
                                     {/* 44 px to touch; the negative margin keeps the card's layout as it was */}

@@ -1448,7 +1448,19 @@
                     // patient's own modelled pH and K+ in the gas (they are not shown as obs).
                     const dynamic = window.liveVbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time);
                     // Pass the structured object — monitor.js will detect and render the table.
-                    finalCustomText = { __vbg: true, ...dynamic };
+                    // With what the analyser prints at the top: the sample type, when it was run, and the
+                    // inspired oxygen (the ventilator's setting when one
+                    // is breathing for the patient; room air when no oxygen is on; otherwise not entered).
+                    const vd = window.VENT_ENGINE && window.VENT_ENGINE.driverFor ? window.VENT_ENGINE.driverFor(cur) : null;
+                    const ventO2 = vd ? (Number(vd.phys && vd.phys.fio2) || (Number(vd.o2) > 0 ? Number(vd.o2) / 100 : null)) : null;
+                    const OXYGEN = ['Oxygen', 'Preoxygenation', 'ApnoeicOxygenation', 'Bagging', 'NIV', 'CPAP', 'RSI', 'i-gel'];
+                    const onOxygen = OXYGEN.some(k => cur.activeInterventions && cur.activeInterventions.has && cur.activeInterventions.has(k));
+                    const sid = String((cur.scenario && (cur.scenario.id || cur.scenario.title || cur.scenario.patientName)) || 'SIM');
+                    let h = 0; for (let i = 0; i < sid.length; i++) h = (h * 31 + sid.charCodeAt(i)) % 9000;
+                    finalCustomText = { __vbg: true, ...dynamic, sample: 'Venous', takenAt: Date.now(),
+                        temp: 37.0,   // run at 37 °C, as an ED gas is unless the patient's temperature is entered
+                        fio2: ventO2 ? Math.min(1, Math.max(0.21, ventO2)) : (onOxygen ? null : 0.21),
+                        patientId: 'SIM-' + String(1000 + h) };
                 }
 
                 dispatch({ type: 'REVEAL_INVESTIGATION', payload: type });
