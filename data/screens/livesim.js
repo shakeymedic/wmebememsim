@@ -1213,8 +1213,9 @@
                             </Button>
                         )}
                         {/* Patient-screen volume (monitor, defib, ventilator and the patient's voice). */}
-                        {/* On a phone it lives in the Tools menu instead, so the toolbar stays in two rows. */}
-                        <div className="max-md:hidden">
+                        {/* Below 1280 px it lives in the Tools menu instead, so the toolbar does not wrap and push
+                            the HR, ARREST and CPR controls down on a 1024 px laptop or a phone. */}
+                        <div className="max-xl:hidden">
                             <Button ariaLabel={`Patient screen volume ${Math.round(volumePct)}%`} variant="outline" onClick={() => setShowVolume(o => !o)}
                                     className={`h-8 px-2 text-xs font-bold ${volumePct === 0 ? 'text-red-400 border-red-500/60' : 'text-slate-200 border-slate-500/60'}`}>
                                 <Lucide icon={volumePct === 0 ? 'volume-x' : 'volume-2'} className="w-4 h-4 md:mr-1"/><span className="max-md:hidden">{Math.round(volumePct)}%</span>
