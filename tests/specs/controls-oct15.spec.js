@@ -21,6 +21,7 @@ async function loadPremade(page, id, change) {
 test('the sound prompt only shows while the patient screen cannot play sound', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
+  await pressStart(page);     // the patient screens stay blank until START
   const monitor = await context.newPage();
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
@@ -38,7 +39,9 @@ test('the sound prompt only shows while the patient screen cannot play sound', a
   await page.getByRole('button', { name: 'Exit to Menu' }).click();
   await expect.poll(() => monitor.evaluate(() => !!window.__monitorEngine.state.liveSeen)).toBe(false);
   await startQuickSim(page);
+  await pressStart(page);
   await expect.poll(() => monitor.evaluate(() => !!window.__monitorEngine.state.liveSeen)).toBe(true);
+  await expect(monitor.getByTestId('screen-waiting')).toHaveCount(0);
   await monitor.waitForTimeout(800);
   await expect(monitor.getByText('Tap to Enable Sound')).toHaveCount(0);
 });
