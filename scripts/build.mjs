@@ -187,6 +187,18 @@ log(`minified ${minified} script(s)`);
 let sha = process.env.COMMIT_REF || '';
 if (!sha) { try { sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT }).toString().trim(); } catch (e) { sha = 'local'; } }
 const VERSION = `${sha.slice(0, 12)}-${Date.now().toString(36)}`;
+// The version shown at the bottom of the page: build date and time (UK) plus the commit, e.g.
+// "2026.10.15 09:40 · dcdc668", so the commit can be matched to GitHub.
+{
+    const now = new Date();
+    const part = (o) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', ...o }).formatToParts(now).reduce((a, p) => { a[p.type] = p.value; return a; }, {});
+    const d = part({ year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
+    const shortSha = sha.slice(0, 7);
+    const info = { label: `${d.year}.${d.month}.${d.day} ${d.hour}:${d.minute} · ${shortSha}`, sha: shortSha, built: `${d.day}/${d.month}/${d.year} ${d.hour}:${d.minute} UK time`, version: VERSION };
+    const vf = path.join(OUT, 'data', 'version.js');
+    if (!fs.existsSync(vf)) fail('data/version.js is missing');
+    fs.writeFileSync(vf, `window.APP_VERSION = ${JSON.stringify(info)};\n`);
+}
 const listFiles = (dir, base = dir) => fs.readdirSync(dir).flatMap(name => {
     const f = path.join(dir, name);
     return fs.statSync(f).isDirectory() ? listFiles(f, base) : [path.relative(base, f).split(path.sep).join('/')];

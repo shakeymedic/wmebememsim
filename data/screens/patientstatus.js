@@ -180,6 +180,11 @@
         if (has(act, 'Catheter')) other.push('Catheter');
         if (['SeldingerDrain', 'SurgicalDrain', 'FingerThoracostomy'].some(k => has(act, k))) other.push('Chest drain');
         if (has(act, 'Lucas')) other.push('LUCAS');
+        // The injuries (from the scenario's words, or the facilitator's list) and the kit on them.
+        const INJ = window.Injuries;
+        const injuries = INJ ? INJ.forScenario(s.scenario) : [];
+        const kit = INJ ? INJ.kitPlan(injuries, k => has(act, k)) : [];
+        kit.forEach(k => { if (other.indexOf(k.name) === -1) other.push(k.name); });
 
         return {
             arrest, apnoeic, paralysed, headline, tone, flags, sensors, tube, bagging, niv, oxygen, adjunct,
@@ -190,7 +195,8 @@
             cyanosed: !arrest && spo2 !== null && spo2 < 88,
             eyesClosed: arrest || paralysed || !!tube || (gcs !== null && gcs <= 8),
             distressed: flags.some(f => /^Distressed/.test(f.text)),
-            sex: s.scenario && s.scenario.sex === 'Female' ? 'Female' : 'Male'
+            sex: s.scenario && s.scenario.sex === 'Female' ? 'Female' : 'Male',
+            injuries, kit
         };
     }
 
@@ -209,7 +215,11 @@
             a.access.length ? 'Access: ' + a.access.join(', ') : 'No IV access',
             a.airway ? 'Airway: ' + a.airway : null,
             a.vent ? `Ventilator: ${a.modelName}, ${a.vent.state}` : null,
-            a.other.length ? a.other.join(', ') : null].filter(Boolean).join('. ');
+            a.other.length ? a.other.join(', ') : null,
+            a.injuries.length && window.Injuries ? 'Injuries: ' + a.injuries.map(window.Injuries.label).join(', ') : null].filter(Boolean).join('. ');
+        const INJ = window.Injuries;
+        const g = INJ ? INJ.geometry(a.injuries) : null;
+        const pregnant = a.injuries.some(i => i.kind === 'pregnant');
         const breathing = !a.apnoeic && !a.ventilating && !a.bagging;
         const chestMoves = !a.arrest && (breathing || a.ventilating || a.bagging);
         const breathDur = a.distressed ? '1.6s' : '3.6s';
@@ -217,17 +227,16 @@
         const ax = 95, ay = a.tube === 'fona' ? 54 : 41;
         const cable = { fill: 'none', strokeWidth: 1.1, strokeLinecap: 'round', opacity: 0.85 };
         return (
-            <svg viewBox="0 0 220 200" role="img" aria-label={label} data-testid="patient-figure" className={className}>
+            <svg viewBox="0 0 220 250" role="img" aria-label={label} data-testid="patient-figure" className={className}>
                 <title>{label}</title>
                 <defs>
                     <linearGradient id="ps-skin" x1="0" x2="1"><stop offset="0" stopColor={shade} /><stop offset="0.35" stopColor={skin} /><stop offset="0.65" stopColor={skin} /><stop offset="1" stopColor={shade} /></linearGradient>
-                    <linearGradient id="ps-sheet" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="#7c93b5" /><stop offset="1" stopColor="#4f6487" /></linearGradient>
                     <radialGradient id="ps-pillow"><stop offset="0" stopColor="#f1f5f9" /><stop offset="1" stopColor="#cbd5e1" /></radialGradient>
                 </defs>
 
                 {/* the trolley, its mattress and the pillow */}
-                <rect x="52" y="3" width="86" height="194" rx="12" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
-                <rect x="57" y="8" width="76" height="184" rx="9" fill="#334155" />
+                <rect x="52" y="3" width="86" height="244" rx="12" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
+                <rect x="57" y="8" width="76" height="234" rx="9" fill="#334155" />
                 <ellipse cx="95" cy="28" rx="30" ry="18" fill="url(#ps-pillow)" opacity="0.9" />
 
                 {/* the drip stand (IV fluids) */}
@@ -242,13 +251,9 @@
 
                 {/* the patient's body */}
                 <g data-part="body">
-                    {/* arms, lying by the sides */}
-                    <path d="M71 62 C62 78 60 98 61 124" stroke={shade} strokeWidth="11" strokeLinecap="round" fill="none" />
-                    <path d="M71 62 C62 78 60 98 61 124" stroke={skin} strokeWidth="9" strokeLinecap="round" fill="none" />
-                    <path d="M119 62 C128 78 130 98 129 124" stroke={shade} strokeWidth="11" strokeLinecap="round" fill="none" />
-                    <path d="M119 62 C128 78 130 98 129 124" stroke={skin} strokeWidth="9" strokeLinecap="round" fill="none" />
-                    <ellipse cx="61" cy="131" rx="5" ry="7" fill={skin} stroke={shade} strokeWidth="0.8" />
-                    <ellipse cx="129" cy="131" rx="5" ry="7" fill={skin} stroke={shade} strokeWidth="0.8" />
+                    {/* the whole patient: arms by the sides, legs, hands and feet, bent where a fracture
+                        deforms them and short where an amputation took them (data/screens/injuries.js) */}
+                    {g && <INJ.Limbs g={g} skin={skin} shade={shade} />}
                     {/* neck and chest, which rise and fall with each breath */}
                     <rect x="88" y="44" width="14" height="14" rx="3" fill={skin} />
                     <g>
@@ -260,10 +265,7 @@
                         <path d="M76 96 Q86 104 95 98 Q104 104 114 96" stroke={shade} strokeWidth="0.7" fill="none" opacity="0.6" />
                         <circle cx="84" cy="80" r="1.4" fill={shade} /><circle cx="106" cy="80" r="1.4" fill={shade} />
                     </g>
-                    {/* the sheet over the hips and legs */}
-                    <path d="M64 118 Q95 112 126 118 L128 186 Q95 192 62 186 Z" fill="url(#ps-sheet)" />
-                    <path d="M95 126 L95 184 M74 132 Q80 160 78 182 M116 132 Q110 160 112 182" stroke="#3b4d6b" strokeWidth="1" fill="none" opacity="0.7" />
-                    <path d="M64 118 Q95 112 126 118" stroke="#a5b4cf" strokeWidth="2" fill="none" />
+                    {pregnant && <g data-part="pregnant"><ellipse cx="95" cy="108" rx="21" ry="17" fill="url(#ps-skin)" stroke={shade} strokeWidth="0.8" /><ellipse cx="99" cy="102" rx="7" ry="5" fill="#ffffff" opacity="0.12" /><circle cx="95" cy="109" r="1.3" fill={shade} /></g>}
                     {/* the head: hair, ears, eyes (closed when unconscious or anaesthetised), nose and mouth */}
                     <ellipse cx="95" cy="30" rx="15" ry="17" fill={skin} stroke={shade} strokeWidth="0.8" />
                     <ellipse cx="80.5" cy="31" rx="2.4" ry="4" fill={shade} /><ellipse cx="109.5" cy="31" rx="2.4" ry="4" fill={shade} />
@@ -274,6 +276,10 @@
                     <path d="M95 30 L93.6 35 L96 35.4" stroke={shade} strokeWidth="0.8" fill="none" />
                     {!a.tube && <path d={a.distressed ? 'M91 40 Q95 37 99 40 Q95 42.5 91 40 Z' : 'M91.5 39.5 Q95 41.5 98.5 39.5'} stroke="#8b4a3c" strokeWidth="1" fill={a.distressed ? '#5b2b25' : 'none'} />}
                 </g>
+
+                {/* the injuries, then the kit on them (collar, binder, traction splint, splints, tourniquet ...) */}
+                {g && <INJ.InjuryLayer list={a.injuries} g={g} />}
+                {g && <INJ.KitLayer kit={a.kit} list={a.injuries} g={g} />}
 
                 {/* the monitor, the ventilator and the defib beside the trolley */}
                 <g data-part="monitor" opacity={anyMon ? 1 : 0.45}>
@@ -393,9 +399,15 @@
     };
 
     // ---- the strip ------------------------------------------------------------------------------
-    const PatientStatusPanel = ({ sim, addLogEntry, showVent = true, extra = null }) => {
+    // `showScenario`: the scenario's summary and its "Full scenario" window (data/screens/scenarioview.js),
+    // for library and course scenarios (not Quick Sim, which has no scenario).
+    const PatientStatusPanel = ({ sim, addLogEntry, showVent = true, extra = null, showScenario = false }) => {
         const state = sim.state;
         const a = assess(state);
+        const [showFull, setShowFull] = useState(false);
+        const [editInjuries, setEditInjuries] = useState(false);
+        const SV = window.ScenarioView, INJ = window.Injuries;
+        const withScenario = showScenario && !!SV && !!state.scenario;
         const VP = window.VENT_PROFILES;
         // Compact (headline, flags and a one-line summary) or full (with the figure). With no saved choice,
         // a short screen (or a narrow one, such as a portrait tablet) starts compact so the obs and resus
@@ -418,6 +430,14 @@
             if (a.vent && a.vent.state === 'ventilating' && !window.confirm(`Change to the ${VP.MODELS[m]}? The tablet reloads on the new machine switched off, so the patient stops being ventilated.`)) return;
             sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { model: m } });
             log(`Ventilator changed to the ${VP.MODELS[m]} (facilitator)`, 'system');
+        };
+        // The facilitator's own injury list (null: back to what the scenario's words say).
+        const setInjuries = (next) => {
+            const sc = { ...state.scenario };
+            if (next) sc.injuries = next; else delete sc.injuries;
+            sim.dispatch({ type: 'UPDATE_SCENARIO', payload: sc });
+            const now = INJ ? INJ.forScenario(sc).map(INJ.label) : [];
+            log(`Injuries on the patient picture: ${now.length ? now.join(', ') : 'none'}${next ? '' : ' (the scenario\u2019s own)'}`, 'system');
         };
         const toggleVentShown = () => {
             sim.dispatch({ type: 'SET_VENT_PANEL', payload: !ventShown });
@@ -479,12 +499,18 @@
                     {/* The "Screens show: Monitor | Defib | Ventilator" switch (data/screens/screenspanel.js). On a
                         phone it takes its own full-width row under the headline, so the headline is not squeezed. */}
                     {extra && <div className="min-w-0 max-md:order-last max-md:w-full">{extra}</div>}
+                    {withScenario && collapsed && (
+                        <button type="button" onClick={() => setShowFull(true)} data-testid="open-full-scenario-compact" className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-sky-500 text-sky-200 hover:bg-sky-900/40">
+                            Full scenario
+                        </button>
+                    )}
                     <button type="button" onClick={toggle} aria-expanded={!collapsed} title={collapsed ? 'Show the patient figure and details' : 'Make this strip one line'} className="flex-none text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">
                         {collapsed ? 'More' : 'Less'}
                     </button>
                 </div>
                 {collapsed && (
                     <div className="flex flex-wrap items-center gap-1 px-2 pb-1" data-testid="patient-compact">
+                        {withScenario && <span className="text-[11px] font-bold text-emerald-300 uppercase truncate max-w-[18rem]" title={state.scenario.title}>{state.scenario.title}</span>}
                         {flagChips}
                         <span className="text-[11px] text-slate-300 truncate min-w-0">
                             {[a.monitors.length ? a.monitors.join(' · ') : 'Nothing attached', a.access.length ? a.access.join(' · ') : 'No access', a.airway || 'Own airway'].join('  |  ')}
@@ -493,7 +519,7 @@
                 )}
                 {!collapsed && (
                     <div className="flex flex-wrap md:flex-nowrap gap-3 px-2 pb-2 items-start">
-                        <PatientFigure a={a} className="w-44 h-40 md:w-52 md:h-48 flex-none bg-slate-950/70 rounded-lg" />
+                        <PatientFigure a={a} className="w-40 h-44 md:w-44 md:h-48 flex-none bg-slate-950/70 rounded-lg" />
                         <div className="min-w-0 flex-1 flex flex-col gap-1">
                             {(a.flags.length > 0 || resusButtons) && (
                                 <div className="flex flex-wrap items-center gap-1" data-testid="patient-flags">
@@ -504,7 +530,15 @@
                             {row('Access', a.access, 'None')}
                             {row('Airway', a.airway ? [a.airway] : [], 'Own airway')}
                             {a.other.length > 0 && row('Also', a.other, '')}
+                            {INJ && (
+                                <div className="flex gap-1.5 items-baseline min-w-0" data-testid="patient-injuries">
+                                    <span className="text-[9px] uppercase font-bold text-slate-400 w-[4.6rem] flex-none">Injuries</span>
+                                    <span className={`text-[11px] min-w-0 ${a.injuries.length ? 'text-white' : 'text-slate-300 italic'}`}>{a.injuries.length ? a.injuries.map(INJ.label).join(' \u00b7 ') : 'None'}</span>
+                                    {state.scenario && <button type="button" onClick={() => setEditInjuries(true)} aria-label="Change the injuries on the patient picture" className="flex-none text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">Change</button>}
+                                </div>
+                            )}
                         </div>
+                        {withScenario && <SV.ScenarioSummary scenario={state.scenario} onOpen={() => setShowFull(true)} />}
                         {VP && showVent && ventInPlay && (
                             <div className="flex-none flex flex-col gap-1 w-full sm:w-auto sm:min-w-[11rem]" data-testid="status-vent">
                                 <span className="text-[9px] uppercase font-bold text-slate-400">Ventilator</span>
@@ -525,6 +559,8 @@
                         )}
                     </div>
                 )}
+                {showFull && SV && state.scenario && <SV.FullScenarioModal scenario={state.scenario} onClose={() => setShowFull(false)} />}
+                {editInjuries && INJ && state.scenario && <INJ.InjuryEditor scenario={state.scenario} onChange={setInjuries} onClose={() => setEditInjuries(false)} />}
             </section>
         );
     };

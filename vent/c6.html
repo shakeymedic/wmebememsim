@@ -2594,12 +2594,17 @@ function applySound() {
 }
 /* the device's own Alarm sound handler flips V.sound; this keeps that choice and the session mute together */
 $('#btnSound').addEventListener('click', () => { soundWanted = V.sound; applySound(); });
-/* browsers start audio only after a touch: wake it on the first one */
-document.addEventListener('pointerdown', () => {
-  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {}
+/* browsers start audio only after a touch: wake it on the first one. On an iPad a finger's pointerdown
+   does not count, only the touchend/click after it, so all of them are listened for. Safari also has an
+   'interrupted' state (screen lock, a call), and the iPad's silent setting mutes web audio unless the
+   page asks for the 'playback' audio session. */
+const wakeSound = () => {
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+  try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state !== 'running' && actx.state !== 'closed') actx.resume(); } catch (e) {}
   /* embedded in the room monitor: tell it, so it enables its own sound from this touch */
   try { if (EMBEDDED && window.parent !== window) window.parent.postMessage({type:'wmebem-device-gesture'}, window.location.origin); } catch (e) {}
-}, {capture:true});
+};
+['pointerdown', 'touchend', 'click', 'keydown'].forEach(t => document.addEventListener(t, wakeSound, {capture:true}));
 
 /* ---------- main loop: real time, and it keeps ventilating when the tab is hidden ---------- */
 let acc250 = 0, acc1000 = 0, lastT = performance.now();

@@ -169,10 +169,13 @@
     // default applies). `right` holds controls that stay usable while the section is closed.
     const SECTION_STORE = 'emsim_sections_v1';
     const readSections = () => { try { return JSON.parse(localStorage.getItem(SECTION_STORE) || '{}') || {}; } catch (e) { return {}; } };
-    const Section = ({ id, title, summary, defaultOpen = true, right = null, children, className = '', tone = 'default' }) => {
-        const [open, setOpen] = useState(() => { const s = readSections(); return typeof s[id] === 'boolean' ? s[id] : defaultOpen; });
+    // `remember={false}` always starts at defaultOpen and stores nothing (e.g. Quick Sim's ventilator,
+    // which starts closed every run however it was left last time).
+    const Section = ({ id, title, summary, defaultOpen = true, remember = true, right = null, children, className = '', tone = 'default' }) => {
+        const [open, setOpen] = useState(() => { const s = remember ? readSections() : {}; return typeof s[id] === 'boolean' ? s[id] : defaultOpen; });
         const toggle = () => setOpen(o => {
             const next = !o;
+            if (!remember) return next;
             try { const s = readSections(); s[id] = next; localStorage.setItem(SECTION_STORE, JSON.stringify(s)); } catch (e) { /* not stored */ }
             return next;
         });

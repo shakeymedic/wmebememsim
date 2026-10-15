@@ -682,24 +682,26 @@
             const w = f * (Number(d.dose) || 1);
             bucket.f += w;
             const eff = d.effect || {};
+            // Summed per VITAL, so an entry can be muted for one vital (see muteDrugsFor) and
+            // still act on the others.
             Object.keys(eff).forEach(field => {
                 const amt = Number(eff[field]);
                 if (!Number.isFinite(amt) || !EFFECT_TARGETS[field]) return;
-                bucket.sums[field] = (bucket.sums[field] || 0) + amt * w;
+                EFFECT_TARGETS[field].forEach(([vital, scale]) => {
+                    if (d.muted && d.muted[vital]) return;
+                    bucket.sums[vital] = (bucket.sums[vital] || 0) + amt * w * scale;
+                });
             });
         });
         const out = {};
         Object.keys(perKey).forEach(k => {
             const b = perKey[k];
             const cap = b.f > b.maxDoses ? b.maxDoses / b.f : 1;
-            Object.keys(b.sums).forEach(field => {
-                const targets = EFFECT_TARGETS[field];
-                targets.forEach(([vital, scale]) => {
-                    // A rate-driven vital (warming/cooling temperature, insulin glucose/K+) is owned
-                    // by applyDriveTick in base space. Adding the envelope too would double-count.
-                    if (driven[vital]) return;
-                    out[vital] = (out[vital] || 0) + b.sums[field] * cap * scale;
-                });
+            Object.keys(b.sums).forEach(vital => {
+                // A rate-driven vital (warming/cooling temperature, insulin glucose/K+) is owned
+                // by applyDriveTick in base space. Adding the envelope too would double-count.
+                if (driven[vital]) return;
+                out[vital] = (out[vital] || 0) + b.sums[vital] * cap;
             });
         });
         return out;
@@ -711,6 +713,7 @@
         const out = {};
         (activeDrugs || []).forEach(d => {
             if (!d.ceilingVital || d.ceilingValue === null || d.ceilingValue === undefined) return;
+            if (d.muted && d.muted[d.ceilingVital]) return;
             if (!(pkFactor(d, t) > 0)) return;
             const prev = out[d.ceilingVital];
             out[d.ceilingVital] = prev === undefined ? d.ceilingValue : Math.max(prev, d.ceilingValue);
@@ -733,6 +736,13 @@
         if (Number.isFinite(ceil) && off > 0 && value > ceil) return value;
         return value - off;
     };
+
+    // THE FACILITATOR'S NUMBER STAYS. When the facilitator types an obs, every drug or intervention
+    // already given stops acting on that obs (high-flow oxygen no longer lifts a SpO2 typed lower,
+    // and its later onset or wear-off no longer moves it). Anything given AFTER the typed value acts
+    // as usual, as do Better/Worse, AUTO deterioration and the ventilator.
+    const muteDrugsFor = (activeDrugs, vital) => (activeDrugs || []).map(d =>
+        (d.muted && d.muted[vital]) ? d : { ...d, muted: { ...(d.muted || {}), [vital]: true } });
 
     const composeVitals = (base, activeDrugs, t, inArrest) => {
         const offs = drugOffsets(activeDrugs, t);
@@ -1633,6 +1643,6 @@
         initialCoreState, initialLogState, initialScenarioState, initialVitalsState, isCategoricalVital,
         isDrugSpent, isVentilated, isVitalValueSafe, keywordObjectivesFor, newRunId, normaliseDeteriorationType,
         normalisePupils, isAnaphylaxisScenario, isNeonate, paediatricAdenosineDose, paediatricDoseNotes, paediatricFieldScale, paralysisFromDrugs, paralysisPhase, pkFactor, pkPhase,
-        pkRemaining, safeApnoeaSeconds, sanitizeForRealtimeDatabase, scenarioText, tickActionFor
+        pkRemaining, safeApnoeaSeconds, sanitizeForRealtimeDatabase, scenarioText, tickActionFor, muteDrugsFor
     };
 })();

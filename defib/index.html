@@ -522,7 +522,10 @@
                 const A = window.AudioContext || window.webkitAudioContext;
                 if (A) { try { audioCtx = new A(); audioCtx.onstatechange = updateSoundOverlay; } catch (e) { audioCtx = null; } }
             }
-            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+            // Safari's 'interrupted' (screen lock, a call) needs the same resume as 'suspended'; and the
+            // iPad's silent setting mutes web audio unless the page asks for the 'playback' session.
+            try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
+            if (audioCtx && audioCtx.state !== 'running' && audioCtx.state !== 'closed') audioCtx.resume().catch(() => {});
             return audioCtx;
         }
         function tone(freq, dur, gain, type, endFreq) {
@@ -573,7 +576,10 @@
         }
         let soundDismissed = false;
         $('soundBtn').addEventListener('click', () => { audio(); soundDismissed = true; updateSoundOverlay(); });
-        document.addEventListener('pointerdown', () => { audio(); requestWakeLock(); tellHost(); }, { capture: true });
+        // On an iPad a finger's pointerdown does not count as a gesture for sound; the touchend and
+        // click after it do, so all of them are listened for.
+        const onPress = () => { audio(); requestWakeLock(); tellHost(); };
+        ['pointerdown', 'touchend', 'click', 'keydown'].forEach(t => document.addEventListener(t, onPress, { capture: true }));
         // Embedded in the room monitor: a tap here never reaches the monitor page, so it is told,
         // and enables its own sound (the monitor's alarms and beeps) from this gesture.
         function tellHost() {

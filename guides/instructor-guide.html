@@ -93,7 +93,7 @@
 <h3>Pre-flight checklist</h3>
 <ul class="checklist">
 <li>Open <a href="https://emsimulator.com">emsimulator.com</a> on the instructor laptop and note the session code</li>
-<li>Open the room monitor and tap <strong>Tap to Enable Sound</strong></li>
+<li>Open the room monitor and tap <strong>Tap to Enable Sound</strong> if it shows (it only appears while the browser is blocking sound)</li>
 <li>Link the defib tablet, if you are using one</li>
 <li>Check the badge on the instructor screen reads <strong>Live</strong> and names the linked screens</li>
 <li>Load your scenario and read its brief</li>
@@ -180,7 +180,8 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Section</th><th>Starts</th><th>Contains</th></tr></thead>
 <tbody>
-<tr><td>Patient details</td><td>Always shown</td><td>Name, age, scenario, diagnosis, story, any human factors challenge</td></tr>
+<tr><td>Patient details</td><td>Quick Sim only</td><td>A one-line summary of the patient. In other scenarios the scenario sits in the <strong>Patient now</strong> strip at the top instead: name, age, the story and what happens next, with a <strong>Full scenario</strong> button for everything from the briefing (history, injuries, starting obs, what Better and Worse do, key interventions, learning objectives)</td></tr>
+<tr><td>Patient picture</td><td>Always shown, in the <strong>Patient now</strong> strip</td><td>A full-body picture with what is attached, the injuries the scenario describes (for example a fractured leg drawn bent) and kit the team applies (collar, pelvic binder, traction splint, splints, tourniquet, chest seal, dressings). <strong>Change</strong>, beside the injuries, adds or removes injuries for this run</td></tr>
 <tr><td>Monitoring &amp; access</td><td>Closed</td><td>What is attached (ECG, sats, cuff, temperature, capnography, arterial line, IV access); <strong>Attach</strong> stays on the bar</td></tr>
 <tr><td>Monitor strip and vitals</td><td>Always shown</td><td>The waveforms, <strong>Show timer</strong>, <strong>Change rhythm</strong>, and tiles for HR, BP, SpO2, RR, Temp and ETCO2</td></tr>
 <tr><td>More obs</td><td>Open</td><td>GCS and glucose (plus pH and K+ in Full view)</td></tr>
@@ -228,6 +229,7 @@
 <li>Press <strong>Confirm</strong>. For BP there are two buttons instead (see below).</li>
 </ol>
 <p>A heart rate you set yourself is kept if you later change the rhythm. ARREST and ROSC reset it.</p>
+<p>What you type wins over treatments already given. For example, with high-flow oxygen on, setting the SpO2 lower takes it lower and keeps it there; the oxygen no longer pushes that number up. Treatments given afterwards act as normal.</p>
 <h3>Blood pressure</h3>
 <p>Changing the BP never sends it to the team by itself. The room monitor and the defib tablet keep showing the last cuff reading until the cuff cycles, as in real life. The cuff cycles when the team presses <strong>Cycle</strong> on the monitor or <strong>NIBP</strong> on the defib, when you press <strong>Cycle NIBP Now</strong>, or every 3 minutes while auto is on.</p>
 <p>When you set a BP with <strong>Now</strong> and the cuff is on, you choose:</p>
@@ -267,6 +269,7 @@
 <li><strong>Results with a real image</strong>: real X-rays, CT scans, 12-lead ECGs and ultrasound images, each with a written report. Untick <strong>Show the written report with the image</strong> to send the image alone, so the team has to interpret it.</li>
 <li>Written reports without an image, or a result you type.</li>
 </ul>
+<p>In Quick Sim and Defib Sim, <strong>Investigations: send or change</strong> lists every result with a purple <strong>Send</strong> button, so you can put any result on the patient screens whenever you choose.</p>
 <p>On the room monitor an image appears with its report; tap it to fill the screen. Many scenarios now come with their own real image (for example a tension pneumothorax, subarachnoid haemorrhage or anterior STEMI). When the team taps <strong>12-Lead</strong> in a scenario with a real ECG, they see that ECG while the patient is still in that rhythm; after a change of rhythm (for example into VF) the monitor draws the 12-lead from the live rhythm instead. The images are real, openly licensed clinical images from Wikimedia Commons; their authors are credited under each image and on the <a href="image-credits.html">image credits</a> page.</p>
 <h3>Deterioration</h3>
 <p><strong>Patient condition</strong> shows the mode:</p>
@@ -412,6 +415,7 @@
 
 <h2 id="debrief">Finishing and the debrief</h2>
 <p>Press <strong>Finish</strong> (or <kbd>F</kbd>) and confirm. The debrief opens on your laptop only. The room monitor shows "Simulation complete" and asks the team to turn to you, with no score or diagnosis.</p>
+<p>Pressed Finish by mistake? <strong>Back to scenario</strong>, at the top of the debrief, returns to the same run, paused, and the patient screens come back with it. Press START to carry on.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>Part of the debrief</th><th>What it shows</th></tr></thead>
 <tbody>
@@ -479,7 +483,7 @@
 <tr><td>Room monitor shows no numbers or "No sensor detected"</td><td>Monitoring not attached yet</td><td>Press <strong>Attach</strong>, or click the chips in Monitoring &amp; access</td></tr>
 <tr><td>A value you set is not on the room monitor</td><td>That sensor is not attached (your tile says "not on monitor")</td><td>Attach it when the team does</td></tr>
 <tr><td>BP on the room monitor has not changed</td><td>The cuff has not cycled (this is deliberate)</td><td>Press <strong>Cycle NIBP Now</strong>, or use <strong>Change and cycle cuff now</strong> when you set the BP</td></tr>
-<tr><td>No sound</td><td>Sound not enabled, muted, or playing on the other screen</td><td>Tap <strong>Tap to Enable Sound</strong> on the monitor; check for the red <strong>Muted</strong> button; check <strong>Tools → Sound plays on</strong>; check the device's volume</td></tr>
+<tr><td>No sound</td><td>Sound not enabled, muted, or playing on the other screen</td><td>Tap <strong>Tap to Enable Sound</strong> on the monitor if it shows; check for the red <strong>Muted</strong> button; check <strong>Tools → Sound plays on</strong>; check the device's volume</td></tr>
 <tr><td>Badge says Sync error</td><td>The internet connection has dropped</td><td>Check the connection on each device</td></tr>
 <tr><td>Room monitor or defib not following your changes</td><td>It is on a different session code, for example after <strong>New code</strong></td><td>Join it again with the current code</td></tr>
 <tr><td>Defib tablet asks for a code</td><td>It was opened without one</td><td>Type the session code. Or join the tablet as a patient screen instead (QR code in <strong>Screens</strong>) and tick <strong>Defib</strong> for it</td></tr>

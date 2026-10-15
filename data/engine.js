@@ -283,6 +283,9 @@
         // autoplay policy. The "Tap to Enable Sound" overlay resumes THIS ref, which is correct; what
         // was missing was recovery when iOS/tab-backgrounding re-suspends it, so watch statechange.
         const [audioCtxState, setAudioCtxState] = useState('unknown');
+        // Safari has a third state, 'interrupted' (screen lock, a call, Siri, another app's audio):
+        // it needs the same resume as 'suspended', and checking only 'suspended' left iPads silent.
+        const audioBlocked = (ctx) => !!ctx && ctx.state !== 'running' && ctx.state !== 'closed';
         useEffect(() => {
             if (!audioCtxRef.current) {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -291,23 +294,28 @@
             }
             const ctx = audioCtxRef.current;
             setAudioCtxState(ctx.state);
+            // Also before any tap, for a Safari that is set to allow sound on this site (see unmuteIos).
+            try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) {}
             const onStateChange = () => {
                 setAudioCtxState(ctx.state);
                 // Re-suspension is common on iOS and when a tab is backgrounded. Try to recover
                 // immediately; if the browser refuses without a gesture the overlay can be re-shown.
-                if (ctx.state === 'suspended') { try { ctx.resume().catch(() => {}); } catch (e) {} }
+                if (audioBlocked(ctx)) { try { ctx.resume().catch(() => {}); } catch (e) {} }
             };
             ctx.addEventListener('statechange', onStateChange);
             // iOS only lets a context resume inside a user gesture, so any tap or key press on the
             // page is used to wake a context that has been (re-)suspended; otherwise the cuff,
             // charge and alarm sounds stay silent until someone finds the "enable sound" button.
-            const onGesture = () => { if (ctx.state === 'suspended') resumeAudio(true); };
-            document.addEventListener('pointerdown', onGesture, true);
-            document.addEventListener('keydown', onGesture, true);
+            // enableAudio (below) also unlocks speech on iOS, as the monitor's button does, now that the button
+            // hides itself once sound is on.
+            // On an iPad a finger's pointerdown/touchstart does not count as a gesture for audio; only the
+            // touchend/click that follow do, so listen for those too.
+            const onGesture = () => { if (audioBlocked(ctx)) enableAudio(); };
+            const GESTURES = ['pointerdown', 'keydown', 'touchend', 'click'];
+            GESTURES.forEach(t => document.addEventListener(t, onGesture, true));
             return () => {
                 ctx.removeEventListener('statechange', onStateChange);
-                document.removeEventListener('pointerdown', onGesture, true);
-                document.removeEventListener('keydown', onGesture, true);
+                GESTURES.forEach(t => document.removeEventListener(t, onGesture, true));
             };
         }, []);
 
@@ -326,16 +334,19 @@
                     source.start(0);
                 } catch (e) { /* priming is best-effort */ }
             };
-            if (ctx.state === 'suspended') {
+            // Prime first, synchronously: iOS only counts what happens inside the gesture itself, and a
+            // buffer started after the resume promise settles is already outside it.
+            primeSilence();
+            if (audioBlocked(ctx)) {
                 try {
                     const p = ctx.resume();
                     if (p && typeof p.then === 'function') {
-                        return p.then(() => { primeSilence(); setAudioCtxState(ctx.state); return true; }).catch(e => { console.warn('AudioContext resume failed', e); return false; });
+                        return p.then(() => { setAudioCtxState(ctx.state); return ctx.state === 'running'; }).catch(e => { console.warn('AudioContext resume failed', e); setAudioCtxState(ctx.state); return false; });
                     }
                 } catch (e) { console.warn('AudioContext resume threw', e); return Promise.resolve(false); }
+                return Promise.resolve(ctx.state === 'running');
             }
-            primeSilence();
-            return Promise.resolve(true);
+            return Promise.resolve(ctx.state === 'running');
         };
 
         // Is this device the one that should be making noise right now?
@@ -375,7 +386,7 @@
                 if (!beepSensors.spo2 && !beepSensors.ecg) { retry(1000); return; }
 
                 if (!current.isMuted && ctx && isAudioRouted(current)) {
-                    if (ctx.state === 'suspended') { resumeAudio(); retry(500); return; }
+                    if (audioBlocked(ctx)) { resumeAudio(); retry(500); return; }
                     try {
                         const osc = ctx.createOscillator(); const gain = ctx.createGain();
                         osc.type = 'sine';
@@ -411,7 +422,7 @@
             const ctx = audioCtxRef.current;
             if (!ctx) return;
             try {
-                if (ctx.state === 'suspended') { resumeAudio(); return; }
+                if (audioBlocked(ctx)) { resumeAudio(); return; }
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.connect(gain); gain.connect(ctx.destination);
@@ -1439,7 +1450,7 @@
         const playInflationTone = (ctx) => { { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sawtooth'; osc.frequency.setValueAtTime(60, ctx.currentTime); osc.frequency.linearRampToValueAtTime(50, ctx.currentTime + 5); const filter = ctx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 150; osc.connect(filter); filter.connect(gain); gain.connect(ctx.destination); gain.gain.setValueAtTime(0.3, ctx.currentTime); gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 4.5); gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 5); osc.start(); osc.stop(ctx.currentTime + 5); } };
         
         const playMedicalSound = (type) => {
-            if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (ctx.state === 'suspended') ctx.resume(); const t = ctx.currentTime;
+            if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (audioBlocked(ctx)) resumeAudio(); const t = ctx.currentTime;
             
             if (type === 'charge') {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(1200, t + 2.0);
@@ -1464,7 +1475,7 @@
         const startAudioLoop = (type) => {
             const ctx = audioCtxRef.current;
             if (!ctx || loopNodesRef.current[type]) return;
-            if (ctx.state === 'suspended') resumeAudio();
+            if (audioBlocked(ctx)) resumeAudio();
             try {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); const lfo = ctx.createOscillator(); const lfoGain = ctx.createGain();
                 if (type === 'Wheeze') { osc.type = 'triangle'; osc.frequency.value = 400; lfo.frequency.value = 0.25; lfoGain.gain.value = 200; }
@@ -1667,9 +1678,39 @@
             lastPayloadRef.current = {};
             db.ref(`sessions/${sessionID}/live`).remove().catch(e => console.error('Could not clear the live patient:', e));
         };
+        // iPads and iPhones put web audio in the "ambient" category, which the Silent Mode switch (or
+        // Control Centre's silent bell) mutes even though the context is running. Asking for the
+        // "playback" category, as a media player does, lets it sound (Safari 16.4 and later). Older
+        // Safari switches category when an <audio> element plays, so a moment of silence is played
+        // inside the same gesture. Neither changes anything on other browsers.
+        const silentAudioRef = useRef(null);
+        const unmuteIos = () => {
+            try { if (navigator.audioSession && navigator.audioSession.type !== 'playback') navigator.audioSession.type = 'playback'; } catch (e) {}
+            if (navigator.audioSession) return;
+            const isIos = /iP(ad|hone|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (!isIos) return;
+            try {
+                if (!silentAudioRef.current) {
+                    // 0.1 s of 8 kHz 8-bit mono silence as a WAV
+                    const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+                    const str = (o, t) => { for (let i = 0; i < t.length; i++) b[o + i] = t.charCodeAt(i); };
+                    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVEfmt '); v.setUint32(16, 16, true);
+                    v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true);
+                    v.setUint16(32, 1, true); v.setUint16(34, 8, true); str(36, 'data'); v.setUint32(40, n, true); b.fill(128, 44);
+                    let bin = ''; b.forEach(x => { bin += String.fromCharCode(x); });
+                    const el = document.createElement('audio');
+                    el.setAttribute('playsinline', ''); el.setAttribute('x-webkit-airplay', 'deny'); el.preload = 'auto';
+                    el.src = 'data:audio/wav;base64,' + btoa(bin);
+                    silentAudioRef.current = el;
+                }
+                const pr = silentAudioRef.current.play();
+                if (pr && pr.catch) pr.catch(() => {});
+            } catch (e) {}
+        };
         // Called from the monitor's "Tap to Enable Sound" overlay, i.e. inside a real user gesture:
         // resume properly (awaiting the promise) and prime with a silent buffer for iOS.
         const enableAudio = () => {
+            unmuteIos();
             const p = resumeAudio(true);
             if (window.speechSynthesis) {
                 try {
