@@ -528,13 +528,27 @@
             if (audioCtx && audioCtx.state !== 'running' && audioCtx.state !== 'closed') audioCtx.resume().catch(() => {});
             return audioCtx;
         }
+        // One output stage for every sound, the same as data/engine.js: x4 (+12 dB), then anything above
+        // 0.7 of full scale is rounded off towards 1.0, so the tones are loud enough for a room
+        // without the loud ones clipping harshly.
+        function soundOut(ctx) {
+            if (ctx.__simOut) return ctx.__simOut;
+            try {
+                const BOOST = 4;
+                const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
+                const shaper = ctx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
+                shaper.connect(ctx.destination);
+                ctx.__simOut = shaper;
+            } catch (e) { ctx.__simOut = ctx.destination; }
+            return ctx.__simOut;
+        }
         function tone(freq, dur, gain, type, endFreq) {
             const ctx = audio(); if (!ctx) return null;
             const o = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime;
             o.type = type || 'sine'; o.frequency.setValueAtTime(freq, t);
             if (endFreq) o.frequency.linearRampToValueAtTime(endFreq, t + dur);
             g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-            o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t + dur);
+            o.connect(g); g.connect(soundOut(ctx)); o.start(t); o.stop(t + dur);
             return o;
         }
         let chargeTone = null;
@@ -561,7 +575,7 @@
                     while (nextClick < c.currentTime + 0.12) {
                         const o = c.createOscillator(), g = c.createGain();
                         o.type = 'square'; o.frequency.value = 1000; g.gain.value = 0.05;
-                        o.connect(g); g.connect(c.destination); o.start(nextClick); o.stop(nextClick + 0.05);
+                        o.connect(g); g.connect(soundOut(c)); o.start(nextClick); o.stop(nextClick + 0.05);
                         nextClick += 60 / 110;
                     }
                 }, 25);

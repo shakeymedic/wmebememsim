@@ -1056,13 +1056,24 @@ function beep(n, gap, freq) {
   if (!V.sound) return;
   try {
     actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    const t0 = actx.currentTime + 0.02, vol = 0.04 + 0.02 * V.loud;
+    // Loudness 1-10 now peaks at about 0.25-0.95 of full scale (it was 0.015-0.06, too quiet to hear in
+    // a room even at 10). Above 0.7 the output is rounded off towards 1.0 so several alarms at once
+    // do not clip harshly (the same stage as data/engine.js).
+    if (!actx.__simOut) {
+      try {
+        const BOOST = 1;
+        const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
+        const shaper = actx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
+        shaper.connect(actx.destination); actx.__simOut = shaper;
+      } catch (e) { actx.__simOut = actx.destination; }
+    }
+    const t0 = actx.currentTime + 0.02, vol = (0.04 + 0.02 * V.loud) * 4 * 4;
     for (let i = 0; i < n; i++) {
       const o = actx.createOscillator(), g = actx.createGain();
       o.type = 'square'; o.frequency.value = freq;
       g.gain.setValueAtTime(0, t0 + i * gap); g.gain.linearRampToValueAtTime(vol * 0.25, t0 + i * gap + 0.02);
       g.gain.setValueAtTime(vol * 0.25, t0 + i * gap + 0.13); g.gain.linearRampToValueAtTime(0, t0 + i * gap + 0.16);
-      o.connect(g).connect(actx.destination); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.18);
+      o.connect(g).connect(actx.__simOut); o.start(t0 + i * gap); o.stop(t0 + i * gap + 0.18);
     }
   } catch (e) { /* audio not available */ }
 }

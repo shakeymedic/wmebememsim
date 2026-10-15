@@ -120,3 +120,23 @@ test('defib tablet: charge, shock, metronome and the cuff pump sound on the tabl
   expect(errors).toEqual([]);
   expect(defibErrors).toEqual([]);
 });
+
+test('every sound goes through the loud output stage: a pulse beep comes out about 4x louder, and a shock does not clip', async ({ page }) => {
+  await page.goto('/index.html');
+  await expect.poll(() => page.evaluate(() => typeof window.simSoundOut)).toBe('function');
+  const peaks = await page.evaluate(async () => {
+    const render = async (gainPeak, type) => {
+      const ctx = new OfflineAudioContext(1, 24000, 48000);
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.value = 600; g.gain.value = gainPeak;
+      o.connect(g); g.connect(window.simSoundOut(ctx)); o.start(0); o.stop(0.2);
+      const d = (await ctx.startRendering()).getChannelData(0);
+      return d.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+    };
+    return { beep: await render(0.1, 'sine'), shock: await render(1.0, 'sawtooth') };
+  });
+  expect(peaks.beep).toBeGreaterThan(0.38);
+  expect(peaks.beep).toBeLessThan(0.42);
+  expect(peaks.shock).toBeLessThanOrEqual(1.0);
+  expect(peaks.shock).toBeGreaterThan(0.9);
+});
