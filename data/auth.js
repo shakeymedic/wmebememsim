@@ -40,24 +40,29 @@
     // ---- ENTITLEMENT KEYS ----------------------------------------------------------------------
     // Declared centrally so the admin panel, the gate and the future payment webhook agree.
     const ENTITLEMENT_KEYS = [
-        { key: 'rcuk',    label: 'ALS and other courses (RCUK)', note: 'Unlocks the ALS and other non-ETC course scenarios.' },
+        { key: 'rcuk',    label: 'ALS and other courses (RCUK)', note: 'Unlocks the ALS scenarios and any course without its own access (not ETC or CABC).' },
         { key: 'etc',     label: 'ETC',                          note: 'Unlocks the ETC (European Trauma Course) scenarios and their images.' },
+        { key: 'cabc',    label: 'CABC',                         note: 'Unlocks the CABC course scenarios and their images.' },
         { key: 'premium', label: 'Premium (future paid tier)',   note: 'Reserved. Not sold yet; no payment path is connected.' }
     ];
-    const DEFAULT_ENTITLEMENTS = { rcuk: false, etc: false, premium: false, expiresAt: null };
+    const DEFAULT_ENTITLEMENTS = { rcuk: false, etc: false, cabc: false, premium: false, expiresAt: null };
 
     // ---- COURSE ACCESS -------------------------------------------------------------------------
     // Each course is released separately, because different people are entitled to each. A course
     // has its own entitlement key and its own place in the database, and database.rules.json lets
     // only accounts holding that key read it. Scenarios are routed by their `course` field: ETC to
-    // courseScenarios/etc, everything else (ALS and older uploads) to restrictedScenarios.
+    // courseScenarios/etc, CABC to courseScenarios/cabc, everything else (ALS and older uploads) to
+    // restrictedScenarios. A new course needs only a line here: the courseScenarios/$course rule
+    // already covers any key.
     const COURSE_ACCESS = [
         { key: 'rcuk', name: 'ALS and other courses', short: 'ALS', path: 'restrictedScenarios', images: null },
-        { key: 'etc',  name: 'ETC (European Trauma Course)', short: 'ETC', path: 'courseScenarios/etc', images: 'courseImages/etc' }
+        { key: 'etc',  name: 'ETC (European Trauma Course)', short: 'ETC', path: 'courseScenarios/etc', images: 'courseImages/etc' },
+        { key: 'cabc', name: 'CABC', short: 'CABC', path: 'courseScenarios/cabc', images: 'courseImages/cabc' }
     ];
     const courseKeyFor = (sc) => {
         const c = String((sc && sc.course) || '').trim().toUpperCase();
-        return c === 'ETC' ? 'etc' : 'rcuk';
+        const own = COURSE_ACCESS.find(x => x.key !== 'rcuk' && x.short.toUpperCase() === c);
+        return own ? own.key : 'rcuk';
     };
     window.COURSE_ACCESS = COURSE_ACCESS;
     window.courseKeyFor = courseKeyFor;
@@ -826,7 +831,7 @@
             if (typeof im.credit !== 'string' || !im.credit.trim()) { bad.push(`image ${id}: needs a credit`); return; }
             const key = courseKeyFor(im);
             const course = COURSE_ACCESS.find(c => c.key === key);
-            if (!course || !course.images) { bad.push(`image ${id}: images are only stored for ETC`); return; }
+            if (!course || !course.images) { bad.push(`image ${id}: images are only stored for courses with their own access (${COURSE_ACCESS.filter(c => c.images).map(c => c.short).join(', ')})`); return; }
             images[id] = { key, value: { src: im.src, credit: im.credit.slice(0, 400), modality: String(im.modality || '').slice(0, 16), ...(Number.isFinite(im.w) ? { w: im.w } : {}), ...(Number.isFinite(im.h) ? { h: im.h } : {}) } };
         });
         if (!Object.keys(ok).length && !Object.keys(images).length) return { error: bad.length ? `No scenarios could be read (${bad.slice(0, 3).join('; ')}).` : 'The file has no scenarios in it.' };
@@ -891,7 +896,7 @@
         return (
             <div className="border-t border-slate-700 mt-3 pt-3" data-testid="course-upload">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-amber-400 mb-1 flex items-center gap-1"><Lucide icon="upload" className="w-3 h-3"/> Course scenarios</div>
-                <p className="text-[11px] text-slate-400 mb-2">Upload a course scenario file (JSON). ETC scenarios and images are only readable with ETC access; all others with ALS access. Scenarios with the same id are replaced; others already in the database are kept.</p>
+                <p className="text-[11px] text-slate-400 mb-2">Upload a course scenario file (JSON). ETC and CABC scenarios and images are only readable with access to that course (by their course field); all others with ALS access. Scenarios with the same id are replaced; others already in the database are kept.</p>
                 <label className="inline-flex items-center gap-2 text-xs text-slate-200">
                     <span className="sr-only">Course scenario file</span>
                     <input type="file" accept="application/json,.json" aria-label="Course scenario file" onChange={onFile} className="text-xs text-slate-300 file:mr-2 file:rounded file:border file:border-slate-600 file:bg-slate-900 file:px-2 file:py-1 file:text-slate-200" />
@@ -1054,7 +1059,7 @@
     // Opened from the header once signed in: who you are, sign out, and (only if you want it) a
     // request for access to course scenarios. Course access is opt-in here rather than a status
     // badge in the header, because most people never need it.
-    const COURSE_ACCESS_TEXT = 'Scenarios from specific courses (for example ALS and ETC) are copyrighted, so they are only released to approved course faculty and participants. Each course is approved separately.';
+    const COURSE_ACCESS_TEXT = 'Scenarios from specific courses (for example ALS, ETC and CABC) are copyrighted, so they are only released to approved course faculty and participants. Each course is approved separately.';
     // One row per course: approved, requested, or a Request button. Also used by the locked
     // Course scenarios section (data/screens/setup.js).
     const courseAccessState = (auth, key) => {
