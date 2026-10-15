@@ -795,6 +795,8 @@
                     }
                 }
             }
+            // Put on by the team after set-up kit came off: it is theirs now (scenario.setupKit, setUpIntervention).
+            if (action.type === 'continuous' && Array.isArray(scenario.setupKit) && scenario.setupKit.indexOf(key) !== -1) dispatch({ type: 'UPDATE_SCENARIO', payload: { ...scenario, setupKit: scenario.setupKit.filter(k => k !== key) } });
             if (action.type === 'continuous') { newActive.add(key); addLogEntry(logMsg, 'action'); } else { newCounts[key] = count; addLogEntry(logMsg, 'action'); }
             // WAVE 9 / ROOT FIX: a DELTA, not the whole set/counts object. Two interventions applied
             // in the same tick (two clicks in one batch, a batch helper, or the Firebase command
@@ -1878,6 +1880,9 @@
             if (!cur.scenario || !action) return;
             const sensor = key === 'Obs' || STANDARD_SENSOR_KEYS.indexOf(key) !== -1;
             const on = sensor ? isSensorAttached(getSensors(cur), key) : cur.activeInterventions.has(key);
+            // Remembered on the scenario (scenario.setupKit) so the debrief does not count it as the team's.
+            const kitList = (Array.isArray(cur.scenario.setupKit) ? cur.scenario.setupKit : []).filter(k => k !== key);
+            dispatch({ type: 'UPDATE_SCENARIO', payload: { ...cur.scenario, setupKit: on ? kitList : kitList.concat([key]) } });
             if (on) {
                 dispatch(sensor ? { type: 'DETACH_SENSOR', payload: key } : { type: 'REMOVE_INTERVENTION', payload: key });
                 dropPendingEffects(key);

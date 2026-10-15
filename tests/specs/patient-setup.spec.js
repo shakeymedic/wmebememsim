@@ -32,6 +32,7 @@ test('Quick Sim: set up injuries and kit before START, then show the picture on 
   const log = await page.evaluate(() => window.__simEngine.state.log.map(l => l.msg));
   expect(log).toContain('Set-up: Tourniquet already in place when the team arrives.');
   expect(log.some(m => /High flow oxygen applied/.test(m))).toBe(false);
+  expect(await page.evaluate(() => window.__simEngine.state.scenario.setupKit)).toEqual(['Tourniquet', 'IV Access', 'Oxygen']);
 
   // Show it on the monitor, before START
   await dlg.getByTestId('picture-on-monitor').click();
