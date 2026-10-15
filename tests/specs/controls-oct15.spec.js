@@ -169,3 +169,10 @@ test('an interrupted AudioContext (iPad) keeps the sound button and a tap resume
   expect(await monitor.evaluate(() => window.__fakeCtxs.reduce((n, c) => n + c.__resumes, 0))).toBeGreaterThan(0);
   expect(await monitor.evaluate(() => window.__monitorEngine.audioContextState)).toBe('running');
 });
+
+test('the bottom of the page shows which deploy this is', async ({ page }) => {
+  await openController(page);
+  const v = page.getByTestId('app-version');
+  await expect(v).toBeVisible();
+  await expect(v).toHaveText(/^Version \d{4}\.\d{2}\.\d{2} \d{2}:\d{2} · \w+$/);
+});
