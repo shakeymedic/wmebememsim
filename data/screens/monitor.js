@@ -311,7 +311,8 @@
         // A restricted course image (e.g. an ETC X-ray) the facilitator chose to show. It is not in the
         // app: the controller copies the one being shown to the session, and it is registered here
         // so the result card can show it like any other image, with its credit.
-        const [, setCourseImageTick] = useState(0);
+        const [courseImageTick, setCourseImageTick] = useState(0);
+        const pendingImage = useRef(null);   // a result's image that was not registered yet when it came in
         useEffect(() => {
             if (!sessionID || !window.db || !INV || !INV.registerImage) return;
             const ref = window.db.ref(`sessions/${sessionID}/courseImage`);
@@ -465,11 +466,20 @@
                     if (type === 'ECG' && image && src.imageReport) content = src.imageReport;
                 }
                 if (image && type === 'ECG' && INV && !INV.ecgImageFits(image, state.rhythm)) image = null;
-                if (image && !(INV && INV.imageFor(image))) image = null;
+                // A course image the controller copies to the session can arrive just after its result:
+                // remember it, and the effect below adds it to the card once it is registered.
+                pendingImage.current = null;
+                if (image && !(INV && INV.imageFor(image))) { if (String(image).startsWith('course:')) pendingImage.current = image; image = null; }
                 setViewImage(null);
                 setInvToast({ title, content, image, hideReport: !!monitorPopup.hideReport });
             }
         }, [monitorPopup, scenario]);
+        useEffect(() => {
+            const key = pendingImage.current;
+            if (!key || !(INV && INV.imageFor(key))) return;
+            pendingImage.current = null;
+            setInvToast(t => (t && !t.image) ? { ...t, image: key } : t);
+        }, [courseImageTick]);
 
         // A tap inside the embedded defib or ventilator (iframes) never reaches this page, so the
         // device pages post a message on their first touch and the monitor's sound is enabled from

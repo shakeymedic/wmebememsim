@@ -282,6 +282,13 @@ test('course images: the mark sheet shows them with their credit and sends one t
   await page.getByRole('button', { name: 'Start Scenario' }).click();
   await pressStart(page);
   const monitor = await context.newPage();
+  // The image's copy can reach the monitor after the result itself (seen under load in CI): hold it back
+  // a second on this monitor, and the open result card must still pick it up.
+  await monitor.addInitScript(() => {
+    const d = Object.getOwnPropertyDescriptor(BroadcastChannel.prototype, 'onmessage');
+    Object.defineProperty(BroadcastChannel.prototype, 'onmessage', { configurable: true, get() { return d.get.call(this); },
+      set(fn) { d.set.call(this, fn && ((e) => (e.data && /courseImage/.test(e.data.path || '')) ? setTimeout(() => fn.call(this, e), 1000) : fn.call(this, e))); } });
+  });
   await monitor.goto(`/index.html?mode=monitor&session=${code}`);
   await expect.poll(() => monitor.evaluate(() => !!(window.__monitorEngine && window.__monitorEngine.state.lastUpdate))).toBe(true);
   { const snd = monitor.getByText('Tap to Enable Sound'); if (await snd.count()) await snd.click({ force: true }); }
