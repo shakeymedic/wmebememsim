@@ -191,7 +191,7 @@
         );
     };
 
-    const MediaBlock = ({ scenario, onShowImage }) => {
+    const MediaBlock = ({ scenario, onShowImage, onClearImage }) => {
         const list = media(scenario);
         const [withReport, setWithReport] = useState(true);
         if (!list.length) return null;
@@ -207,13 +207,17 @@
                         </label>
                     )}
                     <ul className="grid sm:grid-cols-2 gap-2">{list.map((m, i) => <MediaThumb key={`${m.image}-${i}`} scenario={scenario} item={m} onShow={onShowImage} withReport={withReport} />)}</ul>
+                    {onClearImage && (
+                        <button type="button" onClick={onClearImage} data-testid="mark-media-clear"
+                                className="mt-2 text-[11px] uppercase font-bold px-3 py-2 rounded border border-red-500 text-red-200 hover:bg-red-900/40">Clear from the patient screens</button>
+                    )}
                 </div>
             </Block>
         );
     };
 
     // The whole facilitator pack. `marks`/`onMark` add A/N buttons to the criteria.
-    const MarkSheetBody = ({ scenario, marks, onMark, onShowImage }) => {
+    const MarkSheetBody = ({ scenario, marks, onMark, onShowImage, onClearImage }) => {
         const ms = get(scenario);
         if (!ms) return null;
         const setup = ms.setup && typeof ms.setup === 'object' ? ms.setup : {};
@@ -268,7 +272,7 @@
                         </dl>
                     </Block>
                 )}
-                <MediaBlock scenario={scenario} onShowImage={onShowImage} />
+                <MediaBlock scenario={scenario} onShowImage={onShowImage} onClearImage={onClearImage} />
                 {items(scenario).length > 0 && <Block title={onMark ? 'Mark sheet' : 'Mark scheme'} tone="text-fuchsia-300"><Criteria scenario={scenario} marks={marks} onMark={onMark} /></Block>}
                 {(ms.summary || asList(ms.debriefPoints).length > 0) && (
                     <Block title="Debrief: learning points" tone="text-violet-300">
@@ -332,7 +336,7 @@
 
     // ---- the modal (scenario list, briefing and controller) --------------------------------------
     // `onShowImage(item, withReport)` (controller only) adds Show on monitor to each course image.
-    const MarkSheetModal = ({ scenario, onClose, onShowImage }) => {
+    const MarkSheetModal = ({ scenario, onClose, onShowImage, onClearImage }) => {
         const { Modal, Button, Lucide } = window;
         if (!scenario || !get(scenario)) return null;
         return (
@@ -347,7 +351,7 @@
                         <Button variant="secondary" onClick={onClose} className="h-8 px-3 text-xs">Close</Button>
                     </div>
                 </div>
-                <div className="overflow-y-auto p-3"><MarkSheetBody scenario={scenario} onShowImage={onShowImage} /></div>
+                <div className="overflow-y-auto p-3"><MarkSheetBody scenario={scenario} onShowImage={onShowImage} onClearImage={onClearImage} /></div>
             </Modal>
         );
     };

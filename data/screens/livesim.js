@@ -1030,7 +1030,7 @@
         const courseMedia = (MSX && MSX.media && scenario) ? MSX.media(scenario) : [];
         const showCourseImage = (item, withReport) => MSX.showOnMonitor({ sim, sessionID, scenario, item, withReport });
         useEffect(() => () => { if (courseMedia.length && MSX && MSX.clearMonitorImage) MSX.clearMonitorImage(sessionID); }, [sessionID, courseMedia.length]);
-        const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); };
+        const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); addLogEntry('Results and images cleared from the patient screens', 'system'); };
 
         // A narrow monitor panel (small laptop, or dragged narrow) gets the compact tiles too: the
         // large tiles size their numbers by SCREEN width, so in a narrow panel "120/75" was clipped.
@@ -1343,9 +1343,10 @@
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
                          {quickSim ? (
-                         <div className="flex-none bg-slate-800 p-2 rounded border-l-4 border-sky-500 shadow-md flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                                <div className="text-[9px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1"><Lucide icon="sliders" className="w-3 h-3"/> {rawScenario && rawScenario.ventSim ? `Ventilator Sim — ${rawScenario.ventSim.name}` : 'Quick Sim — no scenario'}</div>
+                         <div className={`flex-none bg-slate-800 rounded border-l-4 border-sky-500 shadow-md flex items-center justify-between gap-2 ${shortScreen ? 'px-2 py-1' : 'p-2'}`} data-testid="quicksim-patient">
+                            {/* One line on a laptop, so the investigations fit above Rhythm & resus */}
+                            <div className={`min-w-0 ${shortScreen ? 'flex items-baseline gap-2' : ''}`}>
+                                <div className="text-[9px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1 flex-none"><Lucide icon="sliders" className="w-3 h-3"/> {rawScenario && rawScenario.ventSim ? `Ventilator Sim — ${rawScenario.ventSim.name}` : 'Quick Sim — no scenario'}</div>
                                 <div className="text-sm text-white font-bold truncate">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex}{scenario.wetflag?.weight ? `, ${scenario.wetflag.weight} kg` : ''})</div>
                             </div>
                             {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
@@ -1514,6 +1515,15 @@
 
                         {/* ---- RHYTHM & RESUS, under the monitor strip so it is on screen on a laptop: arrest/ROSC, the arrest view and defib, NIBP, WETFLAG,
                              the rhythm and shock summary, and the defib controls when open. ---- */}
+                        {/* QUICK SIM INVESTIGATIONS, in the obs column just above Rhythm & resus (Jake, 15 Oct 2026):
+                            what each investigation button on the patient monitor gives, Send, and Clear screens
+                            (data/screens/invresults.js). Closed by default. */}
+                        {quickSim && window.InvResults && (
+                            <Section id="quickInvResults" tone="card" title="Investigations: send or change" defaultOpen={false}
+                                     summary={invChangedSummary(scenario)}>
+                                <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
+                            </Section>
+                        )}
                         <Section id="resus" title="Rhythm & resus" summary={resusSummary} defaultOpen={true}>
                         <div className="flex flex-col gap-2">
                         <div className="flex-none grid grid-cols-2 gap-2">
@@ -2000,16 +2010,6 @@
                                     })}
                                 </div>
                             </div>
-
-                            {/* INVESTIGATION RESULTS: what each investigation button on the patient
-                                monitor gives (data/screens/invresults.js). Closed by default; unchanged,
-                                the buttons give the same results as before. */}
-                            {window.InvResults && (
-                                <Section id="quickInvResults" tone="card" title="Investigations: send or change" defaultOpen={false}
-                                         summary={invChangedSummary(scenario)}>
-                                    <window.InvResults.LiveResults sim={sim} addLogEntry={addLogEntry} />
-                                </Section>
-                            )}
 
                             {/* EVENT LOG, inline rather than behind the log modal: with nothing else
                                 competing for this pane there is room to keep it permanently visible. */}
@@ -2546,7 +2546,7 @@
                     </Modal>
                 )}
 
-                {showMarkSheet && hasMarkSheet && <window.MarkScheme.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} onShowImage={showCourseImage} />}
+                {showMarkSheet && hasMarkSheet && <window.MarkScheme.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} onShowImage={showCourseImage} onClearImage={clearInvOnMonitor} />}
                 {showKeyHelp && (
                     <Modal label="Keyboard shortcuts" onClose={()=>setShowKeyHelp(false)}>
                         <div className="bg-slate-800 p-6 rounded-lg border border-slate-600 w-full max-w-sm shadow-2xl">

@@ -240,10 +240,30 @@
             setSent(type);
             setTimeout(() => setSent(t => (t === type ? null : t)), 2500);
         };
+        // Take a result or image back off the patient screens. The controller only knows what it sent;
+        // the button also clears a result the team opened on the monitor themselves.
+        const popup = state.monitorPopup || {};
+        const showing = popup.type ? (SHORT[popup.type] || popup.type) : null;
+        const clear = () => {
+            if (!sim.clearInvestigation) return;
+            sim.clearInvestigation();
+            setSent(null);
+            if (addLogEntry) addLogEntry('Results and images cleared from the patient screens', 'system');
+        };
         const cur = editing ? rows.filter(r => r.type === editing)[0] : null;
         const scenarioVbg = liveGas || scenario.vbg || (scenario.investigations || {}).vbg || null;
         return (
             <>
+                {canSend && sim.clearInvestigation && (
+                    <div className="flex items-center gap-2 mb-2 p-1.5 rounded border border-slate-700 bg-slate-900" data-testid="inv-on-screens">
+                        <div className="min-w-0 flex-1 text-[11px] text-slate-300">
+                            {showing ? <>On the patient screens: <b className="text-white">{showing}</b></> : 'Nothing sent to the patient screens just now.'}
+                        </div>
+                        <button type="button" onClick={clear} data-testid="inv-clear-screens"
+                                aria-label="Clear results and images from the patient screens"
+                                className="flex-none text-[10px] uppercase font-bold px-2 py-1.5 rounded border border-red-500 text-red-200 hover:bg-red-900/40">Clear screens</button>
+                    </div>
+                )}
                 <ResultsPanel rows={rows} onEdit={setEditing} onReset={(t) => apply(t, null)} resetTitle="Back to the scenario's own result"
                               onSend={canSend ? send : null} sent={sent}
                               intro={intro === undefined ? (canSend
