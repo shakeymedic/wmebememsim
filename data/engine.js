@@ -517,6 +517,45 @@
             } 
         }, [state.soundEffect, isMonitorMode, state.audioOutput]);
         
+        // The device's built-in voice, for typed words and any phrase without a recorded clip. Its
+        // loudness is the device's own: the page cannot raise it.
+        const speakAloud = (text) => {
+            if (!text || !('speechSynthesis' in window)) return;
+            stopVoiceClip();
+            window.speechSynthesis.cancel(); 
+            if (window.speechSynthesis.paused) window.speechSynthesis.resume(); 
+            const utterance = new SpeechSynthesisUtterance(text); 
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length > 0) {
+                const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en-gb')) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
+                utterance.voice = enVoice || voices[0];
+            }
+            window.speechSynthesis.speak(utterance); 
+        };
+        // Recorded voice clips (voices/<voice>/<phrase>.mp3) play through the same boosted output as
+        // the alarms, so they are much louder than the built-in voice. Each is fetched the first time
+        // it is used and kept decoded for the rest of the session. A new phrase cuts off the last one.
+        const voiceBuffersRef = useRef({});
+        const voiceSourceRef = useRef(null);
+        const stopVoiceClip = () => { try { if (voiceSourceRef.current) voiceSourceRef.current.stop(); } catch (e) {} voiceSourceRef.current = null; };
+        const playVoiceClip = async (clip) => {
+            const ctx = audioCtxRef.current;
+            if (audioBlocked(ctx)) await resumeAudio();
+            let buffer = voiceBuffersRef.current[clip];
+            if (!buffer) {
+                const res = await fetch(`voices/${clip}.mp3`);
+                if (!res.ok) throw new Error(`voice clip ${clip}: ${res.status}`);
+                const bytes = await res.arrayBuffer();
+                buffer = await new Promise((ok, fail) => { const p = ctx.decodeAudioData(bytes, ok, fail); if (p && p.catch) p.catch(fail); });
+                voiceBuffersRef.current[clip] = buffer;
+            }
+            stopVoiceClip();
+            try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+            const src = ctx.createBufferSource();
+            src.buffer = buffer; src.connect(soundOut(ctx)); src.start();
+            voiceSourceRef.current = src;
+            src.onended = () => { if (voiceSourceRef.current === src) voiceSourceRef.current = null; };
+        };
         const lastSpeechRef = useRef(0);
         useEffect(() => { 
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) { 
@@ -524,17 +563,11 @@
                 const first = !seenSpeechRef.current; seenSpeechRef.current = true;
                 if (first && Date.now() - state.speech.timestamp > 8000) return;
                 const shouldPlay = (isMonitorMode && (state.audioOutput === 'monitor' || state.audioOutput === 'both')) || (!isMonitorMode && (state.audioOutput === 'controller' || state.audioOutput === 'both')); 
-                if (shouldPlay && 'speechSynthesis' in window) { 
-                    window.speechSynthesis.cancel(); 
-                    if (window.speechSynthesis.paused) window.speechSynthesis.resume(); 
-                    const utterance = new SpeechSynthesisUtterance(state.speech.text); 
-                    const voices = window.speechSynthesis.getVoices();
-                    if (voices.length > 0) {
-                        const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
-                        utterance.voice = enVoice || voices[0];
-                    }
-                    window.speechSynthesis.speak(utterance); 
-                } 
+                if (!shouldPlay) return;
+                const clip = state.speech.clip;
+                if (clip && window.VOICE_CLIPS && window.VOICE_CLIPS.includes(clip) && audioCtxRef.current) {
+                    playVoiceClip(clip).catch(() => speakAloud(state.speech.text));
+                } else speakAloud(state.speech.text);
             } 
         }, [state.speech, isMonitorMode, state.audioOutput]);
 
@@ -1426,7 +1459,9 @@
                 addLogEntry(`Rhythm check: still ${RG.labelFor(rid)}.${adrenaline ? '' : ' Adrenaline improves the chance of ROSC at the next check.'}`, 'info');
             }
         };
-        const speak = (text) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
+        // `clip` ('voice/phrase') names a recorded clip from the voice library (data/voices.js); the screen
+        // that plays it falls back to the device's built-in voice if it has no such clip.
+        const speak = (text, clip = null) => { dispatch({ type: 'TRIGGER_SPEAK', payload: text, clip }); addLogEntry(`Patient: "${text}"`, 'manual'); }; 
         const playSound = (type) => { dispatch({ type: 'TRIGGER_SOUND', payload: type }); addLogEntry(`Sound: ${type}`, 'manual'); };
         const startTrend = (targets, durationSecs) => {
             const from = { ...stateRef.current.vitals };

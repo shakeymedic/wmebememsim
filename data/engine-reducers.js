@@ -775,7 +775,7 @@
                 return { ...state, nibp: { ...state.nibp, sys: safeSys, dia: safeDia, lastTaken: Date.now(), timer: state.nibp.interval, inflating: false, history: newHistoryArr } };
             case 'TOGGLE_NIBP_MODE': const newMode = state.nibp.mode === 'manual' ? 'auto' : 'manual'; return { ...state, nibp: { ...state.nibp, mode: newMode, timer: newMode === 'auto' ? state.nibp.interval : 0 } };
             case 'SET_NIBP': return { ...state, nibp: { ...state.nibp, sys: action.payload.sys, dia: action.payload.dia, lastTaken: Date.now(), inflating: false } };
-            case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, timestamp: Date.now(), source: 'controller' } };
+            case 'TRIGGER_SPEAK': return { ...state, speech: { text: action.payload, clip: action.clip || null, timestamp: Date.now(), source: 'controller' } };
             case 'TRIGGER_SOUND': return { ...state, soundEffect: { type: action.payload, timestamp: Date.now() } };
             case 'SET_AUDIO_OUTPUT': return { ...state, audioOutput: action.payload };
             case 'LIVE_CLEARED': return state.liveSeen ? { ...state, liveSeen: false } : state;
