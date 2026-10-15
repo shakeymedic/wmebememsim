@@ -58,3 +58,47 @@ test('the VBG prints on white paper with flags, limits, sample type and FiO2', a
   expect(errors).toEqual([]);
   expect(monErrors).toEqual([]);
 });
+
+test('the ABG button prints an arterial gas derived from the patient\'s gas, with an arterial pO2 and its limits', async ({ page, context }) => {
+  const errors = trackErrors(page);
+  const code = await openController(page);
+  await startQuickSim(page);
+  await page.evaluate(() => window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: window.ALL_SCENARIOS.find(s => s.id === 'AM013') }));
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.scenario && window.__simEngine.state.scenario.id)).toBe('AM013');
+  await pressStart(page);
+  await page.getByRole('button', { name: 'PAUSE', exact: true }).click();
+  const monitor = await openMonitor(context, code);
+  const monErrors = trackErrors(monitor);
+  // The venous gas first, for comparison
+  await monitor.getByRole('button', { name: 'VBG', exact: true }).click();
+  const vbg = monitor.getByTestId('inv-result').getByTestId('vbg-grid');
+  const vpco2 = Number((await vbg.getByTestId('gas-val-pCO2').innerText()).replace(/[^\d.]/g, ''));
+  const vph = Number((await vbg.getByTestId('gas-val-pH').innerText()).replace(/[^\d.]/g, ''));
+  await monitor.getByTestId('inv-result-close').click();
+
+  await monitor.getByRole('button', { name: 'ABG', exact: true }).click();
+  const card = monitor.getByTestId('inv-result');
+  await expect(card).toContainText('ABG Result');
+  const abg = card.getByTestId('vbg-grid');
+  await expect(abg.getByTestId('gas-sample')).toContainText('Arterial');
+  await expect(abg.getByTestId('gas-row-pO2')).toContainText('[ 10.0 \u2013 13.3 ]');
+  const apco2 = Number((await abg.getByTestId('gas-val-pCO2').innerText()).replace(/[^\d.]/g, ''));
+  const aph = Number((await abg.getByTestId('gas-val-pH').innerText()).replace(/[^\d.]/g, ''));
+  expect(apco2).toBeCloseTo(vpco2 - 0.8, 1);
+  expect(aph).toBeCloseTo(vph + 0.03, 2);
+  // Arterial pO2 follows the patient's SpO2 (Severinghaus): about 7.8 kPa at 90%
+  const po2At90 = await page.evaluate(() => {
+    const s = window.__simEngine.state;
+    return window.liveAbg(s.scenario, Object.assign({}, s.vitals, { spO2: 90 }), s.activeInterventions, s.time, 0.21).pO2;
+  });
+  expect(po2At90).toBeGreaterThan(7.4);
+  expect(po2At90).toBeLessThan(8.2);
+  // The controller can send it too
+  await monitor.getByTestId('inv-result-close').click();
+  await page.getByRole('button', { name: 'Investigations', exact: true }).click();
+  await page.getByRole('button', { name: 'Send ABG' }).click();
+  await expect(monitor.getByTestId('inv-result').getByTestId('gas-sample')).toContainText('Arterial');
+  if (process.env.ABG_SHOT) await monitor.waitForTimeout(800), await monitor.screenshot({ path: process.env.ABG_SHOT });
+  expect(errors).toEqual([]);
+  expect(monErrors).toEqual([]);
+});

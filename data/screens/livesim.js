@@ -2091,8 +2091,8 @@
                                 )}
                                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-1">Send a result to the monitor now</div>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                    {['ECG', 'VBG', 'X-ray', 'Urine', 'POCUS', 'CT'].map(type => (
-                                        <Button key={type} onClick={() => handleInvClick(type)} variant="outline" className="h-14 flex flex-col items-center justify-center gap-1">
+                                    {['ECG', 'VBG', 'ABG', 'X-ray', 'Urine', 'POCUS', 'CT'].map(type => (
+                                        <Button key={type} onClick={() => (type === 'ABG' ? revealInvestigation('ABG') : handleInvClick(type))} title={type === 'ABG' ? 'Sends the arterial gas now. It follows the VBG result above.' : undefined} variant="outline" className="h-14 flex flex-col items-center justify-center gap-1">
                                             <Lucide icon="activity" className="w-4 h-4 text-sky-400"/>
                                             <span className="text-xs font-bold">Send {type}</span>
                                         </Button>

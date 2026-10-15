@@ -1443,23 +1443,29 @@
                 // scenario.investigations.vbg  >  generateVbg('normal'). calculateDynamicVbg then
                 // applies TIME/TREATMENT DELTAS on top of that baseline; every key it does not
                 // model (pO2, Na, Ca) is carried through from the authored block untouched.
-                if (type === 'VBG' && !customText && cur.scenario && window.calculateDynamicVbg) {
+                if ((type === 'VBG' || type === 'ABG') && !customText && cur.scenario && window.calculateDynamicVbg) {
                     // window.liveVbg (data/generators.js) does exactly that, then reports the
-                    // patient's own modelled pH and K+ in the gas (they are not shown as obs).
-                    const dynamic = window.liveVbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time);
-                    // Pass the structured object — monitor.js will detect and render the table.
-                    // With what the analyser prints at the top: the sample type, when it was run, and the
-                    // inspired oxygen (the ventilator's setting when one
-                    // is breathing for the patient; room air when no oxygen is on; otherwise not entered).
+                    // patient's own modelled pH and K+ in the gas (they are not shown as obs). The ABG
+                    // is derived from the same gas (window.liveAbg).
+                    // Pass the structured object — monitor.js will detect and render the printout,
+                    // with what the analyser prints at the top: the sample type, when it was run, and
+                    // the inspired oxygen (the ventilator's setting when one is breathing for the
+                    // patient; room air when no oxygen is on; otherwise not entered).
                     const vd = window.VENT_ENGINE && window.VENT_ENGINE.driverFor ? window.VENT_ENGINE.driverFor(cur) : null;
                     const ventO2 = vd ? (Number(vd.phys && vd.phys.fio2) || (Number(vd.o2) > 0 ? Number(vd.o2) / 100 : null)) : null;
                     const OXYGEN = ['Oxygen', 'Preoxygenation', 'ApnoeicOxygenation', 'Bagging', 'NIV', 'CPAP', 'RSI', 'i-gel'];
                     const onOxygen = OXYGEN.some(k => cur.activeInterventions && cur.activeInterventions.has && cur.activeInterventions.has(k));
                     const sid = String((cur.scenario && (cur.scenario.id || cur.scenario.title || cur.scenario.patientName)) || 'SIM');
                     let h = 0; for (let i = 0; i < sid.length; i++) h = (h * 31 + sid.charCodeAt(i)) % 9000;
-                    finalCustomText = { __vbg: true, ...dynamic, sample: 'Venous', takenAt: Date.now(),
+                    const fio2 = ventO2 ? Math.min(1, Math.max(0.21, ventO2)) : (onOxygen ? null : 0.21);
+                    // The ABG's pO2 needs an FiO2 even when none is printed: on oxygen without a
+                    // ventilator, take about 0.6 (a high-flow mask; NIV, CPAP and a bag are similar).
+                    const dynamic = type === 'ABG'
+                        ? window.liveAbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time, fio2 || (onOxygen ? 0.6 : 0.21))
+                        : window.liveVbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time);
+                    finalCustomText = { __vbg: true, ...dynamic, sample: type === 'ABG' ? 'Arterial' : 'Venous', takenAt: Date.now(),
                         temp: 37.0,   // run at 37 °C, as an ED gas is unless the patient's temperature is entered
-                        fio2: ventO2 ? Math.min(1, Math.max(0.21, ventO2)) : (onOxygen ? null : 0.21),
+                        fio2,
                         patientId: 'SIM-' + String(1000 + h) };
                 }
 

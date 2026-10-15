@@ -923,6 +923,7 @@
                             assessor the team asked for it. */}
                         <InvBtn label="12-Lead" icon="activity" onClick={() => { setInvToast(null); setShow12Lead(true); if (sim.sendDeviceEvent) sim.sendDeviceEvent('REQUEST_12LEAD', {}); }} loading={loadingInvestigations?.['ECG']} />
                         <InvBtn label="VBG" icon="droplet" onClick={() => { setShow12Lead(false); revealInvestigation('VBG'); }} loading={loadingInvestigations?.['VBG']} />
+                        <InvBtn label="ABG" icon="droplet" onClick={() => { setShow12Lead(false); revealInvestigation('ABG'); }} loading={loadingInvestigations?.['ABG']} />
                         <InvBtn label="CXR" icon="image" onClick={() => { setShow12Lead(false); revealInvestigation('X-ray'); }} loading={loadingInvestigations?.['X-ray']} />
                         <InvBtn label="Urine" icon="flask-conical" onClick={() => { setShow12Lead(false); revealInvestigation('Urine'); }} loading={loadingInvestigations?.['Urine']} />
                         <InvBtn label="POCUS" icon="waves" onClick={() => { setShow12Lead(false); revealInvestigation('POCUS'); }} loading={loadingInvestigations?.['POCUS']} />

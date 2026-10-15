@@ -336,6 +336,38 @@ window.liveVbg = (scenario, vitals, activeInterventions, timeSeconds) => {
     return gas;
 };
 
+// THE ARTERIAL GAS (the monitor's ABG button, Jake 15 Oct 2026). The sim models one gas, the
+// venous one above (window.liveVbg); the ABG is derived from it with the usual venous-arterial
+// differences in a patient with an adequate circulation: arterial pH about 0.03 higher, pCO2 about
+// 0.8 kPa lower, bicarbonate about 1 mmol/L lower; K+, Na+, Ca2+, glucose and lactate taken as the
+// same. Arterial pO2 comes from the patient's true SpO2 (Severinghaus, inverted by Ellis) and, once
+// the saturation is too high to say anything (97% or more), from the alveolar gas equation with the
+// FiO2 and a modest A-a gradient. These are approximations for teaching, not a physiological model.
+window.liveAbg = (scenario, vitals, activeInterventions, timeSeconds, fio2) => {
+    const v = window.liveVbg(scenario, vitals, activeInterventions, timeSeconds);
+    const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    const a = Object.assign({}, v);
+    if (Number.isFinite(v.pH)) a.pH = Math.round(clamp(v.pH + 0.03, 6.5, 7.9) * 100) / 100;
+    if (Number.isFinite(v.pCO2)) a.pCO2 = Math.round(clamp(v.pCO2 - 0.8, 1.5, 20) * 10) / 10;
+    if (Number.isFinite(v.HCO3)) a.HCO3 = Math.round(clamp(v.HCO3 - 1, 1, 60) * 10) / 10;
+    const spo2 = Number(vitals && vitals.spO2);
+    const f = Number.isFinite(Number(fio2)) && Number(fio2) >= 0.21 ? Math.min(1, Number(fio2)) : 0.21;
+    // Ellis inversion of Severinghaus: PaO2 (mmHg) from a saturation fraction s.
+    const fromSat = (pct) => {
+        const s = clamp(pct, 1, 99.5) / 100;
+        const A = 11700 / (1 / s - 1), B = Math.sqrt(125000 + A * A);
+        return Math.cbrt(B + A) - Math.cbrt(B - A);
+    };
+    let pao2;
+    if (Number.isFinite(spo2) && spo2 < 97) pao2 = fromSat(Math.max(30, spo2)) / 7.5;   // (an arrest's SpO2 of 0: very low)
+    else {
+        const pAO2 = f * (101.3 - 6.3) - (Number.isFinite(a.pCO2) ? a.pCO2 : 5.3) / 0.8;   // kPa
+        pao2 = Math.max(fromSat(97) / 7.5, pAO2 - 2.0);
+    }
+    a.pO2 = Math.round(clamp(pao2, 2, 70) * 10) / 10;
+    return a;
+};
+
 window.generateUrine = (type = "normal") => {
     const base = { leuks: "-", nitrites: "-", blood: "-", ketones: "-", protein: "-", glucose: "-", bhcg: "Negative" };
     if(type === "uti") return { ...base, leuks: "+++", nitrites: "+" };
