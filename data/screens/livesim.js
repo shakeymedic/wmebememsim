@@ -348,6 +348,10 @@
         const [customLog, setCustomLog] = useState("");
         const [searchTerm, setSearchTerm] = useState("");
         const [speechText, setSpeechText] = useState(""); 
+        const [showVolume, setShowVolume] = useState(false);
+        const volumePct = (Number.isFinite(state.volume) ? state.volume : 1) * 100;
+        const lastVolumeRef = useRef(1);
+        const setVolume = (v) => { if (v > 0) lastVolumeRef.current = v; sim.dispatch({ type: 'SET_VOLUME', payload: v }); };
         // Patient voice library (data/voices.js): which recorded voice the stock phrases use. 'auto' picks
         // one from the patient's age and sex. Remembered on this device.
         const [voicePick, setVoicePickRaw] = useState(() => { try { return (window.localStorage && window.localStorage.getItem('wmebem_voice')) || 'auto'; } catch (e) { return 'auto'; } });
@@ -1208,6 +1212,31 @@
                                 <Lucide icon="volume-x" className="w-4 h-4 mr-1"/> Muted
                             </Button>
                         )}
+                        {/* Patient-screen volume (monitor, defib, ventilator and the patient's voice). */}
+                        {/* On a phone it lives in the Tools menu instead, so the toolbar stays in two rows. */}
+                        <div className="max-md:hidden">
+                            <Button ariaLabel={`Patient screen volume ${Math.round(volumePct)}%`} variant="outline" onClick={() => setShowVolume(o => !o)}
+                                    className={`h-8 px-2 text-xs font-bold ${volumePct === 0 ? 'text-red-400 border-red-500/60' : 'text-slate-200 border-slate-500/60'}`}>
+                                <Lucide icon={volumePct === 0 ? 'volume-x' : 'volume-2'} className="w-4 h-4 md:mr-1"/><span className="max-md:hidden">{Math.round(volumePct)}%</span>
+                            </Button>
+                        </div>
+                            {showVolume && (
+                                <div data-testid="volume-panel" className="fixed right-4 top-16 z-50 w-72 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-600 rounded shadow-2xl p-3 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <label htmlFor="volumeSlider" className="text-xs font-bold text-slate-300 uppercase">Patient screen volume</label>
+                                        <span className="font-mono text-sm text-white">{Math.round(volumePct)}%</span>
+                                    </div>
+                                    <input id="volumeSlider" type="range" min="0" max="150" step="10" value={Math.round(volumePct)}
+                                           onChange={(e) => setVolume(Number(e.target.value) / 100)} className="w-full accent-sky-500"/>
+                                    <div className="flex justify-between text-[10px] text-slate-400"><span>Off</span><span>Normal (100%)</span><span>Max</span></div>
+                                    <div className="flex gap-2">
+                                        <Button onClick={() => setVolume(volumePct === 0 ? (lastVolumeRef.current || 1) : 0)} variant={volumePct === 0 ? 'danger' : 'secondary'} className="h-9 flex-1 text-xs">{volumePct === 0 ? 'Unmute' : 'Mute all'}</Button>
+                                        <Button onClick={() => sim.dispatch({ type: 'TRIGGER_SOUND', payload: 'VolumeTest' })} variant="secondary" className="h-9 flex-1 text-xs">Test sound</Button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400">Sets the monitor, defib, ventilator and patient voice on every patient screen. Above 100% the quieter sounds (pulse beep, voice) get louder; the alarms are already near the most a device can play.</p>
+                                    <Button onClick={() => setShowVolume(false)} variant="outline" className="h-8 w-full text-xs">Done</Button>
+                                </div>
+                            )}
                         <ViewModeToggle />
                         {window.ScreenDeviceWarning && <window.ScreenDeviceWarning state={state} onOpen={() => setShowJoin(true)} />}
                         <Button ariaLabel="Screens: add patient screens and choose what each one shows" variant="outline" onClick={() => setShowJoin(true)}
@@ -1220,6 +1249,7 @@
                                 { label: 'Timer alerts', icon: 'bell', hint: 'T', onClick: () => setShowTimerModal(true) },
                                 { label: 'Full simulation log', icon: 'list', onClick: () => setShowLogModal(true) },
                                 { label: `Sound plays on: ${audioOutput === 'both' ? 'both' : (audioOutput === 'controller' ? 'this controller' : 'room monitor')}`, icon: 'volume-2', hint: 'change', onClick: cycleAudioOutput },
+                                { label: `Patient screen volume: ${Math.round(volumePct)}%`, icon: 'volume-2', onClick: () => setShowVolume(true) },
                                 { label: isMuted ? 'Unmute alarms' : 'Mute alarms', icon: isMuted ? 'volume-2' : 'volume-x', onClick: () => sim.dispatch({type: 'SET_MUTED', payload: !isMuted}) },
                                 { label: 'Keyboard shortcuts', icon: 'info', hint: '?', onClick: () => setShowKeyHelp(true) }
                             ]} />

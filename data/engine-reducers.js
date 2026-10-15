@@ -975,6 +975,7 @@
             }
             case 'CLEAR_POPUP': return { ...state, monitorPopup: { type: null, timestamp: Date.now(), customText: null } };
             case 'SET_MUTED': return { ...state, isMuted: action.payload };
+            case 'SET_VOLUME': { const v = Number(action.payload); return Number.isFinite(v) ? { ...state, volume: Math.max(0, Math.min(1.5, v)) } : state; }
             case 'TOGGLE_ETCO2': return { ...state, etco2Enabled: !state.etco2Enabled };
             case 'SET_ETCO2_PATHOLOGY': return { ...state, etco2Pathology: action.payload };
             // A point-of-care check. Records the value AT THIS MOMENT with both a

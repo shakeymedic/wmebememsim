@@ -32,11 +32,21 @@
             const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
             const shaper = ctx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
             shaper.connect(ctx.destination);
-            ctx.__simOut = shaper;
+            // The controller's volume (setSimVolume) sits in front of the limiter, so above 100% the
+            // quieter sounds keep getting louder while the loud ones stay just under clipping.
+            const volume = ctx.createGain(); volume.gain.value = ctx.__simVolume ?? 1;
+            volume.connect(shaper);
+            ctx.__simVol = volume;
+            ctx.__simOut = volume;
         } catch (e) { ctx.__simOut = ctx.destination; }
         return ctx.__simOut;
     };
     window.simSoundOut = simSoundOut;
+    const setSimVolume = (ctx, v) => {
+        if (!ctx) return;
+        ctx.__simVolume = v;
+        if (ctx.__simVol) { try { ctx.__simVol.gain.setTargetAtTime(v, ctx.currentTime, 0.05); } catch (e) { ctx.__simVol.gain.value = v; } }
+    };
 
     const useSimulation = (initialScenario, isMonitorMode = false, sessionID = null) => {
         const [vitalsState, rawDispatchVitals] = useReducer(vitalsReducer, initialVitalsState);
@@ -525,6 +535,8 @@
             window.speechSynthesis.cancel(); 
             if (window.speechSynthesis.paused) window.speechSynthesis.resume(); 
             const utterance = new SpeechSynthesisUtterance(text); 
+            utterance.volume = Math.min(1, volumeOf(stateRef.current));
+            if (utterance.volume <= 0) return;
             const voices = window.speechSynthesis.getVoices();
             if (voices.length > 0) {
                 const enVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en-gb')) || voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en'));
@@ -556,6 +568,14 @@
             voiceSourceRef.current = src;
             src.onended = () => { if (voiceSourceRef.current === src) voiceSourceRef.current = null; };
         };
+        // Volume: set on the controller (state.volume); the patient screens get it inside the synced
+        // defib object (see engine-sync.js). 0 is silent, 1 normal, 1.5 the most.
+        const volumeOf = (st) => {
+            const v = isMonitorMode ? (st.defib && st.defib.volume) : st.volume;
+            return Number.isFinite(v) ? Math.max(0, Math.min(1.5, v)) : 1;
+        };
+        const currentVolume = volumeOf(state);
+        useEffect(() => { setSimVolume(audioCtxRef.current, currentVolume); }, [currentVolume, audioCtxState]);
         const lastSpeechRef = useRef(0);
         useEffect(() => { 
             if (state.speech && state.speech.timestamp > lastSpeechRef.current) { 
@@ -1508,7 +1528,12 @@
         
         const playMedicalSound = (type) => {
             if (!audioCtxRef.current) return; const ctx = audioCtxRef.current; if (audioBlocked(ctx)) resumeAudio(); const t = ctx.currentTime;
-            
+
+            // Volume check from the controller: the critical alarm tone, twice.
+            if (type === 'VolumeTest') {
+                [0, 0.35].forEach(d => { const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.frequency.value = 880; osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0.3, t + d); gain.gain.exponentialRampToValueAtTime(0.001, t + d + 0.3); osc.start(t + d); osc.stop(t + d + 0.3); });
+                return;
+            }
             if (type === 'charge') {
                 const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(400, t); osc.frequency.exponentialRampToValueAtTime(1200, t + 2.0);
                 osc.connect(gain); gain.connect(soundOut(ctx)); gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(0.3, t + 0.1); gain.gain.setValueAtTime(0.3, t + 1.8); gain.gain.linearRampToValueAtTime(0, t + 2.0);

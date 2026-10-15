@@ -450,6 +450,7 @@
                 const run = v.defib && typeof v.defib.runId === 'string' ? v.defib.runId : '';
                 if (run && lastRunId && run !== lastRunId) freshDevice();
                 if (run) lastRunId = run;
+                setDeviceVolume(v.defib ? Number(v.defib.volume) : 1);
                 applyPatient(fromSession(v));
                 if (!staleChecked) { staleChecked = true; clearStaleDevice(engineDefibOf(v)); }
             }, err => setLinkState(false, 'Session ' + code + ' could not be read: ' + (err && err.message ? err.message : 'permission or network error') + '.', 'never'));
@@ -531,6 +532,11 @@
         // One output stage for every sound, the same as data/engine.js: x4 (+12 dB), then anything above
         // 0.7 of full scale is rounded off towards 1.0, so the tones are loud enough for a room
         // without the loud ones clipping harshly.
+        let deviceVolume = 1;
+        function setDeviceVolume(v) {
+            deviceVolume = Number.isFinite(v) ? Math.max(0, Math.min(1.5, v)) : 1;
+            if (audioCtx && audioCtx.__simVol) audioCtx.__simVol.gain.value = deviceVolume;
+        }
         function soundOut(ctx) {
             if (ctx.__simOut) return ctx.__simOut;
             try {
@@ -538,7 +544,10 @@
                 const N = 2049, c = new Float32Array(N); for (let i = 0; i < N; i++) { const x = (i / (N - 1)) * 2 - 1, a = Math.abs(x) * BOOST; c[i] = Math.sign(x) * (a <= 0.7 ? a : 0.7 + 0.3 * Math.tanh((a - 0.7) / 0.3)); }
                 const shaper = ctx.createWaveShaper(); shaper.curve = c; shaper.oversample = 'none';
                 shaper.connect(ctx.destination);
-                ctx.__simOut = shaper;
+                // The controller's volume (live.defib.volume), in front of the limiter.
+                const vol = ctx.createGain(); vol.gain.value = deviceVolume; vol.connect(shaper);
+                ctx.__simVol = vol;
+                ctx.__simOut = vol;
             } catch (e) { ctx.__simOut = ctx.destination; }
             return ctx.__simOut;
         }
