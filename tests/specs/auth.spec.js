@@ -70,7 +70,7 @@ test('restricted scenarios: locked without the entitlement, listed with it', asy
   // No approval status in the header by default
   await expect(page.getByText('pending', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
-  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC\)/ }).click();
+  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC, CABC\)/ }).click();
   await expect(page.getByText('This section is locked.')).toBeVisible();
   await page.getByRole('button', { name: 'Request ALS access' }).click();
   await expect(page.getByTestId('course-access-rcuk')).toContainText('Requested, awaiting approval');

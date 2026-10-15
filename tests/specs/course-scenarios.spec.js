@@ -48,7 +48,7 @@ async function signInWithAccess(page, role) {
 
 async function openCourseScenarios(page) {
   await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
-  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC\)/ }).click();
+  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC, CABC\)/ }).click();
   await expect(page.getByText('Workshop 1: Test fall')).toBeVisible({ timeout: 10000 });
 }
 
@@ -192,7 +192,7 @@ async function signInAs(page, entitlements, role) {
   await page.locator('form button[type=submit]').click();
   await expect(page.getByRole('button', { name: /^Your account/ })).toBeVisible();
   await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
-  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC\)/ }).click();
+  await page.getByRole('button', { name: /Course scenarios \(ALS, ETC, CABC\)/ }).click();
 }
 
 test('ALS and ETC access are separate: each account sees only the courses it is approved for', async ({ page }) => {
@@ -206,6 +206,54 @@ test('ALS and ETC access are separate: each account sees only the courses it is 
   await expect(more.getByTestId('course-access-etc')).toContainText('Access approved');
   await more.getByRole('button', { name: 'Request ALS access' }).click();
   await expect.poll(() => page.evaluate(([u]) => window.__fakeRtdb.get(`users/${u}/requestedAccess/rcuk`), [UID])).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('an approved course list says which course each scenario is from, not "restricted"', async ({ page }) => {
+  await openController(page);
+  await signInAs(page, { etc: true });
+  const c = card(page, 'ETC test workshop');
+  await expect(c).toBeVisible({ timeout: 10000 });
+  await expect(c.getByTestId('course-badge')).toHaveText('ETC');
+  await expect(c.getByText('restricted', { exact: true })).toHaveCount(0);
+});
+
+test('CABC is a course of its own: CABC access shows CABC only, and the upload puts it in its own place', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  // A long case summary used to widen the list past the screen and hide Mark sheet, Edit and Load.
+  const cabc = { ...workshop, id: 'CUST_CABC_T1', title: 'CABC test case', course: 'CABC', group: 'CABC trauma', patientProfileTemplate: 'A long pre-hospital alert. '.repeat(40) };
+  await page.evaluate(([s]) => window.__fakeRtdb.set('courseScenarios/cabc', { [s.id]: s }), [cabc]);
+  await signInAs(page, { cabc: true });
+  await expect(card(page, 'CABC test case')).toBeVisible({ timeout: 10000 });
+  await expect(card(page, 'CABC test case').getByTestId('course-badge')).toHaveText('CABC');
+  await expect(page.getByText('ETC test workshop')).toHaveCount(0);
+  await expect(page.getByText('Workshop 1: Test fall')).toHaveCount(0);
+  await expect(page.getByTestId('course-access-more').getByTestId('course-access-cabc')).toContainText('Access approved');
+  const load = await card(page, 'CABC test case').getByRole('button', { name: 'Load' }).boundingBox();
+  expect(load.x + load.width).toBeLessThanOrEqual(page.viewportSize().width);
+  await card(page, 'CABC test case').getByRole('button', { name: 'Load' }).click();
+  await expect(page.getByRole('button', { name: 'Start Scenario' })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('admin: a CABC upload goes to courseScenarios/cabc, and the CABC tick is in the admin list', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await signInAs(page, { rcuk: true }, 'admin');
+  await page.getByRole('button', { name: 'Admin', exact: true }).click();
+  const box = page.getByTestId('course-upload');
+  const file = [{ ...workshop, id: 'CUST_CABC_UP', title: 'CABC upload', course: 'CABC' }];
+  await box.getByLabel('Course scenario file').setInputFiles({ name: 'cabc.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await box.getByRole('button', { name: 'Upload 1 scenario' }).click();
+  await expect(box.getByText('Uploaded 1 scenario', { exact: false })).toBeVisible();
+  const db = await page.evaluate(() => ({
+    restricted: Object.keys(window.__fakeRtdb.get('restrictedScenarios') || {}),
+    cabc: Object.keys(window.__fakeRtdb.get('courseScenarios/cabc') || {}),
+  }));
+  expect(db.cabc).toEqual(['CUST_CABC_UP']);
+  expect(db.restricted).not.toContain('CUST_CABC_UP');
+  await expect(page.getByText('CABC', { exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 
