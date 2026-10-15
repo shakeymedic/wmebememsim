@@ -484,7 +484,8 @@
         const progress = (window.computeObjectiveProgress
             ? window.computeObjectiveProgress(state.scenario || {}, {
                 interventionCounts: state.interventionCounts,
-                activeInterventions: state.activeInterventions,
+                // Kit already on at set-up (data/engine.js setUpIntervention) is not the team's.
+                activeInterventions: new Set([...(state.activeInterventions || [])].filter(k => !((state.scenario && state.scenario.setupKit) || []).includes(k))),
                 completedObjectives: completed
             })
             : { objectives: [], total: objectivesTotal, fullyMet: 0, partial: 0, score: null, partialScore: null, hasPartial: false });
