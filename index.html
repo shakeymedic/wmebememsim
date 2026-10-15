@@ -569,7 +569,7 @@
                         </p>
                         <p>&copy; {new Date().getFullYear()} <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300">EM Evidence</a> &nbsp;&bull;&nbsp; <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer" className="hover:text-slate-400">emevidence.org</a> &nbsp;&bull;&nbsp; <a href="mailto:emevidence999@gmail.com" className="hover:text-slate-400">emevidence999@gmail.com</a></p>
                         {/* Which deploy this is, so anyone can check they are on the latest one (data/version.js). */}
-                        <p className="md:justify-self-end font-mono text-slate-500" data-testid="app-version" title={window.APP_VERSION ? `Built ${window.APP_VERSION.built} from commit ${window.APP_VERSION.sha}` : 'Running from the source files, not a deploy'}>
+                        <p className="md:justify-self-end font-mono text-slate-400" data-testid="app-version" title={window.APP_VERSION ? `Built ${window.APP_VERSION.built} from commit ${window.APP_VERSION.sha}` : 'Running from the source files, not a deploy'}>
                             {window.APP_VERSION ? `Version ${window.APP_VERSION.label}` : 'Version: development copy'}
                         </p>
                     </footer>
