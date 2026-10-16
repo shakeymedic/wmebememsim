@@ -203,9 +203,9 @@
             console.error("Firebase Init Failed:", e);
         }
 
-        // No service worker at this scope on purpose. There is no root sw.js, and adding a
-        // stale-while-revalidate cache here would risk serving last session's code after a fix ships —
-        // unacceptable for clinical content. defib/index.html keeps its own SW at its own scope.
+        // The service worker registered above (sw.js, built on sw-shared.js) is NETWORK FIRST: online,
+        // every file comes from the network, so a fix ships on the next load; the cache is only used
+        // offline. defib/index.html keeps its own worker at its own scope.
 
         // --- SESSION CODES ---
         // Six characters from an alphabet with no look-alikes (no 0/O, 1/I/L), drawn from the

@@ -624,15 +624,22 @@
         if (!d) return 0;
         const el = t - d.startTime;
         if (!Number.isFinite(el) || el <= d.onset) return 0;
-        if (el < d.peak) return easeRamp((el - d.onset) / Math.max(1, d.peak - d.onset));
+        const ramp = (at) => easeRamp((at - d.onset) / Math.max(1, d.peak - d.onset));
         if (d.sustained) {
-            if (d.stopTime === undefined || d.stopTime === null || d.stopTime < 0) return 1;  // still running
+            const stopped = !(d.stopTime === undefined || d.stopTime === null || d.stopTime < 0);
+            if (!stopped) return el < d.peak ? ramp(el) : 1;  // still running
+            // Stopped: wear off from the level it had reached when it was stopped. An infusion
+            // stopped part-way up its ramp used to keep climbing to full effect and then drop in
+            // one tick.
+            const stopEl = d.stopTime - d.startTime;
+            const level = stopEl < d.peak ? ramp(Math.max(d.onset, stopEl)) : 1;
             const tail = d.offset > 0 ? d.offset : 120;
             const since = t - d.stopTime;
-            if (since <= 0) return 1;
+            if (since <= 0) return Math.min(level, el < d.peak ? ramp(el) : 1);
             if (since >= tail) return 0;
-            return easeRamp(1 - (since / tail));
+            return level * easeRamp(1 - (since / tail));
         }
+        if (el < d.peak) return ramp(el);
         if (!d.offset || d.offset <= d.peak) return 1;   // no modelled wear-off
         const plateauEnd = (d.plateau !== undefined && d.plateau >= 0)
             ? d.plateau
@@ -646,8 +653,9 @@
     const pkPhase = (d, t) => {
         const el = t - d.startTime;
         if (el < d.onset) return 'onset';
+        if (d.sustained && d.stopTime !== undefined && d.stopTime !== null && d.stopTime >= 0) return 'wearing off';
         if (el < d.peak) return 'rising';
-        if (d.sustained) return (d.stopTime !== undefined && d.stopTime !== null && d.stopTime >= 0) ? 'wearing off' : 'running';
+        if (d.sustained) return 'running';
         if (!d.offset || d.offset <= d.peak) return 'peak';
         const plateauEnd = (d.plateau !== undefined && d.plateau >= 0) ? d.plateau : d.peak + PK_PLATEAU_FRACTION * (d.offset - d.peak);
         if (el <= plateauEnd) return 'peak';
@@ -1014,7 +1022,7 @@
                 let mcg, ml;
                 if (age === null) { mcg = null; }
                 else if (age < 0.5) { mcg = '100-150'; ml = '0.1-0.15'; }
-                else if (age <= 6) { mcg = '150'; ml = '0.15'; }
+                else if (age < 6) { mcg = '150'; ml = '0.15'; }
                 else if (age <= 12) { mcg = '300'; ml = '0.3'; }
                 else { mcg = '500'; ml = '0.5'; }
                 if (mcg) log = `IM Adrenaline ${mcg} micrograms (1 mg/ml, ${ml} ml) administered into the anterolateral thigh.`;

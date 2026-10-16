@@ -392,7 +392,7 @@
                     try {
                         await window.db.ref(`users/${cred.user.uid}`).update({
                             email: cred.user.email || '',
-                            displayName: name || (cred.user.email ? String(cred.user.email).split('@')[0] : 'User'),
+                            displayName: String(name || (cred.user.email ? String(cred.user.email).split('@')[0] : 'User')).slice(0, 119),   // the rules cap it at 120; over that the whole profile write was silently rejected
                             createdAt: Date.now(),
                             lastSeenAt: Date.now()
                         });
@@ -456,7 +456,9 @@
             setState(s => ({ ...s, busy: false, googlePending: false, error: null, notice: null }));
         }, []);
 
-        const signOut = useCallback(() => run(async (auth) => { await auth.signOut(); setAuthFlag('0'); }), [run]);
+        // Signing out also drops the on-device resume snapshot, which carries the whole scenario
+        // (restricted course content and mark schemes included) for whoever uses this PC next.
+        const signOut = useCallback(() => run(async (auth) => { await auth.signOut(); setAuthFlag('0'); try { localStorage.removeItem('wmebem_sim_state'); } catch (e) {} }), [run]);
 
         // Asking is not granting. This writes to users/{uid}/requestedAccess, which carries no
         // privilege at all — the admin panel reads it to build the approval queue.

@@ -323,7 +323,7 @@
     //    Write requires: admin. (Client-side checks only control the UI; THIS is the enforcement.)
     // ------------------------------------------------------------------------------------------
     "restrictedScenarios": {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child('rcuk').val() === true",
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child('rcuk').val() === true && (!root.child('users').child(auth.uid).child('entitlements').child('expiresAt').exists() || root.child('users').child(auth.uid).child('entitlements').child('expiresAt').val() > now)",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
       "$scenarioId": {
         ".validate": "newData.hasChildren(['id', 'title'])"
@@ -337,7 +337,7 @@
     // ------------------------------------------------------------------------------------------
     "courseScenarios": {
       "$course": {
-        ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child($course).val() === true",
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child($course).val() === true && (!root.child('users').child(auth.uid).child('entitlements').child('expiresAt').exists() || root.child('users').child(auth.uid).child('entitlements').child('expiresAt').val() > now)",
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
         "$scenarioId": {
           ".validate": "newData.hasChildren(['id', 'title'])"
@@ -346,7 +346,7 @@
     },
     "courseImages": {
       "$course": {
-        ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child($course).val() === true",
+        ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child($course).val() === true && (!root.child('users').child(auth.uid).child('entitlements').child('expiresAt').exists() || root.child('users').child(auth.uid).child('entitlements').child('expiresAt').val() > now)",
         ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'",
         "$imageId": {
           ".validate": "newData.hasChildren(['src', 'credit'])",
@@ -365,7 +365,7 @@
     //    entitlement key, so paid content needs no new rule design.
     // ------------------------------------------------------------------------------------------
     "premiumScenarios": {
-      ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child('premium').val() === true",
+      ".read":  "auth != null && root.child('users').child(auth.uid).child('status').val() === 'approved' && root.child('users').child(auth.uid).child('entitlements').child('premium').val() === true && (!root.child('users').child(auth.uid).child('entitlements').child('expiresAt').exists() || root.child('users').child(auth.uid).child('entitlements').child('expiresAt').val() > now)",
       ".write": "auth != null && root.child('users').child(auth.uid).child('role').val() === 'admin'"
     },
 

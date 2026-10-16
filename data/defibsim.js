@@ -369,7 +369,7 @@
 
         if (pulseChecks.length) {
             good.push('Pulse checked ' + pulseChecks.length + ' time' + (pulseChecks.length === 1 ? '' : 's'));
-            if (t(pulseChecks[0]) <= 30) good.push('Early pulse check (' + clock(t(pulseChecks[0])) + ')');
+            if (t(pulseChecks[0]) <= 30) good.push('Early pulse check (' + clock(t(pulseChecks[0])) + (find(/^Clock started automatically/).length ? ', timed from the first press on the defib' : '') + ')');
         } else {
             improve.push('No pulse check recorded: it decides between defibrillation, synchronised cardioversion and pacing');
         }
@@ -385,7 +385,11 @@
                 var e1 = energyOf(shocks[0]);
                 if (e1 >= rec) good.push('Appropriate first-shock energy (' + e1 + ' J)');
                 else improve.push('First shock ' + e1 + ' J: ' + (adult ? 'at least 150 J is recommended for an adult (RCUK)' : 'about 4 J/kg is recommended for a child (' + rec + ' J on this device)'));
-                if (t(shocks[0]) <= 180) good.push('First shock within 3 minutes (' + clock(t(shocks[0])) + ')');
+                // The clock starts itself at the learner's first press when START was not used, so
+                // these times are then measured from that press rather than from the arrest.
+                var autoClock = find(/^Clock started automatically/).length > 0;
+                var since = autoClock ? ', timed from the first press on the defib' : '';
+                if (t(shocks[0]) <= 180) good.push('First shock within 3 minutes (' + clock(t(shocks[0])) + since + ')');
                 else improve.push('First shock at ' + clock(t(shocks[0])) + ': the RCUK in-hospital target is under 3 minutes');
             } else {
                 improve.push('No shock delivered: a shockable rhythm needs defibrillation');

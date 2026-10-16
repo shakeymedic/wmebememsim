@@ -22,7 +22,7 @@
         // does not leave every event in the log at 00:00. Not after a deliberate facilitator pause
         // (pausedAt is set only by PAUSE_SIM), and not for display-only presses.
         // The ventilator's log lines are reports, not presses on the defib.
-        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC', 'VENT_LOG', 'CHARGE_CANCEL'];
+        const PASSIVE_DEVICE_EVENTS = ['LEAD_CHANGE', 'SIZE_CHANGE', 'ALARM_SILENCE', 'REQUEST_SYNC', 'VENT_LOG', 'CHARGE_CANCEL', 'INVESTIGATION'];
         const autoStartClock = (type, p) => {
             const cur = stateRef.current;
             if (!cur || !cur.scenario || !cur.scenario.defibSim) return;
@@ -75,6 +75,11 @@
                 case 'MARKER_EVENT': addLogEntry(`Student marked event (${where})`, 'manual', true); break;
                 case 'ALARM_SILENCE': addLogEntry(`Alarm silenced by student (${where})`, 'info'); break;
                 case 'REQUEST_12LEAD': addLogEntry(`Student requested 12-lead (${where})`, 'action'); break;
+                case 'INVESTIGATION': {
+                    const inv = String((p && p.type) || '?').slice(0, 12);
+                    addLogEntry(`Team opened the ${inv === 'X-ray' ? 'chest X-ray' : inv} result on the patient screen`, 'action');
+                    break;
+                }
                 case 'LEAD_CHANGE': addLogEntry(`Monitoring lead changed to ${String(p.lead || '?').slice(0, 8)} (${where})`, 'action'); break;
                 case 'SIZE_CHANGE': addLogEntry(`ECG size x${Number(p.gain) || 1} (${where})`, 'info'); break;
                 // The HAMILTON-T1 (vent/index.html): every setting, mode change, test and alarm it
@@ -504,7 +509,6 @@
         // Every event converges on the same shared outcome helpers the facilitator uses
         // (initCharge / deliverShock / applyShockOutcome / applyCardioversion).
         // =====================================================================================
-        const deviceEventsSinceRef = useRef(Date.now());
         const sendDeviceEvent = (type, payload = {}) => {
             if (!isMonitorMode || !sessionID || !window.db) return false;
             const safe = sanitizeForRealtimeDatabase({ type, payload, ts: Date.now(), from: presenceIdRef.current });
@@ -529,22 +533,29 @@
             if (!db || !sessionID || isMonitorMode) return;
             const ref = db.ref(`sessions/${sessionID}/deviceEvents`);
             // Only ever act on events newer than this listener, so a re-mount cannot replay a
-            // whole arrest's worth of shocks.
-            const startedAt = deviceEventsSinceRef.current;
+            // whole arrest's worth of shocks. "Newer" is decided by the push key, not by comparing
+            // the tablet's clock with this device's: a tablet whose clock ran a few minutes slow
+            // used to have every press silently discarded until the clocks crossed.
+            const stale = new Set();
+            let primed = false;
             const onChild = (snap) => {
                 const ev = snap.val();
                 if (!ev || !ev.type) return;
-                if (!(Number(ev.ts) >= startedAt)) { snap.ref.remove().catch(() => {}); return; }
+                if (!primed || stale.has(snap.key)) { snap.ref.remove().catch(() => {}); return; }
                 handleDeviceEvent(ev.type, ev.payload, DEVICE_WHERE[ev.device] || 'monitor defib');
                 // Consume the event so the queue cannot grow without bound across a long session.
                 snap.ref.remove().catch(() => {});
             };
+            // Everything already queued when this listener attaches is left over from before
+            // (a reload, a re-mount): note its keys and throw it away.
+            let primeTimer = setTimeout(() => { primed = true; }, 3000);   // offline: never stay deaf
+            ref.once('value').then((all) => { all.forEach((c) => { stale.add(c.key); return false; }); }).catch(() => {}).then(() => { primed = true; clearTimeout(primeTimer); });
             const onErr = (e) => {
                 console.error('Device event listener failed:', e);
                 dispatch({ type: 'SET_SYNC_STATUS', payload: { state: 'error', message: `Defib event read failed: ${e.message || 'unknown error'}` } });
             };
             ref.limitToLast(25).on('child_added', onChild, onErr);
-            return () => ref.off('child_added', onChild);
+            return () => { clearTimeout(primeTimer); ref.off('child_added', onChild); };
         }, [isMonitorMode, sessionID]);
 
         // THE VENTILATOR BREATHING FOR THE PATIENT (phase 2). While the clock runs, TICK_TIME does

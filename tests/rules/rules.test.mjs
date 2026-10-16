@@ -133,6 +133,19 @@ test('an admin can approve and grant; nobody else can list users', async () => {
   await assertFails(user('u1').ref('users').once('value'));
 });
 
+test('an entitlement with a past expiresAt no longer opens the content; a future one does', async () => {
+  await seed('restrictedScenarios/RC001', { id: 'RC001', title: 'Test' });
+  await seed('courseScenarios/etc/ETC_1', { id: 'ETC_1', title: 'ETC workshop' });
+  await seed('users/lapsed', { status: 'approved', entitlements: { rcuk: true, etc: true, expiresAt: Date.now() - 86400000 } });
+  await seed('users/current', { status: 'approved', entitlements: { rcuk: true, etc: true, expiresAt: Date.now() + 86400000 } });
+  await seed('users/open', { status: 'approved', entitlements: { rcuk: true, etc: true } });
+  await assertFails(user('lapsed').ref('restrictedScenarios').once('value'));
+  await assertFails(user('lapsed').ref('courseScenarios/etc').once('value'));
+  await assertSucceeds(user('current').ref('restrictedScenarios').once('value'));
+  await assertSucceeds(user('current').ref('courseScenarios/etc').once('value'));
+  await assertSucceeds(user('open').ref('restrictedScenarios').once('value'));
+});
+
 test('restricted scenarios need an approved account with the rcuk entitlement', async () => {
   await seed('restrictedScenarios/RC001', { id: 'RC001', title: 'Test' });
   await seed('users/pending', { status: 'pending', entitlements: { rcuk: true } });
