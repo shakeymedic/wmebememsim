@@ -92,7 +92,10 @@ const gemini = (model, body) => post(`models/${model}:generateContent`, body);
 // annotation and only the patient's words (or sound tags such as <groan>) go in the text.
 const styleFor = (voice, p) => `${voice.style}, a patient in a hospital emergency department, ${p.mood || 'unwell and worried'}`;
 
-const norm = (s) => s.toLowerCase().replace(/\[[^\]]*\]/g, ' ').replace(/\bmom\b/g, 'mum').replace(/[’']/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+// Spelling the transcriber may choose differently from the script (okay/OK, 6/six) is not a wrong clip.
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+const norm = (s) => s.toLowerCase().replace(/\[[^\]]*\]/g, ' ').replace(/\bmom\b/g, 'mum').replace(/\bokay\b/g, 'ok').replace(/[’']/g, '')
+    .replace(/\b(\d{1,2})\b/g, (m, n) => NUMBER_WORDS[Number(n)] || m).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
 let audioTokens = 0, checkTokens = 0;
 const failed = [];
 
