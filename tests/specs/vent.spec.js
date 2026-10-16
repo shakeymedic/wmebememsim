@@ -15,6 +15,9 @@ async function openVent(context, code) {
   await expect(vent.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
   return { vent, errors };
 }
+// Quick Sim's patient is awake with no airway (a face mask: noninvasive modes only). The tests that want the
+// sedated, intubated patient of the ARDS or asthma lungs make them unconscious first (GCS 3: a tube is assumed).
+const makeUnconscious = (page) => page.evaluate(() => window.__simEngine.dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key: 'gcs', value: 3 } }));
 // Power on, wait for the self-test, then start ventilation from Standby (the Power/Standby key).
 async function startVentilating(dev) {
   await dev.locator('#kPower').click();
@@ -59,7 +62,11 @@ test('the controller chooses the lungs: picked from the scenario, then changed b
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator lungs').selectOption('ards');
   await expect.poll(() => live(page, code, '/vent/profile')).toBe('ards');
-  await expect.poll(() => vent.evaluate(() => [window.__vent.P.id, window.__vent.P.pr.sedated])).toEqual(['ards', true]);
+  // Awake (GCS 15): breathing for themselves on a face mask, whatever the lungs
+  await expect.poll(() => vent.evaluate(() => [window.__vent.P.id, window.__vent.P.pr.sedated, window.__vent.P.iface])).toEqual(['ards', false, 'mask']);
+  // Unconscious: the ARDS lungs' sedated patient, with a tube assumed
+  await makeUnconscious(page);
+  await expect.poll(() => vent.evaluate(() => [window.__vent.P.id, window.__vent.P.pr.sedated, window.__vent.P.iface])).toEqual(['ards', true, 'tube']);
   await page.getByLabel("Patient's own breathing").selectOption('yes');
   await expect.poll(() => vent.evaluate(() => [window.__vent.P.pr.sedated, window.__vent.P.pr.effort > 0])).toEqual([false, true]);
   expect(await logHas(page, /^Ventilator lungs set to ARDS/)).toBe(true);
@@ -191,6 +198,7 @@ test('a ventilating T1 drives SpO2, RR and ETCO2 while the clock is stopped; typ
   await startQuickSim(page);
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator lungs').selectOption('ards');
+  await makeUnconscious(page);
   const { vent, errors: ventErrors } = await openVent(context, code);
   await expect.poll(() => vent.evaluate(() => window.__vent.P.id)).toBe('ards');
   await startVentilating(vent);
@@ -220,7 +228,7 @@ test('a ventilating T1 drives SpO2, RR and ETCO2 while the clock is stopped; typ
   await expect(page.getByTestId('vent-driving')).toHaveCount(0);
   await expect.poll(() => eng(() => window.__simEngine.state.ventPhys)).toBe(null);
   await expect.poll(() => logHas(page, /^Ventilator is no longer breathing for the patient/)).toBe(true);
-  await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'ards', airway: 'none' });
+  await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'ards', airway: 'tube' });
   expect(errors).toEqual([]);
   expect(ventErrors).toEqual([]);
 });
@@ -229,7 +237,8 @@ test('a paralysed patient is not breathing for the ventilator', async ({ page })
   const code = await openController(page);
   await startQuickSim(page);
   await expect.poll(() => live(page, code, '/vent')).toMatchObject({ profile: 'normal' });
-  expect((await live(page, code, '/vent')).breathing).toBeUndefined();
+  // Quick Sim's patient is awake, so breathing for themselves
+  expect((await live(page, code, '/vent')).breathing).toBe(true);
   const cfg = await page.evaluate(() => window.VENT_ENGINE.configFor({ ...window.__simEngine.state, isParalysed: true }));
   expect(cfg.breathing).toBe(false);
 });
@@ -240,6 +249,7 @@ test('with the clock running the ventilator still drives the obs, and hypoxia do
   await startQuickSim(page);
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator lungs').selectOption('ards');
+  await makeUnconscious(page);
   const { vent } = await openVent(context, code);
   await expect.poll(() => vent.evaluate(() => window.__vent.P.id)).toBe('ards');
   await page.evaluate(() => window.__simEngine.dispatch({ type: 'START_SIM' }));

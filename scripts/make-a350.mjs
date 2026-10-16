@@ -157,7 +157,7 @@ sub("  LIVE.etco2 = v.etco2Enabled && Number.isFinite(Number(vit.etco2)) ? Numbe
     "  LIVE.etco2 = Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;   /* the A350 measures CO2 itself */\n  LIVE.age = Number.isFinite(Number(v.patientAge)) ? Number(v.patientAge) : null;");
 between('function ventStateNow() {', 'let lastMirror = ', read('mirror.js'));
 /* Man/Spon is the bag and a face mask as often as a tube: not an "invasive mode with no airway" */
-sub("inv:isInvasive() ? 1 : 0};", "inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0};");
+sub("inv:isInvasive() ? 1 : 0,", "inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0,");
 /* the gas in the circle survives a reload (FiO2, the agent and the bag), so the patient is not suddenly on air */
 sub("v, onNivMin:P.onNivMin}));",
     "v, onNivMin:P.onNivMin, gas:{fio2:G.fio2, fin2o:G.fin2o, etn2o:G.etn2o, fiag:G.fiag, etag:G.etag, bag:G.bag}}));");
@@ -173,7 +173,7 @@ sub("  engineStep(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest
     "  engineStep(dt);\n  gasTick(dt);\n  bagTick();\n  editTick(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = null; logEvent('Machine switched on: Standby', 'info'); renderAll(); } }");
 sub("['monitoring', 'alarms', 'system', 'standby'].includes(win)", "['alarms', 'tests'].includes(win)");
 sub("    $('#simClock').textContent = V.power && !V.standby ? 'Ventilating ' + clockStr() : '';", "    $('#simClock').textContent = V.power && !V.standby ? 'In use ' + clockStr() : '';");
-sub("window.__vent = {V, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};", "window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};");
+sub("window.__vent = {V, get P() { return P; }, B,", "window.__vent = {V, G, get P() { return P; }, B,");
 
 // Nothing of the Hamilton screen may show on the Dräger page (comments that explain the shared engine aside).
 const visible = html.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

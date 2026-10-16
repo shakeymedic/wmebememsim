@@ -9,7 +9,7 @@ function deviceDefaults() {
   P.pr = {...P.base};
   E = null; D = null; active.clear(); inactive.clear(); history.length = 0; helpFor = null; cursor = -1;
   for (const k in M) M[k] = null;
-  Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false, vcLim:0, vcLimVt:0});
+  Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], fightLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false, vcLim:0, vcLimVt:0});
   TR.o2.length = 0; TR.flow.length = 0; TR.lastMin = -1;
   bufC.fill(0); bufP.fill(0); bufF.fill(0); bufV.fill(0); bufPl.fill(0); bufTrig.fill(0);
   P.onNivMin = 0; P.batt = 100; probsNow = []; applyProblems(VP.probList(LIVE.config && LIVE.config.probs));
