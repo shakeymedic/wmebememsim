@@ -839,8 +839,11 @@
              const btnTitle = missing.length
                  ? `Not in place yet: ${missing.join(', ')} \u2014 you can still do this, it will be flagged for the debrief.`
                  : (isActive && isContinuous ? `${action.label} is ACTIVE \u2014 pressing again STOPS it.` : action.label);
+             // The remove control is a sibling of the main button, not a child: a button inside a
+             // button is invalid and a "nested-interactive" accessibility failure.
              return (
-                 <button key={key} title={btnTitle} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
+                 <div key={key} className="relative">
+                 <button title={btnTitle} onClick={() => applyIntervention(key)} className={`relative w-full h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
                         {/* The ROUTE is shown on every button, because IM vs IV vs buccal
@@ -852,18 +855,19 @@
                      {missing.length > 0 && (
                          <span aria-hidden="true" className="absolute top-0 left-0 w-0 h-0 border-t-[14px] border-l-[14px] border-t-amber-500 border-l-transparent"></span>
                      )}
-                     {isActive && action.type === 'continuous' && (
-                         <span role="button" tabIndex={0} aria-label={`Stop ${action.label}`} className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'continuous')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRemove(e, key, 'continuous'); } }}>
-                             <Lucide icon="x" className="w-3 h-3"/>
-                         </span>
-                     )}
-                     {!isActive && count > 0 && action.type !== 'continuous' && (
-                         <span role="button" tabIndex={0} aria-label={`Remove one ${action.label} from the count`} className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'bolus')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRemove(e, key, 'bolus'); } }}>
-                             <Lucide icon="minus" className="w-3 h-3"/>
-                         </span>
-                     )}
                      {activeDurations[key] && (<div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-1000" style={{width: `${Math.max(0, 100 - ((time - activeDurations[key].startTime)/activeDurations[key].duration*100))}%`}}></div>)}
                  </button>
+                 {isActive && action.type === 'continuous' && (
+                     <button type="button" aria-label={`Stop ${action.label}`} className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'continuous')}>
+                         <Lucide icon="x" className="w-3 h-3"/>
+                     </button>
+                 )}
+                 {!isActive && count > 0 && action.type !== 'continuous' && (
+                     <button type="button" aria-label={`Remove one ${action.label} from the count`} className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'bolus')}>
+                         <Lucide icon="minus" className="w-3 h-3"/>
+                     </button>
+                 )}
+                 </div>
              );
         };
         

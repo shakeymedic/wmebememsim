@@ -56,7 +56,7 @@ test('paediatric doses: atropine, adenosine, IM adrenaline, amiodarone, buccal m
   expect(r.adBig).toBe('0.3 mg/kg (18 mg)');                                       // max 12-18 mg
   expect(r.adNeo).toEqual(['150 mcg/kg (525 mcg)', '250 mcg/kg (875 mcg)', '300 mcg/kg (1050 mcg)']);
   expect(r.adAdult).toBeNull();
-  expect(r.im.map(l => l.match(/Adrenaline ([\d-]+) micrograms/)[1])).toEqual(['100-150', '150', '150', '300', '300', '500']);
+  expect(r.im.map(l => l.match(/Adrenaline ([\d-]+) micrograms/)[1])).toEqual(['100-150', '150', '300', '300', '300', '500']);  // RCUK: 6-12 years 300 mcg, so a 6-year-old gets 300
   expect(r.amio1).toBe('IV/IO Amiodarone 100 mg administered (5 mg/kg).');
   expect(r.amio2).toBe('IV/IO Amiodarone 150 mg administered (5 mg/kg).');        // 2nd dose max 150 mg
   expect(r.amioTachy).toMatch(/100 mg \(5 mg\/kg\) started by SLOW infusion/);
