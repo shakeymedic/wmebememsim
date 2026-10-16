@@ -1823,11 +1823,31 @@
                                     <select aria-label="Patient's own breathing" value={ventCfg.breathing === true ? 'yes' : ventCfg.breathing === false ? 'no' : 'auto'}
                                             onChange={e => { const v = e.target.value; sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { breathing: v === 'yes' ? true : v === 'no' ? false : null } }); addLogEntry(`Ventilator patient: ${v === 'yes' ? 'breathing for themselves' : v === 'no' ? 'not breathing (sedated and paralysed)' : 'breathing as the lungs say'} (facilitator)`, 'system'); }}
                                             className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
-                                        <option value="auto">As the lungs say ({VP.profiles[ventCfg.profile] && VP.profiles[ventCfg.profile].sedated ? 'not breathing' : 'breathing'})</option>
+                                        <option value="auto">From the patient ({VE && VE.configFor({ ...state, vent: { ...ventCfg, breathing: null } }).breathing === false ? 'not breathing' : VE && VE.awakeFor({ ...state, vent: { ...ventCfg, breathing: null } }) ? 'awake, breathing' : VP.profiles[ventCfg.profile] && VP.profiles[ventCfg.profile].sedated ? 'not breathing' : 'breathing'})</option>
                                         <option value="yes">Breathing for themselves</option>
                                         <option value="no">Not breathing (sedated, paralysed)</option>
                                     </select>
                                 </label>
+                                {VE && (() => {
+                                    // What the circuit connects to: worked out from the patient unless the facilitator says.
+                                    const auto = VE.interfaceFor({ ...state, vent: { ...ventCfg, airway: null } });
+                                    const NAME = { mask: 'Face mask', sga: 'i-gel', tube: 'Tube' };
+                                    const why = auto.source === 'recorded' ? 'recorded' : auto.source === 'awake' ? 'awake, no airway' : 'unconscious, assumed';
+                                    return (
+                                        <label className="flex items-center justify-between gap-2">
+                                            <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Airway</span>
+                                            <select aria-label="Ventilator airway" value={ventCfg.airway || 'auto'}
+                                                    title="What the ventilator's circuit connects to. An awake patient with no airway has a face mask: only noninvasive modes suit it, and in other modes they fight the ventilator and the mask leaks. An unconscious patient with no airway recorded is assumed to have a tube."
+                                                    onChange={e => { const v = e.target.value; sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { airway: v === 'auto' ? null : v } }); addLogEntry(`Ventilator airway: ${v === 'auto' ? 'worked out from the patient' : NAME[v]} (facilitator)`, 'system'); }}
+                                                    className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
+                                                <option value="auto">From the patient ({NAME[auto.airway]}: {why})</option>
+                                                <option value="mask">Face mask</option>
+                                                <option value="sga">i-gel</option>
+                                                <option value="tube">Tube</option>
+                                            </select>
+                                        </label>
+                                    );
+                                })()}
                                 <div className="flex items-center justify-between gap-2">
                                     <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Obs</span>
                                     <div className="flex gap-1" role="group" aria-label="Who sets the obs">

@@ -321,6 +321,9 @@ function startVCBreath(kind, auto, sigh, mt, base) {
   const iPeep = B.Vee / C;
   const F = VTset / tFlow;   /* l/s from the ventilator */
   let VT = Math.max(0.005, (VTset - inspLeak / 60 * tFlow * 0.5) * rnd(0.98, 1.02));
+  /* an i-gel: pressure above its seal pushes part of each breath out round it */
+  const over = sgaOver(peepM + iPeep + R * F + VT / C);
+  if (over) { inspLeak += over * 5; VT = Math.max(0.005, VT - over * C * 0.6); }
   let Ti = Ti0, hiP = false;
   if (P.disc) { VT = 0.01; peepM = 0.3; inspLeak = 110; expLeak = 100; }
   else {
@@ -329,7 +332,9 @@ function startVCBreath(kind, auto, sigh, mt, base) {
   }
   const plat = peepM + iPeep + VT / C, peak = plat + R * F;
   let cough = null;
-  if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: peak + rnd(18, 26)};
+  const fightP = P.cough ? 0.55 : fightChance(kind);
+  if (fightP && Math.random() < fightP) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: peak + rnd(18, 26)};
+  pushLog(B.fightLog, !!cough && !P.cough);
   B.vlimit = false;
   B.br = {kind, auto, sigh, Ti, target: peak, base, peepM, dPeff: (s.pause > 0 && !hiP ? plat : peak) - peepM, VT, inspLeak, expLeak, Fp: F * 60, tau: pr.tau, tauE: pr.tau * 1.8 * (pr.trapX || 1),
           pramp: 0, limited:false, tiMaxHit:false, cough, obstructed:false, maxP: 0, spiked:false, vc:{F, tFlow, R, C, iPeep, hiP}};

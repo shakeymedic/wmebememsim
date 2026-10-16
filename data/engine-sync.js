@@ -122,11 +122,13 @@
         };
         // The lungs the ventilator uses (the facilitator's choice, else picked from the scenario),
         // whether the patient breathes for themselves (a paralysed or arrested patient does not,
-        // unless the facilitator says so) and the airway in place. See data/engine-vent.js.
+        // unless the facilitator says so) and what the circuit connects to: a face mask for an awake
+        // patient with no airway, else a tube or i-gel (recorded, or assumed when unconscious). See
+        // data/engine-vent.js (airwayCode).
         const ventConfigFor = (cur) => {
             const VE = window.VENT_ENGINE;
-            if (!VE) return { profile: 'normal', breathing: null, airway: 'none' };
-            return { ...VE.configFor(cur), airway: VE.airwayFor(cur) };
+            if (!VE) return { profile: 'normal', breathing: null, airway: 'tube' };
+            return { ...VE.configFor(cur), airway: VE.airwayCode(cur) };
         };
         const DEVICE_WHERE = { 'standalone-defib': 'standalone defib', 'monitor-defib': 'monitor defib', 'monitor-vent': 'ventilator on the monitor', 'standalone-vent': 'ventilator tablet' };
         const nibpCuffOn = (cur) => !!((cur.scenario && cur.scenario.defibSim) || getSensors(cur).nibp);
@@ -600,14 +602,33 @@
                     addLogEntry('Clock started automatically when the ventilator started.', 'system');
                     start();
                 }
-                const d = window.VENT_ENGINE.driverFor(cur);
-                if (d && d.phys && Number(d.phys.inv) > 0 && window.VENT_ENGINE.airwayFor(cur) === 'none') {
-                    addLogEntry('Ventilator started in an invasive mode with no tube or supraglottic airway recorded.', 'warning', true);
+                const f = window.VENT_ENGINE.interfaceFor(cur);
+                if (f.source === 'assumed') {
+                    addLogEntry(`No airway recorded: the patient is unconscious, so the ventilator assumes a tube or i-gel is in place.`, 'info');
                 }
             } else {
                 addLogEntry('Ventilator is no longer breathing for the patient (standby, switched off, or the link was turned off). The obs follow the usual model again.', 'system');
             }
         }, [isMonitorMode, ventDriving]);
+
+        // An awake patient with no airway is on a face mask: the log says when the ventilator is put
+        // on a mode that needs a tube or i-gel (they fight it and the mask leaks), and when that stops.
+        const maskWrongRef = useRef(false);
+        useEffect(() => {
+            if (isMonitorMode) return;
+            const cur = stateRef.current;
+            const d = window.VENT_ENGINE && window.VENT_ENGINE.driverFor(cur);
+            const wrong = !!(d && d.phys && Number(d.phys.mw) > 0);
+            if (wrong === maskWrongRef.current || cur.isFinished) { maskWrongRef.current = wrong; return; }
+            maskWrongRef.current = wrong;
+            const VP = window.VENT_PROFILES;
+            const ok = window.VENT_ENGINE.maskModes(cur.vent && cur.vent.model).map(m => {
+                const row = VP ? VP.modesFor(VP.modelOf(cur.vent && cur.vent.model)).find(r => r[0] === m) : null;
+                return row ? row[1] : m;
+            }).join(', ');
+            if (wrong) addLogEntry(`Awake patient with no airway, on a face mask, but the ventilator is in ${d.label || d.mode}: they fight it and the mask leaks. A mask suits ${ok}; other modes need a tube or i-gel.`, 'warning', true);
+            else if (d) addLogEntry(`Ventilator now in ${d.label || d.mode}: a mode the masked patient tolerates, or their airway has changed.`, 'system');
+        }, [isMonitorMode, state.ventMirror]);
 
         // What each ventilator is showing (mode, settings, measured values, alarms), for the
         // facilitator's Ventilator section. Stale after 60 s, like the defib mirror.

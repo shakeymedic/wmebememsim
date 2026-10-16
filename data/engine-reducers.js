@@ -781,10 +781,14 @@
                 // Which machine the candidate has: the HAMILTON-T1 (transport), the HAMILTON-C6 (ICU) or the
                 // Dräger Atlan A350 (anaesthetic machine).
                 const model = VP ? VP.modelOf(p.model !== undefined ? p.model : cur.model) : 't1';
+                // What the circuit connects to, when the facilitator says so ('mask', 'sga' or 'tube');
+                // null = worked out from the patient (data/engine-vent.js interfaceFor).
+                const airway = p.airway !== undefined ? p.airway : cur.airway;
                 return { ...state, vent: {
                     profile: VP && VP.profiles[profile] ? profile : 'normal',
                     breathing: breathing === true || breathing === false ? breathing : null,
-                    lung, probs, assess, model
+                    lung, probs, assess, model,
+                    airway: ['mask', 'sga', 'tube'].indexOf(airway) !== -1 ? airway : null
                 } };
             }
             case 'SET_VENT_MIRROR': return { ...state, ventMirror: action.payload || {} };

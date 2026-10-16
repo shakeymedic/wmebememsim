@@ -101,6 +101,8 @@ const isVC = m => VCM.includes(m === undefined ? V.mode : m);
 const mName = (m, src) => { const s = src || V.set, n = MODE_NAME[m] || m; return ['SIMV', 'APVsimv', 'PSIMV+'].includes(m) && s.ps > 0 ? n.replace('SIMV', 'SIMV/PS') : n; };
 const APV = ['APVcmv', 'APVsimv'];
 const NIVMODES = [];
+/* the modes a face mask suits (an awake patient with no airway): Man/Spon and CPAP/PSV; the others expect a tube or i-gel */
+const MASK_MODES = ['MAN', 'SPONT'];
 const INVASIVE = ['MAN', 'SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT'];
 const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnea in Man/Spon; RRmin backup in PSV */
 const SIGH_MODES = [];

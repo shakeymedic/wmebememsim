@@ -374,6 +374,9 @@ body.embedded .vbar .standalone-only{display:none}
 .hands .physical{margin-top:2px}
 .link-banner{position:fixed;left:50%;top:44px;transform:translateX(-50%);z-index:1200;width:min(560px,calc(100% - 24px));background:#7f1d1d;color:#fff;border:2px solid #fca5a5;border-radius:10px;padding:10px 14px;font-size:.9rem;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 .link-banner[hidden]{display:none}
+.pt-note{position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:1150;width:min(620px,calc(100% - 24px));background:#78350f;color:#fff;border:2px solid #fbbf24;border-radius:10px;padding:8px 12px;font-size:.85rem;line-height:1.3;box-shadow:0 10px 30px rgba(0,0,0,.5);pointer-events:none}
+.pt-note[hidden]{display:none}
+.pt-note b{color:#fde68a}
 .link-banner b{display:block;font-size:1rem;margin-bottom:2px}
 .link-banner form{display:flex;gap:6px;margin-top:8px}
 .link-banner input{flex:1;font:inherit;padding:6px 8px;border-radius:6px;border:1px solid #fca5a5;text-transform:uppercase;letter-spacing:.15em}
@@ -395,6 +398,7 @@ body.embedded .vbar .standalone-only{display:none}
 </header>
 <div class="link-banner" id="linkBanner" role="alert"><b>NOT LINKED TO SESSION</b><span id="linkReason">Looking for the session&hellip;</span></div>
 <div class="ended" id="endedBanner" hidden>SESSION ENDED</div>
+<div class="pt-note" id="ptNote" role="status" hidden></div>
         <div class="a-main">
         <div class="t1-wrap" id="device">
           <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
@@ -608,6 +612,8 @@ const isVC = m => VCM.includes(m === undefined ? V.mode : m);
 const mName = (m, src) => { const s = src || V.set, n = MODE_NAME[m] || m; return ['SIMV', 'APVsimv', 'PSIMV+'].includes(m) && s.ps > 0 ? n.replace('SIMV', 'SIMV/PS') : n; };
 const APV = ['APVcmv', 'APVsimv'];
 const NIVMODES = [];
+/* the modes a face mask suits (an awake patient with no airway): Man/Spon and CPAP/PSV; the others expect a tube or i-gel */
+const MASK_MODES = ['MAN', 'SPONT'];
 const INVASIVE = ['MAN', 'SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT'];
 const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnea in Man/Spon; RRmin backup in PSV */
 const SIGH_MODES = [];
@@ -776,10 +782,32 @@ function phOf(paco2, hco3) { return 6.1 + Math.log10(hco3 / (0.2265 * paco2)); }
    Mandatory breaths are time cycled; spontaneous breaths are flow cycled by ETS. The patient is a single-compartment lung
    (compliance C, inspiratory and expiratory time constants) with its own breathing effort. All values are illustrative. */
 const LEAKK = {good:1.2, moderate:6, large:24};
-/* a well-fitted mask leaks a little; a cuffed tube (invasive modes) is treated as leak-free until a leak is added */
-const leakK = () => P.disc ? 0 : P.fit === 'good' && isInvasive() ? 0 : LEAKK[P.fit];
+/* a well-fitted mask leaks a little; a cuffed tube (invasive modes) is treated as leak-free until a leak is added.
+   In the simulator the controller says what the circuit connects to (P.iface): a mask always leaks (more in a mode
+   without NIV leak compensation), a tube or i-gel does not until a leak is added. Without that (P.iface null),
+   as the trainer: the mode decides. */
+const leakK = () => P.disc ? 0 : P.fit !== 'good' ? LEAKK[P.fit]
+  : P.iface === 'mask' ? (maskWrong() ? LEAKK.moderate : LEAKK.good)
+  : P.iface ? 0 : isInvasive() ? 0 : LEAKK.good;
+/* a mask on a mode meant for a sealed airway */
+const maskWrong = () => !!P && P.iface === 'mask' && !MASK_MODES.includes(V.mode);
+/* an i-gel seals to about 25 cmH2O (the simulator's value; published leak pressures are mostly 24-30): above that,
+   gas escapes round it, and the pressure the lungs see stops rising as fast */
+const SGA_SEAL = 25;
+const sgaOver = p => P.iface === 'sga' && !P.disc ? Math.max(0, p - SGA_SEAL) : 0;
+/* The chance that a breathing patient fights a breath (shown as a cough: a pressure spike that can end the breath on
+   High pressure). An awake patient on a mask in a mode meant for a tube fights most machine-timed breaths and some of
+   their own; an awake patient with a tube or i-gel fights machine-timed breaths they did not trigger (the cue to
+   sedate, or to use a mode that follows their breathing). The rates are the simulator's own choice. */
+function fightChance(kind) {
+  if (P.apnoea || P.pr.sedated || P.passive || P.disc || V.cpr) return 0;
+  if (!P.awake) return 0;
+  if (maskWrong()) return kind === 'mand' ? 0.7 : 0.3;
+  if (P.iface !== 'mask' && kind === 'mand') return P.iface === 'sga' ? 0.5 : 0.35;
+  return 0;
+}
 const B = {phase:'exp', t:0, now:0, br:null, lastStart:0, lastMand:-1e9, nextEffort:1.2, starts:[], types:[], vols:[], apnoeaVent:false, consecTrig:0,
-  dip:0, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, peepNow:0, trigFlash:0,
+  dip:0, missLog:[], tiMaxLog:[], autoLog:[], fightLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, peepNow:0, trigFlash:0,
   vEndInsp:0, Vee:0, apvP:10, apvLim:false, vsP:10, nBreaths:0, simvC0:0, simvDue:true, ovl:null, vlimit:false};
 /* ASV state: targets from Table 15-16 */
 const A = {p:15, ti:1, fTarget:15, vtTarget:0.5, mvTarget:7, vtMin:0.3, vtMax:1, fMin:10, fMax:60, atMax:false, started:0};
@@ -909,6 +937,8 @@ function startBreath(kind) {
   if (expLeak > 30) peepM = Math.max(0, base - (expLeak - 30) * 0.15);
   if (P.kink) peepM = base + 6;
   let dPeff = Math.max(0, target - base);
+  const over = sgaOver(target);
+  if (over) { inspLeak += over * 5; dPeff = Math.max(0, dPeff - over * 0.6); }
   if (inspLeak > 85) dPeff = Math.max(0, dPeff - (inspLeak - 85) * 0.35);
   if (P.disc) { peepM = 0.3; dPeff = 1.2; inspLeak = 110; expLeak = 100; }
   const iPeep = B.Vee / pr.C;
@@ -949,7 +979,9 @@ function startBreath(kind) {
   }
   Ti = Math.max(0.2, Ti);
   let cough = null;
-  if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: target + rnd(18, 26)};
+  const fightP = P.cough ? 0.55 : fightChance(kind);
+  if (fightP && Math.random() < fightP) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: target + rnd(18, 26)};
+  pushLog(B.fightLog, !!cough && !P.cough);
   B.br = {kind, auto, sigh, Ti, target: peepM + dPeff, base, peepM, dPeff, VT, inspLeak, expLeak, Fp: VT / tau * 60, tau, tauE: tau * 1.8 * (pr.trapX || 1),
           pramp: Math.min(kind === 'manual' ? 0.25 : s.pramp, Ti / 3), limited, tiMaxHit, cough, obstructed, maxP: 0, spiked:false};
   B.phase = 'insp'; B.t = 0;
@@ -983,6 +1015,9 @@ function startVCBreath(kind, auto, sigh, mt, base) {
   const iPeep = B.Vee / C;
   const F = VTset / tFlow;   /* l/s from the ventilator */
   let VT = Math.max(0.005, (VTset - inspLeak / 60 * tFlow * 0.5) * rnd(0.98, 1.02));
+  /* an i-gel: pressure above its seal pushes part of each breath out round it */
+  const over = sgaOver(peepM + iPeep + R * F + VT / C);
+  if (over) { inspLeak += over * 5; VT = Math.max(0.005, VT - over * C * 0.6); }
   let Ti = Ti0, hiP = false;
   if (P.disc) { VT = 0.01; peepM = 0.3; inspLeak = 110; expLeak = 100; }
   else {
@@ -993,7 +1028,9 @@ function startVCBreath(kind, auto, sigh, mt, base) {
   }
   const plat = peepM + iPeep + VT / C, peak = plat + R * F;
   let cough = null;
-  if (P.cough && Math.random() < 0.55) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: peak + rnd(18, 26)};
+  const fightP = P.cough ? 0.55 : fightChance(kind);
+  if (fightP && Math.random() < fightP) cough = {at: Math.min(Ti, 1.5) * rnd(0.25, 0.6), p: peak + rnd(18, 26)};
+  pushLog(B.fightLog, !!cough && !P.cough);
   B.vlimit = false;
   B.br = {kind, auto, sigh, Ti, target: peak, base, peepM, dPeff: (s.pause > 0 && !hiP ? plat : peak) - peepM, VT, inspLeak, expLeak, Fp: F * 60, tau: pr.tau, tauE: pr.tau * 1.8 * (pr.trapX || 1),
           pramp: 0, limited:false, tiMaxHit:false, cough, obstructed:false, maxP: 0, spiked:false, vc:{F, tFlow, R, C, iPeep, hiP}};
@@ -2564,17 +2601,24 @@ function addPrompt() {}
 function updateTasks() {}
 
 /* ---------- the patient the breath engine ventilates ---------- */
+/* What the circuit connects to, from the controller (live.vent.airway, data/engine-vent.js airwayCode): 'mask' (the
+   face mask of a patient with no airway), 'tube' or 'sga' (an i-gel), with 'A' when the patient is awake. Null with
+   no controller: the trainer's behaviour (the mode decides the leak; nobody fights). */
+function airwayOf(config) {
+  const m = /^(mask|tube|sga)(A?)$/.exec(String(config && config.airway || ''));
+  return m ? {iface:m[1], awake:m[2] === 'A'} : {iface:null, awake:false};
+}
 function makePatient(config) {
   const pr = VP.lungFor(config);
   const id = config && VP.profiles[config.profile] ? config.profile : 'normal';
-  P = {id, pr:{...pr}, base:pr, vco2:1, passive:false, paco2:pr.paco2, hco3:pr.hco3, spo2:null, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0, improve:0,
+  P = {id, pr:{...pr}, base:pr, vco2:1, passive:false, ...airwayOf(config), fightFrac:0, paco2:pr.paco2, hco3:pr.hco3, spo2:null, spo2T:88, pao2:8, hr:pr.hr, rr:pr.rrBase, simMin:0, onNivMin:0, fatigue:0, improve:0,
        fit:'good', disc:false, cough:false, kink:false, apnoea:false, o2fail:false, mains:true, batt:100, deteriorate:false, circLeak:false,
        abgs:[], missFrac:0, tiMaxFrac:0, autoFrac:0, dpAvg:0, vtAvg:pr.vtBase, VAbase:(pr.vtBase - pr.vd) * pr.rrBase};
   calcSpo2(pr.fio2Pre, 0);
   P.spo2 = null;
 }
 const cfgKey = c => (c && c.profile || 'normal') + '|' + (c && c.breathing === false ? 'still' : c && c.breathing === true ? 'breathing' : 'auto')
-  + '|' + JSON.stringify(c && c.lung || {}) + '|' + (c && c.probs || '');
+  + '|' + JSON.stringify(c && c.lung || {}) + '|' + (c && c.probs || '') + '|' + (c && c.airway || '');
 /* the facilitator changed the lungs or the breathing: new lung, same circuit, same problems */
 function applyConfig(config) {
   const key = cfgKey(config);
@@ -2583,6 +2627,10 @@ function applyConfig(config) {
   LIVE.config = config; LIVE.cfgKey = key;
   const pr = VP.lungFor(config);
   P.base = pr; P.pr = G.ySealed ? sealedLung() : {...pr}; P.id = config && VP.profiles[config.profile] ? config.profile : 'normal';
+  const aw = airwayOf(config);
+  /* a new airway (or the patient now asleep or awake): the fighting of the old one is over */
+  if (aw.iface !== P.iface || aw.awake !== P.awake) B.fightLog = [];
+  Object.assign(P, aw);
   P.vco2 = pr.vco2 || 1;
   /* alveolar ventilation at rest is the profile's own (the facilitator's rate changes what the patient does, not their baseline) */
   const own = VP.profiles[P.id];
@@ -2632,6 +2680,21 @@ function clockStr() {
   const p2 = n => String(n).padStart(2, '0');
   return (h ? h + ':' : '') + p2(m) + ':' + p2(sec);
 }
+/* Education mode: what the patient is doing that the ventilator alone would not explain (a real ventilator says
+   nothing about it, so Assessment mode shows nothing). */
+function updatePtNote() {
+  const el = $('#ptNote');
+  if (!el) return;
+  const ventOn = V.power && !V.standby && !V.ambient;
+  let html = '';
+  if (ventOn && !document.body.classList.contains('assess') && !LIVE.isFinished) {
+    const ok = MASK_MODES.map(m => mName(m)).join(', ');
+    if (maskWrong() && fightChance('mand') > 0) html = '<b>Patient: awake, no airway, on a face mask.</b> They are fighting ' + esc(modeLabel()) + ' and the mask leaks. A mask suits ' + esc(ok) + '; other modes need a tube or i-gel first.';
+    else if (P.awake && P.iface !== 'mask' && P.fightFrac > 0) html = '<b>Patient: awake with ' + (P.iface === 'sga' ? 'an i-gel' : 'a tube') + '.</b> They are fighting the breaths they did not trigger: consider sedation, or a mode that follows their own breathing.';
+  }
+  if (el.innerHTML !== html) el.innerHTML = html;
+  el.hidden = !html;
+}
 /* real time: one second of the page is one second of the patient */
 function patientTick(dt) {
   const pr = P.pr, dtMin = dt / 60;
@@ -2647,6 +2710,9 @@ function patientTick(dt) {
   P.rrEase = P.rrEase === undefined || P.rrEase === null ? rrT : P.rrEase + (rrT - P.rrEase) * Math.min(1, dt / 90);
   P.rr = P.apnoea || pr.sedated || P.passive ? 0 : P.rrEase;
   P.missFrac = frac(B.missLog); P.tiMaxFrac = frac(B.tiMaxLog); P.autoFrac = frac(B.autoLog);
+  /* fighting needs a breathing patient on a running ventilator; otherwise it settles */
+  P.fightFrac = helped ? frac(B.fightLog) : 0;
+  updatePtNote();
   if (pr.sedated) P.fatigue = 0;
   P.spo2 = LIVE.spo2;
   P.hr = LIVE.hr !== null ? LIVE.hr : pr.hr;
@@ -2665,7 +2731,7 @@ function deviceDefaults() {
   P.pr = {...P.base};
   E = null; D = null; active.clear(); inactive.clear(); history.length = 0; helpFor = null; cursor = -1;
   for (const k in M) M[k] = null;
-  Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false, vcLim:0, vcLimVt:0});
+  Object.assign(B, {phase:'exp', t:0, br:null, starts:[], types:[], apnoeaVent:false, missLog:[], tiMaxLog:[], autoLog:[], fightLog:[], lowVtCount:0, highVtCount:0, lossPeepT:0, highPeepCount:0, highPT:0, vols:[], apvP:10, vsP:10, ovl:null, Vee:0, vEndInsp:0, nBreaths:0, vlimit:false, apvLim:false, vcLim:0, vcLimVt:0});
   TR.o2.length = 0; TR.flow.length = 0; TR.lastMin = -1;
   bufC.fill(0); bufP.fill(0); bufF.fill(0); bufV.fill(0); bufPl.fill(0); bufTrig.fill(0);
   P.onNivMin = 0; P.batt = 100; probsNow = []; applyProblems(VP.probList(LIVE.config && LIVE.config.probs));
@@ -2744,7 +2810,8 @@ function physNow() {
     fio2 = (fl * measuredO2() / 100 + Math.max(0, pif - fl) * 0.21) / Math.max(pif, fl);
     peep = 0.05 * fl;
   } else {
-    const eff = clamp(1 - 0.5 * P.missFrac - 0.15 * P.tiMaxFrac - 0.3 * P.autoFrac, 0.3, 1);
+    /* a patient fighting the ventilator breathes against it: less of each breath reaches the alveoli */
+    const eff = clamp(1 - 0.5 * P.missFrac - 0.15 * P.tiMaxFrac - 0.3 * P.autoFrac - 0.4 * P.fightFrac, 0.3, 1);
     /* a small floor only: with a larger one, CPAP alone looked like doubled ventilation in AECOPD and OHS */
     VA = Math.max(0.02, (P.vtAvg - pr.vd)) * Math.max(P.rr, (M.ftot || P.rr)) * eff;
     fio2 = measuredO2() / 100;
@@ -2754,7 +2821,8 @@ function physNow() {
   const conn = ventOn && !P.disc && !G.ySealed;
   const rr = conn && !hfo && M.ftot !== null ? M.ftot : P.rr;
   const r3 = v => Math.round((Number.isFinite(v) ? v : 0) * 1000) / 1000;
-  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0};
+  return {on:ventOn && !warming ? 1 : 0, conn:conn ? 1 : 0, fio2:r3(fio2), peep:r3(peep), r:r3(VA / P.VAbase), rr:r3(rr), autopeep:r3(M.autopeep || 0), inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0,
+    mask:P.iface === 'mask' ? 1 : 0, mw:ventOn && maskWrong() ? 1 : 0, fight:r3(ventOn ? P.fightFrac : 0)};
 }
 const finiteOr = v => (typeof v === 'number' && Number.isFinite(v)) ? Math.round(v * 10) / 10 : null;
 /* the current mode's controls and the alarm limits, for the facilitator's remote control:
@@ -3077,7 +3145,7 @@ requestAnimationFrame(rafLoop);
 const urlSession = sessionFromUrl();
 if (urlSession) fbStart(urlSession);
 else setLinkState(false, 'No session was supplied. Enter the session code shown on the controller to link this ventilator.', 'never');
-window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand};
+window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand, leakK, maskWrong, fightChance, sgaOver};
 
 </script>
 </body>

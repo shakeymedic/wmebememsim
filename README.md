@@ -441,7 +441,16 @@ patient.
 - **The lungs** are chosen on the controller (Ventilator section): normal, AECOPD, cardiogenic
   pulmonary oedema, obesity hypoventilation, ARDS or severe asthma (`data/ventprofiles.js`, the
   trainer's values; teaching values, not validated physiology), and whether the patient breathes for
-  themselves. The first choice comes from the scenario's words.
+  themselves. The first choice comes from the scenario's words. An awake patient (GCS above 8, not
+  paralysed) breathes for themselves whatever the lungs.
+- **The airway** (Airway in the Ventilator section; `interfaceFor` in `data/engine-vent.js`). An awake
+  patient with no tube or i-gel recorded is on a face mask: only NIV, NIV-ST and HiFlowO2 suit it
+  (Man/Spon and CPAP/PSV on the A350). In any other mode the mask leaks more and the patient fights the
+  ventilator (pressure spikes and High pressure alarms, less effective ventilation, HR and BP up), the
+  log flags it, and in Education mode a note on the ventilator says why. An unconscious patient (GCS 8
+  or less, paralysed or in arrest) with no airway recorded is assumed to have a tube. An i-gel leaks
+  above about 25 cmH2O, and an awake patient with a tube or i-gel fights the machine breaths they did
+  not trigger. The facilitator can set the airway by hand.
 - **What the facilitator sees.** Every setting change, mode change, test and alarm on the device is in
   the event log ("Ventilator: …", alarms by priority), and the Ventilator section mirrors each
   ventilator: state, mode, settings, measured values (with VTE per kg of ideal body weight), active
@@ -457,8 +466,9 @@ patient.
   started. It does not apply in a cardiac arrest.
 - **The facilitator stays in charge.** A vital typed by hand stays as typed ("Release to ventilator"
   hands it back), and the Obs switch ("Ventilator drives them" / "I set them") turns the link off.
-  The log says when the ventilator takes over the obs and when it lets go, and warns if an invasive
-  mode is started with no tube or supraglottic airway recorded.
+  The log says when the ventilator takes over the obs and when it lets go, notes when a tube is assumed
+  for an unconscious patient, and warns when an awake patient on a mask is put on a mode that needs a
+  tube or i-gel.
 - **The facilitator controls it** (Ventilator section, `data/screens/ventcontrol.js`):
   - *Problems*, one press each and again to fix: the trainer's ten (leaks, disconnection, coughing,
     kinked expiratory limb, apnoea, oxygen failure, mains lost, tiring, cracked circuit) and five

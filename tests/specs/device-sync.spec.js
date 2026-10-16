@@ -103,6 +103,8 @@ test('a sedated patient has no own rate: a typed RR holds on the monitor and lea
   await startQuickSim(page);
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator lungs').selectOption('ards');
+  // unconscious (GCS 3): the ARDS lungs' sedated patient, a tube assumed
+  await eng(page, () => window.__simEngine.dispatch({ type: 'MANUAL_VITAL_UPDATE', payload: { key: 'gcs', value: 3 } }));
   const { vent } = await openVent(context, code);
   await expect.poll(() => vent.evaluate(() => window.__vent.P.id)).toBe('ards');
   await startVentilating(vent);

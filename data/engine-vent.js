@@ -12,6 +12,9 @@
 //   rr    breaths a minute (the ventilator's measured total rate, or the patient's own)
 //   autopeep  intrinsic PEEP the ventilator measures (cmH2O)
 //   inv   1 when the ventilator is in an invasive mode
+//   mask  1 when the circuit goes to a face mask (an awake patient with no airway)
+//   mw    1 when that mask is on a mode meant for a sealed airway (a tube or i-gel)
+//   fight the share of recent breaths the patient fought (0 to 1)
 // From those this file works out SpO2, PaCO2 (shown as ETCO2), RR, and the effect of hypoxia,
 // hypercapnia and air trapping on HR and BP. The formulas are the standalone trainer's (shunt that
 // PEEP recruits, the oxygen dissociation curve, CO2 from alveolar ventilation). They are teaching
@@ -25,14 +28,31 @@
     var SGA_KEYS = ['i-gel'];
     var has = function (set, k) { return !!(set && (typeof set.has === 'function' ? set.has(k) : set.indexOf(k) !== -1)); };
 
+    var inArrest = function (cur) { return !!(RG && RG.inArrest(cur.rhythm || 'Sinus Rhythm')); };
+    // The GCS at or below which the patient is treated as unconscious (the usual threshold for a
+    // patient who cannot protect their own airway).
+    var UNCONSCIOUS_GCS = 8;
+
+    // Awake: breathing for themselves with a GCS above 8. Not when paralysed, in arrest, or when the
+    // facilitator has said the patient is sedated and paralysed.
+    function awakeFor(cur) {
+        if (!cur || cur.isParalysed || inArrest(cur)) return false;
+        var v = cur.vent || {};
+        if (v.breathing === false) return false;
+        var gcs = Number(cur.vitals && cur.vitals.gcs);
+        return !(Number.isFinite(gcs) && gcs <= UNCONSCIOUS_GCS);
+    }
+
     // The lungs the ventilator ventilates, and whether the patient breathes for themselves. The
     // facilitator's explicit choice always wins; otherwise a paralysed or arrested patient does not
-    // breathe, and anyone else breathes as the lung profile says.
+    // breathe, an awake patient does (even with lungs that are usually sedated, such as ARDS or severe
+    // asthma), and anyone else breathes as the lung profile says.
     function configFor(cur) {
         var v = (cur && cur.vent) || {};
         var profile = v.profile && VP && VP.profiles[v.profile] ? v.profile : (VP ? VP.profileForScenario(cur && cur.scenario) : 'normal');
         var breathing = v.breathing === true || v.breathing === false ? v.breathing : null;
-        if (breathing === null && cur && (cur.isParalysed || (RG && RG.inArrest(cur.rhythm || 'Sinus Rhythm')))) breathing = false;
+        if (breathing === null && cur && (cur.isParalysed || inArrest(cur))) breathing = false;
+        else if (breathing === null && awakeFor(cur)) breathing = true;
         var out = { profile: profile, breathing: breathing };
         // The facilitator's lung adjustments and injected problems (phase 3), and the Assessment
         // switch that hides the T1's alarm help. Only present when set, so the payload stays small.
@@ -48,11 +68,39 @@
         return out;
     }
     var hasProb = function (cfg, id) { return VP ? VP.probList(cfg.probs).indexOf(id) !== -1 : false; };
+    // The airway recorded on the controller (a tube, an i-gel, or none).
     function airwayFor(cur) {
         var a = cur && cur.activeInterventions;
         if (TUBE_KEYS.some(function (k) { return has(a, k); })) return 'tube';
         if (SGA_KEYS.some(function (k) { return has(a, k); })) return 'sga';
         return 'none';
+    }
+
+    // What the ventilator's circuit is connected to. The facilitator's choice (Airway in the
+    // Ventilator section) wins; then a recorded tube or i-gel; then, with no airway recorded, an awake
+    // patient has a face mask (so only noninvasive ventilation suits them) and an unconscious one is
+    // assumed to have a tube (Jake's rule, 16 Oct 2026).
+    //   { airway: 'mask' | 'tube' | 'sga', awake, source: 'facilitator' | 'recorded' | 'awake' | 'assumed' }
+    var AIRWAY_CHOICES = ['mask', 'sga', 'tube'];
+    function interfaceFor(cur) {
+        var v = (cur && cur.vent) || {};
+        var awake = awakeFor(cur);
+        if (AIRWAY_CHOICES.indexOf(v.airway) !== -1) return { airway: v.airway, awake: awake, source: 'facilitator' };
+        var rec = airwayFor(cur);
+        if (rec !== 'none') return { airway: rec, awake: awake, source: 'recorded' };
+        return awake ? { airway: 'mask', awake: true, source: 'awake' } : { airway: 'tube', awake: false, source: 'assumed' };
+    }
+    // The airway as the ventilator page reads it (live.vent.airway, at most 8 characters): 'mask',
+    // 'tube' or 'sga', with an 'A' added when the patient is awake (only an awake patient fights the
+    // ventilator).
+    function airwayCode(cur) {
+        var f = interfaceFor(cur);
+        return f.airway + (f.awake ? 'A' : '');
+    }
+    // The modes a face mask suits, by machine: noninvasive ventilation and high-flow oxygen on the
+    // HAMILTONs; Man/Spon and CPAP/PSV on the anaesthetic machine.
+    function maskModes(model) {
+        return VP && VP.modelOf(model) === 'a350' ? ['MAN', 'SPONT'] : ['NIV', 'NIV-ST', 'HiFlowO2'];
     }
 
     // The ventilator that is breathing for the patient: ventilating, reporting what it delivers,
@@ -130,11 +178,14 @@
         // Only on an invasive ventilator: in NIV the measured AutoPEEP mostly reflects a short
         // expiration from leak and TI max, not a hyperinflated chest.
         var trap = Math.min(10, Math.max(0, num(ph.autopeep, 0) - 3)) * (Number(ph.inv) > 0 ? 1 : 0.25);
+        // An awake patient fighting the ventilator is distressed: HR and BP rise with the share of
+        // breaths they fight (the simulator's illustrative values, up to +20/min and +15/+8 mmHg).
+        var fight = clamp(num(ph.fight, 0), 0, 1);
         var offsets = {
             // A tension pneumothorax also obstructs venous return (until it is decompressed or fixed).
-            hr: (spo2 < 88 ? (88 - spo2) * 1.5 : 0) + (paco2 > 9 ? 6 : 0) + (ptx ? 25 : 0),
-            bpSys: -4 * trap - (ptx ? 35 : 0),
-            bpDia: -2.5 * trap - (ptx ? 20 : 0)
+            hr: (spo2 < 88 ? (88 - spo2) * 1.5 : 0) + (paco2 > 9 ? 6 : 0) + (ptx ? 25 : 0) + 20 * fight,
+            bpSys: -4 * trap - (ptx ? 35 : 0) + 15 * fight,
+            bpDia: -2.5 * trap - (ptx ? 20 : 0) + 8 * fight
         };
         return {
             ventPhys: { active: true, spo2: spo2, paco2: paco2, applied: p.applied },
@@ -148,7 +199,8 @@
     var NUDGED = ['hr', 'bpSys', 'bpDia'];
 
     window.VENT_ENGINE = {
-        configFor: configFor, airwayFor: airwayFor, driverFor: driverFor, step: step,
+        configFor: configFor, airwayFor: airwayFor, awakeFor: awakeFor, interfaceFor: interfaceFor, airwayCode: airwayCode,
+        maskModes: maskModes, UNCONSCIOUS_GCS: UNCONSCIOUS_GCS, driverFor: driverFor, step: step,
         DRIVEN: DRIVEN, NUDGED: NUDGED, CO2_TAU: CO2_TAU
     };
 })();
