@@ -269,6 +269,10 @@ window.INTERVENTIONS = {
     // Shown on the controller's patient picture (data/screens/injuries.js) on the injured leg.
     'TractionSplint': { label: 'Traction Splint (Kendrick)', route: 'external', effect: {}, category: 'Procedures', log: 'Traction splint (Kendrick) applied.', type: 'continuous', duration: 120 },
     'Collar': { label: 'C-Spine Collar', route: 'external', effect: {}, category: 'Procedures', log: 'C-Spine immobilisation applied.', type: 'continuous', duration: 15 },
+    // Head blocks and tape, and the scoop stretcher: spinal motion restriction as a patient often arrives
+    // from the scene. No effect on the obs; drawn on the patient picture (data/screens/injuries.js).
+    'HeadBlocks': { label: 'Head blocks and tape', route: 'external', effect: {}, category: 'Procedures', log: 'Head blocks and tape applied.', type: 'continuous', duration: 15 },
+    'Scoop': { label: 'Scoop stretcher', route: 'external', effect: {}, category: 'Procedures', log: 'Patient on a scoop stretcher.', type: 'continuous', duration: 30 },
     'PelvicBinder': { label: 'Pelvic Binder', route: 'external', effect: { BP: 5 }, category: 'Procedures', log: 'Pelvic binder applied.', type: 'continuous', duration: 30, pk: { onset: 10, peak: 90, offset: 120 } },
     'Thoracotomy': { label: 'Resus Thoracotomy', route: 'surgical', effect: { BP: 20, SpO2: 15 }, category: 'Procedures', log: 'Resuscitative Thoracotomy performed.', type: 'bolus', duration: 120 },
     'REBOA': { label: 'REBOA', route: 'endovascular', effect: { BP: 30 }, category: 'Procedures', log: 'REBOA catheter deployed.', type: 'continuous', duration: 120, pk: { onset: 5, peak: 45, offset: 90 }, expects: ['IV Access'] },

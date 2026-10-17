@@ -518,7 +518,9 @@
         const kit = [];
         const fx = list.filter(i => i.kind === 'fracture' && LIMB_TARGETS.indexOf(i.region) !== -1);
         const sideOf = (i) => i && i.side === 'L' ? 'L' : 'R';
+        if (has('Scoop')) kit.push({ type: 'scoop', name: 'Scoop stretcher' });
         if (has('Collar')) kit.push({ type: 'collar', name: 'Collar' });
+        if (has('HeadBlocks')) kit.push({ type: 'blocks', name: 'Head blocks' });
         if (has('PelvicBinder')) kit.push({ type: 'binder', name: 'Pelvic binder' });
         if (has('TractionSplint')) {
             const t = fx.find(i => i.region === 'thigh' || i.region === 'hip') || fx.find(i => LEG_REGIONS.has(i.region) || i.region === 'leg');
@@ -574,6 +576,26 @@
         return (
             <g data-part="kit">
                 {kit.map((k, n) => {
+                    // the scoop stretcher's two orange halves either side of the patient, joined at the head and feet
+                    if (k.type === 'scoop') {
+                        const [x0, y0] = T([46, 0]), [x1, y1] = T([144, 246]);
+                        return <g key={n} data-part="scoop" fill="none" stroke="#f97316" strokeOpacity="0.9" strokeLinejoin="round">
+                            <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} rx={10 * z} strokeWidth={3.2 * z} />
+                            <path d={`M${x0 + 4 * z} ${y0 + 4 * z} V${y1 - 4 * z} M${x1 - 4 * z} ${y0 + 4 * z} V${y1 - 4 * z}`} strokeWidth={0.8 * z} strokeDasharray={`${4 * z} ${3 * z}`} />
+                        </g>;
+                    }
+                    // head blocks either side of the head, and the tape across the forehead and chin
+                    if (k.type === 'blocks') {
+                        const w = 9 * g.F.kx, h = 26 * g.F.ky;
+                        const [lx, ly] = T([75.5, 25]), [rx] = T([114.5, 25]);
+                        const [tx0, ty] = T([77, 18]), [tx1, cy] = T([113, 43]);
+                        return <g key={n} data-part="blocks">
+                            <rect x={lx - w / 2} y={ly - h / 2} width={w} height={h} rx={2.5 * z} fill="#f97316" stroke="#7c2d12" strokeWidth={0.6 * z} />
+                            <rect x={rx - w / 2} y={ly - h / 2} width={w} height={h} rx={2.5 * z} fill="#f97316" stroke="#7c2d12" strokeWidth={0.6 * z} />
+                            <rect x={tx0} y={ty - 1.6 * z} width={tx1 - tx0} height={3.2 * z} fill="#fde68a" fillOpacity="0.9" stroke="#92400e" strokeWidth={0.4 * z} />
+                            <rect x={tx0} y={cy - 1.6 * z} width={tx1 - tx0} height={3.2 * z} fill="#fde68a" fillOpacity="0.9" stroke="#92400e" strokeWidth={0.4 * z} />
+                        </g>;
+                    }
                     if (k.type === 'collar') return <g key={n} data-part="collar"><Sprite name="collar" c={T([95, 53])} w={25 * g.F.kx} h={26 * g.F.ky} /></g>;
                     if (k.type === 'binder') return <g key={n} data-part="binder"><Sprite name="binder" c={T([95, 131])} w={72 * g.F.kx} h={17 * g.F.ky} /></g>;
                     if (k.type === 'traction') {

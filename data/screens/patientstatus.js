@@ -178,6 +178,11 @@
         if (has(act, 'IV Access')) access.push('IV');
         if (has(act, 'IO Access')) access.push('IO');
         if (has(act, 'CVC')) access.push('Central line');
+        // Fluids running through it: an infusion, or a bolus of fluid or blood still going in (until its peak).
+        const t = num(s.time) || 0;
+        const fluids = (access.length > 0 || has(act, 'FluidInfusion')) && (has(act, 'FluidInfusion') || (s.activeDrugs || []).some(d => d && ['Fluids', 'Blood', 'Albumin'].indexOf(d.key) !== -1
+            && t >= Number(d.startTime) && t - Number(d.startTime) < (Number(d.peak) || 600) && !(Number(d.stopTime) >= 0)));
+        if (fluids) access.push('IV fluids running');
         const airway = tube === 'ett' ? 'Tracheal tube' : tube === 'fona' ? 'Front-of-neck airway' : tube === 'sga' ? 'Supraglottic airway (i-gel)'
             : niv ? `${niv} mask` : bagging ? 'Bag-valve-mask' : oxygen ? 'Oxygen mask' : adjunct ? adjunct : null;
         const other = [];
@@ -196,7 +201,7 @@
             vent, ventilating, ventWhy, manual, highFlow, model, modelName, monitors, access, airway, other,
             cpr: !!s.cprInProgress, lucas: has(act, 'Lucas'), pads: has(act, 'PacingPads'), catheter: has(act, 'Catheter'),
             drain: ['SeldingerDrain', 'SurgicalDrain', 'FingerThoracostomy'].some(k => has(act, k)),
-            iv: has(act, 'IV Access') || has(act, 'IO Access'), cvc: has(act, 'CVC'),
+            iv: has(act, 'IV Access') || has(act, 'IO Access'), cvc: has(act, 'CVC'), fluids,
             cyanosed: !arrest && spo2 !== null && spo2 < 88,
             eyesClosed: arrest || paralysed || !!tube || (gcs !== null && gcs <= 8),
             distressed: flags.some(f => /^Distressed/.test(f.text)),
@@ -254,8 +259,8 @@
                 {trolley ? <image href="images/patient/body/trolley.webp" {...trolley} preserveAspectRatio="none" />
                     : <rect x="52" y="3" width="86" height="244" rx="12" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />}
 
-                {/* the drip stand (IV fluids) */}
-                {a.iv && <g data-part="drip">{S ? <S name="drip" c={[24, 25]} w={28} /> : <line x1="24" y1="6" x2="24" y2="70" stroke="#94a3b8" strokeWidth="1.5" />}</g>}
+                {/* the drip stand, while IV fluids are running */}
+                {a.fluids && <g data-part="drip">{S ? <S name="drip" c={[24, 25]} w={28} /> : <line x1="24" y1="6" x2="24" y2="70" stroke="#94a3b8" strokeWidth="1.5" />}</g>}
                 {/* the arterial line's pressure bag and transducer */}
                 {a.sensors.art && <g data-part="artbag"><rect x="9" y="46" width="11" height="15" rx="3" fill="#fecaca" stroke="#ef4444" /><text x="14.5" y="56" fontSize="5" textAnchor="middle" fill="#7f1d1d" fontWeight="bold">300</text></g>}
 
@@ -301,7 +306,7 @@
                 {g && a.iv && (() => {
                     const p = at(ivSide, 3);
                     return <g data-part="iv">
-                        <path d={`M20 44 C22 80 ${p[0] - 14} ${p[1] - 6} ${p[0]} ${p[1]}`} stroke="#7dd3fc" {...cable} />
+                        {a.fluids && <path data-part="giving-set" d={`M20 44 C22 80 ${p[0] - 14} ${p[1] - 6} ${p[0]} ${p[1]}`} stroke="#7dd3fc" {...cable} />}
                         <S name="cannula" c={p} w={11 * z} rot={-70} />
                     </g>;
                 })()}
@@ -453,7 +458,7 @@
     // obs (sim.setUpIntervention, data/engine.js); the team can still take it off.
     const SETUP_KIT = [
         ['Obs', 'Monitoring'], ['IV Access', 'IV cannula'], ['Oxygen', 'Oxygen mask'], ['OPA', 'Guedel airway'], ['NPA', 'Nasal airway'],
-        ['Collar', 'Collar'], ['PelvicBinder', 'Pelvic binder'], ['Tourniquet', 'Tourniquet'], ['WoundDressing', 'Dressings'], ['ChestSeal', 'Chest seal'],
+        ['FluidInfusion', 'IV fluids running'], ['Collar', 'Collar'], ['HeadBlocks', 'Head blocks'], ['Scoop', 'Scoop stretcher'], ['PelvicBinder', 'Pelvic binder'], ['Tourniquet', 'Tourniquet'], ['WoundDressing', 'Dressings'], ['ChestSeal', 'Chest seal'],
         ['TractionSplint', 'Traction splint'], ['Splinting', 'Splint'], ['Plaster', 'Backslab'], ['ClingFilm', 'Cling film'],
         ['Catheter', 'Urinary catheter'], ['ArtLine', 'Arterial line'], ['CVC', 'Central line']
     ];

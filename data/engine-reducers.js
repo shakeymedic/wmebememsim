@@ -614,8 +614,10 @@
                         ventPanelOpen: true
                     } : {}),
                     // Always a FRESH Set: initialCoreState holds one shared instance, so spreading it
-                    // would hand every session the same object.
-                    activeInterventions: new Set(),
+                    // would hand every session the same object. It starts with the kit the scenario says
+                    // is already on from the scene (scenario.setupKit, data/prehospital.js): on the picture
+                    // and removable, but with no effect on the obs and not the team's.
+                    activeInterventions: new Set(window.cleanSetupKit ? window.cleanSetupKit(action.payload.setupKit) : []),
                     interventionCounts: {} };
             case 'RESTORE_SESSION': {
                 // Whitelist, never spread. coreState is merged LAST in useSimulation, so any `vitals`,
