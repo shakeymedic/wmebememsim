@@ -140,6 +140,7 @@
     <script type="text/babel" src="data/interventions.js"></script>
     <script type="text/babel" src="data/generators.js"></script>
     <script src="data/presets.js"></script>
+    <script src="data/prehospital.js"></script>
     <script src="data/defibsim.js"></script>
     <!-- The ventilator's lungs, shared with vent/index.html. -->
     <script src="data/ventprofiles.js"></script>
@@ -345,9 +346,13 @@
                 engine.addLogEntry(`The patient starts on standard monitoring (ECG, SpO2, NIBP, temperature${o.capnography ? ' and capnography' : ''}).`, 'system');
             };
 
-            const handleGenerate = (scenario, modifiers) => {
+            const handleGenerate = (picked, modifiers) => {
+                // Kit already on from the scene (oxygen, fluids running, collar and blocks ...): data/prehospital.js.
+                const scenario = window.withPrehospitalKit ? window.withPrehospitalKit(picked) : picked;
                 setGeneratedScenario(scenario);
                 engine.dispatch({ type: 'LOAD_SCENARIO', payload: scenario });
+                const kit = Array.isArray(scenario.setupKit) ? scenario.setupKit : [];
+                if (kit.length) engine.addLogEntry(`Set-up: already in place when the team arrives (from the scenario): ${kit.map(k => (window.INTERVENTIONS[k] && window.INTERVENTIONS[k].label) || k).join(', ')}.`, 'system');
                 setView('briefing');
             };
 

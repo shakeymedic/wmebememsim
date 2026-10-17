@@ -607,6 +607,7 @@ Everything else is optional and defaults the same way a built-in scenario would.
 | `rhythm` | string | Must be a label from `data/rhythms.js` |
 | `pmh`, `dhx`, `allergies` | string[] | |
 | `recommendedActions` | string[] | Intervention keys from `data/interventions.js` |
+| `setupKit` | string[] | Kit already on when the team arrives (e.g. `["Oxygen", "IV Access", "FluidInfusion", "Collar", "HeadBlocks", "Scoop"]`). Without it, the kit is read from the brief, a `handover` and `markScheme.radioReport` ("arrives with O2, IV fluids running and is fully immobilised"); `[]` means nothing on. It shows on the patient picture, does not change the obs and is not counted as the team's (`data/prehospital.js`). Monitoring is never put on this way |
 | `learningObjectives` | string[] | Scored in the debrief |
 | `deterioration` | object | `{ active, type, rate }` — drives AUTO mode |
 | `investigations` | object | `{ bloods, ecg, cxr, … }` |
