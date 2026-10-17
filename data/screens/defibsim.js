@@ -57,7 +57,7 @@
         const steps = Array.isArray(ds.steps) ? ds.steps : [];
         const step = state.defibStep;
         const weight = Number(scenario.wetflag && scenario.wetflag.weight) || null;
-        // Energies follow the device's adult threshold (40 kg or 16 years); drug doses follow the
+        // Energies follow the device's adult threshold (40 kg or 18 years); drug doses follow the
         // RCUK paediatric chart for anyone under 18.
         const adult = RG.isAdult(weight, scenario.patientAge);
         const adultDrugs = adult && !(Number(scenario.patientAge) < 18);
@@ -295,7 +295,7 @@
                                     ['shockResponse', 'Converts', [['auto', 'Auto (scenario default)'], ['model', 'Realistic model (energy, CPR, drugs)'], ['1', '1st adequate shock'], ['2', '2nd adequate shock'], ['3', '3rd adequate shock'], ['4', '4th adequate shock'], ['5', '5th adequate shock'], ['never', 'Never (refractory)']]],
                                     ['rOnT', 'Unsync shock with a pulse', [['always', 'Always causes VF'], ['sometimes', 'Sometimes causes VF (1 in 3)'], ['never', 'No effect (flagged)']]],
                                     ['refib', 'After ROSC', [['off', 'Stays in ROSC'], ['once', 'VF recurs once (30-90 s)'], ['model', 'Realistic model']]],
-                                    ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (70 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
+                                    ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (75 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
                                 ].map(([k, label, opts]) => (
                                     <label key={k} className="flex items-center justify-between gap-2 text-[11px] text-slate-300">
                                         <span className="whitespace-nowrap">{label}</span>

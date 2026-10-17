@@ -181,6 +181,8 @@ window.INTERVENTIONS = {
     // Bicarbonate generates CO2, so the ETCO2 rises after it is given (and it shifts K+ in).
     'SodiumBicarb': { label: 'Sodium Bicarbonate', route: 'IV', effect: { pH: 0.1, BP: 3, K: -0.4, ETCO2: 0.6 }, category: 'Drugs', log: 'IV Sodium Bicarbonate administered.', type: 'bolus', duration: 30, pk: { onset: 60, peak: 300, offset: 2400, maxDoses: 3 }, expects: ['IV Access'] },
     'HypertonicSaline': { label: 'Hypertonic Saline', route: 'IV', effect: { BP: 5, gcs: 2 }, category: 'Drugs', log: 'Hypertonic Saline (3%) administered. ICP falls over 5-20 min.', type: 'bolus', duration: 30, pk: { onset: 120, peak: 600, offset: 7200, maxDoses: 2 }, expects: ['IV Access'] },
+    // Osmotherapy: both lower the modelled ICP in a neuro scenario while their pk envelope is active.
+    'Mannitol': { label: 'Mannitol 20%', route: 'IV', effect: { BP: -3 }, category: 'Drugs', log: 'Mannitol 20% administered (0.25-1 g/kg over 15-20 min). ICP falls over 15-30 min; expect a diuresis.', type: 'bolus', duration: 30, pk: { onset: 300, peak: 1200, offset: 7200, maxDoses: 2 }, expects: ['IV Access'] },
     'T3T4': { label: 'Liothyronine (T3)', route: 'IV', effect: { HR: 5, Temp: 0.5 }, category: 'Drugs', log: 'IV Liothyronine administered. Onset is measured in hours.', type: 'bolus', duration: 30, pk: { onset: 1800, peak: 5400, offset: 0, maxDoses: 2 }, expects: ['IV Access'] },
     'Bisphosphonate': { label: 'Bisphosphonate', route: 'IV', effect: {}, category: 'Drugs', log: 'IV Bisphosphonate administered.', type: 'bolus', duration: 60, expects: ['IV Access'] },
     'IVIG': { label: 'IVIG', route: 'IV', effect: {}, category: 'Drugs', log: 'Intravenous Immunoglobulin administered.', type: 'bolus', duration: 60, expects: ['IV Access'] },

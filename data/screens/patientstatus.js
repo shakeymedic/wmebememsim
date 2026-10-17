@@ -152,6 +152,11 @@
         }
         if (paralysed && !arrest) flag('Paralysed', 'slate');
         if (s.pacing && s.pacing.electrical) flag(s.pacing.mechanical ? 'Paced with capture' : 'Pacing: no capture', s.pacing.mechanical ? 'cyan' : 'red');
+        // The modelled ICP, in scenarios that have one (neuro deterioration). It answers to
+        // osmotherapy and to a tube with normocapnia, so the facilitator can watch it come down.
+        const detType = s.scenario && s.scenario.deterioration ? String(s.scenario.deterioration.type || '').toLowerCase() : '';
+        const icp = num(s.icp);
+        if (/^neuro/.test(detType) && icp !== null) flag(`ICP ~${Math.round(icp)} mmHg (model)`, icp > 25 ? 'red' : icp > 20 ? 'amber' : 'slate');
 
         if (!headline) {
             // The worst obs say it best ("Distressed: RR 34 · Hypoxic: SpO2 85%").

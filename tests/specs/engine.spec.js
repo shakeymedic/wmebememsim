@@ -74,7 +74,7 @@ test.describe('Defibrillation and drug rules', () => {
     expect(await st(page, 'S.rhythm')).toBe('SVT');
   });
 
-  test('"auto": synchronised cardioversion needs at least 70 J', async ({ page }) => {
+  test('"auto": synchronised cardioversion needs at least 75 J', async ({ page }) => {
     await eng(page, "E.setDefibSettings({ shockResponse: 'auto' }); E.changeRhythm('SVT', 'test')");
     await eng(page, "E.deliverShock(50, 'test', { sync: true })");
     await page.waitForTimeout(300);

@@ -207,7 +207,7 @@ const RCUK_WEIGHT_BY_AGE = [[0, 3.5], [1 / 12, 4], [0.25, 5], [0.5, 7], [1, 10],
     [6, 20], [7, 23], [8, 26], [10, 30], [12, 38], [14, 50]];
 window.estimateWeight = (age) => {
     const a = Number(age);
-    if (!Number.isFinite(a) || a < 0 || a >= 16) return null;
+    if (!Number.isFinite(a) || a < 0 || a >= 18) return null;   // paediatric until the 18th birthday (RCUK)
     const t = RCUK_WEIGHT_BY_AGE;
     if (a >= t[t.length - 1][0]) return t[t.length - 1][1];     // "Adolescent": 50 kg
     let i = 0;
@@ -446,11 +446,11 @@ window.buildQuickSimScenario = (opts = {}) => {
     let weight = null;
     const rawWeight = Number(opts.weight);
     if (Number.isFinite(rawWeight) && rawWeight > 0) weight = rawWeight;
-    else if (age < 16) { const est = window.estimateWeight(age); weight = est === null ? null : parseFloat(est); }
+    else if (age < 18) { const est = window.estimateWeight(age); weight = est === null ? null : parseFloat(est); }
 
-    // WETFLAG is the paediatric chart, so only a child (< 16) gets one. An adult's typed weight is
+    // WETFLAG is the paediatric chart, so only a child (< 18) gets one. An adult's typed weight is
     // kept (weight-based drugs) but must not turn on the paediatric card, 4 J/kg energies and doses.
-    const wetflag = (weight && age < 16) ? window.calculateWetflag(age, weight) : null;
+    const wetflag = (weight && age < 18) ? window.calculateWetflag(age, weight) : null;
     const base = window.getBaseVitals(age);
     const rhythm = (window.RHYTHMS && window.RHYTHMS.isKnown(opts.rhythm)) ? window.RHYTHMS.canonical(opts.rhythm) : 'Sinus Rhythm';
 
@@ -481,7 +481,7 @@ window.buildQuickSimScenario = (opts = {}) => {
         quickSim: true,
         title: 'Quick Sim',
         category: 'Quick Sim',
-        ageRange: age < 16 ? 'Paediatric' : (age > 65 ? 'Elderly' : 'Adult'),
+        ageRange: age < 18 ? 'Paediatric' : (age > 65 ? 'Elderly' : 'Adult'),
         acuity: 'Majors',
         patientName: name,
         patientAge: age,
@@ -543,9 +543,9 @@ window.generatePatientFromTemplate = (base, opts = {}) => {
     // An authored weight wins over the age estimate, for the same reason.
     const authoredWeight = num(base.weight);
     const weight = (Number.isFinite(authoredWeight) && authoredWeight > 0) ? authoredWeight
-        : (patientAge < 16 ? estimateWeight(patientAge) : null);
-    // WETFLAG is the paediatric chart: children (< 16) only, whatever weight was authored.
-    const wetflag = (weight && patientAge < 16) ? calculateWetflag(patientAge, weight) : null;
+        : (patientAge < 18 ? estimateWeight(patientAge) : null);
+    // WETFLAG is the paediatric chart: children (< 18) only, whatever weight was authored.
+    const wetflag = (weight && patientAge < 18) ? calculateWetflag(patientAge, weight) : null;
     const patientName = (typeof base.patientName === 'string' && base.patientName.trim()) ? base.patientName.trim() : generateName(sex);
 
     // Built-in scenarios author `vitalsMod`; the Builder, custom and restricted scenarios author

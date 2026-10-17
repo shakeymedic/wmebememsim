@@ -7,6 +7,22 @@
     // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
     // arrays (two shockability lists, seven arrest lists) are gone.
     const RG = window.RHYTHMS;
+
+    // RAISED ICP THERAPY. In a neuro scenario the modelled ICP answers to what the team does:
+    // osmotherapy (hypertonic saline, mannitol) while its pk envelope is active; a tube with
+    // normocapnia (ETCO2 4.0-5.0 kPa) stops the rise and brings a high ICP down slowly;
+    // hypoventilation (ETCO2 above 6.0) makes it climb faster. Shared by the core tick and the
+    // Cushing response so the two never disagree about whether the patient is being treated.
+    const icpTherapy = (cs, t) => {
+        if (!cs) return { osmo: 0, normocapnic: false, hypercapnic: false, treated: false };
+        const osmo = (cs.activeDrugs || []).reduce((m, d) => (d && (d.key === 'HypertonicSaline' || d.key === 'Mannitol')) ? Math.max(m, pkFactor(d, t)) : m, 0);
+        const act = cs.activeInterventions;
+        const tube = !!(act && typeof act.has === 'function' && act.has('RSI'));
+        const et = cs.vitals ? Number(cs.vitals.etco2) : NaN;
+        const normocapnic = tube && Number.isFinite(et) && et >= 4.0 && et <= 5.0;
+        const hypercapnic = Number.isFinite(et) && et > 6.0 && !RG.inArrest(cs.rhythm);
+        return { osmo, normocapnic, hypercapnic, treated: osmo > 0 || normocapnic };
+    };
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
     const {
         ARREST_SUPPRESSED, PULSELESS_RHYTHMS, STANDARD_SENSOR_KEYS, SYNC_OFFLINE_STATES, VENTILATOR_RATE,
@@ -411,6 +427,17 @@
                         if (autoMay('bpDia')) base.bpDia = Math.min(180, base.bpDia + 0.12);
                         if (autoMay('hr')) base.hr = Math.max(30, base.hr - 0.1);
                         vitalsChanged = true;
+                    } else if (icpTherapy(cs, tNow).treated && scen.vitals) {
+                        // The ICP has been brought down by treatment: the Cushing response eases back
+                        // towards the scenario's own starting obs, at the rate it came on.
+                        const sv = scen.vitals;
+                        const toward = (k, step) => {
+                            const target = Number(sv[k]);
+                            if (!Number.isFinite(target) || !autoMay(k) || !Number.isFinite(base[k])) return;
+                            if (base[k] > target + 0.01) { base[k] = Math.max(target, base[k] - step); vitalsChanged = true; }
+                            else if (base[k] < target - 0.01) { base[k] = Math.min(target, base[k] + step); vitalsChanged = true; }
+                        };
+                        toward('bpSys', 0.2); toward('bpDia', 0.12); toward('hr', 0.1);
                     }
                 }
 
@@ -680,9 +707,16 @@
                 let newNibp = { ...state.nibp }; 
                 if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
                 let currentICP = state.icp;
-                // Raised ICP climbs on its own only in AUTO mode (the Cushing response it drives is AUTO-only too).
-                if (cs && cs.scenario && cs.scenario.deterioration && normaliseDeteriorationType(cs.scenario.deterioration.type) === 'neuro' && state.isRunning && (cs.deteriorationMode || 'manual') === 'auto') {
-                    if (state.time % 10 === 0) currentICP += 0.1; 
+                // Raised ICP climbs on its own only in AUTO mode (the Cushing response it drives is
+                // AUTO-only too); treatment lowers it in either mode, because treatment is something
+                // the team did, not autonomous physiology.
+                if (cs && cs.scenario && cs.scenario.deterioration && normaliseDeteriorationType(cs.scenario.deterioration.type) === 'neuro' && state.isRunning && state.time % 10 === 0) {
+                    const th = icpTherapy(cs, state.time + 1);
+                    let delta = 0;
+                    if ((cs.deteriorationMode || 'manual') === 'auto') delta += th.hypercapnic ? 0.2 : (th.normocapnic ? 0 : 0.1);
+                    if (th.osmo > 0) delta -= 0.4 * th.osmo;                    // osmotherapy at its peak: ~2.4 mmHg/min
+                    if (th.normocapnic && currentICP > 15) delta -= 0.1;         // controlled ventilation, slowly
+                    currentICP = Math.max(8, Math.min(80, (Number(currentICP) || 10) + delta));
                 }
                 
                 let newMonitorTimer = { ...state.monitorTimer };

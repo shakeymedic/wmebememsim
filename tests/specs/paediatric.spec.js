@@ -10,8 +10,8 @@ const run = (page, fn, arg) => page.evaluate(([f, a]) => new Function('arg', f)(
 
 test('estimated weight, tube size and WETFLAG follow the RCUK drug chart', async ({ page }) => {
   await openController(page);
-  const weights = await run(page, 'return [0, 1, 2, 5, 7, 8, 10, 12, 14, 15, 16].map(a => window.estimateWeight(a))');
-  expect(weights).toEqual([3.5, 10, 12, 18, 23, 26, 30, 38, 50, 50, null]);
+  const weights = await run(page, 'return [0, 1, 2, 5, 7, 8, 10, 12, 14, 15, 16, 17, 18].map(a => window.estimateWeight(a))');
+  expect(weights).toEqual([3.5, 10, 12, 18, 23, 26, 30, 38, 50, 50, 50, 50, null]);   // paediatric until 18
 
   const wf = await run(page, 'return arg.map(([a, w]) => window.calculateWetflag(a, w))', [[0, 3.5], [1, 10], [8, 26], [14, 50]]);
   // < 1 month: 3.0 uncuffed; 1 year: 3.5 cuffed (4.0 uncuffed); 8 years: 6.0-6.5 cuffed
@@ -79,6 +79,7 @@ test('shock energies: 4 J/kg, up to 8 J/kg only from the 5th shock, cardioversio
       cv4: d(75, 20, 5, { kind: 'cardiovert', rhythm: 'SVT' }),
       cvHigh: d(150, 20, 5, { kind: 'cardiovert', rhythm: 'SVT' }),
       cvLow: d(5, 20, 5, { kind: 'cardiovert', rhythm: 'SVT' }),
+      adultCv75: d(75, null, 40, { kind: 'cardiovert', rhythm: 'SVT' }),
       adultCv70: d(70, null, 40, { kind: 'cardiovert', rhythm: 'SVT' }),
       adultCv50: d(50, null, 40, { kind: 'cardiovert', rhythm: 'SVT' }),
       adultArrest: d(150, null, 40, { shockNumber: 1 }),
@@ -92,10 +93,11 @@ test('shock energies: 4 J/kg, up to 8 J/kg only from the 5th shock, cardioversio
   expect(r.cv4).toBeNull();
   expect(r.cvHigh).not.toBeNull();
   expect(r.cvLow).not.toBeNull();
-  expect(r.adultCv70).toBeNull();                 // adult flutter/SVT 70-120 J is not "too low"
+  expect(r.adultCv75).toBeNull();                 // adult flutter/SVT: 75 J is the device's first step in the 70-120 J range
+  expect(r.adultCv70).not.toBeNull();             // 70 J is below the 75 J step the device offers (decision 17 Oct 2026)
   expect(r.adultCv50).not.toBeNull();
   expect(r.adultArrest).toBeNull();
-  expect(r.cvStart).toEqual([20, 200, 120, 70]);
+  expect(r.cvStart).toEqual([20, 200, 120, 75]);
 });
 
 test('a child in the simulator: the log gives weight-based doses and RCUK coaching', async ({ page }) => {

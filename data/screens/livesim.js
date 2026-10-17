@@ -538,6 +538,8 @@
             // diazepam is the community alternative. Neither existed before Wave 4a.
             "Seizures (by route)": ["MidazolamBuccal", "MidazolamIN", "MidazolamIM", "Lorazepam", "LorazepamIM", "DiazepamIV", "DiazepamPR", "Levetiracetam", "Phenytoin"],
             "Vasoactive": ["Metaraminol", "Noradrenaline", "Labetalol", "LabetalolInfusion", "Phentolamine"],
+            // Osmotherapy lowers the modelled ICP in a neuro scenario (so does a tube with normocapnia).
+            "Raised ICP": ["HypertonicSaline", "Mannitol"],
             "Antibiotics": ["Antibiotics", "Ceftriaxone", "Tazocin", "Gentamicin", "Benzylpenicillin", "BenzylpenicillinIM"],
             "Glucose / Insulin": ["InsulinInfusion", "InsulinDextrose", "InsulinSubcut", "Dextrose", "GlucoseOral", "Glucagon"],
             // WAVE 5 (minor note): "Salbutamol IV infusion" is categorised under BREATHING, which is
@@ -806,7 +808,7 @@
         const showEtco2 = etco2Enabled;
         const showArt = activeInterventions.has('ArtLine');
         // A weight entered for an adult Quick Sim patient is not a child (it made a 40-year-old "paeds").
-        const isPaeds = scenario.ageRange === 'Paediatric' || (!!scenario.wetflag && !(Number(scenario.patientAge) >= 16));
+        const isPaeds = scenario.ageRange === 'Paediatric' || (!!scenario.wetflag && !(Number(scenario.patientAge) >= 18));
 
         const cycleAudioOutput = () => {
              const next = audioOutput === 'controller' ? 'monitor' : (audioOutput === 'monitor' ? 'both' : 'controller');
@@ -1717,7 +1719,7 @@
                                          ['shockResponse', 'Converts', [['model', 'Realistic model (energy, CPR, drugs)'], ['auto', 'Auto (arrest: 3rd adequate shock, cardioversion: 1st)'], ['1', '1st adequate shock'], ['2', '2nd adequate shock'], ['3', '3rd adequate shock'], ['4', '4th adequate shock'], ['5', '5th adequate shock'], ['never', 'Never (refractory)']]],
                                          ['rOnT', 'Unsync shock with a pulse', [['never', 'No effect (flagged)'], ['sometimes', 'Sometimes causes VF (1 in 3)'], ['always', 'Always causes VF']]],
                                          ['refib', 'After ROSC', [['model', 'Realistic model'], ['once', 'VF recurs once (30-90 s)'], ['off', 'Stays in ROSC']]],
-                                         ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (70 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
+                                         ['cvEnergy', 'Cardioversion succeeds at', [['default', 'Default (75 J adult, 1 J/kg child)']].concat(RG.ADULT_ENERGY_STEPS.map(j => [String(j), `${j} J or more`]))]
                                      ].map(([k, label, opts]) => (
                                          <label key={k} className="flex items-center justify-between gap-2 text-[10px] text-slate-300">
                                              <span className="whitespace-nowrap">{label}</span>

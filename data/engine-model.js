@@ -204,7 +204,7 @@
         shockResponse: ['model', 'auto', '1', '2', '3', '4', '5', 'never'],
         rOnT: ['always', 'sometimes', 'never'],
         refib: ['model', 'once', 'off'],
-        // The lowest synchronised energy that converts a tachycardia: 'default' (at least 70 J
+        // The lowest synchronised energy that converts a tachycardia: 'default' (at least 75 J
         // adult / 1 J/kg child, or the realistic model) or one of the device's energy steps.
         cvEnergy: ['default'].concat((RG && RG.ADULT_ENERGY_STEPS ? RG.ADULT_ENERGY_STEPS : []).map(String))
     };
@@ -830,7 +830,7 @@
             'AdrenalineInfusion'],
         cardiac: ['Atropine', 'Pacing', 'PacingPads', 'VagalManoeuvre', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
             'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
-        neuro: ['HypertonicSaline', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
+        neuro: ['HypertonicSaline', 'Mannitol', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
             'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM', 'Aciclovir', 'Artesunate'],
         arrest: ['CPR', 'Lucas', 'AdrenalineIV', 'Defib', 'Amiodarone']
     };
@@ -1357,7 +1357,8 @@
         'NIV':                ['niv', 'non-invasive', 'copd', 'oxygen targets'],
         'Cooling':            ['cooling', 'hyperthermia', 'heat'],
         'Warming':            ['warming', 'hypothermia', 'myxoedema'],
-        'HypertonicSaline':   ['hyponatr', 'sodium correction', 'cerebral oedema'],
+        'HypertonicSaline':   ['hyponatr', 'sodium correction', 'cerebral oedema', 'raised icp', 'intracranial', 'osmotherapy'],
+        'Mannitol':           ['raised icp', 'intracranial', 'osmotherapy', 'mannitol'],
         'Bisphosphonate':     ['hypercalcaem', 'hypercalcem', 'bisphosphonate'],
         'Terlipressin':       ['variceal', 'terlipressin'],
         'Labetalol':          ['bp control', 'bp target', 'hypertensive', 'dissection'],
