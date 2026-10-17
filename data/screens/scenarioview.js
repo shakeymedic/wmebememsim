@@ -26,7 +26,7 @@
         const s = scenario || {};
         const brief = s.instructorBrief || {};
         return (
-            <div className="min-w-0 flex-1 flex flex-col gap-1 md:max-w-[34rem]" data-testid="scenario-summary">
+            <div className="min-w-0 flex-1 basis-full md:basis-0 flex flex-col gap-1 md:max-w-[34rem]" data-testid="scenario-summary">
                 <div className="flex items-baseline gap-2 flex-wrap">
                     <span className="text-[9px] uppercase font-bold text-slate-400">Scenario</span>
                     <span className="text-xs font-bold text-emerald-300 uppercase">{s.title}</span>

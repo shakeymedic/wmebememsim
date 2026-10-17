@@ -690,7 +690,7 @@
                     A press on the device enables the sound too (the device page posts its gesture here). */}
                 {!audioEnabled && (
                     <button type="button" onClick={handleEnableAudio} data-testid="enable-sound"
-                            className={`absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[44px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white font-bold shadow-lg flex items-center gap-2 ${shownView === 'monitor' ? 'text-base' : 'text-sm'}`}>
+                            className={`absolute top-0.5 left-1/2 -translate-x-1/2 z-[140] min-h-[44px] px-4 rounded-xl bg-slate-800/95 border border-sky-500 text-white font-bold shadow-lg flex items-center gap-2 whitespace-nowrap ${shownView === 'monitor' ? 'text-base max-md:text-sm' : 'text-sm'}`}>
                         <Lucide icon="volume-2" className="w-5 h-5 text-sky-400"/> Tap to Enable Sound
                     </button>
                 )}
