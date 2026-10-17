@@ -383,8 +383,8 @@
                 <div className="bg-slate-900 p-3 rounded border border-slate-700">
                     <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2"><Lucide icon="mic" className="w-3 h-3"/> Text to Speech</h3>
                     <div className="flex gap-2">
-                        <input type="text" value={speechText} onChange={(e) => setSpeechText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && (speak(speechText) || setSpeechText(""))} className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm" placeholder="Type what the patient says..."/>
-                        <Button onClick={() => {speak(speechText); setSpeechText("");}} variant="primary" className="h-10">Speak</Button>
+                        <input type="text" value={speechText} onChange={(e) => setSpeechText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && speechText.trim() && (speak(speechText.trim()) || setSpeechText(""))} className="flex-1 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white text-sm" placeholder="Type what the patient says..."/>
+                        <Button onClick={() => { if (!speechText.trim()) return; speak(speechText.trim()); setSpeechText(""); }} disabled={!speechText.trim()} variant="primary" className="h-10">Speak</Button>
                     </div>
                 </div>
                 <div className="bg-slate-900 p-3 rounded border border-slate-700">
@@ -610,7 +610,7 @@
                 if ((e.key === 't' || e.key === 'T') && showTimerModal) { setShowTimerModal(false); return; }
                 if (e.key === '?' && showKeyHelp) { setShowKeyHelp(false); return; }
                 // Arrest View is a layout on the team's monitor, not a window here, so it does not block.
-                const modalOpen = showJoin || modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu;
+                const modalOpen = showJoin || modalVital || showDrugCalc || showTimerModal || invModal || showNIBPModal || showLogModal || showRhythmModal || showKeyHelp || showFlagsModal || showArrestMenu || showROSCMenu || showSetup || showMarkSheet || showVolume;
                 if (modalOpen) return;
                 if (e.key === ' ') {
                     if (active?.matches?.('button, a, [role="button"]')) return;
@@ -623,7 +623,7 @@
             };
             window.addEventListener('keydown', handler);
             return () => window.removeEventListener('keydown', handler);
-        }, [isRunning, showJoin, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu]);
+        }, [isRunning, showJoin, modalVital, showDrugCalc, showTimerModal, invModal, showNIBPModal, showLogModal, showRhythmModal, showKeyHelp, showFlagsModal, showArrestMenu, showROSCMenu, showSetup, showMarkSheet, showVolume]);
 
         // A blank entry is never logged (Enter or a stray click on an empty box used to add empty
         // lines to the log and the debrief timeline).
@@ -813,10 +813,15 @@
              sim.dispatch({type: 'SET_AUDIO_OUTPUT', payload: next});
         };
 
+        // The small x / - on a card goes through the engine's own toggle-off path (log line, toast,
+        // CPR flag cleared, queued pre-START effects dropped) rather than a bare reducer dispatch,
+        // which used to leave CPR "in progress" on the monitor after the x on the CPR card.
         const handleRemove = (e, key, type) => {
-            e.stopPropagation(); 
-            if (type === 'continuous') sim.dispatch({ type: 'REMOVE_INTERVENTION', payload: key });
-            else sim.dispatch({ type: 'DECREMENT_INTERVENTION', payload: key });
+            e.stopPropagation();
+            if (type === 'continuous') { sim.applyIntervention(key); return; }
+            sim.dispatch({ type: 'DECREMENT_INTERVENTION', payload: key });
+            const label = (INTERVENTIONS[key] && INTERVENTIONS[key].label) || key;
+            addLogEntry(`${label}: one dose removed from the count (facilitator correction).`, 'system');
         };
 
         // Nothing is ever disabled. An amber corner marker simply SHOWS what is not in place yet, so
@@ -834,8 +839,11 @@
              const btnTitle = missing.length
                  ? `Not in place yet: ${missing.join(', ')} \u2014 you can still do this, it will be flagged for the debrief.`
                  : (isActive && isContinuous ? `${action.label} is ACTIVE \u2014 pressing again STOPS it.` : action.label);
+             // The remove control is a sibling of the main button, not a child: a button inside a
+             // button is invalid and a "nested-interactive" accessibility failure.
              return (
-                 <button key={key} title={btnTitle} onClick={() => applyIntervention(key)} className={`relative h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
+                 <div key={key} className="relative">
+                 <button title={btnTitle} onClick={() => applyIntervention(key)} className={`relative w-full h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
                      <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
                         {/* The ROUTE is shown on every button, because IM vs IV vs buccal
@@ -847,18 +855,19 @@
                      {missing.length > 0 && (
                          <span aria-hidden="true" className="absolute top-0 left-0 w-0 h-0 border-t-[14px] border-l-[14px] border-t-amber-500 border-l-transparent"></span>
                      )}
-                     {isActive && action.type === 'continuous' && (
-                         <div className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'continuous')}>
-                             <Lucide icon="x" className="w-3 h-3"/>
-                         </div>
-                     )}
-                     {!isActive && count > 0 && action.type !== 'continuous' && (
-                         <div className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'bolus')}>
-                             <Lucide icon="minus" className="w-3 h-3"/>
-                         </div>
-                     )}
                      {activeDurations[key] && (<div className="absolute bottom-0 left-0 h-1 bg-emerald-400 transition-all duration-1000" style={{width: `${Math.max(0, 100 - ((time - activeDurations[key].startTime)/activeDurations[key].duration*100))}%`}}></div>)}
                  </button>
+                 {isActive && action.type === 'continuous' && (
+                     <button type="button" aria-label={`Stop ${action.label}`} className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'continuous')}>
+                         <Lucide icon="x" className="w-3 h-3"/>
+                     </button>
+                 )}
+                 {!isActive && count > 0 && action.type !== 'continuous' && (
+                     <button type="button" aria-label={`Remove one ${action.label} from the count`} className="absolute top-1 right-1 text-red-400 bg-slate-900/80 hover:bg-red-600 hover:text-white rounded-full p-1 cursor-pointer transition-colors z-10" onClick={(e) => handleRemove(e, key, 'bolus')}>
+                         <Lucide icon="minus" className="w-3 h-3"/>
+                     </button>
+                 )}
+                 </div>
              );
         };
         

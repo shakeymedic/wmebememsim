@@ -159,12 +159,13 @@ window.generateHistory = (age, sex = 'Male') => {
 // Age-stratified alarm thresholds (heart rate, respiratory rate)
 window.getAlarmThresholds = (age) => {
     if (age == null) age = 40;
-    if (age < 1)        return { hr: { low: 100, high: 180 }, rr: { low: 30, high: 60 }, spO2: 92 };
-    if (age <= 2)       return { hr: { low: 90,  high: 160 }, rr: { low: 24, high: 40 }, spO2: 92 };
-    if (age <= 5)       return { hr: { low: 80,  high: 140 }, rr: { low: 22, high: 34 }, spO2: 92 };
-    if (age <= 12)      return { hr: { low: 60,  high: 120 }, rr: { low: 18, high: 30 }, spO2: 92 };
-    if (age > 65)       return { hr: { low: 50,  high: 110 }, rr: { low: 10, high: 24 }, spO2: 90 };
-    return                     { hr: { low: 40,  high: 130 }, rr: { low: 8,  high: 30 }, spO2: 90 };
+    // bpSys: the systolic below which the monitor's BP tile alarms (children: APLS hypotension, about 70 + 2 x age).
+    if (age < 1)        return { hr: { low: 100, high: 180 }, rr: { low: 30, high: 60 }, spO2: 92, bpSys: 70 };
+    if (age <= 2)       return { hr: { low: 90,  high: 160 }, rr: { low: 24, high: 40 }, spO2: 92, bpSys: 72 };
+    if (age <= 5)       return { hr: { low: 80,  high: 140 }, rr: { low: 22, high: 34 }, spO2: 92, bpSys: 78 };
+    if (age <= 12)      return { hr: { low: 60,  high: 120 }, rr: { low: 18, high: 30 }, spO2: 92, bpSys: 90 };
+    if (age > 65)       return { hr: { low: 50,  high: 110 }, rr: { low: 10, high: 24 }, spO2: 90, bpSys: 90 };
+    return                     { hr: { low: 40,  high: 130 }, rr: { low: 8,  high: 30 }, spO2: 90, bpSys: 90 };
 };
 
 window.getBaseVitals = (age) => {
@@ -551,7 +552,10 @@ window.generatePatientFromTemplate = (base, opts = {}) => {
     // `vitals`. Both are honoured (vitals last, as the more explicit of the two).
     const vitalsMod = (base.vitalsMod && typeof base.vitalsMod === 'object') ? base.vitalsMod : {};
     const authoredVitals = (base.vitals && typeof base.vitals === 'object') ? base.vitals : {};
-    let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...vitalsMod, ...authoredVitals };
+    // Anything a scenario does not author starts at the normal value FOR THIS PATIENT'S AGE (a
+    // 1-week-old used to start at the adult RR of 16, which the room monitor alarmed on at once).
+    const ageNorm = window.getBaseVitals ? window.getBaseVitals(patientAge) : {};
+    let finalVitals = { hr: 80, bpSys: 120, bpDia: 80, rr: 16, spO2: 98, temp: 37, gcs: 15, bm: 5, pupils: 3, ...ageNorm, ...vitalsMod, ...authoredVitals };
     const sysGiven = vitalsMod.bpSys !== undefined || authoredVitals.bpSys !== undefined;
     const diaGiven = vitalsMod.bpDia !== undefined || authoredVitals.bpDia !== undefined;
     if (sysGiven && !diaGiven) finalVitals.bpDia = Math.floor(finalVitals.bpSys * 0.65);

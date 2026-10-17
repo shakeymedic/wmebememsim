@@ -444,7 +444,12 @@
         }, [scenarioImageKeys]);
         const canvasRef = useRef(null);
         
-        const lastPopupTime = useRef(0);
+        // Result cards are told apart by the exact stamp they carry, not by "newer than the last":
+        // a team press here stamps the tablet's clock and the controller stamps the laptop's, and
+        // comparing the two used to drop the controller's result or clear when the tablet ran fast.
+        const seenPopups = useRef(new Set());
+        const popupSeen = (ts) => seenPopups.current.has(ts);
+        const markPopup = (ts) => { seenPopups.current.add(ts); if (seenPopups.current.size > 500) seenPopups.current = new Set(Array.from(seenPopups.current).slice(-250)); };
         const simChannel = useRef(null);
 
         useEffect(() => {
@@ -479,16 +484,16 @@
             // live updates carry its last popup, which must not wipe a result the team opened here since.
             // (The database drops null fields, so a synced clear arrives with no type at all.)
             if (monitorPopup && !monitorPopup.type) {
-                if (!(monitorPopup.timestamp > lastPopupTime.current)) return;
-                lastPopupTime.current = monitorPopup.timestamp;
+                if (!monitorPopup.timestamp || popupSeen(monitorPopup.timestamp)) return;
+                markPopup(monitorPopup.timestamp);
                 if (invToast) setInvToast(null);
                 if (show12Lead) setShow12Lead(false);
                 setViewImage(null);
                 return;
             }
 
-            if (monitorPopup && monitorPopup.type && monitorPopup.timestamp > lastPopupTime.current) {
-                lastPopupTime.current = monitorPopup.timestamp;
+            if (monitorPopup && monitorPopup.type && monitorPopup.timestamp && !popupSeen(monitorPopup.timestamp)) {
+                markPopup(monitorPopup.timestamp);
                 const type = monitorPopup.type;
                 // The patient picture is drawn over the whole screen by MonitorContainer, not as a result card.
                 if (type === 'Patient picture') { setInvToast(null); setViewImage(null); return; }
@@ -857,7 +862,7 @@
                             {/* NIBP is the one sensor that does NOT blank when removed: like a real
                                 monitor, the last measured reading stays up with its time, marked
                                 CUFF OFF, and no new reading can be taken until the cuff is back on. */}
-                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < 90} visible={sNibp || !!nibp.sys} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={sNibp ? triggerNIBP : undefined} note={sNibp ? null : 'cuff off'} dense={denseTiles} reserveBottom={sNibp} />
+                            <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < (thresholds.bpSys || 90)} visible={sNibp || !!nibp.sys} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={sNibp ? triggerNIBP : undefined} note={sNibp ? null : 'cuff off'} dense={denseTiles} reserveBottom={sNibp} />
                             {sNibp && (
                                 <div className="absolute bottom-1 right-1 left-1 flex gap-1 lg:gap-2 z-20 px-1">
                                     <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border border-slate-600 uppercase lg:tracking-wide transition-colors shadow-lg flex-1 min-w-0 h-12 truncate">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
@@ -869,7 +874,7 @@
                         <VitalDisplay label="SpO2" value={vitals.spO2} prev={prevVitals.spO2} unit="%" alert={vitals.spO2 < thresholds.spO2} visible={sSpo2} isMonitor={true} hideTrends={true} dense={denseTiles} />
 
                         {hasArtLine && (
-                            <VitalDisplay label="ABP" value={abpShown.sys} value2={abpShown.dia} unit="mmHg" alert={abpShown.sys < 90} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
+                            <VitalDisplay label="ABP" value={abpShown.sys} value2={abpShown.dia} unit="mmHg" alert={abpShown.sys < (thresholds.bpSys || 90)} visible={true} isMonitor={true} hideTrends={true} dense={denseTiles} />
                         )}
 
                         <VitalDisplay label="Resp Rate" value={vitals.rr} prev={prevVitals.rr} unit="/min" alert={vitals.rr > thresholds.rr.high || vitals.rr < thresholds.rr.low} visible={sEcg || !!etco2Enabled} isMonitor={true} hideTrends={true} dense={denseTiles} />
@@ -922,12 +927,11 @@
                             opens the 12-lead canvas directly, clears the stale result card, and tells the
                             assessor the team asked for it. */}
                         <InvBtn label="12-Lead" icon="activity" onClick={() => { setInvToast(null); setShow12Lead(true); if (sim.sendDeviceEvent) sim.sendDeviceEvent('REQUEST_12LEAD', {}); }} loading={loadingInvestigations?.['ECG']} />
-                        <InvBtn label="VBG" icon="droplet" onClick={() => { setShow12Lead(false); revealInvestigation('VBG'); }} loading={loadingInvestigations?.['VBG']} />
-                        <InvBtn label="ABG" icon="droplet" onClick={() => { setShow12Lead(false); revealInvestigation('ABG'); }} loading={loadingInvestigations?.['ABG']} />
-                        <InvBtn label="CXR" icon="image" onClick={() => { setShow12Lead(false); revealInvestigation('X-ray'); }} loading={loadingInvestigations?.['X-ray']} />
-                        <InvBtn label="Urine" icon="flask-conical" onClick={() => { setShow12Lead(false); revealInvestigation('Urine'); }} loading={loadingInvestigations?.['Urine']} />
-                        <InvBtn label="POCUS" icon="waves" onClick={() => { setShow12Lead(false); revealInvestigation('POCUS'); }} loading={loadingInvestigations?.['POCUS']} />
-                        <InvBtn label="CT Head" icon="scan" onClick={() => { setShow12Lead(false); revealInvestigation('CT'); }} loading={loadingInvestigations?.['CT']} />
+                        {/* A team press opens the result here AND tells the controller (its log and debrief
+                            never used to record that the team took a gas or an X-ray). */}
+                        {[['VBG', 'droplet', 'VBG'], ['ABG', 'droplet', 'ABG'], ['CXR', 'image', 'X-ray'], ['Urine', 'flask-conical', 'Urine'], ['POCUS', 'waves', 'POCUS'], ['CT Head', 'scan', 'CT']].map(([label, icon, type]) => (
+                            <InvBtn key={type} label={label} icon={icon} onClick={() => { setShow12Lead(false); revealInvestigation(type); if (sim.sendDeviceEvent) sim.sendDeviceEvent('INVESTIGATION', { type }); }} loading={loadingInvestigations?.[type]} />
+                        ))}
                     </div>
                 </div>
 

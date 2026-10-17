@@ -215,7 +215,7 @@ window.INTERVENTIONS = {
     'Oxytocin': { label: 'Oxytocin', route: 'IV', effect: { BP: -5 }, category: 'Drugs', log: 'IV Oxytocin administered.', type: 'bolus', duration: 10, pk: { onset: 60, peak: 180, offset: 1200, maxDoses: 3 }, expects: ['IV Access'] },
     'Ergometrine': { label: 'Ergometrine', route: 'IM/IV', effect: { BP: 10 }, category: 'Drugs', log: 'IV Ergometrine administered.', type: 'bolus', duration: 10, pk: { onset: 120, peak: 420, offset: 3600, maxDoses: 2 }, expects: ['IV Access'] },
     'Carboprost': { label: 'Carboprost', route: 'IM', effect: {}, category: 'Drugs', log: 'IM Carboprost administered.', type: 'bolus', duration: 10 },
-    'AntiD': { label: 'Anti-D Ig', route: 'IM', effect: {}, category: 'Drugs', log: 'Anti-D Immunoglobulin administered.', type: 'bolus', duration: 10, expects: ['IV Access'] },
+    'AntiD': { label: 'Anti-D Ig', route: 'IM', effect: {}, category: 'Drugs', log: 'Anti-D Immunoglobulin administered.', type: 'bolus', duration: 10 },
     'Prostin': { label: 'Dinoprostone (Prostin)', route: 'IV infusion', effect: {}, category: 'Drugs', log: 'IV Dinoprostone infusion started.', type: 'continuous', duration: 0, expects: ['IV Access'] },
     'Furosemide': { label: 'Furosemide', route: 'IV', effect: { BP: -5 }, category: 'Drugs', log: 'IV Furosemide administered. Venodilation ~5 min, diuresis ~30 min.', type: 'bolus', duration: 30, pk: { onset: 120, peak: 1800, offset: 10800, maxDoses: 3 }, expects: ['IV Access'] },
     'Albumin': { label: 'Human Albumin Solution', route: 'IV', effect: { BP: 5 }, category: 'Drugs', log: 'IV Albumin administered.', type: 'bolus', duration: 60, pk: { onset: 300, peak: 1800, offset: 0, maxDoses: 3 }, expects: ['IV Access'], volume: true },

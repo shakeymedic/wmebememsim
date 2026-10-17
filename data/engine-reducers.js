@@ -230,9 +230,19 @@
             case 'TRIGGER_IMPROVE':
             case 'TRIGGER_DETERIORATE': {
                 // Trend Better / Worse steers the obs it names over its own 30 s; any other obs already
-                // changing over its own period carries on.
+                // changing over its own period carries on. Targets are displayed-space numbers ("SpO2
+                // to 99"), converted to base space exactly as START_TREND does, so a drug's offset is
+                // not added on top of the number the facilitator saw.
                 const t = action.payload.trends || {};
-                return { ...state, trends: mergeTrend(state.trends, t.targets || {}, t.startVitals || state.baseVitals, t.duration) };
+                const t0 = cs ? cs.time : 0;
+                const offs = drugOffsets(cs ? cs.activeDrugs : [], t0);
+                const ceils = drugCeilings(cs ? cs.activeDrugs : [], t0);
+                const targets = {};
+                Object.keys(t.targets || {}).forEach(k => {
+                    const raw = t.targets[k];
+                    targets[k] = (typeof raw === 'number' && offs[k]) ? clampVital(k, baseForDisplayed(k, raw, offs[k], ceils[k])) : raw;
+                });
+                return { ...state, trends: mergeTrend(state.trends, targets, t.startVitals || state.baseVitals, t.duration) };
             }
             // ======================= WAVE 6 / QUICK SIM RAMPS ==========================================
             // A ramp ("take the HR to 130 over 120 s") is the facilitator's own instruction and must
@@ -390,14 +400,24 @@
                     }
                 }
 
-                if (scen && scen.deterioration && normaliseDeteriorationType(scen.deterioration.type) === 'neuro' && isRunning && !inArrest) {
-                    if (icp > 25) { base.bpSys = Math.min(220, base.bpSys + 0.2); base.bpDia = Math.min(180, base.bpDia + 0.12); base.hr = Math.max(30, base.hr - 0.1); vitalsChanged = true; }
+                // The Cushing response and the ETCO2 drift below are autonomous physiology, so they
+                // belong to AUTO mode only (README: in MANUAL nothing changes unless the facilitator
+                // changes it), and never move an obs the facilitator has typed or a trend/drive owns.
+                const hold0 = (cs && cs.manualHold) || {};
+                const autoMay = (k) => detMode === 'auto' && !hold0[k] && !ownedBySomething[k];
+                if (scen && scen.deterioration && detType === 'neuro' && isRunning && !inArrest && detMode === 'auto') {
+                    if (icp > 25) {
+                        if (autoMay('bpSys')) base.bpSys = Math.min(220, base.bpSys + 0.2);
+                        if (autoMay('bpDia')) base.bpDia = Math.min(180, base.bpDia + 0.12);
+                        if (autoMay('hr')) base.hr = Math.max(30, base.hr - 0.1);
+                        vitalsChanged = true;
+                    }
                 }
 
                 // ETCO2 dynamics — non-arrest hyperventilation/hypoventilation
                 if (!inArrest) {
-                    if (base.rr > 30) { base.etco2 = Math.max(2.5, base.etco2 - 0.01); vitalsChanged = true; }
-                    if (base.rr < 10 && base.rr > 0) { base.etco2 = Math.min(8.0, base.etco2 + 0.01); vitalsChanged = true; }
+                    if (autoMay('etco2') && base.rr > 30) { base.etco2 = Math.max(2.5, base.etco2 - 0.01); vitalsChanged = true; }
+                    if (autoMay('etco2') && base.rr < 10 && base.rr > 0) { base.etco2 = Math.min(8.0, base.etco2 + 0.01); vitalsChanged = true; }
                 } else {
                     // Arrest ETCO2 — responds to CPR quality and bagging (key clinical marker)
                     let targetEtco2 = 0.8; // poor/no perfusion baseline
@@ -469,13 +489,23 @@
                 return { ...state, log: newLog };
             // The debrief's obs record: one sample every 5 s of session time, whichever clock is
             // running it (TICK_TIME, or Quick Sim's record-only TICK_RECORD).
+            // Finish, and every rhythm change, add a sample at that second too, so the graph's last
+            // point and its rhythm bar show what the patient was actually in (a ROSC seconds before
+            // Finish used to be missing from the graph entirely).
+            case 'STOP_SIM':
+            case 'UPDATE_RHYTHM':
             case 'TICK_TIME':
             case 'TICK_RECORD': {
                 const t = sessionSeconds(cs);
-                if (!cs || t % 5 !== 0) return state;
+                if (!cs) return state;
+                // A rhythm change is sampled under the NEW rhythm (the vitals follow a tick later).
+                const rhythm = action.type === 'UPDATE_RHYTHM' ? RG.canonical(action.payload) : cs.rhythm;
+                const last = state.history.length ? state.history[state.history.length - 1] : null;
+                if (action.type === 'TICK_TIME' || action.type === 'TICK_RECORD') { if (t % 5 !== 0) return state; }
+                else if (last && last.time === t && last.rhythm === rhythm) return state;
                 const v = cs.vitals || {};
                 const sample = { time: t, hr: v.hr, bp: v.bpSys, bpDia: v.bpDia, spo2: v.spO2, rr: v.rr, etco2: v.etco2,
-                    co2: cs.etco2Enabled ? 1 : 0, temp: v.temp, bm: v.bm, ph: v.ph, gcs: v.gcs, rhythm: cs.rhythm };
+                    co2: cs.etco2Enabled ? 1 : 0, temp: v.temp, bm: v.bm, ph: v.ph, gcs: v.gcs, rhythm };
                 return { ...state, history: [...state.history, sample] };
             }
             default: return state;
@@ -627,7 +657,10 @@
             case 'PAUSE_SIM': return { ...state, isRunning: false, pausedAt: Number.isFinite(state.time) ? state.time : 0 };
             case 'STOP_SIM': return { ...state, isRunning: false, isFinished: true };
             // Finish pressed by mistake: back into the same run, paused, with everything as it was.
-            case 'UNDO_FINISH': return { ...state, isRunning: false, isFinished: false };
+            // The run comes back PAUSED (pausedAt set), not "not started": Finish pressed while running
+            // left pausedAt null, so the controller showed the set-up banner and the patient screens
+            // went blank until START.
+            case 'UNDO_FINISH': return { ...state, isRunning: false, isFinished: false, pausedAt: (state.pausedAt !== null && state.pausedAt !== undefined) ? state.pausedAt : (Number.isFinite(state.time) ? state.time : 0) };
             case 'SET_OFFLINE': return { ...state, isOffline: action.payload };
             case 'SET_SYNC_STATUS': {
                 const syncStatus = {
@@ -647,7 +680,8 @@
                 let newNibp = { ...state.nibp }; 
                 if (newNibp.mode === 'auto') { newNibp.timer -= 1; }
                 let currentICP = state.icp;
-                if (cs && cs.scenario && cs.scenario.deterioration && cs.scenario.deterioration.type === 'neuro' && state.isRunning) {
+                // Raised ICP climbs on its own only in AUTO mode (the Cushing response it drives is AUTO-only too).
+                if (cs && cs.scenario && cs.scenario.deterioration && normaliseDeteriorationType(cs.scenario.deterioration.type) === 'neuro' && state.isRunning && (cs.deteriorationMode || 'manual') === 'auto') {
                     if (state.time % 10 === 0) currentICP += 0.1; 
                 }
                 

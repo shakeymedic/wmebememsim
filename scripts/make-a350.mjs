@@ -143,7 +143,7 @@ between('/* ---------- front-panel keys ---------- */', '/* full screen: CSS tak
 // ---- the simulator link: this page is the A350 -----------------------------------------------------
 sub("const DEVICE_MODEL = 'c6';", "const DEVICE_MODEL = 'a350';");
 sub("const saveKey = () => 'wmebem_c6_' + fb.code;", "const saveKey = () => 'wmebem_a350_' + fb.code;");
-sub("const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'backupOn', 'sigh', 'psync', 'sex', 'locked', 'night', 'spo2On', 'gfx', 'tests', 'loud'];",
+sub("const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'backupOn', 'sigh', 'psync', 'sex', 'locked', 'night', 'spo2On', 'gfx', 'tests', 'loud', 'cpr'];",
     "const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'sex', 'night', 'tests', 'loud', 'apl', 'vap', 'o2sw', 'auxO2', 'light'];");
 sub("  win = V.power && V.standby ? 'standby' : null;\n  renderAll();\n  return true;", "  win = null;\n  renderAll();\n  return true;");
 sub("  if (!ventOn || P.disc) VA = P.VAbase * (1 - 0.3 * P.fatigue);", "  if (!ventOn || P.disc || G.ySealed) VA = P.VAbase * (1 - 0.3 * P.fatigue);");

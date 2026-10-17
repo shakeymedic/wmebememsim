@@ -8,6 +8,19 @@
     // "is this an arrest?" decision in this file now goes through RG. The previous hardcoded
     // arrays (two shockability lists, seven arrest lists) are gone.
     const RG = window.RHYTHMS;
+    // The registry's rate bands are adult. A child's sinus rhythm, sinus tachycardia or sinus
+    // bradycardia takes the APLS band for their age (data/generators.js sinusRateBand), as Quick
+    // Sim already does; every other rhythm keeps the registry band.
+    const hrBandFor = (rhythm, age) => {
+        const band = RG.defaultHrRange(rhythm);
+        const a = Number(age);
+        if (!(Number.isFinite(a) && a <= 12) || typeof window.sinusRateBand !== 'function') return band;
+        const kid = window.sinusRateBand(a);
+        if (rhythm === 'Sinus Rhythm') return [kid.low, kid.high];
+        if (rhythm === 'Sinus Tachycardia') return [kid.high + 10, kid.high + 30];
+        if (rhythm === 'Sinus Bradycardia') return [Math.max(30, kid.low - 30), kid.low - 10];
+        return band;
+    };
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
     const {
         DEFAULT_VITALS, INVASIVE_SENSOR_KEYS, SENSOR_DEFS, STANDARD_SENSOR_KEYS,
@@ -256,7 +269,7 @@
                 // transition (a failed shock or cardioversion) keeps the current rate rather than
                 // re-rolling it.
                 if (!isArrest && newRhythm !== RG.canonical(cur.rhythm)) {
-                    const band = RG.defaultHrRange(newRhythm);
+                    const band = hrBandFor(newRhythm, cur.scenario?.patientAge);
                     const stillHeld = !applyRhythmHrBand(cur, releaseManual);
                     if (band && !stillHeld) {
                         rhythmVitals.hr = getRandomInt(band[0], band[1]);
@@ -1401,7 +1414,7 @@
             // ROSC is no longer always exactly Sinus Rhythm. Honour the rhythm we were given,
             // and let the registry supply its rate band so a ROSC into AF is not shown at 80/min.
             const target = RG.canonical(rhythm);
-            const band = RG.defaultHrRange(target);
+            const band = hrBandFor(target, age);
             const hr = band ? getRandomInt(band[0], band[1]) : base.hr;
             dispatch({ type: 'STOP_TREND' });
             dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 }, releaseManual: RESET_HOLD_KEYS });

@@ -293,7 +293,10 @@
         var starts = find(/^Ventilator: (Ventilation started|Therapy started)/);
         var leak = find(/^Ventilator: Leak test passed/), flow = find(/^Ventilator: Flow sensor calibration passed/);
         // The Atlan A350 logs "Therapy started" and has a system test instead of a flow sensor calibration.
-        var a350 = starts.some(function (l) { return /^Ventilator: Therapy started/.test(l.msg); });
+        // Prefer the scenario's own device; the T1/C6 also log "Therapy started (HiFlowO2)", so a
+        // log-only guess must ignore high-flow oxygen.
+        var a350 = vs && vs.device ? vs.device === 'a350'
+            : starts.some(function (l) { return /^Ventilator: Therapy started \((?!HiFlowO2\))/.test(l.msg); });
         if (a350) flow = find(/^Ventilator: System test passed/);
         var checkNames = a350 ? 'system test and leak test' : 'leak test and flow sensor calibration';
         var limits = find(/^Ventilator: (Alarm limit changed|Alarm limits set with Auto)/);

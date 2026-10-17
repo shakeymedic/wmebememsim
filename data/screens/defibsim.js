@@ -211,7 +211,7 @@
                                             showEtco2={false} showArt={false} isCPR={state.cprInProgress} showSyncMarkers={!!defib.syncMode} className="h-full"/>
                             </div>
                             <div className="grid grid-cols-4 gap-1 p-2 text-center font-mono">
-                                {[['HR', vitals.hr, 'text-emerald-400'], ['BP', `${Math.round(vitals.bpSys || 0)}/${Math.round(vitals.bpDia || 0)}`, 'text-red-300'], ['SpO₂', vitals.spO2, 'text-sky-300'], ['ETCO₂', Number(vitals.etco2 || 0).toFixed(1), 'text-yellow-300']].map(([l, v, c]) => (
+                                {[['HR', (() => { const q = RG.displayRate ? RG.displayRate(state.rhythm, vitals.hr) : vitals.hr; return q === null ? '---' : q; })(), 'text-emerald-400'], ['BP', `${Math.round(vitals.bpSys || 0)}/${Math.round(vitals.bpDia || 0)}`, 'text-red-300'], ['SpO₂', vitals.spO2, 'text-sky-300'], ['ETCO₂', Number(vitals.etco2 || 0).toFixed(1), 'text-yellow-300']].map(([l, v, c]) => (
                                     <div key={l}><div className="text-[9px] text-slate-400">{l}</div><div className={`text-lg font-bold ${c}`}>{typeof v === 'number' ? Math.round(v) : v}</div></div>
                                 ))}
                             </div>

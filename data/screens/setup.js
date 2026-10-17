@@ -414,7 +414,7 @@
                 sex: qsSex,
                 name: qsName,
                 rhythm: qsRhythm,
-                showWetflag
+                showWetflag: false   // the WETFLAG option is not offered for Quick Sim; a tick left on another tab must not leak in
             });
         };
 

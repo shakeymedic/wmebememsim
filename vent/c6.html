@@ -2471,7 +2471,7 @@ function publishMirror() {
 }
 
 /* ---------- keep the ventilator's state if the page reloads or the monitor re-opens it ---------- */
-const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'backupOn', 'sigh', 'psync', 'sex', 'locked', 'night', 'spo2On', 'gfx', 'tests', 'loud'];
+const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'backupOn', 'sigh', 'psync', 'sex', 'locked', 'night', 'spo2On', 'gfx', 'tests', 'loud', 'cpr'];
 const saveKey = () => 'wmebem_c6_' + fb.code;
 function saveDevice() {
   if (!fb.code || !LIVE.key) return;
@@ -2485,7 +2485,9 @@ function restoreDevice() {
   if (s.run && LIVE.run && s.run !== LIVE.run) return false;   /* saved in an earlier run of the same scenario */
   SAVE_KEYS.forEach(k => { if (s.v[k] !== undefined) V[k] = s.v[k]; });
   V.set = {...DEFAULT_SET, ...V.set}; V.lim = {...DEFAULT_LIM, ...V.lim};
-  V.selftest = 0; V.testRun = null; V.cpr = null;
+  V.selftest = 0; V.testRun = null;
+  /* CPR ventilation keeps the limits it saved (a reload used to leave the CPR limits installed for good) */
+  V.cpr = (V.cpr && typeof V.cpr === 'object' && V.cpr.prevLim) ? V.cpr : null;
   P.onNivMin = Number(s.onNivMin) || 0;
   if (V.power && !V.standby) {
     /* carry on ventilating, primed as startVentilation does, without logging a new start */
