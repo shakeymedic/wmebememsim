@@ -281,7 +281,7 @@
 
             const finalAge = Number(buildAge);
             const finalName = buildName.trim() || generateName(buildSex);
-            const weight = finalAge < 16 ? estimateWeight(finalAge) : null;
+            const weight = finalAge < 18 ? estimateWeight(finalAge) : null;
             const wetflag = weight ? calculateWetflag(finalAge, weight) : null;
 
             const bpSys = Number(buildVitals.bpSys);
@@ -299,7 +299,7 @@
                 id: buildId && buildId.startsWith('CUST_') ? buildId : `CUST_${Date.now()}`,
                 title: buildTitle,
                 category: buildCat,
-                ageRange: finalAge < 16 ? "Paediatric" : "Adult",
+                ageRange: finalAge < 18 ? "Paediatric" : "Adult",
                 acuity: 'Majors',
                 patientAge: finalAge,
                 patientName: finalName,
@@ -403,7 +403,7 @@
         const qsWeightError = qsWeight === '' ? null : validateBuilderField('weight', qsWeight);
         const qsInvalid = !!(qsAgeError || qsWeightError);
         const qsResolvedAge = qsAge === '' ? 40 : Number(qsAge);
-        const qsAutoWeight = (!qsWeight && qsResolvedAge < 16) ? estimateWeight(qsResolvedAge) : null;
+        const qsAutoWeight = (!qsWeight && qsResolvedAge < 18) ? estimateWeight(qsResolvedAge) : null;
 
         const launchQuickSim = () => {
             if (qsInvalid) return;
@@ -701,7 +701,7 @@
                             </div>
 
                             {/* Paediatric maths is live in Quick Sim exactly as in a real scenario. */}
-                            {qsResolvedAge < 16 && !qsInvalid && (() => {
+                            {qsResolvedAge < 18 && !qsInvalid && (() => {
                                 const w = qsWeight === '' ? (qsAutoWeight === null ? null : parseFloat(qsAutoWeight)) : Number(qsWeight);
                                 const wf = w ? calculateWetflag(qsResolvedAge, w) : null;
                                 if (!wf) return null;

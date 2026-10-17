@@ -842,7 +842,7 @@
         var r = canonical(rhythm);
         if (r === 'AF') return ADULT_ENERGY_STEPS[ADULT_ENERGY_STEPS.length - 1];
         if (r === 'VT') return 120;
-        return 70;
+        return 75;   // RCUK gives 70-120 J; 75 J is the device's nearest energy step (Jake, 17 Oct 2026)
     }
 
     // Permissive by design (Wave 1 philosophy): a wrong energy is never blocked, it is FLAGGED.
@@ -863,7 +863,7 @@
                 if (j > most * 1.25) return { expected: start, given: j, reason: 'energy too high (' + j + ' J; 1 J/kg doubling to a maximum of 4 J/kg = ' + most + ' J)' };
                 return null;
             }
-            if (j < 70) return { expected: start, given: j, reason: 'energy too low (' + j + ' J; at least 70 J for synchronised cardioversion)' };
+            if (j < 75) return { expected: start, given: j, reason: 'energy too low (' + j + ' J; at least 75 J for synchronised cardioversion)' };
             return null;
         }
         var expected = recommendedEnergy(weightKg, ageYears);
@@ -877,17 +877,17 @@
     }
 
     // An ADEQUATE shock for the fixed-count shock-response settings: at least 150 J (adult) or
-    // 3 J/kg (child) to defibrillate; synchronised and at least 70 J (adult) or 1 J/kg (child) to
+    // 3 J/kg (child) to defibrillate; synchronised and at least 75 J (adult) or 1 J/kg (child) to
     // cardiovert. Anything less still counts as a delivered shock but cannot convert the rhythm.
     function isAdult(weightKg, ageYears) {
         var w = Number(weightKg);
-        return !isFinite(w) || w <= 0 || w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 16);
+        return !isFinite(w) || w <= 0 || w >= 40 || (isFinite(Number(ageYears)) && Number(ageYears) >= 18);
     }
     function adequateShock(joules, weightKg, ageYears, kind) {
         var j = Number(joules);
         if (!isFinite(j) || j <= 0) return false;
         var adult = isAdult(weightKg, ageYears);
-        if (kind === 'cardiovert') return adult ? j >= 70 : j >= Math.max(1, Number(weightKg) * 1);
+        if (kind === 'cardiovert') return adult ? j >= 75 : j >= Math.max(1, Number(weightKg) * 1);
         return adult ? j >= 150 : j >= Math.max(1, Number(weightKg) * 3);
     }
 
