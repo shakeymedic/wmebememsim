@@ -42,7 +42,7 @@ window.INTERVENTIONS = {
     'OPA': { label: 'Guedel / OPA', route: 'oropharyngeal', effect: { SpO2: 5 }, category: 'Airway', log: 'Oropharyngeal airway inserted.', type: 'continuous', duration: 10 },
     'NPA': { label: 'Nasopharyngeal', route: 'nasopharyngeal', effect: { SpO2: 5 }, category: 'Airway', log: 'Nasopharyngeal airway inserted.', type: 'continuous', duration: 15 },
     // Oxygenation via a rescue airway takes 15-60s to show on the probe, then is sustained.
-    'i-gel': { label: 'i-gel / LMA', route: 'supraglottic', effect: { SpO2: 15, RR: 'vent' }, category: 'Airway', log: 'Supraglottic airway (i-gel) inserted.', type: 'continuous', duration: 30, pk: { onset: 5, peak: 40, offset: 60 } },
+    'i-gel': { label: 'Supraglottic airway (SGA)', route: 'supraglottic', effect: { SpO2: 15, RR: 'vent' }, category: 'Airway', log: 'Supraglottic airway inserted.', type: 'continuous', duration: 30, pk: { onset: 5, peak: 40, offset: 60 } },
     'Suction': { label: 'Suction', route: 'manual', effect: { SpO2: 5 }, category: 'Airway', log: 'Airway suctioned.', type: 'bolus', duration: 15, pk: { onset: 2, peak: 20, offset: 0, maxDoses: 3 } },
     // Clears a mucus plug injected on the ventilator (engine.js); on its own it changes no obs.
     'Bronchoscopy': { label: 'Bronchoscopy', route: 'via the tube', effect: {}, category: 'Airway', log: 'Bronchoscopy through the endotracheal tube: airways inspected and secretions suctioned.', type: 'bolus', duration: 60 },
@@ -121,7 +121,7 @@ window.INTERVENTIONS = {
     'Defib': { label: 'Defibrillation (Shock)', route: 'transthoracic', effect: { changeRhythm: 'defib' }, category: 'Circulation', log: 'Shock Delivered.', type: 'bolus', duration: 5, expects: ['PacingPads'] },
     'Cardioversion': { label: 'Sync Cardioversion', route: 'transthoracic', effect: { changeRhythm: 'sync' }, category: 'Circulation', log: 'Synchronised DC Shock delivered.', type: 'bolus', duration: 5, expects: ['PacingPads'] },
     'Pacing': { label: 'External Pacing', route: 'transcutaneous', effect: { HR: 'pace', BP: 15 }, category: 'Circulation', log: 'External Pacing initiated.', type: 'continuous', duration: 10, expects: ['PacingPads'] },
-    'Lucas': { label: 'Lucas Device', route: 'mechanical', effect: { BP: 30, cpr: true }, category: 'Circulation', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
+    'Lucas': { label: 'Mechanical CPR device', route: 'mechanical', effect: { BP: 30, cpr: true }, category: 'Circulation', log: 'Mechanical Chest Compression device applied.', type: 'continuous', duration: 30 },
 
     // --- DRUGS ---
     // Morphine: onset 5-10 min IV, peak 15-20 min, duration 3-4 h. Previously instant.
@@ -262,12 +262,12 @@ window.INTERVENTIONS = {
     // surface cooling starts removing heat within a minute, so 60 s of dead time is the honest value;
     // the declared rates themselves (1.5 degC/h warming, 2.0 degC/h cooling) are unchanged and are
     // now actually achieved. DRIVE_RAMP_SECONDS in engine.js is also reduced, 300s -> 120s.
-    'Warming': { label: 'Active Warming', route: 'external', effect: { Temp: 3 }, category: 'Procedures', log: 'Active warming started (Bair Hugger / warmed fluids). Warms at ~1.5 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 10800, offset: 3600 }, drive: { vital: 'temp', ratePerHour: 1.5, target: 36.8 } },
+    'Warming': { label: 'Active Warming', route: 'external', effect: { Temp: 3 }, category: 'Procedures', log: 'Active warming started (forced-air warming / warmed fluids). Warms at ~1.5 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 10800, offset: 3600 }, drive: { vital: 'temp', ratePerHour: 1.5, target: 36.8 } },
     'Cooling': { label: 'Active Cooling', route: 'external', effect: { Temp: -3 }, category: 'Procedures', log: 'Active cooling started. Cools at ~2.0 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 7200, offset: 3600 }, drive: { vital: 'temp', ratePerHour: -2.0, target: 36.8 } },
     'CPR': { label: 'Start CPR', route: 'manual', effect: { BP: 40, cpr: true }, category: 'Procedures', log: 'Chest compressions started.', type: 'continuous', duration: 5 },
     'Splinting': { label: 'Splint / Immobilise', route: 'external', effect: {}, category: 'Procedures', log: 'Limb splinted / immobilised.', type: 'continuous', duration: 60 },
     // Shown on the controller's patient picture (data/screens/injuries.js) on the injured leg.
-    'TractionSplint': { label: 'Traction Splint (Kendrick)', route: 'external', effect: {}, category: 'Procedures', log: 'Traction splint (Kendrick) applied.', type: 'continuous', duration: 120 },
+    'TractionSplint': { label: 'Traction Splint', route: 'external', effect: {}, category: 'Procedures', log: 'Traction splint applied.', type: 'continuous', duration: 120 },
     'Collar': { label: 'C-Spine Collar', route: 'external', effect: {}, category: 'Procedures', log: 'C-Spine immobilisation applied.', type: 'continuous', duration: 15 },
     // Head blocks and tape, and the scoop stretcher: spinal motion restriction as a patient often arrives
     // from the scene. No effect on the obs; drawn on the patient picture (data/screens/injuries.js).

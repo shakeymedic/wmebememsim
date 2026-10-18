@@ -97,7 +97,7 @@ bagEl.addEventListener('pointerdown', e => { e.preventDefault(); try { bagEl.set
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => bagEl.addEventListener(ev, () => { if (!G.abSq) squeeze(false); }));
 bagEl.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); squeeze(true); } });
 bagEl.addEventListener('keyup', e => { if ((e.key === ' ' || e.key === 'Enter') && !G.abSq) squeeze(false); });
-/* hands-free bagging (the simulator's own control, not part of the A350): squeezes the bag for about a second at the set
+/* hands-free bagging (the simulator's own control, not part of the anaesthetic machine): squeezes the bag for about a second at the set
    rate until it is stopped, so the learner does not have to keep pressing. The pressure each squeeze reaches is still set
    by the APL valve. It stops by itself when the machine leaves Man/Spon, goes to Standby or is switched off. */
 const BAG_TI = 1.0;

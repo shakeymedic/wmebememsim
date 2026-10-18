@@ -1,4 +1,4 @@
-/* ===== Simulator: the Dräger Atlan A350 anaesthetic machine (designed at 1500 x 900 px, scaled to fit) =====
+/* ===== Simulator: the anaesthetic machine (designed at 1500 x 900 px, scaled to fit) =====
    The four screen areas and the control colours are the IFU's; every position, size and colour value is the
    simulator's (the IFU gives no drawing measurements or RGB values). */
 .t1-wrap{position:relative;width:100%;overflow:hidden;border-radius:14px;background:radial-gradient(ellipse at 50% 35%,#ffffff 0,#e9eef3 60%,#dfe5eb 100%);padding:10px 0 4px}

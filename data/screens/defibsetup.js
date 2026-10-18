@@ -87,7 +87,7 @@
             <div className="space-y-4 animate-fadeIn" data-testid="defib-setup">
                 <div className="bg-amber-950/30 border border-amber-700/50 rounded p-3 text-sm text-slate-300">
                     <p className="font-bold text-amber-300 mb-1 flex items-center gap-2"><Lucide icon="zap" className="w-4 h-4"/> Defib Sim — defibrillator skills</p>
-                    <p className="text-xs text-slate-400">The learner uses a ZOLL-style defibrillator on a tablet (<b>Join</b> → Defibrillator QR code, or open <span className="font-mono">defib/</span> with this session code). You run the scenario from the Defib controller: rhythm, shock response, CPR, drugs and the event log. Works on the same computer or remotely.</p>
+                    <p className="text-xs text-slate-400">The learner uses a defibrillator on a tablet (<b>Join</b> → Defibrillator QR code, or open <span className="font-mono">defib/</span> with this session code). You run the scenario from the Defib controller: rhythm, shock response, CPR, drugs and the event log. Works on the same computer or remotely.</p>
                 </div>
 
                 <div>

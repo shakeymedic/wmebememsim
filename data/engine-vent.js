@@ -2,7 +2,7 @@
 // the engine (vitalsReducer TICK_TIME / TICK_VENT), the session sync and the controller's
 // Ventilator section. Loaded after data/ventprofiles.js and data/rhythms.js.
 //
-// The controller stays the only source of truth for the patient. The HAMILTON-T1 page
+// The controller stays the only source of truth for the patient. The transport ventilator page
 // (vent/index.html) reports what it delivers once a second in its mirror (ventState/<id>.phys):
 //   on    1 while it is ventilating (or giving HiFlowO2), else 0
 //   conn  1 while gas reaches the patient (0 when the circuit is disconnected)
@@ -13,7 +13,7 @@
 //   autopeep  intrinsic PEEP the ventilator measures (cmH2O)
 //   inv   1 when the ventilator is in an invasive mode
 //   mask  1 when the circuit goes to a face mask (an awake patient with no airway)
-//   mw    1 when that mask is on a mode meant for a sealed airway (a tube or i-gel)
+//   mw    1 when that mask is on a mode meant for a sealed airway (a tube or SGA)
 //   fight the share of recent breaths the patient fought (0 to 1)
 // From those this file works out SpO2, PaCO2 (shown as ETCO2), RR, and the effect of hypoxia,
 // hypercapnia and air trapping on HR and BP. The formulas are the standalone trainer's (shunt that
@@ -55,20 +55,20 @@
         else if (breathing === null && awakeFor(cur)) breathing = true;
         var out = { profile: profile, breathing: breathing };
         // The facilitator's lung adjustments and injected problems (phase 3), and the Assessment
-        // switch that hides the T1's alarm help. Only present when set, so the payload stays small.
+        // switch that hides the transport ventilator's alarm help. Only present when set, so the payload stays small.
         var lung = {};
         if (v.lung && VP) VP.LUNG_ORDER.forEach(function (k) { var n = Number(v.lung[k]); if (v.lung[k] !== null && v.lung[k] !== undefined && isFinite(n)) lung[k] = n; });
         if (Object.keys(lung).length) out.lung = lung;
         var probs = VP ? VP.probList(v.probs) : [];
         if (probs.length) out.probs = probs.join(',');
         if (v.assess === true) out.assess = true;
-        // The HAMILTON-C6 (vent/c6.html) or the Dräger Atlan A350 (vent/a350.html) instead of the
-        // HAMILTON-T1. Only sent for those, so a T1 session writes exactly what it did before.
+        // The ICU ventilator (vent/c6.html) or the anaesthetic machine (vent/a350.html) instead of the
+        // transport ventilator. Only sent for those, so a T1 session writes exactly what it did before.
         if (VP && VP.modelOf(v.model) !== 't1') out.model = VP.modelOf(v.model);
         return out;
     }
     var hasProb = function (cfg, id) { return VP ? VP.probList(cfg.probs).indexOf(id) !== -1 : false; };
-    // The airway recorded on the controller (a tube, an i-gel, or none).
+    // The airway recorded on the controller (a tube, an SGA, or none).
     function airwayFor(cur) {
         var a = cur && cur.activeInterventions;
         if (TUBE_KEYS.some(function (k) { return has(a, k); })) return 'tube';
@@ -77,7 +77,7 @@
     }
 
     // What the ventilator's circuit is connected to. The facilitator's choice (Airway in the
-    // Ventilator section) wins; then a recorded tube or i-gel; then, with no airway recorded, an awake
+    // Ventilator section) wins; then a recorded tube or SGA; then, with no airway recorded, an awake
     // patient has a face mask (so only noninvasive ventilation suits them) and an unconscious one is
     // assumed to have a tube (Jake's rule, 16 Oct 2026).
     //   { airway: 'mask' | 'tube' | 'sga', awake, source: 'facilitator' | 'recorded' | 'awake' | 'assumed' }
