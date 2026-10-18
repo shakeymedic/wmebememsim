@@ -117,7 +117,7 @@
     // account sign-in form). Default stays 'button' so no existing Button inside a form can
     // accidentally start submitting.
     const Button = ({ children, onClick, variant = 'primary', className = '', disabled = false, size = 'md', href = null, target = null, ariaLabel = null, type = 'button' }) => {
-        const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center";
+        const baseClass = "rounded font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5";
         const variants = {
             primary: "bg-sky-700 hover:bg-sky-600 text-white shadow-lg shadow-sky-900/50 border border-sky-500",
             secondary: "bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600",
@@ -193,7 +193,8 @@
                             className="flex-1 min-w-0 overflow-hidden flex items-center gap-1.5 text-left group">
                         <Lucide icon={open ? 'chevron-down' : 'chevron-right'} className="w-3.5 h-3.5 flex-none text-slate-400 group-hover:text-white" />
                         <span className="text-[10px] uppercase tracking-widest font-bold text-slate-300 group-hover:text-white whitespace-nowrap flex-none">{title}</span>
-                        {!open && summary ? <span className="text-[11px] text-slate-400 truncate min-w-0">{summary}</span> : null}
+                        {/* On a phone a summary beside header buttons would be cut to a stub ("AUT..."): the buttons say it. */}
+                        {!open && summary ? <span className={`text-[11px] text-slate-400 truncate min-w-0 ${right ? 'max-md:hidden' : ''}`}>{summary}</span> : null}
                     </button>
                     {right}
                 </div>
