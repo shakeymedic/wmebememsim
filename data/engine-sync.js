@@ -82,7 +82,7 @@
                 }
                 case 'LEAD_CHANGE': addLogEntry(`Monitoring lead changed to ${String(p.lead || '?').slice(0, 8)} (${where})`, 'action'); break;
                 case 'SIZE_CHANGE': addLogEntry(`ECG size x${Number(p.gain) || 1} (${where})`, 'info'); break;
-                // The HAMILTON-T1 (vent/index.html): every setting, mode change, test and alarm it
+                // The transport ventilator (vent/index.html): every setting, mode change, test and alarm it
                 // records in its own event log is reported here too, as text. Alarms by priority.
                 case 'VENT_LOG': {
                     const text = String(p.text || '').slice(0, 160);
@@ -128,7 +128,7 @@
         // The lungs the ventilator uses (the facilitator's choice, else picked from the scenario),
         // whether the patient breathes for themselves (a paralysed or arrested patient does not,
         // unless the facilitator says so) and what the circuit connects to: a face mask for an awake
-        // patient with no airway, else a tube or i-gel (recorded, or assumed when unconscious). See
+        // patient with no airway, else a tube or SGA (recorded, or assumed when unconscious). See
         // data/engine-vent.js (airwayCode).
         const ventConfigFor = (cur) => {
             const VE = window.VENT_ENGINE;
@@ -615,7 +615,7 @@
                 }
                 const f = window.VENT_ENGINE.interfaceFor(cur);
                 if (f.source === 'assumed') {
-                    addLogEntry(`No airway recorded: the patient is unconscious, so the ventilator assumes a tube or i-gel is in place.`, 'info');
+                    addLogEntry(`No airway recorded: the patient is unconscious, so the ventilator assumes a tube or SGA is in place.`, 'info');
                 }
             } else {
                 addLogEntry('Ventilator is no longer breathing for the patient (standby, switched off, or the link was turned off). The obs follow the usual model again.', 'system');
@@ -623,7 +623,7 @@
         }, [isMonitorMode, ventDriving]);
 
         // An awake patient with no airway is on a face mask: the log says when the ventilator is put
-        // on a mode that needs a tube or i-gel (they fight it and the mask leaks), and when that stops.
+        // on a mode that needs a tube or SGA (they fight it and the mask leaks), and when that stops.
         const maskWrongRef = useRef(false);
         useEffect(() => {
             if (isMonitorMode) return;
@@ -637,7 +637,7 @@
                 const row = VP ? VP.modesFor(VP.modelOf(cur.vent && cur.vent.model)).find(r => r[0] === m) : null;
                 return row ? row[1] : m;
             }).join(', ');
-            if (wrong) addLogEntry(`Awake patient with no airway, on a face mask, but the ventilator is in ${d.label || d.mode}: they fight it and the mask leaks. A mask suits ${ok}; other modes need a tube or i-gel.`, 'warning', true);
+            if (wrong) addLogEntry(`Awake patient with no airway, on a face mask, but the ventilator is in ${d.label || d.mode}: they fight it and the mask leaks. A mask suits ${ok}; other modes need a tube or SGA.`, 'warning', true);
             else if (d) addLogEntry(`Ventilator now in ${d.label || d.mode}: a mode the masked patient tolerates, or their airway has changed.`, 'system');
         }, [isMonitorMode, state.ventMirror]);
 

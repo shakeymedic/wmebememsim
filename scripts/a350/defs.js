@@ -1,4 +1,4 @@
-/* ======================= device definitions (Dräger Atlan A350) ======================= */
+/* ======================= device definitions (anaesthetic machine) ======================= */
 /* Ranges are the IFU's technical data ([IFU1] pp. 269-273; [PI] pp. 10-11). Start values are the factory
    configuration ([IFU2] pp. 216-219: VT 500 mL, RR 12, Pmax 40, Pinsp 15, ΔPsupp 10, Insp term 25%, PEEP 3,
    Slope 0.2 s, RRmin 6, I:E 1:2 (so Tinsp 1.7 s at RR 12), %Tplat 20, Trigger 4.0 L/min, FG O2 100%,
@@ -10,7 +10,7 @@ const CTRL = {
   vt:    {label:'VT', unit:'mL', min:10, max:1500, step:v => v >= 100 ? 10 : 5, tip:'The tidal volume each mandatory breath delivers in the volume modes (VC and VC - AF).'},
   rate:  {label:'RR', unit:'/min', min:3, max:100, step:1, tip:'The number of mandatory breaths per minute.'},
   ti:    {label:'Tinsp', unit:'s', min:0.2, max:10, step:0.1, dp:1, tip:'How long each mandatory breath lasts. With RR it sets the I:E ratio, shown under the controls.'},
-  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1, tip:'The airway pressure each pressure-controlled breath reaches. On the Atlan this is the total pressure, not the pressure above PEEP.'},
+  pinsp: {label:'Pinsp', unit:'cmH2O', min:5, max:80, step:1, tip:'The airway pressure each pressure-controlled breath reaches. On this machine this is the total pressure, not the pressure above PEEP.'},
   pmax:  {label:'Pmax', unit:'cmH2O', min:10, max:80, step:1, tip:'The highest pressure a volume-controlled breath may reach. If the set volume needs more, the breath is limited at Pmax and "Tidal volume not achieved" can appear.'},
   peep:  {label:'PEEP', unit:'cmH2O', min:2, max:35, step:1, off0:true, tip:'The pressure kept in the lungs at the end of breathing out. In PSV it is labelled CPAP.'},
   ps:    {label:'ΔPsupp', unit:'cmH2O', min:3, max:80, step:1, off0:true, tip:'Pressure support above PEEP for the breaths the patient triggers (in SIMV and PSV). Off means no support.'},
@@ -48,7 +48,7 @@ const ALIM = {
   o2low:    {label:'FiO2', unit:'%', min:18, max:98, step:1, tip:'Lower inspired oxygen alarm limit (factory setting 20%).'},
   etco2high:{label:'etCO2', unit:'kPa', min:0.1, max:9.8, step:0.1, dp:1, offMax:true, tip:'Upper end-tidal CO2 alarm limit.'},
   etco2low: {label:'etCO2', unit:'kPa', min:0.1, max:9.7, step:0.1, dp:1, off0:true, tip:'Lower end-tidal CO2 alarm limit.'},
-  /* not shown on the A350: the shared engine reads them (unset, so they never alarm) */
+  /* not shown on the anaesthetic machine: the shared engine reads them (unset, so they never alarm) */
   vthigh:   {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, offMax:true, hidden:true},
   vtlow:    {label:'VT', unit:'mL', min:10, max:3000, step:vtStep, off0:true, hidden:true}
 };
@@ -101,7 +101,7 @@ const isVC = m => VCM.includes(m === undefined ? V.mode : m);
 const mName = (m, src) => { const s = src || V.set, n = MODE_NAME[m] || m; return ['SIMV', 'APVsimv', 'PSIMV+'].includes(m) && s.ps > 0 ? n.replace('SIMV', 'SIMV/PS') : n; };
 const APV = ['APVcmv', 'APVsimv'];
 const NIVMODES = [];
-/* the modes a face mask suits (an awake patient with no airway): Man/Spon and CPAP/PSV; the others expect a tube or i-gel */
+/* the modes a face mask suits (an awake patient with no airway): Man/Spon and CPAP/PSV; the others expect a tube or SGA */
 const MASK_MODES = ['MAN', 'SPONT'];
 const INVASIVE = ['MAN', 'SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT'];
 const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnea in Man/Spon; RRmin backup in PSV */
@@ -115,7 +115,7 @@ const isSIMV = () => ['SIMV', 'APVsimv', 'PSIMV+'].includes(V.mode);
 
 const DEFAULT_SET = {vt:500, rate:12, ti:1.7, pinsp:15, pmax:40, peep:3, ps:10, trig:4, ets:25, pramp:0.2, pause:20, rrmin:6,
   o2:100, fgf:2, carrier:0, height:170, age:40,
-  /* the shared engine's own keys for modes the A350 does not have */
+  /* the shared engine's own keys for modes the anaesthetic machine does not have */
   ie:0.5, pcontrol:15, minvol:100, hflow:15, plim:30, timax:1.5, phi:20, thigh:1, aphi:20, plo:5, athigh:5.4, tlow:0.6};
 const DEFAULT_LIM = {phigh:40, mvhigh:99999, mvlow:3.6, o2high:99999, o2low:20, etco2high:7.0, etco2low:0, apnoea:20};
 const O2_BAND = 5;

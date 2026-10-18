@@ -1,16 +1,16 @@
 // =================================================================================================
-// THE HAMILTON-C6 PAGE  (node scripts/make-c6.mjs  ->  vent/c6.html)
+// THE ICU VENTILATOR PAGE  (node scripts/make-c6.mjs  ->  vent/c6.html)
 //
-// The HAMILTON-C6 (the ICU ventilator, Anaesthetics / ICU on the start screen) is generated from the
-// HAMILTON-T1 page (vent/index.html), so the two share ONE breath engine, alarm logic, window code and
+// The ICU ventilator (Anaesthetics / ICU on the start screen) is generated from the
+// transport ventilator page (vent/index.html), so the two share ONE breath engine, alarm logic, window code and
 // simulator link layer. Edit vent/index.html, then run this script; never edit vent/c6.html by hand.
 // tests/specs/c6.spec.js fails if vent/c6.html is out of date.
 //
-// What changes for the C6 (from the HAMILTON-C6 Operator's Manual, SW 1.2.x, document 10197564/00,
+// What changes for the ICU ventilator (from the ICU ventilator Operator's Manual, SW 1.2.x, document 10197564/00,
 // as noted beside each item; anything else is the simulator's own choice and says so):
 //   - the housing: a widescreen touch monitor (1920 x 1200 on the device; drawn here at 1280 x 800)
 //     with the alarm lamp on top and the keys of Fig 2-2: Manual breath, O2 enrichment, Audio pause,
-//     Screen lock/unlock, Nebuliser, Power/Standby, Print screen and the Press-and-Turn knob. The C6
+//     Screen lock/unlock, Nebuliser, Power/Standby, Print screen and the Press-and-Turn knob. The ICU ventilator
 //     has no Day/Night key (Day & Night is under System > Settings). The manual does not give the
 //     keys' exact positions: here they sit in a row under the screen, in the manual's numbering order.
 //   - the screen (Fig 2-6): mode name top left, message bar, Modes button, power source and time top
@@ -21,7 +21,7 @@
 //   - the modes (Table 2-1): adds the volume-controlled (S)CMV and SIMV (constant flow, with an
 //     inspiratory pause), uses the manual's default APVcmv / APVsimv names, and has no VS.
 //   - wider control and alarm ranges (Tables 16-5 and 16-9).
-// It is a training recreation, not Hamilton Medical software, and is not endorsed by Hamilton Medical.
+// It is an independent training simulator, not made, endorsed or supported by any ventilator manufacturer.
 // =================================================================================================
 import fs from 'node:fs';
 import path from 'node:path';
@@ -33,7 +33,7 @@ const OUT = path.join(ROOT, 'vent', 'c6.html');
 
 let html = fs.readFileSync(SRC, 'utf8');
 const fail = (msg) => { console.error('[make-c6] FAILED: ' + msg); process.exit(1); };
-// Replace exactly one occurrence (or `count`), so a change to the T1 page that breaks a rule stops the build.
+// Replace exactly one occurrence (or `count`), so a change to the transport ventilator page that breaks a rule stops the build.
 const sub = (from, to, count = 1) => {
     const n = html.split(from).length - 1;
     if (n !== count) fail(`expected ${count} of: ${from.slice(0, 90)} (found ${n})`);
@@ -50,13 +50,13 @@ const between = (a, b, to) => {
 // ---- page head ---------------------------------------------------------------------------------
 sub('<title>EM Evidence — Ventilator Simulator</title>', '<title>EM Evidence — ICU Ventilator Simulator</title>');
 sub(`<!--
-  THE HAMILTON-T1 VENTILATOR, AS A SIMULATION DEVICE.`, `<!--
-  GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the T1 page and rerun.
-  THE HAMILTON-C6 ICU VENTILATOR, AS A SIMULATION DEVICE. It shares the HAMILTON-T1 page's breath engine.`);
-sub('<span class="title">HAMILTON-T1</span>', '<span class="title">HAMILTON-C6</span>');
+  THE TRANSPORT VENTILATOR, AS A SIMULATION DEVICE.`, `<!--
+  GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the transport ventilator page and rerun.
+  THE ICU VENTILATOR, AS A SIMULATION DEVICE. It shares the transport ventilator page's breath engine.`);
+sub('<span class="title">Transport ventilator</span>', '<span class="title">ICU ventilator</span>');
 
 // ---- styles: the housing and the main screen ---------------------------------------------------
-between('/* ===== Simulator: device housing', '/* windows */', `/* ===== Simulator: the HAMILTON-C6 monitor (designed at ${'1360 x 1000'} px, scaled to fit) ===== */
+between('/* ===== Simulator: device housing', '/* windows */', `/* ===== Simulator: the ICU ventilator monitor (designed at ${'1360 x 1000'} px, scaled to fit) ===== */
 .t1-wrap{position:relative;width:100%;overflow:hidden;border-radius:14px;background:radial-gradient(ellipse at 50% 35%,#ffffff 0,#e9eef3 60%,#dfe5eb 100%);padding:10px 0 4px}
 .t1-scaler{position:relative;margin:0 auto;transform-origin:0 0}
 .fs-exit{display:none}
@@ -170,13 +170,13 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 .bstat .ap{color:#ffde00;font-weight:700;font-size:13px;display:flex;align-items:center;gap:2px}
 .bstat .clock{font-size:13px;color:#cfd8e0;line-height:1.25;text-align:right;margin-left:4px}
 `);
-// the windows open over the graphics and the right-hand column; the rest of the window styles are the T1's
+// the windows open over the graphics and the right-hand column; the rest of the window styles are the transport ventilator's
 sub('.win{position:absolute;left:180px;top:56px;width:620px;height:484px;', '.win{position:absolute;left:220px;top:60px;width:1060px;height:540px;');
 sub('.dlg{position:absolute;left:150px;top:150px;', '.dlg{position:absolute;left:430px;top:230px;');
 sub('.lockic{position:absolute;right:160px;top:14px;', '.lockic{position:absolute;right:330px;top:14px;');
 sub('.scr-toast{position:absolute;left:190px;top:62px;width:450px;', '.scr-toast{position:absolute;left:400px;top:66px;width:480px;');
 
-// ---- markup: the C6 monitor --------------------------------------------------------------------
+// ---- markup: the ICU ventilator monitor --------------------------------------------------------------------
 const icon = {
     manual: '<svg viewBox="0 0 30 24" aria-hidden="true"><path d="M15 3v8"/><path d="M15 9c-2 0-3 2-4 2"/><path d="M15 9c2 0 3 2 4 2"/><path d="M11 6.5C7 6.5 4 13 4 18c0 2 1.5 3 3.5 2.5L12 19V11"/><path d="M19 6.5c4 0 7 6.5 7 11.5 0 2-1.5 3-3.5 2.5L18 19V11"/></svg>',
     audio: '<svg viewBox="0 0 24 24" aria-hidden="true" style="stroke:#ff4b3e"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/><path d="M3 3l18 18"/></svg>',
@@ -231,18 +231,18 @@ between('        <div class="t1-wrap" id="device">', '        <div class="under"
                 <div class="scr-off" id="scrOff" hidden><span id="scrOffTxt"></span></div>
               </div>
             </div>
-            <div class="t1-name">HAMILTON-C6<small>EMEVIDENCE · ICU VENTILATOR TRAINING SIMULATOR</small></div>
+            <div class="t1-name">ICU VENTILATOR<small>EMEVIDENCE · TRAINING SIMULATOR</small></div>
 ${key('kManual', '', 480, 'Manual breath key', icon.manual)}${key('kO2', '', 584, 'O2 enrichment key', '<span class="o2">↑O<sub>2</sub></span>')}${key('kAudio', 'ap', 688, 'Audio pause key', icon.audio + '<span class="min">2 MIN.</span>')}${key('kLock', '', 822, 'Screen lock/unlock key', icon.lock)}${key('kNeb', '', 926, 'Nebuliser key', icon.neb)}${key('kPower', 'pw', 1030, 'Power/Standby key', icon.power)}${key('kPrint', '', 1118, 'Print screen key', icon.print)}            <button class="t1-knob" id="knob" aria-label="Press-and-turn knob. Arrow keys turn it, Enter or Space presses it"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
-            <!-- the device code drives these indicators; on the C6 they light the keys (no Day/Night key, no battery LEDs on the monitor) -->
+            <!-- the device code drives these indicators; on the ICU ventilator they light the keys (no Day/Night key, no battery LEDs on the monitor) -->
             <div hidden><button id="kDay" tabindex="-1" aria-hidden="true"></button><b class="led" id="led-day"></b><b class="led" id="led-lock"></b><b class="led" id="led-man"></b><b class="led" id="led-o2"></b><b class="led" id="led-print"></b><b class="led" id="led-neb"></b><b class="led" id="led-audio"></b><b class="led" id="led-b1"></b><b class="led" id="led-b2"></b></div>
           </div>
           </div>
         </div>
 `);
 
-// ---- device definitions: the C6's ranges and modes ---------------------------------------------
-sub('/* ======================= device definitions (HAMILTON-T1 SW 3.0.x, adult/ped) ======================= */',
-    '/* ======================= device definitions (HAMILTON-C6 SW 1.2.x, adult/ped; ranges from manual Tables 16-5 and 16-9) ======================= */');
+// ---- device definitions: the ICU ventilator's ranges and modes ---------------------------------------------
+sub('/* ======================= device definitions (transport ventilator SW 3.0.x, adult/ped) ======================= */',
+    '/* ======================= device definitions (ICU ventilator SW 1.2.x, adult/ped; ranges from manual Tables 16-5 and 16-9) ======================= */');
 sub("  peep:  {label:'PEEP/CPAP', unit:'cmH2O', min:0, max:35, step:1},", "  peep:  {label:'PEEP/CPAP', unit:'cmH2O', min:0, max:50, step:1},");
 sub("  ps:    {label:'ΔPsupport', unit:'cmH2O', min:0, max:60, step:1},", "  ps:    {label:'ΔPsupport', unit:'cmH2O', min:0, max:100, step:1},");
 sub("  pinsp: {label:'ΔPinsp', unit:'cmH2O', min:3, max:60, step:1},", "  pinsp: {label:'ΔPinsp', unit:'cmH2O', min:3, max:100, step:1},");
@@ -273,7 +273,7 @@ sub(`const MODE_GROUPS = [
   ['Pressure controlled (biphasic)', ['PCV+', 'PSIMV+', 'SPONT', 'DuoPAP', 'APRV']],
   ['Intelligent ventilation', ['ASV']],
   ['Noninvasive', ['NIV', 'NIV-ST', 'HiFlowO2']]
-];`, `const MODE_GROUPS = [   /* HAMILTON-C6 manual Table 2-1 (adult/paediatric) */
+];`, `const MODE_GROUPS = [   /* ICU ventilator manual Table 2-1 (adult/paediatric) */
   ['Volume controlled', ['SCMV', 'SIMV']],
   ['Adaptive (volume targeted, pressure controlled)', ['APVcmv', 'APVsimv']],
   ['Pressure controlled', ['PCV+', 'PSIMV+', 'SPONT', 'DuoPAP', 'APRV']],
@@ -321,7 +321,7 @@ function startVCBreath(kind, auto, sigh, mt, base) {
   const iPeep = B.Vee / C;
   const F = VTset / tFlow;   /* l/s from the ventilator */
   let VT = Math.max(0.005, (VTset - inspLeak / 60 * tFlow * 0.5) * rnd(0.98, 1.02));
-  /* an i-gel: pressure above its seal pushes part of each breath out round it */
+  /* an SGA: pressure above its seal pushes part of each breath out round it */
   const over = sgaOver(peepM + iPeep + R * F + VT / C);
   if (over) { inspLeak += over * 5; VT = Math.max(0.005, VT - over * C * 0.6); }
   let Ti = Ti0, hiP = false;
@@ -387,11 +387,11 @@ sub("  if (mode === 'DuoPAP') parts.push(`Time at PEEP/CPAP", `  if (isVC(mode))
 sub("      const bk = mk === 'NIV' ? 'PCV+' : 'SIMV+ (APVsimv)';", "      const bk = mk === 'NIV' ? 'PCV+' : 'APVsimv';");
 sub('<p class="wnote">HiFlowO2 can only be selected in Standby. Neonatal modes (nCPAP, nCPAP-PC) and the INTELLiVENT-ASV option are not included in this adult trainer.</p>',
     '<p class="wnote">HiFlowO2 can only be selected in Standby. The neonatal group (nCPAP-PS) and the INTELLiVENT-ASV option are not included in this adult simulator.</p>');
-sub("<tr><td>Software (simulated)</td><td>Trainer, modelled on SW 3.0.x</td></tr></tbody></table>", "<tr><td>Software (simulated)</td><td>Simulator, modelled on the C6 manual (SW 1.2.x)</td></tr></tbody></table>");
-sub(`        <p class="wnote">Pre-transport estimate (T1 Quick Guide, adult): O2 consumption = (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1. It excludes the nebuliser; in NIV, leak increases use. <b>Check cylinder sizes and durations locally.</b></p></div>\`;`,
-    `        <p class="wnote">Estimated O2 consumption uses the T1 Quick Guide formula, (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1: an approximation for the C6. Simulated values.</p></div>\`;`);
-sub('Night lowers the display brightness; the Day/Night key does the same.</p>', 'Night lowers the display brightness. On the C6 Day &amp; Night is set here: there is no Day/Night key.</p>');
-sub("$('#scrOffTxt').innerHTML = V.power ? 'HAMILTON-T1<small>Self-test in progress…</small>' : '';", "$('#scrOffTxt').innerHTML = V.power ? 'HAMILTON-C6<small>Self-test in progress…</small>' : '';");
+sub("<tr><td>Software (simulated)</td><td>Trainer, modelled on SW 3.0.x</td></tr></tbody></table>", "<tr><td>Software (simulated)</td><td>Simulator, modelled on the ICU ventilator manual (SW 1.2.x)</td></tr></tbody></table>");
+sub(`        <p class="wnote">Pre-transport estimate (manufacturer's quick guide, adult): O2 consumption = (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1. It excludes the nebuliser; in NIV, leak increases use. <b>Check cylinder sizes and durations locally.</b></p></div>\`;`,
+    `        <p class="wnote">Estimated O2 consumption uses the manufacturer's quick guide formula, (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1: an approximation for the ICU ventilator. Simulated values.</p></div>\`;`);
+sub('Night lowers the display brightness; the Day/Night key does the same.</p>', 'Night lowers the display brightness. On the ICU ventilator Day &amp; Night is set here: there is no Day/Night key.</p>');
+sub("$('#scrOffTxt').innerHTML = V.power ? 'TRANSPORT VENTILATOR<small>Self-test in progress…</small>' : '';", "$('#scrOffTxt').innerHTML = V.power ? 'ICU VENTILATOR<small>Self-test in progress…</small>' : '';");
 
 // ---- scaling, waveforms and the screen's rendering ------------------------------------------------
 sub('const DEV_W = 1000, DEV_H = 790;', 'const DEV_W = 1360, DEV_H = 1000;');
@@ -417,7 +417,7 @@ sub(`const MMP_DEF = [
   {id:'mv', n:'ExpMinVol', nniv:'MinVol NIV', u:'l/min', dp:1},
   {id:'vte', n:'VTE', nniv:'VTE NIV', u:'ml', dp:0},
   {id:'ftot', n:'fTotal', u:'b/min', dp:0}
-];`, `const MMP_DEF = [   /* which MMPs the C6 shows by default is not in the manual: the simulator's choice */
+];`, `const MMP_DEF = [   /* which MMPs the ICU ventilator shows by default is not in the manual: the simulator's choice */
   {id:'ppeak', n:'Ppeak', u:'cmH2O', dp:0},
   {id:'mv', n:'ExpMinVol', nniv:'MinVol NIV', u:'l/min', dp:1},
   {id:'vte', n:'VTE', nniv:'VTE NIV', u:'ml', dp:0},
@@ -443,7 +443,7 @@ function renderSMP() {
 }`);
 sub(`function renderLEDs() {
   const on = (id, v) => $('#led-' + id).classList.toggle('on', !!v);`, `function renderLEDs() {
-  /* the C6 lights its keys: O2 enrichment green, Audio pause red (manual 10.4 and 9.x); the others green while active (the simulator's choice) */
+  /* the ICU ventilator lights its keys: O2 enrichment green, Audio pause red (manual 10.4 and 9.x); the others green while active (the simulator's choice) */
   const lit = (id, v, cls) => $('#' + id).classList.toggle(cls || 'lit', !!v);
   lit('kO2', V.power && V.o2Enrich > 0); lit('kAudio', V.power && V.audioPause > 0, 'litred'); lit('kLock', V.power && V.locked);
   lit('kManual', V.power && V.manualReq); lit('kNeb', V.power && V.neb > 0);
@@ -451,17 +451,20 @@ sub(`function renderLEDs() {
 sub(`  el.innerHTML = \`\${ap}<svg viewBox="0 0 22 20" width="22" height="20" aria-label="Humidifier">`, `  el.innerHTML = \`\${ap}<svg viewBox="0 0 22 20" width="22" height="20" aria-label="Humidifier">`);
 sub(`    \${P.mains ? '<svg viewBox="0 0 16 24" width="12" height="22" aria-label="Mains power"><path d="M5 2v6M11 2v6M2 8h12v4a6 6 0 0 1-12 0zM8 18v5" stroke="#e6e6e6" stroke-width="2" fill="none"/></svg>' : ''}\`;`,
     `    \${P.mains ? '<svg viewBox="0 0 16 24" width="12" height="22" aria-label="Mains power"><path d="M5 2v6M11 2v6M2 8h12v4a6 6 0 0 1-12 0zM8 18v5" stroke="#e6e6e6" stroke-width="2" fill="none"/></svg>' : ''}<span class="clock">\${wallClock()}<br>\${new Date().toLocaleDateString('en-GB', {day:'2-digit', month:'2-digit', year:'numeric'})}</span>\`;`);
-// the Day/Night key does not exist on the C6 (it stays wired, hidden, for the shared code)
+// the Day/Night key does not exist on the ICU ventilator (it stays wired, hidden, for the shared code)
 sub("$('#kDay').addEventListener('click', () => { if (!V.power) return; V.night = !V.night; renderAll(); });\n", '');
 
-// ---- the simulator link: this page is the C6 --------------------------------------------------
+// ---- the simulator link: this page is the ICU ventilator --------------------------------------------------
 sub("const DEVICE_MODEL = 't1';", "const DEVICE_MODEL = 'c6';");
 sub("const saveKey = () => 'wmebem_vent_' + fb.code;", "const saveKey = () => 'wmebem_c6_' + fb.code;");
 sub("    embedded:EMBEDDED, phys:physNow(), sv:settingsJSON(mk, c), lv:limitsJSON(), ts:Date.now()", "    embedded:EMBEDDED, model:'c6', phys:physNow(), sv:settingsJSON(mk, c), lv:limitsJSON(), ts:Date.now()");
-sub('/* Assessment mode: no alarm troubleshooting help on the screen (as on a real T1) */', '/* Assessment mode: no alarm troubleshooting help on the screen */');
+sub('/* Assessment mode: no alarm troubleshooting help on the screen (as on a real transport ventilator) */', '/* Assessment mode: no alarm troubleshooting help on the screen */');
 
-if (/HAMILTON-T1/.test(html.replace(/standalone HAMILTON-T1 trainer|HAMILTON-T1 page|HAMILTON-T1 \(transport\)|HAMILTON-T1 or HAMILTON-C6|HAMILTON-T1, HAMILTON-C6 or Atlan A350|HAMILTON-T1 \(github|the HAMILTON-T1 device|HAMILTON-T1's breath engine|HAMILTON-T1 page's breath engine/g, '')))
-    fail('a HAMILTON-T1 label survived: ' + (html.match(/.{0,60}HAMILTON-T1.{0,60}/) || [''])[0]);
+/* No transport-ventilator label may show on the ICU ventilator page, and no manufacturer's name on either
+   (comments, which explain the shared engine, aside). */
+const visibleC6 = html.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const leftC6 = visibleC6.match(/.{0,60}(TRANSPORT VENTILATOR|>Transport ventilator<|HAMILTON|Hamilton|Dräger|Drager|Draeger|Atlan|ZOLL).{0,60}/);
+if (leftC6) fail('a transport ventilator or brand label survived: ' + leftC6[0]);
 if (process.argv.includes('--check')) {
     const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
     if (cur !== html) fail('vent/c6.html is out of date: run node scripts/make-c6.mjs');

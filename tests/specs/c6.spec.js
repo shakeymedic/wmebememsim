@@ -25,7 +25,7 @@ test('Anaesthetics / ICU: a C6 scenario sets the model, and a ventilator tablet 
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
   await page.locator('[data-vent-device="c6"]').click();
-  await expect(page.getByTestId('vent-setup')).toContainText('HAMILTON-C6');
+  await expect(page.getByTestId('vent-setup')).toContainText('ICU ventilator');
   await page.locator('[data-vent-scenario="icu-vc"]').click();
   await page.getByRole('button', { name: 'Start ICU ventilator scenario' }).click();
   await expect.poll(() => live(page, code, '/vent')).toMatchObject({ model: 'c6', airway: 'tube' });
@@ -36,7 +36,7 @@ test('Anaesthetics / ICU: a C6 scenario sets the model, and a ventilator tablet 
   await dev.goto(`/vent/index.html?session=${code}`);
   await expect(dev).toHaveURL(new RegExp(`/vent/c6\\.html\\?session=${code}$`), { timeout: 10000 });
   await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
-  await expect(dev.locator('.title')).toHaveText('HAMILTON-C6');
+  await expect(dev.locator('.title')).toHaveText('ICU ventilator');
   await startVentilating(dev);
   await expect.poll(() => dev.evaluate(() => window.__vent.ventStateNow())).toMatchObject({ state: 'ventilating', model: 'c6' });
 
@@ -51,7 +51,7 @@ test('Anaesthetics / ICU: a C6 scenario sets the model, and a ventilator tablet 
   expect(mon.vte).toBeLessThan(500);
   expect(mon.ppeak).toBeGreaterThan(mon.pplat || 0);
   await expandSection(page, 'vent');
-  await expect(page.getByTestId('vent-mirror')).toContainText('HAMILTON-C6');
+  await expect(page.getByTestId('vent-mirror')).toContainText('ICU ventilator');
 
   await dev.screenshot({ path: test.info().outputPath('c6.png') });
   expect(errors).toEqual([]);
@@ -65,19 +65,19 @@ test('the facilitator switches a running session between the T1 and the C6', asy
   const devErrors = trackErrors(dev);
   await dev.goto(`/vent/index.html?session=${code}`);
   await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
-  await expect(dev.locator('.title')).toHaveText('HAMILTON-T1');
+  await expect(dev.locator('.title')).toHaveText('Transport ventilator');
 
   await expandSection(page, 'vent');
   await page.getByLabel('Ventilator model').selectOption('c6');
   await expect.poll(() => live(page, code, '/vent/model')).toBe('c6');
   await expect(dev).toHaveURL(/\/vent\/c6\.html\?session=/, { timeout: 10000 });
-  await expect(dev.locator('.title')).toHaveText('HAMILTON-C6');
+  await expect(dev.locator('.title')).toHaveText('ICU ventilator');
   await expect.poll(async () => Object.values(await session(page, code, '/presence') || {}).filter(p => p.role === 'vent').length).toBe(1);
-  expect(await logHas(page, /^Ventilator changed to the HAMILTON-C6/)).toBe(true);
+  expect(await logHas(page, /^Ventilator changed to the ICU ventilator/)).toBe(true);
 
   await page.getByLabel('Ventilator model').selectOption('t1');
   await expect(dev).toHaveURL(/\/vent\/index\.html\?session=/, { timeout: 10000 });
-  await expect(dev.locator('.title')).toHaveText('HAMILTON-T1');
+  await expect(dev.locator('.title')).toHaveText('Transport ventilator');
   expect(devErrors).toEqual([]);
 });
 

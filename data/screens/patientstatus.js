@@ -1,12 +1,12 @@
 // THE PATIENT AT A GLANCE: the strip at the top of the controller.
 //
 //   - one line that says what is happening to the patient now (in arrest, apnoeic and not being
-//     ventilated, ventilated on the Atlan A350, stable ...), coloured by how urgent it is
+//     ventilated, ventilated on the anaesthetic machine, stable ...), coloured by how urgent it is
 //   - flags for the obs that are out of range (distressed, hypoxic, hypotensive, GCS ...), worked out
 //     from the patient's TRUE obs, whether or not a sensor is on to show them to the team
 //   - a stick figure showing what is attached: ECG leads, SpO2 probe, BP cuff, temperature, capnography,
 //     arterial line, IV access, central line, airway, ventilator, pads, catheter, CPR
-//   - the ventilator chooser (HAMILTON-T1, HAMILTON-C6, Atlan A350), switchable at any time
+//   - the ventilator chooser (transport ventilator, ICU ventilator, anaesthetic machine), switchable at any time
 //
 // Everything is derived from the engine state the controller already has (only "Show on monitor"
 // sends anything: the picture, in monitorPopup). The thresholds are NEWS2's red scores for adults and approximate ranges for children; they
@@ -54,9 +54,9 @@
             .sort((a, b) => Number(b.ts) - Number(a.ts));
         const vent = mirrors[0] || null;
         // Counted as ventilating only when it reaches the patient: switched on, the facilitator's link
-        // to the obs not turned off, and the circuit connected. Man/Spon on the A350 ventilates only
+        // to the obs not turned off, and the circuit connected. Man/Spon on the anaesthetic machine ventilates only
         // when breaths are being given (the bag squeezed or the patient breathing), and high-flow
-        // oxygen on the T1 or C6 gives oxygen, not breaths.
+        // oxygen on the transport ventilator or C6 gives oxygen, not breaths.
         const ventMode = vent ? String(vent.mode || '') : '';
         const manual = ventMode === 'MAN', highFlow = ventMode === 'HiFlowO2';
         const unplugged = !!(vent && vent.phys && Number(vent.phys.conn) === 0);
@@ -69,6 +69,7 @@
             : manual ? 'in Man/Spon with no breaths being given' : 'not ventilating';
         const model = VP ? VP.modelOf(s.vent && s.vent.model) : 't1';
         const modelName = VP ? VP.MODEL_SHORT[model] : 'ventilator';
+        const modelLabel = VP ? VP.MODELS[model] : 'Ventilator';
 
         const paralysed = !!s.isParalysed;
         const rr = num(v.rr), spo2 = num(v.spO2), hr = num(v.hr), sbp = num(v.bpSys), dbp = num(v.bpDia);
@@ -144,7 +145,7 @@
         if (temp !== null && temp <= 35) flag(`Hypothermic: ${temp.toFixed(1)}°C`, temp < 32 ? 'red' : 'amber');
         else if (temp !== null && temp >= 39.1) flag(`Fever: ${temp.toFixed(1)}°C`, 'amber');
         if (bm !== null && bm < 4) flag(`Hypoglycaemic: glucose ${bm.toFixed(1)}`, 'red');
-        if (s.cprInProgress) flag(has(act, 'Lucas') ? 'CPR: LUCAS on' : 'CPR in progress', arrest ? 'cyan' : 'red');
+        if (s.cprInProgress) flag(has(act, 'Lucas') ? 'CPR: mechanical CPR on' : 'CPR in progress', arrest ? 'cyan' : 'red');
         else if (arrest) flag('No CPR running', 'red');
         if (arrest && s.arrest && Number.isFinite(s.arrest.since)) {
             const secs = Math.max(0, Math.round((Number(s.time) || 0) - s.arrest.since));
@@ -183,13 +184,13 @@
         const fluids = (access.length > 0 || has(act, 'FluidInfusion')) && (has(act, 'FluidInfusion') || (s.activeDrugs || []).some(d => d && ['Fluids', 'Blood', 'Albumin'].indexOf(d.key) !== -1
             && t >= Number(d.startTime) && t - Number(d.startTime) < (Number(d.peak) || 600) && !(Number(d.stopTime) >= 0)));
         if (fluids) access.push('IV fluids running');
-        const airway = tube === 'ett' ? 'Tracheal tube' : tube === 'fona' ? 'Front-of-neck airway' : tube === 'sga' ? 'Supraglottic airway (i-gel)'
+        const airway = tube === 'ett' ? 'Tracheal tube' : tube === 'fona' ? 'Front-of-neck airway' : tube === 'sga' ? 'Supraglottic airway'
             : niv ? `${niv} mask` : bagging ? 'Bag-valve-mask' : oxygen ? 'Oxygen mask' : adjunct ? adjunct : null;
         const other = [];
         if (has(act, 'PacingPads')) other.push('Pads');
         if (has(act, 'Catheter')) other.push('Catheter');
         if (['SeldingerDrain', 'SurgicalDrain', 'FingerThoracostomy'].some(k => has(act, k))) other.push('Chest drain');
-        if (has(act, 'Lucas')) other.push('LUCAS');
+        if (has(act, 'Lucas')) other.push('Mechanical CPR');
         // The injuries (from the scenario's words, or the facilitator's list) and the kit on them.
         const INJ = window.Injuries;
         const injuries = INJ ? INJ.forScenario(s.scenario) : [];
@@ -198,7 +199,7 @@
 
         return {
             arrest, apnoeic, paralysed, headline, tone, flags, sensors, tube, bagging, niv, oxygen, adjunct,
-            vent, ventilating, ventWhy, manual, highFlow, model, modelName, monitors, access, airway, other,
+            vent, ventilating, ventWhy, manual, highFlow, model, modelName, modelLabel, monitors, access, airway, other,
             cpr: !!s.cprInProgress, lucas: has(act, 'Lucas'), pads: has(act, 'PacingPads'), catheter: has(act, 'Catheter'),
             drain: ['SeldingerDrain', 'SurgicalDrain', 'FingerThoracostomy'].some(k => has(act, k)),
             iv: has(act, 'IV Access') || has(act, 'IO Access'), cvc: has(act, 'CVC'), fluids,
@@ -222,7 +223,7 @@
             a.monitors.length ? 'Monitoring: ' + a.monitors.join(', ') : 'No monitoring attached',
             a.access.length ? 'Access: ' + a.access.join(', ') : 'No IV access',
             a.airway ? 'Airway: ' + a.airway : null,
-            a.vent ? `Ventilator: ${a.modelName}, ${a.vent.state}` : null,
+            a.vent ? `Ventilator: ${a.modelLabel}, ${a.vent.state}` : null,
             a.other.length ? a.other.join(', ') : null,
             a.injuries.length && window.Injuries ? 'Injuries: ' + a.injuries.map(window.Injuries.label).join(', ') : null].filter(Boolean).join('. ');
         const INJ = window.Injuries, BA = window.BodyArt;
@@ -283,7 +284,7 @@
                     <rect x="155" y="11" width="56" height="22" rx="2" fill="#020617" />
                     {a.ventilating && <path d="M157 28 l4 -12 h10 l3 12 h4 l4 -12 h10 l3 12 h4 l4 -12 h4" stroke={ventCol} strokeWidth="1" fill="none" />}
                     {!a.ventilating && <text x="183" y="25" fontSize="7" textAnchor="middle" fill={ventCol} fontWeight="bold">{a.vent.state === 'ventilating' ? (a.highFlow ? 'HFO' : a.manual ? 'MAN' : 'no link') : a.vent.state}</text>}
-                    <text x="183" y="44" fontSize="7.5" textAnchor="middle" fill={ventCol} fontWeight="bold">{a.model === 'a350' ? 'ATLAN A350' : a.model === 'c6' ? 'HAMILTON C6' : 'HAMILTON T1'}</text>
+                    <text x="183" y="44" fontSize="7.5" textAnchor="middle" fill={ventCol} fontWeight="bold">{a.model === 'a350' ? 'ANAESTHETIC' : a.model === 'c6' ? 'ICU' : 'TRANSPORT'}</text>
                 </g>}
                 {a.pads && <g data-part="defib">
                     <rect x="150" y="112" width="66" height="34" rx="5" fill="#1c1917" stroke="#f97316" strokeWidth="1.5" />
@@ -556,9 +557,9 @@
         const setModel = (m) => {
             if (!VP || m === model) return;
             // A different machine starts switched off, so ask before taking the patient off a working one.
-            if (a.vent && a.vent.state === 'ventilating' && !window.confirm(`Change to the ${VP.MODELS[m]}? The tablet reloads on the new machine switched off, so the patient stops being ventilated.`)) return;
+            if (a.vent && a.vent.state === 'ventilating' && !window.confirm(`Change to the ${VP.MODEL_SHORT[m]}? The tablet reloads on the new machine switched off, so the patient stops being ventilated.`)) return;
             sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { model: m } });
-            log(`Ventilator changed to the ${VP.MODELS[m]} (facilitator)`, 'system');
+            log(`Ventilator changed to the ${VP.MODEL_SHORT[m]} (facilitator)`, 'system');
         };
         // The facilitator's own injury list (null: back to what the scenario's words say).
         const setInjuries = (next) => {
@@ -685,11 +686,11 @@
                                     {Object.keys(VP.MODELS).map(m => (
                                         <button key={m} type="button" aria-pressed={model === m} title={VP.MODELS[m]} onClick={() => setModel(m)}
                                                 className={`px-2 py-1 rounded border text-[10px] font-bold ${model === m ? 'bg-cyan-700 border-cyan-400 text-white' : 'bg-slate-900 border-slate-600 text-slate-300 hover:border-cyan-500'}`}>
-                                            {m === 'a350' ? 'Atlan A350' : VP.MODEL_SHORT[m].replace('HAMILTON-', '')}
+                                            {{ t1: 'Transport', c6: 'ICU', a350: 'Anaesthetic' }[m] || m}
                                         </button>
                                     ))}
                                 </div>
-                                <span className="text-[10px] text-slate-400">{a.vent ? `${a.modelName}: ${a.ventilating ? 'ventilating' : a.vent.state === 'ventilating' ? a.ventWhy : a.vent.state}` : 'Not connected'}</span>
+                                <span className="text-[10px] text-slate-400">{a.vent ? `${a.modelLabel}: ${a.ventilating ? 'ventilating' : a.vent.state === 'ventilating' ? a.ventWhy : a.vent.state}` : 'Not connected'}</span>
                                 <button type="button" onClick={toggleVentShown}
                                         className={`px-2 py-1 rounded border text-[10px] font-bold ${ventShown ? 'bg-cyan-900/40 border-cyan-500 text-cyan-200' : 'bg-slate-900 border-cyan-600/60 text-cyan-300'}`}>
                                     {ventShown ? 'Take off the patient screens' : 'Show on the patient screens'}

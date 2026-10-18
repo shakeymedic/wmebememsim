@@ -470,7 +470,7 @@
             '<h1>Certificate of Completion</h1><div class="bar"></div>' +
             '<p class="muted" style="font-size:18px">This certifies that</p><h2>' + (learner ? esc(learner) : 'the learner') + '</h2>' +
             '<p class="muted" style="font-size:18px">has completed</p><h2>' + esc(ds.name || sc.title || 'Defib Sim') + '</h2>' +
-            '<p class="muted">Defibrillator skills simulation (ZOLL-style device)</p>' +
+            '<p class="muted">Defibrillator skills simulation (tablet defibrillator)</p>' +
             '<div class="perf"><div style="text-align:center;font-weight:bold;font-size:18px;margin-bottom:6px">Performance summary</div>' + rows.join('') + '</div>' +
             '<div class="sig"><div>' + esc(date) + '<div class="muted" style="font-size:12px">Date</div></div><div>EM Evidence Sim<div class="muted" style="font-size:12px">Facilitator</div></div></div>' +
             '<div class="foot">Resuscitation Council UK guidelines &nbsp;|&nbsp; Simulation training exercise</div></div></body></html>';

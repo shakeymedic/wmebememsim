@@ -25,7 +25,7 @@ test.describe('Defibrillation and drug rules', () => {
   });
   test.afterEach(() => expect(errors).toEqual([]));
 
-  test('the device offers the ZOLL R Series energies, 150 J recommended for an adult', async ({ page }) => {
+  test('the device offers the simulated defibrillator energies, 150 J recommended for an adult', async ({ page }) => {
     expect(await eng(page, 'return E.defibEnergySteps()')).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 50, 75, 100, 120, 150, 200]);
     expect(await eng(page, 'return E.recommendedShockEnergy()')).toBe(150);
   });

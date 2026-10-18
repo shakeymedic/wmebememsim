@@ -6,7 +6,7 @@
 //                     Education / Assessment.
 //   VentRemotePanel   one ventilator's remote control (sessions/<CODE>/ventCmd): power, start and
 //                     standby, mode, every setting and alarm limit of the current mode, silence,
-//                     O2 enrichment, screen lock and a fresh ventilator. Changes appear on the T1 as a
+//                     O2 enrichment, screen lock and a fresh ventilator. Changes appear on the transport ventilator as a
 //                     colleague's would and are logged as the facilitator's.
 (() => {
     const { useState } = React;

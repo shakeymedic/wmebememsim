@@ -176,7 +176,7 @@ function renderLEDs() {
   $('#screen').classList.toggle('night', V.night);
   const off = $('#scrOff');
   off.hidden = V.power && V.selftest <= 0;
-  $('#scrOffTxt').innerHTML = V.power ? 'Atlan A350<small>Starting up…</small>' : '';
+  $('#scrOffTxt').innerHTML = V.power ? 'ANAESTHETIC MACHINE<small>Starting up…</small>' : '';
   $('#t1').classList.toggle('off', !V.power);
   $('#knob').classList.toggle('confirm', V.power && V.selftest <= 0 && !!(E || D || win === 'start'));
   renderHW();
@@ -242,7 +242,7 @@ function renderWindow() {
       <button data-kf data-test="leak" ${r ? 'disabled' : ''} data-tip="Leak test: pressurises the breathing system to check for leaks. Needs the Y-piece sealed.">Leak test<span class="st ${V.tests.leak || ''}">${testMark(V.tests.leak)}</span><small>${V.tests.leakAt || 'not done'}</small></button></div>
       ${r ? `<div class="prog"><i style="width:${Math.round(100 * r.t / r.dur)}%"></i></div>` : ''}
       <div class="tc-msg" id="tcMsg">${r ? r.msg : (V.testMsg || 'Before the system test: seal the Y-piece on the circuit plug of the bag elbow, set the APL valve to 30, vaporiser dial at 0, O2 switch to Aux. O2. Then start the test.')}</div>
-      <p class="wnote">On the machine the system test takes about 8 minutes and the leak test about 2. Here they are shortened, and the checks inside them are summarised, not Dräger's own sequence.</p></div>`;
+      <p class="wnote">On the machine the system test takes about 8 minutes and the leak test about 2. Here they are shortened, and the checks inside them are summarised, not the manufacturer's own sequence.</p></div>`;
   } else if (win === 'setup') {
     h = X + `<div class="wtitle">System setup</div><div class="wbody">
       <div class="wgrp">Alarm volume</div><div class="wrow">${[1,2,3,4,5,6,7,8,9,10].map(n => `<button class="wb ${V.loud === n ? 'green' : ''}" data-kf data-loud="${n}" style="min-width:44px;padding:0">${n}</button>`).join('')}</div>
@@ -255,7 +255,7 @@ function bufferHTML() {
   const rows = [...active.keys()].map(id => ({id, at: active.get(id), act: true})).concat([...inactive.keys()].map(id => ({id, at: inactive.get(id), act: false})));
   rows.sort((a, b) => (b.act - a.act) || PRI_ORDER[ALARMS[b.id].p] - PRI_ORDER[ALARMS[a.id].p]);
   let h = `<div class="wbody" style="top:52px"><div class="abuf">${rows.map(r => `<button class="r ${ALARMS[r.id].p} ${r.act ? '' : 'inact'}" data-kf data-help="${r.id}"><time>${r.at}</time>${PRI_MARK[ALARMS[r.id].p]} ${esc(ALARMS[r.id].t)}${r.act ? '' : ' (over)'}<span class="i" aria-hidden="true">i</span></button>`).join('') || '<p class="wnote">No alarms.</p>'}</div>`;
-  if (helpFor) { const hp = HELP[helpFor]; h += `<div class="help"><h6>${esc(ALARMS[helpFor].t)}</h6>${hp ? hp : '<p>No help text in this simulator.</p>'}<p class="wnote">The simulator's summary, not Dräger's text.</p></div>`; }
+  if (helpFor) { const hp = HELP[helpFor]; h += `<div class="help"><h6>${esc(ALARMS[helpFor].t)}</h6>${hp ? hp : '<p>No help text in this simulator.</p>'}<p class="wnote">The simulator's summary, not the manufacturer's text.</p></div>`; }
   h += '</div>';
   if (inactive.size) h += '<div class="wfoot"><button class="wb" data-kf id="bufReset">ALARM RESET</button></div>';
   return h;

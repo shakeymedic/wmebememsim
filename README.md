@@ -328,8 +328,8 @@ CT series) the credit says so.
 | Mode | What it does |
 | --- | --- |
 | **Quick Sim** | A blank synthetic patient and nothing else. Editable obs, the full rhythm list, arrest/ROSC, the monitor and the defib toggle. No scenario, no drugs, no interventions. For ad-hoc teaching at the bedside. |
-| **Defib Sim** | Defibrillator skills on a ZOLL-style tablet defib, with its own Defib controller. Built-in defibrillation, cardioversion and pacing scenarios, free play, or a custom sequence of rhythms. Education or Assessment mode. |
-| **Ventilator Sim** | Ventilator skills on the HAMILTON-T1 (tablet or room monitor) with the full controller: nine scenarios (NIV, CPAP, ARDS, asthma, after RSI, DOPES, mucus plugging, transfer) in Education or Assessment mode. See [The ventilator](#the-ventilator-hamilton-t1) below. |
+| **Defib Sim** | Defibrillator skills on a tablet defib, with its own Defib controller. Built-in defibrillation, cardioversion and pacing scenarios, free play, or a custom sequence of rhythms. Education or Assessment mode. |
+| **Ventilator Sim** | Ventilator skills on the transport ventilator (tablet or room monitor) with the full controller: nine scenarios (NIV, CPAP, ARDS, asthma, after RSI, DOPES, mucus plugging, transfer) in Education or Assessment mode. See [The ventilator](#the-ventilator-hamilton-t1) below. |
 | **Random scenario** | Generates a patient from the scenario templates with randomised demographics and obs. |
 | **Scenario library** | Pick from the 254 built-in scenarios by category. |
 | **Course scenarios** (a Scenario library category) | Copyright-restricted course scenarios (ALS, ETC, CABC), loaded from Firebase at runtime. Each course is gated on its own entitlement. Locked unless your account has one. |
@@ -419,15 +419,15 @@ Sim scenario (`scenario.defibSim`).
   `sessions/<CODE>/deviceState/<id>` (removed when it disconnects), and every press goes through
   `sessions/<CODE>/deviceEvents` like the monitor-hosted defib.
 - **Capnography** (Arrest card: Capnography on/off) puts the capnogram under the ECG on the learner's
-  defib, at half the ECG speed as on the ZOLL R Series, scaled 0-50 mmHg (6.7 kPa). While it is off
+  defib, at half the ECG speed as on some defibrillators, scaled 0-50 mmHg (6.7 kPa). While it is off
   the tablet shows "--" for ETCO2, as a real R Series without its CO2 sensor shows no CO2 box.
 - **Debrief**: good practice and areas for improvement (pulse checks, mode, SYNC, energies, time to
   first shock, adrenaline and amiodarone after the 3rd shock, sedation before cardioversion,
   analgesia for pacing, capture) and a printable certificate.
 
-### The ventilator (HAMILTON-T1)
+### The ventilator (transport ventilator)
 
-`vent/index.html` is the HAMILTON-T1 from the standalone trainer
+`vent/index.html` is the transport ventilator from the standalone trainer
 ([shakeymedic/niv-instructions](https://github.com/shakeymedic/niv-instructions), which stays its own
 tool), copied in as a simulation device. It joins a session the way the defib tablet does, so any
 mix of tablets works at once: the room monitor, a defib tablet and a ventilator tablet, all on one
@@ -444,12 +444,12 @@ patient.
   themselves. The first choice comes from the scenario's words. An awake patient (GCS above 8, not
   paralysed) breathes for themselves whatever the lungs.
 - **The airway** (Airway in the Ventilator section; `interfaceFor` in `data/engine-vent.js`). An awake
-  patient with no tube or i-gel recorded is on a face mask: only NIV, NIV-ST and HiFlowO2 suit it
-  (Man/Spon and CPAP/PSV on the A350). In any other mode the mask leaks more and the patient fights the
+  patient with no tube or SGA recorded is on a face mask: only NIV, NIV-ST and HiFlowO2 suit it
+  (Man/Spon and CPAP/PSV on the anaesthetic machine). In any other mode the mask leaks more and the patient fights the
   ventilator (pressure spikes and High pressure alarms, less effective ventilation, HR and BP up), the
   log flags it, and in Education mode a note on the ventilator says why. An unconscious patient (GCS 8
-  or less, paralysed or in arrest) with no airway recorded is assumed to have a tube. An i-gel leaks
-  above about 25 cmH2O, and an awake patient with a tube or i-gel fights the machine breaths they did
+  or less, paralysed or in arrest) with no airway recorded is assumed to have a tube. An SGA leaks
+  above about 25 cmH2O, and an awake patient with a tube or SGA fights the machine breaths they did
   not trigger. The facilitator can set the airway by hand.
 - **What the facilitator sees.** Every setting change, mode change, test and alarm on the device is in
   the event log ("Ventilator: …", alarms by priority), and the Ventilator section mirrors each
@@ -468,7 +468,7 @@ patient.
   hands it back), and the Obs switch ("Ventilator drives them" / "I set them") turns the link off.
   The log says when the ventilator takes over the obs and when it lets go, notes when a tube is assumed
   for an unconscious patient, and warns when an awake patient on a mask is put on a mode that needs a
-  tube or i-gel.
+  tube or SGA.
 - **The facilitator controls it** (Ventilator section, `data/screens/ventcontrol.js`):
   - *Problems*, one press each and again to fix: the trainer's ten (leaks, disconnection, coughing,
     kinked expiratory limb, apnoea, oxygen failure, mains lost, tiring, cracked circuit) and five
@@ -482,10 +482,10 @@ patient.
     and each one that has been checked shows what the candidate should see once it is in. They apply
     to every ventilator in the session.
   - *Lungs*: compliance, resistance, CO2 production, oxygenation impairment and spontaneous rate (the
-    trainer's Lungs panel). They change both the T1's breaths and the patient's obs.
-  - *Education / Assessment*: Assessment hides the T1's alarm help.
+    trainer's Lungs panel). They change both the transport ventilator's breaths and the patient's obs.
+  - *Education / Assessment*: Assessment hides the transport ventilator's alarm help.
   - *Control this ventilator*, per ventilator: switch on or off, start or standby, mode, every
-    setting of the current mode and every alarm limit (step or type a value; the T1 holds it to its
+    setting of the current mode and every alarm limit (step or type a value; the transport ventilator holds it to its
     own range), silence, O2 enrichment, lock the screen (the facilitator is not locked out), and a
     fresh ventilator. Set it up before the candidate arrives to hand over deliberate errors. Changes
     appear as a colleague's would and are logged as the facilitator's
@@ -507,7 +507,7 @@ patient.
   pre-use check, alarm limits, Vt per kg IBW, plateau and driving pressure, AutoPEEP, SpO2 time in
   target and problem timings (times as 00:00, durations as "2 min 10 s"). The targets are teaching
   targets in `data/ventsim.js`, not a guideline; the troubleshooting scenarios accept up to 8.5 ml/kg
-  IBW, the T1's own starting tidal volume, since they are not about the tidal volume.
+  IBW, the transport ventilator's own starting tidal volume, since they are not about the tidal volume.
 
 ---
 

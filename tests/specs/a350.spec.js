@@ -16,7 +16,7 @@ async function startOnA350(page, context, scenario) {
   const code = await openController(page);
   await page.getByRole('button', { name: 'Anaesthetics / ICU', exact: true }).click();
   await expect(page.locator('[data-vent-device="a350"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByTestId('vent-setup')).toContainText('Dräger Atlan A350');
+  await expect(page.getByTestId('vent-setup')).toContainText('Anaesthetic machine');
   await page.locator(`[data-vent-scenario="${scenario}"]`).click();
   await page.getByRole('button', { name: 'Start anaesthetic machine scenario' }).click();
   await expect.poll(() => live(page, code, '/vent/model')).toBe('a350');
@@ -25,7 +25,7 @@ async function startOnA350(page, context, scenario) {
   await dev.goto(`/vent/index.html?session=${code}`);
   await expect(dev).toHaveURL(new RegExp(`/vent/a350\\.html\\?session=${code}$`), { timeout: 10000 });
   await expect(dev.locator('#linkBanner')).toBeHidden({ timeout: 10000 });
-  await expect(dev.locator('.title')).toHaveText('Atlan A350');
+  await expect(dev.locator('.title')).toHaveText('Anaesthetic machine');
   return { code, dev, devErrors };
 }
 async function switchOn(dev) {
@@ -73,7 +73,7 @@ test('Man/Spon: a squeeze of the bag ventilates, and a closed APL valve with a h
   expect(s.mon.vte).toBeGreaterThan(150);
   expect(s.mon.ppeak).toBeGreaterThan(10);
   await expandSection(page, 'vent');
-  await expect(page.getByTestId('vent-mirror')).toContainText('Atlan A350');
+  await expect(page.getByTestId('vent-mirror')).toContainText('Anaesthetic machine');
   // the APL valve at 70 and 10 L/min of fresh gas: the bag fills and the pressure climbs
   for (let i = 0; i < 8; i++) await dev.locator('#aplUp').click();
   await dev.evaluate(() => window.__vent.remoteCommand({ type: 'set', key: 'fgf', val: 10 }));

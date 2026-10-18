@@ -45,7 +45,7 @@
         // loading a new scenario. Booleans only, so it survives JSON persistence untouched; it is
         // NOT part of the sync payload (the monitor does not run physiology).
         manualHold: {},
-        // While a HAMILTON-T1 is breathing for the patient (data/engine-vent.js): its smoothed
+        // While a transport ventilator is breathing for the patient (data/engine-vent.js): its smoothed
         // SpO2 and PaCO2, and the HR/BP nudges it has added to the base (taken off again when it
         // stops). null when no ventilator is driving the obs.
         ventPhys: null
@@ -122,7 +122,7 @@
         // The assessor's Defib open/close toggle. Modelled exactly on arrestPanelOpen
         // (SET_DEFIB_PANEL / synced top-level boolean) so the remote monitor reacts promptly.
         defibPanelOpen: false,
-        // The HAMILTON-T1 ventilator (vent/index.html). ventPanelOpen shows it on the room monitor
+        // The transport ventilator (vent/index.html). ventPanelOpen shows it on the room monitor
         // (SET_VENT_PANEL, synced like defibPanelOpen; opening one closes the other). `vent` is the
         // facilitator's choice of lungs ({ profile, breathing }); null = chosen from the scenario
         // (VENT_PROFILES.profileForScenario). Both reach the ventilator inside the live payload.
@@ -133,7 +133,7 @@
         // in the room stays loaded behind the front view, so the ventilator keeps ventilating.
         screenFront: null,
         vent: null,
-        // The facilitator's switch: true = a ventilating HAMILTON-T1 drives SpO2, RR and ETCO2
+        // The facilitator's switch: true = a ventilating transport ventilator drives SpO2, RR and ETCO2
         // (and nudges HR and BP); false = the facilitator sets the obs by hand.
         ventLink: true,
         // Defibrillator device + metrics state. Previously shockCountRef was a bare useRef

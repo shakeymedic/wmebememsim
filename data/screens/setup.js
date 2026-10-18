@@ -604,8 +604,8 @@
             { id: 'premade', label: 'Scenario library', icon: 'book-open', text: 'Pick a ready-made case: medical, trauma, paediatric, arrest and more.' },
             { id: 'random', label: 'Random scenario', icon: 'shuffle', text: 'Generate a case from a few filters.' },
             { id: 'quick', label: 'Quick Sim', icon: 'sliders', text: 'A blank patient. You set the obs and the rhythm as you go.' },
-            { id: 'vent', label: 'Ventilator Sim', icon: 'wind', text: 'HAMILTON-T1 ventilator scenarios, in Education or Assessment mode.' },
-            { id: 'icu', label: 'Anaesthetics / ICU', icon: 'bed', text: 'Anaesthetic emergencies for novice anaesthetists on a Dräger Atlan A350 anaesthetic machine, and ICU ventilation on the HAMILTON-C6.' },
+            { id: 'vent', label: 'Ventilator Sim', icon: 'wind', text: 'Transport ventilator scenarios, in Education or Assessment mode.' },
+            { id: 'icu', label: 'Anaesthetics / ICU', icon: 'bed', text: 'Anaesthetic emergencies for novice anaesthetists on an anaesthetic machine, and ICU ventilation on the ICU ventilator.' },
             { id: 'defib', label: 'Defib Sim', icon: 'zap', text: 'Defibrillator skills on a tablet defib.' },
             { id: 'custom', label: 'My scenarios', icon: 'folder', text: 'Scenarios you have built or imported, and the scenario builder.' }
         ];

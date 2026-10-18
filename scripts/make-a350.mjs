@@ -1,9 +1,9 @@
 // =================================================================================================
 // THE DRÄGER ATLAN A350 PAGE  (node scripts/make-a350.mjs  ->  vent/a350.html)
 //
-// The Atlan A350 anaesthetic machine (Anaesthetics / ICU on the start screen) is generated from the
-// HAMILTON-C6 page (vent/c6.html, itself generated from vent/index.html), so all three machines share
-// ONE breath engine, patient model and simulator link layer. Edit vent/index.html (or the C6 generator),
+// The anaesthetic machine (Anaesthetics / ICU on the start screen) is generated from the
+// ICU ventilator page (vent/c6.html, itself generated from vent/index.html), so all three machines share
+// ONE breath engine, patient model and simulator link layer. Edit vent/index.html (or the ICU ventilator generator),
 // run scripts/make-c6.mjs, then this script; never edit vent/a350.html by hand.
 // tests/specs/a350.spec.js fails if vent/a350.html is out of date.
 //
@@ -24,7 +24,7 @@
 // IFU gives no layout drawing values or RGB colours), the machine's hardware arrangement, step sizes,
 // the gas model (inspired O2 at low flow, agent uptake, the bag and APL), alarm thresholds and delays the
 // IFU does not give, some alarm wording, and the condensed test sequences.
-// It is a training recreation, not Dräger software, and is not endorsed by Drägerwerk AG.
+// It is an independent training simulator, not made, endorsed or supported by any manufacturer.
 // =================================================================================================
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,23 +51,23 @@ const read = (f) => fs.readFileSync(path.join(ROOT, 'scripts', 'a350', f), 'utf8
 
 // ---- page head ---------------------------------------------------------------------------------
 sub('<title>EM Evidence — ICU Ventilator Simulator</title>', '<title>EM Evidence — Anaesthetic Machine Simulator</title>');
-sub(`  GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the T1 page and rerun.
-  THE HAMILTON-C6 ICU VENTILATOR, AS A SIMULATION DEVICE. It shares the HAMILTON-T1 page's breath engine.`,
+sub(`  GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the transport ventilator page and rerun.
+  THE ICU VENTILATOR, AS A SIMULATION DEVICE. It shares the transport ventilator page's breath engine.`,
 `  GENERATED FILE: made from vent/c6.html by scripts/make-a350.mjs (parts in scripts/a350/). Do not edit;
   edit vent/index.html or the generators and rerun scripts/make-c6.mjs, then scripts/make-a350.mjs.
-  THE DRÄGER ATLAN A350 ANAESTHETIC MACHINE, AS A SIMULATION DEVICE. It shares the HAMILTON-T1 page's breath
+  THE ANAESTHETIC MACHINE, AS A SIMULATION DEVICE. It shares the transport ventilator page's breath
   engine; the machine, its screen and its gas are this generator's (see the notes in scripts/make-a350.mjs).
-  It is a training recreation, not Dräger software, and is not endorsed by Drägerwerk AG.`);
-sub('<span class="title">HAMILTON-C6</span>', '<span class="title">Atlan A350</span>');
+  It is an independent training simulator, not made, endorsed or supported by any manufacturer.`);
+sub('<span class="title">ICU ventilator</span>', '<span class="title">Anaesthetic machine</span>');
 
 // ---- styles and markup: the machine and its screen (scripts/a350/style.css, markup.html) -----------
-between('/* ===== Simulator: the HAMILTON-C6 monitor', '/* below-device controls', read('style.css'));
+between('/* ===== Simulator: the ICU ventilator monitor', '/* below-device controls', read('style.css'));
 between('        <div class="t1-wrap" id="device">', '        <div class="under" aria-label="Knob controls">', read('markup.html'));
 
-// ---- device definitions: the A350's modes, settings, limits and state (scripts/a350/defs.js) ---------
+// ---- device definitions: the anaesthetic machine's modes, settings, limits and state (scripts/a350/defs.js) ---------
 between('/* ======================= device definitions', '/* ======================= patient profiles', read('defs.js'));
 
-// ---- the breath engine: Man/Spon and the bag, Dräger's Pinsp (absolute), Pmax, Tinsp, Slope ---------
+// ---- the breath engine: Man/Spon and the bag, This machine's Pinsp (absolute), Pmax, Tinsp, Slope ---------
 between('/* Apnea backup: NIV backs up with PCV+', '/* timing of mandatory breaths', `/* PSV: with RRmin set, mandatory pressure-controlled breaths at RRmin when the patient breathes too slowly
    (the IFU names RRmin; how the backup breaths are shaped is the simulator's choice: Pinsp, Tinsp 1 s) */
 function backupSet() {
@@ -79,8 +79,8 @@ sub("function baseP() { return V.mode === 'APRV' ? V.set.plo : V.set.peep; }",
 sub("  if (m === 'APVcmv' || m === 'PCV+' || m === 'SCMV') { const c = 60 / s.rate; return {cycle:c, ti:c * s.ie / (1 + s.ie)}; }",
     "  if (m === 'APVcmv' || m === 'PCV+' || m === 'SCMV') { const c = 60 / s.rate; return {cycle:c, ti:Math.min(s.ti, c * 0.8)}; }   /* A350: Tinsp is set (I:E up to 4:1) */");
 sub("  if (m === 'PCV+') return s.pcontrol;\n  if (m === 'PSIMV+') return V.psync ? s.pinsp : s.pcontrol;",
-    "  if (m === 'PCV+' || m === 'PSIMV+') return Math.max(0, s.pinsp - (s.peep || 0));   /* Dräger's Pinsp is the total pressure, not above PEEP */");
-between('function measuredO2() {', 'function pushLog', `/* the inspired O2 the A350's gas module measures (the circle and fresh-gas model, gasTick) */
+    "  if (m === 'PCV+' || m === 'PSIMV+') return Math.max(0, s.pinsp - (s.peep || 0));   /* This machine's Pinsp is the total pressure, not above PEEP */");
+between('function measuredO2() {', 'function pushLog', `/* the inspired O2 the anaesthetic machine's gas module measures (the circle and fresh-gas model, gasTick) */
 function measuredO2() { return G.fio2; }
 `);
 sub("  if (pc && isVC(m) && !B.apnoeaVent && mt) { startVCBreath(kind, auto, sigh, mt, base); return; }",
@@ -113,7 +113,7 @@ sub("  if (M.ppeak < V.lim.plow) raise('plow'); else clear('plow');\n", '');
 sub("  if (isInvasive(m) && !V.cpr && V.o2Enrich <= 0 && M.vti > 50 && M.vte < M.vti / 8) raise('discpat'); else clear('discpat');   /* suppressed during O2 enrichment (10.4) */\n", '');
 sub("  if (B.vlimit) raise('vlimit'); else clear('vlimit');\n", '');
 sub("  const triggered = !V.cpr && V.set.trig > 0 && effort >= V.set.trig;",
-    "  /* Man/Spon: every breath the patient takes is their own; CMV modes are not patient-triggered on the A350 (simulator's reading of SIMV/CMV) */\n  const triggered = m === 'MAN' ? effort > 0 : !V.cpr && !CMV_MODES.includes(m) && V.set.trig > 0 && effort >= V.set.trig;");
+    "  /* Man/Spon: every breath the patient takes is their own; CMV modes are not patient-triggered on the anaesthetic machine (simulator's reading of SIMV/CMV) */\n  const triggered = m === 'MAN' ? effort > 0 : !V.cpr && !CMV_MODES.includes(m) && V.set.trig > 0 && effort >= V.set.trig;");
 sub("    if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= V.lim.apnoea) {",
     "    if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= (V.backupOn ? 60 / backupSet().rate : V.lim.apnoea)) {");
 sub("      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }\n      else raise('apnea');",
@@ -140,7 +140,7 @@ between('/* ======================= screen rendering ======================= */'
 between('/* ---------- knob cursor (yellow outline) ---------- */', '/* ---------- front-panel keys ---------- */', read('input.js'));
 between('/* ---------- front-panel keys ---------- */', '/* full screen: CSS takes', read('hardware.js') + read('guide.js'));
 
-// ---- the simulator link: this page is the A350 -----------------------------------------------------
+// ---- the simulator link: this page is the anaesthetic machine -----------------------------------------------------
 sub("const DEVICE_MODEL = 'c6';", "const DEVICE_MODEL = 'a350';");
 sub("const saveKey = () => 'wmebem_c6_' + fb.code;", "const saveKey = () => 'wmebem_a350_' + fb.code;");
 sub("const SAVE_KEYS = ['power', 'standby', 'ambient', 'mode', 'set', 'lim', 'backupOn', 'sigh', 'psync', 'sex', 'locked', 'night', 'spo2On', 'gfx', 'tests', 'loud', 'cpr'];",
@@ -154,7 +154,7 @@ sub("    peep = ['APRV', 'DuoPAP'].includes(V.mode) && M.pmean !== null ? Math.m
 sub("  const conn = ventOn && !P.disc;", "  const conn = ventOn && !P.disc && !G.ySealed;");
 sub("  P.base = pr; P.pr = {...pr};", "  P.base = pr; P.pr = G.ySealed ? sealedLung() : {...pr};");
 sub("  LIVE.etco2 = v.etco2Enabled && Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;",
-    "  LIVE.etco2 = Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;   /* the A350 measures CO2 itself */\n  LIVE.age = Number.isFinite(Number(v.patientAge)) ? Number(v.patientAge) : null;");
+    "  LIVE.etco2 = Number.isFinite(Number(vit.etco2)) ? Number(vit.etco2) : null;   /* the anaesthetic machine measures CO2 itself */\n  LIVE.age = Number.isFinite(Number(v.patientAge)) ? Number(v.patientAge) : null;");
 between('function ventStateNow() {', 'let lastMirror = ', read('mirror.js'));
 /* Man/Spon is the bag and a face mask as often as a tube: not an "invasive mode with no airway" */
 sub("inv:isInvasive() ? 1 : 0,", "inv:isInvasive() && V.mode !== 'MAN' ? 1 : 0,");
@@ -166,7 +166,7 @@ sub("  P.onNivMin = Number(s.onNivMin) || 0;\n",
 between('function deviceDefaults() {', '/* ---------- what the facilitator sees ---------- */', read('defaults.js'));
 sub(`      case 'o2':
         if (V.power && !P.o2fail) { if (V.o2Enrich > 0) { V.o2Enrich = 0; logEvent('O2 enrichment cancelled', 'info'); } else { V.o2Enrich = O2_ENRICH_S; logEvent('O2 enrichment started', 'info'); } renderAll(); }
-        break;`, `      case 'o2':   /* the A350 has no O2 enrichment key: the facilitator's button sets FG O2 to 100% */
+        break;`, `      case 'o2':   /* the anaesthetic machine has no O2 enrichment key: the facilitator's button sets FG O2 to 100% */
         if (V.power) remoteEdit('ctrl', 'o2', 100);
         break;`);
 sub("  engineStep(dt);\n  if (V.selftest > 0) { V.selftest -= dt; if (V.selftest <= 0) { V.selftest = 0; win = 'standby'; logEvent('Self-test passed', 'info'); renderAll(); } }",
@@ -175,10 +175,10 @@ sub("['monitoring', 'alarms', 'system', 'standby'].includes(win)", "['alarms', '
 sub("    $('#simClock').textContent = V.power && !V.standby ? 'Ventilating ' + clockStr() : '';", "    $('#simClock').textContent = V.power && !V.standby ? 'In use ' + clockStr() : '';");
 sub("window.__vent = {V, get P() { return P; }, B,", "window.__vent = {V, G, get P() { return P; }, B,");
 
-// Nothing of the Hamilton screen may show on the Dräger page (comments that explain the shared engine aside).
+// Nothing of the ventilator screens, and no manufacturer's name, may show on the anaesthetic machine page (comments that explain the shared engine aside).
 const visible = html.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-const left = visible.match(/.{0,50}(HAMILTON|Hamilton).{0,50}/);
-if (left && !/MODEL_PAGES|HAMILTON-T1, HAMILTON-C6 or Atlan A350/.test(left[0])) fail('a Hamilton label survived: ' + left[0]);
+const left = visible.match(/.{0,50}(HAMILTON|Hamilton|Dräger|Drager|Draeger|Atlan|ZOLL|ICU VENTILATOR|>ICU ventilator<).{0,50}/);
+if (left) fail('a ventilator or brand label survived: ' + left[0]);
 if (process.argv.includes('--check')) {
     const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
     if (cur !== html) fail('vent/a350.html is out of date: run node scripts/make-a350.mjs');
