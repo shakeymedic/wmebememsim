@@ -46,6 +46,8 @@
     
     <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+    <!-- App Check (data/firebase-config.js). It does nothing until APP_CHECK_SITE_KEY is set. -->
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check-compat.js"></script>
     <!-- Firebase Authentication, same compat v8 SDK version as the two above so the
          existing initialisation style is unchanged. This script is PURELY ADDITIVE: if it fails to
          load, or if Email/Password has not been enabled in the console, data/auth.js degrades to
@@ -192,6 +194,7 @@
         try {
             if (!window.firebase) throw new Error('Firebase SDK did not load.');
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            if (window.initFirebaseAppCheck) window.initFirebaseAppCheck();   // before the first database use
             window.db = firebase.database();
             if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(window.db);
             console.info("Firebase Realtime Database initialized");

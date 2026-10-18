@@ -1,7 +1,7 @@
 // Investigation results: the image library (every image present, credited and openly licensed),
 // each scenario's own results, and how a result with an image reaches the room monitor.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -82,6 +82,8 @@ async function loadScenario(page, id) {
     window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: base });
   }, id);
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.scenario && window.__simEngine.state.scenario.id)).toBe(id);
+
+  await openRightColumn(page);
 }
 async function openMonitor(context, code) {
   const monitor = await context.newPage();

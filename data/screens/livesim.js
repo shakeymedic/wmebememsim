@@ -424,20 +424,6 @@
         // tablet layouts ignore these.
         const [phoneTrace, setPhoneTrace] = useState(false);
         const [phoneRhythms, setPhoneRhythms] = useState(false);
-        // The right-hand column (interventions, or Quick Sim's rhythms) can be folded away so the obs
-        // column fills the screen. Quick Sim always starts folded; a scenario remembers the last choice.
-        const RIGHT_FOLD_KEY = 'wmebem_right_folded';
-        const [rightFolded, setRightFolded] = useState(() => {
-            if (state.scenario && state.scenario.quickSim) return true;
-            try { return localStorage.getItem(RIGHT_FOLD_KEY) === '1'; } catch (e) { return false; }
-        });
-        // A new Quick Sim run starts folded even if this screen stays mounted between runs.
-        useEffect(() => { if (state.scenario && state.scenario.quickSim) setRightFolded(true); }, [state.runId]);
-        const toggleRightFolded = () => setRightFolded(f => {
-            const n = !f;
-            if (!(state.scenario && state.scenario.quickSim)) { try { localStorage.setItem(RIGHT_FOLD_KEY, n ? '1' : '0'); } catch (e) {} }
-            return n;
-        });
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
@@ -477,6 +463,21 @@
         // unmounts it, so they are kept per run id and picked up again on "Return to scenario".
         const keepStore = window.__liveSimKeep || (window.__liveSimKeep = {});
         const kept = (state.runId && keepStore[state.runId]) || null;
+        // The right-hand column (interventions, or Quick Sim's rhythms) can be folded away so the obs
+        // column fills the screen. Every run starts folded, Quick Sim and scenarios alike (Jake, 18 Oct
+        // 2026); the fold bar opens it. Within a run the choice is kept across Back / "Return to
+        // scenario" (the run's keep store below). md+ only: on a phone the columns stack and nothing folds.
+        const [rightFolded, setRightFolded] = useState(() => (kept && typeof kept.rightFolded === 'boolean') ? kept.rightFolded : true);
+        const rightFoldedRef = useRef(rightFolded);
+        rightFoldedRef.current = rightFolded;
+        // A new run starts folded even if this screen stays mounted between runs.
+        const foldRunRef = useRef(state.runId);
+        useEffect(() => {
+            if (foldRunRef.current === state.runId) return;
+            foldRunRef.current = state.runId;
+            setRightFolded(true);
+        }, [state.runId]);
+        const toggleRightFolded = () => setRightFolded(f => !f);
         const [timerAlerts, setTimerAlerts] = useState(() => (kept && kept.timerAlerts) || []);
         const timerAlertsRef = useRef(timerAlerts);
         timerAlertsRef.current = timerAlerts;
@@ -756,7 +757,7 @@
             if (!runIdNow) return;
             const store = window.__liveSimKeep || (window.__liveSimKeep = {});
             Object.keys(store).forEach(k => { if (k !== runIdNow) delete store[k]; });
-            store[runIdNow] = { timerAlerts: timerAlertsRef.current, fired: Array.from(firedAlertsRef.current), presetRun: presetRunRef.current };
+            store[runIdNow] = { timerAlerts: timerAlertsRef.current, fired: Array.from(firedAlertsRef.current), presetRun: presetRunRef.current, rightFolded: rightFoldedRef.current };
         }, [runIdNow]);
         useEffect(() => {
             if (!presetActive) return;
@@ -1933,7 +1934,7 @@
                         none of those mean anything without a scenario. The one exception is the
                         investigation results, so the monitor's CXR, VBG, CT etc. buttons can be set. */}
                     {/* FOLD THE RIGHT COLUMN (Jake: the obs column is THE column; the other one is minimised).
-                        Quick Sim starts folded; a scenario remembers the choice on this device. md+ only:
+                        Every run starts folded (Quick Sim and scenarios); the choice lasts for the run. md+ only:
                         on a phone the columns stack and nothing is folded. */}
                     <div className="hidden md:flex flex-none flex-col items-center" data-testid="right-fold-bar">
                         <button type="button" onClick={toggleRightFolded} aria-expanded={!rightFolded} aria-controls="right-column"

@@ -2,7 +2,7 @@
 // each investigation (data/screens/invresults.js, INVESTIGATIONS.setResult), in Quick Sim, a premade
 // scenario, Defib Sim and the Builder, before START and during the run.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expandSection, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -20,6 +20,8 @@ async function loadScenario(page, id) {
     window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: base });
   }, id);
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.scenario && window.__simEngine.state.scenario.id)).toBe(id);
+
+  await openRightColumn(page);
 }
 // Press an investigation button on the room monitor and return the result card
 async function press(monitor, name) {
@@ -211,6 +213,7 @@ test('Builder: chosen results are saved with the scenario and given by the monit
   await expect(box.getByTestId('inv-result-row-CT')).toContainText('Subarachnoid haemorrhage');
   await page.getByRole('button', { name: 'Run without saving' }).click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();
+  await openRightColumn(page);
 
   await expect.poll(() => page.evaluate(() => window.__simEngine && window.__simEngine.state.scenario && window.__simEngine.state.scenario.ct && window.__simEngine.state.scenario.ct.image)).toBe('ct-sah');
   await page.getByRole('button', { name: 'Investigations', exact: true }).click();
@@ -236,6 +239,7 @@ test('briefing: a premade scenario\'s result can be changed before the run start
   await page.getByTestId('inv-result-editor').getByTestId('inv-editor-library').getByRole('button', { name: 'Normal CT head' }).click();
   await expect(row).toContainText('Normal CT head');
   await page.getByRole('button', { name: 'Start Scenario' }).click();
+  await openRightColumn(page);
   // On the controller it shows as changed, and the monitor's CT Head button gives it
   await page.getByRole('button', { name: 'Investigations', exact: true }).click();
   await expect(page.getByTestId('inv-result-row-CT').getByTestId('inv-result-changed')).toBeVisible();

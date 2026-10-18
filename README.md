@@ -106,6 +106,10 @@ screens connected, defib presses) for more than 24 hours. **It does nothing unti
   cards may break across pages so the first page is never left empty.
 - **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
   actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
+  On a tablet or computer every run (Quick Sim and library scenarios alike) starts with this column
+  **folded** so the obs column fills the screen; the fold bar at its edge opens it, and the choice lasts
+  for the rest of that run (including Back and **Return to scenario**). On a phone the columns stack and
+  nothing is folded.
 - **Simple / Full view** (remembered on each device, Simple by default; every open screen on the
   device follows a change). Simple hides the advanced extras: the drug-timing detail lines in Drugs on
   board, the "+ Invasive" bulk button (the individual chips stay), the pH and K+ tiles (GCS and
@@ -223,6 +227,10 @@ the same panel from their **Screens** button. Like Windows' display settings:
   cards may break across pages so the first page is never left empty.
 - **Right column:** intervention search and tabs (the Common tab no longer repeats the recommended
   actions), and the **event log**, always on screen with notes and flags; the full log is in Tools.
+  On a tablet or computer every run (Quick Sim and library scenarios alike) starts with this column
+  **folded** so the obs column fills the screen; the fold bar at its edge opens it, and the choice lasts
+  for the rest of that run (including Back and **Return to scenario**). On a phone the columns stack and
+  nothing is folded.
 - **Simple / Full view** (remembered on each device, Simple by default; every open screen on the
   device follows a change). Simple hides the advanced extras: the drug-timing detail lines in Drugs on
   board, the "+ Invasive" bulk button (the individual chips stay), the pH and K+ tiles (GCS and
@@ -567,6 +575,55 @@ pending requests and grant or revoke entitlements per user, without touching the
 ### 4. Add restricted scenarios
 
 See the next section.
+
+### 5. Firebase App Check (protects the course content from scripts)
+
+App Check makes the Realtime Database accept requests only from this site's own pages: each page
+earns a reCAPTCHA v3 token silently in the background (no puzzle for anyone) and sends it with every
+database request. Someone copying the API key into a script gets no token, so once you **enforce** it
+they cannot read the licensed course scenarios (ETC, ALS, CABC) even with a valid account. It adds to
+`database.rules.json`; it does not replace it.
+
+The code is already in place and **does nothing until you add a site key**: `APP_CHECK_SITE_KEY` in
+[`data/firebase-config.js`](./data/firebase-config.js) is empty, and while it is empty App Check is
+skipped. Every page that uses the database (controller and room monitor in `index.html`, the defib
+tablet, and the three ventilator pages) turns App Check on straight after `initializeApp()` and before
+its first database call, with token auto-refresh on. Nothing in the code ever turns enforcement on;
+that is a switch in the Firebase console. The provider is **reCAPTCHA v3** rather than reCAPTCHA
+Enterprise: the app uses the Firebase compat SDK, which supports both equally, and v3 needs no Google
+Cloud API enabled and no billing, so it is the shorter set-up. The site has no Content Security Policy
+(no CSP header in `netlify.toml` or `_redirects`, no CSP meta tag), so nothing blocks
+`www.google.com/recaptcha`, `www.gstatic.com/recaptcha` or `content-firebaseappcheck.googleapis.com`.
+If you ever add a CSP, allow those three in `script-src`/`frame-src`/`connect-src`.
+
+1. **Register the site in reCAPTCHA.** Go to <https://www.google.com/recaptcha/admin/create>. Label:
+   `EM Simulator`. Type: **Score based (v3)**. Domains: `emsimulator.com`, `www.emsimulator.com` and
+   `wmebemsim.netlify.app` (Netlify deploy previews live on other addresses and will not get tokens;
+   that only matters after step 5). Submit. You get a **site key** (public) and a **secret key**.
+2. **Register the app in Firebase App Check.** Go to
+   <https://console.firebase.google.com/project/wmebem-sim/appcheck> → **Apps** → the web app
+   (`1:143041936940:web:4d15c3fc3ce7e10c081b89`) → **reCAPTCHA** → paste the **secret key** → Save.
+   Leave the token time to live at its default. Do **not** press Enforce anywhere yet.
+3. **Paste the site key.** In `data/firebase-config.js` set
+   `window.APP_CHECK_SITE_KEY = '<your site key>';` (the site key, never the secret key), commit and
+   push. Netlify deploys it; online tablets pick it up on their next load (the service worker is
+   network first).
+4. **Testing on your own computer (localhost).** reCAPTCHA does not issue tokens to `localhost`, so
+   use a debug token: open `http://localhost:8000/?appcheck-debug=1`, open the browser console and
+   copy the line "App Check debug token: …", then in the App Check page → **Apps** → the web app's ⋮
+   menu → **Manage debug tokens** → add it. That browser then gets valid tokens on localhost. The
+   `?appcheck-debug=1` switch works only on `localhost` / `127.0.0.1`, never on the live site. Keep
+   debug tokens private and delete ones you no longer use. The Playwright tests use a fake Firebase
+   and are not affected; the Firebase emulator does not check App Check.
+5. **Watch the metrics for a week, then enforce for Realtime Database only.** App Check page →
+   **APIs** → **Realtime Database** shows verified and unverified requests. After about a week of
+   normal use, when nearly all requests are verified (unverified ones should be only scripts and old
+   cached copies of the app), press **Enforce** on **Realtime Database** only. Leave Authentication
+   and the other products unenforced. Enforcement takes effect within about 15 minutes. If something
+   breaks, press **Unenforce** on the same page; that is the whole rollback.
+6. **The Android app (Google Play) needs nothing extra.** It is a Trusted Web Activity, i.e. Chrome
+   showing `emsimulator.com`, so the same web reCAPTCHA v3 provider covers it. No Play Integrity
+   provider is needed.
 
 ---
 

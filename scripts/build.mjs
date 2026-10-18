@@ -103,7 +103,10 @@ const V = {
     // has always used, on the current SDK.
     fbApp: vendor('firebase/firebase-app-compat.js', 'vendor/firebase/firebase-app.js'),
     fbDb: vendor('firebase/firebase-database-compat.js', 'vendor/firebase/firebase-database.js'),
-    fbAuth: vendor('firebase/firebase-auth-compat.js', 'vendor/firebase/firebase-auth.js')
+    fbAuth: vendor('firebase/firebase-auth-compat.js', 'vendor/firebase/firebase-auth.js'),
+    // App Check (data/firebase-config.js): loaded on every page that uses the database; it does
+    // nothing until APP_CHECK_SITE_KEY is set.
+    fbAppCheck: vendor('firebase/firebase-app-check-compat.js', 'vendor/firebase/firebase-app-check.js')
 };
 const FB = 'https://www.gstatic.com/firebasejs/12.19.0/';
 const localise = (text, prefix) => text
@@ -111,7 +114,8 @@ const localise = (text, prefix) => text
     .split('https://unpkg.com/react-dom@18/umd/react-dom.production.min.js').join(prefix + V.reactDom)
     .split(FB + 'firebase-app-compat.js').join(prefix + V.fbApp)
     .split(FB + 'firebase-database-compat.js').join(prefix + V.fbDb)
-    .split(FB + 'firebase-auth-compat.js').join(prefix + V.fbAuth);
+    .split(FB + 'firebase-auth-compat.js').join(prefix + V.fbAuth)
+    .split(FB + 'firebase-app-check-compat.js').join(prefix + V.fbAppCheck);
 
 // In-browser Babel is no longer needed at all.
 html = html.replace(/[ \t]*<script src="https:\/\/unpkg\.com\/@babel\/standalone\/babel\.min\.js"><\/script>\n?/, '');

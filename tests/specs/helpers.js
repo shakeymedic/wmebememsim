@@ -12,6 +12,8 @@ async function useFakeFirebase(context) {
   await context.route('**/vendor/firebase/firebase-app.js', r => r.fulfill({ contentType: 'text/javascript', body: FAKE_FIREBASE }));
   await context.route('**/vendor/firebase/firebase-database.js', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
   await context.route('**/vendor/firebase/firebase-auth.js', r => r.fulfill({ contentType: 'text/javascript', body: FAKE_AUTH }));
+  // App Check needs the real SDK; with the fake it is not loaded (the site key is empty anyway).
+  await context.route('**/vendor/firebase/firebase-app-check.js', r => r.fulfill({ contentType: 'text/javascript', body: '' }));
   await context.route(/^https?:\/\/(?!localhost)/, r => r.abort());
 }
 
@@ -42,9 +44,21 @@ async function openController(page) {
 async function startQuickSim(page, { folded = false } = {}) {
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  if (!folded) await openRightColumn(page);
+  else await page.locator('[data-testid="right-fold-bar"] button').first().waitFor({ state: 'attached' });
+}
+
+// Every run (Quick Sim and scenarios alike) starts with the right-hand column folded away on a tablet
+// or computer. Open it, as the facilitator does, when a test uses the interventions, rhythms or log.
+// A no-op on a phone, where nothing folds.
+async function openRightColumn(page) {
   const fold = page.locator('[data-testid="right-fold-bar"] button');
   await fold.first().waitFor({ state: 'attached' });
-  if (!folded && await fold.isVisible() && (await fold.getAttribute('aria-expanded')) === 'false') await fold.click();
+  if (!(await fold.isVisible())) return;
+  await expect(async () => {
+    if ((await fold.getAttribute('aria-expanded')) === 'false') await fold.click();
+    await expect(fold).toHaveAttribute('aria-expanded', 'true', { timeout: 1000 });
+  }).toPass({ timeout: 15000 });
 }
 
 // Every launch mode waits for START (the controller says "Not started" until then). Press it, as
@@ -66,4 +80,4 @@ const session = (page, code, sub = '') => page.evaluate(([c, s]) => window.__fak
 // The live patient the controller publishes (sessions/<CODE>/live)
 const live = (page, code, sub = '') => session(page, code, '/live' + sub);
 
-module.exports = { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, pressStart, expandSection, session, live, expect };
+module.exports = { useFakeFirebase, trackErrors, chooseController, openController, startQuickSim, openRightColumn, pressStart, expandSection, session, live, expect };

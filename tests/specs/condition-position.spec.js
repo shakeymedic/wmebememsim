@@ -148,3 +148,37 @@ test('Quick Sim starts with the rhythms column folded: the obs column fills the 
   await expect(page.getByTestId('trend-quick')).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test('a library scenario starts with the interventions column folded, like Quick Sim; it opens, stays open across Back, and the next run starts folded again', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  const startLibrary = async () => {
+    await page.getByRole('button', { name: 'Scenario library', exact: true }).click();
+    // (the "Scenario paused" card also names the scenario, so pick the row with a Load button)
+    const load = page.locator('div.justify-between', { hasText: 'Anaphylaxis (Adult)' }).filter({ has: page.getByRole('button', { name: 'Load' }) }).last().getByRole('button', { name: 'Load' });
+    // The library remembers the open category between visits
+    if (!(await load.isVisible())) await page.getByRole('button', { name: 'Adult Medical', exact: true }).click();
+    await load.click();
+    await page.getByRole('button', { name: 'Start Scenario' }).click();
+  };
+  await startLibrary();
+  const fold = page.locator('[data-testid="right-fold-bar"] button');
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  await expect(fold).toHaveAccessibleName('Open the interventions and log column');
+  await expect(page.getByLabel('Search interventions')).toBeHidden();
+  expect((await page.getByTestId('obs-top').boundingBox()).width).toBeGreaterThan(1000);
+  // The facilitator opens it as before
+  await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByLabel('Search interventions')).toBeVisible();
+  await expect(page.getByTestId('event-log')).toBeVisible();
+  // Back and Return to scenario: still open (it is the same run)
+  await page.getByRole('button', { name: /Back/ }).first().click();
+  await page.getByRole('button', { name: 'Return to scenario' }).click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  // A new run starts folded again
+  await page.getByRole('button', { name: /Back/ }).first().click();
+  await startLibrary();
+  await expect(fold).toHaveAttribute('aria-expanded', 'false');
+  expect(errors).toEqual([]);
+});
