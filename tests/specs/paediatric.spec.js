@@ -10,6 +10,10 @@ const run = (page, fn, arg) => page.evaluate(([f, a]) => new Function('arg', f)(
 
 test('estimated weight, tube size and WETFLAG follow the RCUK drug chart', async ({ page }) => {
   await openController(page);
+  // Every Age/Weight row of the chart: < 1 month, 1, 3 and 6 months, then 1-8, 10, 12 and 14 years
+  const chartAges = [0, 1 / 12, 0.25, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14];
+  const chartKg = [3.5, 4, 5, 7, 10, 12, 14, 16, 18, 20, 23, 26, 30, 38, 50];
+  expect(await run(page, 'return arg.map(a => window.estimateWeight(a))', chartAges)).toEqual(chartKg);
   const weights = await run(page, 'return [0, 1, 2, 5, 7, 8, 10, 12, 14, 15, 16, 17, 18].map(a => window.estimateWeight(a))');
   expect(weights).toEqual([3.5, 10, 12, 18, 23, 26, 30, 38, 50, 50, 50, 50, null]);   // paediatric until 18
 
