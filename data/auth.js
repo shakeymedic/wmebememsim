@@ -784,6 +784,7 @@
                         </form>
                     )}
                     <Button onClick={onClose} variant="outline" className="w-full mt-4">Close</Button>
+                    <p className="text-[11px] text-slate-400 text-center mt-3">How we use your details: <a href="privacy.html" target="_blank" rel="noopener" className="underline hover:text-white">privacy notice</a></p>
                 </div>
             </Modal>
         );
@@ -1121,6 +1122,11 @@
                         <Button onClick={async () => { await auth.signOut(); onClose(); }} variant="secondary" disabled={auth.busy} className="flex-1 h-10"><Lucide icon="log-out" className="w-4 h-4 mr-1"/> Sign out</Button>
                         <Button onClick={onClose} variant="outline" className="flex-1 h-10">Close</Button>
                     </div>
+                    <p className="text-[11px] text-slate-400 text-center">
+                        <a href="privacy.html" target="_blank" rel="noopener" className="underline hover:text-white">Privacy notice</a>
+                        <span aria-hidden="true"> &middot; </span>
+                        <a href="delete-account.html" target="_blank" rel="noopener" className="underline hover:text-white" data-testid="delete-account-link">Delete my account</a>
+                    </p>
                 </div>
             </Modal>
         );

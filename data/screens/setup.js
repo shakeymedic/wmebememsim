@@ -988,6 +988,7 @@
                         {card(onPatientScreen, 'welcome-screen', <><Lucide icon="monitor" className="w-8 h-8"/><Lucide icon="zap" className="w-6 h-6"/><Lucide icon="wind" className="w-6 h-6"/></>, 'Patient screen',
                             'This is what the candidates see. Type the code shown on the controller; the controller then chooses whether this screen is the monitor, the defib or the ventilator.')}
                     </div>
+                    <p className="text-xs text-slate-400 text-center" data-testid="training-only">For simulation training only. Not a medical device and not for real patient care: please don't enter real patient details.</p>
                 </div>
             </div>
         );
