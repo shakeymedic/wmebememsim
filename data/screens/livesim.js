@@ -846,7 +846,7 @@
              return (
                  <div key={key} className="relative">
                  <button title={btnTitle} onClick={() => applyIntervention(key)} className={`relative w-full h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
-                     <span className={`text-xs font-bold leading-tight ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
+                     <span className={`text-xs font-bold leading-tight ${missing.length ? 'pl-2.5' : ''} ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
                         {/* The ROUTE is shown on every button, because IM vs IV vs buccal
                             is the whole point of the new route-specific keys and a facilitator must be
@@ -1183,7 +1183,7 @@
                 <div className="md:hidden mb-2">
                     <div className="flex items-center gap-2 mb-1">
                         <div className="min-w-0 flex-1">
-                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none">Obs &middot; tap to change{!sensors.any && <span className="text-amber-400" data-testid="phone-none-on-monitor"> &middot; none on monitor</span>}</div>
+                            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-bold leading-none whitespace-nowrap">Obs &middot; {sensors.any ? 'tap to change' : <span className="text-amber-400" data-testid="phone-none-on-monitor">none on monitor</span>}</div>
                             <div className={`text-xs font-bold truncate ${RG.isPulseless(state.rhythm) ? 'text-red-300' : 'text-white'}`}>{RG.labelFor(state.rhythm)}</div>
                         </div>
                         <div className="font-mono text-xl font-bold text-white">{formatTime(clockSeconds)}</div>
@@ -1191,7 +1191,7 @@
                             ? <Button variant="success" onClick={start} className={`h-9 px-3 font-bold text-sm ${notStarted ? 'ring-2 ring-amber-400' : ''}`}><Lucide icon="play" className="w-4 h-4"/> START</Button>
                             : <Button variant="warning" onClick={pause} className="h-9 px-3 font-bold text-sm"><Lucide icon="pause" className="w-4 h-4"/> PAUSE</Button>}
                     </div>
-                    {notStarted && <NotStartedBadge long className="mb-1 w-full" />}
+                    {/* Not started: the amber ring on START and the amber toolbar say so (no extra banner on a phone). */}
                     {setUpButton('mb-1 w-full justify-center')}
                     {/* With nothing attached, the one line above says so instead of "not on monitor" on every tile. */}
                     <div className={`grid grid-cols-3 min-[400px]:grid-cols-4 gap-1 ${sensors.any ? '' : '[&_[data-off-monitor]]:hidden'}`}>
@@ -2059,7 +2059,7 @@
                         </div>
 
                         <div className="bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2">
-                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Type Custom Log Entry..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
+                            <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Add a note to the log" value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
                             <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
                             <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0">Add Log</Button>
                         </div>
@@ -2080,7 +2080,7 @@
                         {/* Search only. Trend Better/Worse live with the deterioration setting
                             (Patient condition), and notes are added in the event log below. */}
                         <div className="bg-slate-900 p-2 border-b border-slate-700">
-                            <input type="text" aria-label="Search interventions" className="w-full bg-slate-800 border border-slate-600 rounded px-4 h-11 text-base text-white focus:border-sky-500 outline-none" placeholder="Search interventions (name or route, e.g. IM)..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
+                            <input type="text" aria-label="Search interventions" className="w-full bg-slate-800 border border-slate-600 rounded px-4 h-11 text-base text-white focus:border-sky-500 outline-none" placeholder="Search (name or route, e.g. IM)" value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} />
                         </div>
 
                         {/* Wraps at every width: as a horizontal scroller, Investigations, Voice and
@@ -2183,7 +2183,7 @@
                                     ))}
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                    <input type="text" aria-label="Note for the log" className="bg-slate-800 border border-slate-600 rounded px-3 h-9 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Add a note to the log..." value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
+                                    <input type="text" aria-label="Note for the log" className="bg-slate-800 border border-slate-600 rounded px-3 h-9 text-sm flex-1 min-w-[8rem] text-white focus:border-amber-500 outline-none" placeholder="Add a note" value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
                                     <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-9 px-3 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
                                     <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-9 px-3 shrink-0">Add note</Button>
                                 </div>

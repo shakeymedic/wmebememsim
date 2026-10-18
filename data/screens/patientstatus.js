@@ -622,7 +622,8 @@
             <section aria-label="Patient status" data-testid="patient-status" className={`flex-none mb-2 rounded border-l-4 border ${TONE[a.tone] || TONE.slate}`}>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-2 py-1">
                     <span className={`flex-none w-2.5 h-2.5 rounded-full ${a.tone === 'red' ? 'bg-red-500 animate-pulse' : a.tone === 'amber' ? 'bg-amber-400' : a.tone === 'cyan' ? 'bg-cyan-400' : 'bg-emerald-400'}`} aria-hidden="true" />
-                    <div className="min-w-0 flex-1">
+                    {/* On a phone the headline has the row to itself and the buttons wrap under it. */}
+                    <div className="min-w-0 flex-1 max-md:basis-[calc(100%-1.5rem)]">
                         <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400 mr-2">Patient now</span>
                         <span data-testid="patient-headline" className="text-sm md:text-base font-bold">{a.headline}</span>
                     </div>
@@ -653,8 +654,10 @@
                 )}
                 {!collapsed && (
                     <div className="flex flex-wrap md:flex-nowrap gap-3 px-2 pb-2 items-start">
-                        <PatientFigure a={a} className="w-40 h-44 md:w-44 md:h-48 flex-none bg-slate-950/70 rounded-lg" />
-                        <div className="min-w-0 flex-1 flex flex-col gap-1">
+                        {/* On a phone the figure and the details share the first row (the details need about 11rem) and
+                            the scenario summary takes its own full-width row below, so nothing is squeezed into a sliver. */}
+                        <PatientFigure a={a} className="w-32 h-36 sm:w-40 sm:h-44 md:w-44 md:h-48 flex-none bg-slate-950/70 rounded-lg" />
+                        <div className="min-w-0 flex-1 basis-[11rem] flex flex-col gap-1 overflow-hidden">
                             {(a.flags.length > 0 || resusButtons) && (
                                 <div className="flex flex-wrap items-center gap-1" data-testid="patient-flags">
                                     {flagChips}
@@ -666,9 +669,12 @@
                             {a.other.length > 0 && row('Also', a.other, '')}
                             {INJ && (
                                 <div className="flex gap-1.5 items-baseline min-w-0" data-testid="patient-injuries">
-                                    <span className="text-[9px] uppercase font-bold text-slate-400 w-[4.6rem] flex-none">Injuries</span>
+                                    {/* On a phone Change sits under the label, so the injuries keep the column's width. */}
+                                    <span className="text-[9px] uppercase font-bold text-slate-400 w-[4.6rem] flex-none flex flex-col items-start gap-1">Injuries
+                                        {state.scenario && <button type="button" onClick={() => setEditInjuries(true)} aria-label="Change the injuries on the patient picture" className="md:hidden text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">Change</button>}
+                                    </span>
                                     <span className={`text-[11px] min-w-0 ${a.injuries.length ? 'text-white' : 'text-slate-300 italic'}`}>{a.injuries.length ? a.injuries.map(INJ.label).join(' \u00b7 ') : 'None'}</span>
-                                    {state.scenario && <button type="button" onClick={() => setEditInjuries(true)} aria-label="Change the injuries on the patient picture" className="flex-none text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">Change</button>}
+                                    {state.scenario && <button type="button" onClick={() => setEditInjuries(true)} aria-label="Change the injuries on the patient picture" className="max-md:hidden flex-none text-[9px] uppercase font-bold px-1.5 py-0.5 rounded border border-slate-600 text-slate-300 hover:bg-slate-700">Change</button>}
                                 </div>
                             )}
                         </div>
