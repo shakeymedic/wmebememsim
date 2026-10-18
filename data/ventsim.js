@@ -21,9 +21,9 @@
     // rather than marking a candidate down for a setting they were handed; ARDS and post-RSI keep the strict 8.
     // problems: the problems this scenario is written around (the facilitator injects them).
     // startProblems: problems already present when the scenario starts.
-    // devices: which machines the scenario is written for: 't1' (HAMILTON-T1, the Ventilator Sim
-    // card), 'c6' (HAMILTON-C6) and/or 'a350' (Dräger Atlan A350 anaesthetic machine), both on the
-    // Anaesthetics / ICU card. Missing means the T1 only.
+    // devices: which machines the scenario is written for: 't1' (transport ventilator, the Ventilator Sim
+    // card), 'c6' (ICU ventilator) and/or 'a350' (anaesthetic machine), both on the
+    // Anaesthetics / ICU card. Missing means the transport ventilator only.
     // targets.vc: a volume-controlled mode ((S)CMV or SIMV) is expected; targets.spont: a spontaneous
     // breathing trial on pressure support (SPONT) is expected.
     var SCENARIOS = [
@@ -81,7 +81,7 @@
           vitals: { hr: 88, bpSys: 122, bpDia: 72, rr: 14, spO2: 98, etco2: 4.7, gcs: 3, temp: 36.7 },
           targets: { spo2: [94, 98], vtMin: 6, vtMax: 8.5, pplatMax: 30 },
           problems: ['mains', 'battlow', 'o2fail', 'disc'] },
-        // ---- written for the HAMILTON-C6 (ICU) ----
+        // ---- written for the ICU ventilator ----
         { id: 'icu-vc', devices: ['c6'], name: 'Volume control: rising airway pressures', group: 'Intensive care',
           description: '57-year-old on ICU with pneumonia, intubated yesterday, sedated and paralysed. Set up volume-controlled ventilation ((S)CMV with an inspiratory pause) at 6-8 ml/kg ideal body weight. The facilitator then makes the airway pressures rise: use Ppeak and Pplateau to tell a resistance problem (tube, bronchospasm) from a compliance problem (pneumothorax).',
           profile: 'normal', breathing: false, airway: 'tube', age: 57, sex: 'Male',
@@ -94,10 +94,10 @@
           vitals: { hr: 88, bpSys: 132, bpDia: 76, rr: 18, spO2: 96, etco2: 5.0, gcs: 11, temp: 37.2 },
           targets: { spo2: [92, 98], spont: true },
           problems: ['det', 'leakM'] },
-        // ---- anaesthetic emergencies for novice anaesthetists, on the Atlan A350 or the HAMILTON-C6 ----
+        // ---- anaesthetic emergencies for novice anaesthetists, on the anaesthetic machine or the ICU ventilator ----
         // Each follows a guideline of the Association of Anaesthetists' Quick Reference Handbook (QRH,
         // June 2023 edition); the number is in the name. The patient is anaesthetised, intubated and
-        // ventilated in theatre, on the Dräger Atlan A350 anaesthetic machine (or the HAMILTON-C6 as an
+        // ventilated in theatre, on the anaesthetic machine (or the ICU ventilator as an
         // ICU ventilator). rhythm / deterioration / stabilisers / recommended / lung are optional:
         // the starting rhythm, the controller's autonomous deterioration (off until the facilitator
         // switches it to Auto), the interventions that turn it round, extra interventions to list
@@ -292,8 +292,8 @@
         // "Ventilator (facilitator): ...".
         var starts = find(/^Ventilator: (Ventilation started|Therapy started)/);
         var leak = find(/^Ventilator: Leak test passed/), flow = find(/^Ventilator: Flow sensor calibration passed/);
-        // The Atlan A350 logs "Therapy started" and has a system test instead of a flow sensor calibration.
-        // Prefer the scenario's own device; the T1/C6 also log "Therapy started (HiFlowO2)", so a
+        // The anaesthetic machine logs "Therapy started" and has a system test instead of a flow sensor calibration.
+        // Prefer the scenario's own device; the transport ventilator/C6 also log "Therapy started (HiFlowO2)", so a
         // log-only guess must ignore high-flow oxygen.
         var a350 = vs && vs.device ? vs.device === 'a350'
             : starts.some(function (l) { return /^Ventilator: Therapy started \((?!HiFlowO2\))/.test(l.msg); });
@@ -324,11 +324,11 @@
         var usedMode = function (re) { return log.some(function (l) { var m = /^Ventilator: (?:(?:Ventilation|Therapy) started \((.+)\)|Mode changed .+ \u2192 (.+)) \([^()]*\)$/.exec(l.msg || ''); return !!m && re.test(m[1] || m[2]); }); };
         if (tg.vc && starts.length) {
             if (usedMode(/^(\(S\)CMV|SIMV|VC-CMV|VC-SIMV(\/PS)?)$/)) good.push('A volume-controlled mode was used, so Ppeak and Pplateau could be compared');
-            else improve.push('No volume-controlled mode ((S)CMV or SIMV; on the A350, VC-CMV or VC-SIMV) was used: in volume control a rise in Ppeak with a normal Pplateau points to resistance (tube, bronchospasm), and a rise in both to compliance (pneumothorax, stiff lungs)');
+            else improve.push('No volume-controlled mode ((S)CMV or SIMV; on the anaesthetic machine, VC-CMV or VC-SIMV) was used: in volume control a rise in Ppeak with a normal Pplateau points to resistance (tube, bronchospasm), and a rise in both to compliance (pneumothorax, stiff lungs)');
         }
         if (tg.spont && starts.length) {
-            if (usedMode(/^(SPONT|CPAP\/PSV)$/)) good.push('The trial was run on pressure support (SPONT, or CPAP/PSV on the A350)');
-            else improve.push('Pressure support (SPONT, or CPAP/PSV on the A350) was never used: a spontaneous breathing trial is run on low pressure support (or a T-piece), not a controlled mode');
+            if (usedMode(/^(SPONT|CPAP\/PSV)$/)) good.push('The trial was run on pressure support (SPONT, or CPAP/PSV on the anaesthetic machine)');
+            else improve.push('Pressure support (SPONT, or CPAP/PSV on the anaesthetic machine) was never used: a spontaneous breathing trial is run on low pressure support (or a T-piece), not a controlled mode');
         }
         if (tg.niv && starts.length) {
             var nivStarts = starts.filter(function (l) { return /\((NIV|NIV-ST)\)/.test(l.msg); });
@@ -375,7 +375,7 @@
         }
         if (ipaps.length && tg.ipapMin) {
             var imx = Math.max.apply(null, ipaps);
-            // The T1's NIV default is already 20 cmH2O, so only an increase counts as titration.
+            // the transport ventilator's NIV default is already 20 cmH2O, so only an increase counts as titration.
             var rose = imx > ipaps[0];
             var adjusted = settings.some(function (l) { return /Setting changed: (PEEP\/CPAP|\u0394Psupport|\u0394Pinsp) /.test(l.msg); });
             if (imx < tg.ipapMin) improve.push('Inspiratory pressure never reached ' + tg.ipapMin + ' cmH2O (highest ' + imx + '): in hypercapnic AECOPD, titrate IPAP up towards 20 or more over 10-30 minutes as tolerated (BTS/ICS)');

@@ -974,7 +974,7 @@
             }
             if (key === 'FailedIntubation' || key === 'CICO') {
                 // The airway is NOT secured: stop treating RSI as ventilation so a paralysed patient
-                // desaturates until the facilitator rescues with i-gel, BVM or FONA.
+                // desaturates until the facilitator rescues with SGA, BVM or FONA.
                 if (cur.activeInterventions.has('RSI')) dispatch({ type: 'REMOVE_INTERVENTION', payload: 'RSI' });
                 addLogEntry(key === 'CICO' ? 'CICO: airway NOT secured. Oxygenate by any means, then front-of-neck access.' : 'Airway NOT secured after failed attempt. Oxygenate between attempts.', 'danger', true);
             }

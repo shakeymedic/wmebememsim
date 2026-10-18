@@ -1,4 +1,4 @@
-/* The A350's scaling (replaces the T1's fitDevice). The machine is drawn at 1500 x 900 and scaled to fit. On a tall screen (a tablet held upright) it is stacked
+/* The anaesthetic machine's scaling (replaces the transport ventilator's fitDevice). The machine is drawn at 1500 x 900 and scaled to fit. On a tall screen (a tablet held upright) it is stacked
    instead, at 1100 x 1330: the screen on top, the gas and breathing system underneath (.portrait, the
    simulator's arrangement), so it fills the width rather than sitting small in the middle.
    --hit and --shit are 44 CSS px in the machine's and the screen's own pixels: the touch targets use them. */

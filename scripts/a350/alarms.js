@@ -25,14 +25,14 @@ const ALARMS = {
   battmed:  {t:'Battery charge low', p:'low'},
   batthi:   {t:'Battery charge very low', p:'med'},
   battdead: {t:'Battery empty', p:'hi'},                              /* simulator's wording */
-  /* raised by the shared engine for other machines; never by the A350 */
+  /* raised by the shared engine for other machines; never by the anaesthetic machine */
   discpat:  {t:'Disconnection', p:'hi'}, vlimit:{t:'Volume limited', p:'low'}, chkplim:{t:'Check Pmax', p:'low'}, plimchg:{t:'Pressure limit changed', p:'low'},
   losspeep: {t:'PEEP not achieved', p:'med'}, highpeep:{t:'PEEP high', p:'med'}, exobs:{t:'Expiration obstructed', p:'hi'},
   vtlow:{t:'VT low', p:'med'}, vthigh:{t:'VT high', p:'med'}, fhigh:{t:'RR high', p:'med'}, flow:{t:'RR low', p:'med'},
   lowo2:{t:'FiO2 low', p:'hi'}, higho2:{t:'FiO2 high', p:'med'}, irv:{t:'IRV', p:'low'}, maxleak:{t:'Leakage', p:'low'}, asvtarget:{t:'Target not met', p:'low'}, cpron:{t:'CPR', p:'low'}
 };
 /* what each alarm means and what to check: the simulator's summary, written from the causes and remedies in the IFU's
-   "Alarm - Cause - Remedy" table, not Dräger's own text */
+   "Alarm - Cause - Remedy" table, not the manufacturer's own text */
 const HELP = {
   phigh:'<ul><li>The airway pressure reached the Paw high limit, so the breath was cut short.</li><li>Check the patient (coughing, light anaesthesia, bronchospasm), the tube and the hoses (kinked or blocked), the settings and the alarm limit.</li><li>If in doubt, hand-ventilate in Man/Spon to feel the lungs.</li></ul>',
   pcont:'<ul><li>The pressure in the breathing system has stayed high between breaths.</li><li>In Man/Spon: is the APL valve closed with the bag overfilling? Open it (Spont) or lower the fresh-gas flow.</li><li>Check the settings, the breathing circuit and the tube, and whether the patient is breathing against the machine.</li></ul>',

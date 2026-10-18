@@ -306,7 +306,7 @@
                 // this tick is time0 + 1. Every pk/deterioration calculation uses tNow.
                 const tNow = time0 + 1;
                 const activeDrugs = cs ? (cs.activeDrugs || []) : [];
-                // A ventilating HAMILTON-T1 breathes for the patient: the hypoxia model below stands down.
+                // A ventilating transport ventilator breathes for the patient: the hypoxia model below stands down.
                 const ventDriver = VE && cs ? VE.driverFor(cs) : null;
 
                 // ----- STEP 2: TRENDS. A trend interpolates the BASE from a base-space snapshot
@@ -848,8 +848,8 @@
                 if (p.profile !== undefined && p.profile !== cur.profile && p.lung === undefined) lung = {};
                 const probs = p.probs !== undefined ? (VP ? VP.probList(p.probs) : []) : (cur.probs || []);
                 const assess = p.assess !== undefined ? p.assess === true : !!cur.assess;
-                // Which machine the candidate has: the HAMILTON-T1 (transport), the HAMILTON-C6 (ICU) or the
-                // Dräger Atlan A350 (anaesthetic machine).
+                // Which machine the candidate has: the Transport ventilator, the ICU ventilator or the
+                // Anaesthetic machine.
                 const model = VP ? VP.modelOf(p.model !== undefined ? p.model : cur.model) : 't1';
                 // What the circuit connects to, when the facilitator says so ('mask', 'sga' or 'tube');
                 // null = worked out from the patient (data/engine-vent.js interfaceFor).

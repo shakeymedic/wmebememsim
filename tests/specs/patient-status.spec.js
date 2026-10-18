@@ -39,16 +39,16 @@ test('an anaesthetic emergency starts on the monitor, and the vent can be switch
 
   // Switch the machine from the strip: the tablet follows each time.
   const vent = page.getByTestId('status-vent');
-  await expect(vent.getByRole('button', { name: 'Atlan A350' })).toHaveAttribute('aria-pressed', 'true');
-  await vent.getByRole('button', { name: 'T1', exact: true }).click();
+  await expect(vent.getByRole('button', { name: 'Anaesthetic', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await vent.getByRole('button', { name: 'Transport', exact: true }).click();
   await expect.poll(() => live(page, code, '/vent/model')).toBeFalsy();
   await expect(dev).toHaveURL(/\/vent\/index\.html/, { timeout: 10000 });
-  await vent.getByRole('button', { name: 'C6', exact: true }).click();
+  await vent.getByRole('button', { name: 'ICU', exact: true }).click();
   await expect.poll(() => live(page, code, '/vent/model')).toBe('c6');
   await expect(dev).toHaveURL(/\/vent\/c6\.html/, { timeout: 10000 });
-  await vent.getByRole('button', { name: 'Atlan A350' }).click();
+  await vent.getByRole('button', { name: 'Anaesthetic', exact: true }).click();
   await expect(dev).toHaveURL(/\/vent\/a350\.html/, { timeout: 10000 });
-  await expect(page.getByTestId('patient-headline')).toContainText('the Atlan A350', { timeout: 15000 });
+  await expect(page.getByTestId('patient-headline')).toContainText('the anaesthetic machine', { timeout: 15000 });
   expect(await page.evaluate(() => window.__simEngine.state.log.filter(l => /^Ventilator changed to the /.test(l.msg)).length)).toBe(3);
   expect(errors).toEqual([]);
   expect(devErrors).toEqual([]);
@@ -154,10 +154,10 @@ test('the headline does not call a patient ventilated when the machine is not br
   // ... and once the bag is being squeezed, ventilated.
   r = await headline(Object.assign({ isParalysed: true, act: ['RSI'], vent: { model: 'a350' } }, mirror({ model: 'a350', mode: 'MAN', label: 'Man/Spon', mon: { ftot: 12 } })));
   expect(r.ventilating).toBe(true);
-  expect(r.headline).toMatch(/ventilated on the Atlan A350/);
+  expect(r.headline).toMatch(/ventilated on the anaesthetic machine/);
   // An awake patient pre-oxygenating in Man/Spon is breathing for themselves.
   r = await headline(Object.assign({ vent: { model: 'a350' } }, mirror({ model: 'a350', mode: 'MAN', mon: { ftot: 14 } })));
-  expect(r.headline).toMatch(/^Breathing for themselves on the Atlan A350 in Man\/Spon/);
+  expect(r.headline).toMatch(/^Breathing for themselves on the anaesthetic machine in Man\/Spon/);
 
   // High-flow oxygen on the T1 is not ventilation.
   r = await headline(mirror({ mode: 'HiFlowO2', label: 'HiFlowO2' }));

@@ -1,9 +1,9 @@
 // THE VENTILATOR'S LUNGS. One list, shared by the controller (the facilitator's Ventilator section)
-// and the HAMILTON-T1 page (vent/index.html), which uses them in its breath engine.
+// and the transport ventilator page (vent/index.html), which uses them in its breath engine.
 //
-// Five come from the standalone HAMILTON-T1 trainer (shakeymedic/niv-instructions) unchanged; "Normal
+// Five come from the standalone ventilator trainer (shakeymedic/niv-instructions) unchanged; "Normal
 // lungs" is new here. All values are illustrative teaching values, not validated physiology:
-//   C        compliance (l/cmH2O)              R     inspiratory resistance (cmH2O/(l/s), shown on the T1)
+//   C        compliance (l/cmH2O)              R     inspiratory resistance (cmH2O/(l/s), shown on the transport ventilator)
 //   tau      time constant (s)                 vtBase  the patient's own tidal volume (l)
 //   vd       dead space (l)                    rrBase  the patient's own breathing rate (/min)
 //   effort   inspiratory effort (as a flow, l/min, compared with the flow trigger)
@@ -38,7 +38,7 @@
         return 'normal';
     }
 
-    // The facilitator's lung adjustments (the trainer's Lungs panel, after Hamilton's VenTrainer):
+    // The facilitator's lung adjustments (the trainer's Lungs panel, after a manufacturer's ventilator training app):
     // compliance as % of the profile's, resistance, CO2 production as %, the oxygenation impairment
     // (shunt, %) and the patient's own rate. Stored in live.vent.lung; a missing key means the
     // profile's own value.
@@ -54,7 +54,7 @@
     // Problems the facilitator can inject (press again to fix). The first ten are the trainer's; the
     // next five are the DOPES problems added for the simulator; the mucus plug (for bronchoscopy
     // teaching; the Bronchoscopy intervention clears it too) and breath stacking came after. 'where' says which side models it:
-    // the device (alarms and waveforms on the T1), the patient (the controller's obs), or both.
+    // the device (alarms and waveforms on the transport ventilator), the patient (the controller's obs), or both.
     var PROBLEMS = [
         { id: 'leakM', label: 'Moderate leak' },
         { id: 'leakL', label: 'Large leak' },
@@ -102,22 +102,22 @@
         return a.filter(function (id) { return PROBLEM_IDS.indexOf(id) !== -1; });
     }
 
-    // The T1's modes, in the order of its Modes window (the device names).
+    // the transport ventilator's modes, in the order of its Modes window (the device names).
     var MODES = [['APVcmv', '(S)CMV+'], ['APVsimv', 'SIMV+'], ['VS', 'VS'], ['PCV+', 'PCV+'], ['PSIMV+', 'PSIMV+'], ['SPONT', 'SPONT'],
         ['DuoPAP', 'DuoPAP'], ['APRV', 'APRV'], ['ASV', 'ASV'], ['NIV', 'NIV'], ['NIV-ST', 'NIV-ST'], ['HiFlowO2', 'HiFlowO2']];
-    // The HAMILTON-C6 (vent/c6.html): its own volume-controlled modes, its default APV names, no VS.
+    // The ICU ventilator (vent/c6.html): its own volume-controlled modes, its default APV names, no VS.
     var MODES_C6 = [['SCMV', '(S)CMV'], ['SIMV', 'SIMV'], ['APVcmv', 'APVcmv'], ['APVsimv', 'APVsimv'], ['PCV+', 'PCV+'], ['PSIMV+', 'PSIMV+'],
         ['SPONT', 'SPONT'], ['DuoPAP', 'DuoPAP'], ['APRV', 'APRV'], ['ASV', 'ASV'], ['NIV', 'NIV'], ['NIV-ST', 'NIV-ST'], ['HiFlowO2', 'HiFlowO2']];
-    // The Dräger Atlan A350 anaesthetic machine (vent/a350.html): its ventilator's modes, with the
+    // The anaesthetic machine (vent/a350.html): its ventilator's modes, with the
     // names in Dräger's instructions for use (the keys are the shared breath engine's).
     var MODES_A350 = [['MAN', 'Man/Spon'], ['APVcmv', 'VC-CMV/AutoFlow'], ['APVsimv', 'VC-SIMV/AutoFlow'], ['SCMV', 'VC-CMV'], ['SIMV', 'VC-SIMV'],
         ['PCV+', 'PC-CMV'], ['PSIMV+', 'PC-SIMV'], ['SPONT', 'CPAP/PSV']];
     // The machines the facilitator can give the candidate.
-    var MODELS = { t1: 'HAMILTON-T1 (transport)', c6: 'HAMILTON-C6 (ICU)', a350: 'Dräger Atlan A350 (anaesthetic machine)' };
-    // A model key as stored, from anything (unknown means the T1, as before the C6 existed).
+    var MODELS = { t1: 'Transport ventilator', c6: 'ICU ventilator', a350: 'Anaesthetic machine' };
+    // A model key as stored, from anything (unknown means the transport ventilator, as before the ICU ventilator existed).
     function modelOf(m) { return Object.prototype.hasOwnProperty.call(MODELS, m) ? m : 't1'; }
     // The name on the device, for the controller's mirror.
-    var MODEL_SHORT = { t1: 'HAMILTON-T1', c6: 'HAMILTON-C6', a350: 'Atlan A350' };
+    var MODEL_SHORT = { t1: 'transport ventilator', c6: 'ICU ventilator', a350: 'anaesthetic machine' };   // in running text: 'on the ...'
     function modesFor(m) { return m === 'c6' ? MODES_C6 : m === 'a350' ? MODES_A350 : MODES; }
 
     // The lung the breath engine uses: the profile, with breathing effort switched off when the

@@ -17,13 +17,13 @@
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
 <script src="../data/firebase-config.js"></script>
 <!--
-  GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the T1 page and rerun.
-  THE HAMILTON-C6 ICU VENTILATOR, AS A SIMULATION DEVICE. It shares the HAMILTON-T1 page's breath engine.
+  GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the transport ventilator page and rerun.
+  THE ICU VENTILATOR, AS A SIMULATION DEVICE. It shares the transport ventilator page's breath engine.
   The device (screen, keys, knob, modes, controls, alarms and breath engine) is copied from the
-  standalone HAMILTON-T1 trainer (github.com/shakeymedic/niv-instructions), which stays its own tool.
+  standalone ventilator trainer (github.com/shakeymedic/niv-instructions), which stays its own tool.
   Here it joins a simulation session like the defib tablet does: the controller owns the patient,
   this page breathes for it, and every setting change and alarm goes to the facilitator's log.
-  It is a training recreation, not Hamilton Medical software, and is not endorsed by Hamilton Medical.
+  It is an independent training simulator, not made, endorsed or supported by any ventilator manufacturer.
 -->
 <style>
 :root{
@@ -40,7 +40,7 @@ html,body{height:100%;margin:0}
 body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:#1b1e22;color:#e8eef6;display:flex;flex-direction:column;overflow:hidden;line-height:1.4}
 button{font:inherit;cursor:pointer}
 :focus-visible{outline:3px solid #f59e0b;outline-offset:2px}
-/* ===== Simulator: the HAMILTON-C6 monitor (designed at 1360 x 1000 px, scaled to fit) ===== */
+/* ===== Simulator: the ICU ventilator monitor (designed at 1360 x 1000 px, scaled to fit) ===== */
 .t1-wrap{position:relative;width:100%;overflow:hidden;border-radius:14px;background:radial-gradient(ellipse at 50% 35%,#ffffff 0,#e9eef3 60%,#dfe5eb 100%);padding:10px 0 4px}
 .t1-scaler{position:relative;margin:0 auto;transform-origin:0 0}
 .fs-exit{display:none}
@@ -306,7 +306,7 @@ body.embedded .vbar .standalone-only{display:none}
 </head>
 <body>
 <header class="vbar" aria-label="Ventilator simulator">
-  <span class="title">HAMILTON-C6</span>
+  <span class="title">ICU ventilator</span>
   <span class="tag">Training simulation</span>
   <span class="tag" id="sessionTag">Not linked</span>
   <span class="tag" id="simClock" aria-live="off"></span>
@@ -360,7 +360,7 @@ body.embedded .vbar .standalone-only{display:none}
                 <div class="scr-off" id="scrOff" hidden><span id="scrOffTxt"></span></div>
               </div>
             </div>
-            <div class="t1-name">HAMILTON-C6<small>EMEVIDENCE · ICU VENTILATOR TRAINING SIMULATOR</small></div>
+            <div class="t1-name">ICU VENTILATOR<small>EMEVIDENCE · TRAINING SIMULATOR</small></div>
                 <button class="k " id="kManual" style="left:480px" aria-label="Manual breath key"><svg viewBox="0 0 30 24" aria-hidden="true"><path d="M15 3v8"/><path d="M15 9c-2 0-3 2-4 2"/><path d="M15 9c2 0 3 2 4 2"/><path d="M11 6.5C7 6.5 4 13 4 18c0 2 1.5 3 3.5 2.5L12 19V11"/><path d="M19 6.5c4 0 7 6.5 7 11.5 0 2-1.5 3-3.5 2.5L18 19V11"/></svg></button>
                 <span class="klbl" aria-hidden="true" style="left:469px">Manual breath</span>
                 <button class="k " id="kO2" style="left:584px" aria-label="O2 enrichment key"><span class="o2">↑O<sub>2</sub></span></button>
@@ -376,7 +376,7 @@ body.embedded .vbar .standalone-only{display:none}
                 <button class="k " id="kPrint" style="left:1118px" aria-label="Print screen key"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="9" width="14" height="11" rx="2"/><path d="M9 9V5a2 2 0 0 1 4 0v8"/><path d="M13 9.5a1.6 1.6 0 0 1 3 0V12"/></svg></button>
                 <span class="klbl" aria-hidden="true" style="left:1107px">Print screen</span>
             <button class="t1-knob" id="knob" aria-label="Press-and-turn knob. Arrow keys turn it, Enter or Space presses it"><span class="rot" id="knobRot"></span><span class="ring"></span></button>
-            <!-- the device code drives these indicators; on the C6 they light the keys (no Day/Night key, no battery LEDs on the monitor) -->
+            <!-- the device code drives these indicators; on the ICU ventilator they light the keys (no Day/Night key, no battery LEDs on the monitor) -->
             <div hidden><button id="kDay" tabindex="-1" aria-hidden="true"></button><b class="led" id="led-day"></b><b class="led" id="led-lock"></b><b class="led" id="led-man"></b><b class="led" id="led-o2"></b><b class="led" id="led-print"></b><b class="led" id="led-neb"></b><b class="led" id="led-audio"></b><b class="led" id="led-b1"></b><b class="led" id="led-b2"></b></div>
           </div>
           </div>
@@ -406,7 +406,7 @@ function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = fal
 let stoastT = null;
 function scrToast(msg) { const t = $('#scrToast'); t.textContent = msg; t.hidden = false; clearTimeout(stoastT); stoastT = setTimeout(() => { t.hidden = true; }, 2600); }
 
-/* ======================= device definitions (HAMILTON-C6 SW 1.2.x, adult/ped; ranges from manual Tables 16-5 and 16-9) ======================= */
+/* ======================= device definitions (ICU ventilator SW 1.2.x, adult/ped; ranges from manual Tables 16-5 and 16-9) ======================= */
 /* @@SPEC_CTRL@@ */
 /* ranges and defaults are Table 15-9 (adult/ped); the manual gives no control increments, so the step sizes are the trainer's choice */
 const IE_LIST = [1/9, 1/8, 1/7, 1/6, 1/5, 1/4, 1/3.5, 1/3, 1/2.5, 1/2, 1/1.5, 1, 1.5, 2, 2.5, 3, 3.5, 4];
@@ -496,7 +496,7 @@ function modeCtrls(mk, psync) {
   return c;
 }
 /* group headings as shown on a T1 Modes window in the KIDS SOP photo (older software); VS is listed with the APV modes in 7.2 */
-const MODE_GROUPS = [   /* HAMILTON-C6 manual Table 2-1 (adult/paediatric) */
+const MODE_GROUPS = [   /* ICU ventilator manual Table 2-1 (adult/paediatric) */
   ['Volume controlled', ['SCMV', 'SIMV']],
   ['Adaptive (volume targeted, pressure controlled)', ['APVcmv', 'APVsimv']],
   ['Pressure controlled', ['PCV+', 'PSIMV+', 'SPONT', 'DuoPAP', 'APRV']],
@@ -510,7 +510,7 @@ const isVC = m => VCM.includes(m === undefined ? V.mode : m);
 const mName = m => MODE_NAME[m] || m;
 const APV = ['APVcmv', 'APVsimv'];
 const NIVMODES = ['NIV', 'NIV-ST'];
-/* the modes a face mask suits (an awake patient with no airway); the others expect a tube or i-gel */
+/* the modes a face mask suits (an awake patient with no airway); the others expect a tube or SGA */
 const MASK_MODES = ['NIV', 'NIV-ST', 'HiFlowO2'];
 const INVASIVE = ['SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'VS', 'PCV+', 'PSIMV+', 'DuoPAP', 'APRV', 'SPONT', 'ASV'];
 const BACKUP_MODES = ['SIMV', 'APVsimv', 'SPONT', 'DuoPAP', 'APRV', 'NIV', 'VS'];   /* Apnea backup available (5.6.2 in 3.0.x, 5.6.3 in 3.1.x); VS is not in that list or the mode matrix (p. 127), so including it is the trainer's assumption */
@@ -580,20 +580,20 @@ function phOf(paco2, hco3) { return 6.1 + Math.log10(hco3 / (0.2265 * paco2)); }
 const LEAKK = {good:1.2, moderate:6, large:24};
 /* a well-fitted mask leaks a little; a cuffed tube (invasive modes) is treated as leak-free until a leak is added.
    In the simulator the controller says what the circuit connects to (P.iface): a mask always leaks (more in a mode
-   without NIV leak compensation), a tube or i-gel does not until a leak is added. Without that (P.iface null),
+   without NIV leak compensation), a tube or SGA does not until a leak is added. Without that (P.iface null),
    as the trainer: the mode decides. */
 const leakK = () => P.disc ? 0 : P.fit !== 'good' ? LEAKK[P.fit]
   : P.iface === 'mask' ? (maskWrong() ? LEAKK.moderate : LEAKK.good)
   : P.iface ? 0 : isInvasive() ? 0 : LEAKK.good;
 /* a mask on a mode meant for a sealed airway */
 const maskWrong = () => !!P && P.iface === 'mask' && !MASK_MODES.includes(V.mode);
-/* an i-gel seals to about 25 cmH2O (the simulator's value; published leak pressures are mostly 24-30): above that,
+/* an SGA seals to about 25 cmH2O (the simulator's value; published leak pressures are mostly 24-30): above that,
    gas escapes round it, and the pressure the lungs see stops rising as fast */
 const SGA_SEAL = 25;
 const sgaOver = p => P.iface === 'sga' && !P.disc ? Math.max(0, p - SGA_SEAL) : 0;
 /* The chance that a breathing patient fights a breath (shown as a cough: a pressure spike that can end the breath on
    High pressure). An awake patient on a mask in a mode meant for a tube fights most machine-timed breaths and some of
-   their own; an awake patient with a tube or i-gel fights machine-timed breaths they did not trigger (the cue to
+   their own; an awake patient with a tube or SGA fights machine-timed breaths they did not trigger (the cue to
    sedate, or to use a mode that follows their breathing). The rates are the simulator's own choice. */
 function fightChance(kind) {
   if (P.apnoea || P.pr.sedated || P.passive || P.disc || V.cpr) return 0;
@@ -814,7 +814,7 @@ function startVCBreath(kind, auto, sigh, mt, base) {
   const iPeep = B.Vee / C;
   const F = VTset / tFlow;   /* l/s from the ventilator */
   let VT = Math.max(0.005, (VTset - inspLeak / 60 * tFlow * 0.5) * rnd(0.98, 1.02));
-  /* an i-gel: pressure above its seal pushes part of each breath out round it */
+  /* an SGA: pressure above its seal pushes part of each breath out round it */
   const over = sgaOver(peepM + iPeep + R * F + VT / C);
   if (over) { inspLeak += over * 5; VT = Math.max(0.005, VT - over * C * 0.6); }
   let Ti = Ti0, hiP = false;
@@ -1475,7 +1475,7 @@ function renderRcol() {
   $$('.bbtn[data-open]').forEach(b => b.setAttribute('data-kf', ''));
 }
 /* default MMPs (Table 15-14); CPR MMPs (10.9.3); HiFlowO2 shows Oxygen and Flow (10.5) */
-const MMP_DEF = [   /* which MMPs the C6 shows by default is not in the manual: the simulator's choice */
+const MMP_DEF = [   /* which MMPs the ICU ventilator shows by default is not in the manual: the simulator's choice */
   {id:'ppeak', n:'Ppeak', u:'cmH2O', dp:0},
   {id:'mv', n:'ExpMinVol', nniv:'MinVol NIV', u:'l/min', dp:1},
   {id:'vte', n:'VTE', nniv:'VTE NIV', u:'ml', dp:0},
@@ -1555,7 +1555,7 @@ function renderAlarmBar() {
   lamp.className = 't1-lamp ' + list[0].p;
 }
 function renderLEDs() {
-  /* the C6 lights its keys: O2 enrichment green, Audio pause red (manual 10.4 and 9.x); the others green while active (the simulator's choice) */
+  /* the ICU ventilator lights its keys: O2 enrichment green, Audio pause red (manual 10.4 and 9.x); the others green while active (the simulator's choice) */
   const lit = (id, v, cls) => $('#' + id).classList.toggle(cls || 'lit', !!v);
   lit('kO2', V.power && V.o2Enrich > 0); lit('kAudio', V.power && V.audioPause > 0, 'litred'); lit('kLock', V.power && V.locked);
   lit('kManual', V.power && V.manualReq); lit('kNeb', V.power && V.neb > 0);
@@ -1568,7 +1568,7 @@ function renderLEDs() {
   $('#screen').classList.toggle('locked', V.locked);
   const off = $('#scrOff');
   off.hidden = V.power && V.selftest <= 0;
-  $('#scrOffTxt').innerHTML = V.power ? 'HAMILTON-C6<small>Self-test in progress…</small>' : '';
+  $('#scrOffTxt').innerHTML = V.power ? 'ICU VENTILATOR<small>Self-test in progress…</small>' : '';
   $('#t1').classList.toggle('off', !V.power);
 }
 function renderAll() { V.set.plim = V.lim.phigh - 10; renderModeName(); renderRcol(); renderMMP(); renderAlarmBar(); renderBstat(); renderLEDs(); if (win) renderWindow(); else $('#win').hidden = true; applyCursor(); const lungish = (V.gfx === 'lung' || (V.gfx === 'asv' && V.mode === 'ASV')) && !isHFO(); $('#dynlung').hidden = !lungish || !V.power; CV[1].style.display = CV[2].style.display = lungish ? 'none' : ''; }
@@ -1732,8 +1732,8 @@ function renderWindow() {
         <tr><td>Battery 1</td><td>${fmt(P.batt)} %</td></tr>
         <tr><td>Time on ventilation</td><td>${clockStr()}</td></tr>
         <tr><td>Estimated O2 consumption</td><td>${fmt(Math.max(0, o2c), 1)} l/min</td></tr>
-        <tr><td>Software (simulated)</td><td>Simulator, modelled on the C6 manual (SW 1.2.x)</td></tr></tbody></table>
-        <p class="wnote">Estimated O2 consumption uses the T1 Quick Guide formula, (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1: an approximation for the C6. Simulated values.</p></div>`;
+        <tr><td>Software (simulated)</td><td>Simulator, modelled on the ICU ventilator manual (SW 1.2.x)</td></tr></tbody></table>
+        <p class="wnote">Estimated O2 consumption uses the manufacturer's quick guide formula, (ExpMinVol + 3 l/min) × (FiO2 − 20.9) / 79.1: an approximation for the ICU ventilator. Simulated values.</p></div>`;
     } else if (winTab === 'tests') {
       h += `<div class="wbody" style="top:48px"><div class="tc">
         <button data-kf data-test="leak">Leak test<span class="st ${V.tests.leak || ''}">${testMark(V.tests.leak)}</span><small>${V.tests.leakAt || 'not done'}</small></button>
@@ -1748,7 +1748,7 @@ function renderWindow() {
     } else {
       h += `<div class="wbody" style="top:48px"><div class="wgrp">Loudness</div><div class="wrow">${[1,2,3,4,5,6,7,8,9,10].map(n => `<button class="wb ${V.loud === n ? 'green' : ''}" data-kf data-loud="${n}" style="min-width:42px;padding:0 6px">${n}</button>`).join('')}<button class="wb" data-kf id="loudTest">Test</button></div>
         <div class="wgrp">Day &amp; Night</div><div class="wrow"><button class="wb ${!V.night ? 'green' : ''}" data-kf data-night="0">Day</button><button class="wb ${V.night ? 'green' : ''}" data-kf data-night="1">Night</button></div>
-        <p class="wnote">Loudness 1–10 (default 5). Sound only plays if "Alarm sound" above the simulator is on. Night lowers the display brightness. On the C6 Day &amp; Night is set here: there is no Day/Night key.</p></div>`;
+        <p class="wnote">Loudness 1–10 (default 5). Sound only plays if "Alarm sound" above the simulator is on. Night lowers the display brightness. On the ICU ventilator Day &amp; Night is set here: there is no Day/Night key.</p></div>`;
     }
   } else if (win === 'gfx') {
     h = X + `<div class="htabs"><button disabled>Trends</button><button disabled>Loops</button><button data-kf data-gfx="lung" aria-selected="${V.gfx === 'lung'}">Graphics</button><button data-kf data-gfx="wave" aria-selected="${V.gfx === 'wave'}">Waveforms</button></div><div class="wbody" style="top:48px"><div class="wrow">
@@ -1947,7 +1947,7 @@ function checkSettingPrompts(key) {
   if (isHFO()) return;
   const tp = totalP(V.mode, V.set, V.psync), ipap = V.set.peep + setDP();
   if (isNIV() && ipap > 30) addPrompt('IPAP ' + ipap + ' cmH2O: BTS/ICS 2016 titrates IPAP to 20-30 cmH2O in COPD; pressures above 30 (and EPAP above 8) are mainly needed in obesity hypoventilation. Seek senior or expert review before going higher.');
-  if (isNIV() && ipap > 33) addPrompt('Hamilton manual: peak pressures above 33 cmH2O may increase the risk of aspiration from gastric insufflation. Consider an invasive mode.');
+  if (isNIV() && ipap > 33) addPrompt('Manufacturer\'s manual: peak pressures above 33 cmH2O may increase the risk of aspiration from gastric insufflation. Consider an invasive mode.');
   if (tp !== null && tp > V.lim.phigh - 10) addPrompt('Total inspiratory pressure is above Plimit (Pressure high − 10). Delivered pressure will be limited and the Pressure limitation alarm will appear. Adjust the pressure settings or raise the Pressure high limit if intended.');
   if (key === 'trig' && V.set.trig <= 1) addPrompt('Very sensitive trigger: watch for auto-triggering, especially with leak.');
   if (key === 'trig' && V.set.trig >= 10) addPrompt('Insensitive trigger: weak patients may fail to trigger (missed efforts).');
@@ -2180,7 +2180,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && E) cancelE
 
 
 /* ======================= SIMULATOR LINK ======================= */
-/* Everything above is the HAMILTON-T1 device copied from the standalone trainer. Below is what makes it
+/* Everything above is the transport ventilator device copied from the standalone trainer. Below is what makes it
    a simulation device: it joins a session like the defib tablet (sessions/<CODE>/live for the patient,
    presence, deviceEvents for the facilitator's log, ventState for the facilitator's mirror), runs in
    real time, and takes its lungs, the facilitator's lung adjustments and injected problems from the
@@ -2214,7 +2214,7 @@ function updateTasks() {}
 
 /* ---------- the patient the breath engine ventilates ---------- */
 /* What the circuit connects to, from the controller (live.vent.airway, data/engine-vent.js airwayCode): 'mask' (the
-   face mask of a patient with no airway), 'tube' or 'sga' (an i-gel), with 'A' when the patient is awake. Null with
+   face mask of a patient with no airway), 'tube' or 'sga' (an SGA), with 'A' when the patient is awake. Null with
    no controller: the trainer's behaviour (the mode decides the leak; nobody fights). */
 function airwayOf(config) {
   const m = /^(mask|tube|sga)(A?)$/.exec(String(config && config.airway || ''));
@@ -2279,8 +2279,8 @@ function applyProblems(list) {
   P.mains = !mainsOff;
   probsNow = list.slice();
 }
-/* PetCO2 on the T1: the simulator's capnography, when it is attached and gas is moving through the circuit.
-   Shown in kPa to one decimal place, like the room monitor, the defib and the A350 (UK practice;
+/* PetCO2 on the transport ventilator: the simulator's capnography, when it is attached and gas is moving through the circuit.
+   Shown in kPa to one decimal place, like the room monitor, the defib and the anaesthetic machine (UK practice;
    1 kPa = 7.50062 mmHg). LIVE.etco2 is already kPa, so this is display rounding only. */
 function petco2() {
   if (LIVE.etco2 === null || !V.power || V.standby || V.ambient || P.disc || isHFO()) return null;
@@ -2301,8 +2301,8 @@ function updatePtNote() {
   let html = '';
   if (ventOn && !document.body.classList.contains('assess') && !LIVE.isFinished) {
     const ok = MASK_MODES.map(m => mName(m)).join(', ');
-    if (maskWrong() && fightChance('mand') > 0) html = '<b>Patient: awake, no airway, on a face mask.</b> They are fighting ' + esc(modeLabel()) + ' and the mask leaks. A mask suits ' + esc(ok) + '; other modes need a tube or i-gel first.';
-    else if (P.awake && P.iface !== 'mask' && P.fightFrac > 0) html = '<b>Patient: awake with ' + (P.iface === 'sga' ? 'an i-gel' : 'a tube') + '.</b> They are fighting the breaths they did not trigger: consider sedation, or a mode that follows their own breathing.';
+    if (maskWrong() && fightChance('mand') > 0) html = '<b>Patient: awake, no airway, on a face mask.</b> They are fighting ' + esc(modeLabel()) + ' and the mask leaks. A mask suits ' + esc(ok) + '; other modes need a tube or SGA first.';
+    else if (P.awake && P.iface !== 'mask' && P.fightFrac > 0) html = '<b>Patient: awake with ' + (P.iface === 'sga' ? 'an SGA' : 'a tube') + '.</b> They are fighting the breaths they did not trigger: consider sedation, or a mode that follows their own breathing.';
   }
   if (el.innerHTML !== html) el.innerHTML = html;
   el.hidden = !html;
@@ -2518,7 +2518,7 @@ function applyLive(v) {
   LIVE.volume = v.defib && Number.isFinite(Number(v.defib.volume)) ? Math.max(0, Math.min(1.5, Number(v.defib.volume))) : 1;
   LIVE.sex = v.sex === 'Female' ? 'Female' : 'Male';
   $('#endedBanner').hidden = !LIVE.isFinished;
-  /* The facilitator chose another machine (HAMILTON-T1, HAMILTON-C6 or Atlan A350): open its page, same session */
+  /* The facilitator chose another machine (transport ventilator, ICU ventilator or anaesthetic machine): open its page, same session */
   const model = v.vent && Object.prototype.hasOwnProperty.call(MODEL_PAGES, v.vent.model) ? v.vent.model : 't1';
   if (model !== DEVICE_MODEL) { switchModel(model); return; }
   applyConfig(v.vent || null);

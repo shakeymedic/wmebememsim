@@ -1083,7 +1083,7 @@
             ? `${activeDrugRows[0].label}: ${(PHASE_STYLE[activeDrugRows[0].phase] || { label: String(activeDrugRows[0].phase) }).label.toLowerCase()}${activeDrugRows[0].sustained && !activeDrugRows[0].stopped ? ', running' : (Number.isFinite(activeDrugRows[0].remaining) ? `, ${fmtRemaining(activeDrugRows[0].remaining)} left` : '')}${activeDrugRows.length > 1 ? ` (+${activeDrugRows.length - 1} more)` : ''}`
             : '';
         const conditionSummary = deteriorationMode === 'auto' ? 'AUTO \u2014 deteriorating on its own' : 'MANUAL \u2014 obs change only when you change them';
-        // The ventilator (HAMILTON-T1, the HAMILTON-C6 ICU ventilator or the Atlan A350 anaesthetic machine): on the room monitor or its own tablet, the lungs it ventilates, and what
+        // The ventilator (transport ventilator, the ICU ventilator or the anaesthetic machine): on the room monitor or its own tablet, the lungs it ventilates, and what
         // each linked ventilator is showing right now (sessions/<CODE>/ventState).
         const VP = window.VENT_PROFILES;
         const ventPanelOpen = !!state.ventPanelOpen;
@@ -1795,7 +1795,7 @@
                             </Section>
                         )}
 
-                        {/* ---- VENTILATOR: the HAMILTON-T1 (vent/index.html) or HAMILTON-C6 (vent/c6.html) or Atlan A350 (vent/a350.html) on the
+                        {/* ---- VENTILATOR: the transport ventilator (vent/index.html) or ICU ventilator (vent/c6.html) or anaesthetic machine (vent/a350.html) on the
                              room monitor or its own tablet. Its settings, tests and alarms arrive in the event log. ---- */}
                         {VP && (
                         <Section id="vent" title="Ventilator" summary={ventSummary} defaultOpen={!!(rawScenario && rawScenario.ventSim)} remember={!quickSim}>
@@ -1816,7 +1816,7 @@
                                     <span className="whitespace-nowrap text-slate-400 uppercase font-bold text-[10px]">Ventilator</span>
                                     <select aria-label="Ventilator model" value={VP.modelOf(ventCfg.model)}
                                             title="The device the candidate sees. Changing it swaps the ventilator on every screen; it starts switched off."
-                                            onChange={e => { sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { model: e.target.value } }); addLogEntry(`Ventilator changed to the ${VP.MODELS[e.target.value]} (facilitator)`, 'system'); }}
+                                            onChange={e => { sim.dispatch({ type: 'SET_VENT_CONFIG', payload: { model: e.target.value } }); addLogEntry(`Ventilator changed to the ${VP.MODEL_SHORT[e.target.value]} (facilitator)`, 'system'); }}
                                             className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
                                         {Object.keys(VP.MODELS).map(k => <option key={k} value={k}>{VP.MODELS[k]}</option>)}
                                     </select>
@@ -1842,7 +1842,7 @@
                                 {VE && (() => {
                                     // What the circuit connects to: worked out from the patient unless the facilitator says.
                                     const auto = VE.interfaceFor({ ...state, vent: { ...ventCfg, airway: null } });
-                                    const NAME = { mask: 'Face mask', sga: 'i-gel', tube: 'Tube' };
+                                    const NAME = { mask: 'Face mask', sga: 'SGA', tube: 'Tube' };
                                     const why = auto.source === 'recorded' ? 'recorded' : auto.source === 'awake' ? 'awake, no airway' : 'unconscious, assumed';
                                     return (
                                         <label className="flex items-center justify-between gap-2">
@@ -1853,7 +1853,7 @@
                                                     className="min-w-0 max-w-[16rem] bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-[11px] text-white">
                                                 <option value="auto">From the patient ({NAME[auto.airway]}: {why})</option>
                                                 <option value="mask">Face mask</option>
-                                                <option value="sga">i-gel</option>
+                                                <option value="sga">SGA</option>
                                                 <option value="tube">Tube</option>
                                             </select>
                                         </label>
@@ -1892,7 +1892,7 @@
                                     return (
                                         <div key={m.id} data-testid="vent-mirror" className="bg-black/50 rounded p-2 flex flex-col gap-1">
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-bold text-cyan-300">{VP.MODEL_SHORT[VP.modelOf(m.model)]}{' \u00b7 '}{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}{Date.now() - Number(m.ts) > 15000 ? <span className="ml-1 text-amber-300">(no update for {Math.round((Date.now() - Number(m.ts)) / 1000)} s: link lost?)</span> : null}</span>
+                                                <span className="font-bold text-cyan-300">{VP.MODELS[VP.modelOf(m.model)]}{' \u00b7 '}{m.embedded ? 'On the room monitor' : 'Ventilator tablet'}{Date.now() - Number(m.ts) > 15000 ? <span className="ml-1 text-amber-300">(no update for {Math.round((Date.now() - Number(m.ts)) / 1000)} s: link lost?)</span> : null}</span>
                                                 <span className="font-bold text-white">{VENT_STATE_LABEL[m.state] || m.state}{m.state === 'ventilating' || m.state === 'standby' ? ` \u00b7 ${m.label}` : ''}{m.locked ? ' \u00b7 locked' : ''}</span>
                                             </div>
                                             {m.ctl && <div><span className="text-slate-400">Settings: </span>{m.ctl}</div>}

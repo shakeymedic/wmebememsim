@@ -1,5 +1,5 @@
 {
-  "name": "HAMILTON-T1 Ventilator Simulator",
+  "name": "Transport Ventilator Simulator",
   "short_name": "Vent Sim",
   "start_url": "./index.html",
   "display": "standalone",
