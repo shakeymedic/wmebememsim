@@ -8,5 +8,8 @@ for (const url of ['/index.html', '/index.html?mode=monitor&session=K7PQ3M']) {
     await page.goto(url);
     await expect.poll(() => page.evaluate(() => window.firebaseSyncBootstrap && window.firebaseSyncBootstrap.state)).not.toBe('unavailable');
     expect(await page.evaluate(() => !!(window.db && typeof window.db.ref === 'function'))).toBe(true);
+    // The real App Check SDK loads alongside, and stays off while the site key is empty.
+    expect(await page.evaluate(() => typeof window.firebase.appCheck)).toBe('function');
+    expect(await page.evaluate(() => !!window.__appCheckActivated)).toBe(false);
   });
 }

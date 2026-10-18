@@ -15,6 +15,8 @@
 <!-- Firebase: the same live session the controller and room monitor use. -->
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+<!-- App Check (data/firebase-config.js). It does nothing until APP_CHECK_SITE_KEY is set. -->
+<script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check-compat.js"></script>
 <script src="../data/firebase-config.js"></script>
 <!--
   GENERATED FILE: made from vent/index.html by scripts/make-c6.mjs. Do not edit; edit the transport ventilator page and rerun.
@@ -2540,6 +2542,7 @@ function fbStart(code) {
   if (!window.firebase || !window.FIREBASE_CONFIG) { setLinkState(false, 'The live-session service did not load (no network?). This page cannot reach session ' + code + '.', 'never'); return; }
   try {
     if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    if (window.initFirebaseAppCheck) window.initFirebaseAppCheck();   // before the first database use
     fb.db = firebase.database();
     if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(fb.db);
   } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }

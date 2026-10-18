@@ -23,6 +23,8 @@
          same browser (BroadcastChannel). -->
     <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"></script>
+    <!-- App Check (data/firebase-config.js). It does nothing until APP_CHECK_SITE_KEY is set. -->
+    <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-check-compat.js"></script>
     <script src="../data/firebase-config.js"></script>
     <link rel="stylesheet" href="device.css">
     <script>
@@ -422,6 +424,7 @@
             }
             try {
                 if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+                if (window.initFirebaseAppCheck) window.initFirebaseAppCheck();   // before the first database use
                 fb.db = firebase.database();
                 if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(fb.db);
             } catch (e) { setLinkState(false, 'Could not start the live-session link: ' + (e.message || e), 'never'); return; }

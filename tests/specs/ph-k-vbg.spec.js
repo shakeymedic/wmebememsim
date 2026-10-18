@@ -3,7 +3,7 @@
 // bicarbonate, insulin-dextrose and the rest steer) are the gas the team gets when they press VBG,
 // and choosing a VBG result on the controller sets them (window.liveVbg, data/screens/invresults.js).
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -21,6 +21,8 @@ async function loadScenario(page, id) {
     window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: base });
   }, id);
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.scenario && window.__simEngine.state.scenario.id)).toBe(id);
+
+  await openRightColumn(page);
 }
 async function pressVbg(monitor) {
   const close = monitor.getByTestId('inv-result-close');

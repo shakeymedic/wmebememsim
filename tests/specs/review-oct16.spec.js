@@ -4,7 +4,7 @@
 // engine's toggle-off (CPR stops properly), a tablet with a slow clock is still heard, the debrief
 // graph carries the last rhythm, and a team press on an investigation reaches the controller's log.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -16,6 +16,7 @@ async function loadScenario(page, category, title) {
   await page.locator('div.justify-between', { hasText: title }).first().getByRole('button', { name: 'Load' }).click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();
   await expect(page.getByRole('button', { name: 'START', exact: true })).toBeVisible();
+  await openRightColumn(page);
 }
 const obs = (page) => st(page, () => { const v = window.__simEngine.state.vitals; return { hr: Math.round(v.hr), bpSys: Math.round(v.bpSys), etco2: Math.round(v.etco2 * 10) / 10, icp: window.__simEngine.state.icp }; });
 

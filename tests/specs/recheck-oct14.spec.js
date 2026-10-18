@@ -1,6 +1,6 @@
 // Fixes from the full recheck of 14 Oct 2026. Each test reproduces a bug found then.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, session, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, session, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context, page }) => { await useFakeFirebase(context); page.on('dialog', d => d.accept().catch(() => {})); });
 
@@ -101,6 +101,7 @@ test('the skills checklist ticks reach the debrief, and survive a reload and Res
   await page.getByRole('button', { name: /Adult Medical/ }).click();
   await page.getByRole('button', { name: 'Load', exact: true }).first().click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();
+  await openRightColumn(page);
   await pressStart(page);
   await page.getByRole('button', { name: 'Assessment', exact: true }).click();
   await page.getByRole('button', { name: 'Mark Team Leadership as achieved' }).click();

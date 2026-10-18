@@ -2,7 +2,7 @@
 // sections, flags for values outside the reference range (two arrows outside the critical range),
 // [low - high] limits, the sample type and the inspired oxygen.
 const { test } = require('@playwright/test');
-const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, pressStart, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -65,6 +65,7 @@ test('the ABG button prints an arterial gas derived from the patient\'s gas, wit
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: window.ALL_SCENARIOS.find(s => s.id === 'AM013') }));
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.scenario && window.__simEngine.state.scenario.id)).toBe('AM013');
+  await openRightColumn(page);
   await pressStart(page);
   await page.getByRole('button', { name: 'PAUSE', exact: true }).click();
   const monitor = await openMonitor(context, code);

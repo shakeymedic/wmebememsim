@@ -2,7 +2,7 @@
 // Screens and Tools menus, no duplicated actions, and the always-visible event log.
 const { test } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, expect } = require('./helpers');
+const { useFakeFirebase, trackErrors, openController, startQuickSim, expandSection, expect, openRightColumn } = require('./helpers');
 
 test.beforeEach(async ({ context }) => { await useFakeFirebase(context); });
 
@@ -12,6 +12,7 @@ async function startScenario(page, category, title) {
   await page.locator('div.justify-between', { hasText: title }).first().getByRole('button', { name: 'Load' }).click();
   await page.getByRole('button', { name: 'Start Scenario' }).click();
   await page.waitForFunction(() => !!(window.__simEngine && window.__simEngine.state.scenario));
+  await openRightColumn(page);
 }
 const header = (page, title) => page.locator('[data-section] > div > button[aria-expanded]', { hasText: title });
 

@@ -42,3 +42,43 @@ window.useFirebaseEmulatorIfAsked = function (db) {
         return true;
     } catch (e) { return false; }
 };
+
+// ---- FIREBASE APP CHECK ----------------------------------------------------------------------
+// App Check makes the database accept requests only from this site's real pages (a reCAPTCHA v3
+// token the browser earns silently), not from scripts calling the database directly. It protects
+// the licensed course scenarios (ETC, ALS) on top of database.rules.json.
+//
+// APP_CHECK_SITE_KEY: the reCAPTCHA v3 SITE key (public, not the secret key). While it is empty,
+// App Check is skipped entirely and nothing changes. Setting it only SENDS tokens; whether the
+// database REQUIRES them is the "Enforce" switch in the Firebase console, which stays off until the
+// App Check metrics show real traffic passing. README.md, "Firebase App Check", has the steps.
+window.APP_CHECK_SITE_KEY = '';
+
+// Call straight after firebase.initializeApp() and before the first firebase.database(), on every
+// page that uses the database. Returns true when App Check was turned on. Never throws: a failure
+// here must not stop the sim (until enforcement is on, the database works without a token anyway).
+window.initFirebaseAppCheck = function () {
+    try {
+        var key = String(window.APP_CHECK_SITE_KEY || '').trim();
+        if (!key) return false;
+        if (window.__appCheckActivated) return true;
+        if (!window.firebase || typeof window.firebase.appCheck !== 'function') {
+            console.warn('App Check: the App Check SDK did not load, so this page sends no App Check token.');
+            return false;
+        }
+        // Testing on this computer: ?appcheck-debug=1 makes the SDK print a debug token in the
+        // console (register it under App Check -> Apps -> Manage debug tokens). Only on localhost, so
+        // a deployed page can never be put into debug mode.
+        var host = window.location.hostname;
+        if ((host === 'localhost' || host === '127.0.0.1') && /[?&]appcheck-debug=1(&|$)/.test(window.location.search)) {
+            self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        }
+        // true = refresh the token automatically before it expires.
+        window.firebase.appCheck().activate(new window.firebase.appCheck.ReCaptchaV3Provider(key), true);
+        window.__appCheckActivated = true;
+        return true;
+    } catch (e) {
+        console.warn('App Check could not start:', e);
+        return false;
+    }
+};
