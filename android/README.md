@@ -34,7 +34,10 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
 
 ## Publishing on Google Play (Jake to do)
 
-1. **Create a Google Play developer account.** This is a one-off fee, at play.google.com/console.
+1. **Create a Google Play developer account** at play.google.com/console (one-off US$25 fee). Make it an
+   **organisation** account in the company's name (West Midlands Evidence Based Emergency Medicine Ltd, company
+   number 16644703; needs a free D-U-N-S number). Google does not permit health apps, such as medical apps, on a
+   Personal account. One organisation account can publish all the EM Evidence apps.
 2. **Make an upload key** and keep it safe, outside the repository:
    ```
    keytool -genkeypair -v -keystore em-sim-upload.jks -alias em-sim -keyalg RSA -keysize 2048 -validity 10000
@@ -48,8 +51,10 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
    `app-release.aab`.
 5. **Create the app in Play Console and upload the bundle.** Use Play App Signing, which is the default.
    Then fill in the store listing and the **App content** forms. See [Play Console answers](#play-console-answers) below.
-   A personal developer account created after 13 November 2023 must run a closed test with at least 12 testers
-   for 14 days in a row before it can publish to production.
+   Release to **Internal testing** first, install from Play on a phone and a tablet, and check sign-in (Google
+   and email), a Quick Sim, a linked monitor and the defib before sending it to production. (A personal account
+   created after 13 November 2023 would also need a closed test with 12 testers for 14 days; an organisation
+   account does not.)
 6. **Remove the address bar.** In Play Console, go to App integrity, App signing, and copy the **app signing key
    SHA-256** fingerprint.
    - Add it to `sha256_cert_fingerprints` in `/.well-known/assetlinks.json` at the repository root, then deploy
@@ -81,8 +86,22 @@ because the developer is responsible for their accuracy.
   - **App activity, Other user-generated content** (saved scenarios). Purpose: **App functionality**. Optional.
   - Encrypted in transit: **Yes**. Users can request deletion: **Yes**.
   - Firebase and Netlify act as service providers, so they are not "sharing".
-- **App access:** the course scenarios are behind an approved account. Give Google's reviewers a test account
-  with course access, or explain that all other features work without signing in.
+- **App access:** choose "All or some functionality in my app is restricted" and add one set of instructions:
+  - Name: `Course scenarios and My scenarios`
+  - Username / password: a reviewer account you create for Google (see below). It must keep working, need no
+    one-time code and work from any country, so use email and password, not Google sign-in.
+  - Any other instructions: `Everything except course scenarios and My scenarios works without signing in: tap
+    Quick Sim or open a library scenario, then START. To see the restricted parts, tap Sign in, choose email and
+    password and use the details above. The account has been approved for ALS, ETC and CABC course access, so
+    course scenarios appear in the scenario library. To link a second screen, open the session's Screens button
+    and scan the QR code or type the six-letter code on another device.`
+  - Making the reviewer account: on emsimulator.com, sign up with an email address you control (for example a
+    new Gmail address used only for this) and a long password; then, signed in as admin, open the admin panel,
+    approve that account and grant each course. Never delete or change it while the app is on Play. If you would
+    rather Google's reviewers did not see the licensed course content, ask before submitting: Google says reviewers
+    must be able to reach all functionality.
+- **Store listing:** text and graphics rules are in [play-listing.md](play-listing.md). Screenshots must not show
+  any manufacturer's name or logo (for example on the ventilator or defib screens).
 - **Ads:** none. **Target audience:** 18 and over (healthcare professionals). **Content rating:** answer the
   questionnaire; there is no user-to-user chat.
 - **Health apps declaration:** Medical, **Medical reference and education**. It is a teaching simulator, not a
