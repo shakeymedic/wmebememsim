@@ -1,5 +1,5 @@
-// Firebase App Check (data/firebase-config.js). With the shipped empty site key nothing changes; with
-// a key, every page that uses the database turns App Check on (reCAPTCHA v3, auto-refresh) BEFORE its
+// Firebase App Check (data/firebase-config.js). With an empty site key nothing changes; with the
+// shipped key, every page that uses the database turns App Check on (reCAPTCHA Enterprise, auto-refresh) BEFORE its
 // first firebase.database(). Enforcement is a Firebase console switch and is never set from the code.
 const fs = require('fs');
 const path = require('path');
@@ -14,21 +14,27 @@ const STUB = `(function () {
   var calls = window.__appCheckCalls = [];
   var db = firebase.database;
   firebase.database = function () { calls.push({ type: 'database' }); return db.apply(this, arguments); };
-  function ReCaptchaV3Provider(key) { this.siteKey = key; }
-  firebase.appCheck = function () { return { activate: function (p, refresh) { calls.push({ type: 'activate', provider: p instanceof ReCaptchaV3Provider ? 'v3' : '?', key: p.siteKey, refresh: refresh }); } }; };
-  firebase.appCheck.ReCaptchaV3Provider = ReCaptchaV3Provider;
+  function ReCaptchaEnterpriseProvider(key) { this.siteKey = key; }
+  firebase.appCheck = function () { return { activate: function (p, refresh) { calls.push({ type: 'activate', provider: p instanceof ReCaptchaEnterpriseProvider ? 'enterprise' : '?', key: p.siteKey, refresh: refresh }); } }; };
+  firebase.appCheck.ReCaptchaEnterpriseProvider = ReCaptchaEnterpriseProvider;
 })();`;
 
 async function withSiteKey(context, key) {
   await context.route('**/vendor/firebase/firebase-app-check.js', r => r.fulfill({ contentType: 'text/javascript', body: STUB }));
   const cfg = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'data', 'firebase-config.js'), 'utf8');
-  const keyed = cfg.replace(/APP_CHECK_SITE_KEY\s*=\s*(['"])\1/, `APP_CHECK_SITE_KEY="${key}"`);
+  const keyed = cfg.replace(/APP_CHECK_SITE_KEY\s*=\s*(['"])[^'"]*\1/, `APP_CHECK_SITE_KEY="${key}"`);
   expect(keyed).not.toBe(cfg);
   await context.route('**/data/firebase-config.js', r => r.fulfill({ contentType: 'text/javascript', body: keyed }));
 }
 
-test('the shipped site key is empty, so App Check stays off and the controller works as before', async ({ page, context }) => {
-  await context.route('**/vendor/firebase/firebase-app-check.js', r => r.fulfill({ contentType: 'text/javascript', body: STUB }));
+test('the shipped key is the reCAPTCHA Enterprise key ID', async () => {
+  const cfg = fs.readFileSync(path.join(__dirname, '..', '..', 'dist', 'data', 'firebase-config.js'), 'utf8');
+  expect(cfg).toMatch(/APP_CHECK_SITE_KEY\s*=\s*(['"])6LejavotAAAAABzVzU6ToO0X5YtvXOf1MEoOdUz6\1/);
+  expect(cfg).toContain('ReCaptchaEnterpriseProvider');
+});
+
+test('with an empty site key, App Check stays off and the controller works as before', async ({ page, context }) => {
+  await withSiteKey(context, '');
   const errors = trackErrors(page);
   await page.goto('/index.html');
   await chooseController(page);
@@ -48,7 +54,7 @@ for (const url of ['/index.html', '/index.html?mode=monitor&session=K7PQ3M', '/d
     await page.goto(url);
     await expect.poll(() => page.evaluate(() => (window.__appCheckCalls || []).some(c => c.type === 'database'))).toBe(true);
     const calls = await page.evaluate(() => window.__appCheckCalls);
-    expect(calls[0]).toEqual({ type: 'activate', provider: 'v3', key: 'test-site-key', refresh: true });
+    expect(calls[0]).toEqual({ type: 'activate', provider: 'enterprise', key: 'test-site-key', refresh: true });
     expect(calls.filter(c => c.type === 'activate')).toHaveLength(1);
     expect(errors).toEqual([]);
   });

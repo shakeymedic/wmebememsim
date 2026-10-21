@@ -44,15 +44,16 @@ window.useFirebaseEmulatorIfAsked = function (db) {
 };
 
 // ---- FIREBASE APP CHECK ----------------------------------------------------------------------
-// App Check makes the database accept requests only from this site's real pages (a reCAPTCHA v3
-// token the browser earns silently), not from scripts calling the database directly. It protects
+// App Check makes the database accept requests only from this site's real pages (a reCAPTCHA
+// Enterprise token the browser earns silently), not from scripts calling the database directly. It protects
 // the licensed course scenarios (ETC, ALS) on top of database.rules.json.
 //
-// APP_CHECK_SITE_KEY: the reCAPTCHA v3 SITE key (public, not the secret key). While it is empty,
+// APP_CHECK_SITE_KEY: the reCAPTCHA Enterprise key ID (public; Enterprise has no secret key), from
+// Google Cloud project wmebem-sim, key "EM Simulator App Check", registered 21 Oct 2026. While it is empty,
 // App Check is skipped entirely and nothing changes. Setting it only SENDS tokens; whether the
 // database REQUIRES them is the "Enforce" switch in the Firebase console, which stays off until the
 // App Check metrics show real traffic passing. README.md, "Firebase App Check", has the steps.
-window.APP_CHECK_SITE_KEY = '';
+window.APP_CHECK_SITE_KEY = '6LejavotAAAAABzVzU6ToO0X5YtvXOf1MEoOdUz6';
 
 // Call straight after firebase.initializeApp() and before the first firebase.database(), on every
 // page that uses the database. Returns true when App Check was turned on. Never throws: a failure
@@ -74,7 +75,7 @@ window.initFirebaseAppCheck = function () {
             self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
         }
         // true = refresh the token automatically before it expires.
-        window.firebase.appCheck().activate(new window.firebase.appCheck.ReCaptchaV3Provider(key), true);
+        window.firebase.appCheck().activate(new window.firebase.appCheck.ReCaptchaEnterpriseProvider(key), true);
         window.__appCheckActivated = true;
         return true;
     } catch (e) {
