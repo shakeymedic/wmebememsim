@@ -579,35 +579,30 @@ See the next section.
 ### 5. Firebase App Check (protects the course content from scripts)
 
 App Check makes the Realtime Database accept requests only from this site's own pages: each page
-earns a reCAPTCHA v3 token silently in the background (no puzzle for anyone) and sends it with every
-database request. Someone copying the API key into a script gets no token, so once you **enforce** it
-they cannot read the licensed course scenarios (ETC, ALS, CABC) even with a valid account. It adds to
+earns a reCAPTCHA Enterprise token silently in the background (no puzzle for anyone) and sends it with
+every database request. Someone copying the API key into a script gets no token, so once you **enforce**
+it they cannot read the licensed course scenarios (ETC, ALS, CABC) even with a valid account. It adds to
 `database.rules.json`; it does not replace it.
 
-The code is already in place and **does nothing until you add a site key**: `APP_CHECK_SITE_KEY` in
-[`data/firebase-config.js`](./data/firebase-config.js) is empty, and while it is empty App Check is
-skipped. Every page that uses the database (controller and room monitor in `index.html`, the defib
-tablet, and the three ventilator pages) turns App Check on straight after `initializeApp()` and before
-its first database call, with token auto-refresh on. Nothing in the code ever turns enforcement on;
-that is a switch in the Firebase console. The provider is **reCAPTCHA v3** rather than reCAPTCHA
-Enterprise: the app uses the Firebase compat SDK, which supports both equally, and v3 needs no Google
-Cloud API enabled and no billing, so it is the shorter set-up. The site has no Content Security Policy
-(no CSP header in `netlify.toml` or `_redirects`, no CSP meta tag), so nothing blocks
-`www.google.com/recaptcha`, `www.gstatic.com/recaptcha` or `content-firebaseappcheck.googleapis.com`.
-If you ever add a CSP, allow those three in `script-src`/`frame-src`/`connect-src`.
+**Status (21 October 2026): tokens are sent, nothing is enforced.** `APP_CHECK_SITE_KEY` in
+[`data/firebase-config.js`](./data/firebase-config.js) holds the reCAPTCHA Enterprise key ID (public;
+Enterprise keys have no secret). Every page that uses the database (controller and room monitor in
+`index.html`, the defib tablet, and the three ventilator pages) turns App Check on straight after
+`initializeApp()` and before its first database call, with token auto-refresh on. An empty key skips
+App Check entirely. Nothing in the code ever turns enforcement on; that is a switch in the Firebase
+console. The site has no Content Security Policy, so nothing blocks `www.google.com/recaptcha`,
+`www.gstatic.com/recaptcha` or `content-firebaseappcheck.googleapis.com`. If you ever add a CSP, allow
+those three in `script-src`/`frame-src`/`connect-src`.
 
-1. **Register the site in reCAPTCHA.** Go to <https://www.google.com/recaptcha/admin/create>. Label:
-   `EM Simulator`. Type: **Score based (v3)**. Domains: `emsimulator.com`, `www.emsimulator.com` and
-   `wmebemsim.netlify.app` (Netlify deploy previews live on other addresses and will not get tokens;
-   that only matters after step 5). Submit. You get a **site key** (public) and a **secret key**.
-2. **Register the app in Firebase App Check.** Go to
-   <https://console.firebase.google.com/project/wmebem-sim/appcheck> → **Apps** → the web app
-   (`1:143041936940:web:4d15c3fc3ce7e10c081b89`) → **reCAPTCHA** → paste the **secret key** → Save.
-   Leave the token time to live at its default. Do **not** press Enforce anywhere yet.
-3. **Paste the site key.** In `data/firebase-config.js` set
-   `window.APP_CHECK_SITE_KEY = '<your site key>';` (the site key, never the secret key), commit and
-   push. Netlify deploys it; online tablets pick it up on their next load (the service worker is
-   network first).
+1. **Done 21 Oct 2026: the key.** Google Cloud project `wmebem-sim` → reCAPTCHA Enterprise API
+   enabled → key "EM Simulator App Check", type Website, domains `emsimulator.com`,
+   `www.emsimulator.com` and `wmebemsim.netlify.app`, no checkbox challenge. Netlify deploy previews
+   live on other addresses and do not get tokens; that only matters after step 5.
+2. **Done 21 Oct 2026: registered in Firebase App Check.** Web app "SimApp"
+   (`1:143041936940:web:4d15c3fc3ce7e10c081b89`) → reCAPTCHA Enterprise, token time to live 1 hour,
+   risk threshold 0.5. Enforce not pressed.
+3. **Done 21 Oct 2026: the key ID is in `data/firebase-config.js`** and the provider is
+   `ReCaptchaEnterpriseProvider` (Firebase compat SDK 12.19.0).
 4. **Testing on your own computer (localhost).** reCAPTCHA does not issue tokens to `localhost`, so
    use a debug token: open `http://localhost:8000/?appcheck-debug=1`, open the browser console and
    copy the line "App Check debug token: …", then in the App Check page → **Apps** → the web app's ⋮
@@ -622,7 +617,7 @@ If you ever add a CSP, allow those three in `script-src`/`frame-src`/`connect-sr
    and the other products unenforced. Enforcement takes effect within about 15 minutes. If something
    breaks, press **Unenforce** on the same page; that is the whole rollback.
 6. **The Android app (Google Play) needs nothing extra.** It is a Trusted Web Activity, i.e. Chrome
-   showing `emsimulator.com`, so the same web reCAPTCHA v3 provider covers it. No Play Integrity
+   showing `emsimulator.com`, so the same web reCAPTCHA Enterprise provider covers it. No Play Integrity
    provider is needed.
 
 ---
