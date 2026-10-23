@@ -67,16 +67,19 @@ if (flag('--estimate') || !jobs.length) { if (!jobs.length) writeClipList(); pro
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'voices-'));
 const sleep = (s) => execFileSync('sleep', [String(s)]);
-// Rate limits (HTTP 429) and brief outages are waited out: up to four tries, 20 s apart.
+// Rate limits (HTTP 429), brief outages and requests that hang (cut off after 3 minutes) are
+// waited out: up to four tries, 20 s apart.
 const post = (url, body) => {
     const bodyFile = path.join(TMP, 'body.json');
     fs.writeFileSync(bodyFile, JSON.stringify(body));
-    const curlArgs = ['-sS', '-w', '\n%{http_code}', '-X', 'POST',
+    const curlArgs = ['-sS', '--max-time', '180', '-w', '\n%{http_code}', '-X', 'POST',
         `https://generativelanguage.googleapis.com/v1beta/${url}`,
         '-H', 'Content-Type: application/json', '--data-binary', `@${bodyFile}`];
     if (process.env.GEMINI_API_KEY) curlArgs.push('-H', `x-goog-api-key: ${process.env.GEMINI_API_KEY}`);
     for (let attempt = 1; ; attempt++) {
-        const raw = execFileSync('curl', curlArgs, { maxBuffer: 64 << 20 }).toString();
+        let raw;
+        try { raw = execFileSync('curl', curlArgs, { maxBuffer: 64 << 20 }).toString(); }
+        catch (e) { raw = `curl failed (exit ${e.status})\n599`; }
         const cut = raw.lastIndexOf('\n'), status = Number(raw.slice(cut + 1)), text = raw.slice(0, cut);
         // A daily quota will not clear in minutes: stop, keeping what has been made.
         if (status === 429 && /per day/i.test(text)) { console.error(`[voices] daily request limit reached: ${text.slice(0, 300)}`); writeClipList(); process.exit(2); }
