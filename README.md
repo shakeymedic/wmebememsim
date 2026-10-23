@@ -47,6 +47,16 @@ The standalone defibrillator links over the same Firebase session (`?session=COD
 into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
 **Defib** button) remains available too.
 
+### iPad checks (Safari's engine)
+
+`tests/specs/ipad.spec.js` runs the controller, room monitor (including the first-tap sound), defib
+and ventilator in WebKit, the engine Safari uses, at iPad Pro 11 size in landscape and portrait. GitHub
+runs it on every pull request and push to main (the `ipad` job), and keeps a report with a screenshot of
+each screen as the `ipad-report` artifact for two weeks. Locally: `npx playwright install webkit`, then
+`npx playwright test --project=ipad-landscape --project=ipad-portrait` in `tests/`. It catches
+Safari-only script errors and layout problems; it cannot prove a real iPad speaker is audible or that
+Google sign-in works on a real iPad.
+
 ### Clearing out old sessions
 
 The Realtime Database cannot expire data by itself, so without a clean-up old sessions accumulate.

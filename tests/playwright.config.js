@@ -13,7 +13,10 @@ module.exports = defineConfig({
     serviceWorkers: 'block'
   },
   projects: [
-    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } }
+    { name: 'desktop', testIgnore: /ipad\.spec\.js/, use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
+    // Safari's engine at iPad size (specs/ipad.spec.js). Needs `npx playwright install webkit`.
+    { name: 'ipad-landscape', testMatch: /ipad\.spec\.js/, use: { ...devices['iPad Pro 11 landscape'] } },
+    { name: 'ipad-portrait', testMatch: /ipad\.spec\.js/, use: { ...devices['iPad Pro 11'] } }
   ],
   webServer: {
     command: 'node serve.js',
