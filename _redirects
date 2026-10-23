@@ -1,3 +1,6 @@
+# The old Netlify address forwards to the real one (query string and path kept, so old join links
+# and QR codes still work). Deploy previews have their own addresses and are not affected.
+https://wmebemsim.netlify.app/*  https://emsimulator.com/:splat  301!
 # Google sign-in's handler pages, served from this site's own address (see data/firebase-config.js).
 /__/auth/*      https://wmebem-sim.firebaseapp.com/__/auth/:splat      200
 /__/firebase/*  https://wmebem-sim.firebaseapp.com/__/firebase/:splat  200
