@@ -27,9 +27,40 @@ jobs:
         run: node scripts/cleanup-sessions.mjs --self-test
       - name: Run the tests
         working-directory: tests
-        run: npx playwright test
+        run: npx playwright test --project=desktop
         env:
           CI: true
+
+  ipad:
+    # Safari's engine (WebKit) at iPad size, landscape and portrait: tests/specs/ipad.spec.js.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tests/package-lock.json
+      - name: Build the site (as Netlify does)
+        run: npm ci && npm run build
+      - name: Install test dependencies
+        working-directory: tests
+        run: npm ci && npx playwright install --with-deps webkit
+      - name: Run the iPad tests
+        working-directory: tests
+        run: npx playwright test --project=ipad-landscape --project=ipad-portrait --reporter=list,html
+        env:
+          CI: true
+      - name: Keep the report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ipad-report
+          path: tests/playwright-report
+          retention-days: 14
 
   rules:
     # database.rules.json in the real Firebase Realtime Database emulator.
