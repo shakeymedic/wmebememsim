@@ -671,6 +671,9 @@ Everything else is optional and defaults the same way a built-in scenario would.
 | `recommendedActions` | string[] | Intervention keys from `data/interventions.js` |
 | `setupKit` | string[] | Kit already on when the team arrives (e.g. `["Oxygen", "IV Access", "FluidInfusion", "Collar", "HeadBlocks", "Scoop"]`). Without it, the kit is read from the brief, a `handover` and `markScheme.radioReport` ("arrives with O2, IV fluids running and is fully immobilised"); `[]` means nothing on. It shows on the patient picture, does not change the obs and is not counted as the team's (`data/prehospital.js`). Monitoring is never put on this way |
 | `learningObjectives` | string[] | Scored in the debrief |
+| `defibSettings` | object | How shocks resolve when the scenario starts, the same choices as the controller's Shock response panel: `{ shockResponse: "model" \| "auto" \| "1"-"5" \| "never", refib: "model" \| "once" \| "off", rOnT, cvEnergy }`. The facilitator can still change them |
+| `successRhythm` | string | The rhythm a fixed-count shockable arrest converts to (e.g. `"Sinus Tachycardia"`) |
+| `roscVitals` | object | Post-ROSC obs, e.g. `{ "hr": 80, "bpSys": 100, "bpDia": 60, "rr": 0 }`. Any of `hr`, `bpSys`, `bpDia`, `spO2`, `rr`, `gcs`, `etco2`; each one given replaces the generic post-ROSC value |
 | `deterioration` | object | `{ active, type, rate }` — drives AUTO mode |
 | `investigations` | object | `{ bloods, ecg, cxr, … }` |
 | `instructorBrief` | object | `{ progression, interventions, learningObjectives }` |
@@ -727,12 +730,18 @@ Course scenarios can carry these extra fields. None is required.
 
 - `kind`: `"workshop"` or `"assessment"`. `source`, `note`: shown at the top of the sheet.
 - `radioReport`, `learningOutcomes`, `technicalSkills`, `nonTechnicalSkills`.
-- `setup`: `{ initial, after, afterLabel, injuries, equipment, skills }` (observations and moulage).
+- `setup`: `{ initial, after, afterLabel, injuries, equipment, equipmentLabel, skills }` (observations and moulage;
+  `equipmentLabel` renames the "On arrival" list).
 - `pathway`: `[{ role, findings, actions }]`, one row per role card (A, B, C, ...), new lines kept.
 - `results`: `[{ label, text }]`, the results to give when asked.
 - `criticalPoints`, `criticalNote`, and `criteria: { technical, nonTechnical, other }`: the items marked
   A (achieved) or N (not achieved). An assessment shows "Pass" only when every item is A, and
   "Not yet achieved" as soon as a critical point is N.
+- `passRule: "critical"`: only the critical points decide an assessment's verdict (the ALS CASTest:
+  every bold point must be achieved, a missed non-bold point does not mean a re-test). `verdictLabels:
+  { pass, notYet }` changes the badge wording, `sectionLabels: { critical, technical, nonTechnical, other }`
+  the section headings, `kindLabel` the heading ("Team leader assessment" by default) and
+  `pathwayHeadings: { role, findings, actions }` the pathway columns.
 - `summary`, `debriefPoints`, `teachingPoints`.
 - `media`: `[{ image, type, label, caption, slide }]`, course images (X-rays, CT, eFAST, scene photos).
   `image` is an id under `courseImages/<course>/`; `type` is the investigation it stands for (`"X-ray"`,

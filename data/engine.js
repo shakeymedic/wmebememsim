@@ -21,6 +21,17 @@
         if (rhythm === 'Sinus Bradycardia') return [Math.max(30, kid.low - 30), kid.low - 10];
         return band;
     };
+    // A scenario may state its own post-ROSC obs (scenario.roscVitals, e.g. the ALS course sheets:
+    // "P 80 min-1, BP 100/60 mmHg"). Each one given replaces the generic post-ROSC value.
+    const roscOwnVitals = (scenario) => {
+        const authored = (scenario && scenario.roscVitals && typeof scenario.roscVitals === 'object') ? scenario.roscVitals : {};
+        const own = {};
+        ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'etco2'].forEach(k => {
+            const v = Number(authored[k]);
+            if (authored[k] !== undefined && authored[k] !== null && authored[k] !== '' && Number.isFinite(v) && v >= 0) own[k] = v;
+        });
+        return own;
+    };
     if (!RG) throw new Error('data/rhythms.js must load before data/engine.js');
     const {
         DEFAULT_VITALS, INVASIVE_SENSOR_KEYS, SENSOR_DEFS, STANDARD_SENSOR_KEYS,
@@ -251,9 +262,11 @@
                     const age = cur.scenario?.patientAge ?? 40;
                     const base = (window.getBaseVitals ? window.getBaseVitals(age) : { hr: 80, rr: 16, bpSys: 110, bpDia: 70 });
                     dispatchVitals({ type: 'STOP_TREND', currentState: cur });
-                    rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: Math.round((5.0 + Math.random() * 1.5) * 10) / 10 };
+                    rhythmVitals = { ...rhythmVitals, hr: base.hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: Math.round((5.0 + Math.random() * 1.5) * 10) / 10, ...roscOwnVitals(cur.scenario) };
                     releaseManual = ['hr', 'bpSys', 'bpDia', 'spO2', 'rr', 'gcs', 'pupils', 'etco2'];
                 }
+                // The scenario's own post-ROSC heart rate is kept, not re-rolled from the rhythm's band.
+                const ownRoscHr = RG.isPulseless(cur.rhythm) && !isArrest && roscOwnVitals(cur.scenario).hr !== undefined;
 
                 // Registry-supplied rate band for the new rhythm, so every organised rhythm
                 // (including the ones previously missing: Atrial Flutter, VT, 1st/2nd degree block,
@@ -268,7 +281,7 @@
                 // SVT used to read "Sinus Rhythm" at 195 because the panel was open). An "unchanged"
                 // transition (a failed shock or cardioversion) keeps the current rate rather than
                 // re-rolling it.
-                if (!isArrest && newRhythm !== RG.canonical(cur.rhythm)) {
+                if (!isArrest && newRhythm !== RG.canonical(cur.rhythm) && !ownRoscHr) {
                     const band = hrBandFor(newRhythm, cur.scenario?.patientAge);
                     const stillHeld = !applyRhythmHrBand(cur, releaseManual);
                     if (band && !stillHeld) {
@@ -1416,8 +1429,9 @@
             const target = RG.canonical(rhythm);
             const band = hrBandFor(target, age);
             const hr = band ? getRandomInt(band[0], band[1]) : base.hr;
+            const roscOwn = roscOwnVitals(cur.scenario);
             dispatch({ type: 'STOP_TREND' });
-            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2 }, releaseManual: RESET_HOLD_KEYS });
+            dispatch({ type: 'UPDATE_VITALS', payload: { ...cur.baseVitals, hr, bpSys: base.bpSys, bpDia: base.bpDia, spO2: 94, rr: base.rr, gcs: 8, pupils: 3, etco2: newEtco2, ...roscOwn }, releaseManual: RESET_HOLD_KEYS });
             changeRhythm(target, cause, meta);
             if (cur.scenario) {
                 const updatedScenario = { ...cur.scenario, deterioration: { ...(cur.scenario.deterioration || {}), active: false } };
