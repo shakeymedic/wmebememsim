@@ -51,5 +51,5 @@ android {
 }
 
 dependencies {
-    implementation("com.google.androidbrowserhelper:androidbrowserhelper:2.7.4")
+    implementation("com.google.androidbrowserhelper:androidbrowserhelper:2.6.0") // 2.7.4 builds would not open on a Samsung S25+ (Oct 2026); 2.6.0, as in the major incident app, does
 }
