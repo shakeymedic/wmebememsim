@@ -12,10 +12,15 @@
 //     kind: 'workshop' | 'assessment',        // assessment = pass needs every critical point
 //     source, note,                            // where it came from; a caveat shown in amber
 //     radioReport: [..], learningOutcomes: [..], technicalSkills: [..], nonTechnicalSkills: [..],
-//     setup: { initial: [..], after: [..], afterLabel, equipment: [..], injuries: [..], skills: [..] },
+//     setup: { initial: [..], after: [..], afterLabel, equipment: [..], equipmentLabel, injuries: [..], skills: [..] },
 //     pathway: [{ role, findings, actions }],  // findings/actions are multi-line strings
 //     results: [{ label, text }],              // sounds, AMPLE, blood gases, X-rays, eFAST, CT
 //     criticalPoints: [..], criticalNote,      // assessment scenarios
+//     passRule: 'critical',                    // optional: only the critical points decide the verdict
+//     verdictLabels: { pass, notYet },         // optional wording for the verdict badge
+//     sectionLabels: { critical, technical, nonTechnical, other },   // optional section headings
+//     kindLabel,                               // optional heading, e.g. 'CASTest (ALS assessment)'
+//     pathwayHeadings: { role, findings, actions },                  // optional pathway columns
 //     criteria: { technical: [..], nonTechnical: [..], other: [..] },   // the A / N items
 //     summary, debriefPoints: [..], teachingPoints: [..],
 //     media: [{ image, type, label, caption, slide }],   // course images: `image` is an id under
@@ -55,9 +60,13 @@
     };
 
     const SECTION_LABEL = { critical: 'Critical points', technical: 'Technical skills', nonTechnical: 'Non-technical skills', other: 'Other criteria' };
+    const sectionLabel = (ms, s) => str(ms && ms.sectionLabels && ms.sectionLabels[s]).trim() || SECTION_LABEL[s];
+    const kindLabel = (ms) => str(ms && ms.kindLabel).trim() || (ms && ms.kind === 'assessment' ? 'Team leader assessment' : '');
 
     // Overall result. An assessment passes only when every item is Achieved (both critical points
     // plus the other criteria); a workshop just counts. Nothing is decided until every item is marked.
+    // With passRule 'critical' (e.g. the ALS CASTest, where every bold point must be achieved but a
+    // missed non-bold point does not mean a re-test) only the critical points decide the verdict.
     const result = (scenario, marks) => {
         const ms = get(scenario) || {};
         const list = items(scenario);
@@ -66,12 +75,19 @@
         const notAchieved = list.filter(i => m[i.id] === 'N').length;
         const unmarked = list.length - achieved - notAchieved;
         const criticalMissed = list.filter(i => i.section === 'critical' && m[i.id] === 'N').length;
-        let verdict = null;
+        const labels = ms.verdictLabels && typeof ms.verdictLabels === 'object' ? ms.verdictLabels : {};
+        const PASS = str(labels.pass).trim() || 'Pass', NOT_YET = str(labels.notYet).trim() || 'Not yet achieved';
+        let verdict = null, passed = false;
         if (ms.kind === 'assessment' && list.length) {
-            if (criticalMissed || (notAchieved && !unmarked)) verdict = 'Not yet achieved';
-            else if (!unmarked && !notAchieved) verdict = 'Pass';
+            if (ms.passRule === 'critical') {
+                const critical = list.filter(i => i.section === 'critical');
+                const criticalUnmarked = critical.filter(i => m[i.id] !== 'A' && m[i.id] !== 'N').length;
+                if (criticalMissed) verdict = NOT_YET;
+                else if (critical.length && !criticalUnmarked) { verdict = PASS; passed = true; }
+            } else if (criticalMissed || (notAchieved && !unmarked)) verdict = NOT_YET;
+            else if (!unmarked && !notAchieved) { verdict = PASS; passed = true; }
         }
-        return { total: list.length, achieved, notAchieved, unmarked, criticalMissed, verdict };
+        return { total: list.length, achieved, notAchieved, unmarked, criticalMissed, verdict, passed };
     };
 
     // ---- display pieces ------------------------------------------------------------------------
@@ -117,17 +133,17 @@
                         <span><b className="text-emerald-400">{r.achieved}</b> achieved</span>
                         <span><b className="text-red-400">{r.notAchieved}</b> not achieved</span>
                         <span><b className="text-slate-200">{r.unmarked}</b> not marked</span>
-                        {r.verdict && <span data-testid="mark-verdict" className={`px-2 py-0.5 rounded font-bold uppercase ${r.verdict === 'Pass' ? 'bg-emerald-800 text-emerald-100' : 'bg-red-900 text-red-100'}`}>{r.verdict}</span>}
+                        {r.verdict && <span data-testid="mark-verdict" className={`px-2 py-0.5 rounded font-bold uppercase ${r.passed ? 'bg-emerald-800 text-emerald-100' : 'bg-red-900 text-red-100'}`}>{r.verdict}</span>}
                     </div>
                 )}
                 {sections.map(s => (
                     <div key={s}>
-                        <div className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${s === 'critical' ? 'text-amber-400' : 'text-slate-400'}`}>{SECTION_LABEL[s]}</div>
+                        <div className={`text-[11px] font-bold uppercase tracking-wider mb-1 ${s === 'critical' ? 'text-amber-400' : 'text-slate-400'}`}>{sectionLabel(ms, s)}</div>
                         {s === 'critical' && ms.criticalNote && <p className="text-[11px] text-amber-300/90 mb-1">{str(ms.criticalNote)}</p>}
                         <ul>{list.filter(i => i.section === s).map(i => <MarkRow key={i.id} item={i} mark={marks ? marks[i.id] : undefined} onMark={onMark} />)}</ul>
                     </div>
                 ))}
-                {onMark && <p className="text-[11px] text-slate-500">Only two marks count: A (achieved) or N (not achieved). Press a mark again to clear it.{ms.kind === 'assessment' ? ' An assessment is passed only when both critical points and the other criteria are achieved.' : ''}</p>}
+                {onMark && <p className="text-[11px] text-slate-500">Only two marks count: A (achieved) or N (not achieved). Press a mark again to clear it.{ms.kind === 'assessment' ? (ms.passRule === 'critical' ? ` The result above comes from the ${sectionLabel(ms, 'critical').toLowerCase()} only; the other items are recorded but do not decide it.` : ' An assessment is passed only when both critical points and the other criteria are achieved.') : ''}</p>}
             </div>
         );
     };
@@ -223,6 +239,7 @@
         const setup = ms.setup && typeof ms.setup === 'object' ? ms.setup : {};
         const pathway = asList(ms.pathway).filter(r => r && typeof r === 'object');
         const results = asList(ms.results).filter(r => r && typeof r === 'object');
+        const ph = ms.pathwayHeadings && typeof ms.pathwayHeadings === 'object' ? ms.pathwayHeadings : {};
         return (
             <div className="space-y-3 text-left">
                 {ms.note && <p className="text-xs text-amber-300 bg-amber-950/30 border border-amber-700/50 rounded p-2">{str(ms.note)}</p>}
@@ -242,7 +259,7 @@
                             {asList(setup.initial).length > 0 && <div><div className="text-[11px] text-slate-400 uppercase font-bold">Initial obs</div><Bullets list={setup.initial} /></div>}
                             {asList(setup.after).length > 0 && <div><div className="text-[11px] text-slate-400 uppercase font-bold">{str(setup.afterLabel) || 'After treatment'}</div><Bullets list={setup.after} /></div>}
                             {asList(setup.injuries).length > 0 && <div><div className="text-[11px] text-slate-400 uppercase font-bold">Injuries (moulage)</div><Bullets list={setup.injuries} /></div>}
-                            {asList(setup.equipment).length > 0 && <div><div className="text-[11px] text-slate-400 uppercase font-bold">On arrival</div><Bullets list={setup.equipment} /></div>}
+                            {asList(setup.equipment).length > 0 && <div><div className="text-[11px] text-slate-400 uppercase font-bold">{str(setup.equipmentLabel) || 'On arrival'}</div><Bullets list={setup.equipment} /></div>}
                         </div>
                         {asList(setup.skills).length > 0 && <div className="mt-2 text-xs text-slate-400"><b className="text-slate-300">Skills stations:</b> {asList(setup.skills).join('; ')}</div>}
                     </Block>
@@ -251,7 +268,7 @@
                     <Block title="Pathway: findings to give and expected actions" tone="text-amber-400">
                         <div className="overflow-x-auto">
                             <table className="w-full text-sm border-collapse" data-testid="mark-pathway">
-                                <thead><tr className="text-[11px] uppercase text-slate-400"><th className="text-left p-1 w-16">Role</th><th className="text-left p-1">Findings (role card)</th><th className="text-left p-1">Expected actions</th></tr></thead>
+                                <thead><tr className="text-[11px] uppercase text-slate-400"><th className="text-left p-1 w-16">{str(ph.role) || 'Role'}</th><th className="text-left p-1">{str(ph.findings) || 'Findings (role card)'}</th><th className="text-left p-1">{str(ph.actions) || 'Expected actions'}</th></tr></thead>
                                 <tbody>
                                     {pathway.map((r, i) => (
                                         <tr key={i} className="align-top border-t border-slate-700">
@@ -298,7 +315,7 @@
         const rows = list.map(i => {
             const m = marks ? marks[i.id] : null;
             const cell = marks ? `<td style="width:70px;font-weight:bold;color:${m === 'A' ? '#15803d' : m === 'N' ? '#b91c1c' : '#64748b'}">${m === 'A' ? 'A' : m === 'N' ? 'N' : '&ndash;'}</td>` : '<td style="width:90px;">A &nbsp;/&nbsp; N</td>';
-            return `<tr><td style="width:150px;color:#475569;">${esc(SECTION_LABEL[i.section])}</td><td${i.section === 'critical' ? ' style="font-weight:bold;"' : ''}>${esc(i.text)}</td>${cell}</tr>`;
+            return `<tr><td style="width:150px;color:#475569;">${esc(sectionLabel(ms, i.section))}</td><td${i.section === 'critical' ? ' style="font-weight:bold;"' : ''}>${esc(i.text)}</td>${cell}</tr>`;
         }).join('');
         const summary = marks ? `<p><b>${r.achieved}</b> achieved, <b>${r.notAchieved}</b> not achieved, <b>${r.unmarked}</b> not marked${r.verdict ? ` &middot; <b>${esc(r.verdict)}</b>` : ''}.</p>` : '';
         return `${ms.criticalNote ? `<p style="color:#92400e;">${esc(ms.criticalNote)}</p>` : ''}${summary}<table><thead><tr><th>Section</th><th>Criterion</th><th>Mark</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -309,14 +326,15 @@
         const setup = ms.setup && typeof ms.setup === 'object' ? ms.setup : {};
         const pathway = asList(ms.pathway).filter(r => r && typeof r === 'object');
         const results = asList(ms.results).filter(r => r && typeof r === 'object');
+        const ph = ms.pathwayHeadings && typeof ms.pathwayHeadings === 'object' ? ms.pathwayHeadings : {};
         const card = (title, body) => body ? `<div class="card"><h3>${esc(title)}</h3>${body}</div>` : '';
         return [
             ms.note ? `<p style="color:#92400e;border:1px solid #f59e0b;padding:6px;border-radius:6px;">${esc(ms.note)}</p>` : '',
             card('Scenario / radio report', ul(ms.radioReport)),
             card('Learning outcomes', ul(ms.learningOutcomes)),
             card('Skills', (asList(ms.technicalSkills).length ? `<h4>Technical</h4>${ul(ms.technicalSkills)}` : '') + (asList(ms.nonTechnicalSkills).length ? `<h4>Non-technical</h4>${ul(ms.nonTechnicalSkills)}` : '')),
-            card('Setting up the patient', (asList(setup.initial).length ? `<h4>Initial obs</h4>${ul(setup.initial)}` : '') + (asList(setup.after).length ? `<h4>${esc(setup.afterLabel || 'After treatment')}</h4>${ul(setup.after)}` : '') + (asList(setup.injuries).length ? `<h4>Injuries (moulage)</h4>${ul(setup.injuries)}` : '') + (asList(setup.equipment).length ? `<h4>On arrival</h4>${ul(setup.equipment)}` : '') + (asList(setup.skills).length ? `<h4>Skills stations</h4>${ul(setup.skills)}` : '')),
-            card('Pathway: findings to give and expected actions', pathway.length ? `<table><thead><tr><th>Role</th><th>Findings (role card)</th><th>Expected actions</th></tr></thead><tbody>${pathway.map(r => `<tr><td><b>${nl(r.role)}</b></td><td>${nl(r.findings)}</td><td>${nl(r.actions)}</td></tr>`).join('')}</tbody></table>` : ''),
+            card('Setting up the patient', (asList(setup.initial).length ? `<h4>Initial obs</h4>${ul(setup.initial)}` : '') + (asList(setup.after).length ? `<h4>${esc(setup.afterLabel || 'After treatment')}</h4>${ul(setup.after)}` : '') + (asList(setup.injuries).length ? `<h4>Injuries (moulage)</h4>${ul(setup.injuries)}` : '') + (asList(setup.equipment).length ? `<h4>${esc(setup.equipmentLabel || 'On arrival')}</h4>${ul(setup.equipment)}` : '') + (asList(setup.skills).length ? `<h4>Skills stations</h4>${ul(setup.skills)}` : '')),
+            card('Pathway: findings to give and expected actions', pathway.length ? `<table><thead><tr><th>${esc(ph.role || 'Role')}</th><th>${esc(ph.findings || 'Findings (role card)')}</th><th>${esc(ph.actions || 'Expected actions')}</th></tr></thead><tbody>${pathway.map(r => `<tr><td><b>${nl(r.role)}</b></td><td>${nl(r.findings)}</td><td>${nl(r.actions)}</td></tr>`).join('')}</tbody></table>` : ''),
             card('Results to give when asked', results.length ? `<table><tbody>${results.map(r => `<tr><td style="width:160px;"><b>${esc(r.label)}</b></td><td>${nl(r.text)}</td></tr>`).join('')}</tbody></table>` : ''),
             card(marks ? 'Mark sheet' : 'Mark scheme', criteriaHtml(scenario, marks)),
             card('Debrief: learning points', (ms.summary ? `<p>${esc(ms.summary)}</p>` : '') + ul(ms.debriefPoints)),
@@ -343,7 +361,7 @@
             <Modal fixed label={`Mark sheet: ${scenario.title}`} onClose={onClose} className="bg-slate-800 border border-slate-600 rounded-lg w-full max-w-5xl max-h-[92vh] flex flex-col">
                 <div className="flex items-center justify-between gap-2 p-3 border-b border-slate-700">
                     <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">{get(scenario).kind === 'assessment' ? 'Team leader assessment' : 'Facilitator pack'}{scenario.group ? ` · ${scenario.group}` : ''}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">{kindLabel(get(scenario)) || 'Facilitator pack'}{scenario.group ? ` · ${scenario.group}` : ''}</div>
                         <h3 className="text-lg font-bold text-white truncate">{scenario.title}</h3>
                     </div>
                     <div className="flex gap-2 flex-none">
@@ -363,7 +381,7 @@
         if (!ms || !items(scenario).length) return null;
         return (
             <div className="bg-slate-800 p-4 rounded-lg border border-fuchsia-800/60" data-testid="debrief-marksheet">
-                <h3 className="text-lg font-bold text-white mb-1">{ms.kind === 'assessment' ? 'Team leader assessment' : 'Mark sheet'}</h3>
+                <h3 className="text-lg font-bold text-white mb-1">{kindLabel(ms) || 'Mark sheet'}</h3>
                 <p className="text-xs text-slate-400 mb-2">Mark each criterion for the team leader. The marks go into the downloaded or printed report.</p>
                 <Criteria scenario={scenario} marks={marks} onMark={onMark} />
                 {(ms.summary || asList(ms.debriefPoints).length > 0) && (
