@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EmSim" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">@color/sim_dark</item>
-        <item name="android:statusBarColor">@color/sim_dark</item>
-        <item name="android:navigationBarColor">@color/sim_dark</item>
-        <item name="colorPrimary">@color/sim_accent</item>
-    </style>
+    <!-- The launcher screen is see-through, as in Bubblewrap's and the major incident app's TWA (which run
+         on Jake's S25+): the library draws its own splash, then hands over to Chrome. -->
+    <style name="Theme.EmSim" parent="@android:style/Theme.Translucent.NoTitleBar" />
 </resources>
