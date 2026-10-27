@@ -8,9 +8,9 @@ const ALARMS = {
   pcont:    {t:'Airway press. continuously high', p:'hi', f:'peep'},
   plow:     {t:'Airway pressure not achieved', p:'med', f:'pip'},
   plimit:   {t:'Tidal volume not achieved', p:'med', f:'vt'},
-  apnea:    {t:'Apnea', p:'med'},
-  apnea2:   {t:'Apnea', p:'hi'},                                      /* the IFU: !! escalating to !!! */
-  apvent:   {t:'Apnea Ventilation', p:'med'},                         /* RRmin backup breaths in PSV */
+  apnea:    {t:'Apnoea', p:'med'},
+  apnea2:   {t:'Apnoea', p:'hi'},                                      /* the IFU: !! escalating to !!! */
+  apvent:   {t:'Apnoea Ventilation', p:'med'},                         /* RRmin backup breaths in PSV */
   mvlow:    {t:'Minute volume low', p:'med', f:'mv'},
   mvhigh:   {t:'Minute volume high', p:'med', f:'mv'},
   o2low:    {t:'FiO2 low', p:'hi', f:'o2'},
@@ -100,7 +100,7 @@ function evalAlarms() {
   const settled = B.now - V.caseStart > 45 && B.now - V.modeSince > 45;
   if (et !== null && L.etco2high <= ALIM.etco2high.max && et > L.etco2high) raise('etco2high'); else clear('etco2high');
   if (et !== null && L.etco2low > 0 && et > 0.5 && et < L.etco2low && settled) raise('etco2low'); else clear('etco2low');
-  /* Apnea: no breath and no CO2 for the Apnea time (20 s, the simulator's); !! then !!! after another 30 s */
+  /* Apnoea: no breath and no CO2 for the Apnoea time (20 s, the simulator's); !! then !!! after another 30 s */
   const sinceBreath = B.now - Math.max(B.lastStart, V.caseStart), sinceCO2 = B.now - Math.max(G.lastCO2, V.caseStart, V.modeSince);
   const apnoeic = (m === 'MAN' && sinceBreath >= L.apnoea) || (sinceBreath >= L.apnoea && !V.backupOn) || sinceCO2 >= L.apnoea + 10;
   if (apnoeic) { G.apneaT += dt; if (G.apneaT > 30) { clear('apnea'); raise('apnea2'); } else raise('apnea'); }

@@ -214,7 +214,7 @@ function renderWindow() {
   let h = '';
   if (win === 'start') {
     h = X + `<div class="wtitle">Start</div><div class="wbody">
-      <div class="wrow"><button class="wb green" data-kf id="stNew" data-tip="New adult: resets the settings and alarm limits to the factory start values.">New adult</button><button class="wb" disabled title="Not simulated">New pediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont" data-tip="Continue case: keeps the last settings.">Continue case</button></div>
+      <div class="wrow"><button class="wb green" data-kf id="stNew" data-tip="New adult: resets the settings and alarm limits to the factory start values.">New adult</button><button class="wb" disabled title="Not simulated">New paediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont" data-tip="Continue case: keeps the last settings.">Continue case</button></div>
       <div class="wgrp">Patient data</div>
       <div class="wrow">${ctlHTML('age', 'ctrl', V.set.age)}${ctlHTML('height', 'ctrl', V.set.height)}
         <button class="wb ${V.sex === 'Male' ? 'green' : ''}" data-kf data-sex="Male">Male</button><button class="wb ${V.sex === 'Female' ? 'green' : ''}" data-kf data-sex="Female">Female</button></div>

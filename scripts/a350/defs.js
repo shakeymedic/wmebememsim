@@ -18,7 +18,7 @@ const CTRL = {
   ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5, tip:'A supported breath ends when the inspiratory flow has fallen to this percentage of its peak.'},
   pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1, tip:'How quickly the pressure rises at the start of a pressure breath, in seconds.'},
   pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5, tip:'The part of each volume-controlled breath held as a plateau with no flow, so the plateau pressure (Pplat) can be read.'},
-  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true, tip:'The minimum breathing rate in PSV. If the patient breathes more slowly, the machine gives pressure-controlled breaths at this rate (Apnea Ventilation).'},
+  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true, tip:'The minimum breathing rate in PSV. If the patient breathes more slowly, the machine gives pressure-controlled breaths at this rate (Apnoea Ventilation).'},
   o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1, tip:'The oxygen concentration of the fresh gas from the mixer. With N2O as the carrier gas it cannot be set below 25%.'},
   fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true, tip:'The total fresh-gas flow into the breathing system. At low flows the patient rebreathes their own gas, so the inspired oxygen and agent change slowly.'},
   carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O'], tip:'The gas mixed with the oxygen in the fresh gas: Air or nitrous oxide (N2O).'},
@@ -37,7 +37,7 @@ function ctrlDef(key, mk, src) {
   return d;
 }
 /* alarm limits ([IFU2] pp. 211-212 and 216). MV limits start at VT x RR x (1 ± 40%), at least 2.0 / 0.3 L/min,
-   and MV high starts Off ([IFU2] p. 202). The Apnea time is not a setting here: 20 s is the simulator's. */
+   and MV high starts Off ([IFU2] p. 202). The Apnoea time is not a setting here: 20 s is the simulator's. */
 const mvStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 10 ? 1 : (dir > 0 ? v : v - 0.001) >= 1 ? 0.5 : 0.1;
 const vtStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 500 ? 50 : (dir > 0 ? v : v - 0.001) >= 100 ? 10 : 5;
 const ALIM = {
@@ -104,7 +104,7 @@ const NIVMODES = [];
 /* the modes a face mask suits (an awake patient with no airway): Man/Spon and CPAP/PSV; the others expect a tube or SGA */
 const MASK_MODES = ['MAN', 'SPONT'];
 const INVASIVE = ['MAN', 'SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT'];
-const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnea in Man/Spon; RRmin backup in PSV */
+const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnoea in Man/Spon; RRmin backup in PSV */
 const SIGH_MODES = [];
 const isNIV = () => false;
 const isHFO = () => false;

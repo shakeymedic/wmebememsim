@@ -344,7 +344,7 @@
     };
     const printSheet = (scenario) => {
         const css = 'body{font-family:Arial,sans-serif;color:#0f172a;margin:0;padding:20px;max-width:1000px}h1{color:#0369a1;margin:0 0 4px}h3{margin:0 0 6px}h4{margin:8px 0 4px;color:#334155}.card{border:1px solid #cbd5e1;border-radius:8px;padding:10px 12px;margin-bottom:10px;break-inside:avoid}table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{text-align:left;vertical-align:top;padding:4px 6px;border-bottom:1px solid #e2e8f0}th{color:#475569;font-size:.7rem;text-transform:uppercase}ul{margin:0;padding-left:20px}.muted{color:#64748b;font-size:.75rem}.restricted{color:#92400e;font-size:.75rem}';
-        const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Mark sheet — ${esc(scenario.title)}</title><style>${css}</style></head><body><h1>${esc(scenario.title)}</h1><p class="restricted">Restricted course material. For use on the course only; do not copy or share.</p>${sheetHtml(scenario, null)}</body></html>`;
+        const html = `<!DOCTYPE html><html lang="en-GB"><head><meta charset="UTF-8"><title>Mark sheet — ${esc(scenario.title)}</title><style>${css}</style></head><body><h1>${esc(scenario.title)}</h1><p class="restricted">Restricted course material. For use on the course only; do not copy or share.</p>${sheetHtml(scenario, null)}</body></html>`;
         const w = window.open('', '_blank');
         if (!w || !w.document) { window.alert('The browser blocked the print window. Allow pop-ups for this site and try again.'); return; }
         w.document.open(); w.document.write(html); w.document.close();

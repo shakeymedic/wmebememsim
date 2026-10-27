@@ -204,12 +204,12 @@
             if (window.initFirebaseAppCheck) window.initFirebaseAppCheck();   // before the first database use
             window.db = firebase.database();
             if (window.useFirebaseEmulatorIfAsked) window.useFirebaseEmulatorIfAsked(window.db);
-            console.info("Firebase Realtime Database initialized");
+            console.info("Firebase Realtime Database initialised");
         } catch (e) {
             window.db = null;
             window.firebaseSyncBootstrap = {
                 state: 'unavailable',
-                message: `Firebase initialization failed: ${e.message || 'unknown error'}`
+                message: `Firebase initialisation failed: ${e.message || 'unknown error'}`
             };
             console.error("Firebase Init Failed:", e);
         }

@@ -68,7 +68,7 @@ between('        <div class="t1-wrap" id="device">', '        <div class="under"
 between('/* ======================= device definitions', '/* ======================= patient profiles', read('defs.js'));
 
 // ---- the breath engine: Man/Spon and the bag, This machine's Pinsp (absolute), Pmax, Tinsp, Slope ---------
-between('/* Apnea backup: NIV backs up with PCV+', '/* timing of mandatory breaths', `/* PSV: with RRmin set, mandatory pressure-controlled breaths at RRmin when the patient breathes too slowly
+between('/* Apnoea backup: NIV backs up with PCV+', '/* timing of mandatory breaths', `/* PSV: with RRmin set, mandatory pressure-controlled breaths at RRmin when the patient breathes too slowly
    (the IFU names RRmin; how the backup breaths are shaped is the simulator's choice: Pinsp, Tinsp 1 s) */
 function backupSet() {
   return {mode:'PCV+', dp:Math.max(5, V.set.pinsp - (V.set.peep || 0)), rate:Math.max(3, V.set.rrmin || 6), ti:1.0};
@@ -117,7 +117,7 @@ sub("  const triggered = !V.cpr && V.set.trig > 0 && effort >= V.set.trig;",
 sub("    if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= V.lim.apnoea) {",
     "    if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= (V.backupOn ? 60 / backupSet().rate : V.lim.apnoea)) {");
 sub("      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }\n      else raise('apnea');",
-    "      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }   /* Apnea itself: evalAlarms (no breath and no CO2) */");
+    "      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }   /* Apnoea itself: evalAlarms (no breath and no CO2) */");
 sub("    if (B.phase === 'exp' && B.t > 0.4 && !V.cpr && s.trig > 0 && m !== 'APRV' && m !== 'DuoPAP') {",
     "    if (B.phase === 'exp' && B.t > 0.4 && !V.cpr && s.trig > 0 && m !== 'MAN' && !CMV_MODES.includes(m)) {");
 sub("  return [p, f, v];", "  if (V.mode === 'MAN' && B.phase !== 'insp') p = Math.max(p, G.circP);   /* a bag held full by the APL valve */\n  return [p, f, v];");

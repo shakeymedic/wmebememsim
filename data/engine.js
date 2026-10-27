@@ -814,7 +814,7 @@
                 const capDoses = cum ? Math.max(1, Math.round(Number(cum.max) / Number(cum.perDose))) : drugEntry.maxDoses;
                 const effectiveCap = Math.min(drugEntry.maxDoses, capDoses);
                 if (givenBefore + 1 >= effectiveCap) {
-                    const totalText = cum ? ` (cumulative ${((givenBefore + 1) * Number(cum.perDose)).toLocaleString()} ${cum.unit} of a ${Number(cum.max).toLocaleString()} ${cum.unit} maximum)` : '';
+                    const totalText = cum ? ` (cumulative ${((givenBefore + 1) * Number(cum.perDose)).toLocaleString('en-GB')} ${cum.unit} of a ${Number(cum.max).toLocaleString('en-GB')} ${cum.unit} maximum)` : '';
                     // Reaching the maximum is correct practice and is only noted; going PAST it is the
                     // deviation that is flagged (and reaches the debrief).
                     const pastCap = givenBefore + 1 > effectiveCap;
@@ -1748,7 +1748,7 @@
                 const per = Number(dr.ratePerHour);
                 if (!Number.isFinite(per) || !per) return;
                 const unit = dr.vital === 'temp' ? '\u00b0C/h' : dr.vital === 'bm' ? 'mmol/L/h' : '/h';
-                bits.push(`${dr.vital === 'temp' ? 'temperature' : dr.vital} ${per > 0 ? '+' : '\u2212'}${Math.abs(per)} ${unit}${dr.target !== null && dr.target !== undefined ? ` toward ${dr.target}` : ''}`);
+                bits.push(`${dr.vital === 'temp' ? 'temperature' : dr.vital} ${per > 0 ? '+' : '\u2212'}${Math.abs(per)} ${unit}${dr.target !== null && dr.target !== undefined ? ` towards ${dr.target}` : ''}`);
             });
             if (d.paralytic) bits.push('neuromuscular blockade');
             // ITEM 10: an agent whose modelled action is clinical rather than haemodynamic (the
