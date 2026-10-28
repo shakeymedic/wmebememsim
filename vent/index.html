@@ -461,7 +461,7 @@ const CTRL = {
 function ctrlDef(key, mk) {
   const d = CTRL[key];
   if (key === 'rate') {
-    const min = ['APVcmv', 'PCV+', 'CPR'].includes(mk) ? 4 : ['PSIMV+', 'NIV-ST'].includes(mk) ? 5 : 1;   /* 'APVsimv + Apnea Backup: 10-80' is the neonatal column only */
+    const min = ['APVcmv', 'PCV+', 'CPR'].includes(mk) ? 4 : ['PSIMV+', 'NIV-ST'].includes(mk) ? 5 : 1;   /* 'APVsimv + Apnoea Backup: 10-80' is the neonatal column only */
     return {...d, min};
   }
   if (key === 'pramp' && !['ASV', 'NIV', 'NIV-ST', 'SPONT'].includes(mk)) return {...d, max:2000};
@@ -480,7 +480,7 @@ const ALIM = {
   flow:  {label:'fTotal', unit:'b/min', min:0, max:99, step:1},
   vthigh:{label:'Vt', unit:'ml', min:10, max:3000, step:vtStep, offMax:true},
   vtlow: {label:'Vt', unit:'ml', min:10, max:3000, step:vtStep, off0:true},
-  apnoea:{label:'Apnea time', unit:'s', min:15, max:60, step:5}
+  apnoea:{label:'Apnoea time', unit:'s', min:15, max:60, step:5}
 };
 /* The manual does not list which limits sit on which tab; this layout follows Fig 5-19 (Limits 1) and is otherwise the trainer's choice */
 const LIMIT_PAGES = {
@@ -527,7 +527,7 @@ const NIVMODES = ['NIV', 'NIV-ST'];
 /* the modes a face mask suits (an awake patient with no airway); the others expect a tube or SGA */
 const MASK_MODES = ['NIV', 'NIV-ST', 'HiFlowO2'];
 const INVASIVE = ['APVcmv', 'APVsimv', 'VS', 'PCV+', 'PSIMV+', 'DuoPAP', 'APRV', 'SPONT', 'ASV'];
-const BACKUP_MODES = ['APVsimv', 'SPONT', 'DuoPAP', 'APRV', 'NIV', 'VS'];   /* Apnea backup available (5.6.2 in 3.0.x, 5.6.3 in 3.1.x); VS is not in that list or the mode matrix (p. 127), so including it is the trainer's assumption */
+const BACKUP_MODES = ['APVsimv', 'SPONT', 'DuoPAP', 'APRV', 'NIV', 'VS'];   /* Apnoea backup available (5.6.2 in 3.0.x, 5.6.3 in 3.1.x); VS is not in that list or the mode matrix (p. 127), so including it is the trainer's assumption */
 const SIGH_MODES = ['APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT', 'ASV', 'NIV', 'NIV-ST'];
 const isNIV = m => NIVMODES.includes(m === undefined ? V.mode : m);
 const isHFO = m => (m === undefined ? V.mode : m) === 'HiFlowO2';
@@ -630,7 +630,7 @@ let bufIdx = 0, sampleAcc = 0, trigMark = 0;
 function baseP() { return V.mode === 'APRV' ? V.set.plo : V.set.peep; }
 /* default Rate by IBW (Table 15-9) */
 function rateByIBW() { const w = calcIBW(); return w >= 60 ? 12 : w >= 40 ? 15 : w >= 30 ? 17 : w >= 20 ? 20 : 25; }
-/* Apnea backup: NIV backs up with PCV+, the other modes with APVsimv (mode matrix, p. 127). With "Automatic" the device derives the
+/* Apnoea backup: NIV backs up with PCV+, the other modes with APVsimv (mode matrix, p. 127). With "Automatic" the device derives the
    backup controls from IBW; the manual does not list the values, so these are the trainer's choice. */
 function backupSet() {
   const ibw = calcIBW(), rate = rateByIBW();
@@ -818,7 +818,7 @@ function startOverlay(effort) {
   /* in APRV the trigger setting is only used to count spontaneous breaths */
   if (!V.cpr && V.set.trig > 0 && effort >= V.set.trig) {
     B.lastStart = B.now; recordStart('spont', vol); trigMark = 1; B.trigFlash = 0.35;
-    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnoea ventilation ended', 'low'); } }
     clear('apnea');
   }
 }
@@ -930,7 +930,7 @@ function effortHappens() {
   const triggered = !V.cpr && V.set.trig > 0 && effort >= V.set.trig;
   pushLog(B.missLog, !triggered);
   if (triggered) {
-    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnoea ventilation ended', 'low'); } }
     clear('apnea');
     startBreath(triggeredKind());
   } else {
@@ -981,7 +981,7 @@ function engineStep(dt) {
       }
     }
     else if (mt && since >= mt.cycle) startBreath('mand');
-    /* apnea: no breath within the Apnea time in the modes that have Apnea backup */
+    /* apnea: no breath within the Apnoea time in the modes that have Apnoea backup */
     if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= V.lim.apnoea) {
       if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }
       else raise('apnea');
@@ -1096,8 +1096,8 @@ const ALARMS = {
   vthigh:  {t:'Vt high', p:'med', mmp:'vte'},
   fhigh:   {t:'High frequency', p:'med', mmp:'ftot'},
   flow:    {t:'Low frequency', p:'med', mmp:'ftot'},
-  apnea:   {t:'Apnea', p:'hi'},
-  apvent:  {t:'Apnea ventilation', p:'low'},
+  apnea:   {t:'Apnoea', p:'hi'},
+  apvent:  {t:'Apnoea ventilation', p:'low'},
   o2fail:  {t:'Oxygen supply failed', p:'hi'},
   lowo2:   {t:'Low oxygen', p:'hi'},
   higho2:  {t:'High oxygen', p:'hi'},
@@ -1128,8 +1128,8 @@ const HELP = {
   vthigh:'<ul><li>VTE above the high Vt limit for two consecutive breaths.</li><li>Check the settings and for leaks.</li></ul>',
   fhigh:'<ul><li>fTotal is above the high limit.</li><li>Check the patient, the limits and the trigger.</li></ul>',
   flow:'<ul><li>fTotal is below the low limit.</li><li>Check the patient and the trigger.</li></ul>',
-  apnea:'<ul><li>No breath was triggered within the Apnea time and Apnea backup is off.</li><li>Check the patient. Check the trigger. Consider a mode with mandatory breaths or turning Apnea backup on.</li></ul>',
-  apvent:'<ul><li>Apnea backup ventilation has started. It ends after two consecutive patient-triggered breaths.</li><li>Check the patient and the backup settings.</li></ul>',
+  apnea:'<ul><li>No breath was triggered within the Apnoea time and Apnoea backup is off.</li><li>Check the patient. Check the trigger. Consider a mode with mandatory breaths or turning Apnoea backup on.</li></ul>',
+  apvent:'<ul><li>Apnoea backup ventilation has started. It ends after two consecutive patient-triggered breaths.</li><li>Check the patient and the backup settings.</li></ul>',
   o2fail:'<ul><li>Flow from the oxygen source is lower than expected.</li><li>Check the oxygen supply and connections. Provide an alternative oxygen source.</li></ul>',
   lowo2:'<ul><li>Measured oxygen is more than 5% below the setting.</li><li>Check the oxygen supply. Calibrate or replace the O2 sensor.</li></ul>',
   higho2:'<ul><li>Measured oxygen is more than 5% above the setting.</li><li>Calibrate or replace the O2 sensor.</li></ul>',
@@ -1177,7 +1177,7 @@ function evalAlarms() {
   if (V.o2Enrich <= 0 && o2m > s.o2 + O2_BAND) raise('higho2'); else clear('higho2');
   if (V.cpr) raise('cpron'); else clear('cpron');
   if (B.plimchgT > 0) { B.plimchgT -= 0.25; if (B.plimchgT <= 0) clear('plimchg'); }
-  /* HiFlowO2: no breath monitoring; disconnection and apnea alarms are inactive (10.5) */
+  /* HiFlowO2: no breath monitoring; disconnection and apnoea alarms are inactive (10.5) */
   if (isHFO()) { PATIENT_ALARMS.forEach(clear); return; }
   const base = baseP();
   if (B.peepNow < base - 3) B.lossPeepT += 0.25; else B.lossPeepT = 0;
@@ -1602,7 +1602,7 @@ function renderWindow() {
     const mc = modeCtrls(mk, psync);
     const tl = [['basic', 'Basic']];
     if (mc.more.length) tl.push(['more', 'More']);
-    if (BACKUP_MODES.includes(mk)) tl.push(['apnoea', 'Apnea']);
+    if (BACKUP_MODES.includes(mk)) tl.push(['apnoea', 'Apnoea']);
     tl.push(['patient', 'Patient']);
     if (!tl.some(t => t[0] === winTab)) winTab = 'basic';
     const title = isDraft ? (D.cpr ? '<b>CPR ventilation</b>: review, then Confirm' : 'New mode: <b>' + esc(mName(mode)) + '</b> (not active until confirmed)') : 'Controls · ' + esc(modeLabel());
@@ -1611,7 +1611,7 @@ function renderWindow() {
     if (winTab === 'apnoea') {
       const bk = mk === 'NIV' ? 'PCV+' : 'SIMV+ (APVsimv)';
       body = `<div class="wrow" style="margin-top:6px"><span>Backup</span><button class="wb ${V.backupOn ? 'green' : ''}" data-kf data-backup="on">On</button><button class="wb ${!V.backupOn ? 'green' : ''}" data-kf data-backup="off">Off</button><span class="wnote" style="margin:0 0 0 10px">Backup mode: <b>${bk}</b> · Automatic</span></div>
-        <p class="wnote">With Apnea backup on, if no breath occurs within the Apnea time (Alarms &gt; Limits 1), the ventilator switches to backup ventilation in ${bk}, shows the low-priority alarm "Apnea ventilation", and returns to ${esc(mName(mk))} after two consecutive patient-triggered breaths ("Apnea ventilation ended"). With backup off, a high-priority "Apnea" alarm is generated instead. With Automatic on, the device sets the backup controls from IBW; the manual does not list them, so in this trainer backup breaths are ${mk === 'NIV' ? 'ΔPsupport (at least 10 cmH2O)' : 'Vt 8 ml/kg IBW'} at the default rate for IBW.</p>`;
+        <p class="wnote">With Apnoea backup on, if no breath occurs within the Apnoea time (Alarms &gt; Limits 1), the ventilator switches to backup ventilation in ${bk}, shows the low-priority alarm "Apnoea ventilation", and returns to ${esc(mName(mk))} after two consecutive patient-triggered breaths ("Apnoea ventilation ended"). With backup off, a high-priority "Apnoea" alarm is generated instead. With Automatic on, the device sets the backup controls from IBW; the manual does not list them, so in this trainer backup breaths are ${mk === 'NIV' ? 'ΔPsupport (at least 10 cmH2O)' : 'Vt 8 ml/kg IBW'} at the default rate for IBW.</p>`;
     } else if (winTab === 'patient') {
       body = `<div class="wrow" style="margin-top:6px"><span style="min-width:80px">Sex</span><button class="wb ${V.sex === 'Male' ? 'green' : ''}" data-kf data-sex="Male">Male</button><button class="wb ${V.sex === 'Female' ? 'green' : ''}" data-kf data-sex="Female">Female</button></div>
         <div class="wrow" style="margin-top:6px">${ctlHTML('wctl', 'height', isDraft ? 'draft' : 'ctrl', src.height)}<span class="ibw">${calcIBW()}<small>IBW (kg)</small></span></div>`;
@@ -1714,7 +1714,7 @@ function controlsNote(mode, mk, s, psync, tab, tp, plim, isDraft) {
     const ibw = calcIBW();
     parts.push(`Target MinVol = IBW ${ibw} kg × 0.1 l/kg/min × ${s.minvol}% = ${fmt(ibw * 0.1 * s.minvol / 100, 1)} l/min. ASV chooses rate, Vt, TI and ΔPinsp within lung-protective limits (max ΔPinsp = Plimit ${plim} − PEEP).` + (live ? ` Now: target f ${fmt(A.fTarget)} b/min, Vt ${fmt(A.vtTarget * 1000)} ml, ΔPinsp ${fmt(A.p)} cmH2O.` : ''));
   }
-  if (mode === 'HiFlowO2') parts.push('HiFlowO2 delivers a continuous flow through a nasal cannula. It is not life-supporting: disconnection and apnea alarms are inactive, and Manual breath is disabled.');
+  if (mode === 'HiFlowO2') parts.push('HiFlowO2 delivers a continuous flow through a nasal cannula. It is not life-supporting: disconnection and apnoea alarms are inactive, and Manual breath is disabled.');
   if (tp !== null) parts.push(`Total inspiratory pressure ${tp} cmH2O; Plimit ${plim} cmH2O (high Pressure alarm − 10).` + (tp > plim ? ' <b>Total pressure exceeds Plimit: delivered pressure will be limited.</b>' : ''));
   return parts.join(' ');
 }
@@ -1741,7 +1741,7 @@ function applyDraft() {
   if (leaving) { V.lim = {...V.cpr.prevLim}; V.cpr = null; clear('cpron'); }
   if (entering) {
     V.cpr = {t0:B.now, prevLim:{...V.lim}, prevSet:{...V.set}};
-    Object.assign(V.lim, {mvhigh:99999, mvlow:0, fhigh:99, flow:0, vthigh:99999, vtlow:0});   /* Apnea time: Tables 10-3 / 15-15 list 10 s for CPR, but 10.9.2 says neonates; it has no effect in APVcmv/PCV+ here */
+    Object.assign(V.lim, {mvhigh:99999, mvlow:0, fhigh:99, flow:0, vthigh:99999, vtlow:0});   /* Apnoea time: Tables 10-3 / 15-15 list 10 s for CPR, but 10.9.2 says neonates; it has no effect in APVcmv/PCV+ here */
   }
   const plimOld = V.lim.phigh - 10;
   V.set = {...D.set}; V.mode = D.mode; V.psync = D.psync; V.sigh = D.sigh;
@@ -1756,7 +1756,7 @@ function applyDraft() {
   if (nIf !== oldIf) {
     if (nIf === 'inv') addPrompt('Invasive mode: this trainer now assumes the patient has been intubated (the NIV patient scenarios are written for a mask). The leak buttons act as a leak at the tube or circuit. Disconnection on patient side and Inspiratory volume limitation now apply.');
     if (nIf === 'niv') addPrompt('Noninvasive mode: the trainer assumes a non-vented mask. Volume alarms are less meaningful; set the low Pressure limit near the set pressure.');
-    if (nIf === 'hfo') addPrompt('HiFlowO2: the trainer assumes a nasal cannula. There is no pressure support. Only Oxygen and Flow are monitored, and disconnection and apnea alarms are inactive.');
+    if (nIf === 'hfo') addPrompt('HiFlowO2: the trainer assumes a nasal cannula. There is no pressure support. Only Oxygen and Flow are monitored, and disconnection and apnoea alarms are inactive.');
   }
   if (entering && V.standby) { startVentilation(); return; }
   win = null; closeWin(); updateTasks();
@@ -1897,7 +1897,7 @@ $('#screen').addEventListener('click', e => {
   if (b.dataset.open) { if (win === b.dataset.open && !b.closest('#win')) { closeWin(); return; } openWin(b.dataset.open, b.dataset.tab); return; }
   if (b.dataset.tab) { winTab = b.dataset.tab; helpFor = null; renderWindow(); return; }
   if (b.dataset.sex) { V.sex = b.dataset.sex; renderAll(); return; }
-  if (b.dataset.backup) { V.backupOn = b.dataset.backup === 'on'; logEvent('Apnea backup ' + (V.backupOn ? 'on' : 'off'), 'info'); renderWindow(); return; }
+  if (b.dataset.backup) { V.backupOn = b.dataset.backup === 'on'; logEvent('Apnoea backup ' + (V.backupOn ? 'on' : 'off'), 'info'); renderWindow(); return; }
   if (b.dataset.loud) { V.loud = +b.dataset.loud; renderWindow(); return; }
   if (b.dataset.gfx) { V.gfx = b.dataset.gfx; closeWin(); return; }
   if (b.dataset.spo2) { V.spo2On = b.dataset.spo2 === 'on'; renderAll(); return; }
@@ -1936,7 +1936,7 @@ function autoLimits() {
   V.lim.fhigh = clamp(Math.round(M.ftot * 1.4 + 5), 2, 99);
   V.lim.flow = clamp(Math.round(M.ftot * 0.6), 0, V.lim.fhigh - 1);
   logEvent('Alarm limits set with Auto', 'info');
-  addPrompt('Auto set the alarm limits around the current values (Vt and Apnea limits are not changed). The manual warns that automatic limits are not appropriate in all situations: check them, and in NIV set the low Pressure limit yourself. (This trainer\'s Auto rules are illustrative.)');
+  addPrompt('Auto set the alarm limits around the current values (Vt and Apnoea limits are not changed). The manual warns that automatic limits are not appropriate in all situations: check them, and in NIV set the low Pressure limit yourself. (This trainer\'s Auto rules are illustrative.)');
   renderAll();
 }
 

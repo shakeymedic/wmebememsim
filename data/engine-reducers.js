@@ -502,8 +502,8 @@
             case 'CLEAR_SESSION': return { ...initialLogState };
             case 'LOAD_SCENARIO': return { ...initialLogState };
             case 'RESTORE_SESSION': return { log: action.payload.log || [], history: action.payload.history || [] };
-            case 'START_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: clockText(sessionSeconds(cs)), msg: "Simulation Started", type: 'system', timeSeconds: sessionSeconds(cs) }] };
-            case 'PAUSE_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString(), simTime: clockText(sessionSeconds(cs)), msg: "Simulation Paused", type: 'system', timeSeconds: sessionSeconds(cs) }] };
+            case 'START_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString('en-GB'), simTime: clockText(sessionSeconds(cs)), msg: "Simulation Started", type: 'system', timeSeconds: sessionSeconds(cs) }] };
+            case 'PAUSE_SIM': return { ...state, log: [...state.log, { time: new Date().toLocaleTimeString('en-GB'), simTime: clockText(sessionSeconds(cs)), msg: "Simulation Paused", type: 'system', timeSeconds: sessionSeconds(cs) }] };
             case 'ADD_LOG': 
                 const timestamp = new Date().toLocaleTimeString('en-GB'); 
                 const tLog = sessionSeconds(cs);

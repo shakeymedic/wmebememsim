@@ -770,7 +770,7 @@
                                 <Lucide icon="zap" className="text-red-500" /> Manual Defibrillator
                             </div>
                             <div className="text-red-500 font-mono font-bold animate-pulse text-xl">MANUAL DEFIBRILLATOR MODE</div>
-                            <div className="text-slate-400">{new Date().toLocaleTimeString()}</div>
+                            <div className="text-slate-400">{new Date().toLocaleTimeString('en-GB')}</div>
                         </div>
 
                         {/* Lead II and pads, plus the capnogram when capnography is attached: during

@@ -262,8 +262,8 @@ window.INTERVENTIONS = {
     // surface cooling starts removing heat within a minute, so 60 s of dead time is the honest value;
     // the declared rates themselves (1.5 degC/h warming, 2.0 degC/h cooling) are unchanged and are
     // now actually achieved. DRIVE_RAMP_SECONDS in engine.js is also reduced, 300s -> 120s.
-    'Warming': { label: 'Active Warming', route: 'external', effect: { Temp: 3 }, category: 'Procedures', log: 'Active warming started (forced-air warming / warmed fluids). Warms at ~1.5 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 10800, offset: 3600 }, drive: { vital: 'temp', ratePerHour: 1.5, target: 36.8 } },
-    'Cooling': { label: 'Active Cooling', route: 'external', effect: { Temp: -3 }, category: 'Procedures', log: 'Active cooling started. Cools at ~2.0 \u00b0C/h toward 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 7200, offset: 3600 }, drive: { vital: 'temp', ratePerHour: -2.0, target: 36.8 } },
+    'Warming': { label: 'Active Warming', route: 'external', effect: { Temp: 3 }, category: 'Procedures', log: 'Active warming started (forced-air warming / warmed fluids). Warms at ~1.5 \u00b0C/h towards 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 10800, offset: 3600 }, drive: { vital: 'temp', ratePerHour: 1.5, target: 36.8 } },
+    'Cooling': { label: 'Active Cooling', route: 'external', effect: { Temp: -3 }, category: 'Procedures', log: 'Active cooling started. Cools at ~2.0 \u00b0C/h towards 36.8 \u00b0C.', type: 'continuous', duration: 600, pk: { onset: 60, peak: 7200, offset: 3600 }, drive: { vital: 'temp', ratePerHour: -2.0, target: 36.8 } },
     'CPR': { label: 'Start CPR', route: 'manual', effect: { BP: 40, cpr: true }, category: 'Procedures', log: 'Chest compressions started.', type: 'continuous', duration: 5 },
     'Splinting': { label: 'Splint / Immobilise', route: 'external', effect: {}, category: 'Procedures', log: 'Limb splinted / immobilised.', type: 'continuous', duration: 60 },
     // Shown on the controller's patient picture (data/screens/injuries.js) on the injured leg.

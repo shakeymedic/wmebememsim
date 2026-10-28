@@ -531,7 +531,7 @@ const CTRL = {
   ets:   {label:'Insp term', unit:'%', min:5, max:80, step:5, tip:'A supported breath ends when the inspiratory flow has fallen to this percentage of its peak.'},
   pramp: {label:'Slope', unit:'s', min:0, max:2, step:0.1, dp:1, tip:'How quickly the pressure rises at the start of a pressure breath, in seconds.'},
   pause: {label:'%Tplat', unit:'%', min:0, max:60, step:5, tip:'The part of each volume-controlled breath held as a plateau with no flow, so the plateau pressure (Pplat) can be read.'},
-  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true, tip:'The minimum breathing rate in PSV. If the patient breathes more slowly, the machine gives pressure-controlled breaths at this rate (Apnea Ventilation).'},
+  rrmin: {label:'RRmin', unit:'/min', min:3, max:25, step:1, off0:true, tip:'The minimum breathing rate in PSV. If the patient breathes more slowly, the machine gives pressure-controlled breaths at this rate (Apnoea Ventilation).'},
   o2:    {label:'FG O2', unit:'%', min:21, max:100, step:1, tip:'The oxygen concentration of the fresh gas from the mixer. With N2O as the carrier gas it cannot be set below 25%.'},
   fgf:   {label:'FG flow', unit:'L/min', min:0.2, max:15, step:v => v >= 2 ? 0.5 : 0.1, dp:2, off0:true, tip:'The total fresh-gas flow into the breathing system. At low flows the patient rebreathes their own gas, so the inspired oxygen and agent change slowly.'},
   carrier:{label:'Carrier gas', unit:'', list:[0, 1], names:['Air', 'N2O'], tip:'The gas mixed with the oxygen in the fresh gas: Air or nitrous oxide (N2O).'},
@@ -550,7 +550,7 @@ function ctrlDef(key, mk, src) {
   return d;
 }
 /* alarm limits ([IFU2] pp. 211-212 and 216). MV limits start at VT x RR x (1 ± 40%), at least 2.0 / 0.3 L/min,
-   and MV high starts Off ([IFU2] p. 202). The Apnea time is not a setting here: 20 s is the simulator's. */
+   and MV high starts Off ([IFU2] p. 202). The Apnoea time is not a setting here: 20 s is the simulator's. */
 const mvStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 10 ? 1 : (dir > 0 ? v : v - 0.001) >= 1 ? 0.5 : 0.1;
 const vtStep = (v, dir) => (dir > 0 ? v : v - 0.001) >= 500 ? 50 : (dir > 0 ? v : v - 0.001) >= 100 ? 10 : 5;
 const ALIM = {
@@ -617,7 +617,7 @@ const NIVMODES = [];
 /* the modes a face mask suits (an awake patient with no airway): Man/Spon and CPAP/PSV; the others expect a tube or SGA */
 const MASK_MODES = ['MAN', 'SPONT'];
 const INVASIVE = ['MAN', 'SCMV', 'SIMV', 'APVcmv', 'APVsimv', 'PCV+', 'PSIMV+', 'SPONT'];
-const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnea in Man/Spon; RRmin backup in PSV */
+const BACKUP_MODES = ['MAN', 'SPONT'];   /* Apnoea in Man/Spon; RRmin backup in PSV */
 const SIGH_MODES = [];
 const isNIV = () => false;
 const isHFO = () => false;
@@ -1058,7 +1058,7 @@ function startOverlay(effort) {
   /* in APRV the trigger setting is only used to count spontaneous breaths */
   if (!V.cpr && V.set.trig > 0 && effort >= V.set.trig) {
     B.lastStart = B.now; recordStart('spont', vol); trigMark = 1; B.trigFlash = 0.35;
-    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnoea ventilation ended', 'low'); } }
     clear('apnea');
   }
 }
@@ -1170,7 +1170,7 @@ function effortHappens() {
   const triggered = m === 'MAN' ? effort > 0 : !V.cpr && !CMV_MODES.includes(m) && V.set.trig > 0 && effort >= V.set.trig;
   pushLog(B.missLog, !triggered);
   if (triggered) {
-    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnea ventilation ended', 'low'); } }
+    if (B.apnoeaVent) { B.consecTrig++; if (B.consecTrig >= 2) { B.apnoeaVent = false; clear('apvent'); logEvent('Apnoea ventilation ended', 'low'); } }
     clear('apnea');
     startBreath(triggeredKind());
   } else {
@@ -1221,9 +1221,9 @@ function engineStep(dt) {
       }
     }
     else if (mt && since >= mt.cycle) startBreath('mand');
-    /* apnea: no breath within the Apnea time in the modes that have Apnea backup */
+    /* apnea: no breath within the Apnoea time in the modes that have Apnoea backup */
     if (B.phase === 'exp' && BACKUP_MODES.includes(m) && !V.cpr && !B.apnoeaVent && B.now - B.lastStart >= (V.backupOn ? 60 / backupSet().rate : V.lim.apnoea)) {
-      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }   /* Apnea itself: evalAlarms (no breath and no CO2) */
+      if (V.backupOn) { B.apnoeaVent = true; B.consecTrig = 0; raise('apvent'); startBreath('mand'); }   /* Apnoea itself: evalAlarms (no breath and no CO2) */
     }
     if (B.phase === 'exp' && B.t > 0.4 && !V.cpr && s.trig > 0 && m !== 'MAN' && !CMV_MODES.includes(m)) {
       let lam = 0;
@@ -1343,9 +1343,9 @@ const ALARMS = {
   pcont:    {t:'Airway press. continuously high', p:'hi', f:'peep'},
   plow:     {t:'Airway pressure not achieved', p:'med', f:'pip'},
   plimit:   {t:'Tidal volume not achieved', p:'med', f:'vt'},
-  apnea:    {t:'Apnea', p:'med'},
-  apnea2:   {t:'Apnea', p:'hi'},                                      /* the IFU: !! escalating to !!! */
-  apvent:   {t:'Apnea Ventilation', p:'med'},                         /* RRmin backup breaths in PSV */
+  apnea:    {t:'Apnoea', p:'med'},
+  apnea2:   {t:'Apnoea', p:'hi'},                                      /* the IFU: !! escalating to !!! */
+  apvent:   {t:'Apnoea Ventilation', p:'med'},                         /* RRmin backup breaths in PSV */
   mvlow:    {t:'Minute volume low', p:'med', f:'mv'},
   mvhigh:   {t:'Minute volume high', p:'med', f:'mv'},
   o2low:    {t:'FiO2 low', p:'hi', f:'o2'},
@@ -1435,7 +1435,7 @@ function evalAlarms() {
   const settled = B.now - V.caseStart > 45 && B.now - V.modeSince > 45;
   if (et !== null && L.etco2high <= ALIM.etco2high.max && et > L.etco2high) raise('etco2high'); else clear('etco2high');
   if (et !== null && L.etco2low > 0 && et > 0.5 && et < L.etco2low && settled) raise('etco2low'); else clear('etco2low');
-  /* Apnea: no breath and no CO2 for the Apnea time (20 s, the simulator's); !! then !!! after another 30 s */
+  /* Apnoea: no breath and no CO2 for the Apnoea time (20 s, the simulator's); !! then !!! after another 30 s */
   const sinceBreath = B.now - Math.max(B.lastStart, V.caseStart), sinceCO2 = B.now - Math.max(G.lastCO2, V.caseStart, V.modeSince);
   const apnoeic = (m === 'MAN' && sinceBreath >= L.apnoea) || (sinceBreath >= L.apnoea && !V.backupOn) || sinceCO2 >= L.apnoea + 10;
   if (apnoeic) { G.apneaT += dt; if (G.apneaT > 30) { clear('apnea'); raise('apnea2'); } else raise('apnea'); }
@@ -1859,7 +1859,7 @@ function renderWindow() {
   let h = '';
   if (win === 'start') {
     h = X + `<div class="wtitle">Start</div><div class="wbody">
-      <div class="wrow"><button class="wb green" data-kf id="stNew" data-tip="New adult: resets the settings and alarm limits to the factory start values.">New adult</button><button class="wb" disabled title="Not simulated">New pediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont" data-tip="Continue case: keeps the last settings.">Continue case</button></div>
+      <div class="wrow"><button class="wb green" data-kf id="stNew" data-tip="New adult: resets the settings and alarm limits to the factory start values.">New adult</button><button class="wb" disabled title="Not simulated">New paediatric</button><button class="wb" disabled title="Not simulated">New neonate</button><button class="wb" data-kf id="stCont" data-tip="Continue case: keeps the last settings.">Continue case</button></div>
       <div class="wgrp">Patient data</div>
       <div class="wrow">${ctlHTML('age', 'ctrl', V.set.age)}${ctlHTML('height', 'ctrl', V.set.height)}
         <button class="wb ${V.sex === 'Male' ? 'green' : ''}" data-kf data-sex="Male">Male</button><button class="wb ${V.sex === 'Female' ? 'green' : ''}" data-kf data-sex="Female">Female</button></div>
