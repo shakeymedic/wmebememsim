@@ -424,6 +424,9 @@
         // tablet layouts ignore these.
         const [phoneTrace, setPhoneTrace] = useState(false);
         const [phoneRhythms, setPhoneRhythms] = useState(false);
+        // The one-line Quick Sim patient strip truncates the name on a phone; tapping it opens the
+        // full details (Jake's request, 28 Oct 2026).
+        const [quickInfoOpen, setQuickInfoOpen] = useState(false);
         const [showArrestMenu, setShowArrestMenu] = useState(false);
         const [showROSCMenu, setShowROSCMenu] = useState(false);
         const [searchResults, setSearchResults] = useState([]);
@@ -1355,13 +1358,52 @@
                              patient strip. No brief, no diagnosis, no human-factors challenge — none
                              of those exist without a scenario. */}
                          {quickSim ? (
-                         <div className={`flex-none bg-slate-800 rounded border-l-4 border-sky-500 shadow-md flex items-center justify-between gap-2 ${shortScreen ? 'px-2 py-1' : 'p-2'}`} data-testid="quicksim-patient">
+                         <div className="flex-none bg-slate-800 rounded border-l-4 border-sky-500 shadow-md" data-testid="quicksim-patient">
+                         {/* The whole line is a button: tap it to show the full name, the patient line,
+                             the WETFLAG values for a child and the ventilator sim's description. */}
+                         <button type="button" onClick={() => setQuickInfoOpen(v => !v)} aria-expanded={quickInfoOpen} data-testid="quicksim-toggle"
+                                 title={quickInfoOpen ? 'Hide the patient details' : 'Show the full patient details'}
+                                 className={`w-full text-left flex items-center justify-between gap-2 rounded hover:bg-slate-700/40 ${shortScreen ? 'px-2 py-1' : 'p-2'}`}>
                             {/* One line on a laptop, so the investigations fit above Rhythm & resus */}
-                            <div className={`min-w-0 ${shortScreen ? 'flex items-baseline gap-2' : ''}`}>
+                            <div className={`min-w-0 ${shortScreen && !quickInfoOpen ? 'flex items-baseline gap-2' : ''}`}>
                                 <div className="text-[9px] font-bold text-sky-400 uppercase tracking-widest flex items-center gap-1 flex-none"><Lucide icon="sliders" className="w-3 h-3"/> {rawScenario && rawScenario.ventSim ? `Ventilator Sim — ${rawScenario.ventSim.name}` : 'Quick Sim — no scenario'}</div>
-                                <div className="text-sm text-white font-bold truncate">{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex}{scenario.wetflag?.weight ? `, ${scenario.wetflag.weight} kg` : ''})</div>
+                                <div className={`text-sm text-white font-bold ${quickInfoOpen ? 'break-words' : 'truncate'}`}>{scenario.patientName} ({window.shortAge(scenario.patientAge)} {scenario.sex}{scenario.wetflag?.weight ? `, ${scenario.wetflag.weight} kg` : ''})</div>
                             </div>
-                            {isPaeds && <span className="flex-none text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
+                            <span className="flex-none flex items-center gap-1">
+                                {isPaeds && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-950/60 border border-purple-600 text-purple-300 uppercase font-bold tracking-wider">paeds · wetflag</span>}
+                                <Lucide icon={quickInfoOpen ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-slate-400"/>
+                            </span>
+                         </button>
+                         {quickInfoOpen && (
+                            <div className="px-2 pb-2 text-xs text-slate-300 space-y-2" data-testid="quicksim-details">
+                                <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+                                    <span className="text-slate-400">Name</span><span className="text-white break-words">{scenario.patientName}</span>
+                                    <span className="text-slate-400">Age</span><span className="text-white">{window.formatAge ? window.formatAge(scenario.patientAge) : window.shortAge(scenario.patientAge)}</span>
+                                    <span className="text-slate-400">Sex</span><span className="text-white">{scenario.sex}</span>
+                                    <span className="text-slate-400">Weight</span><span className="text-white">{(scenario.wetflag?.weight || scenario.weight) ? `${scenario.wetflag?.weight || scenario.weight} kg` : 'Not set (adult)'}</span>
+                                </div>
+                                {rawScenario && rawScenario.ventSim && rawScenario.ventSim.description && <p>{rawScenario.ventSim.description}</p>}
+                                {scenario.profile && <p>{scenario.profile}</p>}
+                                {isPaeds && scenario.wetflag && (
+                                    <div className="rounded border border-purple-700/60 bg-purple-950/30 p-2">
+                                        <div className="text-[10px] font-bold text-purple-300 uppercase tracking-wider mb-1">WETFLAG ({scenario.wetflag.weight} kg)</div>
+                                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                                            <span>Energy <b className="text-white">{scenario.wetflag.energy} J</b></span>
+                                            <span>Tube <b className="text-white">{scenario.wetflag.tube || '--'}</b></span>
+                                            <span>Fluids <b className="text-white">{scenario.wetflag.fluids} ml</b></span>
+                                            <span>Lorazepam <b className="text-white">{scenario.wetflag.lorazepam} mg</b></span>
+                                            <span>Adrenaline <b className="text-white">{scenario.wetflag.adrenaline} mcg</b></span>
+                                            <span>Glucose <b className="text-white">{scenario.wetflag.glucose} ml</b></span>
+                                        </div>
+                                        <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-slate-400">
+                                            <span>{showWetflag ? 'Shown on the patient monitor.' : 'Not shown on the patient monitor.'}</span>
+                                            <button type="button" onClick={() => sim.dispatch({type: 'SET_WETFLAG_VISIBILITY', payload: !showWetflag})} data-testid="quicksim-wetflag-toggle"
+                                                    className="px-2 py-0.5 rounded border border-purple-600 text-purple-300 uppercase font-bold">{showWetflag ? 'Hide' : 'Show'}</button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                         )}
                          </div>
                          ) : null}
                          {/* A library or course scenario: who the patient is, the story and the whole brief

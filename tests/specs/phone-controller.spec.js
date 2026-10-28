@@ -102,3 +102,48 @@ test('the debrief on a phone: header stacks, buttons fit, the page scrolls as on
   await expect(popup.locator('h2')).toContainText('Simulation Debrief Report');
   expect(errors).toEqual([]);
 });
+
+test('the Quick Sim patient line opens on a tap to show the full details and WETFLAG', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
+  await page.getByLabel('Age (years)').fill('4');
+  await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+
+  const toggle = page.getByTestId('quicksim-toggle');
+  const details = page.getByTestId('quicksim-details');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await expect(details).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(details).toBeVisible();
+  await expect(details).toContainText('Quick Sim Patient');
+  await expect(details).toContainText('4 years');
+  await expect(details).toContainText('WETFLAG');
+  await expect(details).toContainText('Adrenaline');
+
+  // Show/Hide puts the WETFLAG card on the patient monitor and takes it off again.
+  await page.getByTestId('quicksim-wetflag-toggle').click();
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.showWetflag)).toBe(true);
+  await page.getByTestId('quicksim-wetflag-toggle').click();
+  await expect.poll(() => page.evaluate(() => window.__simEngine.state.showWetflag)).toBe(false);
+
+  await toggle.click();
+  await expect(details).toBeHidden();
+  expect(await noSideScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a 17-year-old in Quick Sim is still paediatric: the WETFLAG opens from the patient line', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
+  await page.getByLabel('Age (years)').fill('17');
+  await page.getByRole('button', { name: 'Start Quick Sim' }).click();
+  await page.getByTestId('quicksim-toggle').click();
+  const details = page.getByTestId('quicksim-details');
+  await expect(details).toContainText('WETFLAG (50 kg)');            // RCUK chart "adolescent" weight
+  await page.screenshot({ path: test.info().outputPath('quicksim-17-open.png'), fullPage: false });
+  expect(await noSideScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
