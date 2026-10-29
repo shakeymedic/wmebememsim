@@ -127,7 +127,12 @@
         'ct-dissection-b': Object.assign({ modality: 'CT' }, C('JasonRobertYoungMD', 'CC BY-SA 4.0', 'Descending (Type B Stanford) Aortic Dissection.PNG', 'Cropped to the axial image and a drawn circle removed')),
         'ct-lung-contusion': Object.assign({ modality: 'CT' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'PulmonaryContusion2022.jpg', 'An arrow removed; resized')),
         'ct-retropharyngeal': Object.assign({ modality: 'CT' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'LargeRetroAbsTra.png')),
-        'ct-nec-fasc': Object.assign({ modality: 'CT' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'Necrotising fascitis producing gas in soft tissues.jpg'))
+        'ct-nec-fasc': Object.assign({ modality: 'CT' }, C('James Heilman, MD', 'CC BY-SA 4.0', 'Necrotising fascitis producing gas in soft tissues.jpg')),
+        // Normal chest X-rays for the youngest patients (an adult film is the wrong picture for a baby).
+        'cxr-normal-neonate': Object.assign({ modality: 'X-ray' }, C('Cerevisae', 'CC BY-SA 4.0', 'Normal neonatal chest x-ray.jpg', 'Re-saved, not resized')),
+        'ct-dissection-a': Object.assign({ modality: 'CT' }, C('James Heilman, MD', 'CC BY-SA 3.0', 'TypeAdissection.png', 'Two arrows removed (filled from the surrounding image); resized')),
+        'us-morison-fluid': Object.assign({ modality: 'POCUS' }, C('James Heilman, MD', 'CC BY-SA 3.0', 'FluidMorisonsPouchEctop.PNG', 'An arrow removed (filled from the surrounding image)')),
+        'cxr-normal-infant': Object.assign({ modality: 'X-ray' }, C('Nausheen Khan, Dimakatso C Thebe, Farhanah Suleman and Irma van de Werke (S Afr J Radiol 2015;19:803)', 'CC BY 4.0', 'X-ray of an infant with a prominent thymus.jpg', 'Two arrows removed (filled from the surrounding film)'))
     };
     Object.keys(IMAGES).forEach(k => { IMAGES[k].src = `images/investigations/${k}.jpg`; });
     // Ultrasound clips: a short silent animated WebP the room monitor plays in place of the still.
@@ -141,6 +146,9 @@
     const FINDINGS = {
         'X-ray': [
             F('cxr-normal', 'Normal chest X-ray', 'Chest X-ray (PA): normal. Clear lung fields, normal heart size and mediastinum. No pneumothorax, consolidation or effusion.', 'cxr-normal'),
+            F('cxr-normal-neonate', 'Normal chest X-ray (newborn)', 'Chest X-ray (AP supine, newborn): normal. Clear lungs, normal heart size and mediastinum. No pneumothorax, consolidation or effusion.', 'cxr-normal-neonate'),
+            F('cxr-normal-infant', 'Normal chest X-ray (infant)', 'Chest X-ray (infant): normal. Clear lungs and normal heart size. The broad upper mediastinum is a prominent thymus, which is normal at this age and not a mass.', 'cxr-normal-infant'),
+            F('cxr-normal-child', 'Normal chest X-ray (child, written report)', 'Chest X-ray: normal for age. Clear lung fields, normal heart size and mediastinum. No pneumothorax, consolidation or effusion.'),
             F('cxr-ptx-tension', 'Tension pneumothorax (right)', 'Chest X-ray: large right pneumothorax. The right lung has collapsed towards the hilum, with no lung markings beyond it, and the mediastinum is shifted to the left. Small fluid level at the right base.', 'cxr-ptx-tension'),
             F('cxr-ptx-simple', 'Pneumothorax (right, no shift)', 'Chest X-ray: right pneumothorax. A visceral pleural edge is visible with no lung markings beyond it. No mediastinal shift.', 'cxr-ptx-simple'),
             F('cxr-ptx-spontaneous', 'Pneumothorax (left, moderate)', 'Chest X-ray: moderate left pneumothorax with partial collapse of the left lung and slight shift of the mediastinum to the right.', 'cxr-ptx-spontaneous'),
@@ -165,6 +173,12 @@
             F('cxr-rib-fractures', 'Multiple rib fractures (no pneumothorax)', 'Chest X-ray: multiple rib fractures, including a segmental (flail) section. No pneumothorax or haemothorax on this film.'),
             F('cxr-rib-fractures-left', 'Multiple left rib fractures', 'Chest X-ray (erect): fractures of the left 2nd to 10th ribs, with marked displacement of the 5th to 7th ribs.', 'cxr-rib-fractures-left'),
             F('cxr-blast-lung', 'Blast lung', "Chest X-ray: bilateral perihilar ('butterfly') airspace shadowing in keeping with blast lung. No pneumothorax."),
+            F('cxr-haemoptysis', 'Haemoptysis: hilar mass with aspirated blood', 'Chest X-ray: a right hilar mass with patchy airspace shadowing in the right lung. In a smoker with massive haemoptysis, a central tumour with aspirated blood.'),
+            F('cxr-acs-child', 'Acute chest syndrome (child)', 'Chest X-ray: new consolidation in the left lower zone. In sickle cell disease with chest pain, fever and hypoxia, acute chest syndrome.'),
+            F('cxr-contusion-child', 'Pulmonary contusion (child)', 'Chest X-ray (supine): patchy airspace shadowing in the left lung in keeping with pulmonary contusion. Rib fractures are not seen (a child\'s ribs bend rather than break). No pneumothorax.'),
+            F('cxr-aspiration-child', 'Drowning: aspiration (child)', 'Chest X-ray: bilateral patchy airspace opacities, most marked in the lower zones, in keeping with aspiration after drowning.'),
+            F('cxr-neonate-cardiac', 'Cardiomegaly with congestion (newborn)', 'Chest X-ray (newborn): enlarged heart with increased, hazy pulmonary vascular markings (venous congestion). In a collapsed newborn, think of duct-dependent congenital heart disease.'),
+            F('cxr-effusions', 'Small bilateral pleural effusions', 'Chest X-ray: small bilateral pleural effusions blunting both costophrenic angles. Lungs otherwise clear.'),
             F('cxr-svco', 'Right upper mediastinal mass (SVCO)', 'Chest X-ray: widening of the right upper mediastinum from a mass next to the trachea. In a patient with lung cancer, in keeping with tumour causing SVC obstruction.', 'cxr-svco'),
             F('xr-neck-croup', 'Croup: steeple sign (neck X-ray)', 'AP neck X-ray (child): subglottic narrowing of the trachea (steeple sign). Croup is a clinical diagnosis; imaging is not needed.', 'xr-neck-croup'),
             F('xr-neck-epiglottitis', 'Epiglottitis: thumb sign (lateral neck)', "Lateral neck X-ray (soft tissue): swollen epiglottis (thumb sign). Do not delay airway management for imaging.", 'xr-neck-epiglottitis'),
@@ -178,6 +192,7 @@
         ],
         'CT': [
             F('ct-normal-head', 'Normal CT head', 'CT head (non-contrast): no acute intracranial abnormality. No haemorrhage, mass effect or established infarct.', 'ct-normal-head'),
+            F('ct-normal-head-child', 'Normal CT head (child, written report)', 'CT head (non-contrast): normal for age. No haemorrhage, skull fracture, mass effect or established infarct.'),
             F('ct-sah', 'Subarachnoid haemorrhage', 'CT head (non-contrast): hyperdense blood in the basal cisterns, extending into both Sylvian fissures. Acute subarachnoid haemorrhage.', 'ct-sah'),
             F('ct-dense-mca', 'Acute stroke: dense left MCA', 'CT head (non-contrast): hyperdense left middle cerebral artery (dense MCA sign), from acute thrombus. No haemorrhage.', 'ct-dense-mca'),
             F('ct-ich', 'Intracerebral haemorrhage (right)', 'CT head (non-contrast): large right basal ganglia intraparenchymal haemorrhage with surrounding oedema and mass effect, compressing the right lateral ventricle.', 'ct-ich'),
@@ -190,7 +205,7 @@
             F('ct-spleen', 'Splenic rupture', 'CT abdomen (contrast, portal venous phase): splenic rupture with a subcapsular haematoma. Bilateral pleural effusions.', 'ct-spleen'),
             F('ct-cerebellar', 'Cerebellar infarct (left)', 'CT head: low density in the left cerebellar hemisphere. Posterior circulation (cerebellar) infarct, here from vertebral artery occlusion; watch for swelling and hydrocephalus. MRI recommended.', 'ct-cerebellar'),
             F('ct-aaa', 'Ruptured AAA', 'CT abdomen: large abdominal aortic aneurysm with a calcified wall, and haematoma in the left retroperitoneum beside it. Ruptured AAA.', 'ct-aaa'),
-            F('ct-dissection', 'Aortic dissection (type A)', 'CT aorta: intimal flap from the ascending aorta to the iliac bifurcation. Stanford type A dissection.'),
+            F('ct-dissection', 'Aortic dissection (type A)', 'CT aorta: intimal flap from the ascending aorta to the iliac bifurcation. Stanford type A dissection.', 'ct-dissection-a'),
             F('ct-dissection-b', 'Aortic dissection (type B)', 'CT chest (contrast): an intimal flap in the descending thoracic aorta, with the ascending aorta spared. Stanford type B dissection.', 'ct-dissection-b'),
             F('ct-aortic-injury', 'Traumatic aortic injury', 'CT aortogram: contained rupture of the aortic isthmus with a pseudoaneurysm and mediastinal haematoma.'),
             F('ct-perforation', 'Perforated viscus', 'CT abdomen: free intraperitoneal gas collecting under the anterior abdominal wall, in front of the liver. Perforated viscus.', 'ct-perforation'),
@@ -233,11 +248,13 @@
             F('us-aorta-normal', 'Aorta: normal calibre', 'Ultrasound aorta (transverse): normal calibre abdominal aorta. No aneurysm.', 'us-aorta-normal'),
             F('us-gallstones', 'Gallstones (no cholecystitis)', 'Ultrasound gallbladder: gallstones with acoustic shadowing and some sludge. No pericholecystic fluid.', 'us-gallstones'),
             F('us-cholecystitis', 'Acute cholecystitis', 'Ultrasound gallbladder: gallstones, a thickened gallbladder wall and pericholecystic fluid. Acute cholecystitis.', 'us-cholecystitis'),
+            F('us-ascites', 'Free fluid: ascites (liver disease)', "Abdominal ultrasound (right upper quadrant): free fluid between the liver and the right kidney. In this patient with liver disease, ascites.", 'us-fast-positive-2'),
+            F('us-ohss', 'Free fluid: ascites (OHSS)', "Abdominal ultrasound (right upper quadrant): free fluid between the liver and the right kidney. After IVF egg collection, ascites from ovarian hyperstimulation syndrome.", 'us-fast-positive-2'),
             F('us-cbd', 'Dilated bile duct', 'Ultrasound: gallstones with a dilated common bile duct (11 mm) and intrahepatic duct dilatation.'),
             F('us-hydronephrosis', 'Hydronephrosis', 'Ultrasound: right hydronephrosis with a dilated renal pelvis and calyces.'),
             F('us-bladder', 'Large bladder (retention)', 'Bladder ultrasound: distended bladder, estimated volume 1.4 litres. Bilateral mild hydronephrosis.'),
             F('us-bladder-trabeculated', 'Bladder: trabeculated wall', 'Bladder ultrasound: a full bladder with a thick, trabeculated wall, a sign of long-standing outflow obstruction and retention.', 'us-bladder-trabeculated'),
-            F('us-ectopic', 'Ectopic pregnancy', "Pelvic ultrasound: empty uterus with free fluid in the pouch of Douglas and Morison's pouch. With a positive pregnancy test, ruptured ectopic pregnancy."),
+            F('us-ectopic', 'Ectopic pregnancy', "Pelvic ultrasound: empty uterus with free fluid in the pouch of Douglas and Morison's pouch. With a positive pregnancy test, ruptured ectopic pregnancy. (Picture: the Morison's pouch view.)", 'us-morison-fluid'),
             F('us-ovarian-torsion', 'Ovarian torsion', 'Pelvic ultrasound: enlarged right ovary with peripheral follicles and reduced Doppler flow. Suspected ovarian torsion.'),
             F('us-intussusception', 'Intussusception (target sign)', 'Ultrasound abdomen (child): target (doughnut) sign, rings of bowel wall within bowel. Intussusception.', 'us-intussusception'),
             F('us-pyloric', 'Pyloric stenosis', 'Ultrasound abdomen (infant): thickened, elongated pylorus. Pyloric stenosis.', 'us-pyloric'),
@@ -255,6 +272,9 @@
             F('us-pericardial-effusion', 'Echo: large pericardial effusion', 'Echo (subcostal): a large pericardial effusion surrounding the heart, which swings within it.', 'us-pericardial-effusion'),
             F('us-tamponade', 'Pericardial effusion with tamponade', 'Echo (apical four-chamber): pericardial effusion with the right atrium collapsing in systole. Tamponade.', 'us-tamponade'),
             F('us-rv-dilated', 'Echo: dilated RV with clot in transit', 'Echo (apical four-chamber): markedly dilated right ventricle with the septum bowing into the left ventricle (right heart strain), and a mobile thrombus crossing the tricuspid valve. In keeping with massive PE.', 'us-rv-dilated'),
+            F('us-aortic-stenosis', 'Echo: severe aortic stenosis (written report)', 'Echo: a thickened, heavily calcified aortic valve that barely opens, with a thick-walled left ventricle that contracts well. In keeping with severe aortic stenosis; formal echo to grade it.'),
+            F('us-neonate-poor-lv', 'Echo: poor LV function (newborn, written report)', 'Echo (newborn): a poorly contracting left ventricle. In a collapsed newborn, presume a duct-dependent lesion until a paediatric cardiologist has scanned the heart.'),
+            F('us-arrest-effusion', 'Echo in arrest: pericardial effusion (written report)', 'Echo (subcostal, in a pulse check): a large pericardial effusion around a heart with little effective movement. After a stab wound to the chest, tamponade: resuscitative thoracotomy.'),
             F('us-poor-lv', 'Echo: poor LV function', 'Echo (parasternal long axis): mildly dilated left ventricle with globally poor systolic function.', 'us-poor-lv'),
             F('us-ivc-normal', 'IVC: normal, varies with breathing', 'IVC ultrasound (subcostal): normal size, varying with breathing.', 'us-ivc-normal'),
             F('us-ivc-collapse', 'IVC: collapsing (hypovolaemia)', 'IVC ultrasound (subcostal): the IVC collapses completely with breathing. Suggests hypovolaemia.', 'us-ivc-collapse'),
@@ -272,7 +292,7 @@
     // keeps its existing result. ECG entries add a real 12-lead image to the scenario's own ECG text.
     const SCENARIO_RESULTS = {
         AM001: { ECG: 'ecg-stemi-anterior-2' },   // about 90/min, as the scenario
-        AM002: { 'X-ray': 'cxr-pneumonia' },
+        AM002: { 'X-ray': 'cxr-pneumonia', POCUS: 'us-consolidation' },
         AM003: { 'X-ray': 'cxr-asthma' },
         // AM004 (hyperkalaemia) keeps its drawn 12-lead: it is a broad complex BRADYCARDIA, and the real
         // hyperkalaemia ECG runs at about 120/min. That ECG stays in the library for the facilitator.
@@ -284,7 +304,7 @@
         AM023: { ECG: 'ecg-chb' },
         AM027: { CT: 'ct-dissection' },
         AM029: { POCUS: 'us-cbd' },
-        AM030: { 'X-ray': 'cxr-pneumonia-2' },
+        AM030: { 'X-ray': 'cxr-pneumonia-2', POCUS: 'us-consolidation' },
         AM031: { 'X-ray': 'cxr-ptx-tension', POCUS: 'us-ptx' },
         AM034: { 'X-ray': 'cxr-pneumomediastinum' },
         AM039: { 'X-ray': 'cxr-pericardial-effusion', ECG: 'ecg-alternans', POCUS: 'us-tamponade' },
@@ -306,11 +326,11 @@
         AM072: { 'X-ray': 'cxr-free-air', CT: 'ct-perforation' },
         AM073: { CT: 'ct-kub-stone', POCUS: 'us-hydronephrosis' },
         AM075: { CT: 'ct-cord' },
-        AM076: { 'X-ray': 'cxr-pneumonia' },
+        AM076: { 'X-ray': 'cxr-pneumonia', POCUS: 'us-consolidation' },
         AM081: { CT: 'ct-hsv' },
         AM084: { 'X-ray': 'cxr-ptx-spontaneous', POCUS: 'us-ptx' },
-        AM085: { 'X-ray': 'cxr-drowning' },
-        TX011: { 'X-ray': 'cxr-drowning' },
+        AM085: { 'X-ray': 'cxr-drowning', POCUS: 'us-b-lines-confluent' },
+        TX011: { 'X-ray': 'cxr-drowning', POCUS: 'us-b-lines-confluent' },
         AT002: { 'X-ray': 'cxr-ptx-tension', POCUS: 'us-ptx' },   // stabbed in the right chest; tension
         AT003: { CT: 'ct-edh' },
         AT006: { 'X-ray': 'cxr-rib-fractures-left' },   // kicked by a horse: displaced left rib fractures
@@ -324,7 +344,7 @@
         AT001: { POCUS: 'us-fast-positive' },
         AT024: { POCUS: 'us-fast-positive' },
         PT003: { POCUS: 'us-fast-positive' },
-        PT005: { POCUS: 'us-fast-positive' },
+        PT005: { POCUS: 'us-fast-negative' },   // its own teaching point: FAST is often negative in pancreatic/duodenal injury
         AT026: { POCUS: 'us-fast-positive' },   // stabbed abdomen in haemorrhagic shock (not a pneumothorax)
         PT006: { POCUS: 'us-fast-positive' },   // left flank stab in haemorrhagic shock
         AT031: { ECG: 'ecg-long-qt' },
@@ -333,10 +353,10 @@
         ET003: { CT: 'ct-subdural' },
         EL004: { CT: 'ct-aaa', POCUS: 'us-aaa' },
         EL006: { CT: 'ct-mesenteric' },
-        EL008: { 'X-ray': 'cxr-rll' },
+        EL008: { 'X-ray': 'cxr-rll', POCUS: 'us-consolidation' },
         EL009: { 'X-ray': 'axr-lbo', CT: 'ct-lbo' },
         EL010: { CT: 'ct-cerebellar' },
-        EL013: { POCUS: 'us-bladder' },
+        EL013: { POCUS: 'us-bladder-trabeculated' },   // chronic high-pressure retention
         ET002: { 'X-ray': 'cxr-rib-fractures' },
         OB003: { POCUS: 'us-ectopic' },
         OB007: { POCUS: 'us-ovarian-torsion' },
@@ -354,7 +374,30 @@
         PA032: { CT: 'ct-hydrocephalus' },
         PA035: { ECG: 'ecg-long-qt' },
         PT001: { CT: 'ct-nai' },
-        PT002: { CT: 'ct-paeds-edh' }
+        PT002: { CT: 'ct-paeds-edh' },
+        // Results added 29 Oct 2026, where the generic "lung fields clear" / normal scan did not fit the case.
+        AT001: { 'X-ray': 'cxr-haemothorax' },   // "Pelvic/chest injuries", shocked and hypoxic
+        AM041: { 'X-ray': 'cxr-haemoptysis' },
+        EL011: { 'X-ray': 'cxr-pneumonia' },     // "Pneumonia and hypotension"
+        PA012: { 'X-ray': 'cxr-acs-child' },
+        PA026: { 'X-ray': 'cxr-asthma' },
+        PT003: { 'X-ray': 'cxr-contusion-child' },   // Waddell triad: head, chest and femur
+        PT004: { 'X-ray': 'cxr-aspiration-child' },
+        PA010: { 'X-ray': 'cxr-neonate-cardiac', POCUS: 'us-neonate-poor-lv' },
+        OB018: { 'X-ray': 'cxr-effusions', POCUS: 'us-ohss' },   // "ascites and pleural effusions"
+        AM052: { POCUS: 'us-ascites' },
+        AM054: { POCUS: 'us-aortic-stenosis' },
+        CA_A05: { POCUS: 'us-arrest-effusion' }   // stabbed chest, narrow complex PEA, "HOT protocol. Thoracotomy?"
+    };
+    // Urine dipstick presets (data/generators.js generateUrine) where the scenario's title does not
+    // already give the right one.
+    const SCENARIO_URINE = {
+        PS009: 'uti',              // "delirium from a urinary infection"
+        AM077: 'haemoglobinuria',  // ABO-incompatible transfusion, dark urine
+        TX020: 'haematuria',       // over-anticoagulated with haematuria
+        AT008: 'rhabdo', AT011: 'rhabdo', AM036: 'rhabdo', TX008: 'rhabdo', PS001: 'rhabdo',   // rhabdomyolysis in the brief
+        OB014: 'preeclampsia',     // "3+ proteinuria"
+        OB012: 'hyperemesis'       // "Ketotic"
     };
 
     // The scenario investigations key for each result type (scenario.investigations.<key>).
@@ -369,8 +412,10 @@
     // Apply a scenario's own results to its generated investigations block (called by enrichScenario).
     const applyScenarioResults = (scenarioId, investigations) => {
         const map = SCENARIO_RESULTS[scenarioId];
-        if (!map || !investigations) return investigations;
+        if (!investigations) return investigations;
         const out = Object.assign({}, investigations);
+        if (SCENARIO_URINE[scenarioId] && window.generateUrine) out.urine = window.generateUrine(SCENARIO_URINE[scenarioId]);
+        if (!map) return out;
         Object.keys(map).forEach(type => {
             const r = asResult(map[type]);
             if (!r) return;
@@ -426,7 +471,9 @@
     const URINE_PRESETS = [
         { id: 'normal', label: 'Normal dipstick' }, { id: 'uti', label: 'UTI (leucocytes, nitrites)' }, { id: 'dka', label: 'DKA (ketones, glucose)' },
         { id: 'hhs', label: 'HHS (glucose, trace ketones)' }, { id: 'rhabdo', label: 'Rhabdomyolysis (blood: myoglobin)' },
-        { id: 'pregnancy', label: 'Pregnancy test positive' }, { id: 'renal_colic', label: 'Renal colic (blood)' }
+        { id: 'pregnancy', label: 'Pregnancy test positive' }, { id: 'renal_colic', label: 'Renal colic (blood)' },
+        { id: 'haematuria', label: 'Haematuria (blood)' }, { id: 'haemoglobinuria', label: 'Haemolysis (blood: haemoglobin)' },
+        { id: 'preeclampsia', label: 'Pre-eclampsia (protein, pregnancy test positive)' }, { id: 'hyperemesis', label: 'Hyperemesis (ketones, pregnancy test positive)' }
     ];
     const POCUS_PRESETS = [
         { id: 'normal', label: 'Normal (heart, lungs, FAST)' }, { id: 'tamponade', label: 'Tamponade' }, { id: 'pneumothorax', label: 'Pneumothorax (left)' }
@@ -453,7 +500,6 @@
         const labels = { leuks: 'Leucocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
         return Object.keys(labels).filter(k => u[k] !== undefined).map(k => `${labels[k]}: ${u[k]}`).join(', ');
     };
-    const pocusText = (p) => ['heart', 'lungs', 'abdo', 'aorta', 'ivc'].filter(k => p[k]).map(k => p[k]).join(' ');
     const has = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k) && o[k] !== undefined && o[k] !== null;
 
     // A label for a choice, as the controller lists it.
@@ -552,18 +598,13 @@
         const top = scenario[f], gen = (scenario.investigations || {})[f];
         const src = (type === 'ECG') ? (gen || top) : ((top && (typeof top === 'string' || top.findings || top.image || Object.keys(top).length)) ? top : gen);
         if (type === 'VBG') { res.text = vbgSummary(src || (window.generateVbg ? window.generateVbg('normal') : null)); return res; }
-        if (type === 'ECG') {
-            if (src && src.image) {
-                if (ecgImageFits(src.image, rhythm)) { res.image = src.image; res.text = src.imageReport || src.findings || null; }
-                else res.ecgImageNotFitting = true;
-            }
-            if (!res.image) res.text = FALLBACK.ECG;
-            return res;
-        }
-        if (src) {
-            res.text = typeof src === 'string' ? src : (src.findings || (type === 'Urine' ? urineText(src) : type === 'POCUS' ? pocusText(src) : null));
-            res.image = (typeof src === 'object' && src.image && imageFor(src.image)) ? src.image : null;
-        }
+        // Everything else as the room monitor resolves it (resolveResult, below), pictures included.
+        if (type === 'ECG' && src && src.image && !ecgImageFits(src.image, rhythm)) res.ecgImageNotFitting = true;
+        const r = window.INVESTIGATIONS.resolveResult(scenario, type, { rhythm });
+        res.text = r.text || (r.live12 ? FALLBACK.ECG : null);
+        res.image = (r.image && imageFor(r.image)) ? r.image : (r.images[0] ? r.images[0].key : null);
+        res.images = r.images;
+        res.live12 = r.live12;
         if (!res.text && !res.image) res.text = FALLBACK[type];
         return res;
     };
@@ -576,6 +617,132 @@
         return out;
     };
 
+    // ---- A picture for every result (29 Oct 2026) -------------------------------------------------
+    // What the room monitor shows for a result the scenario does not illustrate itself:
+    //   * ECG: a 12-lead drawn from the LIVE rhythm and heart rate (the same recording as the 12-Lead
+    //     button), unless the scenario's real ECG image still fits the rhythm.
+    //   * X-ray / CT: a normal film for the patient's age when the result is the generic normal one.
+    //     Only ages with a real normal image get one (newborn, infant, and 12 or over); a child of 1
+    //     to 11 keeps a written report, because an adult film is the wrong picture for a child.
+    //   * POCUS: one picture per window of the scan (heart, lungs, abdomen) where the window's
+    //     report has a matching image; in a pulseless rhythm the heart window reports the arrest.
+    //   * Urine: the dipstick drawn from its result (monitor.js UrineDipstick).
+    // The scenario's own illustrated result always wins; nothing here invents an abnormal finding.
+    const GENERIC_NORMAL = {
+        'X-ray': ['CXR: Lung fields clear. No cardiomegaly.', 'Lung fields clear.', 'Normal / Unremarkable'],
+        CT: ['No acute intracranial/thoracic/abdominal pathology identified.', 'No acute intracranial pathology.', 'CT Head: No acute intracranial abnormality.', 'Normal / Unremarkable']
+    };
+    const isGenericNormal = (type, src) => {
+        if (!src) return true;
+        if (typeof src === 'object' && src.image) return false;
+        const t = typeof src === 'string' ? src : (src && src.findings);
+        return typeof t === 'string' && (GENERIC_NORMAL[type] || []).indexOf(t.trim()) !== -1;
+    };
+    const num = (v) => (v === undefined || v === null || v === '') ? NaN : Number(v);
+    // The normal result for this age (a finding, with its image where there is one for the age).
+    const normalFinding = (type, age) => {
+        const a = num(age), adultish = !Number.isFinite(a) || a >= 12;
+        if (type === 'X-ray') return byId[adultish ? 'cxr-normal' : a < 0.25 ? 'cxr-normal-neonate' : a < 1 ? 'cxr-normal-infant' : 'cxr-normal-child'];
+        if (type === 'CT') return byId[adultish ? 'ct-normal-head' : 'ct-normal-head-child'];
+        return null;
+    };
+    // POCUS windows: each report from generatePocus and the picture that shows it.
+    const POCUS_WINDOWS = [
+        { key: 'heart', label: 'Heart', images: { 'Normal contractility. No pericardial effusion.': 'us-echo-a4c', 'Large pericardial effusion with the right atrium collapsing in systole (tamponade).': 'us-tamponade' } },
+        { key: 'lungs', label: 'Lungs', images: { 'Lung sliding present bilaterally. No B-lines.': 'us-lung-sliding', 'Left: no lung sliding (pneumothorax).': 'us-ptx', 'Diffuse B-lines bilaterally (Rocket tails).': 'us-b-lines' } },
+        { key: 'abdo', label: 'Abdomen (FAST)', images: { "No free fluid in Morison's pouch or splenorenal angle.": 'us-fast-negative', 'Large free fluid in abdomen. Aorta > 5cm.': 'us-fast-positive' } },
+        { key: 'aorta', label: 'Aorta', images: {} },
+        { key: 'ivc', label: 'IVC', images: {} }
+    ];
+    // The heart window in a pulseless rhythm (no picture: there is no clip of an arrested heart).
+    const arrestHeart = (rhythm) => {
+        const R = window.RHYTHMS;
+        if (!R || !rhythm || !R.isPulseless(rhythm)) return null;
+        const r = R.canonical(rhythm);
+        if (r === 'Asystole') return 'No cardiac movement (cardiac standstill).';
+        if (r === 'VF') return 'Disorganised, quivering movement of the ventricles with no effective contraction.';
+        if (r === 'pVT') return 'Rapid, weak ventricular contractions with no effective output.';
+        return 'No effective cardiac contraction seen.';
+    };
+    const pocusWindows = (p, rhythm) => {
+        const texts = [], panels = [];
+        const inArrest = arrestHeart(rhythm);
+        POCUS_WINDOWS.forEach(w => {
+            let t = p[w.key];
+            if (!t) return;
+            if (w.key === 'heart' && inArrest) t = inArrest;
+            texts.push(`${w.label}: ${t}`);
+            const key = w.images[t];
+            if (key && IMAGES[key]) panels.push({ key, label: w.label });
+        });
+        return { text: texts.join('\n') || null, images: panels };
+    };
+
+    // What the room monitor shows for one result. `live` = { rhythm, age }; `opts.normal` asks for the
+    // normal result for this patient (the facilitator's "Normal" button). Returns { text, image,
+    // images: [{ key, label }], urine, live12 } (image: one key; images: several, the first shown big).
+    const resolveResult = (scenario, type, live, opts) => {
+        const L = live || {};
+        const sc = scenario || {};
+        const age = L.age !== undefined ? L.age : sc.patientAge;
+        const normal = !!(opts && opts.normal);
+        const f = FIELD[type];
+        const out = { text: null, image: null, images: [], urine: null, live12: false };
+        const top = f ? sc[f] : null, gen = f ? (sc.investigations || {})[f] : null;
+        const filled = (o) => !!o && (typeof o === 'string' || o.findings || o.image || (typeof o === 'object' && Object.keys(o).length));
+        let src = normal ? null : (type === 'ECG' ? ((gen && gen.image) ? gen : (top || gen)) : (filled(top) ? top : gen));
+        if (type === 'ECG') {
+            if (src && src.image && ecgImageFits(src.image, L.rhythm)) {
+                out.image = src.image; out.text = src.imageReport || src.findings || null;
+                return out;
+            }
+            out.live12 = true;
+            // The written report only while the patient is still in the scenario's own rhythm: after a
+            // rhythm change it would describe a different ECG from the one drawn.
+            const R = window.RHYTHMS;
+            const own = src && (src.type || null);
+            if (!normal && src && src.findings && own && L.rhythm && R && R.isKnown(own) && R.canonical(own) === R.canonical(L.rhythm)) out.text = src.findings;
+            return out;
+        }
+        if (type === 'Urine') {
+            const u = normal ? (window.generateUrine ? window.generateUrine('normal') : null) : (src || (window.generateUrine ? window.generateUrine('normal') : null));
+            if (u && typeof u === 'object' && !u.findings) {
+                // No (negative) pregnancy test for a male patient or a child under 10.
+                let uu = u;
+                if (has(u, 'bhcg') && !/pos/i.test(String(u.bhcg)) && (/^m/i.test(String(sc.sex || '')) || (Number.isFinite(num(age)) && num(age) < 10))) {
+                    uu = Object.assign({}, u); delete uu.bhcg;
+                }
+                out.urine = uu; out.text = urineText(uu);
+            }
+            else out.text = typeof u === 'string' ? u : (u && u.findings) || FALLBACK.Urine;
+            return out;
+        }
+        if (type === 'POCUS') {
+            if (src && typeof src === 'object' && src.image) { out.image = src.image; out.text = src.findings || null; return out; }
+            const p = (!src || normal) ? (window.generatePocus ? window.generatePocus('normal') : null) : src;
+            if (p && typeof p === 'object' && !p.findings) {
+                const w = pocusWindows(p, L.rhythm);
+                out.text = w.text; out.images = w.images;
+                if (w.images.length === 1) { out.image = w.images[0].key; out.images = []; }
+                return out;
+            }
+            out.text = typeof p === 'string' ? p : (p && p.findings) || FALLBACK.POCUS;
+            return out;
+        }
+        if (type === 'X-ray' || type === 'CT') {
+            if (src && typeof src === 'object' && src.image) { out.image = src.image; out.text = src.findings || null; return out; }
+            if (normal || isGenericNormal(type, src)) {
+                const n = normalFinding(type, age);
+                out.text = n.report; out.image = n.image || null;
+                return out;
+            }
+            out.text = typeof src === 'string' ? src : (src && src.findings) || FALLBACK[type];
+            return out;
+        }
+        return out;
+    };
+
     window.INVESTIGATIONS = { IMAGES, FINDINGS, SCENARIO_RESULTS, byId, asResult, applyScenarioResults, imageFor, registerImage, ecgImageFits, creditText, KEY,
-        RESULT_TYPES, FIELD, URINE_PRESETS, POCUS_PRESETS, VBG_PRESETS, VBG_FIELDS, setResult, currentResult, applyResultSpecs, specLabel, cleanVbg, vbgSummary };
+        RESULT_TYPES, FIELD, URINE_PRESETS, POCUS_PRESETS, VBG_PRESETS, VBG_FIELDS, setResult, currentResult, applyResultSpecs, specLabel, cleanVbg, vbgSummary,
+        SCENARIO_URINE, resolveResult, normalFinding, isGenericNormal, arrestHeart };
 })();

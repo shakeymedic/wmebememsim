@@ -1015,12 +1015,29 @@
         // Passing null makes the engine/monitor resolve the scenario's OWN authored finding.
         // The previous "Scenario Default" button sent the literal placeholder string
         // "Abnormal (See scenario)" to the students' screen.
-        const sendScenarioDefault = (type) => { revealInvestigation(type, null, { hideReport: !invWithReport }); setInvModal(null); };
+        // A course scenario (e.g. ETC) with a course image of this type sends that image, the course's
+        // own picture, unless the facilitator has changed the result; when it cannot be loaded, the
+        // scenario's written result goes instead. courseMedia and showCourseImage are defined below.
+        const sendScenarioDefault = (type) => {
+            setInvModal(null);
+            const changed = !!(scenario && scenario.invChanged && scenario.invChanged[type]);
+            const item = !changed && courseMediaRef.current.find(m => m.type === type);
+            if (item) { showCourseImage(item, invWithReport).then(ok => { if (!ok) revealInvestigation(type, null, { hideReport: !invWithReport }); }); return; }
+            revealInvestigation(type, null, { hideReport: !invWithReport });
+        };
         // What "Scenario finding" will show, so the facilitator can see it before sending.
         const INV = window.INVESTIGATIONS;
         const scenarioResultPreview = (type) => {
             const KEYS = { 'X-ray': 'chestXray', CT: 'ct', POCUS: 'pocus', ECG: 'ecg', Urine: 'urine', VBG: 'vbg' };
             const k = KEYS[type]; if (!k || !scenario) return null;
+            // Everything but the gas: exactly what the monitor will show (data/investigations.js resolveResult).
+            if (type !== 'VBG' && INV && INV.resolveResult) {
+                const r = INV.resolveResult(scenario, type, { rhythm: state.rhythm, age: scenario.patientAge });
+                const top0 = scenario[k], gen0 = (scenario.investigations || {})[k];
+                const authoredEcg = type === 'ECG' && ((gen0 && gen0.image) || (top0 && top0.image));
+                const image = r.image || (r.images[0] && r.images[0].key) || null;
+                return { text: r.text || (r.live12 ? '12-lead drawn from the current rhythm.' : null), image, ecgImageNotFitting: !!authoredEcg && !r.image };
+            }
             const top = scenario[k], gen = (scenario.investigations || {})[k];
             const src = (type === 'ECG') ? gen : ((top && (top.findings || top.image)) ? top : gen);
             if (!src) return null;
@@ -1043,6 +1060,7 @@
         // result chooser. The copy on the session is removed when this screen closes.
         const MSX = window.MarkScheme;
         const courseMedia = (MSX && MSX.media && scenario) ? MSX.media(scenario) : [];
+        const courseMediaRef = useRef(courseMedia); courseMediaRef.current = courseMedia;
         const showCourseImage = (item, withReport) => MSX.showOnMonitor({ sim, sessionID, scenario, item, withReport });
         useEffect(() => () => { if (courseMedia.length && MSX && MSX.clearMonitorImage) MSX.clearMonitorImage(sessionID); }, [sessionID, courseMedia.length]);
         const clearInvOnMonitor = () => { clearInvestigation(); setInvModal(null); addLogEntry('Results and images cleared from the patient screens', 'system'); };
@@ -2289,7 +2307,7 @@
                              
                              <div className="space-y-4 overflow-y-auto flex-grow pr-2">
                                  <div className="grid grid-cols-2 gap-2">
-                                     <Button onClick={()=>sendInv(invModal, "Normal / Unremarkable")} variant="secondary">Normal</Button>
+                                     <Button onClick={()=>{ revealInvestigation(invModal, null, { normal: true, hideReport: !invWithReport }); setInvModal(null); }} variant="secondary" title="A normal result for this patient, with its picture (the 12-lead is drawn from the current rhythm).">Normal</Button>
                                      <Button onClick={()=>sendScenarioDefault(invModal)} variant="secondary" title="Sends this scenario's own result (shown below).">Scenario Finding</Button>
                                  </div>
                                  {(() => {

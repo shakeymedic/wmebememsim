@@ -334,6 +334,9 @@ window.liveVbg = (scenario, vitals, activeInterventions, timeSeconds) => {
         gas.pH = Math.round(clamp(v.ph + drift, 6.5, 7.9) * 100) / 100;
     }
     if (Number.isFinite(v.k)) gas.K = Math.round(clamp(v.k, 1, 10) * 10) / 10;
+    // A Quick Sim has no authored gas, so its glucose is the patient's own bedside glucose (the
+    // controller's Glucose obs) rather than the normal gas's 5.5.
+    if (s.quickSim && Number.isFinite(Number(v.bm)) && Number(v.bm) > 0) gas.Glu = Math.round(clamp(Number(v.bm), 0.5, 50) * 10) / 10;
     return gas;
 };
 
@@ -377,13 +380,19 @@ window.generateUrine = (type = "normal") => {
     if(type === "rhabdo") return { ...base, blood: "+++ (Myoglobin)" };
     if(type === "pregnancy") return { ...base, bhcg: "POSITIVE" };
     if(type === "renal_colic") return { ...base, blood: "++" };
+    // Haemolysis: free haemoglobin reads as blood on the strip, like myoglobin.
+    if(type === "haemoglobinuria") return { ...base, blood: "+++ (Haemoglobin)" };
+    if(type === "haematuria") return { ...base, blood: "+++" };
+    if(type === "preeclampsia") return { ...base, protein: "+++", bhcg: "POSITIVE" };
+    if(type === "hyperemesis") return { ...base, ketones: "+++", bhcg: "POSITIVE" };
     return base;
 };
 
 window.generatePocus = (type = "normal") => {
     const base = { heart: "Normal contractility. No pericardial effusion.", lungs: "Lung sliding present bilaterally. No B-lines.", abdo: "No free fluid in Morison's pouch or splenorenal angle." };
-    if(type === "tamponade") return { ...base, heart: "Large pericardial effusion. RV diastolic collapse present." };
-    if(type === "pneumothorax") return { ...base, lungs: "Left: Absent lung sliding. Barcode sign present." };
+    // Worded to match the pictures the monitor shows with them (data/investigations.js POCUS_WINDOWS).
+    if(type === "tamponade") return { ...base, heart: "Large pericardial effusion with the right atrium collapsing in systole (tamponade)." };
+    if(type === "pneumothorax") return { ...base, lungs: "Left: no lung sliding (pneumothorax)." };
     if(type === "pulmonary_oedema") return { ...base, lungs: "Diffuse B-lines bilaterally (Rocket tails)." };
     if(type === "ruptured_aaa") return { ...base, abdo: "Large free fluid in abdomen. Aorta > 5cm." };
     if(type === "ectopic") return { ...base, abdo: "Empty uterus. Free fluid in Pouch of Douglas." };

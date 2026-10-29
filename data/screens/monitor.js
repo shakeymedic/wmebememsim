@@ -115,6 +115,80 @@
     // standalone defibrillator page draw the identical recording from the identical registry.
     const render12Lead = (canvas, rhythm, scenario, hr) => window.RHYTHMS.render12Lead(canvas, rhythm, scenario, hr);
 
+    // An ECG result with no real image: the 12-lead drawn from the rhythm and rate when it was taken.
+    const Live12Lead = ({ rhythm, hr, scenario, className, testId }) => {
+        const ref = useRef(null);
+        useEffect(() => { if (ref.current) render12Lead(ref.current, rhythm, scenario, hr); }, [rhythm, hr]);
+        return <canvas ref={ref} width="1000" height="640" className={className} data-testid={testId} data-hr={Number.isFinite(Number(hr)) ? Math.round(Number(hr)) : undefined} aria-label="12-lead ECG" role="img" />;
+    };
+
+    // =========================================================================================
+    // THE URINE DIPSTICK (29 Oct 2026). Drawn from the result (generateUrine): one pad per test,
+    // coloured from negative to strongly positive, with the reading printed beside it, and a
+    // pregnancy test cassette when the result has one. The colours are illustrative (each make of
+    // strip has its own chart); the printed reading is the result.
+    // =========================================================================================
+    const DIP_PADS = [
+        { k: 'leuks', label: 'Leucocytes', scale: ['#efe6cf', '#e3d3d6', '#cdb1cf', '#a97fbf', '#7b4c9e'] },
+        { k: 'nitrites', label: 'Nitrite', scale: ['#f7f1e3', '#f0a3bf'] },
+        { k: 'protein', label: 'Protein', scale: ['#e3df6e', '#cfd776', '#aecb7c', '#86b984', '#5aa38b', '#3c8a86'] },
+        { k: 'blood', label: 'Blood', scale: ['#f2d36b', '#d9c95d', '#b3c05a', '#7ea24f', '#3f7a45', '#2a5e3a'] },
+        { k: 'ketones', label: 'Ketones', scale: ['#f2dcbc', '#e8bfa9', '#d99191', '#bd5f72', '#934057', '#6c2a45'] },
+        { k: 'glucose', label: 'Glucose', scale: ['#86c9c7', '#97c79a', '#acb863', '#a58c3d', '#8b6230', '#6a4024'] }
+    ];
+    // '-' or 'Negative' 0, 'Trace' 0.5, '+' to '++++' 1 to 4 (any other positive reading 1).
+    const dipGrade = (v) => {
+        const t = String(v === undefined || v === null ? '' : v).trim();
+        if (!t || t === '-' || /^neg/i.test(t)) return 0;
+        if (/^trace/i.test(t)) return 0.5;
+        const plus = t.match(/\+/g);
+        return plus ? plus.length : (/pos/i.test(t) ? 1 : 0);
+    };
+    const UrineDipstick = ({ urine }) => {
+        const u = urine || {};
+        const pads = DIP_PADS.filter(p => u[p.k] !== undefined);
+        const hcg = u.bhcg !== undefined ? /pos/i.test(String(u.bhcg)) : null;
+        const reading = (v) => dipGrade(v) === 0 ? 'Negative' : String(v);
+        return (
+            <div className="bg-white text-neutral-900 rounded shadow-inner p-3 font-mono text-[15px] md:text-base" data-testid="urine-dipstick">
+                <div className="font-bold border-b border-neutral-800 pb-1 mb-2">URINE DIPSTICK</div>
+                <div className="flex gap-3 items-stretch">
+                    {/* The strip: a white plastic stick with its pads */}
+                    <div className="flex-none w-9 bg-neutral-100 border border-neutral-300 rounded-sm flex flex-col items-center gap-1.5 py-2" aria-hidden="true">
+                        {pads.map(p => {
+                            const g = dipGrade(u[p.k]);
+                            const i = p.scale.length === 2 ? (g > 0 ? 1 : 0) : (g === 0 ? 0 : g === 0.5 ? 1 : Math.min(p.scale.length - 1, Math.round(g) + 1));
+                            return <span key={p.k} className="block w-6 h-6 rounded-[2px] border border-black/10" style={{ background: p.scale[i] }} />;
+                        })}
+                    </div>
+                    <table className="flex-1 border-collapse self-start">
+                        <tbody>
+                            {pads.map(p => (
+                                <tr key={p.k} className="h-[30px]" data-testid={`dip-${p.k}`}>
+                                    <td className="pr-3">{p.label}</td>
+                                    <td className={`text-right ${dipGrade(u[p.k]) > 0 ? 'font-bold' : ''}`}>{reading(u[p.k])}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                {hcg !== null && (
+                    <div className="mt-3 pt-2 border-t border-neutral-300 flex items-center gap-3" data-testid="urine-hcg">
+                        {/* A pregnancy test cassette: C (control) always shows; T only when positive */}
+                        <div className="flex-none w-24 h-10 bg-neutral-100 border border-neutral-300 rounded-full flex items-center justify-center" aria-hidden="true">
+                            <div className="w-12 h-5 bg-white border border-neutral-300 rounded-sm relative">
+                                <span className="absolute top-0 bottom-0 left-3 w-[3px] bg-rose-700" />
+                                {hcg && <span className="absolute top-0 bottom-0 left-7 w-[3px] bg-rose-700" />}
+                            </div>
+                        </div>
+                        <div>Pregnancy test (hCG): <b>{hcg ? 'POSITIVE' : 'Negative'}</b></div>
+                    </div>
+                )}
+                <div className="text-[11px] text-neutral-500 mt-2 font-sans">Pad colours are illustrative; the printed reading is the result.</div>
+            </div>
+        );
+    };
+
     // =========================================================================================
     // THE DEFIBRILLATOR, HOSTED ON THE STUDENT MONITOR.
     //
@@ -407,6 +481,7 @@
         const [invToast, setInvToast] = useState(null); 
         const [show12Lead, setShow12Lead] = useState(false);
         const [viewImage, setViewImage] = useState(null);     // full-screen view of a result image
+        const [viewEcg, setViewEcg] = useState(null);         // full-screen view of a drawn 12-lead result
         const INV = window.INVESTIGATIONS;
         // A restricted course image (e.g. an ETC X-ray) the facilitator chose to show. It is not in the
         // app: the controller copies the one being shown to the session, and it is registered here
@@ -504,74 +579,36 @@
                 // The VBG as the analyser prints it: white paper, sections, flags and reference limits.
                 // (Values stay at least 16 px on a room screen so they read from across the room.)
                 const vbgGrid = (v) => <GasPrintout gas={v} />;
-                // Structured VBG payload from revealInvestigation('VBG')
+                // The result as data/investigations.js resolveResult gives it: the scenario's own result
+                // with its picture, or a picture made for it (a normal film for the patient's age, the
+                // scan's windows, a 12-lead drawn from the live rhythm, the urine dipstick).
+                let res = null;
                 if (ct && typeof ct === 'object' && ct.__vbg) {
-                    const v = ct;
-                    content = vbgGrid(v);
+                    // Structured VBG payload from revealInvestigation('VBG')
+                    content = vbgGrid(ct);
                 } else if (ct) {
                     content = ct;
-                } else if (scenario) {
-                    // Read the generated investigations block as well as the top-level fields. The
-                    // payload now carries scenario.investigations.* (where enrichScenario actually
-                    // writes the generated CXR/CT/urine/POCUS reports), so students finally see the
-                    // scenario's own findings instead of the generic defaults.
-                    const inv = scenario.investigations || {};
-                    // generateUrine() returns a dipstick object and generatePocus() a per-window object;
-                    // neither has a `.findings` string, which is why every student saw the generic
-                    // default text. Render the structured reports properly instead.
-                    const fmtUrine = (u) => {
-                        const labels = { leuks: 'Leucocytes', nitrites: 'Nitrites', blood: 'Blood', ketones: 'Ketones', protein: 'Protein', glucose: 'Glucose', bhcg: 'B-hCG' };
-                        const parts = Object.keys(labels).filter(k => u[k] !== undefined).map(k => `${labels[k]}: ${u[k]}`);
-                        return parts.length ? parts.join('  \u00b7  ') : null;
-                    };
-                    const fmtPocus = (p) => {
-                        const labels = { heart: 'Cardiac', lungs: 'Lung', abdo: 'Abdominal/FAST', aorta: 'Aorta', ivc: 'IVC' };
-                        const parts = Object.keys(labels).filter(k => p[k]).map(k => `${labels[k]}: ${p[k]}`);
-                        return parts.length ? parts.join('\n') : null;
-                    };
-                    const resolve = (key) => {
-                        const top = scenario[key];
-                        const gen = inv[key];
-                        if (top && (top.findings || Object.keys(top).length)) return top;
-                        return gen || null;
-                    };
-                    const findings = (key, fallback) => {
-                        const src = resolve(key);
-                        if (!src) return fallback;
-                        if (typeof src === 'string') return src;
-                        if (src.findings) return src.findings;
-                        if (key === 'urine') return fmtUrine(src) || fallback;
-                        if (key === 'pocus') return fmtPocus(src) || fallback;
-                        return fallback;
-                    };
-                    if (type === 'ECG') content = findings('ecg', "Normal Sinus Rhythm");
-                    else if (type === 'X-ray') content = findings('chestXray', "Lung fields clear.");
-                    else if (type === 'CT') content = findings('ct', "No acute intracranial pathology.");
-                    else if (type === 'Urine') content = findings('urine', "Urinalysis Normal.");
-                    else if (type === 'POCUS') content = findings('pocus', "No free fluid seen.");
-                    else if (type === 'VBG' && scenario.vbg) {
-                        const v = Object.assign({ sample: 'Venous' }, scenario.vbg);
-                        content = vbgGrid(v);
-                    }
+                } else if (type === 'VBG' && scenario && scenario.vbg) {
+                    content = vbgGrid(Object.assign({ sample: 'Venous' }, scenario.vbg));
+                } else if (scenario && INV && INV.resolveResult && INV.FIELD[type]) {
+                    res = INV.resolveResult(scenario, type, { rhythm: state.rhythm, age: scenario.patientAge }, { normal: !!monitorPopup.normal });
+                    content = res.text || (res.live12 || res.urine ? '' : content);
                 }
-                // The image: one the facilitator chose with the result, or (for the scenario's own
-                // result) the scenario's image. An ECG image only while the rhythm still fits it.
-                const KEYS = { 'X-ray': 'chestXray', CT: 'ct', POCUS: 'pocus', ECG: 'ecg' };
-                let image = monitorPopup.image || null;
-                if (!image && !ct && scenario && KEYS[type]) {
-                    // (On the room monitor the synced scenario carries the results at the top level.)
-                    const top = scenario[KEYS[type]], gen = (scenario.investigations || {})[KEYS[type]];
-                    const src = (gen && gen.image) ? gen : top;
-                    image = (type === 'ECG' ? (src && src.image) : ((top && top.image) || (gen && gen.image))) || null;
-                    if (type === 'ECG' && image && src.imageReport) content = src.imageReport;
-                }
+                // The image: one the facilitator chose with the result, or the resolved one. A chosen
+                // ECG image only while the rhythm still fits it.
+                let image = monitorPopup.image || (res && (res.image || (res.images[0] && res.images[0].key))) || null;
                 if (image && type === 'ECG' && INV && !INV.ecgImageFits(image, state.rhythm)) image = null;
+                const images = (!monitorPopup.image && res && res.images.length > 1) ? res.images : null;
+                // A 12-lead drawn from the rhythm and rate at the moment the result was taken (not under a
+                // report the facilitator typed, which the drawing might contradict).
+                const live12 = (!image && type === 'ECG' && !ct && res && res.live12)
+                    ? { rhythm: state.rhythm, hr: state.vitals ? state.vitals.hr : null } : null;
                 // A course image the controller copies to the session can arrive just after its result:
                 // remember it, and the effect below adds it to the card once it is registered.
                 pendingImage.current = null;
                 if (image && !(INV && INV.imageFor(image))) { if (String(image).startsWith('course:')) pendingImage.current = image; image = null; }
                 setViewImage(null);
-                setInvToast({ title, content, image, hideReport: !!monitorPopup.hideReport, gas: !!(ct && typeof ct === 'object' && ct.__vbg) || (type === 'VBG' && !ct && !!(scenario && scenario.vbg)) });
+                setInvToast({ title, content, image, images, live12, urine: res ? res.urine : null, hideReport: !!monitorPopup.hideReport, gas: !!(ct && typeof ct === 'object' && ct.__vbg) || (type === 'VBG' && !ct && !!(scenario && scenario.vbg)) });
             }
         }, [monitorPopup, scenario]);
         useEffect(() => {
@@ -699,27 +736,49 @@
                     // The result card. With an image it is wider (a 12-lead needs the width) and the
                     // image opens full screen when tapped; the credit sits under it in small print. If the
                     // image cannot load (offline before it was fetched), the card shows the written report.
-                    const img = invToast && invToast.image && INV ? INV.imageFor(invToast.image) : null;
-                    const wide = !!img;
+                    // Several pictures (a scan's windows): the chosen one is shown big, the rest as tabs.
+                    const pics = invToast && invToast.images && invToast.images.length > 1 ? invToast.images : null;
+                    const shownKey = pics ? (pics[invToast.imgIdx || 0] || pics[0]).key : (invToast ? invToast.image : null);
+                    const img = shownKey && INV ? INV.imageFor(shownKey) : null;
+                    const live12 = invToast && !img ? invToast.live12 : null;
+                    const urine = invToast && !img ? invToast.urine : null;
+                    const wide = !!img || !!live12;
                     return (
-                        <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'}`}>
-                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? (img.modality === 'ECG' ? 'w-[760px]' : 'w-[520px]') : (invToast && invToast.gas ? 'w-[30rem] xl:w-[32rem]' : 'w-96 xl:w-[30rem] 2xl:w-[36rem]')}`} data-testid="inv-result">
+                        <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'} ${(viewImage || viewEcg) ? 'hidden' : ''}`}>
+                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? ((live12 || img.modality === 'ECG') ? 'w-[760px]' : 'w-[520px]') : (invToast && invToast.gas ? 'w-[30rem] xl:w-[32rem]' : 'w-96 xl:w-[30rem] 2xl:w-[36rem]')}`} data-testid="inv-result">
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="text-purple-400 font-bold uppercase text-base md:text-lg flex items-center gap-2"><Lucide icon="activity" className="w-5 h-5"/> {invToast?.title} Result</h3>
                                     {/* 44 px to touch; the negative margin keeps the card's layout as it was */}
                                     <button aria-label="Dismiss investigation result" data-testid="inv-result-close" onClick={()=>{ setInvToast(null); setViewImage(null); }} className="-mt-3 -mr-3 min-w-[44px] min-h-[44px] flex items-center justify-center rounded text-slate-400 hover:text-white hover:bg-slate-700/60 pointer-events-auto"><Lucide icon="x" className="w-5 h-5"/></button>
                                 </div>
+                                {pics && img && (
+                                    <div className="flex flex-wrap gap-1.5 mb-2" role="group" aria-label="Scan views" data-testid="inv-image-tabs">
+                                        {pics.map((p, i) => (
+                                            <button key={p.key} type="button" aria-pressed={(invToast.imgIdx || 0) === i} onClick={() => setInvToast(t => t ? { ...t, imgIdx: i } : t)}
+                                                    className={`min-h-[36px] px-3 rounded text-sm font-bold border ${(invToast.imgIdx || 0) === i ? 'bg-purple-600 border-purple-400 text-white' : 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-slate-600'}`}>{p.label}</button>
+                                        ))}
+                                    </div>
+                                )}
                                 {img && (
                                     <figure className="mb-2">
-                                        <button type="button" onClick={() => setViewImage(invToast.image)} className="block w-full bg-black rounded overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400" aria-label={`Open the ${img.modality === 'ECG' ? '12-lead ECG' : invToast.title} image full screen`}>
+                                        <button type="button" onClick={() => setViewImage(shownKey)} className="block w-full bg-black rounded overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400" aria-label={`Open the ${img.modality === 'ECG' ? '12-lead ECG' : invToast.title} image full screen`}>
                                             {/* An ultrasound clip plays as a short loop (img.loop); if it cannot load, its still frame is used. */}
-                                            <img src={img.loop || img.src} alt={img.modality === 'ECG' ? '12-lead ECG' : `${invToast.title} image`} className={`w-full object-contain ${img.modality === 'ECG' ? 'max-h-[42vh] bg-white' : 'max-h-[48vh]'}`} data-testid="inv-image"
-                                                onError={(e) => { if (img.loop && !e.currentTarget.src.endsWith(img.src)) { e.currentTarget.src = img.src; return; } setInvToast(t => (t && t.image === invToast.image) ? { ...t, image: null, hideReport: false } : t); }} />
+                                            <img key={shownKey} src={img.loop || img.src} alt={img.modality === 'ECG' ? '12-lead ECG' : `${invToast.title} image`} className={`w-full object-contain ${img.modality === 'ECG' ? 'max-h-[42vh] bg-white' : 'max-h-[48vh]'}`} data-testid="inv-image"
+                                                onError={(e) => { if (img.loop && !e.currentTarget.src.endsWith(img.src)) { e.currentTarget.src = img.src; return; } setInvToast(t => (t && (t.image === shownKey || t.images)) ? { ...t, image: null, images: null, hideReport: false } : t); }} />
                                         </button>
                                         <figcaption className="text-[10px] text-slate-400 mt-1 leading-tight">Tap to enlarge. Image: {INV.creditText(img)}.</figcaption>
                                     </figure>
                                 )}
-                                {!(img && invToast.hideReport) && (
+                                {live12 && (
+                                    <figure className="mb-2">
+                                        <button type="button" onClick={() => setViewEcg(live12)} className="block w-full bg-white rounded overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400" aria-label="Open the 12-lead ECG full screen">
+                                            <Live12Lead rhythm={live12.rhythm} hr={live12.hr} scenario={scenario} className="w-full max-h-[42vh] bg-white" testId="inv-ecg-live" />
+                                        </button>
+                                        <figcaption className="text-[10px] text-slate-400 mt-1 leading-tight">Tap to enlarge. Recorded from the patient's rhythm when the ECG was taken.</figcaption>
+                                    </figure>
+                                )}
+                                {urine && <div className="mb-2"><UrineDipstick urine={urine} /></div>}
+                                {!((img || live12) && invToast.hideReport) && !urine && invToast?.content && (
                                     <div className="text-white text-base md:text-lg font-medium leading-relaxed whitespace-pre-line">
                                         {invToast?.content}
                                     </div>
@@ -734,6 +793,15 @@
                         <div className="bg-black/95 flex flex-col items-center justify-center p-3 w-[96vw] h-[94vh]" onClick={() => setViewImage(null)}>
                             <img src={INV.imageFor(viewImage).loop || INV.imageFor(viewImage).src} onError={(e) => { const im = INV.imageFor(viewImage); if (im.loop && !e.currentTarget.src.endsWith(im.src)) e.currentTarget.src = im.src; }} alt="Investigation image, full screen" className="max-w-full max-h-[86vh] object-contain bg-white" data-testid="inv-image-full" />
                             <div className="text-[11px] text-slate-400 mt-2">Tap to close. Image: {INV.creditText(INV.imageFor(viewImage))}.</div>
+                        </div>
+                    </Modal>
+                )}
+
+                {viewEcg && (
+                    <Modal label="12-lead ECG" onClose={() => setViewEcg(null)}>
+                        <div className="bg-black/95 flex flex-col items-center justify-center p-3 w-[96vw] h-[94vh]" onClick={() => setViewEcg(null)}>
+                            <Live12Lead rhythm={viewEcg.rhythm} hr={viewEcg.hr} scenario={scenario} className="bg-white rounded max-w-full max-h-[86vh]" testId="inv-ecg-live-full" />
+                            <div className="text-[11px] text-slate-400 mt-2">Tap to close.</div>
                         </div>
                     </Modal>
                 )}

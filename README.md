@@ -336,6 +336,21 @@ CT series) the credit says so.
   The facilitator can untick "Show the written report with the image" to send the image alone.
 - The 12-lead button on the monitor shows the scenario's real ECG only while the current rhythm fits
   it (`ecgImageFits`); otherwise it draws the 12-lead as before.
+- A picture for every result (`resolveResult`, Oct 2026). The monitor resolves each result the same way:
+  - X-ray and CT: the scenario's image; otherwise, for a normal or untold result, the normal image for
+    the patient's age (adult from 12; a newborn and an infant chest X-ray; a written "normal for age"
+    report for a child of 1 to 11 and for a child's CT head, as no openly licensed normal image of those
+    ages was found). A specific finding without an image stays a written report.
+  - ECG: a real 12-lead that fits the current rhythm; otherwise one drawn from the live rhythm and rate,
+    with the scenario's written report only while the patient is still in the scenario's rhythm.
+  - POCUS: one image, or a tab per window (heart, lungs, FAST) from `POCUS_WINDOWS`. In a pulseless
+    rhythm the heart window says what is seen (`arrestHeart`) instead of showing a beating heart.
+  - Urine: drawn as a dipstick with the printed reading (pad colours are illustrative). No negative
+    pregnancy test for a male patient or a child under 10. `SCENARIO_URINE` gives scenarios their own urine.
+  - The controller's **Normal** button sends `{ normal: true }`: the normal result for this patient with
+    its picture, and for a gas a normal VBG/ABG with the live oxygenation.
+  - A course scenario's **Scenario finding** sends the course's own image of that type when there is one.
+  - A Quick Sim gas takes its glucose from the patient's glucose obs.
 - Adding an image: put a JPEG under 450 KB in `images/investigations/`, add it to `IMAGES` with the
   author, licence, source page and any changes, and point a finding at it.
   `tests/specs/investigations.spec.js` checks every image exists and is credited and openly licensed,
