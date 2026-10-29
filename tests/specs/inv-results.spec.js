@@ -91,7 +91,8 @@ test('Quick Sim: change the CXR before START; the monitor CXR button gives it; U
 
   await expandSection(page, 'quickInvResults');
   const row = page.getByTestId('inv-result-row-X-ray');
-  await expect(row).toContainText('Lung fields clear.');
+  // Untouched, a normal chest X-ray with its picture (a Quick Sim with nothing else set is normal)
+  await expect(row).toContainText('Clear lung fields');
   await row.getByRole('button', { name: 'Change the X-ray result' }).click();
   const dlg = page.getByTestId('inv-result-editor');
   await dlg.getByTestId('inv-editor-library').getByRole('button', { name: /Tension pneumothorax/ }).click();
@@ -116,8 +117,8 @@ test('Quick Sim: change the CXR before START; the monitor CXR button gives it; U
   await expect(row.getByTestId('inv-result-changed')).toHaveCount(0);
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.chestXray || {}).image || null)).toBe(null);
   card = await press(monitor, 'CXR');
-  await expect(card).toContainText('Lung fields clear.');
-  await expect(card.getByTestId('inv-image')).toHaveCount(0);
+  await expect(card).toContainText('Clear lung fields');
+  await expect(card.getByTestId('inv-image')).toHaveAttribute('src', 'images/investigations/cxr-normal.jpg');
   expect(errors).toEqual([]);
   expect(monErrors).toEqual([]);
 });
@@ -197,7 +198,9 @@ test('Defib Sim: the investigation results section changes what the monitor give
   const monitor = await openMonitor(context, code);
   await expect.poll(() => monitor.evaluate(() => (window.__monitorEngine.state.scenario.urine || {}).nitrites)).toBe('+');
   const card = await press(monitor, 'Urine');
-  await expect(card).toContainText('Nitrites: +');
+  // The urine is drawn as a dipstick with its printed reading
+  await expect(card.getByTestId('urine-dipstick')).toBeVisible();
+  await expect(card.getByTestId('dip-nitrites')).toContainText('+');
 });
 
 test('Builder: chosen results are saved with the scenario and given by the monitor when it runs', async ({ page, context }) => {

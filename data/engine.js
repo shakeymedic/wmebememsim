@@ -1487,9 +1487,15 @@
                     const fio2 = ventO2 ? Math.min(1, Math.max(0.21, ventO2)) : (onOxygen ? null : 0.21);
                     // The ABG's pO2 needs an FiO2 even when none is printed: on oxygen without a
                     // ventilator, take about 0.6 (a high-flow mask; NIV, CPAP and a bag are similar).
+                    // opts.normal (the controller's Normal button): a normal gas for this patient, with
+                    // the live oxygenation but none of the scenario's derangement.
+                    const normal = !!(opts && opts.normal);
+                    const gScen = normal ? Object.assign({}, cur.scenario, { vbg: window.generateVbg ? window.generateVbg('normal') : null }) : cur.scenario;
+                    const gVitals = normal ? Object.assign({}, cur.vitals, { ph: 7.4, k: 4.2, bm: cur.scenario.quickSim ? cur.vitals.bm : null }) : cur.vitals;
+                    const gAi = normal ? new Set() : cur.activeInterventions;
                     const dynamic = type === 'ABG'
-                        ? window.liveAbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time, fio2 || (onOxygen ? 0.6 : 0.21))
-                        : window.liveVbg(cur.scenario, cur.vitals, cur.activeInterventions, cur.time);
+                        ? window.liveAbg(gScen, gVitals, gAi, normal ? 0 : cur.time, fio2 || (onOxygen ? 0.6 : 0.21))
+                        : window.liveVbg(gScen, gVitals, gAi, normal ? 0 : cur.time);
                     finalCustomText = { __vbg: true, ...dynamic, sample: type === 'ABG' ? 'Arterial' : 'Venous', takenAt: Date.now(),
                         temp: 37.0,   // run at 37 °C, as an ED gas is unless the patient's temperature is entered
                         fio2,
@@ -1497,7 +1503,7 @@
                 }
 
                 dispatch({ type: 'REVEAL_INVESTIGATION', payload: type });
-                dispatch({ type: 'TRIGGER_POPUP', payload: { type, customText: finalCustomText, image: (opts && opts.image) || null, hideReport: !!(opts && opts.hideReport) } });
+                dispatch({ type: 'TRIGGER_POPUP', payload: { type, customText: finalCustomText, image: (opts && opts.image) || null, hideReport: !!(opts && opts.hideReport), normal: !!(opts && opts.normal) } });
                 addLogEntry(`${type} Result Available`, 'success');
             }, 100);
         };
