@@ -30,13 +30,15 @@ test('the facilitator turns simple mode on; the big buttons pick and start the m
   await sw.getByRole('button', { name: 'Simple' }).click();
   await expect.poll(() => live(page, code, '/defib/ventSimple')).toBe(true);
   await expect(vent.locator('#simpleVent')).toBeVisible();
-  await expect(vent.locator('#device')).toBeHidden();
+  // drawn on the ventilator's own screen: the housing stays
+  await expect(vent.locator('#screen #simpleVent')).toBeVisible();
+  await expect(vent.locator('#kPower')).toBeVisible();
   expect(await logHas(page, /^Ventilator: simple mode/)).toBe(true);
 
   // Quick Sim's patient is awake on a mask: CPAP is NIV with no pressure support; from Off it powers on and starts
   await vent.getByRole('button', { name: /^CPAP/ }).click();
   await expect.poll(() => ventNow(vent), { timeout: 15000 }).toMatchObject({ mode: 'NIV', ps: 0, state: 'ventilating' });
-  await expect(vent.locator('#svState')).toContainText('CPAP');
+  await expect(vent.locator('#svMode')).toHaveText('CPAP');
   await expect(vent.getByRole('button', { name: /^CPAP/ })).toHaveAttribute('aria-pressed', 'true');
   // no pressure-support control in CPAP; PEEP up by one with the big +
   await expect(vent.getByRole('button', { name: 'ΔPsupport up' })).toHaveCount(0);
@@ -59,7 +61,7 @@ test('the facilitator turns simple mode on; the big buttons pick and start the m
   await vent.getByRole('button', { name: /^High-flow O2/ }).click();
   await expect.poll(() => ventNow(vent)).toMatchObject({ mode: 'HiFlowO2', state: 'ventilating' });
 
-  await vent.getByRole('button', { name: 'Stop ventilating (Standby)' }).click();
+  await vent.getByRole('button', { name: 'Standby', exact: true }).click();
   await expect.poll(() => ventNow(vent)).toMatchObject({ state: 'standby' });
   await expect.poll(() => page.evaluate(() => Object.values(window.__simEngine.state.ventMirror || {}).map(m => m.state))).toContain('standby');
 
@@ -87,7 +89,7 @@ test('simple mode on a tube: CPAP is SPONT with no support, and volume control i
   expect(errors).toEqual([]);
 });
 
-test('simple mode fits a phone: no sideways scroll, big buttons in two columns', async ({ page, context }) => {
+test('simple mode on a phone: the page zooms in on the ventilator screen, no sideways scroll', async ({ page, context }) => {
   const code = await openController(page);
   await startQuickSim(page);
   await page.evaluate(() => window.__simEngine.dispatch({ type: 'SET_VENT_CONFIG', payload: { simple: true } }));
@@ -97,8 +99,12 @@ test('simple mode fits a phone: no sideways scroll, big buttons in two columns',
   await expect.poll(() => ventNow(vent), { timeout: 15000 }).toMatchObject({ mode: 'NIV', state: 'ventilating' });
   expect(await vent.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const box = await vent.getByRole('button', { name: /^CPAP/ }).boundingBox();
-  expect(box.height).toBeGreaterThanOrEqual(64);
-  expect(box.width).toBeGreaterThan(140);
+  // the screen fills the width, so the buttons stay big enough to touch
+  await expect(vent.locator('body')).toHaveClass(/simple-zoom/);
+  const scr = await vent.locator('#screenbox').boundingBox();
+  expect(scr.width).toBeGreaterThan(360);
+  expect(box.width).toBeGreaterThan(60);
+  expect(box.height).toBeGreaterThanOrEqual(34);
   await vent.screenshot({ path: test.info().outputPath('simple-phone.png'), fullPage: true });
   expect(errors).toEqual([]);
 });
