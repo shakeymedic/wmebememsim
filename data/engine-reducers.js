@@ -854,10 +854,12 @@
                 // What the circuit connects to, when the facilitator says so ('mask', 'sga' or 'tube');
                 // null = worked out from the patient (data/engine-vent.js interfaceFor).
                 const airway = p.airway !== undefined ? p.airway : cur.airway;
+                // Simple mode: the ventilator screens show big buttons for the common modes instead of the machine.
+                const simple = p.simple !== undefined ? p.simple === true : !!cur.simple;
                 return { ...state, vent: {
                     profile: VP && VP.profiles[profile] ? profile : 'normal',
                     breathing: breathing === true || breathing === false ? breathing : null,
-                    lung, probs, assess, model,
+                    lung, probs, assess, model, simple,
                     airway: ['mask', 'sga', 'tube'].indexOf(airway) !== -1 ? airway : null
                 } };
             }

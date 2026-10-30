@@ -60,6 +60,16 @@
                          options={[[false, 'Education'], [true, 'Assessment']]}
                          onChange={(v) => { setCfg({ assess: v }); addLogEntry(v ? 'Ventilator: Assessment (no alarm help on the screen) (facilitator)' : 'Ventilator: Education (alarm help on the screen) (facilitator)', 'system'); }} />
                 </div>
+                {VP.modelOf(cfg.model) !== 'a350' ? (
+                    <div className="flex items-center justify-between gap-2" data-testid="vent-simple">
+                        <span className="text-slate-300 text-[10px]" title="Simple shows big buttons for CPAP, NIV, NIV-ST, high-flow O2, pressure support, PSIMV, pressure control and volume control, with large − and + for the main settings, instead of the full ventilator.">Ventilator screen</span>
+                        <Seg label="Ventilator screen: full or simple" value={cfg.simple === true}
+                             options={[[false, 'Full'], [true, 'Simple']]}
+                             onChange={(v) => { setCfg({ simple: v }); addLogEntry(v ? 'Ventilator: simple mode (big mode buttons on the screen) (facilitator)' : 'Ventilator: full ventilator on the screen (facilitator)', 'system'); }} />
+                    </div>
+                ) : (
+                    <div className="text-[10px] text-slate-500" data-testid="vent-simple">Simple mode is for the transport and ICU ventilators, not the anaesthetic machine.</div>
+                )}
                 <div data-testid="vent-problems">
                     <div className="flex items-center justify-between">
                         <span className="text-slate-400 uppercase font-bold text-[10px]">Problems (press again to fix)</span>
