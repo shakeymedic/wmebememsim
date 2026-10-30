@@ -304,45 +304,53 @@ body.embedded .vbar .standalone-only{display:none}
 /* the session is over: dim the whole machine (its alarms are silent too), as the defib does */
 .ended{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.82);color:#fff;font-size:2rem;font-weight:700;letter-spacing:.12em}
 .ended[hidden]{display:none}
-/* Simple mode (the facilitator's choice): big buttons for the common modes instead of the machine */
-.sv{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px 16px;background:#14171a;display:none}
-body.simple .sv{display:block}
-body.simple #device,body.simple .under,body.simple .hands{display:none}
-.sv-in{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
-.sv-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:#0f1b2d;border:1px solid #2c4a73;border-radius:12px;padding:10px 14px}
-.sv-state{font-size:1.35rem;font-weight:800;color:#fff}
-.sv-state.on{color:#7ee787}
-.sv-meas{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.95rem;color:#cbd5e1}
-.sv-meas b{color:#fff;font-size:1.15rem;font-variant-numeric:tabular-nums}
-.sv-alarm{border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.15rem}
-.sv-alarm[hidden]{display:none}
-.sv-alarm.hi{background:#b91c1c;color:#fff}
-.sv-alarm.med{background:#facc15;color:#1b1300}
-.sv-alarm.low{background:#0891b2;color:#fff}
-.sv-alarm span{flex:1}
-.sv h2{margin:6px 0 0;font-size:1rem;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
-.sv h3{margin:10px 0 6px;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:#cbd5e1}
-.sv-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.sv-mode{min-height:96px;border-radius:14px;border:2px solid #3d6aa3;background:#1e3a5f;color:#fff;font:inherit;padding:10px;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:4px;cursor:pointer}
-.sv-mode b{font-size:1.45rem;line-height:1.1}
-.sv-mode small{font-size:.8rem;color:#cbd5e1;line-height:1.25}
-.sv-mode[aria-pressed="true"]{background:#15803d;border-color:#86efac}
-.sv-mode[aria-pressed="true"] small{color:#ecfdf5}
-.sv-mode:focus-visible,.sv-step:focus-visible,.sv-act:focus-visible{outline:3px solid #ffd24a;outline-offset:2px}
-.sv-sets{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-.sv-set{display:flex;align-items:center;gap:8px;background:#0f1b2d;border:1px solid #2c4a73;border-radius:12px;padding:8px}
-.sv-set .lab{flex:1;min-width:0;text-align:center}
-.sv-set .lab span{display:block;font-size:.8rem;color:#94a3b8}
-.sv-set .lab b{font-size:1.6rem;color:#fff;font-variant-numeric:tabular-nums}
-.sv-set .lab i{font-style:normal;font-size:.85rem;color:#cbd5e1;margin-left:3px}
-.sv-step{width:60px;height:60px;flex:0 0 auto;border-radius:12px;border:0;background:#334155;color:#fff;font-size:2rem;font-weight:800;line-height:1;cursor:pointer}
-.sv-step:disabled{opacity:.35;cursor:default}
-.sv-note{font-size:.9rem;color:#cbd5e1;margin:0}
-.sv-acts{display:flex;flex-wrap:wrap;gap:10px}
-.sv-act{min-height:56px;padding:0 20px;border-radius:12px;border:2px solid #64748b;background:#334155;color:#fff;font:inherit;font-weight:800;font-size:1.05rem;cursor:pointer}
-.sv-act.stop{background:#7c2d12;border-color:#fb923c}
-.sv-act[hidden]{display:none}
-@media (max-width:760px){.sv-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sv{padding:10px}.sv-mode{min-height:84px}.sv-mode b{font-size:1.25rem}}
+/* Simple mode (the facilitator's choice): the ventilator's own screen shows big buttons for the common modes.
+   Drawn over the device screen in its look (black top bar, grey monitoring column, light window, dark bottom bar),
+   at 600 logical px high and scaled with the screen; on a small window the page zooms in on the screen. */
+body.simple .under,body.simple .hands{display:none}
+body.simple-zoom .t1-scaler{overflow:hidden}
+.ss{position:absolute;left:0;top:0;height:600px;transform-origin:0 0;z-index:25;background:#000;color:#fff;font-size:16px;line-height:1.15;overflow:hidden}
+.ss[hidden]{display:none}
+.ss button{font-family:inherit;cursor:pointer}
+.ss-top{position:absolute;left:0;right:0;top:0;height:56px;display:flex;background:#000}
+.ss-mode{width:180px;flex:0 0 auto;display:flex;align-items:center;padding:0 12px;font-size:28px;white-space:nowrap;overflow:hidden}
+.ss-msg{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;background:#2b2b2b;font-size:22px;font-weight:600;padding:0 10px;white-space:nowrap;overflow:hidden}
+.ss-msg.hi{background:#e30613;color:#fff}
+.ss-msg.med,.ss-msg.low{background:#ffde00;color:#000}
+.ss-tag{width:150px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:600;border-left:2px solid #2b2b2b}
+.ss-mmps{position:absolute;left:0;top:56px;width:180px;height:484px;background:#1b1b1b}
+.ss-mmp{position:absolute;left:0;width:180px;height:106px;background:#373a3d;border-bottom:2px solid #000;text-align:right;padding:2px 12px 0 4px}
+.ss-mmp .v{display:block;font-size:60px;letter-spacing:-1px;font-variant-numeric:tabular-nums;height:64px;line-height:66px}
+.ss-mmp .n{display:block;font-size:17px;line-height:19px}
+.ss-mmp .u{display:block;font-size:14px;color:#d5d5d5;line-height:17px}
+.ss-spo2{position:absolute;left:0;top:424px;width:180px;height:60px;background:#373a3d;display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:18px}
+.ss-spo2 b{font-weight:400;font-size:22px}
+.ss-main{position:absolute;left:180px;right:0;top:56px;height:484px;background:#f4f4f4;color:#1a1a1a;padding:6px 10px;overflow:hidden}
+.ss-h{font-size:15px;font-weight:700;color:#333;margin:4px 0 4px;display:flex;justify-content:space-between;align-items:baseline}
+.ss-h small{font-weight:400;color:#555;font-size:13px}
+.ss-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-bottom:4px}
+.ss-tile{height:92px;background:#d6d6d6;border:1px solid #b3b3b3;border-radius:2px;color:#1a1a1a;text-align:left;padding:5px 8px;display:flex;flex-direction:column;justify-content:center;gap:3px}
+.ss-tile b{font-size:20px;line-height:1.05}
+.ss-tile small{font-size:12px;line-height:1.15;color:#444}
+.ss-tile[aria-pressed="true"]{background:#5cb03a;border-color:#4b9a2c;color:#fff}
+.ss-tile[aria-pressed="true"] small{color:#f0fff0}
+.ss-tile.wait{box-shadow:0 0 0 3px #ffde00}
+.ss-sets{display:flex;gap:6px;justify-content:flex-start}
+.ss-set{width:116px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center}
+.ss-set .lb{font-size:14px;height:17px;white-space:nowrap}
+.ss-set .c{width:74px;height:74px;border-radius:50%;border:2.5px solid #5d5d5d;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;line-height:1;font-variant-numeric:tabular-nums;margin:2px 0 5px}
+.ss-set .c small{font-size:12px;margin-top:2px;color:#555}
+.ss-set .pm{display:flex;gap:4px}
+.ss-step{width:54px;height:48px;background:#d6d6d6;border:1px solid #b3b3b3;border-radius:2px;color:#1a1a1a;font-size:30px;font-weight:700;line-height:1;padding:0}
+.ss-step:disabled{opacity:.4;cursor:default}
+.ss-note{font-size:13px;color:#333;margin:4px 0 0}
+.ss-note[hidden]{display:none}
+.ss-bar{position:absolute;left:0;right:0;top:540px;height:60px;background:#000;border-top:2px solid #2b2b2b;display:flex}
+.ss-bb{height:58px;background:#2b2b2b;border:0;border-right:2px solid #000;font-size:21px;font-weight:600;color:#fff;padding:0 18px}
+.ss-bb[hidden]{display:none}
+.ss-bb.on{background:#ffde00;color:#000}
+.ss-st{flex:1;display:flex;align-items:center;justify-content:flex-end;padding-right:12px;font-size:15px;color:#ddd}
+.ss :focus-visible{outline:3px solid #f39200;outline-offset:-3px}
 </style>
 </head>
 <body>
@@ -358,17 +366,6 @@ body.simple #device,body.simple .under,body.simple .hands{display:none}
 <div class="link-banner" id="linkBanner" role="alert"><b>NOT LINKED TO SESSION</b><span id="linkReason">Looking for the session&hellip;</span></div>
 <div class="ended" id="endedBanner" hidden>SESSION ENDED</div>
 <div class="pt-note" id="ptNote" role="status" hidden></div>
-<main class="sv" id="simpleVent" aria-label="Ventilator, simple mode">
-  <div class="sv-in">
-    <div class="sv-status"><span class="sv-state" id="svState" aria-live="polite">Off</span><span class="sv-meas" id="svMeas"></span></div>
-    <div class="sv-alarm" id="svAlarm" role="alert" hidden><span id="svAlarmText"></span><button type="button" class="sv-act" id="svSilence">Silence 2 min</button></div>
-    <h2 id="svSetsHead" hidden>Settings</h2>
-    <div class="sv-sets" id="svSets"></div>
-    <p class="sv-note" id="svNote" hidden></p>
-    <div id="svModes"></div>
-    <div class="sv-acts"><button type="button" class="sv-act stop" id="svStandby" hidden>Stop ventilating (Standby)</button></div>
-  </div>
-</main>
         <div class="t1-wrap" id="device">
           <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
           <div class="t1-scaler" id="t1scaler">
@@ -1323,6 +1320,17 @@ function fitDevice() {
   sc.style.width = (DEV_W * s) + 'px'; sc.style.height = (DEV_H * s) + 'px';
   const box = $('#screenbox');
   $('#screen').style.transform = 'scale(' + (box.clientWidth / 1280) + ')';
+  /* Simple mode with the screen under 520 px wide (a phone): zoom in on the screen, the housing cropped */
+  const zoom = typeof SIMPLE !== 'undefined' && SIMPLE.on && box.clientWidth * s < 520;
+  document.body.classList.toggle('simple-zoom', zoom);
+  if (zoom) {
+    let x = 0, y = 0;
+    for (let el = box; el && el !== t1; el = el.offsetParent) { x += el.offsetLeft; y += el.offsetTop; }
+    const W = wrap.clientWidth, H = wrap.clientHeight - 4, bw = box.offsetWidth, bh = box.offsetHeight;
+    const z = Math.min((W - 8) / bw, (H - 8) / bh);
+    t1.style.transform = `translate(${(W - bw * z) / 2 - x * z}px, ${(H - bh * z) / 2 - y * z}px) scale(${z})`;
+    sc.style.width = W + 'px'; sc.style.height = H + 'px';
+  }
 }
 new ResizeObserver(fitDevice).observe($('#device'));
 
@@ -2778,61 +2786,79 @@ function simpleStep(k, dir) {
   remoteEdit('ctrl', k, remoteValue('ctrl', k, null, dir));
   renderSimple(); publishMirror();
 }
+/* the panel is drawn over the device screen, 600 logical px high, as wide as the screen's shape allows */
+const simpleEl = document.createElement('div');
+simpleEl.className = 'ss'; simpleEl.id = 'simpleVent'; simpleEl.hidden = true;
+simpleEl.setAttribute('role', 'region'); simpleEl.setAttribute('aria-label', 'Ventilator, simple mode');
+simpleEl.innerHTML = '<div class="ss-top"><div class="ss-mode" id="svMode"></div><div class="ss-msg" id="svMsg" role="status"></div><div class="ss-tag">Simple</div></div>' +
+  '<div class="ss-mmps" id="svMeas" aria-label="Measured values"></div>' +
+  '<div class="ss-main"><div id="svSetsWrap"></div><p class="ss-note" id="svNote" hidden></p><div id="svModes"></div></div>' +
+  '<div class="ss-bar"><button type="button" class="ss-bb" id="svStandby" hidden>Standby</button><button type="button" class="ss-bb" id="svSilence" hidden>Audio pause</button><span class="ss-st" id="svState" aria-live="polite"></span></div>';
+$('#screen').appendChild(simpleEl);
+function sizeSimple() {
+  const scr = $('#screen'), w = scr.offsetWidth || 800, h = scr.offsetHeight || 600;
+  simpleEl.style.width = (w * 600 / h) + 'px';
+  simpleEl.style.transform = 'scale(' + (h / 600) + ')';
+}
+/* On a small window (a phone) the whole ventilator makes the screen too small to touch: zoom in on the screen,
+   the housing cropped at the edges. */
 function setSimple(on) {
   on = !!on && SIMPLE_BUTTONS.length > 0;
   if (on === SIMPLE.on) return;
-  SIMPLE.on = on; SIMPLE.pending = null;
+  SIMPLE.on = on; SIMPLE.pending = null; simpleSig = '';
   document.body.classList.toggle('simple', on);
-  if (on) { if (E) confirmEdit(); E = null; $('#dlg').hidden = true; win = null; renderAll(); }
-  else { if (V.power && V.standby && V.selftest <= 0 && !win) win = 'standby'; renderAll(); requestAnimationFrame(fitDevice); }
+  simpleEl.hidden = !on;
+  if (on) { sizeSimple(); if (E) confirmEdit(); E = null; $('#dlg').hidden = true; win = null; renderAll(); }
+  else { if (V.power && V.standby && V.selftest <= 0 && !win) win = 'standby'; renderAll(); }
+  requestAnimationFrame(fitDevice);
   renderSimple();
 }
 let simpleSig = '';
+const simpleNum = (v, dp) => v === null || v === undefined || !Number.isFinite(Number(v)) ? '--' : Number(v).toFixed(dp);
 function renderSimple() {
   if (!SIMPLE.on) return;
   if (SIMPLE.pending && V.power && V.selftest <= 0) { simpleSelect(SIMPLE.pending); return; }
-  const cur = simpleCurrent(), keys = simpleKeys(), on = !!cur || (V.power && !V.standby && V.selftest <= 0);
-  const st = $('#svState');
-  st.textContent = !V.power ? 'Off: choose a mode to start' : V.selftest > 0 ? 'Self-test…' : V.standby ? 'Standby: choose a mode to start' : (isHFO() ? 'High-flow oxygen running' : 'Ventilating') + ': ' + (cur === 'cpap' ? 'CPAP' : modeLabel());
-  st.classList.toggle('on', on);
-  const meas = [];
-  const show = (label, v, dp, unit) => meas.push(`<span>${label} <b>${v === null || v === undefined || !Number.isFinite(Number(v)) ? '–' : Number(v).toFixed(dp)}</b>${unit ? ' ' + unit : ''}</span>`);
-  if (on && !isHFO()) { show('Ppeak', M.ppeak, 0, 'cmH2O'); show('PEEP', M.peep, 0, 'cmH2O'); show('VTE', M.vte, 0, 'ml'); show('Rate', M.ftot, 0, '/min'); show('MinVol', M.mv, 1, 'l/min'); }
-  if (on) show('SpO2', LIVE.spo2, 0, '%');
-  $('#svMeas').innerHTML = meas.join('');
-  /* the mode buttons: rebuilt only when what they show changes, so a press is never lost to a redraw */
-  const sig = (on ? 1 : 0) + '|' + (cur || '') + '|' + (SIMPLE.pending || '') + '|' + keys.join(',') + '|' + keys.map(k => V.set[k]).join(',');
+  const cur = simpleCurrent(), keys = simpleKeys(), on = V.power && !V.standby && V.selftest <= 0;
+  $('#svMode').textContent = !V.power ? '' : V.selftest > 0 ? 'Self-test' : V.standby ? 'Standby' : (cur === 'cpap' ? 'CPAP' : modeLabel());
+  /* the message bar: the alarms, as on the full screen */
+  const list = on ? topAlarms() : [], msg = $('#svMsg');
+  msg.className = 'ss-msg' + (list.length ? ' ' + list[0].p : '');
+  msg.textContent = list.length ? list.map(a => a.t).slice(0, 2).join(' · ') : !V.power ? 'Switched off: choose a mode to start' : V.selftest > 0 ? 'Self-test in progress…' : V.standby ? 'Choose a mode to start ventilating' : '';
+  /* the monitoring column */
+  const rows = isHFO() ? [['Flow', V.set.hflow, 0, 'l/min'], ['Oxygen', on ? measuredO2() : null, 0, '%']]
+    : [['Ppeak', M.ppeak, 0, 'cmH2O'], ['VTE', M.vte, 0, 'ml'], ['ExpMinVol', M.mv, 1, 'l/min'], ['fTotal', M.ftot, 0, 'b/min']];
+  $('#svMeas').innerHTML = rows.map(([n, v, dp, u], i) => `<div class="ss-mmp" style="top:${i * 106}px"><span class="v">${on ? simpleNum(v, dp) : '--'}</span><span class="n">${n}</span><span class="u">${u}</span></div>`).join('') +
+    `<div class="ss-spo2"><b>${on ? simpleNum(LIVE.spo2, 0) : '--'}%</b><span>SpO2</span></div>`;
+  /* the window: settings while ventilating, then the mode buttons (rebuilt only when they change, so a press is not lost) */
+  const sig = [on ? 1 : 0, cur || '', SIMPLE.pending || '', keys.join(','), keys.map(k => V.set[k]).join(',')].join('|');
   if (sig !== simpleSig) {
     simpleSig = sig;
-    const groups = [['mask', 'Mask (non-invasive)'], ['tube', 'Tube or i-gel (invasive)']];
-    $('#svModes').innerHTML = `<h2>${on ? 'Change mode' : 'Choose a mode'}</h2>` + groups.map(([g, title]) => {
-      const bs = SIMPLE_BUTTONS.filter(b => b.group === g);
-      return bs.length ? `<h3>${title}</h3><div class="sv-grid">` + bs.map(b => `<button type="button" class="sv-mode" data-simple="${b.id}" aria-pressed="${cur === b.id || SIMPLE.pending === b.id}"><b>${b.label}</b><small>${b.sub}</small></button>`).join('') + '</div>' : '';
-    }).join('');
-    $('#svSetsHead').hidden = !on || !keys.length;
-    $('#svSets').innerHTML = on ? keys.map(k => {
+    $('#svSetsWrap').innerHTML = on && keys.length ? '<div class="ss-h">Settings</div><div class="ss-sets">' + keys.map(k => {
       const d = defFor('ctrl', k), v = V.set[k];
       const atMin = !d.list && v <= (d.off0 ? 0 : d.min), atMax = !d.list && v >= d.max;
-      return `<div class="sv-set"><button type="button" class="sv-step" data-step="${k}" data-dir="-1" aria-label="${d.label} down"${atMin ? ' disabled' : ''}>−</button>` +
-        `<div class="lab"><span>${d.label}</span><b data-simple-val="${k}">${simpleFmt(k, v)}</b><i>${d.unit}</i></div>` +
-        `<button type="button" class="sv-step" data-step="${k}" data-dir="1" aria-label="${d.label} up"${atMax ? ' disabled' : ''}>+</button></div>`;
-    }).join('') : '';
+      return `<div class="ss-set"><span class="lb">${d.label}</span><span class="c" data-simple-val="${k}">${simpleFmt(k, v)}<small>${d.unit}</small></span>` +
+        `<span class="pm"><button type="button" class="ss-step" data-step="${k}" data-dir="-1" aria-label="${d.label} down"${atMin ? ' disabled' : ''}>−</button>` +
+        `<button type="button" class="ss-step" data-step="${k}" data-dir="1" aria-label="${d.label} up"${atMax ? ' disabled' : ''}>+</button></span></div>`;
+    }).join('') + '</div>' : '';
+    const groups = [['mask', 'Mask (non-invasive)'], ['tube', 'Tube or i-gel (invasive)']];
+    $('#svModes').innerHTML = groups.map(([g, title], gi) => {
+      const bs = SIMPLE_BUTTONS.filter(b => b.group === g);
+      return bs.length ? `<div class="ss-h">${title}${gi === 0 ? `<small>${on ? 'Touch to change mode' : 'Touch a mode to start'}</small>` : ''}</div><div class="ss-grid">` +
+        bs.map(b => `<button type="button" class="ss-tile${SIMPLE.pending === b.id ? ' wait' : ''}" data-simple="${b.id}" aria-pressed="${cur === b.id}"><b>${b.label}</b><small>${b.sub}</small></button>`).join('') + '</div>' : '';
+    }).join('');
   }
   /* NIV and pressure support are set above PEEP: say what the inspiratory pressure comes to */
   const note = $('#svNote');
   const above = on && (V.mode === 'NIV' || V.mode === 'SPONT') && V.set.ps > 0 ? V.set.peep + V.set.ps : null;
   note.hidden = above === null;
-  if (above !== null) note.textContent = `Inspiratory pressure (IPAP) = PEEP ${V.set.peep} + pressure support ${V.set.ps} = ${above} cmH2O.`;
+  if (above !== null) note.textContent = `Inspiratory pressure (IPAP) = PEEP ${V.set.peep} + pressure support ${V.set.ps} = ${above} cmH2O`;
   $('#svStandby').hidden = !on;
-  const list = on ? topAlarms() : [];
-  $('#svAlarm').hidden = !list.length;
-  if (list.length) {
-    $('#svAlarm').className = 'sv-alarm ' + list[0].p;
-    $('#svAlarmText').textContent = list.map(a => a.t).slice(0, 2).join(' · ');
-    $('#svSilence').textContent = V.audioPause > 0 ? 'Silenced ' + Math.floor(V.audioPause / 60) + ':' + String(Math.floor(V.audioPause % 60)).padStart(2, '0') : 'Silence 2 min';
-  }
+  $('#svSilence').hidden = !V.power;
+  $('#svSilence').classList.toggle('on', V.audioPause > 0);
+  $('#svSilence').textContent = V.audioPause > 0 ? 'Audio paused ' + Math.floor(V.audioPause / 60) + ':' + String(Math.floor(V.audioPause % 60)).padStart(2, '0') : 'Audio pause 2 min';
+  $('#svState').textContent = on ? (isHFO() ? 'High-flow oxygen running' : 'Ventilating') : '';
 }
-$('#simpleVent').addEventListener('click', e => {
+simpleEl.addEventListener('click', e => {
   const m = e.target.closest('[data-simple]');
   if (m) { simpleSelect(m.dataset.simple); return; }
   const s = e.target.closest('[data-step]');
