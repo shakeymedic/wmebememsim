@@ -14,7 +14,7 @@ permission, and the simulator's devices are generic training versions).
 
 - **App name** (30 characters max): `EM Sim: Emergency Simulation` (28)
 - **Category:** Medical (or Education). **Contains ads:** no. **Free.**
-- **Contact email:** emevidence999@gmail.com. **Website:** https://emsimulator.com
+- **Contact email:** hello@emevidence.org. **Website:** https://emsimulator.com
 - **Privacy policy:** https://emsimulator.com/privacy.html
 
 ## Short description (80 characters max)
