@@ -386,6 +386,45 @@ body.embedded .vbar .standalone-only{display:none}
 /* the session is over: dim the whole machine (its alarms are silent too), as the defib does */
 .ended{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.82);color:#fff;font-size:2rem;font-weight:700;letter-spacing:.12em}
 .ended[hidden]{display:none}
+/* Simple mode (the facilitator's choice): big buttons for the common modes instead of the machine */
+.sv{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 16px 16px;background:#14171a;display:none}
+body.simple .sv{display:block}
+body.simple #device,body.simple .under,body.simple .hands{display:none}
+.sv-in{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.sv-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;background:#0f1b2d;border:1px solid #2c4a73;border-radius:12px;padding:10px 14px}
+.sv-state{font-size:1.35rem;font-weight:800;color:#fff}
+.sv-state.on{color:#7ee787}
+.sv-meas{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:.95rem;color:#cbd5e1}
+.sv-meas b{color:#fff;font-size:1.15rem;font-variant-numeric:tabular-nums}
+.sv-alarm{border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;font-weight:800;font-size:1.15rem}
+.sv-alarm[hidden]{display:none}
+.sv-alarm.hi{background:#b91c1c;color:#fff}
+.sv-alarm.med{background:#facc15;color:#1b1300}
+.sv-alarm.low{background:#0891b2;color:#fff}
+.sv-alarm span{flex:1}
+.sv h2{margin:6px 0 0;font-size:1rem;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8}
+.sv h3{margin:10px 0 6px;font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:#cbd5e1}
+.sv-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.sv-mode{min-height:96px;border-radius:14px;border:2px solid #3d6aa3;background:#1e3a5f;color:#fff;font:inherit;padding:10px;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:4px;cursor:pointer}
+.sv-mode b{font-size:1.45rem;line-height:1.1}
+.sv-mode small{font-size:.8rem;color:#cbd5e1;line-height:1.25}
+.sv-mode[aria-pressed="true"]{background:#15803d;border-color:#86efac}
+.sv-mode[aria-pressed="true"] small{color:#ecfdf5}
+.sv-mode:focus-visible,.sv-step:focus-visible,.sv-act:focus-visible{outline:3px solid #ffd24a;outline-offset:2px}
+.sv-sets{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.sv-set{display:flex;align-items:center;gap:8px;background:#0f1b2d;border:1px solid #2c4a73;border-radius:12px;padding:8px}
+.sv-set .lab{flex:1;min-width:0;text-align:center}
+.sv-set .lab span{display:block;font-size:.8rem;color:#94a3b8}
+.sv-set .lab b{font-size:1.6rem;color:#fff;font-variant-numeric:tabular-nums}
+.sv-set .lab i{font-style:normal;font-size:.85rem;color:#cbd5e1;margin-left:3px}
+.sv-step{width:60px;height:60px;flex:0 0 auto;border-radius:12px;border:0;background:#334155;color:#fff;font-size:2rem;font-weight:800;line-height:1;cursor:pointer}
+.sv-step:disabled{opacity:.35;cursor:default}
+.sv-note{font-size:.9rem;color:#cbd5e1;margin:0}
+.sv-acts{display:flex;flex-wrap:wrap;gap:10px}
+.sv-act{min-height:56px;padding:0 20px;border-radius:12px;border:2px solid #64748b;background:#334155;color:#fff;font:inherit;font-weight:800;font-size:1.05rem;cursor:pointer}
+.sv-act.stop{background:#7c2d12;border-color:#fb923c}
+.sv-act[hidden]{display:none}
+@media (max-width:760px){.sv-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sv{padding:10px}.sv-mode{min-height:84px}.sv-mode b{font-size:1.25rem}}
 </style>
 </head>
 <body>
@@ -401,6 +440,17 @@ body.embedded .vbar .standalone-only{display:none}
 <div class="link-banner" id="linkBanner" role="alert"><b>NOT LINKED TO SESSION</b><span id="linkReason">Looking for the session&hellip;</span></div>
 <div class="ended" id="endedBanner" hidden>SESSION ENDED</div>
 <div class="pt-note" id="ptNote" role="status" hidden></div>
+<main class="sv" id="simpleVent" aria-label="Ventilator, simple mode">
+  <div class="sv-in">
+    <div class="sv-status"><span class="sv-state" id="svState" aria-live="polite">Off</span><span class="sv-meas" id="svMeas"></span></div>
+    <div class="sv-alarm" id="svAlarm" role="alert" hidden><span id="svAlarmText"></span><button type="button" class="sv-act" id="svSilence">Silence 2 min</button></div>
+    <h2 id="svSetsHead" hidden>Settings</h2>
+    <div class="sv-sets" id="svSets"></div>
+    <p class="sv-note" id="svNote" hidden></p>
+    <div id="svModes"></div>
+    <div class="sv-acts"><button type="button" class="sv-act stop" id="svStandby" hidden>Stop ventilating (Standby)</button></div>
+  </div>
+</main>
         <div class="a-main">
         <div class="t1-wrap" id="device">
           <button class="fs-exit" id="btnFsExit" aria-label="Exit full screen">✕ Exit full screen</button>
@@ -2926,6 +2976,7 @@ function applyLive(v) {
   const model = v.vent && Object.prototype.hasOwnProperty.call(MODEL_PAGES, v.vent.model) ? v.vent.model : 't1';
   if (model !== DEVICE_MODEL) { switchModel(model); return; }
   applyConfig(v.vent || null);
+  setSimple(!!(v.defib && v.defib.ventSimple));
   document.body.classList.toggle('assess', !!(v.vent && v.vent.assess));
   if (document.body.classList.contains('assess')) helpFor = null;
   /* A new scenario gets a fresh ventilator. The controller's run id (new on every scenario load, kept on
@@ -3068,6 +3119,130 @@ function listenForCommands(code) {
   /* commands already waiting when this page opened were for an earlier page: never replay them */
   ref.once('value').then(s => { Object.keys(s.val() || {}).forEach(k => seen.add(k)); ref.limitToLast(30).on('child_added', onChild); }).catch(() => {});
 }
+/* ---------- Simple mode: big buttons for the common modes instead of the machine ----------
+   The facilitator turns it on from the controller (live.defib.ventSimple, a free-form key, so no database-rules
+   change). A button picks the mode on the same breath engine and starts ventilating; the large − and + buttons
+   change the mode's main settings. The mirror, the log and the facilitator's remote control work as before.
+   Not offered on the anaesthetic machine, whose modes and bag do not fit a few buttons. */
+const SIMPLE_BUTTONS = DEVICE_MODEL === 'a350' ? [] : [
+  {id:'cpap', group:'mask', label:'CPAP', sub:'Continuous positive airway pressure, no pressure support'},
+  {id:'niv', group:'mask', mode:'NIV', label:'NIV', sub:'BiPAP: pressure support above PEEP for each breath'},
+  {id:'nivst', group:'mask', mode:'NIV-ST', label:'NIV-ST', sub:'NIV with a backup rate'},
+  {id:'hfo', group:'mask', mode:'HiFlowO2', label:'High-flow O2', sub:'Nasal high-flow oxygen (does not ventilate)'},
+  {id:'psv', group:'tube', mode:'SPONT', label:'Pressure support', sub:'PSV: the patient triggers every breath'},
+  {id:'psimv', group:'tube', mode:'PSIMV+', label:'PSIMV', sub:'Pressure SIMV: set breaths, supported breaths in between'},
+  {id:'pcv', group:'tube', mode:'PCV+', label:'Pressure control', sub:'PCV: every breath is a set-pressure breath'},
+  {id:'vc', group:'tube', mode:DEVICE_MODEL === 'c6' ? 'SCMV' : 'APVcmv', label:'Volume control', sub:'Every breath delivers the set tidal volume'}
+].filter(b => !b.mode || REMOTE_MODES.includes(b.mode));
+/* timing settings stay on the full machine; simple mode shows the pressures, volume, rate, flow and oxygen */
+const SIMPLE_SKIP = ['plim', 'ie', 'ti', 'thigh', 'tlow', 'athigh', 'trig', 'ets', 'pramp', 'timax', 'pause', 'height'];
+const SIMPLE = {on:false, pending:null};
+/* CPAP is NIV with no pressure support on a mask, SPONT with none on a tube or i-gel */
+const simpleModeOf = b => b.id === 'cpap' ? (P && P.iface && P.iface !== 'mask' ? 'SPONT' : 'NIV') : b.mode;
+function simpleCurrent() {
+  if (!V.power || V.selftest > 0 || V.standby || V.cpr) return null;
+  if ((V.mode === 'NIV' || V.mode === 'SPONT') && V.set.ps <= 0) return 'cpap';
+  const b = SIMPLE_BUTTONS.find(x => x.mode === V.mode);
+  return b ? b.id : null;
+}
+function simpleSelect(id) {
+  const b = SIMPLE_BUTTONS.find(x => x.id === id); if (!b) return;
+  $('#dlg').hidden = true; win = null;
+  if (!V.power) { powerOn(); SIMPLE.pending = id; renderSimple(); return; }
+  if (V.selftest > 0) { SIMPLE.pending = id; renderSimple(); return; }
+  SIMPLE.pending = null;
+  if (E) confirmEdit();
+  const mode = simpleModeOf(b);
+  /* HiFlowO2 is selected in Standby only, on the device too */
+  if (!V.standby && isHFO(mode) !== isHFO(V.mode)) goStandby();
+  if (mode !== V.mode || V.cpr) {
+    createDraft(mode, false);
+    if (b.id === 'cpap') D.set.ps = 0;
+    else if ((mode === 'NIV' || mode === 'SPONT') && !(D.set.ps > 0)) D.set.ps = DEFAULT_SET.ps;
+    applyDraft();
+  } else if (b.id === 'cpap' && V.set.ps > 0) remoteEdit('ctrl', 'ps', 0);
+  else if (b.id !== 'cpap' && (mode === 'NIV' || mode === 'SPONT') && !(V.set.ps > 0)) remoteEdit('ctrl', 'ps', DEFAULT_SET.ps);
+  if (V.standby) startVentilation();
+  win = null; renderAll(); renderSimple(); publishMirror();
+}
+function simpleKeys() {
+  const mc = modeCtrls(modeKey(), V.psync);
+  if (!mc) return [];
+  return mc.basic.filter(k => !SIMPLE_SKIP.includes(k) && CTRL[k] && typeof V.set[k] === 'number' && !(k === 'ps' && simpleCurrent() === 'cpap'));
+}
+function simpleFmt(k, v) {
+  const d = CTRL[k];
+  if (k === 'ie') return ieStr(v);
+  return d && d.dp ? Number(v).toFixed(d.dp) : String(Math.round(v));
+}
+function simpleStep(k, dir) {
+  if (!V.power || V.selftest > 0 || !simpleKeys().includes(k)) return;
+  remoteEdit('ctrl', k, remoteValue('ctrl', k, null, dir));
+  renderSimple(); publishMirror();
+}
+function setSimple(on) {
+  on = !!on && SIMPLE_BUTTONS.length > 0;
+  if (on === SIMPLE.on) return;
+  SIMPLE.on = on; SIMPLE.pending = null;
+  document.body.classList.toggle('simple', on);
+  if (on) { if (E) confirmEdit(); E = null; $('#dlg').hidden = true; win = null; renderAll(); }
+  else { if (V.power && V.standby && V.selftest <= 0 && !win) win = 'standby'; renderAll(); requestAnimationFrame(fitDevice); }
+  renderSimple();
+}
+let simpleSig = '';
+function renderSimple() {
+  if (!SIMPLE.on) return;
+  if (SIMPLE.pending && V.power && V.selftest <= 0) { simpleSelect(SIMPLE.pending); return; }
+  const cur = simpleCurrent(), keys = simpleKeys(), on = !!cur || (V.power && !V.standby && V.selftest <= 0);
+  const st = $('#svState');
+  st.textContent = !V.power ? 'Off: choose a mode to start' : V.selftest > 0 ? 'Self-test…' : V.standby ? 'Standby: choose a mode to start' : (isHFO() ? 'High-flow oxygen running' : 'Ventilating') + ': ' + (cur === 'cpap' ? 'CPAP' : modeLabel());
+  st.classList.toggle('on', on);
+  const meas = [];
+  const show = (label, v, dp, unit) => meas.push(`<span>${label} <b>${v === null || v === undefined || !Number.isFinite(Number(v)) ? '–' : Number(v).toFixed(dp)}</b>${unit ? ' ' + unit : ''}</span>`);
+  if (on && !isHFO()) { show('Ppeak', M.ppeak, 0, 'cmH2O'); show('PEEP', M.peep, 0, 'cmH2O'); show('VTE', M.vte, 0, 'ml'); show('Rate', M.ftot, 0, '/min'); show('MinVol', M.mv, 1, 'l/min'); }
+  if (on) show('SpO2', LIVE.spo2, 0, '%');
+  $('#svMeas').innerHTML = meas.join('');
+  /* the mode buttons: rebuilt only when what they show changes, so a press is never lost to a redraw */
+  const sig = (on ? 1 : 0) + '|' + (cur || '') + '|' + (SIMPLE.pending || '') + '|' + keys.join(',') + '|' + keys.map(k => V.set[k]).join(',');
+  if (sig !== simpleSig) {
+    simpleSig = sig;
+    const groups = [['mask', 'Mask (non-invasive)'], ['tube', 'Tube or i-gel (invasive)']];
+    $('#svModes').innerHTML = `<h2>${on ? 'Change mode' : 'Choose a mode'}</h2>` + groups.map(([g, title]) => {
+      const bs = SIMPLE_BUTTONS.filter(b => b.group === g);
+      return bs.length ? `<h3>${title}</h3><div class="sv-grid">` + bs.map(b => `<button type="button" class="sv-mode" data-simple="${b.id}" aria-pressed="${cur === b.id || SIMPLE.pending === b.id}"><b>${b.label}</b><small>${b.sub}</small></button>`).join('') + '</div>' : '';
+    }).join('');
+    $('#svSetsHead').hidden = !on || !keys.length;
+    $('#svSets').innerHTML = on ? keys.map(k => {
+      const d = defFor('ctrl', k), v = V.set[k];
+      const atMin = !d.list && v <= (d.off0 ? 0 : d.min), atMax = !d.list && v >= d.max;
+      return `<div class="sv-set"><button type="button" class="sv-step" data-step="${k}" data-dir="-1" aria-label="${d.label} down"${atMin ? ' disabled' : ''}>−</button>` +
+        `<div class="lab"><span>${d.label}</span><b data-simple-val="${k}">${simpleFmt(k, v)}</b><i>${d.unit}</i></div>` +
+        `<button type="button" class="sv-step" data-step="${k}" data-dir="1" aria-label="${d.label} up"${atMax ? ' disabled' : ''}>+</button></div>`;
+    }).join('') : '';
+  }
+  /* NIV and pressure support are set above PEEP: say what the inspiratory pressure comes to */
+  const note = $('#svNote');
+  const above = on && (V.mode === 'NIV' || V.mode === 'SPONT') && V.set.ps > 0 ? V.set.peep + V.set.ps : null;
+  note.hidden = above === null;
+  if (above !== null) note.textContent = `Inspiratory pressure (IPAP) = PEEP ${V.set.peep} + pressure support ${V.set.ps} = ${above} cmH2O.`;
+  $('#svStandby').hidden = !on;
+  const list = on ? topAlarms() : [];
+  $('#svAlarm').hidden = !list.length;
+  if (list.length) {
+    $('#svAlarm').className = 'sv-alarm ' + list[0].p;
+    $('#svAlarmText').textContent = list.map(a => a.t).slice(0, 2).join(' · ');
+    $('#svSilence').textContent = V.audioPause > 0 ? 'Silenced ' + Math.floor(V.audioPause / 60) + ':' + String(Math.floor(V.audioPause % 60)).padStart(2, '0') : 'Silence 2 min';
+  }
+}
+$('#simpleVent').addEventListener('click', e => {
+  const m = e.target.closest('[data-simple]');
+  if (m) { simpleSelect(m.dataset.simple); return; }
+  const s = e.target.closest('[data-step]');
+  if (s && !s.disabled) simpleStep(s.dataset.step, Number(s.dataset.dir));
+});
+$('#svStandby').addEventListener('click', () => { if (V.power && !V.standby) { if (E) confirmEdit(); goStandby(); win = null; renderAll(); renderSimple(); publishMirror(); } });
+$('#svSilence').addEventListener('click', () => { if (!V.power) return; V.audioPause = V.audioPause > 0 ? 0 : AUDIO_PAUSE_S; if (V.audioPause > 0) logEvent('Alarms silenced for 2 minutes', 'info'); renderAll(); renderSimple(); });
+setInterval(renderSimple, 250);
 /* Assessment mode: no alarm troubleshooting help on the screen */
 const assessStyle = document.createElement('style');
 assessStyle.textContent = 'body.assess .abuf .i{display:none}';
@@ -3150,7 +3325,7 @@ requestAnimationFrame(rafLoop);
 const urlSession = sessionFromUrl();
 if (urlSession) fbStart(urlSession);
 else setLinkState(false, 'No session was supplied. Enter the session code shown on the controller to link this ventilator.', 'never');
-window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand, leakK, maskWrong, fightChance, sgaOver};
+window.__vent = {V, G, get P() { return P; }, B, M, LIVE, fb, ventStateNow, remoteCommand, leakK, maskWrong, fightChance, sgaOver, SIMPLE, setSimple};
 
 </script>
 </body>
