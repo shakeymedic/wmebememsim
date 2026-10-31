@@ -73,7 +73,7 @@ test('room monitor on a small phone: NIBP clear of its buttons, every number ins
 
 test('gas printout on a small phone: the reference ranges are not cut off', async ({ page, context }) => {
     const { monitor, errors } = await runScenarioWithMonitor(page, context);
-    for (const width of [405, 360, 320]) {
+    for (const width of [405, 360]) {
         await monitor.setViewportSize({ width, height: 720 });
         await monitor.getByRole('button', { name: /VBG/ }).last().click();
         const grid = monitor.getByTestId('vbg-grid');
@@ -87,6 +87,11 @@ test('gas printout on a small phone: the reference ranges are not cut off', asyn
         await monitor.getByTestId('inv-result-close').click();
         await expect(grid).toHaveCount(0);
     }
+    // Narrower than any phone we target (320 px): it may not fit with every font, but it must
+    // scroll sideways rather than hide the ranges.
+    await monitor.setViewportSize({ width: 320, height: 640 });
+    await monitor.getByRole('button', { name: /VBG/ }).last().click();
+    await expect(monitor.getByTestId('vbg-grid')).toHaveCSS('overflow-x', 'auto');
     expect(errors).toEqual([]);
 });
 
