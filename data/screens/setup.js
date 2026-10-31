@@ -756,14 +756,16 @@
                             ) : (
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 mb-4"><Button variant="secondary" onClick={() => setPremadeCategory(null)} className="h-8 px-2 text-xs"><Lucide icon="arrow-left" /> Back</Button><h3 className="text-lg font-bold text-sky-400">{premadeCategory.label} Scenarios</h3></div>
-                                    <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-2">
+                                    {/* grid-cols-1 (minmax(0, 1fr)) and flex-wrap: on a phone the Edit / Load buttons
+                                        drop below the title instead of running off the right-hand edge. */}
+                                    <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2" data-testid="library-list">
                                         {ALL_SCENARIOS.filter(premadeCategory.filter).map((s) => (
-                                            <div key={s.id} className="flex justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
-                                                <div className="flex-1">
-                                                    <div className="font-bold text-slate-200 group-hover:text-white flex items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
+                                            <div key={s.id} className="flex flex-wrap gap-2 justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
+                                                <div className="flex-1 min-w-[12rem]">
+                                                    <div className="font-bold text-slate-200 group-hover:text-white flex flex-wrap items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
                                                     <div className="text-xs text-slate-400">{(t => t.length > 60 ? t.substring(0, 60) + '…' : t)(getScenarioPreviewText(s))}</div>
                                                 </div>
-                                                <div className="flex gap-2">
+                                                <div className="flex gap-2 flex-none ml-auto">
                                                     <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
                                                     <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
                                                 </div>
@@ -807,9 +809,9 @@
                              )}
                              {canSave && customScenarios.length === 0 && <p className="text-slate-400 text-sm italic text-center py-4">No saved scenarios yet. Use <b>Builder</b> (top right) to make one, or import a file.</p>}
                              {canSave && customScenarios.map(s => (
-                                 <div key={s.id} className="flex justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
-                                     <div><div className="font-bold text-white flex items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{getScenarioPreviewText(s)}</div></div>
-                                     <div className="flex gap-2">
+                                 <div key={s.id} className="flex flex-wrap gap-2 justify-between items-center bg-slate-700/50 p-3 rounded border border-slate-600">
+                                     <div className="flex-1 min-w-[12rem]"><div className="font-bold text-white flex flex-wrap items-center gap-2">{s.title} <DiffBadge d={s.difficulty}/></div><div className="text-xs text-slate-400">{getScenarioPreviewText(s)}</div></div>
+                                     <div className="flex gap-2 flex-none ml-auto">
                                         <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs">Edit</Button>
                                         <Button onClick={() => handleGenerate(s)} variant="success" className="h-8 text-xs">Load</Button>
                                         <Button onClick={() => {

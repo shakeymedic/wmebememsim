@@ -847,10 +847,13 @@
                  : (isActive && isContinuous ? `${action.label} is ACTIVE \u2014 pressing again STOPS it.` : action.label);
              // The remove control is a sibling of the main button, not a child: a button inside a
              // button is invalid and a "nested-interactive" accessibility failure.
+             // A corner control (stop / remove one) sits over the top right of the tile: keep the
+             // label clear of it, and never let a long label spill out of the tile.
+             const hasCorner = (isActive && isContinuous) || (!isActive && count > 0 && !isContinuous);
              return (
                  <div key={key} className="relative">
                  <button title={btnTitle} onClick={() => applyIntervention(key)} className={`relative w-full h-14 p-2 rounded text-left bg-slate-700 hover:bg-slate-600 border flex flex-col justify-between overflow-hidden group/btn ${isActive && isContinuous ? 'border-emerald-500 ring-1 ring-emerald-500/40' : (missing.length ? 'border-amber-500/60' : 'border-slate-600')}`}>
-                     <span className={`text-xs font-bold leading-tight ${missing.length ? 'pl-2.5' : ''} ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
+                     <span data-testid="action-label" className={`text-xs font-bold leading-tight line-clamp-2 shrink-0 ${missing.length ? 'pl-2.5' : ''} ${hasCorner ? 'pr-6' : ''} ${variant === 'success' ? 'text-emerald-400' : 'text-slate-200'}`}>{action.label}</span>
                      <div className="flex justify-between items-end w-full">
                         {/* The ROUTE is shown on every button, because IM vs IV vs buccal
                             is the whole point of the new route-specific keys and a facilitator must be

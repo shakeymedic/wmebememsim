@@ -895,7 +895,7 @@
         const tileProps = onClick ? { type: 'button', onClick, 'aria-label': `Adjust ${label}` } : {};
         if (isNIBP && isMonitor) {
             return (
-                <Tile {...tileProps} className={`obs-tile relative h-full w-full min-w-0 overflow-hidden bg-slate-900 border-2 rounded p-2 ${reserveBottom ? 'pb-14' : ''} flex flex-col justify-between text-left ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
+                <Tile {...tileProps} className={`obs-tile relative h-full w-full min-w-0 overflow-hidden bg-slate-900 border-2 rounded p-2 ${reserveBottom ? 'pb-14 max-md:pb-11 [@media(orientation:landscape)_and_(max-height:500px)]:pb-10' : ''} flex flex-col justify-between text-left ${onClick ? 'cursor-pointer' : ''} transition-colors ${alert ? 'border-red-500 bg-red-900/20' : 'border-slate-800'}`}>
                      <div className="flex justify-between items-start gap-1 min-w-0">
                         <span className={`${dense ? 'text-[10px] lg:text-sm' : 'text-sm'} font-bold uppercase truncate ${color}`}>{label}</span>
                         <span className="text-xs text-slate-400 whitespace-nowrap">{unit}</span>
