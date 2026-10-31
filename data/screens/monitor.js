@@ -66,7 +66,7 @@
         const shown = rows.filter((r, i) => !r.section || (rows[i + 1] && !rows[i + 1].section));
         const anyCalc = shown.some(r => r.calc);
         return (
-            <div className="bg-[#fbfbf8] text-neutral-900 rounded-sm shadow-[0_2px_10px_rgba(0,0,0,0.5)] px-4 pt-3 pb-3 font-sans text-[15px] sm:text-base leading-snug max-h-[76vh] overflow-y-auto"
+            <div className="bg-[#fbfbf8] text-neutral-900 rounded-sm shadow-[0_2px_10px_rgba(0,0,0,0.5)] px-3 sm:px-4 pt-3 pb-3 font-sans text-[13px] min-[400px]:text-[14px] sm:text-base leading-snug max-h-[76vh] overflow-y-auto overflow-x-auto"
                  data-testid="vbg-grid" role="group" aria-label={`${arterial ? 'Arterial' : 'Venous'} blood gas printout`}>
                 <div className="border-b border-neutral-800 pb-2 mb-1.5">
                     <div className="flex justify-between items-baseline gap-2">
@@ -76,7 +76,7 @@
                     <div className="grid grid-cols-[auto_1fr] gap-x-3 text-[0.85em] mt-1">
                         <span>Patient ID</span><span className="font-mono">{g.patientId || 'SIM-0001'}</span>
                         <span>Sample type</span>
-                        <span data-testid="gas-sample">{box(!arterial)}Venous<span className="ml-2">{box(arterial)}Arterial</span><span className="ml-2">{box(false)}Capillary</span></span>
+                        <span data-testid="gas-sample" className="flex flex-wrap gap-x-2"><span className="whitespace-nowrap">{box(!arterial)}Venous</span><span className="whitespace-nowrap">{box(arterial)}Arterial</span><span className="whitespace-nowrap">{box(false)}Capillary</span></span>
                         <span>T</span><span className="tabular-nums">{Number.isFinite(temp) && temp > 0 ? temp.toFixed(1) : '37.0'} °C</span>
                         <span>FO<sub>2</sub>(I)</span><span className="tabular-nums" data-testid="gas-fio2">{Number.isFinite(fio2) && fio2 > 0 ? fio2.toFixed(2) : '–'}</span>
                     </div>
@@ -91,12 +91,14 @@
                             const noRange = r.arterialOnly && !arterial;
                             return (
                                 <tr key={r.k} data-testid={`gas-row-${r.k}`}>
-                                    <td className="pl-3 pr-2 whitespace-nowrap">{r.label}</td>
+                                    <td className="pl-1 sm:pl-3 pr-2 whitespace-nowrap">{r.label}</td>
                                     <td className="text-right whitespace-nowrap font-semibold" data-testid={`gas-val-${r.k}`}>
                                         <span className="inline-block min-w-[1.7em] text-left font-normal" title={flag ? (flag.length > 1 ? 'Outside critical range' : 'Outside reference range') : undefined}>{flag}</span>{fmtGas(r.n, r.dp, r.signed)}
                                     </td>
-                                    <td className="pl-2 pr-1 whitespace-nowrap text-[0.85em]">{r.unit}</td>
-                                    <td className="text-right whitespace-nowrap text-[0.85em] text-neutral-700">{noRange ? '' : `[ ${fmtGas(r.ref[0], r.dp, r.signed)} – ${fmtGas(r.ref[1], r.dp, r.signed)} ]`}</td>
+                                    <td className="pl-1 sm:pl-2 pr-1 whitespace-nowrap text-[0.85em]">{r.unit}</td>
+                                    {/* Non-breaking spaces except after the dash: on a very narrow phone (or with a wider
+                                        font) the range may wrap to "[ 7.35 –" / "7.45 ]" rather than be cut off. */}
+                                    <td className="pl-1 text-right max-sm:whitespace-normal whitespace-nowrap text-[0.85em] text-neutral-700">{noRange ? '' : `[\u00a0${fmtGas(r.ref[0], r.dp, r.signed)}\u00a0– ${fmtGas(r.ref[1], r.dp, r.signed)}\u00a0]`}</td>
                                 </tr>
                             );
                         })}
@@ -706,6 +708,7 @@
             if (!(vitals.bpSys > 0) || (window.RHYTHMS && window.RHYTHMS.isPulseless(rhythm))) return { sys: vitals.bpSys, dia: vitals.bpDia };
             return { sys: Math.round(vitals.bpSys + b.sys), dia: Math.max(0, Math.round(vitals.bpDia + b.dia)) };
         })();
+        const shortLandscapeCols = () => tileCount === 4 ? '[@media(orientation:landscape)_and_(max-height:500px)]:grid-cols-4' : tileCount === 5 ? '[@media(orientation:landscape)_and_(max-height:500px)]:grid-cols-5' : '[@media(orientation:landscape)_and_(max-height:500px)]:grid-cols-6';
         const getGridCols = () => {
             const count = tileCount;
             if (count === 4) return 'md:grid-cols-4';
@@ -745,7 +748,7 @@
                     const wide = !!img || !!live12;
                     return (
                         <div className={`absolute top-4 right-4 z-[70] transition-all duration-500 ${invToast ? 'translate-x-0 opacity-100' : 'translate-x-10 opacity-0 pointer-events-none'} ${(viewImage || viewEcg) ? 'hidden' : ''}`}>
-                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-4 max-w-[92vw] ${wide ? ((live12 || img.modality === 'ECG') ? 'w-[760px]' : 'w-[520px]') : (invToast && invToast.gas ? 'w-[30rem] xl:w-[32rem]' : 'w-96 xl:w-[30rem] 2xl:w-[36rem]')}`} data-testid="inv-result">
+                            <div className={`bg-slate-800 border-l-4 border-purple-500 rounded shadow-2xl p-3 sm:p-4 max-w-[92vw] ${wide ? ((live12 || img.modality === 'ECG') ? 'w-[760px]' : 'w-[520px]') : (invToast && invToast.gas ? 'w-[30rem] xl:w-[32rem]' : 'w-96 xl:w-[30rem] 2xl:w-[36rem]')}`} data-testid="inv-result">
                                 <div className="flex justify-between items-start mb-2">
                                     <h3 className="text-purple-400 font-bold uppercase text-base md:text-lg flex items-center gap-2"><Lucide icon="activity" className="w-5 h-5"/> {invToast?.title} Result</h3>
                                     {/* 44 px to touch; the negative margin keeps the card's layout as it was */}
@@ -923,7 +926,10 @@
                         )}
                     </div>
 
-                    <div className={`flex-none grid grid-cols-2 ${getGridCols()} auto-rows-fr gap-2 ${tileCount > 4 ? 'h-[34vh]' : 'h-[28vh]'} md:h-[28vh]`}>
+                    {/* Phones: portrait gets taller tiles (at 28vh a 16:9 phone left the NIBP number no room
+                        beside its Cycle / Auto buttons); a short landscape screen (a phone on its side) puts
+                        all the tiles in one row, as a tablet does, so each is tall enough for its number. */}
+                    <div data-testid="obs-tiles" className={`flex-none grid grid-cols-2 ${getGridCols()} auto-rows-fr gap-2 ${tileCount > 4 ? 'h-[46vh]' : 'h-[38vh]'} md:h-[28vh] ${shortLandscapeCols()} [@media(orientation:landscape)_and_(max-height:500px)]:h-[32vh]`}>
                         <VitalDisplay label="Heart Rate" value={hrShown} prev={prevVitals.hr} unit="bpm" alert={hrNoCount || hrShown > thresholds.hr.high || hrShown < thresholds.hr.low} visible={sEcg} isMonitor={true} hideTrends={true} dense={denseTiles} noCount={hrNoCount} />
                         
                         <div className="relative h-full min-w-0">
@@ -932,9 +938,9 @@
                                 CUFF OFF, and no new reading can be taken until the cuff is back on. */}
                             <VitalDisplay label="NIBP" value={nibp.sys} value2={nibp.dia} unit="mmHg" alert={nibp.sys && nibp.sys < (thresholds.bpSys || 90)} visible={sNibp || !!nibp.sys} isMonitor={true} hideTrends={true} isNIBP={true} lastNIBP={nibp.lastTaken} onClick={sNibp ? triggerNIBP : undefined} note={sNibp ? null : 'cuff off'} dense={denseTiles} reserveBottom={sNibp} />
                             {sNibp && (
-                                <div className="absolute bottom-1 right-1 left-1 flex gap-1 lg:gap-2 z-20 px-1">
-                                    <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border border-slate-600 uppercase lg:tracking-wide transition-colors shadow-lg flex-1 min-w-0 h-12 truncate">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
-                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border uppercase lg:tracking-wide transition-colors shadow-lg h-12 flex-1 min-w-0 max-w-[80px] truncate ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
+                                <div className="absolute bottom-1 right-1 left-1 flex gap-1 lg:gap-2 z-20 px-1" data-testid="nibp-buttons">
+                                    <button onClick={(e) => { e.stopPropagation(); (nibp.inflating && sim.stopNIBP) ? sim.stopNIBP() : triggerNIBP(); }} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border border-slate-600 uppercase lg:tracking-wide transition-colors shadow-lg flex-1 min-w-0 h-12 max-md:h-9 [@media(orientation:landscape)_and_(max-height:500px)]:h-8 [@media(orientation:landscape)_and_(max-height:500px)]:py-1 truncate">{nibp.inflating ? 'Stop' : 'Cycle'}</button>
+                                    <button onClick={(e) => { e.stopPropagation(); toggleNIBPMode(); }} className={`text-[11px] lg:text-sm font-bold px-0.5 py-2 rounded border uppercase lg:tracking-wide transition-colors shadow-lg h-12 max-md:h-9 [@media(orientation:landscape)_and_(max-height:500px)]:h-8 [@media(orientation:landscape)_and_(max-height:500px)]:py-1 flex-1 min-w-0 max-w-[80px] truncate ${nibp.mode === 'auto' ? 'bg-emerald-900/80 border-emerald-500 text-emerald-400' : 'bg-slate-800 border-slate-600 text-slate-400'}`}>Auto</button>
                                 </div>
                             )}
                         </div>
