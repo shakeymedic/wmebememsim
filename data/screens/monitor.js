@@ -96,7 +96,9 @@
                                         <span className="inline-block min-w-[1.7em] text-left font-normal" title={flag ? (flag.length > 1 ? 'Outside critical range' : 'Outside reference range') : undefined}>{flag}</span>{fmtGas(r.n, r.dp, r.signed)}
                                     </td>
                                     <td className="pl-1 sm:pl-2 pr-1 whitespace-nowrap text-[0.85em]">{r.unit}</td>
-                                    <td className="pl-1 text-right whitespace-nowrap text-[0.85em] text-neutral-700">{noRange ? '' : `[ ${fmtGas(r.ref[0], r.dp, r.signed)} – ${fmtGas(r.ref[1], r.dp, r.signed)} ]`}</td>
+                                    {/* Non-breaking spaces except after the dash: on a very narrow phone (or with a wider
+                                        font) the range may wrap to "[ 7.35 –" / "7.45 ]" rather than be cut off. */}
+                                    <td className="pl-1 text-right max-sm:whitespace-normal whitespace-nowrap text-[0.85em] text-neutral-700">{noRange ? '' : `[\u00a0${fmtGas(r.ref[0], r.dp, r.signed)}\u00a0– ${fmtGas(r.ref[1], r.dp, r.signed)}\u00a0]`}</td>
                                 </tr>
                             );
                         })}

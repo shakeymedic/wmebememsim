@@ -73,7 +73,7 @@ test('room monitor on a small phone: NIBP clear of its buttons, every number ins
 
 test('gas printout on a small phone: the reference ranges are not cut off', async ({ page, context }) => {
     const { monitor, errors } = await runScenarioWithMonitor(page, context);
-    for (const width of [405, 360]) {
+    for (const width of [405, 360, 320]) {
         await monitor.setViewportSize({ width, height: 720 });
         await monitor.getByRole('button', { name: /VBG/ }).last().click();
         const grid = monitor.getByTestId('vbg-grid');
