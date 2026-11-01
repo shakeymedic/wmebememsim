@@ -91,8 +91,15 @@
         { name: 'Suxamethonium (RSI)', perKg: 2, unit: 'mg', max: 200, info: '50 mg/ml IV' },
         { name: 'Amiodarone (Arrest)', perKg: 5, unit: 'mg', max: 300, info: 'After 3rd shock (max 300 mg); child: repeat once after 5th shock, max 150 mg' },
         { name: 'Atropine (Bradycardia)', perKg: 0.02, unit: 'mg', maxByAge: (age) => (age !== null && age >= 12 && age < 18 ? 0.6 : 0.5), info: 'IV/IO 20 mcg/kg. Max 0.5 mg up to 11 y; 0.3-0.6 mg at 12-17 y; adult 0.5 mg (3 mg total)' },
-        // 10 kg or less: 10 mg/kg (BNFc, unlicensed; the SmPC gives 7.5 mg/kg). 15 mg/kg is for over 10 kg.
-        { name: 'Paracetamol IV', perKg: 15, perKgByWeight: (w) => (w <= 10 ? 10 : 15), unit: 'mg', max: 1000, info: '10 mg/ml IV. 15 mg/kg; 10 mg/kg if 10 kg or less' },
+        // BNFc (screenshot from Jake, 1 Nov 2026), IV paracetamol: "Child (body-weight up to 10 kg):
+        // 10 mg/kg, every 4-6 hours... maximum 30 mg/kg per day"; "Neonate 32 weeks corrected
+        // gestational age and above: 7.5 mg/kg every 8 hours". The calculator knows weight and age in
+        // whole years only, so it cannot tell a neonate from an older infant: at 10 kg or less it shows
+        // the child dose and its daily maximum, and states the neonatal dose in words. 15 mg/kg over 10 kg.
+        { name: 'Paracetamol IV', perKg: 15, perKgByWeight: (w) => (w <= 10 ? 10 : 15), unit: 'mg', max: 1000,
+          info: '10 mg/ml IV. 15 mg/kg; 10 mg/kg if 10 kg or less',
+          infoByWeight: (w) => (w <= 10 ? '10 mg/ml IV. Child up to 10 kg: 10 mg/kg every 4-6 hours, max 30 mg/kg per day. Neonate 32 weeks corrected gestational age and above: 7.5 mg/kg every 8 hours (BNFc)' : null),
+          maxNoteByWeight: (w) => (w <= 10 ? `max 30 mg/kg/day (${Math.round(30 * w * 10) / 10} mg/day)` : null) },
         { name: 'Glucose 10% (child)', perKg: 2, unit: 'ml', max: 50, info: 'IV/IO 2 ml/kg for known hypoglycaemia (RCUK chart max 50 ml)' },
         { name: 'Sodium Bicarb 8.4%', perKg: 1, unit: 'mmol', max: 50, info: '1 mmol/ml IV slow' },
         { name: 'TXA (Trauma Haemorrhage)', perKg: 15, unit: 'mg', max: 1000, info: '100 mg/ml IV slow over 10 min' },
@@ -2542,11 +2549,11 @@
                                         <div key={idx} className="bg-slate-900 border border-slate-700 rounded p-3 flex justify-between items-center">
                                             <div>
                                                 <div className="text-sm font-bold text-white">{drug.name}</div>
-                                                <div className="text-xs text-slate-400">{drug.info}</div>
+                                                <div className="text-xs text-slate-400">{(drug.infoByWeight && drug.infoByWeight(drugCalcWeight)) || drug.info}</div>
                                             </div>
                                             <div className="text-right">
                                                 <div className="text-lg font-bold text-sky-400 font-mono">{shown} {drug.unit}</div>
-                                                <div className="text-[10px] text-slate-400">{drug.byAge ? `for age ${calcAge === null ? 'adult' : calcAge}` : `max ${maxDose}${drug.unit}`}</div>
+                                                <div className="text-[10px] text-slate-400">{drug.byAge ? `for age ${calcAge === null ? 'adult' : calcAge}` : ((drug.maxNoteByWeight && drug.maxNoteByWeight(drugCalcWeight)) || `max ${maxDose}${drug.unit}`)}</div>
                                             </div>
                                         </div>
                                     );

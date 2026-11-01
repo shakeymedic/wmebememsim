@@ -176,7 +176,18 @@ test('the drug calculator gives RCUK paediatric doses (IM adrenaline by age, atr
   await expect(row('Atropine (Bradycardia)')).toContainText('0.5 mg');          // max 0.5 mg up to 11 years
   await expect(row('Glucose 10% (child)')).toContainText('50.0 ml');            // chart maximum
   await expect(row('Paracetamol IV')).toContainText('600.0 mg');                // 15 mg/kg over 10 kg
+  await expect(row('Paracetamol IV')).toContainText('max 1000mg');
+  await expect(row('Paracetamol IV')).not.toContainText('Neonate');
   await page.getByLabel('Patient Weight (kg)').fill('8');
-  await expect(row('Paracetamol IV')).toContainText('80.0 mg');                 // 10 mg/kg at 10 kg or less (BNFc)
+  // BNFc (screenshot from Jake, 1 Nov 2026): up to 10 kg 10 mg/kg every 4-6 hours, max 30 mg/kg per
+  // day; neonate 32 weeks corrected gestational age and above 7.5 mg/kg every 8 hours.
+  await expect(row('Paracetamol IV')).toContainText('80.0 mg');                 // 10 mg/kg at 10 kg or less
+  await expect(row('Paracetamol IV')).toContainText('max 30 mg/kg/day (240 mg/day)');
+  await expect(row('Paracetamol IV')).not.toContainText('max 1000mg');
+  await expect(row('Paracetamol IV')).toContainText('10 mg/kg every 4-6 hours, max 30 mg/kg per day');
+  await expect(row('Paracetamol IV')).toContainText('Neonate 32 weeks corrected gestational age and above: 7.5 mg/kg every 8 hours');
+  await page.getByLabel('Patient Weight (kg)').fill('3.5');
+  await expect(row('Paracetamol IV')).toContainText('35.0 mg');
+  await expect(row('Paracetamol IV')).toContainText('max 30 mg/kg/day (105 mg/day)');
   expect(errors).toEqual([]);
 });
