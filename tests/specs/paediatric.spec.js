@@ -175,5 +175,8 @@ test('the drug calculator gives RCUK paediatric doses (IM adrenaline by age, atr
   await page.getByLabel('Patient Weight (kg)').fill('40');
   await expect(row('Atropine (Bradycardia)')).toContainText('0.5 mg');          // max 0.5 mg up to 11 years
   await expect(row('Glucose 10% (child)')).toContainText('50.0 ml');            // chart maximum
+  await expect(row('Paracetamol IV')).toContainText('600.0 mg');                // 15 mg/kg over 10 kg
+  await page.getByLabel('Patient Weight (kg)').fill('8');
+  await expect(row('Paracetamol IV')).toContainText('80.0 mg');                 // 10 mg/kg at 10 kg or less (BNFc)
   expect(errors).toEqual([]);
 });

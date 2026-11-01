@@ -91,7 +91,8 @@
         { name: 'Suxamethonium (RSI)', perKg: 2, unit: 'mg', max: 200, info: '50 mg/ml IV' },
         { name: 'Amiodarone (Arrest)', perKg: 5, unit: 'mg', max: 300, info: 'After 3rd shock (max 300 mg); child: repeat once after 5th shock, max 150 mg' },
         { name: 'Atropine (Bradycardia)', perKg: 0.02, unit: 'mg', maxByAge: (age) => (age !== null && age >= 12 && age < 18 ? 0.6 : 0.5), info: 'IV/IO 20 mcg/kg. Max 0.5 mg up to 11 y; 0.3-0.6 mg at 12-17 y; adult 0.5 mg (3 mg total)' },
-        { name: 'Paracetamol IV', perKg: 15, unit: 'mg', max: 1000, info: '10 mg/ml IV' },
+        // 10 kg or less: 10 mg/kg (BNFc, unlicensed; the SmPC gives 7.5 mg/kg). 15 mg/kg is for over 10 kg.
+        { name: 'Paracetamol IV', perKg: 15, perKgByWeight: (w) => (w <= 10 ? 10 : 15), unit: 'mg', max: 1000, info: '10 mg/ml IV. 15 mg/kg; 10 mg/kg if 10 kg or less' },
         { name: 'Glucose 10% (child)', perKg: 2, unit: 'ml', max: 50, info: 'IV/IO 2 ml/kg for known hypoglycaemia (RCUK chart max 50 ml)' },
         { name: 'Sodium Bicarb 8.4%', perKg: 1, unit: 'mmol', max: 50, info: '1 mmol/ml IV slow' },
         { name: 'TXA (Trauma Haemorrhage)', perKg: 15, unit: 'mg', max: 1000, info: '100 mg/ml IV slow over 10 min' },
@@ -2533,7 +2534,7 @@
                                 {!drugCalcWeightError && DRUG_CALC_LIST.map((drug, idx) => {
                                     const calcAge = Number.isFinite(Number(scenario.patientAge)) ? Number(scenario.patientAge) : null;
                                     const maxDose = drug.maxByAge ? drug.maxByAge(calcAge) : drug.max;
-                                    const rawDose = drug.byAge ? drug.byAge(calcAge) : drug.perKg * drugCalcWeight;
+                                    const rawDose = drug.byAge ? drug.byAge(calcAge) : (drug.perKgByWeight ? drug.perKgByWeight(drugCalcWeight) : drug.perKg) * drugCalcWeight;
                                     const minDose = drug.min ? Math.max(rawDose, drug.min) : rawDose;
                                     const finalDose = Math.min(minDose, maxDose);
                                     const shown = (drug.display && drug.display(calcAge)) || (finalDose < 1 ? finalDose.toFixed(2).replace(/0$/, '') : finalDose.toFixed(1));
