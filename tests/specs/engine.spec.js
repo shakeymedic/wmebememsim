@@ -140,7 +140,7 @@ test.describe('Defibrillation and drug rules', () => {
     expect(await st(page, 'S.rhythm')).toBe('Sinus Bradycardia');
   });
 
-  test('atropine barely moves complete heart block; isoprenaline speeds the escape', async ({ page }) => {
+  test('atropine does nothing for broad-complex complete heart block; isoprenaline speeds the escape', async ({ page }) => {
     await eng(page, "E.changeRhythm('Complete Heart Block', 'test')");
     await page.waitForTimeout(200);
     await eng(page, "E.applyIntervention('IV Access')");
@@ -150,7 +150,9 @@ test.describe('Defibrillation and drug rules', () => {
     await eng(page, "E.applyIntervention('Isoprenaline')");
     await expect.poll(() => st(page, 'S.activeDrugs.length')).toBeGreaterThanOrEqual(2);
     const hr = await st(page, "Object.fromEntries(S.activeDrugs.map(d => [d.key, d.effect.HR]))");
-    expect(hr.Atropine).toBeLessThan(3);
+    // RCUK 2025 ALS: "Do not give atropine to patients with high-degree atrioventricular block and
+    // wide QRS. It is ineffective and may worsen the block."
+    expect(hr.Atropine).toBe(0);
     expect(hr.Isoprenaline).toBeGreaterThanOrEqual(20);
     // In sinus bradycardia atropine works fully
     await eng(page, "E.changeRhythm('Sinus Bradycardia', 'test')");
@@ -159,6 +161,20 @@ test.describe('Defibrillation and drug rules', () => {
     await expect.poll(() => st(page, "S.activeDrugs.filter(d => d.key === 'Atropine').length")).toBe(2);
     const doses = await st(page, "S.activeDrugs.filter(d => d.key === 'Atropine').map(d => d.effect.HR)");
     expect(doses[doses.length - 1]).toBe(12);
+  });
+
+  test('atropine never reverts or speeds complete heart block (always drawn broad)', async ({ page }) => {
+    expect(await st(page, "RHYTHMS.drugHrResponse('Atropine', 'Complete Heart Block')")).toBe(0);
+    expect(await st(page, "!!(RHYTHMS.DRUG_CONVERSION.Atropine || {})['Complete Heart Block']")).toBe(false);
+    await eng(page, "E.changeRhythm('Complete Heart Block', 'test')");
+    await page.waitForTimeout(200);
+    await eng(page, "E.applyIntervention('IV Access')");
+    await page.waitForTimeout(100);
+    for (let i = 0; i < 3; i++) { await eng(page, "E.applyIntervention('Atropine')"); await page.waitForTimeout(100); }
+    await expect.poll(() => st(page, "S.activeDrugs.filter(d => d.key === 'Atropine').length")).toBe(3);
+    expect(await st(page, "S.activeDrugs.filter(d => d.key === 'Atropine').every(d => d.effect.HR === 0)")).toBe(true);
+    expect(await st(page, 'S.rhythm')).toBe('Complete Heart Block');
+    expect(await st(page, "S.log.some(l => /no rate response expected/.test(l.msg || l.message || l.text || ''))")).toBe(true);
   });
 
   test('"auto" PEA: ROSC at the second rhythm check after adrenaline with CPR, never without adrenaline', async ({ page }) => {

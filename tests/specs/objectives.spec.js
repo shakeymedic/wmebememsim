@@ -63,6 +63,20 @@ test('anaphylaxis: two IM adrenaline doses and a fluid bolus meet the algorithm;
   expect((await progress(page, 'PA037', { AdrenalineIM: 1 })).rows['Use correct paediatric adrenaline doses'].status).toBe('met');
 });
 
+test('complete heart block (broad escape): pacing, isoprenaline or adrenaline meets the bradycardia algorithm; atropine is not needed and meets nothing', async ({ page }) => {
+  await openController(page);
+  // RCUK 2025 ALS: "Do not give atropine to patients with high-degree atrioventricular block and wide QRS."
+  for (const key of ['Pacing', 'Isoprenaline', 'AdrenalineInfusion']) {
+    expect((await progress(page, 'AM023', { [key]: 1 })).rows['Bradycardia algorithm'].status).toBe('met');
+  }
+  expect((await progress(page, 'AM023', { Atropine: 3 })).rows['Bradycardia algorithm'].status).toBe('none');
+  const scen = await page.evaluate(() => window.ALL_SCENARIOS.find(s => s.id === 'AM023'));
+  expect(scen.ecg.type).toBe('Complete Heart Block');
+  expect(scen.recommendedActions).not.toContain('Atropine');
+  expect(scen.recommendedActions).toContain('Metaraminol');
+  expect(scen.instructorBrief.interventions.join(' ')).toContain('Do not give atropine to patients with high-degree atrioventricular block and wide QRS. It is ineffective and may worsen the block.');
+});
+
 test('temporal arteritis: one steroid meets "Steroid urgency"', async ({ page }) => {
   await openController(page);
   expect((await progress(page, 'EL007', { Dexamethasone: 1 })).rows['Steroid urgency'].status).toBe('met');

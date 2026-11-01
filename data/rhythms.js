@@ -897,11 +897,13 @@
 
     // How well a heart-rate-raising drug works in each rhythm (1 = full effect, the default).
     // Atropine acts on the sinus and AV nodes, so it helps sinus bradycardia and nodal block but
-    // does little for block below the AV node (broad-complex complete heart block, Mobitz II) or a
-    // ventricular escape. Isoprenaline and adrenaline raise the escape rate as well, which is why
-    // they are the bridge to pacing when atropine fails.
+    // does little for block below the AV node (Mobitz II) or a ventricular escape. Complete heart
+    // block is always drawn here with a BROAD escape, and atropine does nothing for it: RCUK 2025
+    // Adult ALS, "Do not give atropine to patients with high-degree atrioventricular block and wide
+    // QRS. It is ineffective and may worsen the block." Isoprenaline and adrenaline raise the escape
+    // rate as well, which is why they are the bridge to pacing.
     var DRUG_HR_RESPONSE = {
-        Atropine: { 'Complete Heart Block': 0.15, '2nd Deg Heart Block': 0.4, 'Idioventricular': 0.1, 'Junctional': 0.8 },
+        Atropine: { 'Complete Heart Block': 0, '2nd Deg Heart Block': 0.4, 'Idioventricular': 0.1, 'Junctional': 0.8 },
         Isoprenaline: { 'Complete Heart Block': 1, '2nd Deg Heart Block': 1, 'Idioventricular': 0.9 },
         AdrenalineInfusion: { 'Complete Heart Block': 0.9, 'Idioventricular': 0.8 }
     };
@@ -944,8 +946,8 @@
         },
         Atropine: {
             'Sinus Bradycardia': { chance: 0.70, to: 'Sinus Rhythm' },
-            '2nd Deg Heart Block': { chance: 0.20, to: 'Sinus Rhythm' },
-            'Complete Heart Block': { chance: 0.05, to: 'Sinus Rhythm' }
+            '2nd Deg Heart Block': { chance: 0.20, to: 'Sinus Rhythm' }
+            // No entry for Complete Heart Block: atropine never reverts a broad-complex block (RCUK 2025).
         },
         MagSulph: {
             'VT':  { chance: 0.45, to: 'Sinus Rhythm' },
