@@ -850,8 +850,8 @@
     // opts.kind 'cardiovert' checks a synchronised shock against the cardioversion energies;
     // opts.shockNumber lets a child's refractory VF/pVT escalate: RCUK 2025 text, "increase the
     // energy dose stepwise up to 8 J/kg (max 360 J) for refractory VF/pVT (more than five shocks
-    // needed)"; this device stops at 200 J. Up to 8 J/kg is accepted without a flag from the 5th
-    // shock because the RCUK PLS algorithm poster says "from 5th shock" (permissive by design).
+    // needed)"; this device stops at 200 J. Up to 8 J/kg is accepted without a flag from the 6th
+    // shock; at the 5th it is flagged (the RCUK poster's "from 5th shock" is not followed; Jake, 2 Nov 2026).
     function energyDeviation(joules, weightKg, ageYears, opts) {
         opts = opts || {};
         var j = Number(joules);
@@ -872,7 +872,7 @@
         if (!isFinite(j) || j <= 0) return { expected: expected, given: joules, reason: 'no energy selected' };
         var ratio = j / expected;
         var ceiling = expected * 1.5;
-        if (child && Number(opts.shockNumber) >= 5) ceiling = Math.max(ceiling, Math.min(360, 8 * Number(weightKg)) * 1.1);
+        if (child && Number(opts.shockNumber) >= 6) ceiling = Math.max(ceiling, Math.min(360, 8 * Number(weightKg)) * 1.1);
         if (j > ceiling) return { expected: expected, given: j, reason: 'energy too high (' + j + ' J vs recommended ' + expected + ' J' + (child ? ', 4 J/kg; up to 8 J/kg only for refractory VF/pVT, more than five shocks needed' : '') + ')' };
         if (ratio < 0.6) return { expected: expected, given: j, reason: 'energy too low (' + j + ' J vs recommended ' + expected + ' J)' };
         return null;

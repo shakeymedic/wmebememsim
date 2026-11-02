@@ -436,7 +436,7 @@ Sim scenario (`scenario.defibSim`).
   weight-based doses for a child (atropine, adenosine, IM adrenaline by age, amiodarone, buccal
   midazolam, levetiracetam, 10% glucose, calcium gluconate); and a child's refractory VF/pVT
   (more than five shocks needed) may be escalated to 8 J/kg. Up to 8 J/kg is accepted without a flag
-  from the 5th shock, because the RCUK algorithm poster says "from 5th shock". `tests/specs/paediatric.spec.js`
+  from the 6th shock (more than five shocks needed, the RCUK guideline text); at the 5th it is flagged. `tests/specs/paediatric.spec.js`
   checks these values.
 - **Anaphylaxis** follows the RCUK Emergency treatment of anaphylaxis guideline (May 2021): steroids
   and antihistamines are not recommended actions and do not slow the decline; giving one before

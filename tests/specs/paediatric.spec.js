@@ -70,7 +70,7 @@ test('paediatric doses: atropine, adenosine, IM adrenaline, amiodarone, buccal m
   expect(r.calcium).toBe('IV 10% Calcium Gluconate 30 ml administered (0.5 ml/kg) over 5-10 min.');
 });
 
-test('shock energies: 4 J/kg, up to 8 J/kg accepted from the 5th shock (refractory VF/pVT), cardioversion 1 J/kg doubling to 4 J/kg', async ({ page }) => {
+test('shock energies: 4 J/kg, up to 8 J/kg accepted from the 6th shock (more than five shocks needed), cardioversion 1 J/kg doubling to 4 J/kg', async ({ page }) => {
   await openController(page);
   const r = await run(page, `
     const RG = window.RHYTHMS, d = (j, w, a, o) => RG.energyDeviation(j, w, a, o);
@@ -78,7 +78,8 @@ test('shock energies: 4 J/kg, up to 8 J/kg accepted from the 5th shock (refracto
       rec20: RG.recommendedEnergy(20, 5),
       high2: d(150, 20, 5, { shockNumber: 2 }),
       high5: d(150, 20, 5, { shockNumber: 5 }),
-      tooHigh5: d(200, 20, 5, { shockNumber: 5 }),
+      high6: d(150, 20, 5, { shockNumber: 6 }),
+      tooHigh6: d(200, 20, 5, { shockNumber: 6 }),
       cv1: d(20, 20, 5, { kind: 'cardiovert', rhythm: 'SVT' }),
       cv4: d(75, 20, 5, { kind: 'cardiovert', rhythm: 'SVT' }),
       cvHigh: d(150, 20, 5, { kind: 'cardiovert', rhythm: 'SVT' }),
@@ -91,8 +92,9 @@ test('shock energies: 4 J/kg, up to 8 J/kg accepted from the 5th shock (refracto
     };`);
   expect(r.rec20).toBe(75);                       // 4 J/kg = 80 J, nearest selection on this device
   expect(r.high2).not.toBeNull();                 // 150 J (7.5 J/kg) is too high for a 2nd shock
-  expect(r.high5).toBeNull();                     // but allowed for refractory VF from the 5th
-  expect(r.tooHigh5).not.toBeNull();              // 10 J/kg is above 8 J/kg
+  expect(r.high5).not.toBeNull();                 // still too high at the 5th shock
+  expect(r.high6).toBeNull();                     // allowed for refractory VF (more than five shocks needed)
+  expect(r.tooHigh6).not.toBeNull();              // 10 J/kg is above 8 J/kg
   expect(r.cv1).toBeNull();
   expect(r.cv4).toBeNull();
   expect(r.cvHigh).not.toBeNull();
