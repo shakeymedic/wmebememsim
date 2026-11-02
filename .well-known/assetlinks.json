@@ -1,8 +1,15 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "org.emevidence.sim",
-    "sha256_cert_fingerprints": []
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "org.emevidence.sim",
+      "sha256_cert_fingerprints": [
+        "CA:E3:C8:70:E4:DE:DA:81:5A:0F:FD:49:DA:07:CE:89:11:CF:56:01:0B:E5:06:C4:EB:6F:64:14:EB:DD:DB:D6",
+        "C1:E8:63:12:51:5F:BF:70:5C:6E:AA:96:ED:F2:8E:B0:36:80:63:83:7E:85:6C:0C:C0:1E:3A:D5:63:17:CB:7C"
+      ]
+    }
   }
-}]
+]
