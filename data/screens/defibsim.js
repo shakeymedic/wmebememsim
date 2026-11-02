@@ -39,7 +39,7 @@
             if (a.shocks >= 3 && amio.length === 0) out.push(adult ? 'Amiodarone 300 mg IV due (after the 3rd shock)' : `Amiodarone 5 mg/kg IV/IO${mg(5, 300, 'mg')} due (after the 3rd shock, max 300 mg)`);
             if (a.shocks >= 5 && amio.length === 1) out.push(adult ? 'Amiodarone 150 mg IV due (after the 5th shock)' : `Amiodarone 5 mg/kg IV/IO${mg(5, 150, 'mg')} due (after the 5th shock, max 150 mg)`);
             if (a.shocks >= 3 && adult) out.push('Refractory VF/pVT: consider changing the pad position (antero-posterior)');
-            if (a.shocks >= 4 && !adult) out.push(`Refractory VF/pVT: from the 5th shock, escalate stepwise towards 8 J/kg${weight ? ` (${Math.min(360, Math.round(8 * weight))} J; this device's maximum is 200 J)` : ''}`);
+            if (a.shocks >= 5 && !adult) out.push(`Refractory VF/pVT (more than five shocks needed): increase the energy stepwise up to 8 J/kg${weight ? ` (${Math.min(360, Math.round(8 * weight))} J; this device's maximum is 200 J)` : ''}`);
         }
         return out;
     }
