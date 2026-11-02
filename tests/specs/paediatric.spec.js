@@ -70,7 +70,7 @@ test('paediatric doses: atropine, adenosine, IM adrenaline, amiodarone, buccal m
   expect(r.calcium).toBe('IV 10% Calcium Gluconate 30 ml administered (0.5 ml/kg) over 5-10 min.');
 });
 
-test('shock energies: 4 J/kg, up to 8 J/kg only from the 5th shock, cardioversion 1 J/kg doubling to 4 J/kg', async ({ page }) => {
+test('shock energies: 4 J/kg, up to 8 J/kg accepted from the 5th shock (refractory VF/pVT), cardioversion 1 J/kg doubling to 4 J/kg', async ({ page }) => {
   await openController(page);
   const r = await run(page, `
     const RG = window.RHYTHMS, d = (j, w, a, o) => RG.energyDeviation(j, w, a, o);

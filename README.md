@@ -434,8 +434,9 @@ Sim scenario (`scenario.defibSim`).
   (Nov 2025 V2), the Paediatric cardiac arrhythmias algorithm and the Paediatric emergency drug chart
   (Feb 2026). The estimated weight and tube size (WETFLAG) come from the chart; the engine logs
   weight-based doses for a child (atropine, adenosine, IM adrenaline by age, amiodarone, buccal
-  midazolam, levetiracetam, 10% glucose, calcium gluconate); and from the 5th shock a child's
-  refractory VF/pVT may be escalated to 8 J/kg without being flagged. `tests/specs/paediatric.spec.js`
+  midazolam, levetiracetam, 10% glucose, calcium gluconate); and a child's refractory VF/pVT
+  (more than five shocks needed) may be escalated to 8 J/kg. Up to 8 J/kg is accepted without a flag
+  from the 5th shock, because the RCUK algorithm poster says "from 5th shock". `tests/specs/paediatric.spec.js`
   checks these values.
 - **Anaphylaxis** follows the RCUK Emergency treatment of anaphylaxis guideline (May 2021): steroids
   and antihistamines are not recommended actions and do not slow the decline; giving one before

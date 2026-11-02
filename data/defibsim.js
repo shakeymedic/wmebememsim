@@ -271,7 +271,7 @@
                     <li><strong>3.</strong> Immediately resume CPR for <strong>2 minutes</strong>, minimising interruptions.</li>
                     <li><strong>4.</strong> After <strong>3 shocks</strong>: <strong>adrenaline IV/IO 10 micrograms/kg</strong> (max single dose 1 mg), then every <strong>3-5 minutes</strong>, AND <strong>amiodarone IV/IO 5 mg/kg</strong> (max 300 mg).</li>
                     <li><strong>5.</strong> Repeat <strong>amiodarone 5 mg/kg once more only, after the 5th shock</strong> (max 150 mg).</li>
-                    <li><strong>6.</strong> Refractory VF/pVT: <strong>from the 5th shock</strong>, escalate the energy stepwise up to <strong>8 J/kg</strong> (max 360 J; this device's maximum is 200 J).</li>
+                    <li><strong>6.</strong> Increase the energy dose stepwise up to <strong>8 J/kg</strong> (max 360 J; this device's maximum is 200 J) for refractory VF/pVT (<strong>more than five shocks needed</strong>).</li>
                     <li><strong>7.</strong> Continuous compressions once a tracheal tube or SGA is in. Waveform capnography; ventilate at 25 min<sup>-1</sup> (infants), 20 (1-8 years), 15 (8-12 years), 10 (&gt; 12 years).</li>
                     <li><strong>8.</strong> Identify and treat reversible causes early: hypoxia, hypovolaemia, hyper/hypokalaemia, -calcaemia, -magnesaemia, hypoglycaemia, hypo/hyperthermia, thrombosis, tension pneumothorax, tamponade, toxins.</li>
                 </ul>
