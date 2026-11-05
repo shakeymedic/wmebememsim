@@ -545,7 +545,7 @@
             // Osmotherapy lowers the modelled ICP in a neuro scenario (so does a tube with normocapnia).
             "Raised ICP": ["HypertonicSaline", "Mannitol"],
             "Antibiotics": ["Antibiotics", "Ceftriaxone", "Tazocin", "Gentamicin", "Benzylpenicillin", "BenzylpenicillinIM"],
-            "Glucose / Insulin": ["InsulinInfusion", "InsulinDextrose", "InsulinSubcut", "Dextrose", "GlucoseOral", "Glucagon"],
+            "Glucose / Insulin": ["InsulinInfusion", "InsulinDextrose", "InsulinSubcut", "Dextrose", "GlucoseOral", "Glucagon", "GlucagonIV", "HIET"],
             // WAVE 5 (minor note): "Salbutamol IV infusion" is categorised under BREATHING, which is
             // correct — it is a respiratory escalation — but a facilitator looking for a drug looks in
             // DRUGS and concluded it was missing. Cross-listing it (and the other respiratory agents

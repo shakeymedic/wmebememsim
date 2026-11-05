@@ -828,7 +828,7 @@
             'NebsContinuous', 'SalbutamolIV', 'MagnesiumInfusion'],
         airway: ['Manoeuvres', 'OPA', 'NPA', 'Suction', 'Magills', 'i-gel', 'RSI', 'FONA', 'NebAdrenaline', 'Dexamethasone', 'AdrenalineIM', 'Bagging', 'Oxygen',
             'AdrenalineInfusion'],
-        cardiac: ['Atropine', 'Pacing', 'PacingPads', 'VagalManoeuvre', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
+        cardiac: ['Atropine', 'GlucagonIV', 'HIET', 'Pacing', 'PacingPads', 'VagalManoeuvre', 'Adenosine', 'Amiodarone', 'Cardioversion', 'Aspirin', 'GTN', 'GTNInfusion', 'PPCI', 'Thrombolysis', 'Metaraminol', 'Fluids', 'Digibind', 'CalciumChloride', 'Calcium', 'InsulinDextrose', 'Noradrenaline', 'Furosemide', 'NIV',
             'AmiodaroneInfusion', 'LabetalolInfusion', 'Digoxin'],
         neuro: ['HypertonicSaline', 'Mannitol', 'RSI', 'Lorazepam', 'Midazolam', 'Thrombolysis', 'Oxygen', 'Dextrose', 'Glucagon', 'Pabrinex', 'Naloxone', 'Antibiotics', 'Ceftriaxone', 'Dexamethasone', 'Surgery',
             'MidazolamBuccal', 'MidazolamIN', 'MidazolamIM', 'DiazepamIV', 'DiazepamPR', 'LorazepamIM', 'Levetiracetam', 'Phenytoin', 'NaloxoneIM', 'NaloxoneIN', 'Flumazenil', 'GlucoseOral', 'Benzylpenicillin', 'BenzylpenicillinIM', 'Aciclovir', 'Artesunate'],
