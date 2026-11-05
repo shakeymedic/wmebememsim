@@ -795,7 +795,7 @@
             const hrResponse = RG.drugHrResponse(key, cur.rhythm);
             if (hrResponse !== 1) {
                 entryOpts.fieldScale = { ...(entryOpts.fieldScale || {}), HR: ((entryOpts.fieldScale && entryOpts.fieldScale.HR) || 1) * hrResponse };
-                if (hrResponse < 0.5) addLogEntry(`${action.label} in ${RG.labelFor(cur.rhythm)}: little rate response expected — the block/escape is below the level this drug acts on. Consider isoprenaline or adrenaline infusion as a bridge, and pacing.`, 'info');
+                if (hrResponse < 0.5) addLogEntry(`${action.label} in ${RG.labelFor(cur.rhythm)}: ${hrResponse === 0 ? 'no' : 'little'} rate response expected — the block/escape is below the level this drug acts on. Consider isoprenaline or adrenaline infusion as a bridge, and pacing.`, 'info');
             }
             // Paediatric note: suxamethonium bradycardia is common in children, and marked with a
             // second dose. The adult entry has no haemodynamic effect at all.
