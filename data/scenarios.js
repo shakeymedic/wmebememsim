@@ -914,7 +914,7 @@ window.enrichScenario = (s) => {
 
         if (s.ageRange === 'Paediatric') {
             links.push({ label: 'RCUK Paeds Guidelines 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines' });
-            links.push({ label: 'APLS Algorithms', url: 'https://www.resus.org.uk/sites/default/files/2025-07/RCUK%20Paediatric%20emergency%20algorithms%20and%20resources%20Jul%2025%20V3.1.pdf' });
+            links.push({ label: 'RCUK Paediatric algorithms (Feb 2026)', url: 'https://www.resus.org.uk/sites/default/files/2026-02/RCUK%20Paediatric%20emergency%20algorithms%20and%20resources%20Feb%2026%20V6.pdf' });
         } else {
             links.push({ label: 'RCUK Adult ALS 2025', url: 'https://www.resus.org.uk/professional-library/2025-resuscitation-guidelines/adult-advanced-life-support-guidelines' });
             // DAS only where the airway is part of the scenario (not, for example, SVT or STEMI)
