@@ -382,8 +382,15 @@
                 }
             };
 
+            // A throttle, not a debounce: the write goes at most 500 ms after the FIRST unsent change.
+            // Resetting a fresh 500 ms timer on every change meant that anything changing more often
+            // than twice a second (quick presses, a held slider) sent nothing at all, and every
+            // patient screen froze until the facilitator stopped (load test, 6 Nov 2026).
             if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-            syncTimerRef.current = setTimeout(flush, 500);
+            const now = Date.now();
+            if (!syncTimerRef.firstAt) syncTimerRef.firstAt = now;
+            const wait = Math.max(0, 500 - (now - syncTimerRef.firstAt));
+            syncTimerRef.current = setTimeout(() => { syncTimerRef.firstAt = 0; flush(); }, wait);
             return () => { if (syncTimerRef.current) { clearTimeout(syncTimerRef.current); syncTimerRef.current = null; } };
         }, [
             state.vitals, state.rhythm, state.cprInProgress, state.etco2Enabled, state.flash,
