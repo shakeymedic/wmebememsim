@@ -734,7 +734,13 @@
             const isPaedsWf = scenario.ageRange === 'Paediatric' && scenario.wetflag;
             let logMsg = action.log;
             if (key === 'Fluids') {
-                logMsg = isPaedsWf ? `Fluid Bolus (${scenario.wetflag.fluids}ml) administered.` : `Fluid Bolus (500ml) administered.`;
+                // Adults with suspected sepsis (not pregnancy, which keeps 500 ml under NICE NG255):
+                // NICE NG253 (2025) gives 250 ml boluses, to a maximum of 1000 ml before review.
+                const adultSepsis = !isPaedsWf && scenario.ageRange !== 'Paediatric' && ageBandOf(scenario) === 'adult'
+                    && !/obstet/i.test(scenario.category || '')
+                    && (scenario.vbgClinicalState === 'septic_shock' || /seps|septic/i.test(scenario.title || ''));
+                logMsg = isPaedsWf ? `Fluid Bolus (${scenario.wetflag.fluids}ml) administered.`
+                    : adultSepsis ? `Fluid Bolus (250ml, NICE NG253 sepsis) administered.` : `Fluid Bolus (500ml) administered.`;
             }
             if (isPaedsWf) {
                 if (key === 'AdrenalineIV') logMsg = `IV Adrenaline (${scenario.wetflag.adrenaline}mcg) administered.`;
