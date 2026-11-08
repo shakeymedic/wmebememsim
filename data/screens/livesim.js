@@ -1262,11 +1262,13 @@
                             const n = screens.length;
                             const shows = Array.from(new Set(screens.map(c => c.display || 'patient monitor')));
                             const linked = n === 0 ? 'no screens linked' : (n === 1 ? shows[0] : `${n} screens linked`);
-                            const label = syncProblem ? 'Sync error' : (syncStatus.state === 'connected' ? `Live \u00b7 ${linked}` : 'Syncing');
+                            // The same-device link (data/local-link.js): say so, as other devices are not linked.
+                            const onDevice = !!(window.SimLink && window.SimLink.isDevice());
+                            const label = syncProblem ? 'Sync error' : (syncStatus.state === 'connected' ? `${onDevice ? 'This device' : 'Live'} \u00b7 ${linked}` : 'Syncing');
                             // A phone gets the short form ("No screens", "2 screens") so the toolbar is two rows, not three.
                             const shortLabel = syncProblem || syncStatus.state !== 'connected' ? label : (n === 0 ? 'No screens' : (n === 1 ? shows[0] : `${n} screens`));
                             const tip = [
-                                syncStatus.message || (syncStatus.state === 'connected' ? 'Live session sync is active.' : 'Connecting to the live session.'),
+                                syncStatus.message || (syncStatus.state === 'connected' ? (onDevice ? 'Linked on this device only (no internet): screens in this browser on this device.' : 'Live session sync is active.') : 'Connecting to the live session.'),
                                 n === 0
                                     ? 'No patient screen is linked. Use Screens to open one, or Join by QR code.'
                                     : screens.map(c => `${c.display || 'patient monitor'} (last seen ${Math.max(0, Math.round((Date.now() - Number(c.ts)) / 1000))}s ago)`).join('\n')

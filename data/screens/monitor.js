@@ -722,6 +722,7 @@
                     <div role="alert" className="absolute top-0 inset-x-0 z-[130] bg-red-950/95 border-b border-red-500 px-4 py-2 text-center text-sm font-bold text-red-100 shadow-lg">
                         <span>Disconnected from live session.</span>
                         {syncStatus.message && <span className="ml-2 font-normal text-red-200">{syncStatus.message}</span>}
+                        {window.DeviceLinkControl && <window.DeviceLinkControl compact />}
                     </div>
                 )}
                 {/* Above everything on this page (the arrest view, the devices, the switcher), and always a
@@ -1104,7 +1105,7 @@
                     <div className="bg-slate-900 px-4 py-2 rounded border border-slate-800 font-bold text-sky-500">SESSION: {sessionID}</div>
                     <div className="text-sm text-slate-400" data-testid="waiting-screen-role">This screen: <b className="text-slate-200">{S.ROLES[role].title}</b>{mine.n ? '' : ' (until the controller numbers it)'}</div>
                     <div className="text-xs text-slate-400 max-w-md">The controller chooses what this screen shows, in <b>Screens</b>. Nothing needs doing here.</div>
-                    {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}</div>}
+                    {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}{window.DeviceLinkControl && <div><window.DeviceLinkControl compact /></div>}</div>}
                     {!syncProblem && !sim.state.isFinished && picture}
                     {overlay}
                 </div>
