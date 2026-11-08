@@ -1,7 +1,7 @@
 {
   "name": "wmebem-sim",
   "private": true,
-  "description": "WMEBEM Sim. The source runs as-is in a browser; `npm run build` produces the precompiled, self-hosted site Netlify serves (dist/).",
+  "description": "EM Evidence Sim. The source runs as-is in a browser; `npm run build` produces the precompiled, self-hosted site Netlify serves (dist/).",
   "scripts": {
     "build": "node scripts/build.mjs",
     "check:objectives": "node scripts/check-objectives.mjs"

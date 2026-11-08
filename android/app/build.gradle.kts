@@ -20,8 +20,8 @@ android {
         applicationId = "org.emevidence.sim"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
         // The site the app opens, and the colours of the splash, status bar and navigation bar
         // (from the site's manifest.json: background #0f172a, theme #0ea5e9).
         manifestPlaceholders["hostName"] = "emsimulator.com"
