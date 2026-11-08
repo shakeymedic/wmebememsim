@@ -1,4 +1,4 @@
-# WMEBEM Sim — West Midlands Emergency Medicine simulation suite
+# EM Evidence Sim — emergency medicine simulation suite
 
 A facilitator-driven clinical simulation suite: a **controller** the facilitator drives, a **monitor**
 screen the candidates watch, and a **defibrillator** simulator for a second tablet. Vanilla React 18 +

@@ -1,7 +1,7 @@
 {
   "name": "wmebem-sim-tests",
   "private": true,
-  "description": "Browser tests for WMEBEM Sim. Run `npm run build` in the repository root first; the tests serve dist/.",
+  "description": "Browser tests for EM Evidence Sim. Run `npm run build` in the repository root first; the tests serve dist/.",
   "scripts": {
     "test": "playwright test"
   },

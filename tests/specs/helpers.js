@@ -1,4 +1,4 @@
-// Shared helpers for the WMEBEM Sim browser tests
+// Shared helpers for the EM Evidence Sim browser tests
 const fs = require('fs');
 const path = require('path');
 const { expect } = require('@playwright/test');
