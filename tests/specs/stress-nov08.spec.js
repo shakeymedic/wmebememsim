@@ -64,3 +64,31 @@ test('random histories: each drug once, one statin, no NSAID allergy with aspiri
   });
   expect(problems).toEqual([]);
 });
+
+test('Recommended actions: CPR from the strip and a tablet shock turn their tiles green without adding to the count', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await startQuickSim(page);
+  await page.waitForFunction(() => !!window.__simEngine && Array.isArray(window.ALL_SCENARIOS));
+  await E(page, () => {
+    const s = window.ALL_SCENARIOS.find(x => x.id === 'CA001');
+    window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: window.generatePatientFromTemplate(window.enrichScenario(s), {}) });
+  });
+  await page.waitForFunction(() => (window.__simEngine.state.scenario || {}).id === 'CA001');
+  await E(page, () => window.__simEngine.start());
+  // Open the interventions column if it is folded away.
+  const label = (text) => page.getByTestId('action-label').filter({ hasText: new RegExp('^' + text + '$') }).first();
+  if (!(await label('Start CPR').isVisible().catch(() => false))) {
+    await page.getByRole('button', { name: /Interventions/i }).first().click().catch(() => {});
+  }
+  await expect(label('Start CPR')).toBeVisible();
+  await expect(label('Start CPR')).not.toHaveClass(/text-emerald-400/);
+  await expect(label('Defibrillation \\(Shock\\)')).not.toHaveClass(/text-emerald-400/);
+  await E(page, () => window.__simEngine.toggleCPR(true, 'facilitator'));
+  await E(page, () => window.__simEngine.deliverShock(150, 'student (standalone defib)'));
+  await expect(label('Start CPR')).toHaveClass(/text-emerald-400/);
+  await expect(label('Defibrillation \\(Shock\\)')).toHaveClass(/text-emerald-400/);
+  expect(await E(page, () => ({ cpr: window.__simEngine.state.interventionCounts.CPR || 0, defib: window.__simEngine.state.interventionCounts.Defib || 0 }))).toEqual({ cpr: 0, defib: 0 });
+  await expect(page.getByText(/^x\d+$/)).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

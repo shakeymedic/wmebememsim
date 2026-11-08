@@ -842,12 +842,24 @@
         // the facilitator can see a sequence deviation before clicking without being prevented.
         const unmetFor = (action) => (window.getUnmetExpectations ? window.getUnmetExpectations(action, state) : []);
 
+        // CPR started from the patient strip (or a phone/tablet) and shocks from the defib panel or
+        // tablet are logged but are not presses of these tiles, so the tiles stayed grey (stress test,
+        // 8 Nov 2026). They now turn green from the log too. Display only: the x-count still counts
+        // tile presses, so nothing is counted twice, and the debrief credits them the same way.
+        const doneFromLog = new Set();
+        (state.log || []).forEach(l => {
+            const m = String((l && l.msg) || '');
+            if (/^CPR started/.test(m)) doneFromLog.add('CPR');
+            else if (/^Shock delivered \d+J \(SYNC\)/.test(m)) doneFromLog.add('Cardioversion');
+            else if (/^Shock delivered \d+J/.test(m)) doneFromLog.add('Defib');
+        });
+
         const renderActionBtn = (key) => {
              const action = INTERVENTIONS[key];
              if (!action) return null;
              const count = interventionCounts[key] || 0;
              const isActive = activeInterventions.has(key);
-             const variant = (count > 0 || isActive) ? "success" : "outline";
+             const variant = (count > 0 || isActive || doneFromLog.has(key)) ? "success" : "outline";
              const missing = unmetFor(action);
              const isContinuous = action.type === 'continuous';
              const btnTitle = missing.length
