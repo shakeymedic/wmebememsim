@@ -481,11 +481,22 @@
         // and reports which were done and which were missing. Scores are not inflated: the headline
         // number still counts only fully-completed objectives, and the partial-credit number is
         // shown next to it, explicitly labelled.
+        // Stress test 8 Nov 2026: CPR started from the patient strip (or a phone/tablet) and shocks
+        // from the defib (panel or tablet) go through toggleCPR/deliverShock, which log them but do
+        // not add the 'CPR'/'Defib' intervention, so "ALS Algorithm" read "not met" after a team
+        // had done CPR and shocked twice. The log is the record of what happened, so credit them from it.
+        const doneFromLog = new Set();
+        (state.log || []).forEach(l => {
+            const m = String((l && l.msg) || '');
+            if (/^CPR started/.test(m)) doneFromLog.add('CPR');
+            else if (/^Shock delivered \d+J \(SYNC\)/.test(m)) doneFromLog.add('Cardioversion');
+            else if (/^Shock delivered \d+J/.test(m)) doneFromLog.add('Defib');
+        });
         const progress = (window.computeObjectiveProgress
             ? window.computeObjectiveProgress(state.scenario || {}, {
                 interventionCounts: state.interventionCounts,
                 // Kit already on at set-up (data/engine.js setUpIntervention) is not the team's.
-                activeInterventions: new Set([...(state.activeInterventions || [])].filter(k => !((state.scenario && state.scenario.setupKit) || []).includes(k))),
+                activeInterventions: new Set([...(state.activeInterventions || [])].filter(k => !((state.scenario && state.scenario.setupKit) || []).includes(k)).concat([...doneFromLog])),
                 completedObjectives: completed
             })
             : { objectives: [], total: objectivesTotal, fullyMet: 0, partial: 0, score: null, partialScore: null, hasPartial: false });
