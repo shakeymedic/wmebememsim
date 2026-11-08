@@ -47,6 +47,24 @@ The standalone defibrillator links over the same Firebase session (`?session=COD
 into its banner), so it works on a separate tablet. The monitor-hosted defib (the controller's
 **Defib** button) remains available too.
 
+### No internet: the same-device link
+
+Screens on different devices link through the Firebase Realtime Database, so they need the internet.
+With no internet, a controller and patient screens **in the same browser on the same device** (a laptop
+with the monitor in a second window on a projector or TV, or a tablet in split screen) link directly
+instead: `data/local-link.js` wraps `firebase.database()` and moves the live-session paths
+(`sessions/...` and `.info/connected`) onto a BroadcastChannel. Accounts and course scenarios stay on
+Firebase (course scenarios are not available offline, Jake 8 Nov 2026).
+
+- It turns on by itself when the browser reports it is offline, or when the facilitator presses
+  **Link on this device only** in **Screens** (or a disconnected patient screen presses *No internet?
+  Link to the controller on this device*). That choice is shared by every tab of the site in the
+  browser and lasts 12 hours; **Use the internet link again** turns it off.
+- Switching moves every listener across, so a running scenario carries on; the controller's badge
+  reads *This device · …* while it is on.
+- The app itself must have been opened once with the internet so the service worker has stored it.
+- Tests: `tests/specs/device-link.spec.js` (gives the pages a Firebase that never connects).
+
 ### iPad checks (Safari's engine)
 
 `tests/specs/ipad.spec.js` runs the controller, room monitor (including the first-tap sound), defib

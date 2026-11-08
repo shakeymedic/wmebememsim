@@ -24,7 +24,8 @@ test('the controller works offline after one visit', async ({ page, context }) =
   await expect(page.getByText('Session Code', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Quick Sim', exact: true }).click();
   await page.getByRole('button', { name: 'Start Quick Sim' }).click();
-  await expect(page.getByTestId('connection-badge')).toHaveText(/Live|Sync error|Syncing/);
+  // Offline, the live session moves to the same-device link (data/local-link.js).
+  await expect(page.getByTestId('connection-badge')).toHaveText(/This device/);
   await context.setOffline(false);
 });
 

@@ -1006,6 +1006,49 @@
         );
     };
 
+    // The same-device link (data/local-link.js): with no internet, screens in this browser on this
+    // device link to each other directly. compact: one line for a patient screen's warning banner.
+    const DeviceLinkControl = ({ compact = false }) => {
+        const L = window.SimLink;
+        const [, setTick] = React.useState(0);
+        React.useEffect(() => {
+            const on = () => setTick(t => t + 1);
+            window.addEventListener('emsim-link-mode', on);
+            return () => window.removeEventListener('emsim-link-mode', on);
+        }, []);
+        if (!L) return null;
+        const device = L.isDevice();
+        const chosen = L.isChosen();
+        const offline = L.browserOffline();
+        if (compact) {
+            if (device) return null;
+            return (
+                <button type="button" data-testid="device-link-on" onClick={() => L.setDevice(true)}
+                        className="mt-1 sm:mt-0 sm:ml-3 inline-block px-2 py-1 rounded border border-red-300 text-xs font-bold text-white hover:bg-red-800">
+                    No internet? Link to the controller on this device
+                </button>
+            );
+        }
+        return (
+            <div data-testid="device-link" className={`rounded-lg border p-3 text-xs ${device ? 'border-sky-500 bg-sky-950/40 text-sky-100' : 'border-slate-700 bg-slate-800/60 text-slate-300'}`}>
+                <div className="font-bold text-white mb-1 flex items-center gap-1.5">
+                    <Lucide icon={device ? 'laptop' : 'wifi'} className="w-4 h-4" />
+                    {device ? 'Linked on this device only (no internet needed)' : 'No internet?'}
+                </div>
+                {device ? (
+                    <p>Patient screens opened on <b>this computer or tablet, in this browser</b> are linked (for example a second window on a projector or TV). Screens on other devices are not linked until this is turned off and the internet is back.{offline && !chosen ? ' The browser is offline, so this turned on by itself.' : ''}</p>
+                ) : (
+                    <p>Run the controller and a patient screen on this one device, linked without the internet: open a patient screen on this computer (above) and drag it onto the projector or TV. Screens on other devices need the internet.</p>
+                )}
+                <div className="mt-2">
+                    {chosen
+                        ? <button type="button" data-testid="device-link-off" onClick={() => L.setDevice(false)} className="px-3 py-1.5 rounded border border-sky-400 font-bold hover:bg-sky-900">Use the internet link again</button>
+                        : !device && <button type="button" data-testid="device-link-on" onClick={() => L.setDevice(true)} className="px-3 py-1.5 rounded border border-slate-500 font-bold text-white hover:bg-slate-700">Link on this device only</button>}
+                </div>
+            </div>
+        );
+    };
+
     window.Lucide = Lucide;
     window.ErrorBoundary = ErrorBoundary;
     window.HumanFactorBadge = HumanFactorBadge;
@@ -1018,4 +1061,5 @@
     window.Card = Card;
     window.ECGMonitor = ECGMonitor;
     window.VitalDisplay = VitalDisplay;
+    window.DeviceLinkControl = DeviceLinkControl;
 })();

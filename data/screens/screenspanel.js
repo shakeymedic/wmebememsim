@@ -248,7 +248,9 @@
                     </div>
                 </div>
 
-                {!ready && <p className="text-sm text-amber-300">The live session is not connected, so screens cannot be listed. Check the internet connection.</p>}
+                {window.DeviceLinkControl && <window.DeviceLinkControl />}
+
+                {!ready && <p className="text-sm text-amber-300">The live session is not connected, so screens cannot be listed. Check the internet connection, or use <b>Link on this device only</b> above.</p>}
 
                 {ready && screens.length === 0 && (
                     <div className="text-center border-2 border-dashed border-slate-700 rounded-lg p-5 text-slate-400" data-testid="screens-empty">
