@@ -147,13 +147,19 @@ window.generateHistory = (age, sex = 'Male') => {
     if (pmh.includes("Hypertension")) dhx.push("Ramipril 5mg OD");
     if (pmh.includes("Type 2 Diabetes")) dhx.push("Metformin 1g BD");
     if (pmh.includes("Asthma")) dhx.push("Salbutamol PRN", "Beclometasone BD");
-    if (pmh.includes("Hyperlipidaemia")) dhx.push("Atorvastatin 20mg ON");
+    // Stress test 8 Nov 2026: a patient with hyperlipidaemia AND a previous MI was listed on two
+    // atorvastatin doses, AF + previous MI gave bisoprolol twice, and an "NSAIDs" allergy could sit
+    // next to aspirin. One statin (the high-intensity dose after an MI), each drug once, and no
+    // NSAID allergy for a patient taking aspirin.
+    if (pmh.includes("Hyperlipidaemia") && !pmh.includes("Previous MI")) dhx.push("Atorvastatin 20mg ON");
     if (pmh.includes("GORD")) dhx.push("Omeprazole 20mg OD");
     if (pmh.includes("AF")) dhx.push("Bisoprolol 2.5mg OD", "Edoxaban 60mg OD");
     if (pmh.includes("Previous MI")) dhx.push("Aspirin 75mg OD", "Atorvastatin 80mg ON", "Bisoprolol 2.5mg OD");
+    dhx = dhx.filter((d, i) => dhx.indexOf(d) === i);
     if (pmh.length === 0) pmh.push("Nil significant");
     if (dhx.length === 0) dhx.push("Nil regular medications");
-    return { pmh: pmh, dhx: dhx, allergies: [Math.random() > 0.8 ? window.getRandomItem(["Penicillin", "Latex", "NSAIDs", "Trimethoprim"]) : "NKDA"] };
+    const allergyChoices = dhx.some(d => /^Aspirin/.test(d)) ? ["Penicillin", "Latex", "Trimethoprim"] : ["Penicillin", "Latex", "NSAIDs", "Trimethoprim"];
+    return { pmh: pmh, dhx: dhx, allergies: [Math.random() > 0.8 ? window.getRandomItem(allergyChoices) : "NKDA"] };
 };
 
 // Age-stratified alarm thresholds (heart rate, respiratory rate)
