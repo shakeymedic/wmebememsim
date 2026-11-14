@@ -1107,7 +1107,7 @@
                     <div className="text-xs text-slate-400 max-w-md">The controller chooses what this screen shows, in <b>Screens</b>. Nothing needs doing here.</div>
                     {syncProblem && <div role="alert" className="max-w-md px-4 text-center text-sm text-red-300">{syncStatus.message || 'Check the Firebase connection and session permissions.'}{window.DeviceLinkControl && <div><window.DeviceLinkControl compact /></div>}</div>}
                     {!syncProblem && !sim.state.isFinished && picture}
-                    {overlay}
+                    {overlay && <ScreenNumberOverlay n={mine.n} role={role} solid />}
                 </div>
             );
         }

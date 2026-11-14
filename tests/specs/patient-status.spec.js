@@ -100,7 +100,7 @@ test('the headline and the figure follow the patient: stable, distressed, apnoei
   await startQuickSim(page);
   const headline = page.getByTestId('patient-headline');
   await engine(page, `sim.manualUpdateVitals({ hr: 80, bpSys: 120, bpDia: 75, rr: 16, spO2: 98, gcs: 15, temp: 37, bm: 6 });`);
-  await expect(headline).toHaveText('Stable: obs within normal limits');
+  await expect(headline).toHaveText('Obs within normal limits');
   await expect(page.getByTestId('patient-status')).toContainText('Nothing attached');
 
   await engine(page, `sim.manualUpdateVitals({ rr: 34, spO2: 85 });`);

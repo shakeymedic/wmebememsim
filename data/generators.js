@@ -44,6 +44,15 @@ window.formatProfileTemplate = (template, age, sex) => {
 // Preview cards render before a patient is generated, so there is no patientAge yet. Draw one
 // representative age per scenario and cache it so card text stays stable across re-renders.
 const previewAgeCache = {};
+// The setup screen generates the patient after the card was shown. Hand it the age the card showed
+// (once), so "A 62-year-old" in the list doesn't load as a 74-year-old. The next card shows a fresh age.
+window.takePreviewAge = (scenario) => {
+    const key = scenario && (scenario.id || scenario.title);
+    if (!key || previewAgeCache[key] === undefined) return undefined;
+    const age = previewAgeCache[key];
+    delete previewAgeCache[key];
+    return age;
+};
 window.getPreviewAge = (scenario) => {
     if (!scenario) return 40;
     if (scenario.patientAge !== undefined && scenario.patientAge !== null) return scenario.patientAge;
@@ -539,7 +548,8 @@ window.generatePatientFromTemplate = (base, opts = {}) => {
     // replacing a 5-year-old with a 40-year-old would have been a clinical error, not a
     // cosmetic one. Age 0 (a newborn) is a real age and must stay 0.
     const authoredAge = num(base.patientAge);
-    const patientAge = base.ageGenerator ? base.ageGenerator()
+    const shownAge = (base.ageGenerator && opts.usePreviewAge && window.takePreviewAge) ? window.takePreviewAge(base) : undefined;
+    const patientAge = base.ageGenerator ? (Number.isFinite(shownAge) ? shownAge : base.ageGenerator())
         : (Number.isFinite(authoredAge) && authoredAge >= 0 ? authoredAge : 40);
     const title = String(base.title || '').toLowerCase();
     const template = base.patientProfileTemplate || base.profile || '';
@@ -591,14 +601,26 @@ window.generatePatientFromTemplate = (base, opts = {}) => {
     let vbg = (base.vbg && typeof base.vbg === 'object') ? base.vbg : generateVbg(base.vbgClinicalState || "normal");
     if (!base.vbg && Number.isFinite(num(vitalsMod.bm))) vbg = { ...vbg, Glu: num(vitalsMod.bm) };
 
+    // ACS on an oral anticoagulant: the P2Y12 inhibitor is clopidogrel, not ticagrelor or prasugrel
+    // (ESC 2023 ACS; the scenarios' own briefs say so). The random history can give AF + edoxaban,
+    // so swap the recommended tile to match this patient.
+    const dhx = base.dhx || history.dhx;
+    let recommendedFields = {};
+    const onOac = (dhx || []).some(d => /\b(apixaban|edoxaban|rivaroxaban|dabigatran|warfarin)\b/i.test(String(d)));
+    if (onOac && Array.isArray(base.recommendedActions) && base.recommendedActions.some(k => k === 'Ticagrelor' || k === 'Prasugrel')) {
+        const swapped = base.recommendedActions.map(k => (k === 'Ticagrelor' || k === 'Prasugrel') ? 'Clopidogrel' : k);
+        recommendedFields.recommendedActions = swapped.filter((k, i) => swapped.indexOf(k) === i);
+    }
+
     return {
        ...base,
        ...ecgFields,
+       ...recommendedFields,
        patientName, patientAge, sex,
        profile: formatProfileTemplate(template, patientAge, sex),
        vitals: finalVitals,
        pmh: base.pmh || history.pmh,
-       dhx: base.dhx || history.dhx,
+       dhx,
        allergies: base.allergies || history.allergies,
        vbg,
        hf: opts.hf || null,
