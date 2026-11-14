@@ -606,7 +606,7 @@ window.generatePatientFromTemplate = (base, opts = {}) => {
     // so swap the recommended tile to match this patient.
     const dhx = base.dhx || history.dhx;
     let recommendedFields = {};
-    const onOac = (dhx || []).some(d => /(apixaban|edoxaban|rivaroxaban|dabigatran|warfarin)/i.test(String(d)));
+    const onOac = (dhx || []).some(d => /\b(apixaban|edoxaban|rivaroxaban|dabigatran|warfarin)\b/i.test(String(d)));
     if (onOac && Array.isArray(base.recommendedActions) && base.recommendedActions.some(k => k === 'Ticagrelor' || k === 'Prasugrel')) {
         const swapped = base.recommendedActions.map(k => (k === 'Ticagrelor' || k === 'Prasugrel') ? 'Clopidogrel' : k);
         recommendedFields.recommendedActions = swapped.filter((k, i) => swapped.indexOf(k) === i);
