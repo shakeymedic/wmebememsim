@@ -1124,7 +1124,7 @@
                 {/* Kept in view at the bottom: on a laptop the button was below the fold. */}
                 {showMarkSheet && MS && <MS.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} />}
                 <div className="sticky bottom-0 z-10 -mx-1 px-1 py-2 bg-slate-900/95 backdrop-blur flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={() => onStart({ monitored })} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
-                <p className="text-xs text-slate-400 text-center -mt-1" data-testid="start-hint">Start Scenario opens the controller. The patient appears and the clock runs when you press <b>START</b> there, so you can set up before the team comes in.</p>
+                <p className="text-xs text-slate-400 text-center -mt-1" data-testid="start-hint">This button opens the controller. The patient appears and the clock runs when you press <b>START</b> there, so you can set up before the team comes in.</p>
             </div>
         );
     };
