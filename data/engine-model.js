@@ -1069,14 +1069,18 @@
             case 'Benzylpenicillin':
             case 'BenzylpenicillinIM': {
                 const route = key === 'BenzylpenicillinIM' ? 'IM ' : '';
-                if (isNeonate(s)) {
+                if (isNeonate(s) && key === 'BenzylpenicillinIM') {
+                    // The IM tile is the pre-hospital dose, which the BNF gives by age, not weight.
+                    log = 'IM Benzylpenicillin 300 mg administered (pre-hospital dose for suspected meningococcal disease).';
+                    notes.push('Benzylpenicillin before urgent transfer to hospital for suspected meningococcal disease (BNF): neonate or child up to 1 year 300 mg. In hospital a baby with early-onset infection gets 25 mg/kg IV with gentamicin (NICE NG195).');
+                } else if (isNeonate(s)) {
                     const mg = wt ? Math.round(25 * wt) : null;
                     if (mg) log = `IV Benzylpenicillin ${mg} mg administered (25 mg/kg).`;
                     notes.push(`Neonatal benzylpenicillin for early-onset infection (NICE NG195): 25 mg/kg${mg ? ` = ${mg} mg` : ''} every 12 hours, with gentamicin; consider every 8 hours if the baby looks very ill. Not the 1.2 g adult dose.`);
                 } else if (age !== null && age < 10) {
                     const mg = age < 1 ? 300 : 600;
-                    log = `${route}Benzylpenicillin ${mg} mg administered (suspected meningococcal disease).`;
-                    notes.push('Benzylpenicillin for suspected meningococcal disease, by age (BNF for Children): under 1 year 300 mg; 1-9 years 600 mg; 10 years and over 1.2 g.');
+                    log = `${route}Benzylpenicillin ${mg} mg administered (pre-hospital dose for suspected meningococcal disease).`;
+                    notes.push('Benzylpenicillin before urgent transfer to hospital for suspected meningococcal disease, by age (BNF): up to 1 year 300 mg; 1-9 years 600 mg; 10 years and over 1.2 g. In hospital the first-line antibiotic is ceftriaxone.');
                 }
                 break;
             }

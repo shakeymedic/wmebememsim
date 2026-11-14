@@ -92,3 +92,31 @@ test('every stabiliser and recommended action in every scenario is a real interv
   expect(bad).toEqual([]);
   expect(await E(page, () => window.RAW_SCENARIOS.find(s => s.id === 'AM003').stabilisers)).toEqual(['Nebs', 'MagSulph']);
 });
+
+// Jake's answers, 14 Nov 2026: follow NICE for the antiplatelet, the TIA and the steroid tiles; the
+// BNF pre-hospital IM benzylpenicillin dose is 300 mg for a neonate or child up to 1 year.
+test('recommended actions follow NICE: ticagrelor for STEMI, no heparin for TIA, hydrocortisone for adult asthma and COPD', async ({ page }) => {
+  await openController(page);
+  await page.waitForFunction(() => Array.isArray(window.RAW_SCENARIOS));
+  const rec = await E(page, () => {
+    const out = {};
+    ['AM001', 'AM082', 'AM003', 'AM012'].forEach(id => { const s = window.RAW_SCENARIOS.find(x => x.id === id); out[id] = { rec: s.recommendedActions, stab: s.stabilisers || [] }; });
+    return out;
+  });
+  expect(rec.AM001.rec).toContain('Ticagrelor');
+  expect(rec.AM001.rec).not.toContain('Clopidogrel');
+  expect(rec.AM082.rec).toEqual(['Obs', 'IV Access', 'Aspirin']);
+  for (const id of ['AM003', 'AM012']) {
+    expect(rec[id].rec).toContain('Hydrocortisone');
+    expect(rec[id].rec.concat(rec[id].stab)).not.toContain('Dexamethasone');
+  }
+  expect(rec.AM012.stab).toContain('Hydrocortisone');
+});
+
+test('the IM benzylpenicillin tile gives a newborn the pre-hospital 300 mg', async ({ page }) => {
+  await openController(page);
+  await startQuickSim(page);
+  await loadScenario(page, 'PA029');
+  await E(page, () => window.__simEngine.applyIntervention('BenzylpenicillinIM'));
+  await expect.poll(() => logText(page)).toContain('IM Benzylpenicillin 300 mg administered (pre-hospital dose');
+});
