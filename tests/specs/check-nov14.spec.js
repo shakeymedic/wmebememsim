@@ -41,13 +41,23 @@ test('a newborn gets benzylpenicillin and gentamicin by weight, not the adult 1.
   expect(errors).toEqual([]);
 });
 
-test('a young child with meningococcal sepsis gets the benzylpenicillin dose for their age', async ({ page }) => {
+test('a young child with meningococcal sepsis gets IV benzylpenicillin by weight and the IM dose for their age', async ({ page }) => {
   await openController(page);
   await startQuickSim(page);
   await loadScenario(page, 'PA001');      // 1 to 5 years old
-  await E(page, () => window.__simEngine.applyIntervention('Benzylpenicillin'));
-  await expect.poll(() => logText(page)).toContain('Benzylpenicillin 600 mg administered');
+  const weight = await E(page, () => Number(window.__simEngine.state.scenario.wetflag.weight));
+  await E(page, () => { window.__simEngine.applyIntervention('Benzylpenicillin'); window.__simEngine.applyIntervention('BenzylpenicillinIM'); });
+  // IV in hospital is by weight; the IM tile is the pre-hospital dose for the child's age.
+  await expect.poll(() => logText(page)).toContain(`IV Benzylpenicillin ${Math.min(2400, Math.round(50 * weight))} mg administered (50 mg/kg).`);
+  await expect.poll(() => logText(page)).toContain('IM Benzylpenicillin 600 mg administered (pre-hospital dose');
   expect(await logText(page)).not.toContain('1.2 g administered');
+});
+
+test('Wellens syndrome recommends ticagrelor, not clopidogrel', async ({ page }) => {
+  await openController(page);
+  await page.waitForFunction(() => Array.isArray(window.RAW_SCENARIOS));
+  const rec = await E(page, () => window.RAW_SCENARIOS.find(s => s.id === 'AM040').recommendedActions);
+  expect(rec).toEqual(['Obs', 'IV Access', 'Aspirin', 'Ticagrelor']);
 });
 
 test('an adult still gets benzylpenicillin 1.2 g', async ({ page }) => {
