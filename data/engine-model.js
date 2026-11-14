@@ -1078,10 +1078,10 @@
                     if (mg) log = `IV Benzylpenicillin ${mg} mg administered (25 mg/kg).`;
                     notes.push(`Neonatal benzylpenicillin for early-onset infection (NICE NG195): 25 mg/kg${mg ? ` = ${mg} mg` : ''} every 12 hours, with gentamicin; consider every 8 hours if the baby looks very ill. Not the 1.2 g adult dose.`);
                 } else if (key === 'Benzylpenicillin' && age !== null && age < 18 && wt) {
-                    // The IV tile in hospital is by weight for a child (Jake, 14 Nov 2026).
+                    // The IV tile in hospital is by weight for a child (BNF for Children, screenshots from Jake 14 Nov 2026).
                     const mg = Math.min(2400, Math.round(50 * wt));
                     log = `IV Benzylpenicillin ${mg} mg administered (50 mg/kg).`;
-                    notes.push(`IV benzylpenicillin for a child with meningococcal disease or meningitis (BNF for Children): 50 mg/kg = ${mg} mg every 4-6 hours, max 2.4 g every 4 hours. Ceftriaxone is the usual first-line antibiotic in hospital. The age-band doses (300 mg, 600 mg, 1.2 g) are the pre-hospital doses.`);
+                    notes.push(`IV benzylpenicillin for a child with meningococcal disease or meningitis (BNF for Children): 50 mg/kg = ${mg} mg every 4-6 hours, max 2.4 g per dose. Ceftriaxone is the usual first-line antibiotic in hospital. The age-band doses (300 mg, 600 mg, 1.2 g) are the pre-hospital doses.`);
                 } else if (age !== null && age < 10) {
                     const mg = age < 1 ? 300 : 600;
                     log = `${route}Benzylpenicillin ${mg} mg administered (pre-hospital dose for suspected meningococcal disease).`;
