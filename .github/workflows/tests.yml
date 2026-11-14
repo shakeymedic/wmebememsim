@@ -7,7 +7,7 @@ on:
 
 jobs:
   playwright:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # ubuntu-latest became 26.04 (Nov 2026), which Playwright 1.56.1 cannot install browsers on
     # The 351 tests take about 14 minutes and installing can take 10 on a slow runner
     timeout-minutes: 35
     steps:
@@ -34,7 +34,7 @@ jobs:
 
   ipad:
     # Safari's engine (WebKit) at iPad size, landscape and portrait: tests/specs/ipad.spec.js.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
 
   rules:
     # database.rules.json in the real Firebase Realtime Database emulator.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -87,7 +87,7 @@ jobs:
 
   e2e:
     # The real app and the real Firebase SDK against the emulator, enforcing database.rules.json.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

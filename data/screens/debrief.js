@@ -827,12 +827,12 @@
                     <div className="flex flex-col bg-slate-800 rounded-lg border border-slate-700 overflow-hidden min-w-0 max-lg:max-h-[75vh]" data-testid="debrief-log">
                         <div className="flex flex-wrap border-b border-slate-700 bg-slate-900 p-2 gap-2">
                             {['all', 'actions', 'manual', 'shocks', 'rhythm', 'system'].map(f => (
-                                <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold uppercase ${filter === f ? 'bg-sky-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+                                <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 rounded text-xs font-bold uppercase ${filter === f ? 'bg-sky-700 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
                                     {f}
                                 </button>
                             ))}
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 max-md:p-3 space-y-2 min-h-0">
+                        <div className="flex-1 overflow-y-auto p-4 max-md:p-3 space-y-2 min-h-0" tabIndex={0} role="region" aria-label="Event log">
                             {filteredLog.map((entry, i) => (
                                 <div key={i} className={`flex gap-3 text-sm border-b border-slate-700/50 pb-1 ${entry.flagged ? 'bg-amber-900/10 p-1 rounded' : ''}`}>
                                     <span className="text-slate-400 font-mono w-16 max-md:w-12 flex-shrink-0">{entry.simTime}</span>

@@ -281,7 +281,7 @@ body.t1fs .fs-exit:hover,body.t1fs .fs-exit:focus-visible{opacity:1}
 /* below-device controls (big targets, used on phones) */
 .under{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;margin:10px 0 0}
 .under button{background:#1f2a37;color:#fff;border:0;border-radius:10px;padding:9px 14px;font-weight:700;font-size:.95rem;min-width:52px}
-.under button.knobp{background:#2b8a3e}
+.under button.knobp{background:#237a35}
 .under .hint{font-size:.8rem;color:var(--muted);width:100%;text-align:center}
 .scr-off{position:absolute;inset:0;background:#000;z-index:20;display:flex;align-items:center;justify-content:center;color:#d9d9d9;font-size:30px;letter-spacing:2px;text-align:center;line-height:1.5}
 .scr-off[hidden]{display:none}
@@ -399,7 +399,7 @@ body.simple-zoom .t1-scaler{overflow:hidden}
                     <button class="scr-msg" id="msgbar" aria-live="polite" aria-label="Message bar. Touch to open the alarm buffer"></button>
                     <button class="scr-modes" id="btnModes" data-open="modes">Modes</button>
                     <div class="lockic" aria-hidden="true">🔒</div>
-                    <div class="mmps" id="mmps" aria-label="Main monitoring parameters"></div>
+                    <div class="mmps" id="mmps" role="group" aria-label="Main monitoring parameters"></div>
                     <button class="gfx" id="gfx" aria-label="Graphics. Touch to choose waveforms or panels">
                       <canvas id="cv1" style="top:0;height:160px"></canvas>
                       <canvas id="cv2" style="top:162px;height:160px"></canvas>

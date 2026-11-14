@@ -1064,6 +1064,33 @@
                 notes.push(`10% calcium gluconate (RCUK 2025): 0.5 ml/kg${ml ? ` = ${ml} ml` : ''} IV over 5-10 min (max 30 ml) for an unstable arrhythmia due to hyperkalaemia; repeat after 5-10 min if ECG changes persist.`);
                 break;
             }
+            // The tile says 1.2 g, the adult dose. A child gets the dose for their age and a baby in
+            // the first days of life the neonatal sepsis dose by weight.
+            case 'Benzylpenicillin':
+            case 'BenzylpenicillinIM': {
+                const route = key === 'BenzylpenicillinIM' ? 'IM ' : '';
+                if (isNeonate(s) && key === 'BenzylpenicillinIM') {
+                    // The IM tile is the pre-hospital dose, which the BNF gives by age, not weight.
+                    log = 'IM Benzylpenicillin 300 mg administered (pre-hospital dose for suspected meningococcal disease).';
+                    notes.push('Benzylpenicillin before urgent transfer to hospital for suspected meningococcal disease (BNF): neonate or child up to 1 year 300 mg. In hospital a baby with early-onset infection gets 25 mg/kg IV with gentamicin (NICE NG195).');
+                } else if (isNeonate(s)) {
+                    const mg = wt ? Math.round(25 * wt) : null;
+                    if (mg) log = `IV Benzylpenicillin ${mg} mg administered (25 mg/kg).`;
+                    notes.push(`Neonatal benzylpenicillin for early-onset infection (NICE NG195): 25 mg/kg${mg ? ` = ${mg} mg` : ''} every 12 hours, with gentamicin; consider every 8 hours if the baby looks very ill. Not the 1.2 g adult dose.`);
+                } else if (age !== null && age < 10) {
+                    const mg = age < 1 ? 300 : 600;
+                    log = `${route}Benzylpenicillin ${mg} mg administered (pre-hospital dose for suspected meningococcal disease).`;
+                    notes.push('Benzylpenicillin before urgent transfer to hospital for suspected meningococcal disease, by age (BNF): up to 1 year 300 mg; 1-9 years 600 mg; 10 years and over 1.2 g. In hospital the first-line antibiotic is ceftriaxone.');
+                }
+                break;
+            }
+            case 'Gentamicin': {
+                if (!isNeonate(s)) break;
+                const mg = wt ? round1(5 * wt) : null;
+                if (mg) log = `IV Gentamicin ${mg} mg administered (5 mg/kg).`;
+                notes.push(`Neonatal gentamicin for early-onset infection (NICE NG195): starting dose 5 mg/kg${mg ? ` = ${mg} mg` : ''}, repeated at 36 hours if a second dose is needed, with benzylpenicillin.`);
+                break;
+            }
             default: break;
         }
         // Newborn Life Support (RCUK Guidelines 2025, NLS algorithm, March 2026)

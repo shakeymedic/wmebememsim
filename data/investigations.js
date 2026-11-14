@@ -315,7 +315,7 @@
         AM047: { CT: 'ct-neck-abscess' },
         AM049: { CT: 'ct-nec-fasc' },
         AM050: { CT: 'ct-pancreatitis' },
-        AM054: { ECG: 'ecg-lvh' },
+        AM054: { ECG: 'ecg-lvh', POCUS: 'us-aortic-stenosis' },
         AM059: { 'X-ray': 'xr-neck-epiglottitis' },
         AM061: { 'X-ray': 'cxr-pjp' },
         AM064: { CT: 'ct-ich' },
@@ -341,9 +341,9 @@
         AT017: { CT: 'ct-orbit' },
         AT022: { CT: 'ct-face' },
         AT025: { CT: 'ct-spleen', POCUS: 'us-fast-positive' },
-        AT001: { POCUS: 'us-fast-positive' },
+        AT001: { POCUS: 'us-fast-positive', 'X-ray': 'cxr-haemothorax' },   // "Pelvic/chest injuries", shocked and hypoxic
         AT024: { POCUS: 'us-fast-positive' },
-        PT003: { POCUS: 'us-fast-positive' },
+        PT003: { POCUS: 'us-fast-positive', 'X-ray': 'cxr-contusion-child' },   // Waddell triad: head, chest and femur
         PT005: { POCUS: 'us-fast-negative' },   // its own teaching point: FAST is often negative in pancreatic/duodenal injury
         AT026: { POCUS: 'us-fast-positive' },   // stabbed abdomen in haemorrhagic shock (not a pneumothorax)
         PT006: { POCUS: 'us-fast-positive' },   // left flank stab in haemorrhagic shock
@@ -376,17 +376,14 @@
         PT001: { CT: 'ct-nai' },
         PT002: { CT: 'ct-paeds-edh' },
         // Results added 29 Oct 2026, where the generic "lung fields clear" / normal scan did not fit the case.
-        AT001: { 'X-ray': 'cxr-haemothorax' },   // "Pelvic/chest injuries", shocked and hypoxic
         AM041: { 'X-ray': 'cxr-haemoptysis' },
         EL011: { 'X-ray': 'cxr-pneumonia' },     // "Pneumonia and hypotension"
         PA012: { 'X-ray': 'cxr-acs-child' },
         PA026: { 'X-ray': 'cxr-asthma' },
-        PT003: { 'X-ray': 'cxr-contusion-child' },   // Waddell triad: head, chest and femur
         PT004: { 'X-ray': 'cxr-aspiration-child' },
         PA010: { 'X-ray': 'cxr-neonate-cardiac', POCUS: 'us-neonate-poor-lv' },
         OB018: { 'X-ray': 'cxr-effusions', POCUS: 'us-ohss' },   // "ascites and pleural effusions"
         AM052: { POCUS: 'us-ascites' },
-        AM054: { POCUS: 'us-aortic-stenosis' },
         CA_A05: { POCUS: 'us-arrest-effusion' }   // stabbed chest, narrow complex PEA, "HOT protocol. Thoracotomy?"
     };
     // Urine dipstick presets (data/generators.js generateUrine) where the scenario's title does not

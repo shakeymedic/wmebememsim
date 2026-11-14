@@ -11,3 +11,11 @@
   # visible in the served page; access is enforced by database.rules.json), so exactly this one
   # value is exempted. Scanning stays on for everything else.
   SECRETS_SCAN_SMART_DETECTION_OMIT_VALUES = "AIzaSyBz77EHl9QhFJ0k2ZFODydChuGeCAXq1II"
+
+# Two low-risk security headers on every page (full check, 14 Nov 2026). There is deliberately no
+# X-Frame-Options or frame-ancestors rule: emevidence.org shows the simulator inside its tool viewer.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
