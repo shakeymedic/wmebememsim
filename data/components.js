@@ -534,7 +534,9 @@
 
                 // Frame-rate-independent timing
                 if (lastTs === null) { lastTs = ts; animationFrameId = requestAnimationFrame(render); return; }
-                const elapsed = Math.min((ts - lastTs) / 1000, 0.05); // seconds, capped to handle tab blur
+                // Capped so a tab coming back from the background does not jump, but high enough that a slow
+                // device (under 20 frames a second) still sweeps in real time instead of running slow.
+                const elapsed = Math.min((ts - lastTs) / 1000, 0.25); // seconds
                 lastTs = ts;
 
                 const live = liveRef.current;
