@@ -163,7 +163,7 @@
             // The worst obs say it best ("Distressed: RR 34 · Hypoxic: SpO2 85%").
             const red = flags.filter(f => f.level === 'red'), amber = flags.filter(f => f.level === 'amber');
             const worst = red.length ? red : amber;
-            headline = worst.length ? worst.slice(0, 2).map(f => f.text).join(' · ') + (worst.length > 2 ? ` (+${worst.length - 2} more)` : '') : 'Stable: obs within normal limits';
+            headline = worst.length ? worst.slice(0, 2).map(f => f.text).join(' · ') + (worst.length > 2 ? ` (+${worst.length - 2} more)` : '') : 'Obs within normal limits';
             tone = red.length ? 'red' : amber.length ? 'amber' : 'green';
         }
 

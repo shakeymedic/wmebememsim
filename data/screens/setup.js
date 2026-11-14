@@ -62,6 +62,8 @@
         const [acuity, setAcuity] = useState('Any'); 
         const [hf, setHf] = useState('hf0');
         const [premadeCategory, setPremadeCategory] = useState(initialPremadeCategory || null);
+        // Search across the whole built-in library (title, presenting complaint, patient text).
+        const [librarySearch, setLibrarySearch] = useState('');
         // My scenarios: the signed-in account's saved scenarios (userScenarios/{uid}, see
         // data/auth.js UserScenarios), plus any still saved only in this browser from before.
         const [customScenarios, setCustomScenarios] = useState([]);
@@ -391,7 +393,7 @@
                      return;
                  }
 
-                 const generated = window.generatePatientFromTemplate(selectedBase, { hf: selectedHf, showWetflag });
+                 const generated = window.generatePatientFromTemplate(selectedBase, { hf: selectedHf, showWetflag, usePreviewAge: true });
                  onGenerate(generated, {});
              } catch (err) { console.error("Generator Error:", err); alert("Error generating scenario: " + err.message); }
         };
@@ -597,6 +599,25 @@
             { id: 'Restricted', label: 'Course scenarios (ALS, ETC, CABC)', icon: restrictedUnlocked ? 'unlock' : 'lock', restricted: true, filter: () => false },
         ];
 
+        // One scenario row in the library (a category list or search results). Called, not mounted.
+        const libraryRow = (s) => (
+            <div key={s.id} className="flex flex-wrap gap-2 justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
+                <div className="flex-1 min-w-[12rem]">
+                    <div className="font-bold text-slate-200 group-hover:text-white flex flex-wrap items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
+                    <div className="text-xs text-slate-400">{(t => t.length > 60 ? t.substring(0, 60) + '…' : t)(getScenarioPreviewText(s))}</div>
+                </div>
+                <div className="flex gap-2 flex-none ml-auto">
+                    <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
+                    <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
+                </div>
+            </div>
+        );
+        const searchTerms = librarySearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        const searchResults = searchTerms.length === 0 ? [] : ALL_SCENARIOS.filter(s => {
+            const hay = `${s.title || ''} ${s.presentingComplaint || ''} ${s.category || ''} ${s.patientProfileTemplate || s.profile || ''}`.toLowerCase();
+            return searchTerms.every(t => hay.includes(t));
+        });
+
         // WHAT TO RUN. Six plain choices, nothing preselected; picking one opens its panel. The
         // patient screens are connected whenever they are needed (a collapsed card below), and
         // the WETFLAG option sits only where a child can come up.
@@ -739,7 +760,17 @@
                     )}
                     {mode === 'premade' && (
                         <div className="animate-fadeIn min-h-[300px]">
-                            {!premadeCategory ? (
+                            {!premadeCategory ? (<>
+                                <div className="mb-3 relative">
+                                    <Lucide icon="search" className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                    <input type="search" value={librarySearch} onChange={e => setLibrarySearch(e.target.value)} aria-label="Search the scenario library" placeholder="Search all scenarios, e.g. sepsis, overdose, asthma" data-testid="library-search" className="w-full bg-slate-900 border border-slate-600 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500" />
+                                </div>
+                                {searchTerms.length > 0 ? (
+                                    <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2" data-testid="library-search-results">
+                                        {searchResults.map(libraryRow)}
+                                        {searchResults.length === 0 && (<div className="text-center text-slate-400 py-8">No scenarios match “{librarySearch.trim()}”.</div>)}
+                                    </div>
+                                ) : (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                                     {premadeCategories.map(cat => (
                                         <button key={cat.id} onClick={() => setPremadeCategory(cat)} className={`flex flex-col items-center justify-center p-4 border rounded-lg transition-all active:scale-95 group ${cat.restricted ? 'bg-amber-950/30 hover:bg-amber-900/30 border-amber-700/60' : 'bg-slate-700 hover:bg-slate-600 border-slate-600'}`}>
@@ -749,7 +780,8 @@
                                         </button>
                                     ))}
                                 </div>
-                            ) : premadeCategory.restricted ? (
+                                )}
+                            </>) : premadeCategory.restricted ? (
                                 // Called, not mounted: a component defined inside SetupScreen is a new type on every
                                 // render, so the panel (and its sign-in box) was rebuilt, losing what was typed.
                                 RestrictedSection()
@@ -759,18 +791,7 @@
                                     {/* grid-cols-1 (minmax(0, 1fr)) and flex-wrap: on a phone the Edit / Load buttons
                                         drop below the title instead of running off the right-hand edge. */}
                                     <div className="grid grid-cols-1 gap-2 max-h-[400px] overflow-y-auto pr-2" data-testid="library-list">
-                                        {ALL_SCENARIOS.filter(premadeCategory.filter).map((s) => (
-                                            <div key={s.id} className="flex flex-wrap gap-2 justify-between items-center bg-slate-700/40 hover:bg-slate-700 p-3 rounded border border-slate-600 group">
-                                                <div className="flex-1 min-w-[12rem]">
-                                                    <div className="font-bold text-slate-200 group-hover:text-white flex flex-wrap items-center gap-2">{s.title} {s.acuity === 'Resus' && <span className="text-[9px] bg-red-900/50 text-red-400 px-1 rounded border border-red-800">RESUS</span>} <DiffBadge d={s.difficulty}/></div>
-                                                    <div className="text-xs text-slate-400">{(t => t.length > 60 ? t.substring(0, 60) + '…' : t)(getScenarioPreviewText(s))}</div>
-                                                </div>
-                                                <div className="flex gap-2 flex-none ml-auto">
-                                                    <Button onClick={() => loadIntoBuilder(s)} variant="secondary" className="h-8 text-xs px-3">Edit</Button>
-                                                    <Button onClick={() => handleGenerate(s)} variant="primary" className="h-8 text-xs px-3">Load</Button>
-                                                </div>
-                                            </div>
-                                        ))}
+                                        {ALL_SCENARIOS.filter(premadeCategory.filter).map(libraryRow)}
                                         {ALL_SCENARIOS.filter(premadeCategory.filter).length === 0 && (<div className="text-center text-slate-400 py-8">No scenarios found in this category.</div>)}
                                     </div>
                                 </div>
@@ -1103,6 +1124,7 @@
                 {/* Kept in view at the bottom: on a laptop the button was below the fold. */}
                 {showMarkSheet && MS && <MS.MarkSheetModal scenario={scenario} onClose={() => setShowMarkSheet(false)} />}
                 <div className="sticky bottom-0 z-10 -mx-1 px-1 py-2 bg-slate-900/95 backdrop-blur flex flex-col md:flex-row gap-4"><Button onClick={onBack} variant="secondary" className="flex-1">Back to Setup</Button><Button onClick={() => onStart({ monitored })} className="flex-1 shadow-sky-900/20 shadow-xl h-14 text-xl">Start Scenario</Button></div>
+                <p className="text-xs text-slate-400 text-center -mt-1" data-testid="start-hint">Start Scenario opens the controller. The patient appears and the clock runs when you press <b>START</b> there, so you can set up before the team comes in.</p>
             </div>
         );
     };

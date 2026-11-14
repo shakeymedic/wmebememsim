@@ -168,10 +168,12 @@
     };
 
     // The big number on a patient screen. It never takes a press: the screen underneath keeps working.
-    const ScreenNumberOverlay = ({ n, role }) => {
+    // `solid`: cover what is underneath completely. The waiting screen already shows its own big
+    // number and text, and through a see-through overlay the two read as a glitchy double "1".
+    const ScreenNumberOverlay = ({ n, role, solid }) => {
         const S = window.SimScreens;
         return (
-            <div className="absolute inset-0 z-[300] pointer-events-none flex items-center justify-center p-4" data-testid="screen-number" aria-live="polite">
+            <div className={`absolute inset-0 z-[300] pointer-events-none flex items-center justify-center p-4${solid ? ' bg-black' : ''}`} data-testid="screen-number" aria-live="polite">
                 <div className="flex flex-col items-center gap-3 bg-black/75 border-4 border-white/80 rounded-3xl px-10 py-6 shadow-2xl animate-fadeIn">
                     <div className={`rounded-2xl px-10 font-black leading-none ${S.numberColour(n)}`} style={{ fontSize: 'min(38vh, 38vw)' }}>{n || '?'}</div>
                     <div className="text-white text-2xl md:text-4xl font-bold text-center">{n ? `Screen ${n}` : 'New screen'}</div>
