@@ -514,7 +514,8 @@
                             )}
                             {/* Optional account control. Renders "Sign in" and nothing else until
                                 clicked; it never interrupts, and the app is fully usable ignoring it. */}
-                            {auth && AccountButton && <AccountButton auth={auth} />}
+                            {/* Not in the header during a run on a phone (Jake, 15 Nov 2026): sign in from the set-up screen. */}
+                            {auth && AccountButton && <div className={view === 'livesim' ? 'max-md:hidden' : ''}><AccountButton auth={auth} /></div>}
                         </div>
                     </header>
 

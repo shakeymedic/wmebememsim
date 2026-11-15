@@ -36,11 +36,10 @@ test('Quick Sim on a phone: trace and rhythm list fold away and open on demand, 
   await toggle.click();
   await expect(blank).toBeHidden();
 
-  // The rhythm list is folded; Show all opens it and a rhythm can be picked.
-  const sinusBrady = page.getByRole('button', { name: 'Sinus Bradycardia', exact: true });
-  await expect(sinusBrady).toBeHidden();
-  await page.getByTestId('phone-rhythms-toggle').click();
-  await sinusBrady.click();
+  // No Quick Sim rhythm list on a phone (15 Nov 2026): Change Rhythm opens the same list.
+  await expect(page.getByTestId('quicksim-rhythm-list')).toBeHidden();
+  await page.getByRole('button', { name: 'Change Rhythm', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Sinus Bradycardia', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.rhythm)).toBe('Sinus Bradycardia');
 
   // The screen switch is on its own row and fits.
@@ -194,6 +193,31 @@ test('a scenario on a phone starts with its event log folded', async ({ page }) 
   await expect(log.getByPlaceholder('Add a note')).toBeHidden();
   await log.locator('button[aria-expanded]').first().click();
   await expect(log.getByPlaceholder('Add a note')).toBeVisible();
+  expect(await noSideScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('on a phone: one screens button, Simple/Full in Tools, no Sign in during a run (15 Nov 2026)', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();   // still on the set-up screen
+  await startQuickSim(page);
+  await pressStart(page);
+  await expect(page.getByRole('button', { name: /sign in/i })).toBeHidden();
+
+  // The screens badge is the only Screens button, and it opens Screens.
+  await expect(page.getByRole('button', { name: /^Screens:/ })).toHaveCount(1);
+  await expect(page.getByTestId('connection-badge-phone')).toContainText('No screens');
+  await page.getByTestId('connection-badge-phone').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
+
+  // Simple/Full is in the Tools menu.
+  await expect(page.getByTestId('view-mode')).toBeHidden();
+  await page.getByRole('button', { name: /^Tools:/ }).click();
+  await page.getByRole('menuitem', { name: /View: Simple/ }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('emsim_view_mode_v1'))).toBe('full');
   expect(await noSideScroll(page)).toBe(true);
   expect(errors).toEqual([]);
 });

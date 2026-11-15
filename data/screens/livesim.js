@@ -431,7 +431,6 @@
         // rhythm are already at the top of the page, and Change Rhythm opens the same list). Desktop and
         // tablet layouts ignore these.
         const [phoneTrace, setPhoneTrace] = useState(false);
-        const [phoneRhythms, setPhoneRhythms] = useState(false);
         // PHONE ONLY (Jake, 15 Nov 2026: "more stuff should be minimised"): the less used resus
         // buttons (Arrest View, Defib, NIBP, the monitor timer) and the event log start folded.
         const [phoneResusMore, setPhoneResusMore] = useState(false);
@@ -1295,10 +1294,19 @@
                                 : n === 0 ? 'border-emerald-800 bg-emerald-950/30 text-emerald-300'
                                 : 'border-sky-700 bg-sky-950/40 text-sky-300';
                             return (
-                                <div role={syncProblem ? 'alert' : 'status'} title={tip} data-testid="connection-badge" className={`h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold whitespace-nowrap ${tone}`}>
+                                <>
+                                <div role={syncProblem ? 'alert' : 'status'} title={tip} data-testid="connection-badge" className={`max-md:hidden h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold whitespace-nowrap ${tone}`}>
                                     <Lucide icon={syncProblem ? 'wifi-off' : (n === 0 ? 'wifi' : (shows.includes('defib') ? 'zap' : 'monitor'))} className="w-3 h-3" />
-                                    <span className="max-md:hidden">{label}</span><span className="md:hidden">{shortLabel}</span>
+                                    <span>{label}</span>
                                 </div>
+                                {/* A phone has ONE screens button (Jake, 15 Nov 2026): it says what is linked and opens Screens. */}
+                                <button type="button" onClick={() => setShowJoin(true)} title={tip} data-testid="connection-badge-phone"
+                                        aria-label={`Screens: ${shortLabel}. Add patient screens and choose what each one shows`}
+                                        className={`md:hidden h-8 px-2 flex items-center gap-1 rounded border text-[10px] uppercase font-bold whitespace-nowrap ${tone}`}>
+                                    <Lucide icon={syncProblem ? 'wifi-off' : (n === 0 ? 'wifi' : (shows.includes('defib') ? 'zap' : 'monitor'))} className="w-3 h-3" />
+                                    <span>{shortLabel}</span><Lucide icon="chevron-right" className="w-3 h-3" />
+                                </button>
+                                </>
                             );
                         })()}
                         {/* Safety flags: a running count of genuine SEQUENCE DEVIATIONS (actions
@@ -1342,14 +1350,16 @@
                                     <Button onClick={() => setShowVolume(false)} variant="outline" className="h-8 w-full text-xs">Done</Button>
                                 </div>
                             )}
-                        <ViewModeToggle />
+                        {/* On a phone Simple/Full lives in the Tools menu (Jake, 15 Nov 2026). */}
+                        <ViewModeToggle className="max-md:hidden" />
                         {window.ScreenDeviceWarning && <window.ScreenDeviceWarning state={state} onOpen={() => setShowJoin(true)} />}
                         <Button ariaLabel="Screens: add patient screens and choose what each one shows" variant="outline" onClick={() => setShowJoin(true)}
-                                className="h-8 px-2 text-sky-300 border-sky-500/50 text-xs font-bold">
+                                className="max-md:hidden h-8 px-2 text-sky-300 border-sky-500/50 text-xs font-bold">
                             <Lucide icon="monitor" className="w-4 h-4 md:mr-1"/><span className="max-md:hidden">Screens</span>
                         </Button>
                         <MenuButton label={<span className="max-md:hidden">Tools</span>} icon="settings" ariaLabel="Tools: drug calculator, timer alerts, log, sound and shortcuts"
                             items={[
+                                !panel.isWide && { label: simple ? 'View: Simple (switch to Full)' : 'View: Full (switch to Simple)', icon: 'sliders', onClick: () => setViewMode(simple ? 'full' : 'simple') },
                                 { label: 'Drug calculator', icon: 'pill', hint: 'D', onClick: () => setShowDrugCalc(true) },
                                 { label: 'Timer alerts', icon: 'bell', hint: 'T', onClick: () => setShowTimerModal(true) },
                                 { label: 'Full simulation log', icon: 'list', onClick: () => setShowLogModal(true) },
@@ -2116,18 +2126,15 @@
                                 data/rhythms.js, so this list can never disagree with the monitor, the
                                 defibrillator's shockability logic or the arrest model. Arrest rhythms
                                 are marked so the facilitator can see what will zero the obs. */}
-                            <div>
+                            {/* Not on a phone (Jake, 15 Nov 2026): Change Rhythm above opens the same list. */}
+                            <div className="max-md:hidden" data-testid="quicksim-rhythm-list">
                                 <div className="flex items-center justify-between gap-2 mb-1">
                                     <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Select rhythm ({RG.SELECTABLE.length})</div>
-                                    <button type="button" onClick={() => setPhoneRhythms(v => !v)} aria-expanded={phoneRhythms} data-testid="phone-rhythms-toggle"
-                                            className="md:hidden text-[10px] uppercase font-bold px-2 py-1 rounded border border-slate-600 text-slate-200 hover:bg-slate-700">
-                                        {phoneRhythms ? 'Hide list' : 'Show all'}
-                                    </button>
                                 </div>
                                 {/* The precedence rule, documented in the Quick Sim pane where
                                     the HR-then-rhythm sequence is most commonly used. */}
-                                <div className={`text-[9px] text-slate-400 mb-2 leading-relaxed ${phoneRhythms ? '' : 'max-md:hidden'}`}>Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
-                                <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 ${phoneRhythms ? '' : 'max-md:hidden'}`}>
+                                <div className="text-[9px] text-slate-400 mb-2 leading-relaxed">Each rhythm has a typical rate, applied only when you have not set HR yourself. An HR you typed is kept across a rhythm change (the log says so); ARREST and ROSC reset it.</div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                     {RG.SELECTABLE.map(r => {
                                         const isCur = state.rhythm === r;
                                         const arrest = RG.inArrest(r);
