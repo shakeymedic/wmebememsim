@@ -661,10 +661,11 @@
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {MODES.map(m => (
                                 <button key={m.id} type="button" onClick={() => pickMode(m.id)} aria-label={m.label} data-testid={`mode-${m.id}`}
-                                        className="text-left flex flex-col items-start justify-start rounded-lg border-2 border-slate-600 bg-slate-800 hover:border-sky-400 hover:bg-slate-700/60 p-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
-                                    <Lucide icon={m.icon} className="w-6 h-6 text-sky-300 mb-2"/>
+                                        className="text-left flex flex-col items-start justify-start max-sm:grid max-sm:grid-cols-[auto_1fr] max-sm:gap-x-3 max-sm:items-center rounded-lg border-2 border-slate-600 bg-slate-800 hover:border-sky-400 hover:bg-slate-700/60 p-4 max-sm:px-3 max-sm:py-2.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400">
+                                    {/* On a phone each option is a compact row: the icon beside the name, the line under it. */}
+                                    <Lucide icon={m.icon} className="w-6 h-6 text-sky-300 mb-2 max-sm:mb-0 max-sm:row-span-2"/>
                                     <div className="font-bold text-white">{m.label}</div>
-                                    <div className="text-xs text-slate-300 mt-1 leading-snug">{m.text}</div>
+                                    <div className="text-xs text-slate-300 mt-1 max-sm:mt-0 leading-snug">{m.text}</div>
                                 </button>
                             ))}
                         </div>

@@ -432,6 +432,10 @@
         // tablet layouts ignore these.
         const [phoneTrace, setPhoneTrace] = useState(false);
         const [phoneRhythms, setPhoneRhythms] = useState(false);
+        // PHONE ONLY (Jake, 15 Nov 2026: "more stuff should be minimised"): the less used resus
+        // buttons (Arrest View, Defib, NIBP, the monitor timer) and the event log start folded.
+        const [phoneResusMore, setPhoneResusMore] = useState(false);
+        const [phoneLog, setPhoneLog] = useState(false);
         // The one-line Quick Sim patient strip truncates the name on a phone; tapping it opens the
         // full details (Jake's request, 28 Oct 2026).
         const [quickInfoOpen, setQuickInfoOpen] = useState(false);
@@ -1096,6 +1100,7 @@
         // obs" starts closed (its summary still shows GCS and glucose), so the obs tiles and the
         // Rhythm & resus controls are all on screen without scrolling.
         const shortScreen = (window.innerHeight || 1000) < 900;
+        const phoneResusOpen = phoneResusMore || !!arrestPanelOpen || !!defibPanelOpen || !!(state.nibp && state.nibp.mode === 'auto');
         const compactTiles = narrowPanel || shortScreen;
         // The vital tiles. The core six (HR, BP, SpO2, RR, Temp, ETCO2) are the big tiles in the
         // desktop panel; GCS and glucose sit in a smaller "More obs" row beneath them. The phone view
@@ -1545,7 +1550,7 @@
                                      is therefore OUT of the trace area entirely, in its own toolbar
                                      row above the strip. Nothing overlaps the label at any width. */}
                                  <div className="flex items-center gap-1 bg-slate-900/90 border-b border-slate-800 px-1 py-0.5">
-                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-0.5 text-[10px] rounded font-bold uppercase tracking-wider`}>
+                                     <button onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className={`${state.monitorTimer?.visible ? '' : 'max-md:hidden'} bg-slate-800 hover:bg-slate-700 border ${state.monitorTimer?.visible ? 'border-sky-500 text-sky-400' : 'border-slate-600 text-white'} px-2 py-0.5 text-[10px] rounded font-bold uppercase tracking-wider`}>
                                          <Lucide icon="clock" className="w-3 h-3 inline mr-1"/>{state.monitorTimer?.visible ? 'Hide Timer' : 'Show Timer'}
                                      </button>
                                      {state.monitorTimer?.visible && (
@@ -1650,6 +1655,19 @@
                             </div>
                         </div>
                         
+                        {/* PHONE ONLY: ARREST and ROSC stay on screen; the rest of this section folds behind
+                            one button (it opens by itself while the arrest view or defib is up, or auto NIBP is on,
+                            so a Close or an Off is never hidden). */}
+                        <button type="button" onClick={() => setPhoneResusMore(v => !v)} aria-expanded={phoneResusOpen} data-testid="phone-resus-more"
+                                className="md:hidden flex items-center justify-center gap-1 text-[10px] uppercase font-bold tracking-wider px-2 py-1.5 rounded border border-slate-600 text-slate-200 hover:bg-slate-700">
+                            <Lucide icon={phoneResusOpen ? 'chevron-up' : 'chevron-down'} className="w-3 h-3"/>{phoneResusOpen ? 'Fewer controls' : 'Arrest view, defib, NIBP, timer'}
+                        </button>
+                        <div className={`flex flex-col gap-2 ${phoneResusOpen ? '' : 'max-md:hidden'}`} data-testid="resus-more">
+                        {!state.monitorTimer?.visible && (
+                            <Button variant="outline" onClick={() => sim.dispatch({type: 'TOGGLE_MONITOR_TIMER'})} className="md:hidden w-full text-xs">
+                                <Lucide icon="clock" className="w-4 h-4"/> Show timer on monitor
+                            </Button>
+                        )}
                         {/* A4 NAMING COLLISION FIX. This button has ALWAYS toggled arrestPanelOpen —
                             the dual-trace LEAD II / PADS arrest layout on the student monitor — and
                             has never opened a defibrillator. It is now called what it is. The button
@@ -1685,6 +1703,7 @@
                                     className="flex-1 min-w-[8rem] max-md:min-w-0 max-md:px-2 px-3 text-[10px] uppercase font-bold text-slate-400 whitespace-nowrap">
                                  <span className="max-md:hidden">Manual reading</span><span className="md:hidden">Manual BP</span>
                             </Button>
+                        </div>
                         </div>
 
                         {isPaeds && (
@@ -2048,7 +2067,7 @@
                             <Section id="qsVoice" title="Patient voice" summary="Make the patient speak on the monitor" defaultOpen={false}>
                                 {renderVoicePanel()}
                             </Section>
-                            <div data-testid="presets">
+                            <div data-testid="presets" className={simple && !presetView ? 'max-md:hidden' : ''}>
                                 <div className="flex items-center justify-between mb-1 gap-2">
                                     <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Presets</div>
                                     {simple
@@ -2131,8 +2150,15 @@
                             {/* EVENT LOG, inline rather than behind the log modal: with nothing else
                                 competing for this pane there is room to keep it permanently visible. */}
                             <div>
-                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2">Event log ({state.log.length})</div>
-                                <div className="bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 max-md:max-h-48 overflow-y-auto">
+                                <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-2 max-md:hidden">Event log ({state.log.length})</div>
+                                {/* Phone: the log starts folded, with the latest entry on its header. */}
+                                <button type="button" onClick={() => setPhoneLog(v => !v)} aria-expanded={phoneLog} data-testid="phone-log-toggle"
+                                        className="md:hidden w-full flex items-center gap-1.5 text-left mb-1 min-w-0">
+                                    <Lucide icon={phoneLog ? 'chevron-down' : 'chevron-right'} className="w-3.5 h-3.5 flex-none text-slate-400"/>
+                                    <span className="text-[10px] uppercase tracking-widest text-slate-300 font-bold whitespace-nowrap flex-none">Event log ({state.log.length})</span>
+                                    {!phoneLog && state.log.length > 0 && <span className="text-[11px] text-slate-400 truncate min-w-0">{state.log[state.log.length - 1].msg}</span>}
+                                </button>
+                                <div className={`${phoneLog ? '' : 'max-md:hidden '}bg-slate-900 border border-slate-700 rounded p-2 font-mono text-[11px] space-y-1 max-h-72 max-md:max-h-48 overflow-y-auto`}>
                                     {state.log.length === 0 && <div className="text-slate-400 text-center py-4">Nothing logged yet. Attach monitoring, press START, then change the obs or the rhythm.</div>}
                                     {state.log.slice().reverse().map((entry, i) => (
                                         <div key={i} className={`flex gap-3 border-b border-slate-800 last:border-0 pb-0.5 ${entry.flagged ? 'bg-amber-900/20 -mx-1 px-1 rounded' : ''}`}>
@@ -2144,7 +2170,7 @@
                             </div>
                         </div>
 
-                        <div className="bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2">
+                        <div className={`bg-slate-900 p-3 border-t border-slate-700 flex flex-wrap gap-2 ${phoneLog ? '' : 'max-md:hidden'}`}>
                             <input type="text" className="bg-slate-800 border border-slate-600 rounded px-4 h-10 text-sm flex-1 min-w-[10rem] text-white focus:border-amber-500 outline-none" placeholder="Add a note to the log" value={customLog} onChange={e=>setCustomLog(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submitCustomLog(false); }} />
                             <Button onClick={() => submitCustomLog(true)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0 text-amber-500 border-amber-500/30"><Lucide icon="flag" className="w-4 h-4 mr-1"/> Flag</Button>
                             <Button onClick={() => submitCustomLog(false)} disabled={!customLog.trim()} variant="secondary" className="h-10 w-24 max-md:w-auto max-md:px-2 shrink-0">Add Log</Button>
@@ -2221,9 +2247,9 @@
                             ) : (
                                 <>
                                     {scenario.recommendedActions && scenario.recommendedActions.length > 0 && activeTab === 'Common' && (
-                                        <div className="mb-4 p-4 bg-amber-900/20 border-2 border-amber-500 rounded-lg shadow-lg">
-                                            <h4 className="text-sm font-bold text-amber-400 uppercase mb-3 flex items-center gap-2"><Lucide icon="check-circle" className="w-4 h-4"/> Recommended Actions</h4>
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                                        <div className="mb-4 p-4 max-md:p-2 max-md:mb-2 bg-amber-900/20 border-2 border-amber-500 rounded-lg shadow-lg">
+                                            <h4 className="text-sm font-bold text-amber-400 uppercase mb-3 max-md:mb-2 flex items-center gap-2"><Lucide icon="check-circle" className="w-4 h-4"/> Recommended Actions</h4>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-md:gap-2">
                                                 {scenario.recommendedActions.map(key => {
                                                     if (!INTERVENTIONS[key]) return null;
                                                     return renderActionBtn(key);
@@ -2256,7 +2282,7 @@
                         {/* EVENT LOG, always on screen: the latest entries (newest first), flag any of
                             them for the debrief, and add a note. The full log is in Tools. */}
                         <div className="flex-none border-t border-slate-700 bg-slate-900" data-testid="event-log">
-                            <Section id="eventLog" title={`Event log (${state.log.length})`} summary={state.log.length ? state.log[state.log.length - 1].msg : 'Nothing logged yet'} defaultOpen={true} className="border-0 rounded-none bg-slate-900"
+                            <Section key={panel.isWide ? 'eventLog' : 'eventLogPhone'} id={panel.isWide ? 'eventLog' : 'eventLogPhone'} remember={panel.isWide} title={`Event log (${state.log.length})`} summary={state.log.length ? state.log[state.log.length - 1].msg : 'Nothing logged yet'} defaultOpen={panel.isWide} className="border-0 rounded-none bg-slate-900"
                                 right={<button type="button" onClick={() => setShowLogModal(true)} className="text-[10px] uppercase font-bold text-sky-400 hover:text-sky-200 flex-none">Full log</button>}>
                                 <div className="font-mono text-[11px] space-y-0.5 max-h-[18vh] min-h-[3rem] overflow-y-auto mb-2 pr-1">
                                     {state.log.length === 0 && <div className="text-slate-400 py-2">Nothing logged yet.</div>}
