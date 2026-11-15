@@ -494,10 +494,10 @@
                 <ScreenLinkContext.Provider value={screenLink}>
                 <div className={`h-full flex flex-col ${view === 'livesim' ? 'max-md:overflow-y-auto' : view === 'debrief' ? 'max-lg:overflow-y-auto' : ''}`}>
                     {/* Header */}
-                    <header className="flex items-center justify-between p-3 border-b border-slate-800 bg-slate-900 flex-shrink-0">
+                    <header className={`flex items-center justify-between p-3 ${view === 'livesim' ? 'max-md:py-1.5' : ''} border-b border-slate-800 bg-slate-900 flex-shrink-0`}>
                         <div className="flex items-center gap-3">
                             <a href="https://emevidence.org" target="_blank" rel="noopener noreferrer">
-                                <img src="images/emevidence-logo.png" alt="EM Evidence Logo" className="h-10 object-contain" />
+                                <img src="images/emevidence-logo.png" alt="EM Evidence Logo" className={`h-10 ${view === 'livesim' ? 'max-md:h-8' : ''} object-contain`} />
                             </a>
                             <h1 className="text-xl font-bold text-sky-400 tracking-tight hidden md:block">EM Evidence Sim</h1>
                         </div>
@@ -514,7 +514,8 @@
                             )}
                             {/* Optional account control. Renders "Sign in" and nothing else until
                                 clicked; it never interrupts, and the app is fully usable ignoring it. */}
-                            {auth && AccountButton && <AccountButton auth={auth} />}
+                            {/* Not in the header during a run on a phone (Jake, 15 Nov 2026): sign in from the set-up screen. */}
+                            {auth && AccountButton && <div className={view === 'livesim' ? 'max-md:hidden' : ''}><AccountButton auth={auth} /></div>}
                         </div>
                     </header>
 
@@ -572,10 +573,11 @@
                       </ErrorBoundary>
                     </main>
 
-                    {/* Footer */}
+                    {/* Footer. Hidden on a phone during a run (Jake, 15 Nov 2026: fewer extras on the phone);
+                        the start and set-up screens and the debrief still carry it. */}
                     {/* The instructor guides (static pages in guides/) sit at the far left; the
                         controller layout is never shown on the room monitor or the defib. */}
-                    <footer className="bg-slate-950 border-t border-slate-800 px-2 py-1 text-center text-[10px] text-slate-400 flex-shrink-0 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 md:grid md:grid-cols-[1fr_auto_1fr]">
+                    <footer className={`${view === 'livesim' ? 'max-md:hidden ' : ''}bg-slate-950 border-t border-slate-800 px-2 py-1 text-center text-[10px] text-slate-400 flex-shrink-0 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 md:grid md:grid-cols-[1fr_auto_1fr]`}>
                         <p className="md:justify-self-start" data-testid="guide-links">
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-amber-600/70 bg-amber-950/50 text-amber-300">
                                 <span className="font-bold uppercase tracking-wider">Instructor guides:</span>

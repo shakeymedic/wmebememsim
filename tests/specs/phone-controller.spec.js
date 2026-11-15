@@ -36,11 +36,10 @@ test('Quick Sim on a phone: trace and rhythm list fold away and open on demand, 
   await toggle.click();
   await expect(blank).toBeHidden();
 
-  // The rhythm list is folded; Show all opens it and a rhythm can be picked.
-  const sinusBrady = page.getByRole('button', { name: 'Sinus Bradycardia', exact: true });
-  await expect(sinusBrady).toBeHidden();
-  await page.getByTestId('phone-rhythms-toggle').click();
-  await sinusBrady.click();
+  // No Quick Sim rhythm list on a phone (15 Nov 2026): Change Rhythm opens the same list.
+  await expect(page.getByTestId('quicksim-rhythm-list')).toBeHidden();
+  await page.getByRole('button', { name: 'Change Rhythm', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Sinus Bradycardia', exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__simEngine.state.rhythm)).toBe('Sinus Bradycardia');
 
   // The screen switch is on its own row and fits.
@@ -144,6 +143,81 @@ test('a 17-year-old in Quick Sim is still paediatric: the WETFLAG opens from the
   const details = page.getByTestId('quicksim-details');
   await expect(details).toContainText('WETFLAG (50 kg)');            // RCUK chart "adolescent" weight
   await page.screenshot({ path: test.info().outputPath('quicksim-17-open.png'), fullPage: false });
+  expect(await noSideScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('on a phone the extra resus buttons, the timer and the event log start folded and open on demand (15 Nov 2026)', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await startQuickSim(page);
+  await pressStart(page);
+
+  // ARREST and ROSC stay on screen; Arrest View, Defib, NIBP and the timer fold behind one button.
+  await expect(page.getByRole('button', { name: /^Choose an arrest rhythm/ })).toBeVisible();
+  const arrestView = page.getByRole('button', { name: 'Arrest View', exact: true });
+  await expect(arrestView).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Show Timer', exact: true })).toBeHidden();
+  await page.getByTestId('phone-resus-more').click();
+  await expect(arrestView).toBeVisible();
+  await page.getByRole('button', { name: 'Show timer on monitor' }).click();
+  await expect.poll(() => page.evaluate(() => !!window.__simEngine.state.monitorTimer?.visible)).toBe(true);
+  // While the arrest view is up its Close button cannot be folded away.
+  await arrestView.click();
+  await page.getByTestId('phone-resus-more').click();
+  await expect(page.getByRole('button', { name: 'Close Arrest View', exact: true })).toBeVisible();
+
+  // The Quick Sim log is folded, with the latest entry on its header.
+  const toggle = page.getByTestId('phone-log-toggle');
+  await expect(toggle).toContainText('Event log');
+  await expect(page.getByPlaceholder('Add a note to the log')).toBeHidden();
+  await toggle.click();
+  await expect(page.getByPlaceholder('Add a note to the log')).toBeVisible();
+
+  // No footer during the run on a phone.
+  await expect(page.getByTestId('guide-links')).toBeHidden();
+  expect(await noSideScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('a scenario on a phone starts with its event log folded', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await startQuickSim(page);
+  await page.evaluate(() => {
+    const base = window.ALL_SCENARIOS.find(s => s.ageRange !== 'Paediatric' && !s.defibSim);
+    window.__simEngine.dispatch({ type: 'LOAD_SCENARIO', payload: window.generatePatientFromTemplate(base, {}) });
+  });
+  const log = page.getByTestId('event-log');
+  await expect(log).toBeVisible();
+  await expect(log.getByPlaceholder('Add a note')).toBeHidden();
+  await log.locator('button[aria-expanded]').first().click();
+  await expect(log.getByPlaceholder('Add a note')).toBeVisible();
+  expect(await noSideScroll(page)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
+test('on a phone: one screens button, Simple/Full in Tools, no Sign in during a run (15 Nov 2026)', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openController(page);
+  await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();   // still on the set-up screen
+  await startQuickSim(page);
+  await pressStart(page);
+  await expect(page.getByRole('button', { name: /sign in/i })).toBeHidden();
+
+  // The screens badge is the only Screens button, and it opens Screens.
+  await expect(page.getByRole('button', { name: /^Screens:/ })).toHaveCount(1);
+  await expect(page.getByTestId('connection-badge-phone')).toContainText('No screens');
+  await page.getByTestId('connection-badge-phone').click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
+
+  // Simple/Full is in the Tools menu.
+  await expect(page.getByTestId('view-mode')).toBeHidden();
+  await page.getByRole('button', { name: /^Tools:/ }).click();
+  await page.getByRole('menuitem', { name: /View: Simple/ }).click();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('emsim_view_mode_v1'))).toBe('full');
   expect(await noSideScroll(page)).toBe(true);
   expect(errors).toEqual([]);
 });
