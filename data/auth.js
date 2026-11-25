@@ -320,7 +320,7 @@
                             email: user.email || '',
                             // A brand-new account's chosen name: the profile write races signUp's own,
                             // and updateProfile() has not always landed yet, so use the name typed.
-                            displayName: user.displayName || window.__pendingSignupName || (user.email ? String(user.email).split('@')[0] : 'User'),
+                            displayName: String(user.displayName || window.__pendingSignupName || (user.email ? String(user.email).split('@')[0] : 'User')).slice(0, 119),   // the rules cap it at 120
                             createdAt: Date.now(),
                             lastSeenAt: Date.now()
                         }).catch(() => {});

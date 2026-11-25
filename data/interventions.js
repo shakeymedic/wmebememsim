@@ -140,7 +140,7 @@ window.INTERVENTIONS = {
     // Naloxone MUST wear off: re-narcotisation at 30-60 min is the entire teaching point.
     'Naloxone': { label: 'Naloxone', route: 'IV', effect: { RR: 10, gcs: 8 }, category: 'Drugs', log: 'IV Naloxone administered. Duration 30-60 min — SHORTER than most opioids, watch for re-narcotisation.', type: 'bolus', duration: 5, pk: { onset: 60, peak: 300, offset: 2400, maxDoses: 4 }, expects: ['IV Access'] },
     // Antibiotics: correctly NO acute obs change. No effect, no pk.
-    'Antibiotics': { label: 'Co-Amoxiclav', route: 'IV', effect: {}, category: 'Drugs', log: 'IV Co-Amoxiclav administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
+    'Antibiotics': { label: 'IV Antibiotics (per local guideline)', route: 'IV', effect: {}, category: 'Drugs', log: 'IV antibiotics administered (choice per local guideline).', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Ceftriaxone': { label: 'Ceftriaxone', route: 'IV', effect: {}, category: 'Drugs', log: 'IV Ceftriaxone administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Tazocin': { label: 'Tazocin (Pip/Taz)', route: 'IV', effect: {}, category: 'Drugs', log: 'IV Tazocin administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Gentamicin': { label: 'Gentamicin', route: 'IV', effect: {}, category: 'Drugs', log: 'IV Gentamicin administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
@@ -222,7 +222,7 @@ window.INTERVENTIONS = {
     'Hydroxocobalamin': { label: 'Hydroxocobalamin (Cyanokit)', route: 'IV', effect: {}, category: 'Drugs', log: 'IV hydroxocobalamin (Cyanokit) administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Antivenom': { label: 'Antivenom', route: 'IV', effect: {}, category: 'Drugs', log: 'Antivenom administered.', type: 'bolus', duration: 30, expects: ['IV Access'] },
     'Oxytocin': { label: 'Oxytocin', route: 'IV', effect: { BP: -5 }, category: 'Drugs', log: 'IV Oxytocin administered.', type: 'bolus', duration: 10, pk: { onset: 60, peak: 180, offset: 1200, maxDoses: 3 }, expects: ['IV Access'] },
-    'Ergometrine': { label: 'Ergometrine', route: 'IM/IV', effect: { BP: 10 }, category: 'Drugs', log: 'IV Ergometrine administered.', type: 'bolus', duration: 10, pk: { onset: 120, peak: 420, offset: 3600, maxDoses: 2 }, expects: ['IV Access'] },
+    'Ergometrine': { label: 'Ergometrine', route: 'IM/IV', effect: { BP: 10 }, category: 'Drugs', log: 'Ergometrine administered (IM, or slow IV).', type: 'bolus', duration: 10, pk: { onset: 120, peak: 420, offset: 3600, maxDoses: 2 } },
     'Carboprost': { label: 'Carboprost', route: 'IM', effect: {}, category: 'Drugs', log: 'IM Carboprost administered.', type: 'bolus', duration: 10 },
     'AntiD': { label: 'Anti-D Ig', route: 'IM', effect: {}, category: 'Drugs', log: 'Anti-D Immunoglobulin administered.', type: 'bolus', duration: 10 },
     'Prostin': { label: 'Dinoprostone (Prostin)', route: 'IV infusion', effect: {}, category: 'Drugs', log: 'IV Dinoprostone infusion started.', type: 'continuous', duration: 0, expects: ['IV Access'] },
@@ -290,7 +290,7 @@ window.INTERVENTIONS = {
     // Obstetric manoeuvres (McRoberts and suprapubic pressure, elevating the presenting part, breech manoeuvres, manual
     // replacement of the uterus): one button, logged for the debrief. 'Manoeuvres' is the airway's head tilt / jaw thrust.
     'ObstetricManoeuvres': { label: 'Obstetric manoeuvres', route: 'manual', effect: {}, category: 'Procedures', log: 'Obstetric manoeuvres performed.', type: 'bolus', duration: 30 },
-    'Delivery': { label: 'Vaginal Delivery', route: 'n/a', effect: {}, category: 'Procedures', log: 'Baby delivered.', type: 'bolus', duration: 60 },
+    'Delivery': { label: 'Deliver the baby', route: 'n/a', effect: {}, category: 'Procedures', log: 'Baby delivered.', type: 'bolus', duration: 60 },
     'Hysterotomy': { label: 'Perimortem C-Section', route: 'surgical', effect: {}, category: 'Procedures', log: 'Perimortem C-Section performed.', type: 'bolus', duration: 60 },
     'NerveBlock': { label: 'Nerve Block (FIB)', route: 'perineural (LA)', effect: { HR: -5 }, category: 'Procedures', log: 'Fascia Iliaca Block performed.', type: 'bolus', duration: 120, pk: { onset: 600, peak: 1200, offset: 28800, maxDoses: 2 } },
     'Canthotomy': { label: 'Lat. Canthotomy', route: 'surgical', effect: {}, category: 'Procedures', log: 'Lateral Canthotomy performed.', type: 'bolus', duration: 60 },
@@ -331,11 +331,11 @@ window.INTERVENTIONS = {
     'Flumazenil': { label: 'Flumazenil', route: 'IV', effect: { gcs: 6, RR: 5 }, category: 'Drugs', log: 'IV Flumazenil administered. CAUTION: seizure risk; shorter-acting than the benzodiazepine.', type: 'bolus', duration: 60, pk: { onset: 60, peak: 420, offset: 2700, maxDoses: 2 }, expects: ['IV Access'] },
     // --- SEDATION / ANALGESIA BY ROUTE
     // Peak 240s -> 180s. IM ketamine for acute behavioural disturbance is specified
-    // as ~3 minutes to PEAK effect (4-5 mg/kg IM; dissociation typically 3-4 min). The deployed
+    // as ~3 minutes to PEAK effect (4 mg/kg IM, RCEM acute behavioural disturbance guideline 2025; dissociation typically 3-4 min). The deployed
     // 240 s peaked at ~4 min, a minute late. Onset (90 s, first effect) and the 600 s plateau /
     // 1800 s offset are unchanged and still bracket the peak correctly. IV ketamine is untouched
     // (onset 30 / peak 60 = 1 min, verified correct in live testing).
-    'KetamineIM': { label: 'Ketamine IM (sedation / ABD)', route: 'IM', effect: { gcs: -12, BP: 8, HR: 10 }, category: 'Drugs', log: 'IM Ketamine administered (4-5 mg/kg). Onset ~90s, PEAK at ~3 min — WAIT, do not stack doses.', type: 'bolus', duration: 300, pk: { onset: 90, peak: 180, plateau: 600, offset: 1800, maxDoses: 2 } },
+    'KetamineIM': { label: 'Ketamine IM (sedation / ABD)', route: 'IM', effect: { gcs: -12, BP: 8, HR: 10 }, category: 'Drugs', log: 'IM Ketamine administered (4 mg/kg). Onset ~90s, PEAK at ~3 min — WAIT, do not stack doses.', type: 'bolus', duration: 300, pk: { onset: 90, peak: 180, plateau: 600, offset: 1800, maxDoses: 2 } },
     'MorphineIM': { label: 'Morphine IM', route: 'IM', effect: { HR: -5, RR: -3, BP: -2 }, category: 'Drugs', log: 'IM Morphine administered. Onset 10-20 min, peak 30-60 min — slow analgesia.', type: 'bolus', duration: 300, pk: { onset: 600, peak: 1800, offset: 14400, maxDoses: 3 } },
     'MorphineOral': { label: 'Morphine oral (Oramorph)', route: 'oral', effect: { HR: -3, RR: -2 }, category: 'Drugs', log: 'Oral Morphine (Oramorph) administered. Onset 20-30 min.', type: 'bolus', duration: 300, pk: { onset: 1200, peak: 3600, offset: 14400, maxDoses: 3 } },
     'ParacetamolOral': { label: 'Paracetamol oral', route: 'oral', effect: { Temp: -0.5 }, category: 'Drugs', log: 'Oral Paracetamol administered. Peak plasma 45-50 min; antipyresis over 1-2 h.', type: 'bolus', duration: 60, pk: { onset: 1800, peak: 7200, offset: 14400, maxDoses: 2 } },

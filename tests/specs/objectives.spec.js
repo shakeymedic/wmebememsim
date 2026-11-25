@@ -73,7 +73,8 @@ test('complete heart block (broad escape): pacing, isoprenaline or adrenaline me
   const scen = await page.evaluate(() => window.ALL_SCENARIOS.find(s => s.id === 'AM023'));
   expect(scen.ecg.type).toBe('Complete Heart Block');
   expect(scen.recommendedActions).not.toContain('Atropine');
-  expect(scen.recommendedActions).toContain('Metaraminol');
+  expect(scen.recommendedActions).toContain('Isoprenaline');
+  expect(scen.recommendedActions).not.toContain('Metaraminol');
   expect(scen.instructorBrief.interventions.join(' ')).toContain('Do not give atropine to patients with high-degree atrioventricular block and wide QRS. It is ineffective and may worsen the block.');
 });
 
